@@ -1,4 +1,4 @@
-// Headless smoke for the CGridExt + SSRM demo.
+// Headless smoke for the VelocityGridExt + SSRM demo.
 // Run `npm run dev:ext-ssrm-demo` first, then `node scripts/smoke.mjs`.
 // Drives the wrapped grid through the sparse-SSRM lifecycle: grouped boot
 // (colDef rowGroup seeding), expand (local reflow + lazy leaf fetch),
@@ -20,7 +20,7 @@ page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.
 
 await page.goto('http://localhost:5195/', { waitUntil: 'domcontentloaded' });
 
-await page.waitForSelector('.cgext-grid canvas', { timeout: 15000 });
+await page.waitForSelector('.vgext-grid canvas', { timeout: 15000 });
 await page.waitForFunction(() => !!window.__demo?.grid, null, { timeout: 15000 });
 
 // Grouped boot: desk → region seeded from colDefs; 6 desks collapsed.
@@ -42,11 +42,11 @@ await page.waitForFunction(
 );
 console.log('after expand:', await page.evaluate(() => window.__demo.grid.getDisplayedRowCount()));
 
-// Live ticks keep the server busy (soft refresh + leaf refetch).
-const reqA = await page.evaluate(() => window.__demo.server.requestCount);
+// Live ticks keep the provider busy (soft refresh + leaf refetch).
+const reqA = await page.evaluate(() => window.__demo.provider.requestCount);
 await wait(2500);
-const reqB = await page.evaluate(() => window.__demo.server.requestCount);
-console.log('server requests over 2.5s:', reqA, '->', reqB);
+const reqB = await page.evaluate(() => window.__demo.provider.requestCount);
+console.log('provider requests over 2.5s:', reqA, '->', reqB);
 
 // Ungroup → flat SSRM windowing over the whole book.
 await page.evaluate(() => window.__demo.grid.setRowGroupColumns([]));

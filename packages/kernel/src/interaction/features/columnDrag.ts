@@ -25,7 +25,7 @@
 // column-reorder pathway is skipped so the column stays where it was in
 // the header band.
 
-import { Feature, type CGridEventCtx } from '../feature';
+import { Feature, type VelocityGridEventCtx } from '../feature';
 import { computeGroupDropTarget, type GroupDropTarget, type HeaderLeafSlot } from './groupDropTarget';
 
 const DRAG_THRESHOLD_PX = 4;
@@ -39,7 +39,7 @@ const DRAG_THRESHOLD_PX = 4;
 // call regardless of which grid context object it has access to.
 
 /** Minimal surface needed to route a drag source through the row group
- *  panel.  Both `CGridEventCtx` (Feature chain) and `CGridApi` (public
+ *  panel.  Both `VelocityGridEventCtx` (Feature chain) and `VelocityGridApi` (public
  *  surface, after Task 2 gap-fill) satisfy this interface. */
 export interface RowGroupPanelDragRouter {
   isPointInRowGroupPanel(clientX: number, clientY: number): boolean;
@@ -107,8 +107,8 @@ export function routePivotPanelDragHover(
 export function clearPivotPanelDragHover(ctx: PivotPanelDragRouter): void {
   ctx.setPivotPanelDragHover(null, -1, -1);
 }
-const INSERTION_LINE_CLASS = 'cg-column-drag-insertion-line';
-const GHOST_HEADER_CLASS = 'cg-column-drag-ghost';
+const INSERTION_LINE_CLASS = 'vg-column-drag-insertion-line';
+const GHOST_HEADER_CLASS = 'vg-column-drag-ghost';
 
 interface LeafPressedState {
   kind: 'pressed';
@@ -194,7 +194,7 @@ export class ColumnDrag extends Feature {
    *  (consumed) or on the next mousedown (defensive). */
   private suppressNextClick = false;
 
-  override handleMouseDown(ctx: CGridEventCtx): void {
+  override handleMouseDown(ctx: VelocityGridEventCtx): void {
     // A fresh press starts a new gesture. Clear any stale suppression
     // flag from a previous drag whose click event never fired (rare,
     // but possible if the cursor left the canvas between up and click).
@@ -250,7 +250,7 @@ export class ColumnDrag extends Feature {
     // the drag threshold to decide between "click" and "drag".
   }
 
-  override handleMouseDrag(ctx: CGridEventCtx): void {
+  override handleMouseDrag(ctx: VelocityGridEventCtx): void {
     if (this.state === null) {
       super.handleMouseDrag(ctx);
       return;
@@ -317,7 +317,7 @@ export class ColumnDrag extends Feature {
     this.dispatchPanelHover(ctx);
   }
 
-  override handleMouseUp(ctx: CGridEventCtx): void {
+  override handleMouseUp(ctx: VelocityGridEventCtx): void {
     const state = this.state;
     this.state = null;
     this.cursor = null;
@@ -395,7 +395,7 @@ export class ColumnDrag extends Feature {
    *  Leaf drags only — group drags never call this (Grid Layouts /
    *  column-group-drag feature, Task 1): those panels accept single
    *  leaf columns, not whole groups. */
-  private dispatchPanelHover(ctx: CGridEventCtx): void {
+  private dispatchPanelHover(ctx: VelocityGridEventCtx): void {
     const state = this.state;
     if (state === null || state.kind !== 'dragging' || state.dragKind !== 'leaf') return;
     const raw = ctx.raw;
@@ -418,11 +418,11 @@ export class ColumnDrag extends Feature {
     if (state.insertionLine) state.insertionLine.style.display = overAnyPanel ? 'none' : '';
     if (state.ghost) state.ghost.style.display = overAnyPanel ? 'none' : '';
     if (state.pillGhost) {
-      state.pillGhost.classList.toggle('cg-col-drag-ghost--visible', overAnyPanel);
+      state.pillGhost.classList.toggle('vg-col-drag-ghost--visible', overAnyPanel);
     }
   }
 
-  override handleClick(ctx: CGridEventCtx): void {
+  override handleClick(ctx: VelocityGridEventCtx): void {
     if (this.suppressNextClick) {
       this.suppressNextClick = false;
       return; // consume — the click is the tail of a drag, not a sort cycle
@@ -430,7 +430,7 @@ export class ColumnDrag extends Feature {
     super.handleClick(ctx);
   }
 
-  override handleMouseMove(ctx: CGridEventCtx): void {
+  override handleMouseMove(ctx: VelocityGridEventCtx): void {
     if (this.state === null) {
       if (ctx.hit.kind === 'header') {
         this.cursor = ctx.grid.getColDef(ctx.hit.colId)?.suppressMovable === false ? 'grab' : null;
@@ -456,7 +456,7 @@ export class ColumnDrag extends Feature {
  *  in-viewport neighbor. Falls back to the moving column's current index
  *  when nothing is in the viewport. */
 function computeDropTargetIndex(
-  ctx: CGridEventCtx,
+  ctx: VelocityGridEventCtx,
   movingColId: string,
 ): number | null {
   const ids = ctx.grid.allColIds();
@@ -481,7 +481,7 @@ function computeDropTargetIndex(
 
 /** Build the 2 px vertical insertion line and append it to the overlay
  *  host. Spans full canvas height; X is set by `updateInsertionLinePosition`. */
-function createInsertionLine(ctx: CGridEventCtx): HTMLDivElement | null {
+function createInsertionLine(ctx: VelocityGridEventCtx): HTMLDivElement | null {
   const host = ctx.grid.getOverlayHost?.();
   if (!host || typeof document === 'undefined') return null;
   const line = document.createElement('div');
@@ -493,7 +493,7 @@ function createInsertionLine(ctx: CGridEventCtx): HTMLDivElement | null {
     'left:0',
     'width:2px',
     'height:100%',
-    'background:var(--cg-selected-cell-color, #3b82f6)',
+    'background:var(--vg-selected-cell-color, #3b82f6)',
     'z-index:6',
     'will-change:transform',
   ].join(';');
@@ -501,13 +501,13 @@ function createInsertionLine(ctx: CGridEventCtx): HTMLDivElement | null {
   return line;
 }
 
-/** Build the header ghost (`.cg-column-drag-ghost`) — a floating card that
+/** Build the header ghost (`.vg-column-drag-ghost`) — a floating card that
  *  mirrors the moving column header's width + label and follows the cursor
  *  during a plain reorder (Cycle 6 / Task 1 design; the affordance shown
  *  when the drag target is a column slot, not the row group panel). Mounts
  *  on the overlay host in canvas-coordinate space alongside the insertion
  *  line. Returns `null` in headless environments. */
-function createGhostHeader(ctx: CGridEventCtx, colId: string): HTMLDivElement | null {
+function createGhostHeader(ctx: VelocityGridEventCtx, colId: string): HTMLDivElement | null {
   const host = ctx.grid.getOverlayHost?.();
   if (!host || typeof document === 'undefined') return null;
   const label = ctx.grid.getHeaderName?.(colId) ?? colId;
@@ -525,7 +525,7 @@ function createGhostHeader(ctx: CGridEventCtx, colId: string): HTMLDivElement | 
 /** Translate the header ghost so its left edge stays under the same grab
  *  point on the column the drag started from, riding vertically centred on
  *  the cursor. Coordinates are canvas-relative (the overlay host's space). */
-function updateHeaderGhostPosition(state: DraggingState, ctx: CGridEventCtx): void {
+function updateHeaderGhostPosition(state: DraggingState, ctx: VelocityGridEventCtx): void {
   if (!state.ghost) return;
   const x = ctx.point.x - state.grabOffsetX;
   const h = state.ghost.offsetHeight || 28;
@@ -537,7 +537,7 @@ function updateHeaderGhostPosition(state: DraggingState, ctx: CGridEventCtx): vo
  *  pointer tip). Only made visible while the cursor is over the row group
  *  panel — see `dispatchRowGroupPanelHover`. Leaf drags only — group
  *  drags never mount a pill ghost (Grid Layouts / Task 1). */
-function updatePillGhostPosition(state: LeafDraggingState, ctx: CGridEventCtx): void {
+function updatePillGhostPosition(state: LeafDraggingState, ctx: VelocityGridEventCtx): void {
   if (!state.pillGhost) return;
   const raw = ctx.raw;
   if (!(raw instanceof MouseEvent)) return;
@@ -549,7 +549,7 @@ function updatePillGhostPosition(state: LeafDraggingState, ctx: CGridEventCtx): 
  *  column would land on — or the RIGHT edge when the pointer is past
  *  that column's center, so the user sees the column will end up *after*
  *  the column they're hovering past. */
-function updateInsertionLinePosition(state: DraggingState, ctx: CGridEventCtx): void {
+function updateInsertionLinePosition(state: DraggingState, ctx: VelocityGridEventCtx): void {
   if (!state.insertionLine) return;
   const targetIdx = computeDropTargetIndex(ctx, state.colId);
   if (targetIdx === null) return;
@@ -570,7 +570,7 @@ function updateInsertionLinePosition(state: DraggingState, ctx: CGridEventCtx): 
  *  against: every visible leaf in render order, with its horizontal slot
  *  + ancestor group path. Off-viewport columns (no resolved left/width)
  *  are skipped, mirroring `computeDropTargetIndex`'s own viewport guard. */
-function buildHeaderSlots(ctx: CGridEventCtx): HeaderLeafSlot[] {
+function buildHeaderSlots(ctx: VelocityGridEventCtx): HeaderLeafSlot[] {
   const slots: HeaderLeafSlot[] = [];
   for (const colId of ctx.grid.allColIds()) {
     const left = ctx.grid.columnLeftOf(colId);
@@ -595,12 +595,12 @@ function leftEdgeOfId(slots: HeaderLeafSlot[], id: string): number | null {
   return min;
 }
 
-/** Build the group-drag ghost (`.cg-column-drag-ghost`) — a floating card
+/** Build the group-drag ghost (`.vg-column-drag-ghost`) — a floating card
  *  spanning the group's full aggregate width (sum of its leaves' widths),
  *  labelled with the group's `headerName`. Mirrors `createGhostHeader`'s
  *  leaf-drag counterpart. Returns `null` in headless environments. */
 function createGroupGhostHeader(
-  ctx: CGridEventCtx,
+  ctx: VelocityGridEventCtx,
   groupId: string,
   leafColIds: string[],
 ): HTMLDivElement | null {
@@ -639,7 +639,7 @@ function createGroupGhostHeader(
  *  `getColGroupPath`: that path is `[...ancestors, movingGroupId]`, so the
  *  second-to-last entry (or `null` if the moving group is top-level) is its
  *  current parent. */
-function isGroupDropRejected(ctx: CGridEventCtx, movingGroupId: string, target: GroupDropTarget | null): boolean {
+function isGroupDropRejected(ctx: VelocityGridEventCtx, movingGroupId: string, target: GroupDropTarget | null): boolean {
   if (!target) return true;
   if (target.targetParentGroupId !== null && ctx.grid.isColumnGroupMarried(target.targetParentGroupId)) return true;
   const firstLeaf = ctx.grid.getGroupLeafColIds(movingGroupId)[0];
@@ -660,7 +660,7 @@ function isGroupDropRejected(ctx: CGridEventCtx, movingGroupId: string, target: 
  *  `moveColumnGroup` (a married target — `isGroupDropRejected`). Returns
  *  whether the drop is currently rejected so the caller can flip the
  *  cursor to `no-drop` in lockstep. */
-function updateGroupInsertionLinePosition(state: GroupDraggingState, ctx: CGridEventCtx): boolean {
+function updateGroupInsertionLinePosition(state: GroupDraggingState, ctx: VelocityGridEventCtx): boolean {
   if (!state.insertionLine) return false;
   const slots = buildHeaderSlots(ctx);
   const descendants = new Set(ctx.grid.getGroupDescendantIds(state.groupId));
@@ -692,24 +692,24 @@ function updateGroupInsertionLinePosition(state: GroupDraggingState, ctx: CGridE
   return false;
 }
 
-/** Build a pill ghost (`.cg-col-drag-ghost`) on `document.body` to show
+/** Build a pill ghost (`.vg-col-drag-ghost`) on `document.body` to show
  *  when a column-header drag enters the row group panel.  Uses the same
  *  pill style as the Columns tool panel's column-list row drag so the
  *  "I'm dropping a group chip" affordance reads consistently across
  *  drag sources.  Returns `null` in headless environments. */
-function createPillGhost(ctx: CGridEventCtx, colId: string): HTMLDivElement | null {
+function createPillGhost(ctx: VelocityGridEventCtx, colId: string): HTMLDivElement | null {
   if (typeof document === 'undefined') return null;
   const label = ctx.grid.getHeaderName?.(colId) ?? colId;
   // Mounts hidden — `dispatchRowGroupPanelHover` adds the `--visible`
   // modifier only while the cursor is over the row group panel. During a
   // plain column reorder the header ghost is shown instead.
   const el = document.createElement('div');
-  el.className = 'cg-col-drag-ghost';
+  el.className = 'vg-col-drag-ghost';
   const icon = document.createElement('span');
-  icon.className = 'cg-col-drag-ghost-icon';
+  icon.className = 'vg-col-drag-ghost-icon';
   icon.setAttribute('aria-hidden', 'true');
   const lbl = document.createElement('span');
-  lbl.className = 'cg-col-drag-ghost-label';
+  lbl.className = 'vg-col-drag-ghost-label';
   lbl.textContent = label;
   el.appendChild(icon);
   el.appendChild(lbl);
@@ -717,7 +717,7 @@ function createPillGhost(ctx: CGridEventCtx, colId: string): HTMLDivElement | nu
   // position:fixed which stays viewport-relative as long as no ancestor
   // introduces a transform stacking context — grid containers don't.
   const themeHost =
-    (ctx.grid.getOverlayHost?.()?.closest<HTMLElement>('[class*="cg-theme"]'))
+    (ctx.grid.getOverlayHost?.()?.closest<HTMLElement>('[class*="vg-theme"]'))
     ?? document.body;
   themeHost.appendChild(el);
   return el;

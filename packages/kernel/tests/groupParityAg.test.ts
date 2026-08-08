@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
 import type { WorkerRequest } from '../src/worker/protocol';
 
@@ -218,7 +218,7 @@ describe('construction-time colDef.rowGroup seeding', () => {
     el.style.height = '400px';
     document.body.appendChild(el);
 
-    const grid = new CGrid(el, {
+    const grid = new VelocityGrid(el, {
       columnDefs: [
         { field: 'desk', rowGroupIndex: 1 },
         { field: 'region', rowGroupIndex: 0 },

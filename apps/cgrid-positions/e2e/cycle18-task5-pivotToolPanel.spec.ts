@@ -25,8 +25,8 @@
 import { test, expect, Page } from '@playwright/test';
 
 const GRID = '#grid canvas';
-const PANEL = '.cg-columns-panel';
-const COLUMNS_TAB = '.cg-side-bar-tab[data-id="agColumnsToolPanel"]';
+const PANEL = '.vg-columns-panel';
+const COLUMNS_TAB = '.vg-side-bar-tab[data-id="agColumnsToolPanel"]';
 
 async function waitForFrames(page: Page, n = 6): Promise<void> {
   await page.evaluate(
@@ -58,7 +58,7 @@ async function gridReady(page: Page, qs = '?pivotDemo=on'): Promise<void> {
 
 /** Enable pivot mode via the api + wait for the panel to reflect it.
  *  Cycle 18 follow-ups (commits c921031, b8e5887) intentionally hide
- *  the Column Labels (`.cg-columns-panel-plz`) section when pivot mode
+ *  the Column Labels (`.vg-columns-panel-plz`) section when pivot mode
  *  is OFF — interacting with that zone requires pivot mode ON first. */
 async function enablePivotMode(page: Page): Promise<void> {
   await page.evaluate(() => {
@@ -66,7 +66,7 @@ async function enablePivotMode(page: Page): Promise<void> {
     api?.setPivotMode(true);
   });
   await waitForFrames(page, 3);
-  await page.locator(`${PANEL} .cg-columns-panel-plz`).waitFor({ state: 'visible' });
+  await page.locator(`${PANEL} .vg-columns-panel-plz`).waitFor({ state: 'visible' });
 }
 
 /** Read current PivotState from the live api. */
@@ -96,7 +96,7 @@ async function readPivotState(page: Page): Promise<{
 test.describe('Cycle 18 / Task 5 — pivot tool panel', () => {
   test('Pivot Mode toggle drives api.setPivotMode and external setPivotMode reflects back in the toggle', async ({ page }) => {
     await gridReady(page);
-    const toggle = page.locator(`${PANEL} .cg-columns-panel-pivot-mode button`);
+    const toggle = page.locator(`${PANEL} .vg-columns-panel-pivot-mode button`);
     await expect(toggle).toHaveAttribute('aria-pressed', 'false');
 
     // Click the UI toggle.
@@ -122,8 +122,8 @@ test.describe('Cycle 18 / Task 5 — pivot tool panel', () => {
     let state = await readPivotState(page);
     expect(state.pivotColumns).toEqual([]);
 
-    const sourceHandle = page.locator(`${PANEL} .cg-columns-panel-row[data-col-id="sector"] .cg-columns-panel-row-handle`);
-    const zone = page.locator(`${PANEL} .cg-columns-panel-plz`);
+    const sourceHandle = page.locator(`${PANEL} .vg-columns-panel-row[data-col-id="sector"] .vg-columns-panel-row-handle`);
+    const zone = page.locator(`${PANEL} .vg-columns-panel-plz`);
     const handleBox = await sourceHandle.boundingBox();
     const zoneBox = await zone.boundingBox();
     expect(handleBox).not.toBeNull();
@@ -143,17 +143,17 @@ test.describe('Cycle 18 / Task 5 — pivot tool panel', () => {
     state = await readPivotState(page);
     expect(state.pivotColumns).toEqual(['sector']);
     // Pill appeared.
-    const pill = page.locator(`${PANEL} .cg-columns-panel-plz-pill[data-col-id="sector"]`);
+    const pill = page.locator(`${PANEL} .vg-columns-panel-plz-pill[data-col-id="sector"]`);
     await expect(pill).toBeVisible();
-    await expect(pill.locator('.cg-columns-panel-plz-pill-label')).toHaveText('Sector');
+    await expect(pill.locator('.vg-columns-panel-plz-pill-label')).toHaveText('Sector');
   });
 
   test('drag a non-pivot-enabled column shows reject state and does NOT mutate PivotState', async ({ page }) => {
     await gridReady(page);
     await enablePivotMode(page);
     // `ticker` carries no `enablePivot` in pivotDemo mode.
-    const sourceHandle = page.locator(`${PANEL} .cg-columns-panel-row[data-col-id="ticker"] .cg-columns-panel-row-handle`);
-    const zone = page.locator(`${PANEL} .cg-columns-panel-plz`);
+    const sourceHandle = page.locator(`${PANEL} .vg-columns-panel-row[data-col-id="ticker"] .vg-columns-panel-row-handle`);
+    const zone = page.locator(`${PANEL} .vg-columns-panel-plz`);
     const handleBox = await sourceHandle.boundingBox();
     const zoneBox = await zone.boundingBox();
     expect(handleBox).not.toBeNull();
@@ -180,10 +180,10 @@ test.describe('Cycle 18 / Task 5 — pivot tool panel', () => {
       api?.addPivotColumn('region');
     });
     await waitForFrames(page, 3);
-    const pill = page.locator(`${PANEL} .cg-columns-panel-plz-pill[data-col-id="region"]`);
+    const pill = page.locator(`${PANEL} .vg-columns-panel-plz-pill[data-col-id="region"]`);
     await expect(pill).toBeVisible();
 
-    await pill.locator('.cg-columns-panel-plz-pill-remove').click();
+    await pill.locator('.vg-columns-panel-plz-pill-remove').click();
     await waitForFrames(page, 3);
     const state = await readPivotState(page);
     expect(state.pivotColumns).toEqual([]);
@@ -194,8 +194,8 @@ test.describe('Cycle 18 / Task 5 — pivot tool panel', () => {
     let state = await readPivotState(page);
     expect(state.valueColumns).toEqual([]);
 
-    const sourceHandle = page.locator(`${PANEL} .cg-columns-panel-row[data-col-id="notionalAmount"] .cg-columns-panel-row-handle`);
-    const zone = page.locator(`${PANEL} .cg-columns-panel-valz`);
+    const sourceHandle = page.locator(`${PANEL} .vg-columns-panel-row[data-col-id="notionalAmount"] .vg-columns-panel-row-handle`);
+    const zone = page.locator(`${PANEL} .vg-columns-panel-valz`);
     const handleBox = await sourceHandle.boundingBox();
     const zoneBox = await zone.boundingBox();
     expect(handleBox).not.toBeNull();
@@ -211,15 +211,15 @@ test.describe('Cycle 18 / Task 5 — pivot tool panel', () => {
 
     state = await readPivotState(page);
     expect(state.valueColumns).toEqual([{ colId: 'notionalAmount', aggFunc: 'sum' }]);
-    const pill = page.locator(`${PANEL} .cg-columns-panel-valz-pill[data-col-id="notionalAmount"]`);
+    const pill = page.locator(`${PANEL} .vg-columns-panel-valz-pill[data-col-id="notionalAmount"]`);
     await expect(pill).toBeVisible();
-    await expect(pill.locator('.cg-columns-panel-valz-pill-label')).toHaveText('sum(Notional)');
+    await expect(pill.locator('.vg-columns-panel-valz-pill-label')).toHaveText('sum(Notional)');
   });
 
   // ── THE AG-parity bug (Prompt 9 item 4) — checkbox semantics ─────
   test('pivotMode-dependent checkbox: pivotMode OFF + click toggles VISIBILITY', async ({ page }) => {
     await gridReady(page);
-    const cb = page.locator(`${PANEL} .cg-columns-panel-row[data-col-id="sector"] .cg-columns-panel-row-checkbox`);
+    const cb = page.locator(`${PANEL} .vg-columns-panel-row[data-col-id="sector"] .vg-columns-panel-row-checkbox`);
     await expect(cb).toBeChecked();
     // pivotMode is OFF — the click hides the column.
     await cb.click();
@@ -241,7 +241,7 @@ test.describe('Cycle 18 / Task 5 — pivot tool panel', () => {
   test('pivotMode-dependent checkbox: pivotMode ON + checking a column with enableRowGroup ADDS row-group (NOT visibility flip)', async ({ page }) => {
     await gridReady(page);
     // Flip pivot mode on via the toggle.
-    await page.locator(`${PANEL} .cg-columns-panel-pivot-mode button`).click();
+    await page.locator(`${PANEL} .vg-columns-panel-pivot-mode button`).click();
     await waitForFrames(page, 3);
     let state = await readPivotState(page);
     expect(state.pivotMode).toBe(true);
@@ -249,7 +249,7 @@ test.describe('Cycle 18 / Task 5 — pivot tool panel', () => {
 
     // sector carries enablePivot+enableRowGroup under ?pivotDemo=on. In
     // pivot mode the checkbox starts UNCHECKED (no role yet). Click it.
-    const cb = page.locator(`${PANEL} .cg-columns-panel-row[data-col-id="sector"] .cg-columns-panel-row-checkbox`);
+    const cb = page.locator(`${PANEL} .vg-columns-panel-row[data-col-id="sector"] .vg-columns-panel-row-checkbox`);
     await expect(cb).not.toBeChecked();
     await cb.click();
     await waitForFrames(page, 3);
@@ -273,11 +273,11 @@ test.describe('Cycle 18 / Task 5 — pivot tool panel', () => {
   // above; same strict semantic now holds for value-only columns.
   test('pivotMode-dependent checkbox: pivotMode ON + checking a value-only column ADDS it as value with default sum', async ({ page }) => {
     await gridReady(page);
-    await page.locator(`${PANEL} .cg-columns-panel-pivot-mode button`).click();
+    await page.locator(`${PANEL} .vg-columns-panel-pivot-mode button`).click();
     await waitForFrames(page, 3);
 
     // notionalAmount has enableValue but NOT enableRowGroup under pivotDemo.
-    const cb = page.locator(`${PANEL} .cg-columns-panel-row[data-col-id="notionalAmount"] .cg-columns-panel-row-checkbox`);
+    const cb = page.locator(`${PANEL} .vg-columns-panel-row[data-col-id="notionalAmount"] .vg-columns-panel-row-checkbox`);
     await expect(cb).not.toBeChecked();
     await cb.click();
     await waitForFrames(page, 3);

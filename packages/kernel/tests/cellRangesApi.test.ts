@@ -1,8 +1,8 @@
 // Cycle 9 / Task 6 — programmatic cell-range API + `cellSelection`
 // option bundle.
 //
-// `CGridApi.getCellRanges() / addCellRange() / clearCellRanges()` surface
-// the SelectionModel.ranges list to applications. `CGridOptions.cellSelection`
+// `VelocityGridApi.getCellRanges() / addCellRange() / clearCellRanges()` surface
+// the SelectionModel.ranges list to applications. `VelocityGridOptions.cellSelection`
 // bundles three runtime-mutable suppression flags:
 //   - `suppressHeader` → header click no longer selects a column band
 //     (sort cycling unaffected).
@@ -12,11 +12,11 @@
 //     band. Plumbed but unused in Cycle 9.
 
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { RangeSelection } from '../src/interaction/features/rangeSelection';
 import { HeaderClick } from '../src/interaction/features/headerClick';
 import { SelectionModel } from '../src/interaction/selectionModel';
-import type { CGridEventCtx } from '../src/interaction/feature';
+import type { VelocityGridEventCtx } from '../src/interaction/feature';
 import type { Hit } from '../src/interaction/hitTester';
 
 beforeAll(() => {
@@ -47,18 +47,18 @@ beforeAll(() => {
 
 interface Row { id: string; a: number; b: number }
 function build(
-  options: Partial<Parameters<typeof CGrid>[1]> = {},
-): { grid: CGrid<Row>; container: HTMLDivElement } {
+  options: Partial<Parameters<typeof VelocityGrid>[1]> = {},
+): { grid: VelocityGrid<Row>; container: HTMLDivElement } {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
   const rows: Row[] = [
     { id: '1', a: 1, b: 2 },
     { id: '2', a: 3, b: 4 },
     { id: '3', a: 5, b: 6 },
   ];
-  const grid = new CGrid<Row>(container, {
+  const grid = new VelocityGrid<Row>(container, {
     columnDefs: [{ field: 'id' }, { field: 'a' }, { field: 'b' }],
     getRowId: (r) => r.id,
     rowData: rows,
@@ -69,7 +69,7 @@ function build(
   return { grid, container };
 }
 
-describe('CGridApi cell-range methods (Cycle 9 / Task 6)', () => {
+describe('VelocityGridApi cell-range methods (Cycle 9 / Task 6)', () => {
   it('getCellRanges() returns an empty array when no ranges are set', () => {
     const { grid } = build();
     expect(grid.getCellRanges()).toEqual([]);
@@ -155,7 +155,7 @@ describe('CGridApi cell-range methods (Cycle 9 / Task 6)', () => {
     grid.destroy();
     const { grid: grid2 } = build();
     grid2.on('gridReady', (e) => { api = (e as any).api; });
-    // The CGridApi factory must wire the three methods.
+    // The VelocityGridApi factory must wire the three methods.
     const proxy = (grid2 as any).makeApi();
     proxy.addCellRange({ rowStart: 0, rowEnd: 0, colIds: ['a'] });
     expect(grid2.getCellRanges()).toEqual([{ rowStart: 0, rowEnd: 0, colIds: ['a'] }]);
@@ -196,11 +196,11 @@ function ctx(
   hit: Hit,
   grid: MockGrid,
   raw: MouseEvent = new MouseEvent('mousedown'),
-): CGridEventCtx {
+): VelocityGridEventCtx {
   return {
     hit,
     point: { x: 0, y: 0 },
-    grid: grid as unknown as CGridEventCtx['grid'],
+    grid: grid as unknown as VelocityGridEventCtx['grid'],
     raw,
   };
 }
@@ -353,7 +353,7 @@ describe('cellSelection.suppressHeader — HeaderClick skips column-band selecti
   });
 });
 
-describe('CGridOptions.cellSelection round-trips via setGridOption (Cycle 9 / Task 6)', () => {
+describe('VelocityGridOptions.cellSelection round-trips via setGridOption (Cycle 9 / Task 6)', () => {
   it('initial cellSelection option is honored by getGridOption', () => {
     const { grid } = build({
       cellSelection: { suppressDrag: true, suppressHeader: false },

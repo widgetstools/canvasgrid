@@ -5,7 +5,7 @@
  * bottom-right resize handle) that hosts arbitrary panel DOM. Unlike
  * `ModalHost` (backdrop, focus trap, one-at-a-time) this is a lightweight
  * "floating panel" chrome: no backdrop, no focus trap, the grid stays
- * fully interactive underneath. `CGrid.openFloatingPanel` exposes this
+ * fully interactive underneath. `VelocityGrid.openFloatingPanel` exposes this
  * generically; content that has somewhere to dock back to (e.g. a
  * side-bar tool panel) supplies `onDock` and gets a Dock button on the
  * titlebar, while content with nowhere to dock (e.g. the Column Groups
@@ -81,7 +81,7 @@ function svgEl<K extends keyof SVGElementTagNameMap>(
 }
 function icon(...children: SVGElement[]): SVGSVGElement {
   const svg = svgEl('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' });
-  svg.setAttribute('class', 'cg-floating-panel-ic');
+  svg.setAttribute('class', 'vg-floating-panel-ic');
   children.forEach((c) => svg.appendChild(c));
   return svg;
 }
@@ -187,7 +187,7 @@ export class FloatingPanelHost {
    *  append its content into. Caller owns content lifecycle. Reopening
    *  while already open closes the prior frame first. */
   open(opts: FloatingPanelOptions): HTMLElement {
-    if (this.destroyed) throw new Error('[cgrid] FloatingPanelHost.open() called after destroy()');
+    if (this.destroyed) throw new Error('[velocity-grid] FloatingPanelHost.open() called after destroy()');
     if (this.frame) this.close();
     this.opts = opts;
 
@@ -202,14 +202,14 @@ export class FloatingPanelHost {
     };
     const rect = clampRect(initial, bounds, MIN_SIZE);
 
-    const frame = el('div', 'cg-floating-panel') as HTMLDivElement;
+    const frame = el('div', 'vg-floating-panel') as HTMLDivElement;
     frame.style.position = 'absolute';
 
-    const titlebar = el('div', 'cg-floating-panel-titlebar') as HTMLDivElement;
-    const titleEl = el('div', 'cg-floating-panel-title') as HTMLDivElement;
+    const titlebar = el('div', 'vg-floating-panel-titlebar') as HTMLDivElement;
+    const titleEl = el('div', 'vg-floating-panel-title') as HTMLDivElement;
     titleEl.textContent = opts.title;
-    const spacer = el('div', 'cg-floating-panel-spacer');
-    const actions = el('div', 'cg-floating-panel-actions');
+    const spacer = el('div', 'vg-floating-panel-spacer');
+    const actions = el('div', 'vg-floating-panel-actions');
 
     // Dock button is optional — only rendered when the caller supplied
     // `onDock` (content that has somewhere to dock back to). Content with
@@ -218,7 +218,7 @@ export class FloatingPanelHost {
     if (opts.onDock) {
       dockBtn = document.createElement('button');
       dockBtn.type = 'button';
-      dockBtn.className = 'cg-floating-panel-dock';
+      dockBtn.className = 'vg-floating-panel-dock';
       dockBtn.setAttribute('aria-label', 'Dock panel');
       dockBtn.appendChild(iconDock());
       // Buttons must not start a titlebar drag — stop the pointerdown
@@ -229,7 +229,7 @@ export class FloatingPanelHost {
 
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
-    closeBtn.className = 'cg-floating-panel-close';
+    closeBtn.className = 'vg-floating-panel-close';
     closeBtn.setAttribute('aria-label', 'Close panel');
     closeBtn.appendChild(iconClose());
     closeBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -242,9 +242,9 @@ export class FloatingPanelHost {
     titlebar.appendChild(actions);
     titlebar.addEventListener('pointerdown', this.onTitlebarPointerDown);
 
-    const body = el('div', 'cg-floating-panel-body') as HTMLDivElement;
+    const body = el('div', 'vg-floating-panel-body') as HTMLDivElement;
 
-    const resizeHandle = el('div', 'cg-floating-panel-resize') as HTMLDivElement;
+    const resizeHandle = el('div', 'vg-floating-panel-resize') as HTMLDivElement;
     resizeHandle.addEventListener('pointerdown', this.onResizeHandlePointerDown);
 
     frame.appendChild(titlebar);

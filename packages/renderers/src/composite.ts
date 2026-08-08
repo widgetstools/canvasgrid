@@ -1,6 +1,6 @@
-// @cgrid/renderers — category 7: Composite (multi-value). Catalog §3.7.
+// @wellsfargo-starui/velocity-grid-renderers — category 7: Composite (multi-value). Catalog §3.7.
 
-import type { CellPaintConfig, CellPainter } from '@cgrid/kernel';
+import type { CellPaintConfig, CellPainter } from '@wellsfargo-starui/velocity-grid';
 import { fragText, miniBar, withAlpha } from './paintUtils';
 import { DEFAULT_VENUE_PALETTE, SEMANTIC_COLORS } from './palette';
 import type {
@@ -190,7 +190,7 @@ export const nbboCell: CellPainter = {
     let x = p.bounds.x + padLeft(p);
     const bidPart = bid !== null ? `${bid.toFixed(2)} x ${bidSize}` : '';
     const askPart = ask !== null ? `${ask.toFixed(2)} x ${askSize}` : '';
-    // Workstream A, part 2 (2026-07-06 CSS styling model) — `--cg-venue-
+    // Workstream A, part 2 (2026-07-06 CSS styling model) — `--vg-venue-
     // <mic>-color` resolves into `p.palette.venue`; falls back to the
     // module-level `DEFAULT_VENUE_PALETTE` when no theme palette is
     // threaded (byte-identical).

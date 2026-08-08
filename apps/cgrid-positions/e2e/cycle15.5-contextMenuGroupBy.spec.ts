@@ -21,7 +21,7 @@
 import { test, expect, Page } from '@playwright/test';
 
 const GRID_SELECTOR = '#grid canvas';
-const MENU_SELECTOR = '.cg-context-menu';
+const MENU_SELECTOR = '.vg-context-menu';
 
 interface GridApiSurface {
   getHeaderBoundsAt: (colId: string) => { x: number; y: number; w: number; h: number } | null;
@@ -53,7 +53,7 @@ async function gridReady(page: Page): Promise<void> {
 
 async function seedRows(page: Page, count: number): Promise<void> {
   await page.evaluate((n) => {
-    const g = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+    const g = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
     const TICKERS = ['AAPL', 'MSFT', 'GOOG', 'AMZN', 'META', 'NVDA', 'TSLA', 'BRK', 'JPM', 'XOM'];
     const rows: Array<Record<string, unknown>> = [];
     for (let i = 0; i < n; i++) {
@@ -84,7 +84,7 @@ async function canvasOffset(page: Page): Promise<{ x: number; y: number }> {
 
 async function rightClickHeader(page: Page, colId: string): Promise<void> {
   const bounds = await page.evaluate((id) =>
-    (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getHeaderBoundsAt(id),
+    (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getHeaderBoundsAt(id),
     colId,
   );
   if (!bounds) throw new Error(`no header bounds for ${colId}`);
@@ -99,7 +99,7 @@ async function rightClickHeader(page: Page, colId: string): Promise<void> {
 
 async function groupCols(page: Page): Promise<string[]> {
   return page.evaluate(() =>
-    (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getRowGroupColumns()
+    (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getRowGroupColumns()
   );
 }
 
@@ -111,10 +111,10 @@ test.describe('Cycle 15.5 / Task 2 — header context menu Group / Un-Group', ()
     // Nothing grouped initially.
     expect(await groupCols(page)).toEqual([]);
 
-    // Target `.cg-menu-item-label` (exact label text, no icon/shortcut) with
+    // Target `.vg-menu-item-label` (exact label text, no icon/shortcut) with
     // anchored regexes so "Group by Ticker" can't substring-match
     // "Un-Group by Ticker".
-    const labelSel = `${MENU_SELECTOR} .cg-menu-item-label`;
+    const labelSel = `${MENU_SELECTOR} .vg-menu-item-label`;
 
     // Right-click the Ticker header → the menu shows "Group by Ticker"
     // and NOT "Un-Group by Ticker".
@@ -150,7 +150,7 @@ test.describe('Cycle 15.5 / Task 2 — header context menu Group / Un-Group', ()
 
     await rightClickHeader(page, 'ticker');
     // Ungrouped state — no expand/collapse-all items.
-    const labelSel = `${MENU_SELECTOR} .cg-menu-item-label`;
+    const labelSel = `${MENU_SELECTOR} .vg-menu-item-label`;
     await expect(page.locator(labelSel).filter({ hasText: /^Expand All Groups$/ })).toHaveCount(0);
     await expect(page.locator(labelSel).filter({ hasText: /^Collapse All Groups$/ })).toHaveCount(0);
   });

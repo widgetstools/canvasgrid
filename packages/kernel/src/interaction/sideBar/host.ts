@@ -6,11 +6,11 @@
  *
  *   ┌──────────────────────────────────┬─┐
  *   │                                  │T│
- *   │      .cg-side-bar-panel          │a│  ← .cg-side-bar-tabs
+ *   │      .vg-side-bar-panel          │a│  ← .vg-side-bar-tabs
  *   │  (mounts the active panel's      │b│    (vertical strip; one
  *   │   getGui() output)               │s│     button per ToolPanelDef)
  *   │                                  │ │
- *   └─[ .cg-side-bar-resize ]──────────┴─┘
+ *   └─[ .vg-side-bar-resize ]──────────┴─┘
  *                ^
  *                inner-edge drag handle (col-resize cursor)
  *
@@ -41,17 +41,17 @@ import { iconSvg } from '../../renderer/icons';
 import type { IconName } from '../../renderer/icons';
 
 /** Width of the vertical tab strip in CSS px. Mirrors
- *  `.cg-side-bar-tabs { width: 32px }` in tokens.css. Used only as a
+ *  `.vg-side-bar-tabs { width: 32px }` in tokens.css. Used only as a
  *  fallback in `getReservedWidth` when `getBoundingClientRect()`
  *  returns 0 (jsdom). */
 const TABS_WIDTH = 36;
 
-/** Width of the `.cg-side-bar` border-left in CSS px. Same fallback
+/** Width of the `.vg-side-bar` border-left in CSS px. Same fallback
  *  use as `TABS_WIDTH` — the live path measures the bar directly. */
 const BAR_BORDER_WIDTH = 1;
 
 /** Width of the resize handle in CSS px. Mirrors
- *  `.cg-side-bar-resize { width: 3px }`. Fallback use only. */
+ *  `.vg-side-bar-resize { width: 3px }`. Fallback use only. */
 const HANDLE_WIDTH = 3;
 
 /** Default panel width when neither `width` nor `defaultWidth` is set
@@ -98,7 +98,7 @@ export type ToolPanelVisibleSource = 'api' | 'sideBarButtonClicked' | 'sideBarIn
 export type SideBarVisibleSource = 'api' | 'sideBarButtonClicked';
 
 /** Cycle 11 / Task 7 — emit payloads the host hands off to its grid
- *  context. CGrid pipes these straight through `this.events.emit` so
+ *  context. VelocityGrid pipes these straight through `this.events.emit` so
  *  apps subscribe via `grid.on('toolPanelVisibleChanged', ...)` /
  *  `grid.on('sideBarVisibleChanged', ...)` like any other event. */
 export type SideBarHostEmittedEvent =
@@ -116,9 +116,9 @@ export type SideBarHostEmittedEvent =
       source: SideBarVisibleSource;
     };
 
-/** Context handed to SideBarHost by CGrid (or a test harness). Keeps
+/** Context handed to SideBarHost by VelocityGrid (or a test harness). Keeps
  *  the host framework-agnostic: it can resolve panel ctors + thread
- *  geometry changes back without importing CGrid directly. */
+ *  geometry changes back without importing VelocityGrid directly. */
 export interface SideBarGridContext {
   /** Registry that resolves panel-id strings to constructors. */
   registry: ToolPanelRegistry;
@@ -130,7 +130,7 @@ export interface SideBarGridContext {
    *  reservation. */
   setReservedSpace(side: 'left' | 'right', width: number): void;
   /** Cycle 11 / Task 7 — optional emit hook the host calls on every
-   *  panel-visibility or side-bar-visibility change. CGrid forwards into
+   *  panel-visibility or side-bar-visibility change. VelocityGrid forwards into
    *  its typed event emitter; tests can pin a recording stub here to
    *  assert payloads in isolation. Absent → the host runs without
    *  emitting (e.g. for unit-test setups that don't care about events). */
@@ -139,7 +139,7 @@ export interface SideBarGridContext {
 
 export class SideBarHost {
   private readonly root: HTMLElement;
-  /** The host element (`.cg-side-bar`) appended to the grid root. */
+  /** The host element (`.vg-side-bar`) appended to the grid root. */
   private readonly bar: HTMLDivElement;
   private readonly tabsEl: HTMLDivElement;
   private readonly panelEl: HTMLDivElement;
@@ -176,27 +176,27 @@ export class SideBarHost {
     this.visible = !this.def.hiddenByDefault;
 
     this.bar = document.createElement('div');
-    this.bar.className = 'cg-side-bar';
+    this.bar.className = 'vg-side-bar';
     this.bar.dataset.position = this.def.position;
 
     this.tabsEl = document.createElement('div');
-    this.tabsEl.className = 'cg-side-bar-tabs';
+    this.tabsEl.className = 'vg-side-bar-tabs';
     if (this.def.hideButtons) this.tabsEl.style.display = 'none';
 
     this.panelEl = document.createElement('div');
-    this.panelEl.className = 'cg-side-bar-panel';
+    this.panelEl.className = 'vg-side-bar-panel';
     this.panelEl.style.display = 'none';
     this.panelEl.style.width = `${this.panelWidth}px`;
 
     this.handleEl = document.createElement('div');
-    this.handleEl.className = 'cg-side-bar-resize';
+    this.handleEl.className = 'vg-side-bar-resize';
     this.handleEl.addEventListener('mousedown', (e) => this.handleDragStart(e));
     // The resize handle is inert when no panel is open (see handleDragStart)
     // and would otherwise eat 3 px of visual space next to the tab strip,
     // pushing the sidebar past the scroller's reserved gutter.
     this.handleEl.style.display = 'none';
 
-    // Order of children inside .cg-side-bar:
+    // Order of children inside .vg-side-bar:
     //   tabs | panel | handle
     // With flex-direction:row-reverse (right sidebar): first child is
     // rightmost → tabs end up on the right edge, handle on the left
@@ -427,18 +427,18 @@ export class SideBarHost {
   private buildTabButton(def: ToolPanelDef): HTMLButtonElement {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'cg-side-bar-tab';
+    btn.className = 'vg-side-bar-tab';
     btn.setAttribute('aria-pressed', 'false');
     btn.setAttribute('aria-label', def.labelDefault);
     btn.dataset.id = def.id;
 
     // SVG icon + rotated text label stacked vertically on the slim tab strip.
     const iconWrap = document.createElement('span');
-    iconWrap.className = 'cg-side-bar-tab-icon';
+    iconWrap.className = 'vg-side-bar-tab-icon';
     const iconKey = def.iconKey ? (BUILT_IN_ICON_MAP[def.iconKey] ?? null) : null;
     if (iconKey) iconWrap.appendChild(iconSvg(iconKey, 14));
     const label = document.createElement('span');
-    label.className = 'cg-side-bar-tab-label';
+    label.className = 'vg-side-bar-tab-label';
     label.textContent = def.labelDefault;
     btn.appendChild(iconWrap);
     btn.appendChild(label);
@@ -557,11 +557,11 @@ function expandToolPanelShortcut(name: string): ToolPanelDef {
         toolPanel: 'agColumnGroupsToolPanel',
       };
     default:
-      throw new Error(`[cgrid] unknown SideBarDef.toolPanels shortcut: '${name}' (expected 'columns', 'filters', 'gridOptions' or 'columnGroups')`);
+      throw new Error(`[velocity-grid] unknown SideBarDef.toolPanels shortcut: '${name}' (expected 'columns', 'filters', 'gridOptions' or 'columnGroups')`);
   }
 }
 
-/** Resolve `CGridOptions.sideBar` (which accepts loose shapes —
+/** Resolve `VelocityGridOptions.sideBar` (which accepts loose shapes —
  *  `boolean | string | string[] | SideBarDef`) into a canonical
  *  `SideBarDef`, or `null` when the option is off. Mirrors ag-grid's
  *  acceptance shape. */

@@ -7,7 +7,7 @@
 // transition (NEVER per pixel): a 100-pixel drag inside one cell fires
 // zero hover events.
 
-import { Feature, type CGridEventCtx } from '../feature';
+import { Feature, type VelocityGridEventCtx } from '../feature';
 
 type HoverKey = { kind: 'cell'; rowIndex: number; colId: string }
               | { kind: 'header'; colId: string }
@@ -28,7 +28,7 @@ export class OnHover extends Feature {
 
   /** Cycle 21i / Phase 1 — pointer left the grid: fire the OUT events for
    *  the last hovered cell/row, clear the row-hover highlight, repaint. */
-  reset(grid: CGridEventCtx['grid'], raw: MouseEvent): void {
+  reset(grid: VelocityGridEventCtx['grid'], raw: MouseEvent): void {
     const prev = this.lastHover;
     if (prev?.kind === 'cell') {
       grid.emitCellMouseOut?.(prev.rowIndex, prev.colId, raw);
@@ -45,7 +45,7 @@ export class OnHover extends Feature {
     else grid.canvas.requestRepaint();
   }
 
-  override handleMouseMove(ctx: CGridEventCtx): void {
+  override handleMouseMove(ctx: VelocityGridEventCtx): void {
     // Cursor: header hover → pointer. ColumnResizing's `col-resize` is set
     // earlier in the chain and overrides this for the resize hot zone.
     this.cursor = ctx.hit.kind === 'header' ? 'pointer' : null;

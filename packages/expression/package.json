@@ -1,5 +1,5 @@
 {
-  "name": "@cgrid/expression",
+  "name": "@wellsfargo-starui/velocity-grid-expression",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     }
   },
   "scripts": {
-    "build": "echo '@cgrid/expression is a scaffold — no build yet' && exit 0",
+    "build": "echo '@wellsfargo-starui/velocity-grid-expression is a scaffold — no build yet' && exit 0",
     "test": "vitest run --passWithNoTests",
     "test:coverage": "vitest run --coverage --passWithNoTests",
     "typecheck": "tsc --noEmit"

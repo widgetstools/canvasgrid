@@ -1,6 +1,6 @@
-// @cgrid/renderers — category 4: Badges / pills. Catalog §3.4.
+// @wellsfargo-starui/velocity-grid-renderers — category 4: Badges / pills. Catalog §3.4.
 
-import type { CellPaintConfig, CellPainter } from '@cgrid/kernel';
+import type { CellPaintConfig, CellPainter } from '@wellsfargo-starui/velocity-grid';
 import { fragText, pill, withAlpha } from './paintUtils';
 import {
   DEFAULT_VENUE_PALETTE,
@@ -55,7 +55,7 @@ function rowString(row: Record<string, unknown> | undefined, field?: string): st
 }
 
 /**
- * Workstream A, part 2 (2026-07-06 CSS styling model) — `--cg-rating-
+ * Workstream A, part 2 (2026-07-06 CSS styling model) — `--vg-rating-
  * <grade>-color` resolves into `p.palette.rating`; `RATING_SCALE_BANDS`
  * stays the byte-identical fallback for a grade the theme-resolved map
  * doesn't (or a caller with no `p.palette` at all) cover.
@@ -90,7 +90,7 @@ function paintCapsPill(
   const padX = 6;
   const w = textW + padX * 2;
   // Workstream A (2026-07-06 CSS styling model) — geometry-as-style:
-  // `--cg-chip-height` / `--cg-chip-radius` resolve into
+  // `--vg-chip-height` / `--vg-chip-radius` resolve into
   // `RendererPalette.chipHeight` / `.chipRadius`; CHIP_H + the literal `3`
   // (below) are now only the byte-identical fallbacks.
   const chipH = p.palette?.chipHeight ?? CHIP_H;
@@ -133,7 +133,7 @@ export const statusPill: CellPainter = {
     const status = (params.status ?? rowString(row, params.statusField) ?? '').toUpperCase();
     if (!status) return;
     const themeKind = p.themeKind ?? 'light';
-    // Workstream A, part 2 (2026-07-06 CSS styling model) — `--cg-status-
+    // Workstream A, part 2 (2026-07-06 CSS styling model) — `--vg-status-
     // <state>-*` tokens resolve into `p.palette.status`; falls back to the
     // module-level `STATUS_PILL_MAP` when no theme palette is threaded
     // (byte-identical).
@@ -224,7 +224,7 @@ export const venueChip: CellPainter = {
     const row = p.rowData as Record<string, unknown> | undefined;
     const mic = (params.mic ?? rowString(row, params.micField) ?? p.valueFormatted ?? '').toUpperCase();
     if (!mic) return;
-    // Workstream A, part 2 (2026-07-06 CSS styling model) — `--cg-venue-
+    // Workstream A, part 2 (2026-07-06 CSS styling model) — `--vg-venue-
     // <mic>-color` resolves into `p.palette.venue`; falls back to the
     // module-level `DEFAULT_VENUE_PALETTE` when no theme palette is
     // threaded (byte-identical). A column's own `venueColors` still wins

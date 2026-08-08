@@ -1,4 +1,4 @@
-import type { CGrid, GridState } from '@cgrid/kernel';
+import type { VelocityGrid, GridState } from '@wellsfargo-starui/velocity-grid';
 import type {
   ProfileController, ProfileStore, ProfileMeta, Unsub,
 } from '../extension/types';
@@ -12,9 +12,12 @@ export class ProfilesController implements ProfileController {
   private dirty = false;
   private listeners = new Set<(d: boolean) => void>();
   private metaListeners = new Set<() => void>();
+  /** Coalesces concurrent / repeat `bootstrap()` calls (ctor fire-and-forget
+   *  + host `reapplyActiveProfile` after late-wired state modules). */
+  private bootPromise: Promise<void> | null = null;
 
   constructor(
-    private grid: CGrid,
+    private grid: VelocityGrid,
     private store: ProfileStore,
     private opts: ProfilesOptions = {},
   ) {
@@ -113,8 +116,22 @@ export class ProfilesController implements ProfileController {
   }
 
   /** Load `initialId` if it exists; otherwise seed a 'default' snapshot
-   *  from the current grid so the switcher is never empty. */
+   *  from the current grid so the switcher is never empty. Idempotent —
+   *  concurrent callers share one in-flight promise. */
   async bootstrap(): Promise<void> {
+    if (this.bootPromise) return this.bootPromise;
+    this.bootPromise = this.runBootstrap();
+    try {
+      await this.bootPromise;
+    } finally {
+      // Allow a later explicit re-bootstrap only via switchTo / discard;
+      // keep the settled promise so repeat bootstrap() is a cheap no-op
+      // that still awaits completion for late callers.
+    }
+    return this.bootPromise;
+  }
+
+  private async runBootstrap(): Promise<void> {
     const existing = await this.store.load(this.id);
     if (existing) {
       this.grid.setState(existing.gridState);

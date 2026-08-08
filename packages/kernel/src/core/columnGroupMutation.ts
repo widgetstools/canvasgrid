@@ -1,8 +1,8 @@
 /**
  * Pure group-membership mutation core for `(CColDef | CColGroupDef)[]` trees.
  *
- * These two functions are the shared engine behind `CGridApi.moveColumnToGroup`
- * / `CGridApi.moveColumnGroup` (Columns tool panel hierarchy drag, Task 1).
+ * These two functions are the shared engine behind `VelocityGridApi.moveColumnToGroup`
+ * / `VelocityGridApi.moveColumnGroup` (Columns tool panel hierarchy drag, Task 1).
  * They never touch `Date.now()` / `Math.random()` and never mint a new
  * `groupId` — moving a leaf "out" always means the top level (`targetGroupId:
  * null`), never a freshly-created group. Every function is a pure
@@ -149,7 +149,7 @@ export function moveColumnToGroup(
   // Normalize FIRST — a group authored without an explicit `groupId` (a
   // legal ag-grid pattern) still needs an id that `findGroup`/
   // `findGroupChildren` can match against. `ensureGroupIds` synthesizes
-  // the SAME `cg-grp-N` ids `resolveColumnTree` (and the panel's own
+  // the SAME `vg-grp-N` ids `resolveColumnTree` (and the panel's own
   // `data-group-id` rendering) would assign, so a caller passing the
   // panel-synthesized id as `targetGroupId` resolves correctly. Kept as
   // its own clone (`normalizedIn`) — the no-op check below compares

@@ -26,8 +26,8 @@ test.describe('hideOpenParents feature', () => {
   test('row group panel is visible', async ({ page }) => {
     await gotoFeature(page, 'hideOpenParents');
 
-    // row group panel renders as .cg-row-group-panel
-    const panel = page.locator('.cg-row-group-panel');
+    // row group panel renders as .vg-row-group-panel
+    const panel = page.locator('.vg-row-group-panel');
     await expect(panel).toBeVisible();
   });
 

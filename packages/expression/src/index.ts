@@ -1,4 +1,4 @@
-// @cgrid/expression — public entrypoint.
+// @wellsfargo-starui/velocity-grid-expression — public entrypoint.
 // See docs/superpowers/specs/2026-07-01-cycle-21b-expression-design.md §5.
 
 export { parse } from './parse';

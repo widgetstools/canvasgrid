@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { PinnedRowsSubgrid, TotalsSubgrid, type Subgrid, type SubgridCell } from '../src/core/subgrid';
 import { computeViewport } from '../src/core/viewport';
 import { applyRuntimeOption, type RuntimeOptionTarget } from '../src/core/runtimeOptions';
-import type { CGridOptions } from '../src/types';
+import type { VelocityGridOptions } from '../src/types';
 
 // Cycle 14 / Task 2 — PinnedRowsSubgrid behaviour test suite.
 //
@@ -43,7 +43,7 @@ interface Row {
 
 /** Build a pinned subgrid backed by a literal row array and a lookup that
  *  pulls `row[colId]` and runs an optional column-formatter. The default
- *  formatter `String(value)` mirrors the cgrid.ts pinnedCellLookup fallback
+ *  formatter `String(value)` mirrors the velocityGrid.ts pinnedCellLookup fallback
  *  used when a column has no valueFormatter declared. */
 function pinnedWith(
   rows: Row[],
@@ -106,7 +106,7 @@ describe('PinnedRowsSubgrid — surface', () => {
   });
 
   // CASE 3 — getCell reads through to the array entry via the supplied
-  // lookup. This is the path that cgrid.ts's `pinnedCellLookup` plugs into;
+  // lookup. This is the path that velocityGrid.ts's `pinnedCellLookup` plugs into;
   // here we verify the SubgridCell shape returned (value + valueFormatted).
   it('getCell returns the lookup result for each row × column', () => {
     const rows: Row[] = [
@@ -207,7 +207,7 @@ describe('PinnedRowsSubgrid — viewport-math placement', () => {
 
   // CASE 8 — Empty data array → ZERO rows contributed to the viewport.
   // This is the contract callers rely on for the "null / empty array
-  // suppresses the row" semantic: cgrid.ts only mounts the subgrid when
+  // suppresses the row" semantic: velocityGrid.ts only mounts the subgrid when
   // the array is non-empty, but even if it DID push an empty subgrid the
   // viewport math wouldn't see it as a row source. Defence in depth.
   it('empty data array contributes zero rows to the visible stack', () => {
@@ -263,12 +263,12 @@ describe('PinnedRowsSubgrid — runtime option hook', () => {
   // CASE 10 — Runtime mutation: setGridOption('pinnedTopRowData', …)
   // routes through `applyRuntimeOption` which fires `rebuildSubgrids` on
   // the target. We exercise the runtime-options module directly here (no
-  // CGrid + worker spin-up) to assert the wiring exists and is reachable.
-  // The cgrid.ts adapter's `rebuildSubgrids` implementation
+  // VelocityGrid + worker spin-up) to assert the wiring exists and is reachable.
+  // The velocityGrid.ts adapter's `rebuildSubgrids` implementation
   // (rebuildSubgridStack + recomputeViewport + repaint) is exercised by
   // the integration-level visual matrix cell 18.
   it('setGridOption("pinnedTopRowData", …) invokes rebuildSubgrids on the runtime target', () => {
-    const options: CGridOptions<Row> = { columnDefs: [] };
+    const options: VelocityGridOptions<Row> = { columnDefs: [] };
     let rebuildCount = 0;
     let refreshCount = 0;
     const target: RuntimeOptionTarget<Row> = {
@@ -282,7 +282,7 @@ describe('PinnedRowsSubgrid — runtime option hook', () => {
       forwardEnableCellChangeFlash: () => {},
       rebuildSubgrids: () => { rebuildCount++; },
     };
-    // Storage is the CALLER's job (cgrid.ts does it before invoking the
+    // Storage is the CALLER's job (velocityGrid.ts does it before invoking the
     // applyRuntimeOption table); mirror that here so the assertion mirrors
     // the live path.
     options.pinnedTopRowData = [{ label: 'Benchmark', notional: 1, pnl: 0 }];

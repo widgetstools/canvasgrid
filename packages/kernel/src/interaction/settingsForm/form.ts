@@ -7,7 +7,7 @@
  * sections later (decision D-G).
  *
  * Design language (Cycle 21i design pass): quartz-native chrome from
- * `--cg-*` tokens; 11px uppercase band eyebrows; label-left /
+ * `--vg-*` tokens; 11px uppercase band eyebrows; label-left /
  * control-right rows; numeric inputs in the grid's mono face. The
  * signature element is the MODIFIED DIFF RAIL — a 2px accent tick on the
  * left edge of any field whose value differs from its declared default
@@ -44,7 +44,7 @@ interface BandView {
 }
 
 let idCounter = 0;
-const nextId = () => `cg-settings-${++idCounter}`;
+const nextId = () => `vg-settings-${++idCounter}`;
 
 export class SettingsForm {
   readonly root: HTMLElement;
@@ -58,7 +58,7 @@ export class SettingsForm {
 
   constructor(section: SettingsSection, private readonly onAfterChange?: () => void) {
     this.root = document.createElement('div');
-    this.root.className = 'cg-settings-form';
+    this.root.className = 'vg-settings-form';
     this.root.setAttribute('data-section-id', section.id);
     for (const band of section.bands) this.root.appendChild(this.buildBand(band));
     this.applyVisibility();
@@ -99,24 +99,24 @@ export class SettingsForm {
 
   private buildBand(band: SettingsBand): HTMLElement {
     const root = document.createElement('section');
-    root.className = 'cg-settings-band';
+    root.className = 'vg-settings-band';
     root.setAttribute('data-band-id', band.id);
 
     const header = document.createElement('button');
     header.type = 'button';
-    header.className = 'cg-settings-band-header';
+    header.className = 'vg-settings-band-header';
     const chevron = document.createElement('span');
-    chevron.className = 'cg-settings-band-chevron';
+    chevron.className = 'vg-settings-band-chevron';
     const title = document.createElement('span');
-    title.className = 'cg-settings-band-title';
+    title.className = 'vg-settings-band-title';
     title.textContent = band.title;
     const chip = document.createElement('span');
-    chip.className = 'cg-settings-band-chip';
+    chip.className = 'vg-settings-band-chip';
     chip.hidden = true;
     header.append(chevron, title, chip);
 
     const body = document.createElement('div');
-    body.className = 'cg-settings-band-body';
+    body.className = 'vg-settings-band-body';
 
     const view: BandView = { band, root, header, body, chip, collapsed: band.collapsed === true };
     header.setAttribute('aria-expanded', String(!view.collapsed));
@@ -135,11 +135,11 @@ export class SettingsForm {
 
   private buildRow(field: SettingsField, bandId: string): HTMLElement {
     const row = document.createElement('div');
-    row.className = 'cg-settings-row';
+    row.className = 'vg-settings-row';
     row.setAttribute('data-field-key', field.key);
 
     const labelWrap = document.createElement('div');
-    labelWrap.className = 'cg-settings-row-label';
+    labelWrap.className = 'vg-settings-row-label';
     const controlId = nextId();
     const label = document.createElement('label');
     label.textContent = field.label;
@@ -147,25 +147,25 @@ export class SettingsForm {
     labelWrap.appendChild(label);
     if (field.hint) {
       const hint = document.createElement('span');
-      hint.className = 'cg-settings-row-hint';
+      hint.className = 'vg-settings-row-hint';
       hint.textContent = field.hint;
       labelWrap.appendChild(hint);
     }
 
     const controlWrap = document.createElement('div');
-    controlWrap.className = 'cg-settings-row-control';
+    controlWrap.className = 'vg-settings-row-control';
 
     // Reset affordance lives in a PERMANENTLY reserved action gutter so
     // its appearance never shifts the control column — every row's edit
     // box shares the same right edge. The button toggles visibility (not
     // layout) and only exists when a concrete default can be restored.
     const actions = document.createElement('span');
-    actions.className = 'cg-settings-row-actions';
+    actions.className = 'vg-settings-row-actions';
     let resetBtn: HTMLButtonElement | null = null;
     if (resolveFieldDefault(field) !== undefined) {
       resetBtn = document.createElement('button');
       resetBtn.type = 'button';
-      resetBtn.className = 'cg-settings-row-reset';
+      resetBtn.className = 'vg-settings-row-reset';
       resetBtn.title = 'Reset to default';
       resetBtn.setAttribute('aria-label', `Reset ${field.label} to default`);
       resetBtn.textContent = '↺';
@@ -195,7 +195,7 @@ export class SettingsForm {
       try {
         field.set(value);
       } catch (err) {
-        console.warn(`[cgrid] settings: failed to set '${field.key}'`, err);
+        console.warn(`[velocity-grid] settings: failed to set '${field.key}'`, err);
       }
       entry.sync();
       this.updateChips();
@@ -227,10 +227,10 @@ export class SettingsForm {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.id = controlId;
-        btn.className = 'cg-settings-toggle';
+        btn.className = 'vg-settings-toggle';
         btn.setAttribute('aria-label', field.label);
         const knob = document.createElement('span');
-        knob.className = 'cg-settings-toggle-knob';
+        knob.className = 'vg-settings-toggle-knob';
         btn.appendChild(knob);
         btn.addEventListener('click', () => {
           const next = btn.getAttribute('aria-pressed') !== 'true';
@@ -246,7 +246,7 @@ export class SettingsForm {
         const input = document.createElement('input');
         input.type = 'checkbox';
         input.id = controlId;
-        input.className = 'cg-settings-checkbox';
+        input.className = 'vg-checkbox vg-settings-checkbox';
         input.addEventListener('change', () => commit(input.checked));
         return { control: input, sync: () => { input.checked = field.get() === true; } };
       }
@@ -254,7 +254,7 @@ export class SettingsForm {
         const input = document.createElement('input');
         input.type = 'number';
         input.id = controlId;
-        input.className = 'cg-settings-input cg-settings-input-number';
+        input.className = 'vg-settings-input vg-settings-input-number';
         if (field.min !== undefined) input.min = String(field.min);
         if (field.max !== undefined) input.max = String(field.max);
         if (field.step !== undefined) input.step = String(field.step);
@@ -281,7 +281,7 @@ export class SettingsForm {
       case 'select': {
         const select = document.createElement('select');
         select.id = controlId;
-        select.className = 'cg-settings-input cg-settings-select';
+        select.className = 'vg-settings-input vg-settings-select';
         for (const opt of field.options ?? []) {
           const o = document.createElement('option');
           o.value = opt.value;
@@ -310,7 +310,7 @@ export class SettingsForm {
         const input = document.createElement('input');
         input.type = 'text';
         input.id = controlId;
-        input.className = 'cg-settings-input cg-settings-input-text';
+        input.className = 'vg-settings-input vg-settings-input-text';
         input.addEventListener('change', () => commit(input.value));
         return {
           control: input,

@@ -5,7 +5,7 @@ import { resolveSelection } from '../src/core/selectionConfig';
  * Unified `selection` config — ag-grid v33+ parity.
  *
  * Unit tests against the pure resolver, then integration tests that
- * confirm a CGrid constructed with the new shape behaves the same
+ * confirm a VelocityGrid constructed with the new shape behaves the same
  * as one constructed with the equivalent legacy options.
  */
 
@@ -117,12 +117,12 @@ describe('resolveSelection — undefined', () => {
   });
 });
 
-describe('CGridOptions.selection — integration', () => {
+describe('VelocityGridOptions.selection — integration', () => {
   it('selection: { mode: "multiRow" } gives the same row selection as rowSelection: "multiple"', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
       selection: { mode: 'multiRow' },
@@ -132,10 +132,10 @@ describe('CGridOptions.selection — integration', () => {
   });
 
   it('selection: { mode: "singleRow" } gives row selection: "single"', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
       selection: { mode: 'singleRow' },
@@ -145,10 +145,10 @@ describe('CGridOptions.selection — integration', () => {
   });
 
   it('selection: { mode: "cell" } sets row selection to "none"', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
       selection: { mode: 'cell' },
@@ -158,10 +158,10 @@ describe('CGridOptions.selection — integration', () => {
   });
 
   it('selection: { checkboxes: true } auto-injects a pinned-left checkbox column at index 0', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [
         { colId: 'a', field: 'a', cellDataType: 'text' },
@@ -179,10 +179,10 @@ describe('CGridOptions.selection — integration', () => {
   });
 
   it('selection: { mode: "multiRow", enableClickSelection: false } suppresses row-click selection', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
       selection: { mode: 'multiRow', enableClickSelection: false },
@@ -192,10 +192,10 @@ describe('CGridOptions.selection — integration', () => {
   });
 
   it('selection: { mode: "multiRow", enableSelectionWithoutKeys: true } flips rowMultiSelectWithClick', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
       selection: { mode: 'multiRow', enableSelectionWithoutKeys: true },

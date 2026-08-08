@@ -1,7 +1,7 @@
 /**
  * Cycle 21i Phase 2 / T6 — #09 Smart Edit settings panel.
  *
- * Flat settings panel over the @cgrid/edit engine's smart-edit slice,
+ * Flat settings panel over the @wellsfargo-starui/velocity-grid-edit engine's smart-edit slice,
  * per docs/starui-customizer-ui/09-smart-edit.md: GLOBAL (enabled /
  * increment step / K/M/B), OPERATIONS (× ÷ + − Set toggle group),
  * SAFETY (confirm threshold / single column / preview / history).
@@ -13,14 +13,14 @@
  * `DEFAULT_EDIT_SETTINGS`.
  *
  * `smartEditToolPanel(getHandle)` takes a GETTER because tool-panel
- * components are handed to the CGrid constructor while
+ * components are handed to the VelocityGrid constructor while
  * `wireEditIntoKernel(grid)` can only run after construction — the
  * getter resolves lazily at first render.
  */
 import { html, css } from 'lit';
-import type { ToolPanel } from '@cgrid/kernel';
-import type { EditBridgeHandle, SmartEditOp, SmartEditSettings } from '@cgrid/edit';
-import { DEFAULT_EDIT_SETTINGS } from '@cgrid/edit';
+import type { ToolPanel } from '@wellsfargo-starui/velocity-grid';
+import type { EditBridgeHandle, SmartEditOp, SmartEditSettings } from '@wellsfargo-starui/velocity-grid-edit';
+import { DEFAULT_EDIT_SETTINGS } from '@wellsfargo-starui/velocity-grid-edit';
 import { CgcPanelElement, litToolPanel } from '../litToolPanel';
 import { chromeBase } from '../styles';
 import { switchRow, numberRow } from './rows';
@@ -56,11 +56,11 @@ class SmartEditPanel extends CgcPanelElement {
         min-width: 28px;
         height: 22px;
         padding: 0 7px;
-        font-family: var(--cg-font-family);
-        font-size: var(--cg-font-size-sm);
-        color: var(--cg-fg-color);
-        background: color-mix(in srgb, var(--cg-fg-color) 5%, transparent);
-        border: 1px solid var(--cg-border-color);
+        font-family: var(--vg-font-family);
+        font-size: var(--vg-font-size-sm);
+        color: var(--vg-fg-color);
+        background: color-mix(in srgb, var(--vg-fg-color) 5%, transparent);
+        border: 1px solid var(--vg-border-color);
         border-radius: 4px;
         cursor: pointer;
       }
@@ -69,13 +69,13 @@ class SmartEditPanel extends CgcPanelElement {
         border-color: var(--cgc-accent);
       }
       .ops button:focus-visible {
-        outline: 2px solid var(--cg-focus-ring-color);
+        outline: 2px solid var(--vg-focus-ring-color);
         outline-offset: 1px;
       }
       .empty {
         padding: 10px 12px;
-        font-size: var(--cg-font-size-sm);
-        color: color-mix(in srgb, var(--cg-fg-color) 55%, transparent);
+        font-size: var(--vg-font-size-sm);
+        color: color-mix(in srgb, var(--vg-fg-color) 55%, transparent);
       }
     `];
 

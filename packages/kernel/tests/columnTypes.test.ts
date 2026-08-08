@@ -4,7 +4,7 @@ import { resolveColDef } from '../src/core/propertyChain';
 /**
  * Cycle 6 / Task 6 — `columnTypes` templates + `CColDef.type: string | string[]`.
  *
- * `CGridOptions.columnTypes` declares named `Partial<CColDef>` bundles. A
+ * `VelocityGridOptions.columnTypes` declares named `Partial<CColDef>` bundles. A
  * column references one (or several) by name through its `type` field.
  * The merge order is `{ ...typeBundle1, ...typeBundle2, ...defaultColDef,
  * ...colDef }` left-to-right — the col's own properties always win.

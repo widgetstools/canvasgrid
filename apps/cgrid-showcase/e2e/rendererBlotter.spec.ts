@@ -77,7 +77,7 @@ test.describe('renderer blotter feature', () => {
   // `cellClicked` → bridge hit-region resolve → RowMenuCellParams.onOpen)
   // was previously only exercised at the unit level (wireRenderersIntoKernel
   // bridge tests with a fake grid). This drives the REAL kernel: locate the
-  // row-menu kebab cell via CGrid's public `getCellBoundsAt(rowIndex, colId)`
+  // row-menu kebab cell via VelocityGrid's public `getCellBoundsAt(rowIndex, colId)`
   // geometry API, click its canvas-local pixel, and assert the demo's
   // onOpen callback (wired at rendererBlotter.ts:118-125) actually fired.
   //
@@ -85,7 +85,7 @@ test.describe('renderer blotter feature', () => {
   // `cellClicked` payload carried a synthetic `row-0` rowId instead of the
   // real string rowId ('r1') that the paint path (and therefore the
   // renderer's hit-region registration) used, so `onOpen`/`onAction`
-  // callbacks could never resolve. Fixed in `packages/kernel/src/cgrid.ts`
+  // callbacks could never resolve. Fixed in `packages/kernel/src/velocityGrid.ts`
   // — `rowIdAt()` now delegates to the real chunk-backed string id
   // (`stringRowIdAt()`), falling back to the synthetic id only outside the
   // loaded viewport window. This test now asserts the real, working

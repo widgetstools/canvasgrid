@@ -2,10 +2,10 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 
 const kernelDist = fileURLToPath(
-  new URL('../../packages/kernel/dist/cgrid.js', import.meta.url),
+  new URL('../../packages/kernel/dist/velocity-grid.js', import.meta.url),
 );
 const kernelCss = fileURLToPath(
-  new URL('../../packages/kernel/dist/kernel.css', import.meta.url),
+  new URL('../../packages/kernel/dist/velocity-grid.css', import.meta.url),
 );
 
 export default defineConfig({
@@ -19,12 +19,12 @@ export default defineConfig({
   assetsInclude: ['**/*.wasm'],
   resolve: {
     alias: [
-      { find: /^@cgrid\/kernel$/, replacement: kernelDist },
-      { find: '@cgrid/kernel/style.css', replacement: kernelCss },
+      { find: /^@wellsfargo-starui\/velocity-grid$/, replacement: kernelDist },
+      { find: '@wellsfargo-starui/velocity-grid/style.css', replacement: kernelCss },
     ],
   },
   optimizeDeps: {
-    exclude: ['@cgrid/kernel', '@perspective-dev/client', '@perspective-dev/server', '@cgrid/perspective'],
+    exclude: ['@wellsfargo-starui/velocity-grid', '@perspective-dev/client', '@perspective-dev/server', '@wellsfargo-starui/velocity-grid-perspective'],
   },
   worker: {
     format: 'es',

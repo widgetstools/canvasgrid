@@ -1,4 +1,4 @@
-// AUTO-GENERATED — do not edit. Regenerate via `npm --workspace @cgrid/kernel run prebuild-icons`.
+// AUTO-GENERATED — do not edit. Regenerate via `npm --workspace @wellsfargo-starui/velocity-grid run prebuild-icons`.
 // Source: node_modules/lucide-static/icons/*.svg (Lucide MIT license).
 export const lucideBundle: Readonly<Record<string, string>> = Object.freeze({
   "a-arrow-down": "M3.5 13h6 M2 16 l 4.5-9 4.5 9 M18 7v9 M14 12 l 4 4 4-4",

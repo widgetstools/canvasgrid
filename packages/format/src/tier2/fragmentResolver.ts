@@ -1,4 +1,4 @@
-import { parse as parseExpr, compile as compileExpr, evaluate as evaluateExpr, type Compiled } from '@cgrid/expression';
+import { parse as parseExpr, compile as compileExpr, evaluate as evaluateExpr, type Compiled } from '@wellsfargo-starui/velocity-grid-expression';
 import type { CompositeColDef, Fragment, FragmentStyle, ResolvedFragment, FormatEvalContext, StyleObj, IconRef, CompileFormatOptions } from '../types';
 import { tokenize } from '../tokenizer';
 import { parseExcel } from '../excel/parser';

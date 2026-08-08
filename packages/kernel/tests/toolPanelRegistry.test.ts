@@ -2,13 +2,13 @@
  * Cycle 11 / Task 1 — ToolPanelRegistry unit tests.
  *
  * The registry maps tool-panel `id` → `ToolPanelComponent` (constructor).
- * Apps register custom panels via `CGridOptions.components`. Two built-in
+ * Apps register custom panels via `VelocityGridOptions.components`. Two built-in
  * IDs (`'agColumnsToolPanel'` + `'agFiltersToolPanel'`) are seeded at
- * CGrid construction with stub implementations — Tasks 3 + 4 replace
+ * VelocityGrid construction with stub implementations — Tasks 3 + 4 replace
  * those stubs with the real Columns / Filters panels.
  *
  * The registry itself is framework-agnostic: it knows nothing about the
- * side bar, CGrid, or the catalog. The side bar host (Task 2) consumes
+ * side bar, VelocityGrid, or the catalog. The side bar host (Task 2) consumes
  * `resolve(id)` to instantiate panels on demand.
  */
 import { describe, it, expect } from 'vitest';
@@ -24,7 +24,7 @@ class StubPanel implements ToolPanel {
   init(params: ToolPanelParams): void {
     this.initCount += 1;
     this.receivedParams = params;
-    this.gui.className = 'cg-tool-panel-stub';
+    this.gui.className = 'vg-tool-panel-stub';
   }
   getGui(): HTMLElement {
     return this.gui;
@@ -61,7 +61,7 @@ describe('ToolPanelRegistry', () => {
     // getGui returns a DOM element.
     const gui = inst!.getGui();
     expect(gui).toBeInstanceOf(HTMLElement);
-    expect(gui.classList.contains('cg-tool-panel-stub')).toBe(true);
+    expect(gui.classList.contains('vg-tool-panel-stub')).toBe(true);
   });
 
   it('instantiate returns null when the id is unknown', () => {
@@ -73,7 +73,7 @@ describe('ToolPanelRegistry', () => {
     // The Task 1 stubs ship empty getGui() roots — Tasks 3 + 4 replace
     // them with real Columns / Filters panel implementations. The
     // registry itself owns the seeding so a freshly-constructed
-    // registry is usable without going through CGrid.
+    // registry is usable without going through VelocityGrid.
     const reg = new ToolPanelRegistry();
     reg.seedBuiltIns();
     expect(reg.resolve('agColumnsToolPanel')).not.toBeNull();

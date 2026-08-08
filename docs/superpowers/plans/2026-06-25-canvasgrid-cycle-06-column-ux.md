@@ -21,7 +21,7 @@ flex / rowGroup / pivot / aggFunc — lives on the `ResolvedColDef` already in
 `columnDefsMap`. Cycle 6 introduces `core/columnState.ts` to snapshot + restore
 the state, and `core/columnOrder.ts` to centralise the "move this leaf to this
 index" + "what's the visible-column-order after groups & pinning" logic that
-`cgrid.ts` currently inlines. Drag-reorder is a new `ColumnDrag` Feature that
+`velocityGrid.ts` currently inlines. Drag-reorder is a new `ColumnDrag` Feature that
 mounts a ghost header in the same DOM editor-layer used by popup editors, then
 calls the same `reorderColumn` API the imperative `moveColumns` uses. Autosize
 runs on the worker via `OffscreenCanvas.measureText` (the Cycle 5 / Task 8
@@ -45,7 +45,7 @@ HTML5 drag-and-drop (canvas is not a valid drop target on Safari).
 - `docs/catalog/22-events.md` — column event payloads
 - `docs/catalog/23-api.md` — imperative API surface
 - `docs/catalog/FEATURE_MATRIX.md` — rows to flip to ✅ at cycle exit
-- Cgrid source: `cgrid/src/cgrid.ts`, `core/{columnTree,columnGroupState,propertyChain,layout}.ts`, `interaction/features/columnResizing.ts`, `interaction/featureChain.ts`, `interaction/hitTester.ts`, `worker/measureText.ts`, `worker/protocol.ts`
+- Cgrid source: `cgrid/src/velocityGrid.ts`, `core/{columnTree,columnGroupState,propertyChain,layout}.ts`, `interaction/features/columnResizing.ts`, `interaction/featureChain.ts`, `interaction/hitTester.ts`, `worker/measureText.ts`, `worker/protocol.ts`
 - Demo (verification target): `apps/cgrid-positions/`
 
 ## Global Constraints
@@ -62,7 +62,7 @@ New ones marked **NEW** for this cycle.
   (`CColumnState`, `CApplyColumnStateParams`). String identifiers carry no
   `ag` prefix.
 - **No regressions in the public API.** Cycle 6 is purely additive on every
-  existing surface. `CGridApi.setGridOption('rowHeight', …)` still works;
+  existing surface. `VelocityGridApi.setGridOption('rowHeight', …)` still works;
   the new `setColumnWidths` is a parallel surface — it does not replace the
   internal `resizeColumn(colId, dx)` Cycle 4 wired (which keeps powering the
   drag-resize feature).
@@ -122,13 +122,13 @@ New ones marked **NEW** for this cycle.
   Per Cycle 4's constraint ("no per-cell DOM"), the canvas renderer cannot
   apply a CSS class to a cell. Instead, the resolved class names are
   looked up in a theme-driven `cellClassVariants` map on the active
-  `ResolvedTheme` (CSS variables like `--cg-cell-class-warning-bg`) to
+  `ResolvedTheme` (CSS variables like `--vg-cell-class-warning-bg`) to
   produce a `ColCellOverrides` patch that fills the existing
   `applyCellProps` slots (`fg` / `bg` / `font` / `halign`). Unknown class
   names fall through to no override. `cellStyle` (function form) returns
   a raw `ColCellOverrides` and bypasses the variants map.
 - **`headerClass` lights up the same variants table for header cells.** Same
-  mechanism; key prefix `--cg-header-class-…`. The Cycle 4 `headerClass`
+  mechanism; key prefix `--vg-header-class-…`. The Cycle 4 `headerClass`
   field on `CColGroupDef` was storage-only; this cycle wires it.
 - **Performance gates (carry-forward from master plan's Performance Budget
   + Cycle 6 specific).**
@@ -165,14 +165,14 @@ New ones marked **NEW** for this cycle.
 
 | # | Task | Primary user-visible win | Files touched |
 |---|---|---|---|
-| 1 | Drag-reorder + `suppressMovable` + `lockPosition` + `columnMoved` event + internal `reorderColumn` | Users can drag headers to reorder; locked columns refuse to budge | `interaction/features/columnDrag.ts` (new), `interaction/featureChain.ts`, `interaction/hitTester.ts`, `core/columnOrder.ts` (new), `cgrid.ts`, `types.ts`, demo, tests |
-| 2 | Column state round-trip — `getColumnState` / `applyColumnState` / `resetColumnState` + `columnsReset` event + `hide` / `lockVisible` / `lockPinned` | Save + restore a user's whole layout | `core/columnState.ts` (new), `cgrid.ts`, `types.ts`, demo, tests |
-| 3 | `sizeColumnsToFit` + `suppressSizeToFit` + `ISizeColumnsToFitParams` | Snap all columns to fill the container | `core/layout.ts`, `cgrid.ts`, `types.ts`, demo, tests |
-| 4 | `autoSizeColumns` + `autoSizeAllColumns` + `suppressAutoSize` (worker measureText pass) | Snap one column or all columns to the widest visible content | `worker/autosize.ts` (new), `worker/protocol.ts`, `worker/worker.ts`, `worker/client.ts`, `worker/measureText.ts`, `cgrid.ts`, `types.ts`, demo, tests |
-| 5 | Imperative API — `setColumnsVisible` / `setColumnsPinned` / `setColumnWidths` / `moveColumns` / `moveColumnByIndex` + `columnVisible` / `columnPinned` / `columnMoved` events + `finished` flag on `columnResized` | Programmatic mutation surface for app code | `cgrid.ts`, `types.ts`, `interaction/features/columnResizing.ts`, demo, tests |
+| 1 | Drag-reorder + `suppressMovable` + `lockPosition` + `columnMoved` event + internal `reorderColumn` | Users can drag headers to reorder; locked columns refuse to budge | `interaction/features/columnDrag.ts` (new), `interaction/featureChain.ts`, `interaction/hitTester.ts`, `core/columnOrder.ts` (new), `velocityGrid.ts`, `types.ts`, demo, tests |
+| 2 | Column state round-trip — `getColumnState` / `applyColumnState` / `resetColumnState` + `columnsReset` event + `hide` / `lockVisible` / `lockPinned` | Save + restore a user's whole layout | `core/columnState.ts` (new), `velocityGrid.ts`, `types.ts`, demo, tests |
+| 3 | `sizeColumnsToFit` + `suppressSizeToFit` + `ISizeColumnsToFitParams` | Snap all columns to fill the container | `core/layout.ts`, `velocityGrid.ts`, `types.ts`, demo, tests |
+| 4 | `autoSizeColumns` + `autoSizeAllColumns` + `suppressAutoSize` (worker measureText pass) | Snap one column or all columns to the widest visible content | `worker/autosize.ts` (new), `worker/protocol.ts`, `worker/worker.ts`, `worker/client.ts`, `worker/measureText.ts`, `velocityGrid.ts`, `types.ts`, demo, tests |
+| 5 | Imperative API — `setColumnsVisible` / `setColumnsPinned` / `setColumnWidths` / `moveColumns` / `moveColumnByIndex` + `columnVisible` / `columnPinned` / `columnMoved` events + `finished` flag on `columnResized` | Programmatic mutation surface for app code | `velocityGrid.ts`, `types.ts`, `interaction/features/columnResizing.ts`, demo, tests |
 | 6 | `columnTypes` templates + `CColDef.type: string \| string[]` | Share property bundles across columns | `types.ts`, `core/propertyChain.ts`, demo, tests |
 | 7 | `cellClass` + `cellClassRules` + `cellStyle` (function form) + `headerClass` via theme-driven variants | Conditional cell styling without per-cell DOM | `types.ts`, `core/propertyChain.ts`, `renderer/painters/byRows.ts`, `theming/cssReader.ts`, demo, tests |
-| 8 | `virtualColumnsChanged` event + `displayedColumnsChanged` payload polish + Cycle 6 exit ritual (FM flips, Shipped list, perf, status) | Event surface complete; FM reflects all Cycle 6 deliverables | `cgrid.ts`, `types.ts`, `docs/catalog/FEATURE_MATRIX.md`, this worklog |
+| 8 | `virtualColumnsChanged` event + `displayedColumnsChanged` payload polish + Cycle 6 exit ritual (FM flips, Shipped list, perf, status) | Event surface complete; FM reflects all Cycle 6 deliverables | `velocityGrid.ts`, `types.ts`, `docs/catalog/FEATURE_MATRIX.md`, this worklog |
 
 ---
 
@@ -220,12 +220,12 @@ demo-able on the board.
   `ColumnResizing`)
 - Modify: `cgrid/src/interaction/hitTester.ts` (no change for now — `'header'`
   hit is enough; resizer hot zone already filters out the right edge)
-- Modify: `cgrid/src/cgrid.ts` (add `reorderColumn(colId, toIndex)` private
+- Modify: `cgrid/src/velocityGrid.ts` (add `reorderColumn(colId, toIndex)` private
   method; expose `moveColumnByIndex` on the API as the public form, deferring
   the multi-key `moveColumns` to Task 5; emit `columnMoved`)
 - Modify: `cgrid/src/types.ts` (`CColDef.suppressMovable?: boolean`,
-  `CColDef.lockPosition?: boolean | 'left' | 'right'`, `CGridEvent`'s
-  `columnMoved` variant, `CGridApi.moveColumnByIndex` signature)
+  `CColDef.lockPosition?: boolean | 'left' | 'right'`, `VelocityGridEvent`'s
+  `columnMoved` variant, `VelocityGridApi.moveColumnByIndex` signature)
 - Modify: `cgrid/src/core/propertyChain.ts` (resolve `suppressMovable` +
   `lockPosition` onto `ResolvedColDef`)
 - Modify: `apps/cgrid-positions/src/positionsGrid.ts` (mark one column with
@@ -295,7 +295,7 @@ export interface CColDef<TRow = any, TValue = any> {
   /** When true, the user cannot drag this column to a new position. The
    *  imperative `moveColumns` API still works (per ag-grid; locks only
    *  bind UI mutations). Set to a per-column hint; the grid-wide override
-   *  comes from `CGridOptions.suppressMovableColumns` in Task 5. */
+   *  comes from `VelocityGridOptions.suppressMovableColumns` in Task 5. */
   suppressMovable?: boolean;
   /** Pin this column's index. `true` and `'left'` lock the column to the
    *  start of its pinned region (or the start of the body when unpinned).
@@ -305,7 +305,7 @@ export interface CColDef<TRow = any, TValue = any> {
   lockPosition?: boolean | 'left' | 'right';
 }
 
-export type CGridEvent =
+export type VelocityGridEvent =
   // … existing variants …
   | {
       type: 'columnMoved';
@@ -320,7 +320,7 @@ export type CGridEvent =
       source: 'uiColumnDragged' | 'api' | 'columnState';
     };
 
-export interface CGridApi<TRow = any> {
+export interface VelocityGridApi<TRow = any> {
   // … existing methods …
   /** Move the leaf at `fromIndex` to `toIndex` in the flat visible-leaf
    *  order. No-op when fromIndex == toIndex or either is out of range.
@@ -442,7 +442,7 @@ lockPosition: merged.lockPosition ?? null,
 ```
 
 - [ ] **Step 6: Write the failing `columnDrag.test.ts`** — a unit test for
-      the `ColumnDrag` Feature in isolation. Mock the `CGridEventCtx` `grid`
+      the `ColumnDrag` Feature in isolation. Mock the `VelocityGridEventCtx` `grid`
       facade with a `reorderColumn(colId, toIndex)` spy + an `allColIds()`
       provider. Assert:
   - mousedown on a `'header'` hit with `suppressMovable` does NOT start a drag
@@ -524,7 +524,7 @@ describe('ColumnDrag', () => {
 ```
 
 - [ ] **Step 9: Add `reorderColumn(colId, toIndex)` + `moveColumnByIndex`
-      to `cgrid.ts`** — `reorderColumn` is the private engine call; resolves
+      to `velocityGrid.ts`** — `reorderColumn` is the private engine call; resolves
       the legal target via `resolveLegalDropIndex` with a constraints
       object built from `columnDefsMap` + `columnTree.groupById`, then
       `applyReorder` produces a new flat-leaf order; mutate the underlying
@@ -549,7 +549,7 @@ public moveColumnByIndex(fromIndex: number, toIndex: number): void {
 }
 ```
 
-- [ ] **Step 10: Add `'columnMoved'` to `CGridEvent` union** in `types.ts`
+- [ ] **Step 10: Add `'columnMoved'` to `VelocityGridEvent` union** in `types.ts`
       using the shape from "Interfaces produced".
 
 - [ ] **Step 11: Wire the demo** — in
@@ -604,7 +604,7 @@ test.describe('Cycle 6 — column drag-reorder', () => {
 });
 ```
 
-      Add `getHeaderBoundsAt(colId)` + `getColumnState()` to `CGridApi` (the
+      Add `getHeaderBoundsAt(colId)` + `getColumnState()` to `VelocityGridApi` (the
       latter is a Task-2 deliverable; for this E2E ship a stub that returns
       the resolved `{ colId, hide, pinned, width, flex }` slots and let
       Task 2 expand the shape — the test only reads `colId`).
@@ -626,7 +626,7 @@ git add cgrid/src/core/columnOrder.ts \
         cgrid/src/core/propertyChain.ts \
         cgrid/src/interaction/features/columnDrag.ts \
         cgrid/src/interaction/featureChain.ts \
-        cgrid/src/cgrid.ts \
+        cgrid/src/velocityGrid.ts \
         cgrid/tests/columnOrder.test.ts \
         cgrid/tests/columnDrag.test.ts \
         apps/cgrid-positions/src/positionsGrid.ts \
@@ -658,9 +658,9 @@ EOF
       promotion (`pressed → dragging` after ≥ 4 px movement).
 - [ ] `CColDef.suppressMovable` + `CColDef.lockPosition` typed + resolved
       onto `ResolvedColDef`; demo wires both.
-- [ ] `CGridApi.moveColumnByIndex` typed + implemented; emits `columnMoved`
+- [ ] `VelocityGridApi.moveColumnByIndex` typed + implemented; emits `columnMoved`
       with `source: 'api'`.
-- [ ] `columnMoved` event variant added to `CGridEvent` union.
+- [ ] `columnMoved` event variant added to `VelocityGridEvent` union.
 - [ ] Unit (≥ 8 assertions across the two test files) + E2E (2 scenarios) +
       typecheck + build green.
 
@@ -715,23 +715,23 @@ report it, so it lands here).
   `applyColumnState`, `resetColumnState`); ColumnState shape comment
 - `docs/catalog/22-events.md` — `columnsReset` payload
 - `cgrid/src/core/columnOrder.ts` (Task 1) — `reorderLeavesByList`
-- `cgrid/src/cgrid.ts` — `recomputeViewport`, the existing
+- `cgrid/src/velocityGrid.ts` — `recomputeViewport`, the existing
   `getColumnGroupState` / `setColumnGroupState` / `resetColumnGroupState`
   (the parallel-shape API Cycle 4 shipped that this Task mirrors)
 
 **Files:**
 - Create: `cgrid/src/core/columnState.ts`
-- Modify: `cgrid/src/cgrid.ts` (instantiate state snapshot at construction;
+- Modify: `cgrid/src/velocityGrid.ts` (instantiate state snapshot at construction;
   add `getColumnState` / `applyColumnState` / `resetColumnState` API; emit
   `columnsReset`)
 - Modify: `cgrid/src/types.ts` (`CColumnState`, `CApplyColumnStateParams`,
-  `columnsReset` event variant, `CGridApi` method signatures, `CColDef.hide`,
+  `columnsReset` event variant, `VelocityGridApi` method signatures, `CColDef.hide`,
   `CColDef.lockVisible`, `CColDef.lockPinned`, `CColDef.initialHide`,
   `CColDef.initialPinned`, `CColDef.initialWidth`)
 - Modify: `cgrid/src/core/propertyChain.ts` (resolve `hide` / `lockVisible`
   / `lockPinned`; honor `initialHide` / `initialPinned` / `initialWidth`
   as first-render-only defaults)
-- Modify: `cgrid/src/cgrid.ts` (extend `computeVisibleColumnOrder` to skip
+- Modify: `cgrid/src/velocityGrid.ts` (extend `computeVisibleColumnOrder` to skip
   `hide: true` leaves)
 - Update: `apps/cgrid-positions/src/positionsGrid.ts` (add a "Save layout" /
   "Restore layout" pair of buttons to the demo toolbar wired to
@@ -799,11 +799,11 @@ export interface CColDef<TRow = any, TValue = any> {
   lockPinned?: boolean;
 }
 
-export type CGridEvent =
+export type VelocityGridEvent =
   // … existing variants …
   | { type: 'columnsReset' };
 
-export interface CGridApi<TRow = any> {
+export interface VelocityGridApi<TRow = any> {
   // … existing methods …
   /** Serialisable snapshot of every leaf's mutable state in
    *  current-visible-leaf-order, hidden leaves included. */
@@ -860,13 +860,13 @@ export interface CGridApi<TRow = any> {
       then DOES NOT carry the `initial*` keys onto the resolved struct
       (they're construction-time-only, never re-read).
 
-- [ ] **Step 5: Extend `computeVisibleColumnOrder` in `cgrid.ts`** to filter
+- [ ] **Step 5: Extend `computeVisibleColumnOrder` in `velocityGrid.ts`** to filter
       out leaves with `hide: true`. Hidden leaves remain in `columnDefsMap`
       (so `getColumnState` can still report them) but never reach the
       layout / paint / hit-test path.
 
 - [ ] **Step 6: Add `getColumnState` / `applyColumnState` / `resetColumnState`
-      to `cgrid.ts`** — `getColumnState` calls `snapshotState`;
+      to `velocityGrid.ts`** — `getColumnState` calls `snapshotState`;
       `applyColumnState` calls `applyStateToTree`, mutates `columnDefsMap`,
       reruns the tree only if `newOrder` is non-null, then performs ONE
       `computeVisibleColumnOrder + resolveColumnWidths + recomputeViewport
@@ -888,9 +888,9 @@ this.initialColumnStateSnapshot = snapshotState(this.columnTree, this.columnLayo
       cgrid-positions toolbar:
 
 ```ts
-saveBtn.onclick = () => localStorage.setItem('cg-layout', JSON.stringify(grid.getColumnState()));
+saveBtn.onclick = () => localStorage.setItem('vg-layout', JSON.stringify(grid.getColumnState()));
 restoreBtn.onclick = () => {
-  const raw = localStorage.getItem('cg-layout');
+  const raw = localStorage.getItem('vg-layout');
   if (raw) grid.applyColumnState({ state: JSON.parse(raw), applyOrder: true });
 };
 resetBtn.onclick = () => grid.resetColumnState();
@@ -983,11 +983,11 @@ after a window resize.
 - Modify: `cgrid/src/core/layout.ts` (add `sizeColumnsToFit(cols,
   containerWidth, params): Map<colId, number>` — pure; returns the new
   widths)
-- Modify: `cgrid/src/cgrid.ts` (add `sizeColumnsToFit(params?)` API; mutate
+- Modify: `cgrid/src/velocityGrid.ts` (add `sizeColumnsToFit(params?)` API; mutate
   `def.width` for non-suppressed leaves; rerun layout once; emit
   `columnResized` per changed column with `finished: true`)
 - Modify: `cgrid/src/types.ts` (`CColDef.suppressSizeToFit?: boolean`,
-  `ISizeColumnsToFitParams`, `CGridApi.sizeColumnsToFit`)
+  `ISizeColumnsToFitParams`, `VelocityGridApi.sizeColumnsToFit`)
 - Modify: `cgrid/src/core/propertyChain.ts` (resolve `suppressSizeToFit`)
 - Update: `apps/cgrid-positions/src/positionsGrid.ts` (mark one column
   `suppressSizeToFit: true`; add a "Fit columns" toolbar button)
@@ -1011,7 +1011,7 @@ export interface CColDef<TRow = any, TValue = any> {
   suppressSizeToFit?: boolean;
 }
 
-export interface CGridApi<TRow = any> {
+export interface VelocityGridApi<TRow = any> {
   // … existing methods …
   /** Resize every non-suppressed visible leaf so the total width fills the
    *  container (or `params.width`). Per-column min/max wins over the
@@ -1049,7 +1049,7 @@ export interface CGridApi<TRow = any> {
         leaf
 - [ ] **Step 2: Run** — fail.
 - [ ] **Step 3: Implement** `sizeColumnsToFit` in `core/layout.ts`.
-- [ ] **Step 4: Add the API in `cgrid.ts`** — pull the leaves through the
+- [ ] **Step 4: Add the API in `velocityGrid.ts`** — pull the leaves through the
       pure helper, then `for (const [colId, w] of newWidths) def.width = w`;
       single `resolveColumnWidths + recomputeViewport + requestRepaint`;
       emit `columnResized` with `finished: true` for each changed leaf.
@@ -1074,7 +1074,7 @@ Cycle 6 / Task 3."
 **Acceptance criteria:**
 - [ ] `sizeColumnsToFit` exported from `core/layout.ts`, pure (returns
       `Map<colId, number>`).
-- [ ] `CGridApi.sizeColumnsToFit` mutates widths, repaints once, emits
+- [ ] `VelocityGridApi.sizeColumnsToFit` mutates widths, repaints once, emits
       `columnResized` with `finished: true`.
 - [ ] `suppressSizeToFit` honored.
 - [ ] Unit (≥ 5 assertions) + E2E (1 scenario) + typecheck + build green.
@@ -1126,12 +1126,12 @@ repaint" landing). Independent of Tasks 5 / 6 / 7.
 - Modify: `cgrid/src/worker/worker.ts` (route `'autosizeRequest'` → `autosize.ts`)
 - Modify: `cgrid/src/worker/client.ts` (add `autosizeColumns(colIds,
   skipHeader): Promise<Record<colId, number>>`)
-- Modify: `cgrid/src/cgrid.ts` (`autoSizeColumns(keys, skipHeader)` +
+- Modify: `cgrid/src/velocityGrid.ts` (`autoSizeColumns(keys, skipHeader)` +
   `autoSizeAllColumns(skipHeader)` API; await worker; clamp by min/max;
   set widths; single repaint; emit `columnResized` per col with
   `finished: true`)
 - Modify: `cgrid/src/types.ts` (`CColDef.suppressAutoSize?: boolean`,
-  `CGridApi.autoSizeColumns` / `autoSizeAllColumns`)
+  `VelocityGridApi.autoSizeColumns` / `autoSizeAllColumns`)
 - Modify: `cgrid/src/core/propertyChain.ts` (resolve `suppressAutoSize`)
 - Update: `apps/cgrid-positions/src/positionsGrid.ts` (add "Autosize all"
   toolbar button; mark one column `suppressAutoSize: true`)
@@ -1162,7 +1162,7 @@ export interface CColDef<TRow = any, TValue = any> {
   suppressAutoSize?: boolean;
 }
 
-export interface CGridApi<TRow = any> {
+export interface VelocityGridApi<TRow = any> {
   // … existing methods …
   /** Autosize the specified leaves to their widest visible content.
    *  Awaits a worker round-trip (returns a Promise). Honors
@@ -1192,7 +1192,7 @@ export interface CGridApi<TRow = any> {
 - [ ] **Step 5: Add `WorkerClient.autosizeColumns`** in `worker/client.ts`
       (request-response with `requestId` like the Cycle 5 measureText
       request).
-- [ ] **Step 6: Add the API in `cgrid.ts`** — `autoSizeAllColumns` resolves
+- [ ] **Step 6: Add the API in `velocityGrid.ts`** — `autoSizeAllColumns` resolves
       the visible non-`suppressAutoSize` leaves, calls `autoSizeColumns`
       with that set. Clamp results to min/max on main; apply widths
       atomically; one `recomputeViewport + requestRepaint`; fire
@@ -1263,7 +1263,7 @@ Task 2 (lock semantics — `lockVisible` / `lockPinned`), and Task 3
   `columnMoved`, `columnResized.finished`
 
 **Files:**
-- Modify: `cgrid/src/cgrid.ts` (the four new methods; refactor the
+- Modify: `cgrid/src/velocityGrid.ts` (the four new methods; refactor the
   drag-resize emission in `resizeColumn` to set `finished: false`,
   add `finished: true` on mouseup in `ColumnResizing`)
 - Modify: `cgrid/src/interaction/features/columnResizing.ts` (emit
@@ -1279,7 +1279,7 @@ Task 2 (lock semantics — `lockVisible` / `lockPinned`), and Task 3
 **Interfaces produced:**
 
 ```ts
-export type CGridEvent =
+export type VelocityGridEvent =
   // … existing variants …
   | { type: 'columnVisible'; visible: boolean; colIds: string[]; source: 'api' | 'columnState' | 'gridOptionsChanged' }
   | { type: 'columnPinned'; pinned: 'left' | 'right' | null; colIds: string[]; source: 'api' | 'columnState' | 'gridOptionsChanged' }
@@ -1294,7 +1294,7 @@ export type CGridEvent =
       source?: 'uiColumnResized' | 'api' | 'columnState' | 'sizeColumnsToFit' | 'autosizeColumns';
     };
 
-export interface CGridApi<TRow = any> {
+export interface VelocityGridApi<TRow = any> {
   // … existing methods …
   setColumnsVisible(keys: string[], visible: boolean): void;
   setColumnsPinned(keys: string[], pinned: 'left' | 'right' | null): void;
@@ -1325,7 +1325,7 @@ export interface CGridApi<TRow = any> {
       - All 4 methods perform exactly one `recomputeViewport` per call
         (spy assertion)
 - [ ] **Step 2: Run** — fail.
-- [ ] **Step 3: Implement the four methods in `cgrid.ts`.** Pattern:
+- [ ] **Step 3: Implement the four methods in `velocityGrid.ts`.** Pattern:
   - Resolve each `key` to a `ResolvedColDef` from `columnDefsMap`; drop
     unknowns
   - Apply lock checks (`lockVisible`, `lockPinned`, `lockPosition`)
@@ -1351,7 +1351,7 @@ export interface CGridApi<TRow = any> {
 git commit -m "feat(cgrid): imperative column API — visible / pinned / widths / move
 
 Lands setColumnsVisible, setColumnsPinned, setColumnWidths,
-moveColumns on CGridApi. Each call performs one re-layout + one
+moveColumns on VelocityGridApi. Each call performs one re-layout + one
 repaint; emits per-column columnVisible / columnPinned / columnMoved
 / columnResized events (with finished flag on resize). Honors
 lockVisible / lockPinned / lockPosition from Task 2 / Task 1.
@@ -1362,7 +1362,7 @@ Cycle 6 / Task 5."
 ```
 
 **Acceptance criteria:**
-- [ ] Four new methods on `CGridApi`; each does exactly one
+- [ ] Four new methods on `VelocityGridApi`; each does exactly one
       `recomputeViewport`.
 - [ ] `columnVisible` / `columnPinned` events fire with `colIds` array.
 - [ ] `columnResized.finished` flag flows: `false` during drag, `true` on
@@ -1384,7 +1384,7 @@ column-types row (line 38). Follow the per-task workflow.
 ## Task 6 — `columnTypes` templates + `CColDef.type: string | string[]`
 
 **Goal:** Let an app define a named bundle of `CColDef` properties once and
-apply it to many columns by name. `CGridOptions.columnTypes: Record<string,
+apply it to many columns by name. `VelocityGridOptions.columnTypes: Record<string,
 Partial<CColDef>>` declares the bundles; `CColDef.type` becomes
 `string | string[]` (the existing `'text' | 'number'` cell-data type union
 moves to a new `CColDef.cellDataType` field with a deprecation alias so
@@ -1406,7 +1406,7 @@ canonical place an app would define a `cellClass` / `cellStyle` bundle.
 
 **Files:**
 - Modify: `cgrid/src/types.ts` (`CColDef.type: string | string[]`,
-  `CColDef.cellDataType?: 'text' | 'number'`, `CGridOptions.columnTypes`)
+  `CColDef.cellDataType?: 'text' | 'number'`, `VelocityGridOptions.columnTypes`)
 - Modify: `cgrid/src/core/propertyChain.ts` (merge `columnTypes[name]` (or
   the named list) before defaultColDef; carry forward `cellDataType` as
   the cell data type; deprecate-alias: when `type` is `'text'` /
@@ -1424,7 +1424,7 @@ canonical place an app would define a `cellClass` / `cellStyle` bundle.
 ```ts
 export interface CColDef<TRow = any, TValue = any> {
   // … existing fields …
-  /** Named column type(s) declared in `CGridOptions.columnTypes`. Multiple
+  /** Named column type(s) declared in `VelocityGridOptions.columnTypes`. Multiple
    *  types merge left-to-right; this col's own properties win. */
   type?: string | string[];
   /** Inferred cell data type. Drives the default cell renderer + the
@@ -1435,7 +1435,7 @@ export interface CColDef<TRow = any, TValue = any> {
   cellDataType?: 'text' | 'number';
 }
 
-export interface CGridOptions<TRow = any> {
+export interface VelocityGridOptions<TRow = any> {
   // … existing fields …
   /** Named partial column defs. Reference by `CColDef.type`. Each leaf's
    *  resolved def is `{ ...columnTypes[name], ...defaultColDef, ...colDef }`
@@ -1456,7 +1456,7 @@ export interface CGridOptions<TRow = any> {
 - [ ] **Step 2: Run** — fail.
 - [ ] **Step 3: Implement** the type-merge pass in `resolveColDef`. Take
       `columnTypes` as a new arg.
-- [ ] **Step 4: Update `cgrid.ts`** so it threads `options.columnTypes`
+- [ ] **Step 4: Update `velocityGrid.ts`** so it threads `options.columnTypes`
       into every `resolveColDef` / `resolveColumnTree` call.
 - [ ] **Step 5: Update the demo** to declare a `money` type and apply it.
 - [ ] **Step 6: E2E** — assert the demo's two `money`-typed columns share
@@ -1469,7 +1469,7 @@ export interface CGridOptions<TRow = any> {
 ```bash
 git commit -m "feat(cgrid): columnTypes templates + CColDef.type: string | string[]
 
-Lands CGridOptions.columnTypes — named Partial<CColDef> bundles applied
+Lands VelocityGridOptions.columnTypes — named Partial<CColDef> bundles applied
 by name via CColDef.type. Array form merges left-to-right. Adds
 CColDef.cellDataType as the canonical cell-data-type field; the old
 type: 'text' | 'number' literal-union usage continues to work via a
@@ -1479,7 +1479,7 @@ Cycle 6 / Task 6."
 ```
 
 **Acceptance criteria:**
-- [ ] `columnTypes` declared on `CGridOptions`; `CColDef.type:
+- [ ] `columnTypes` declared on `VelocityGridOptions`; `CColDef.type:
       string | string[]` typed.
 - [ ] `cellDataType` typed; deprecation alias works.
 - [ ] Demo declares + uses `money`.
@@ -1503,7 +1503,7 @@ Read docs/catalog/02-column-model.md "ColDef — display & styling" section
 string[] | CellClassFunc` and `cellClassRules: Record<className,
 predicate>` resolve to a list of theme-variant keys; each key looks up a
 `ColCellOverrides` patch from the active theme's `cellClassVariants` table
-(populated from CSS variables like `--cg-cell-class-warning-bg:
+(populated from CSS variables like `--vg-cell-class-warning-bg:
 #fffae5`). `cellStyle` (function form) returns a raw `ColCellOverrides`
 that bypasses the variants table. Multiple matches stack: later overrides
 win. `headerClass` does the same for header cells using the
@@ -1531,16 +1531,16 @@ these classes in the UI but ship later.
   `cellClassRules` (pre-compile predicates), function-form `cellStyle`,
   `headerClass` onto `ResolvedColDef`; extend `applyCellProps` to walk
   the rule predicates + variant table)
-- Modify: `cgrid/src/theming/cssReader.ts` (read `--cg-cell-class-*` +
-  `--cg-header-class-*` CSS variables into `cellClassVariants` /
+- Modify: `cgrid/src/theming/cssReader.ts` (read `--vg-cell-class-*` +
+  `--vg-header-class-*` CSS variables into `cellClassVariants` /
   `headerClassVariants` maps on `ResolvedTheme`)
 - Modify: `cgrid/src/renderer/painters/byRows.ts` (apply the resolved
   `ColCellOverrides` patch — already happens for the static
   `cellStyle`; extend to honor function-form output + rules-matched
   variants)
 - Update: `cgrid-positions` demo CSS (`apps/cgrid-positions/src/style.css`)
-  — declare `--cg-cell-class-warning-bg: #fff4d1`; `--cg-cell-class-warning-fg: #6b4f00`;
-  `--cg-cell-class-positive-bg: #e7f7ec`; `--cg-cell-class-negative-bg: #fde7e9`
+  — declare `--vg-cell-class-warning-bg: #fff4d1`; `--vg-cell-class-warning-fg: #6b4f00`;
+  `--vg-cell-class-positive-bg: #e7f7ec`; `--vg-cell-class-negative-bg: #fde7e9`
 - Update: `apps/cgrid-positions/src/positionsGrid.ts` — apply
   `cellClassRules: { positive: (p) => p.value > 0, negative: (p) => p.value < 0 }`
   to the `pnl` column
@@ -1580,9 +1580,9 @@ export interface CColDef<TRow = any, TValue = any> {
 export interface ResolvedTheme {
   // … existing fields …
   /** Map of class-name → ColCellOverrides patch. Keys come from the
-   *  `--cg-cell-class-<name>-{bg,fg,font,halign}` CSS variables. */
+   *  `--vg-cell-class-<name>-{bg,fg,font,halign}` CSS variables. */
   cellClassVariants: Map<string, ColCellOverrides>;
-  /** Same for `--cg-header-class-<name>-*`. */
+  /** Same for `--vg-header-class-<name>-*`. */
   headerClassVariants: Map<string, ColCellOverrides>;
 }
 ```
@@ -1600,8 +1600,8 @@ export interface ResolvedTheme {
   - `headerClass: 'sticky'` applies the header variant to the header row
 - [ ] **Step 2: Run** — fail.
 - [ ] **Step 3: Extend `cssReader.ts`** to scan custom-property names
-      matching `--cg-cell-class-<name>-(bg|fg|font|halign)` and group them
-      into `cellClassVariants`. Repeat for `--cg-header-class-*`.
+      matching `--vg-cell-class-<name>-(bg|fg|font|halign)` and group them
+      into `cellClassVariants`. Repeat for `--vg-header-class-*`.
 - [ ] **Step 4: Extend `propertyChain.ts`** — `resolveColDef` stores
       pre-compiled rule predicates + class-resolver functions. In
       `applyCellProps`:
@@ -1629,7 +1629,7 @@ export interface ResolvedTheme {
 git commit -m "feat(cgrid): cellClass / cellClassRules / cellStyle (fn) / headerClass
 
 Conditional cell + header styling driven by theme variants
-(--cg-cell-class-<name>-{bg,fg,font,halign}) instead of per-cell DOM.
+(--vg-cell-class-<name>-{bg,fg,font,halign}) instead of per-cell DOM.
 cellClass resolves to one or more variant names; cellClassRules
 evaluates predicates per cell and contributes class names on match.
 cellStyle gains a function form that returns a raw ColCellOverrides
@@ -1674,7 +1674,7 @@ union to include `columnVisible` / `columnPinned` / `columnMoved` /
 
 **Why this is Task 8 (the last task):** It depends on every preceding task
 having landed (events from Task 1, 2, 5 fire alongside this one).
-Touches `cgrid.ts` only — small surgical commit. Runs the exit ritual on
+Touches `velocityGrid.ts` only — small surgical commit. Runs the exit ritual on
 top.
 
 **Read first:**
@@ -1684,7 +1684,7 @@ top.
   mirrors)
 
 **Files:**
-- Modify: `cgrid/src/cgrid.ts` (track previously-materialised
+- Modify: `cgrid/src/velocityGrid.ts` (track previously-materialised
   visible-column-index range; on horizontal scroll change, if the range
   shifted, emit `virtualColumnsChanged`; widen `displayedColumnsChanged`
   source union and emit on every source listed below)
@@ -1696,7 +1696,7 @@ top.
 
 **Steps:**
 
-- [ ] **Step 1: Add `virtualColumnsChanged` to `CGridEvent`** union with
+- [ ] **Step 1: Add `virtualColumnsChanged` to `VelocityGridEvent`** union with
       payload `{ type: 'virtualColumnsChanged'; afterScroll: boolean }`.
 - [ ] **Step 2: Widen `displayedColumnsChanged.source`** in `types.ts` to
       `'columnGroupOpened' | 'columnDefsChanged' | 'columnVisible' |
@@ -1873,7 +1873,7 @@ end.
   the `cellDataType` deprecation alias.
 - **Task 7** — `cellClass` + `cellClassRules` + `cellStyle` (function form)
   + `headerClass` via theme-driven variants. CSS variables
-  (`--cg-cell-class-<name>-{bg,fg,font,halign}`) populate the
+  (`--vg-cell-class-<name>-{bg,fg,font,halign}`) populate the
   `cellClassVariants` map on `ResolvedTheme`; predicates pre-compile at
   `resolveColDef` time; matched class names stack as `ColCellOverrides`
   patches into the existing `applyCellProps` slot. Cycle 4's storage-only

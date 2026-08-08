@@ -6,13 +6,13 @@
 
 **Architecture:** A kernel-native tool panel (`agColumnGroupsToolPanel`, shortcut `'columnGroups'`) beside `columnsPanel`/`gridOptionsPanel`. The panel holds a **normalized flat working model** (`Node[]` with `parentId`/`order`); all edits are O(1) field writes; a pure `project()` folds it back to the nested `columnDefs` only on **Apply** (Reset re-flattens the last-applied defs). Header styling reuses the Phase 1 `settingsForm` renderer.
 
-**Tech Stack:** TypeScript, `@cgrid/kernel` (vanilla DOM, happy-dom + Vitest), Phase 1 `settingsForm` + `tokens.css`. Zero new dependencies. E2E in `apps/cgrid-customizer-demo` (Vite, port 5187) against live STOMP.
+**Tech Stack:** TypeScript, `@wellsfargo-starui/velocity-grid` (vanilla DOM, happy-dom + Vitest), Phase 1 `settingsForm` + `tokens.css`. Zero new dependencies. E2E in `apps/cgrid-customizer-demo` (Vite, port 5187) against live STOMP.
 
 ## Global Constraints
 
-- **NATIVE tier:** vanilla DOM in `@cgrid/kernel`, zero new dependencies, themed only via `tokens.css` CSS variables (no hard-coded colors).
-- **Kernel tests:** Vitest + happy-dom. Run a single file with `npx vitest run <path> --root packages/kernel`; whole package with `npm test --workspace=@cgrid/kernel`.
-- **Panel contract:** `interface ToolPanel { init(params: ToolPanelParams): void; getGui(): HTMLElement; refresh(): void; destroy(): void }` from `interaction/toolPanels/types.ts`. `ToolPanelParams` exposes `params.api` (the `CGridApi`).
+- **NATIVE tier:** vanilla DOM in `@wellsfargo-starui/velocity-grid`, zero new dependencies, themed only via `tokens.css` CSS variables (no hard-coded colors).
+- **Kernel tests:** Vitest + happy-dom. Run a single file with `npx vitest run <path> --root packages/kernel`; whole package with `npm test --workspace=@wellsfargo-starui/velocity-grid`.
+- **Panel contract:** `interface ToolPanel { init(params: ToolPanelParams): void; getGui(): HTMLElement; refresh(): void; destroy(): void }` from `interaction/toolPanels/types.ts`. `ToolPanelParams` exposes `params.api` (the `VelocityGridApi`).
 - **Write path is Apply-only:** the panel must never touch the grid except inside the Apply handler, which calls `api.updateGridOptions({ columnDefs })` exactly once. No live/debounced pushes (protects the 300-upd/s stream).
 - **Commit after every task.** End PR bodies / commits with the Co-Authored-By trailer already used in this repo.
 - **Before building UI (Tasks 3–4):** consult `docs/catalog/screenshots/17-sidebar-columns-panel-open.png` and run `/frontend-design` for row layout, drag affordances, and the Style band. Full E2E run is the done-gate.
@@ -27,8 +27,8 @@ Spec: `docs/superpowers/specs/2026-07-03-cycle-21i-column-groups-editor-design.m
 - Create `packages/kernel/src/interaction/toolPanels/columnGroupsPanel.ts` — the `ColumnGroupsToolPanel` class (chrome, tree render, buttons, drag, Apply/Reset, Style band).
 - Create `packages/kernel/tests/columnGroupsModel.test.ts` — unit tests for `model.ts`.
 - Create `packages/kernel/tests/columnGroupsToolPanel.test.ts` — panel tests with a mock API.
-- Modify `packages/kernel/src/types/api.ts` — add `getColumnGroupDefs()` to `CGridApi`.
-- Modify `packages/kernel/src/cgrid.ts` — implement `getColumnGroupDefs`; register `agColumnGroupsToolPanel`.
+- Modify `packages/kernel/src/types/api.ts` — add `getColumnGroupDefs()` to `VelocityGridApi`.
+- Modify `packages/kernel/src/velocityGrid.ts` — implement `getColumnGroupDefs`; register `agColumnGroupsToolPanel`.
 - Modify `packages/kernel/src/interaction/sideBar/host.ts` — add `case 'columnGroups'` to `expandToolPanelShortcut`.
 - Modify `apps/cgrid-customizer-demo/src/main.ts` — add `'columnGroups'` to `sideBar.toolPanels`; seed example groups.
 - Create `apps/cgrid-customizer-demo/tests/columnGroups.e2e.ts` (or the repo's existing E2E location) — end-to-end journey.
@@ -39,12 +39,12 @@ Spec: `docs/superpowers/specs/2026-07-03-cycle-21i-column-groups-editor-design.m
 
 **Files:**
 - Modify: `packages/kernel/src/types/api.ts` (near `getColumnGroupState`, ~line 296)
-- Modify: `packages/kernel/src/cgrid.ts` (public method + it already stores `this.options.columnDefs`, kept current by `updateGridOptions` at cgrid.ts:5358)
+- Modify: `packages/kernel/src/velocityGrid.ts` (public method + it already stores `this.options.columnDefs`, kept current by `updateGridOptions` at velocityGrid.ts:5358)
 - Test: `packages/kernel/tests/columnGroupsDefs.test.ts`
 
 **Interfaces:**
 - Consumes: `this.options.columnDefs: (CColDef<TRow> | CColGroupDef<TRow>)[]` (current authored tree; `updateGridOptions({columnDefs})` overwrites it).
-- Produces: `CGridApi.getColumnGroupDefs(): (CColDef | CColGroupDef)[]` — the seed source for the editor's `flatten()`.
+- Produces: `VelocityGridApi.getColumnGroupDefs(): (CColDef | CColGroupDef)[]` — the seed source for the editor's `flatten()`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -52,13 +52,13 @@ Create `packages/kernel/tests/columnGroupsDefs.test.ts`:
 
 ```ts
 import { describe, it, expect } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import type { CColDef, CColGroupDef } from '../src/types';
 
 function mount(columnDefs: (CColDef | CColGroupDef)[]) {
   const el = document.createElement('div');
   document.body.appendChild(el);
-  return new CGrid(el, { columnDefs, rowData: [] });
+  return new VelocityGrid(el, { columnDefs, rowData: [] });
 }
 
 describe('api.getColumnGroupDefs', () => {
@@ -94,7 +94,7 @@ describe('api.getColumnGroupDefs', () => {
 Run: `npx vitest run tests/columnGroupsDefs.test.ts --root packages/kernel`
 Expected: FAIL — `getColumnGroupDefs is not a function`.
 
-- [ ] **Step 3: Add the type to `CGridApi`**
+- [ ] **Step 3: Add the type to `VelocityGridApi`**
 
 In `packages/kernel/src/types/api.ts`, directly above `getColumnGroupState()` (~line 296):
 
@@ -107,9 +107,9 @@ In `packages/kernel/src/types/api.ts`, directly above `getColumnGroupState()` (~
   getColumnGroupDefs(): (CColDef<TRow> | CColGroupDef<TRow>)[];
 ```
 
-- [ ] **Step 4: Implement on the api object in `cgrid.ts`**
+- [ ] **Step 4: Implement on the api object in `velocityGrid.ts`**
 
-Find the api literal that defines `getColumnGroupState:` (cgrid.ts ~line 3341 is the internal accessor bag; the PUBLIC `api` object is where `getColumnGroupState`/`updateGridOptions` are exposed — locate it by searching `getColumnGroupState:` inside the public `this.api = { ... }` block). Add:
+Find the api literal that defines `getColumnGroupState:` (velocityGrid.ts ~line 3341 is the internal accessor bag; the PUBLIC `api` object is where `getColumnGroupState`/`updateGridOptions` are exposed — locate it by searching `getColumnGroupState:` inside the public `this.api = { ... }` block). Add:
 
 ```ts
       getColumnGroupDefs: () => this.options.columnDefs ?? [],
@@ -125,7 +125,7 @@ Expected: PASS (2 tests).
 - [ ] **Step 6: Commit**
 
 ```bash
-git add packages/kernel/src/types/api.ts packages/kernel/src/cgrid.ts packages/kernel/tests/columnGroupsDefs.test.ts
+git add packages/kernel/src/types/api.ts packages/kernel/src/velocityGrid.ts packages/kernel/tests/columnGroupsDefs.test.ts
 git commit -m "feat(kernel): api.getColumnGroupDefs() reader for the Column Groups editor
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -316,7 +316,7 @@ const isGroupDef = (d: CColDef | CColGroupDef): d is CColGroupDef =>
   Array.isArray((d as CColGroupDef).children);
 
 let seq = 0;
-const nextGroupId = (existing?: string) => existing ?? `cg-grp-${++seq}`;
+const nextGroupId = (existing?: string) => existing ?? `vg-grp-${++seq}`;
 
 export function flatten(defs: (CColDef | CColGroupDef)[]): Node[] {
   const out: Node[] = [];
@@ -469,7 +469,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 **Files:**
 - Create: `packages/kernel/src/interaction/toolPanels/columnGroupsPanel.ts`
-- Modify: `packages/kernel/src/cgrid.ts` (register ctor near line 943 beside `GridOptionsToolPanel`)
+- Modify: `packages/kernel/src/velocityGrid.ts` (register ctor near line 943 beside `GridOptionsToolPanel`)
 - Modify: `packages/kernel/src/interaction/sideBar/host.ts` (add `case 'columnGroups'` in `expandToolPanelShortcut`, ~line 525)
 - Test: `packages/kernel/tests/columnGroupsToolPanel.test.ts`
 
@@ -509,22 +509,22 @@ describe('ColumnGroupsToolPanel', () => {
     const panel = new ColumnGroupsToolPanel();
     panel.init(makeParams(vi.fn()));
     const gui = panel.getGui();
-    expect(gui.querySelectorAll('[data-cg-node]').length).toBe(4); // sym, trade, bid, ask
-    expect(gui.querySelector('[data-cg-node="trade"]')!.getAttribute('data-kind')).toBe('group');
+    expect(gui.querySelectorAll('[data-vg-node]').length).toBe(4); // sym, trade, bid, ask
+    expect(gui.querySelector('[data-vg-node="trade"]')!.getAttribute('data-kind')).toBe('group');
   });
 
   it('Apply is disabled until an edit dirties the model', () => {
     const panel = new ColumnGroupsToolPanel();
     panel.init(makeParams(vi.fn()));
-    const apply = panel.getGui().querySelector('[data-cg-apply]') as HTMLButtonElement;
+    const apply = panel.getGui().querySelector('[data-vg-apply]') as HTMLButtonElement;
     expect(apply.disabled).toBe(true);
   });
 
   it('clicking "+ Group" dirties the model and enables Apply', () => {
     const panel = new ColumnGroupsToolPanel();
     panel.init(makeParams(vi.fn()));
-    (panel.getGui().querySelector('[data-cg-add-group]') as HTMLButtonElement).click();
-    const apply = panel.getGui().querySelector('[data-cg-apply]') as HTMLButtonElement;
+    (panel.getGui().querySelector('[data-vg-add-group]') as HTMLButtonElement).click();
+    const apply = panel.getGui().querySelector('[data-vg-apply]') as HTMLButtonElement;
     expect(apply.disabled).toBe(false);
   });
 
@@ -532,19 +532,19 @@ describe('ColumnGroupsToolPanel', () => {
     const onApply = vi.fn();
     const panel = new ColumnGroupsToolPanel();
     panel.init(makeParams(onApply));
-    (panel.getGui().querySelector('[data-cg-add-group]') as HTMLButtonElement).click();
-    (panel.getGui().querySelector('[data-cg-apply]') as HTMLButtonElement).click();
+    (panel.getGui().querySelector('[data-vg-add-group]') as HTMLButtonElement).click();
+    (panel.getGui().querySelector('[data-vg-apply]') as HTMLButtonElement).click();
     expect(onApply).toHaveBeenCalledTimes(0); // empty group fails validate()
   });
 
   it('Reset re-seeds from getColumnGroupDefs and disables Apply', () => {
     const panel = new ColumnGroupsToolPanel();
     panel.init(makeParams(vi.fn()));
-    (panel.getGui().querySelector('[data-cg-add-group]') as HTMLButtonElement).click();
-    (panel.getGui().querySelector('[data-cg-reset]') as HTMLButtonElement).click();
-    const apply = panel.getGui().querySelector('[data-cg-apply]') as HTMLButtonElement;
+    (panel.getGui().querySelector('[data-vg-add-group]') as HTMLButtonElement).click();
+    (panel.getGui().querySelector('[data-vg-reset]') as HTMLButtonElement).click();
+    const apply = panel.getGui().querySelector('[data-vg-apply]') as HTMLButtonElement;
     expect(apply.disabled).toBe(true);
-    expect(panel.getGui().querySelectorAll('[data-cg-node]').length).toBe(4);
+    expect(panel.getGui().querySelectorAll('[data-vg-node]').length).toBe(4);
   });
 });
 ```
@@ -569,14 +569,14 @@ import {
   flatten, project, createGroup, renameGroup, deleteGroup, moveNode,
   setHidden, setColumnHeaderName, setGroupStyle, validate, type Node, type GroupNode,
 } from '../columnGroups/model';
-import type { CColDef, CColGroupDef, CGridApi } from '../../types';
+import type { CColDef, CColGroupDef, VelocityGridApi } from '../../types';
 
 export class ColumnGroupsToolPanel implements ToolPanel {
   private root!: HTMLElement;
   private tree!: HTMLElement;
   private applyBtn!: HTMLButtonElement;
   private resetBtn!: HTMLButtonElement;
-  private api!: Pick<CGridApi, 'getColumnGroupDefs' | 'updateGridOptions'>;
+  private api!: Pick<VelocityGridApi, 'getColumnGroupDefs' | 'updateGridOptions'>;
   private nodes: Node[] = [];
   /** Canonical JSON of the last-applied projected tree — comparing against
    *  `project(nodes)` (also projected) makes seed→dirty reliably false even
@@ -587,9 +587,9 @@ export class ColumnGroupsToolPanel implements ToolPanel {
 
   init(params: ToolPanelParams): void {
     this.api = params.api as unknown as typeof this.api;
-    this.root = el('div', 'cg-colgroups-panel');
+    this.root = el('div', 'vg-colgroups-panel');
     this.root.appendChild(this.buildToolbar());   // "+ Group", search
-    this.tree = el('div', 'cg-colgroups-tree cg-scrollbar');
+    this.tree = el('div', 'vg-colgroups-tree vg-scrollbar');
     this.root.appendChild(this.tree);
     this.root.appendChild(this.buildStyleSection()); // Task 4 fills this
     this.root.appendChild(this.buildFooter());       // Apply / Reset
@@ -637,8 +637,8 @@ export class ColumnGroupsToolPanel implements ToolPanel {
   }
 
   private rowFor(n: Node, depth: number): HTMLElement {
-    const row = el('div', 'cg-colgroups-row');
-    row.setAttribute('data-cg-node', n.id);
+    const row = el('div', 'vg-colgroups-row');
+    row.setAttribute('data-vg-node', n.id);
     row.setAttribute('data-kind', n.kind);
     row.style.paddingInlineStart = `${8 + depth * 16}px`;
     if (n.kind === 'group') {
@@ -658,21 +658,21 @@ export class ColumnGroupsToolPanel implements ToolPanel {
   // this.mutate((ns) => moveNode(ns, dragId, targetParentId, targetOrder)).
   // Full bodies follow the columnsPanel.ts idiom (drag handle markup, checkbox).
   private buildToolbar(): HTMLElement {
-    const bar = el('div', 'cg-colgroups-toolbar');
-    const add = el('button', 'cg-btn') as HTMLButtonElement;
+    const bar = el('div', 'vg-colgroups-toolbar');
+    const add = el('button', 'vg-btn') as HTMLButtonElement;
     add.textContent = '+ Group';
-    add.setAttribute('data-cg-add-group', '');
+    add.setAttribute('data-vg-add-group', '');
     add.onclick = () => this.mutate((ns) => createGroup(ns, null, 'New Group'));
     bar.appendChild(add);
     return bar;
   }
   private buildFooter(): HTMLElement {
-    const footer = el('div', 'cg-colgroups-footer');
-    this.applyBtn = el('button', 'cg-btn cg-btn-primary') as HTMLButtonElement;
-    this.applyBtn.textContent = 'Apply'; this.applyBtn.setAttribute('data-cg-apply', '');
+    const footer = el('div', 'vg-colgroups-footer');
+    this.applyBtn = el('button', 'vg-btn vg-btn-primary') as HTMLButtonElement;
+    this.applyBtn.textContent = 'Apply'; this.applyBtn.setAttribute('data-vg-apply', '');
     this.applyBtn.disabled = true; this.applyBtn.onclick = () => this.onApply();
-    this.resetBtn = el('button', 'cg-btn') as HTMLButtonElement;
-    this.resetBtn.textContent = 'Reset'; this.resetBtn.setAttribute('data-cg-reset', '');
+    this.resetBtn = el('button', 'vg-btn') as HTMLButtonElement;
+    this.resetBtn.textContent = 'Reset'; this.resetBtn.setAttribute('data-vg-reset', '');
     this.resetBtn.onclick = () => this.seed();
     footer.append(this.applyBtn, this.resetBtn);
     return footer;
@@ -686,9 +686,9 @@ function el(tag: string, cls: string): HTMLElement { const e = document.createEl
 
 Implement the elided members (`groupControls`, `columnControls`, `wireDrag`, `buildStyleSection` stub returning an empty selected-group container, `flagGroup`) using the `columnsPanel.ts` drag-handle/checkbox idiom and tokens-only styling. All must route edits through `this.mutate(fn)` with the Task 2 helpers.
 
-- [ ] **Step 4: Register the ctor in `cgrid.ts`**
+- [ ] **Step 4: Register the ctor in `velocityGrid.ts`**
 
-At cgrid.ts ~line 943 (next to `this.toolPanelRegistry.register('agGridOptionsToolPanel', GridOptionsToolPanel);`):
+At velocityGrid.ts ~line 943 (next to `this.toolPanelRegistry.register('agGridOptionsToolPanel', GridOptionsToolPanel);`):
 
 ```ts
     this.toolPanelRegistry.register('agColumnGroupsToolPanel', ColumnGroupsToolPanel);
@@ -725,12 +725,12 @@ Expected: PASS (4 tests).
 
 - [ ] **Step 7: Add CSS (tokens only)**
 
-Add `.cg-colgroups-*` rules to the kernel stylesheet that already carries `.cg-settings-panel` (find with `grep -rl "cg-settings-panel" packages/kernel/src`). Use existing CSS variables only — no literal colors. Mirror row height, hover, and drag-handle styles from the `.cg-tool-panel`/columns rules.
+Add `.vg-colgroups-*` rules to the kernel stylesheet that already carries `.vg-settings-panel` (find with `grep -rl "vg-settings-panel" packages/kernel/src`). Use existing CSS variables only — no literal colors. Mirror row height, hover, and drag-handle styles from the `.vg-tool-panel`/columns rules.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add packages/kernel/src/interaction/toolPanels/columnGroupsPanel.ts packages/kernel/src/cgrid.ts packages/kernel/src/interaction/sideBar/host.ts packages/kernel/tests/columnGroupsToolPanel.test.ts packages/kernel/src/**/*.css
+git add packages/kernel/src/interaction/toolPanels/columnGroupsPanel.ts packages/kernel/src/velocityGrid.ts packages/kernel/src/interaction/sideBar/host.ts packages/kernel/tests/columnGroupsToolPanel.test.ts packages/kernel/src/**/*.css
 git commit -m "feat(kernel): Column Groups tool panel — tree, buttons, drag, Apply/Reset
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -756,13 +756,13 @@ Append to `packages/kernel/tests/columnGroupsToolPanel.test.ts`:
 it('selecting a group reveals a Style section bound to that group', () => {
   const panel = new ColumnGroupsToolPanel();
   panel.init(makeParams(vi.fn()));
-  (panel.getGui().querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
-  const style = panel.getGui().querySelector('[data-cg-style]')!;
+  (panel.getGui().querySelector('[data-vg-node="trade"] [data-vg-select]') as HTMLElement).click();
+  const style = panel.getGui().querySelector('[data-vg-style]')!;
   expect(style.getAttribute('data-for')).toBe('trade');
   // toggling marryChildren dirties the model
-  const marry = style.querySelector('[data-cg-field="marryChildren"] input') as HTMLInputElement;
+  const marry = style.querySelector('[data-vg-field="marryChildren"] input') as HTMLInputElement;
   marry.checked = true; marry.dispatchEvent(new Event('change'));
-  const apply = panel.getGui().querySelector('[data-cg-apply]') as HTMLButtonElement;
+  const apply = panel.getGui().querySelector('[data-vg-apply]') as HTMLButtonElement;
   expect(apply.disabled).toBe(false);
 });
 ```
@@ -770,16 +770,16 @@ it('selecting a group reveals a Style section bound to that group', () => {
 - [ ] **Step 2: Run to verify it fails**
 
 Run: `npx vitest run tests/columnGroupsToolPanel.test.ts --root packages/kernel`
-Expected: FAIL — no `[data-cg-style]` / no selection wiring.
+Expected: FAIL — no `[data-vg-style]` / no selection wiring.
 
 - [ ] **Step 3: Implement the Style band**
 
-In `columnGroupsPanel.ts`: give each group row a selectable hit-target (`data-cg-select`) that sets `this.selectedGroupId` and calls `this.renderStyle()`. Implement `buildStyleSection()` to return a container `<div data-cg-style>`; `renderStyle()` builds a `SettingsSection` for the selected group and mounts a `SettingsForm`:
+In `columnGroupsPanel.ts`: give each group row a selectable hit-target (`data-vg-select`) that sets `this.selectedGroupId` and calls `this.renderStyle()`. Implement `buildStyleSection()` to return a container `<div data-vg-style>`; `renderStyle()` builds a `SettingsSection` for the selected group and mounts a `SettingsForm`:
 
 ```ts
 private buildStyleSection(): HTMLElement {
-  this.styleHost = el('div', 'cg-colgroups-style');
-  this.styleHost.setAttribute('data-cg-style', '');
+  this.styleHost = el('div', 'vg-colgroups-style');
+  this.styleHost.setAttribute('data-vg-style', '');
   return this.styleHost;
 }
 
@@ -791,7 +791,7 @@ private renderStyle(): void {
   this.styleHost.setAttribute('data-for', g.id);
   const patch = (p: Partial<GroupNode>) => this.mutate((ns) => setGroupStyle(ns, g.id, p));
   const section: SettingsSection = {
-    id: 'cg-group-style', title: `Style — ${g.headerName}`,
+    id: 'vg-group-style', title: `Style — ${g.headerName}`,
     bands: [{
       id: 'header', title: 'Header',
       fields: [
@@ -811,7 +811,7 @@ private renderStyle(): void {
   const form = new SettingsForm(section);
   // tag fields for the test selector
   form.root.querySelectorAll('[data-field-key]').forEach((n) =>
-    n.setAttribute('data-cg-field', n.getAttribute('data-field-key')!));
+    n.setAttribute('data-vg-field', n.getAttribute('data-field-key')!));
   this.styleHost.appendChild(form.root);
 }
 ```
@@ -876,7 +876,7 @@ Using the repo's existing E2E harness (Playwright/chrome-devtools per the showca
 
 - [ ] **Step 4: Run the full kernel test + E2E**
 
-Run: `npm test --workspace=@cgrid/kernel` — expected: all green (kernel baseline + new suites).
+Run: `npm test --workspace=@wellsfargo-starui/velocity-grid` — expected: all green (kernel baseline + new suites).
 Run: the E2E command for `apps/cgrid-customizer-demo` — expected: the journey passes.
 
 - [ ] **Step 5: Commit**
@@ -894,8 +894,8 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 - **Spec coverage:** §1 placement → T3/T5; §2 flat model → T2; §3 T1 reader → T1, T2 model → T2, T3 panel → T3, T4 style → T4, T5 demo → T5; §5 edge cases (empty group, marryChildren, cycle) → T2 `validate`/`canDrop` + tests; §6 persistence → free via Phase 1, exercised in T5 E2E reload.
 - **Apply-only invariant:** the panel writes only in `onApply`; `dirty` compares `project(nodes)` vs `baseline` so Reset/round-trips settle to disabled.
-- **Type consistency:** `flatten`/`project`/`createGroup`/`deleteGroup`/`moveNode`/`setHidden`/`setColumnHeaderName`/`setGroupStyle`/`canDrop`/`validate`, `Node`/`GroupNode`/`ColumnNode` are used identically across Tasks 2–4. Panel id `agColumnGroupsToolPanel` and shortcut `'columnGroups'` are consistent across T3 host.ts + cgrid.ts.
-- **Open confirmations for the implementer (cheap greps, not blockers):** (a) exact `data-` attribute `settingsForm/form.ts` emits per field (Task 4 Step 3); (b) the kernel stylesheet file that hosts `.cg-settings-panel` (Task 3 Step 7); (c) the demo's E2E harness location (Task 5 Step 3).
+- **Type consistency:** `flatten`/`project`/`createGroup`/`deleteGroup`/`moveNode`/`setHidden`/`setColumnHeaderName`/`setGroupStyle`/`canDrop`/`validate`, `Node`/`GroupNode`/`ColumnNode` are used identically across Tasks 2–4. Panel id `agColumnGroupsToolPanel` and shortcut `'columnGroups'` are consistent across T3 host.ts + velocityGrid.ts.
+- **Open confirmations for the implementer (cheap greps, not blockers):** (a) exact `data-` attribute `settingsForm/form.ts` emits per field (Task 4 Step 3); (b) the kernel stylesheet file that hosts `.vg-settings-panel` (Task 3 Step 7); (c) the demo's E2E harness location (Task 5 Step 3).
 
 ---
 
@@ -908,13 +908,13 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 **Files:**
 - Modify: `packages/kernel/src/core/stateSnapshot.ts` (add `GridState.columnGroupDefs?`, add source method, include in `buildSnapshot`, bump `STATE_SCHEMA_VERSION`)
 - Modify: `packages/kernel/src/core/stateUpdatedBus.ts` (map a columnDefs-changed event → `'columnGroupDefs'`)
-- Modify: `packages/kernel/src/cgrid.ts` (implement the source; emit the dirty event on runtime `updateGridOptions({columnDefs})`; restore in the `setState` path via the internal columnDefs rebuild, suppressing a re-save)
+- Modify: `packages/kernel/src/velocityGrid.ts` (implement the source; emit the dirty event on runtime `updateGridOptions({columnDefs})`; restore in the `setState` path via the internal columnDefs rebuild, suppressing a re-save)
 - Modify: `packages/kernel/src/interaction/columnGroups/model.ts` (export a `SerializedNode` type + `rehydrate(overlay, baseDefs): Node[]` helper — pure, testable)
 - Test: `packages/kernel/tests/columnGroupsPersist.test.ts`
 - Modify: `apps/cgrid-customizer-demo/e2e/columnGroups.spec.ts` (flip the `test.fixme` persistence test to a real passing test)
 
 **Interfaces:**
-- Consumes: `flatten`, `project`, `Node` (Task 2); `GridState`, `StateSnapshotSources`, `buildSnapshot`, `STATE_SCHEMA_VERSION` (stateSnapshot.ts); the `EVENT_TO_KEY` map (stateUpdatedBus.ts); `this.options.columnDefs`, the internal columnDefs rebuild path used by `updateGridOptions` (cgrid.ts).
+- Consumes: `flatten`, `project`, `Node` (Task 2); `GridState`, `StateSnapshotSources`, `buildSnapshot`, `STATE_SCHEMA_VERSION` (stateSnapshot.ts); the `EVENT_TO_KEY` map (stateUpdatedBus.ts); `this.options.columnDefs`, the internal columnDefs rebuild path used by `updateGridOptions` (velocityGrid.ts).
 - Produces:
   - `type SerializedNode = Omit<Node, 'def'>` (exported from model.ts).
   - `rehydrate(overlay: SerializedNode[], baseDefs: (CColDef|CColGroupDef)[]): Node[]` — reattaches each column node's `def` from `baseDefs` by `colId`; drops overlay column nodes whose `colId` is absent from `baseDefs`; appends any base leaf not present in the overlay as an ungrouped node (so columns added after the snapshot was saved still appear).
@@ -1032,9 +1032,9 @@ In `stateSnapshot.ts`:
 - [ ] **Step 6: Dirty-bus mapping + emit on runtime columnDefs change**
 
 - In `stateUpdatedBus.ts` `EVENT_TO_KEY`, add: `columnDefsChanged: 'columnGroupDefs',`.
-- In `cgrid.ts` `updateGridOptions`, when `partial.columnDefs` is present (the branch at ~line 5358 that sets `this.options.columnDefs`), after the tree rebuild emit the event so the bus schedules a save: `this.events.emit({ type: 'columnDefsChanged' } as any);` (match the existing event-emit idiom in cgrid.ts; add `columnDefsChanged` to the event union if the codebase requires typed events — grep how `columnMoved` is declared/emitted and mirror it).
+- In `velocityGrid.ts` `updateGridOptions`, when `partial.columnDefs` is present (the branch at ~line 5358 that sets `this.options.columnDefs`), after the tree rebuild emit the event so the bus schedules a save: `this.events.emit({ type: 'columnDefsChanged' } as any);` (match the existing event-emit idiom in velocityGrid.ts; add `columnDefsChanged` to the event union if the codebase requires typed events — grep how `columnMoved` is declared/emitted and mirror it).
 
-- [ ] **Step 7: Implement the source + restore in `cgrid.ts`**
+- [ ] **Step 7: Implement the source + restore in `velocityGrid.ts`**
 
 - Source: add to the `StateSnapshotSources` object cgrid builds — `getColumnGroupOverlay: () => flatten(this.options.columnDefs ?? []).map(({ def, ...rest }) => rest)` (import `flatten` from `./interaction/columnGroups/model`). Stripping `def` yields `SerializedNode`.
 - Restore: in the `setState` application path (grep for where `columnState`/`gridOptions` are consumed from the incoming snapshot), when `snapshot.columnGroupDefs` is present, compute `const defs = project(rehydrate(snapshot.columnGroupDefs, this.options.columnDefs ?? []))` and apply it through the SAME internal columnDefs rebuild `updateGridOptions({columnDefs})` uses — but WITHOUT re-triggering a persist save (restores run under the bus's `init` source; ensure the apply path doesn't emit a user `columnDefsChanged` that would immediately re-save, or emit it with the init source). Apply the group overlay BEFORE `columnState` restore so leaf width/hide/pinned from `columnState` settle on top of the restored structure. Verify ordering against how the existing restore sequences `gridOptions` (first) → `columnState`.
@@ -1045,14 +1045,14 @@ Create `packages/kernel/tests/columnGroupsPersist.test.ts`:
 
 ```ts
 import { describe, it, expect, beforeAll, vi } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import type { CColDef, CColGroupDef } from '../src/types';
 
 // (mirror the Worker/canvas/getRowId mock setup used by runtimeOptions.test.ts)
 
 function mount(columnDefs: (CColDef | CColGroupDef)[]) {
   const el = document.createElement('div'); document.body.appendChild(el);
-  return new CGrid(el, { columnDefs, rowData: [], getRowId: (r: any) => r.id });
+  return new VelocityGrid(el, { columnDefs, rowData: [], getRowId: (r: any) => r.id });
 }
 
 describe('column-group structure persists through getState/setState', () => {
@@ -1084,7 +1084,7 @@ describe('column-group structure persists through getState/setState', () => {
 });
 ```
 
-Run: `npx vitest run tests/columnGroupsPersist.test.ts --root packages/kernel` → PASS. Then the FULL suite `npm test --workspace=@cgrid/kernel` → all green (state snapshot version bump must not break existing state tests; if a snapshot-version assertion exists, update it).
+Run: `npx vitest run tests/columnGroupsPersist.test.ts --root packages/kernel` → PASS. Then the FULL suite `npm test --workspace=@wellsfargo-starui/velocity-grid` → all green (state snapshot version bump must not break existing state tests; if a snapshot-version assertion exists, update it).
 
 - [ ] **Step 9: Flip the Task 5 E2E `test.fixme` to a passing test**
 
@@ -1093,7 +1093,7 @@ In `apps/cgrid-customizer-demo/e2e/columnGroups.spec.ts`, change the `test.fixme
 - [ ] **Step 10: Commit**
 
 ```bash
-git add packages/kernel/src/core/stateSnapshot.ts packages/kernel/src/core/stateUpdatedBus.ts packages/kernel/src/cgrid.ts packages/kernel/src/interaction/columnGroups/model.ts packages/kernel/tests/columnGroupsModel.test.ts packages/kernel/tests/columnGroupsPersist.test.ts apps/cgrid-customizer-demo/e2e/columnGroups.spec.ts
+git add packages/kernel/src/core/stateSnapshot.ts packages/kernel/src/core/stateUpdatedBus.ts packages/kernel/src/velocityGrid.ts packages/kernel/src/interaction/columnGroups/model.ts packages/kernel/tests/columnGroupsModel.test.ts packages/kernel/tests/columnGroupsPersist.test.ts apps/cgrid-customizer-demo/e2e/columnGroups.spec.ts
 git commit -m "feat(kernel): persist column-group structure overlay across reload
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -1177,21 +1177,21 @@ describe('columnGroupShow round-trip + mutation', () => {
 
 - [ ] **Step 5: Panel — failing test**
 
-Add to `tests/columnGroupsToolPanel.test.ts`: after init with a seeded group containing a column, assert an inline `columnGroupShow` control exists on a grouped column row (`[data-cg-node="<colId>"] [data-cg-groupshow]`) and NOT on an ungrouped column row; changing it (set the `<select>` value + dispatch `change`, or click the segmented control) dirties the model (Apply enables) and, after Apply, the projected def carries the chosen `columnGroupShow`. Add a second assertion that selecting the group renders a children-visibility list in `[data-cg-style]` (`[data-cg-child-show="<colId>"]`) whose control reflects/writes the same value.
+Add to `tests/columnGroupsToolPanel.test.ts`: after init with a seeded group containing a column, assert an inline `columnGroupShow` control exists on a grouped column row (`[data-vg-node="<colId>"] [data-vg-groupshow]`) and NOT on an ungrouped column row; changing it (set the `<select>` value + dispatch `change`, or click the segmented control) dirties the model (Apply enables) and, after Apply, the projected def carries the chosen `columnGroupShow`. Add a second assertion that selecting the group renders a children-visibility list in `[data-vg-style]` (`[data-vg-child-show="<colId>"]`) whose control reflects/writes the same value.
 
 - [ ] **Step 6: Implement in `columnGroupsPanel.ts`**
 
-- **Inline control:** in the column-row builder, when the column's `parentId` is non-null (inside a group), append a compact 3-state control tagged `data-cg-groupshow` with options Always (`null`) / When open (`'open'`) / When collapsed (`'closed'`). Use a native `<select>` styled with existing tokens (reuse `.cg-settings-*` select styling) OR a small segmented button group consistent with the Style band toggles. On change → `this.mutate((ns) => setColumnGroupShow(ns, colId, value))`. Do NOT render it for `parentId === null` rows.
-- **Style-band mirror:** in `renderStyle()` (Task 4), after the header fields, add a "Children visibility" section listing the selected group's direct + nested descendant columns, each with the same 3-state control tagged `data-cg-child-show="<colId>"`, wired to the same `setColumnGroupShow`. Keep it tokens-only; label copy: section "Children visibility", options "Always" / "When open" / "When collapsed".
+- **Inline control:** in the column-row builder, when the column's `parentId` is non-null (inside a group), append a compact 3-state control tagged `data-vg-groupshow` with options Always (`null`) / When open (`'open'`) / When collapsed (`'closed'`). Use a native `<select>` styled with existing tokens (reuse `.vg-settings-*` select styling) OR a small segmented button group consistent with the Style band toggles. On change → `this.mutate((ns) => setColumnGroupShow(ns, colId, value))`. Do NOT render it for `parentId === null` rows.
+- **Style-band mirror:** in `renderStyle()` (Task 4), after the header fields, add a "Children visibility" section listing the selected group's direct + nested descendant columns, each with the same 3-state control tagged `data-vg-child-show="<colId>"`, wired to the same `setColumnGroupShow`. Keep it tokens-only; label copy: section "Children visibility", options "Always" / "When open" / "When collapsed".
 - Keyboard-accessible + focus ring (same floor as Task 3/4). Both controls funnel through one helper so they never diverge.
 
-- [ ] **Step 7: Run → pass** (panel suite). Also run full kernel suite `npm test --workspace=@cgrid/kernel`.
+- [ ] **Step 7: Run → pass** (panel suite). Also run full kernel suite `npm test --workspace=@wellsfargo-starui/velocity-grid`.
 
-- [ ] **Step 8: CSS (tokens only)** — add any `.cg-colgroups-groupshow` / children-list rules to `theming/tokens.css`, reusing existing tokens; no literal colors.
+- [ ] **Step 8: CSS (tokens only)** — add any `.vg-colgroups-groupshow` / children-list rules to `theming/tokens.css`, reusing existing tokens; no literal colors.
 
 - [ ] **Step 9: E2E journey**
 
-In `apps/cgrid-customizer-demo/e2e/columnGroups.spec.ts` add a test: open the tab, set a grouped column's inline control to "When collapsed", Apply, assert via `getColumnGroupDefs()` that the column's def has `columnGroupShow: 'closed'`; reload and assert it persisted. If the grid exposes a visible-columns/leaf API on `window.__cgapi`, additionally collapse the group (via `setColumnGroupState` or the header toggle) and assert the column's runtime visibility flips; otherwise the def+persist assertion suffices (runtime `resolveVisibleLeaves` semantics are already unit-covered in the kernel). Rebuild the kernel (`npm run build --workspace=@cgrid/kernel`) before running so the demo's `dist` sees the change. Run `npm run test:e2e --workspace=apps/cgrid-customizer-demo`.
+In `apps/cgrid-customizer-demo/e2e/columnGroups.spec.ts` add a test: open the tab, set a grouped column's inline control to "When collapsed", Apply, assert via `getColumnGroupDefs()` that the column's def has `columnGroupShow: 'closed'`; reload and assert it persisted. If the grid exposes a visible-columns/leaf API on `window.__cgapi`, additionally collapse the group (via `setColumnGroupState` or the header toggle) and assert the column's runtime visibility flips; otherwise the def+persist assertion suffices (runtime `resolveVisibleLeaves` semantics are already unit-covered in the kernel). Rebuild the kernel (`npm run build --workspace=@wellsfargo-starui/velocity-grid`) before running so the demo's `dist` sees the change. Run `npm run test:e2e --workspace=apps/cgrid-customizer-demo`.
 
 - [ ] **Step 10: Commit**
 
@@ -1210,16 +1210,16 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 **Provenance:** added 2026-07-04 after comparing to StarUI's column-groups module, whose `openGroupIds` persists the user's RUNTIME expand/collapse. Ours (through Task 7) only persists authored `openByDefault`, so a group the user collapses at runtime reopens on reload. Close the gap: persist the live column-group open state.
 
-**Seams (verified):** the kernel emits `{ type: 'columnGroupOpened', groupId, open }` on toggle (`cgrid.ts:6116`); `api.getColumnGroupState(): {groupId,open}[]` and `api.setColumnGroupState(state)` already exist. Persistence pattern mirrors Task 6.
+**Seams (verified):** the kernel emits `{ type: 'columnGroupOpened', groupId, open }` on toggle (`velocityGrid.ts:6116`); `api.getColumnGroupState(): {groupId,open}[]` and `api.setColumnGroupState(state)` already exist. Persistence pattern mirrors Task 6.
 
-**Files:** `core/stateSnapshot.ts`, `core/stateUpdatedBus.ts`, `cgrid.ts`, `tests/columnGroupsPersist.test.ts`, `apps/cgrid-customizer-demo/e2e/columnGroups.spec.ts`.
+**Files:** `core/stateSnapshot.ts`, `core/stateUpdatedBus.ts`, `velocityGrid.ts`, `tests/columnGroupsPersist.test.ts`, `apps/cgrid-customizer-demo/e2e/columnGroups.spec.ts`.
 
 - [ ] **Step 1: Round-trip test (fail first)** — in `tests/columnGroupsPersist.test.ts`: mount a grid with a group, `setColumnGroupState([{groupId, open:false}])`, `getState()` → assert `state.columnGroupOpen` contains `{groupId, open:false}`; mount a SECOND grid with the same base defs + the same group overlay, `setState(state)` → assert `getColumnGroupState()` reflects `open:false`. Run `npx vitest run tests/columnGroupsPersist.test.ts --root packages/kernel`.
 - [ ] **Step 2: GridState field** — add `columnGroupOpen?: { groupId: string; open: boolean }[]` to `GridState` (stateSnapshot.ts), add `getColumnGroupOpenState?(): {groupId:string;open:boolean}[]` to `StateSnapshotSources`, include in `buildSnapshot` only when non-empty AND at least one entry differs from the group's `openByDefault` is NOT required — persist the full live state array when any group exists (simplest, deterministic). Bump `STATE_SCHEMA_VERSION`, add identity migrator for the previous version.
 - [ ] **Step 3: Dirty wiring** — `EVENT_TO_KEY['columnGroupOpened'] = 'columnGroupOpen'` in stateUpdatedBus.ts. (`columnGroupOpened` already fires on toggle — confirm the bus subscribes to it.)
-- [ ] **Step 4: Source + restore in cgrid.ts** — source: `getColumnGroupOpenState: () => this.columnGroupState.getState()` (or the api's `getColumnGroupState`). Restore in `setState`: after the `columnGroupDefs` restore (groups must exist first), call `this.setColumnGroupState(snapshot.columnGroupOpen)` under the same restore-suppression the other slices use. Order: columnGroupDefs → columnGroupOpen → columnState.
-- [ ] **Step 5: Run** — persist suite + full kernel suite `npm test --workspace=@cgrid/kernel` green.
-- [ ] **Step 6: E2E** — in `columnGroups.spec.ts`: collapse a group at runtime (via `window.__cgapi.setColumnGroupState([{groupId:'trade',open:false}])` or the header toggle), reload, assert `getColumnGroupState()` still has `trade` closed. Rebuild kernel (`npm run build --workspace=@cgrid/kernel`) before E2E.
+- [ ] **Step 4: Source + restore in velocityGrid.ts** — source: `getColumnGroupOpenState: () => this.columnGroupState.getState()` (or the api's `getColumnGroupState`). Restore in `setState`: after the `columnGroupDefs` restore (groups must exist first), call `this.setColumnGroupState(snapshot.columnGroupOpen)` under the same restore-suppression the other slices use. Order: columnGroupDefs → columnGroupOpen → columnState.
+- [ ] **Step 5: Run** — persist suite + full kernel suite `npm test --workspace=@wellsfargo-starui/velocity-grid` green.
+- [ ] **Step 6: E2E** — in `columnGroups.spec.ts`: collapse a group at runtime (via `window.__cgapi.setColumnGroupState([{groupId:'trade',open:false}])` or the header toggle), reload, assert `getColumnGroupState()` still has `trade` closed. Rebuild kernel (`npm run build --workspace=@wellsfargo-starui/velocity-grid`) before E2E.
 - [ ] **Step 7: Commit** — `feat(kernel): persist runtime column-group open/collapse state across reload` + Co-Authored-By trailer.
 
 ## Task 9: Enrich group-header Style band to StarUI parity
@@ -1230,7 +1230,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 **Files:** `packages/kernel/src/interaction/toolPanels/columnGroupsPanel.ts` (extend `renderStyle()`'s Header band), `tests/columnGroupsToolPanel.test.ts`, optionally `theming/tokens.css`.
 
-- [ ] **Step 1: Panel tests (fail first)** — in `tests/columnGroupsToolPanel.test.ts`: select a group, assert new Style fields exist (`[data-cg-field="fontStyle"]`, `"textDecoration"`, `"fontSize"`, `"halign"`, and border fields `"borderWidth"`, `"borderColor"`, `"borderStyle"`). Toggle Italic → assert projected group `headerStyle.fontStyle === 'italic'`; set alignment "center" → `headerStyle.halign === 'center'`; set font size 14 → `headerStyle.fontSize === 14`; set border width 2 + style dashed + a color → `headerStyle.border.all` = `{ width: 2, style: 'dashed', color: <c> }`. Run `npx vitest run tests/columnGroupsToolPanel.test.ts --root packages/kernel`.
+- [ ] **Step 1: Panel tests (fail first)** — in `tests/columnGroupsToolPanel.test.ts`: select a group, assert new Style fields exist (`[data-vg-field="fontStyle"]`, `"textDecoration"`, `"fontSize"`, `"halign"`, and border fields `"borderWidth"`, `"borderColor"`, `"borderStyle"`). Toggle Italic → assert projected group `headerStyle.fontStyle === 'italic'`; set alignment "center" → `headerStyle.halign === 'center'`; set font size 14 → `headerStyle.fontSize === 14`; set border width 2 + style dashed + a color → `headerStyle.border.all` = `{ width: 2, style: 'dashed', color: <c> }`. Run `npx vitest run tests/columnGroupsToolPanel.test.ts --root packages/kernel`.
 - [ ] **Step 2: Implement in `renderStyle()`** — extend the Header `SettingsBand` with fields (reuse the existing `field(...)` helper + settingsForm control types):
   - `field('fontStyle', 'Italic', 'switch', () => g.headerStyle?.fontStyle === 'italic', v => patch({ headerStyle: { ...g.headerStyle, fontStyle: v ? 'italic' : undefined } }))`
   - `field('textDecoration', 'Underline', 'switch', () => g.headerStyle?.textDecoration === 'underline', v => patch({ headerStyle: { ...g.headerStyle, textDecoration: v ? 'underline' : undefined } }))`
@@ -1255,7 +1255,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Caret paint: `renderer/cellRenderers/registry.ts:591-599` draws the caret LEADING (shifts `textX` right) when `pivotGroupExpand !== undefined`, using `chevron-down` (open) / `chevron-right` (closed).
 - Condition: `byRows.ts:480-497` sets `pivotGroupExpand` only when `isPivotResultGroupId(groupDef.groupId)` AND the group has a branch child or a `columnGroupShow:'closed'` leaf.
 - Toggle: `interaction/features/headerClick.ts:64` toggles via `canToggleColumnGroup` (returns `true` for all non-pivot groups) → `toggleColumnGroup`. Already works for regular groups.
-- `getColumnGroupOpen(groupId) => columnGroupState.isOpen(groupId)` (`cgrid.ts:1151`) works for ANY group.
+- `getColumnGroupOpen(groupId) => columnGroupState.isOpen(groupId)` (`velocityGrid.ts:1151`) works for ANY group.
 - Icons (`renderer/icons.ts`): `chevron-right` exists (`M9 18l6-6-6-6`); **`chevron-left` does NOT** — must be added.
 
 **Design:** paint the caret for a REGULAR column group when toggling has a visible effect — i.e. the group has ≥1 direct child leaf with `columnGroupShow` `'open'` or `'closed'`, OR a sub-group child (matches ag-grid: no caret when all children are always-visible). Use HORIZONTAL carets per the user + ag-grid: **open → `chevron-left`** (click to collapse), **closed → `chevron-right`** (click to expand). Leave pivot-group behavior unchanged.
@@ -1270,7 +1270,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 - [ ] **Step 4: Horizontal caret icons in `registry.ts`** — change the group-expand caret mapping (registry.ts:595) so COLUMN-group carets are horizontal: `open → 'chevron-left'`, `closed → 'chevron-right'`. Pivot groups: keep their existing look OR unify to horizontal — choose unify (horizontal for all column-group carets) for consistency, unless a pivot test asserts the down/right icons (then keep pivot as chevron-down/right and branch on `isPivotResultGroupId`). Verify no existing pivot snapshot/test breaks; if one does, branch the icon choice.
 
-- [ ] **Step 5: Run** — the new painter test + full kernel suite `npm test --workspace=@cgrid/kernel` (stay green; currently 2702). Fix any pivot-caret test that asserts the old icon by branching pivot vs regular.
+- [ ] **Step 5: Run** — the new painter test + full kernel suite `npm test --workspace=@wellsfargo-starui/velocity-grid` (stay green; currently 2702). Fix any pivot-caret test that asserts the old icon by branching pivot vs regular.
 
 - [ ] **Step 6: Demo seed + E2E** — in `apps/cgrid-customizer-demo/src/main.ts`, give one column inside the seeded `Trade`/`Valuation` group a `columnGroupShow: 'open'` (so collapsing the group hides it and the caret has an effect). In `columnGroups.spec.ts`, add a test: open the group (default), assert (via a canvas-independent signal — e.g. `window.__cgapi.getColumnGroupState()` shows the group open and `getColumnGroupDefs()`/visible-columns reflect the 'open' child visible), then `window.__cgapi.toggleColumnGroup('valuation')` (or click), assert the group is now closed and the `columnGroupShow:'open'` column is no longer in the visible set. (The caret pixel itself isn't DOM-assertable on canvas; assert the behavior + that `getColumnGroupOpen` flips. A screenshot is captured for visual confirmation.) **Rebuild kernel first**. Run `npm run test:e2e --workspace=apps/cgrid-customizer-demo`.
 
@@ -1293,8 +1293,8 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 - [ ] **Step 1: Failing unit test** — `packages/kernel/tests/columnGroupHeaderCaret.test.ts` (or a sibling): (a) `ellipsizeToWidth` trims + appends `…` and the result measures `<= maxW`; returns the input unchanged when it already fits. (b) Header-paint wiring: with a spy/measure, a NARROW group-header cell (bounds.w small) with `pivotGroupExpand` set draws a caption whose measured width `<= maxCapW` (i.e. it was reserved/ellipsized) and the caret's `iconCx` is `<= bounds.x + bounds.w - HEADER_PADDING - PIVOT_CHEVRON_SIZE/2` (inside the cell, not over the caption). A WIDE cell draws the full caption + caret after it. Run `npx vitest run tests/columnGroupHeaderCaret.test.ts --root packages/kernel`.
 - [ ] **Step 2: Implement** the reservation + `ellipsizeToWidth` per above.
-- [ ] **Step 3: Run** the caret test + FULL kernel suite `npm test --workspace=@cgrid/kernel` (stay green; currently 2710). Confirm NO change to leaf/sort-header rendering (the reservation is gated on `pivotGroupExpand !== undefined`).
-- [ ] **Step 4: Visual + E2E** — rebuild kernel (`npm run build --workspace=@cgrid/kernel`); in the demo, narrow the `Valuation` group (or rely on a long caption) and confirm via screenshot the caret sits after an ellipsized caption without overlap; keep the existing E2E green (`npm run test:e2e --workspace=apps/cgrid-customizer-demo`).
+- [ ] **Step 3: Run** the caret test + FULL kernel suite `npm test --workspace=@wellsfargo-starui/velocity-grid` (stay green; currently 2710). Confirm NO change to leaf/sort-header rendering (the reservation is gated on `pivotGroupExpand !== undefined`).
+- [ ] **Step 4: Visual + E2E** — rebuild kernel (`npm run build --workspace=@wellsfargo-starui/velocity-grid`); in the demo, narrow the `Valuation` group (or rely on a long caption) and confirm via screenshot the caret sits after an ellipsized caption without overlap; keep the existing E2E green (`npm run test:e2e --workspace=apps/cgrid-customizer-demo`).
 - [ ] **Step 5: Commit** — `fix(kernel): reserve caret space in column-group header caption (no overlap)` + Co-Authored-By trailer.
 
 **Task 11 self-review:** gated strictly on group-header carets (no leaf-header regression); caption ellipsizes to reserve the caret footprint; caret placed immediately after the drawn caption, always inside the cell; pure `ellipsizeToWidth` unit-tested; visual + E2E confirmed.

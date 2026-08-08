@@ -13,8 +13,8 @@
  * synchronous shape is the test surface.
  *
  * The fake api here is a minimal `CountPanelApi` plus a typed
- * event-bus mock. It does NOT use the real `CGridApi` because (a)
- * standing up a full CGrid in a unit test is wasteful, and (b) the
+ * event-bus mock. It does NOT use the real `VelocityGridApi` because (a)
+ * standing up a full VelocityGrid in a unit test is wasteful, and (b) the
  * panels intentionally read only a four-method subset — the test
  * proves that subset is the contract.
  */
@@ -29,12 +29,12 @@ import {
 import { StatusBarHost } from '../src/interaction/statusBar/host';
 import { StatusPanelRegistry, BUILT_IN_STATUS_PANEL_KEYS } from '../src/interaction/statusBar/registry';
 import type { StatusBarPosition } from '../src/interaction/statusBar/types';
-import type { CGridEvent } from '../src/types';
+import type { VelocityGridEvent } from '../src/types';
 
-type EventType = CGridEvent['type'];
-type AnyHandler = (event: CGridEvent) => void;
+type EventType = VelocityGridEvent['type'];
+type AnyHandler = (event: VelocityGridEvent) => void;
 
-/** Minimal CGridApi mock that captures listener registrations so the
+/** Minimal VelocityGridApi mock that captures listener registrations so the
  *  test can fire events synchronously + assert the unsubscribe path
  *  releases them. Implements only the four methods the count panels
  *  touch — exactly the `CountPanelApi` slice. */
@@ -50,7 +50,7 @@ class FakeApi {
 
   addEventListener<K extends EventType>(
     type: K,
-    handler: (event: Extract<CGridEvent, { type: K }>) => void,
+    handler: (event: Extract<VelocityGridEvent, { type: K }>) => void,
   ): () => void {
     let bucket = this.listeners.get(type);
     if (!bucket) {
@@ -63,7 +63,7 @@ class FakeApi {
     };
   }
 
-  emit(event: CGridEvent): void {
+  emit(event: VelocityGridEvent): void {
     const bucket = this.listeners.get(event.type);
     if (!bucket) return;
     for (const h of Array.from(bucket)) h(event);
@@ -75,11 +75,11 @@ class FakeApi {
 }
 
 function getLabels(root: HTMLElement): string[] {
-  return Array.from(root.querySelectorAll('.cg-status-panel-count-label'))
+  return Array.from(root.querySelectorAll('.vg-status-panel-count-label'))
     .map((el) => el.textContent ?? '');
 }
 function getValues(root: HTMLElement): string[] {
-  return Array.from(root.querySelectorAll('.cg-status-panel-count-value'))
+  return Array.from(root.querySelectorAll('.vg-status-panel-count-value'))
     .map((el) => el.textContent ?? '');
 }
 
@@ -95,7 +95,7 @@ describe('built-in count status panels', () => {
     const panel = new AgTotalRowCountPanel();
     panel.init({ api });
     const gui = panel.getGui();
-    expect(gui.className).toBe('cg-status-panel-count');
+    expect(gui.className).toBe('vg-status-panel-count');
     expect(getLabels(gui)).toEqual(['Total Rows:']);
     expect(getValues(gui)).toEqual(['3,000']);
     panel.destroy();
@@ -171,10 +171,10 @@ describe('built-in count status panels', () => {
     const panel = new AgTotalAndFilteredRowCountPanel();
     panel.init({ api });
     const gui = panel.getGui();
-    expect(gui.classList.contains('cg-status-panel-count')).toBe(true);
-    expect(gui.classList.contains('cg-status-panel-count--combined')).toBe(true);
-    // Two .cg-status-panel-count-pair wrappers.
-    const pairs = gui.querySelectorAll('.cg-status-panel-count-pair');
+    expect(gui.classList.contains('vg-status-panel-count')).toBe(true);
+    expect(gui.classList.contains('vg-status-panel-count--combined')).toBe(true);
+    // Two .vg-status-panel-count-pair wrappers.
+    const pairs = gui.querySelectorAll('.vg-status-panel-count-pair');
     expect(pairs.length).toBe(2);
     expect(getLabels(gui)).toEqual(['Total Rows:', 'Rows:']);
     expect(getValues(gui)).toEqual(['3,000', '1,234']);
@@ -247,7 +247,7 @@ describe('built-in count status panels', () => {
     // Confirms the registry → host wiring: pass the four canonical
     // keys via `statusPanels`, expect the host to resolve each one to
     // its real ctor (not the stub), and expect each rendered root to
-    // carry `.cg-status-panel-count`. This is the contract the demo +
+    // carry `.vg-status-panel-count`. This is the contract the demo +
     // visual cell 15 rely on.
     const registry = new StatusPanelRegistry();
     registry.seedBuiltIns();
@@ -272,12 +272,12 @@ describe('built-in count status panels', () => {
         { key: 'agTotalAndFilteredRowCountComponent', statusPanel: 'agTotalAndFilteredRowCountComponent' },
       ],
     });
-    const rightZone = root.querySelector('.cg-status-bar-zone--right') as HTMLElement;
+    const rightZone = root.querySelector('.vg-status-bar-zone--right') as HTMLElement;
     expect(rightZone.children.length).toBe(4);
-    const panelRoots = rightZone.querySelectorAll('.cg-status-panel-count');
+    const panelRoots = rightZone.querySelectorAll('.vg-status-panel-count');
     expect(panelRoots.length).toBe(4);
     // Combined panel carries the modifier.
-    const combinedRoots = rightZone.querySelectorAll('.cg-status-panel-count--combined');
+    const combinedRoots = rightZone.querySelectorAll('.vg-status-panel-count--combined');
     expect(combinedRoots.length).toBe(1);
     host.destroy();
     root.parentElement?.removeChild(root);

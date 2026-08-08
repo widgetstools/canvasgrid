@@ -59,7 +59,7 @@ async function gridReady(page: Page, qs: string): Promise<void> {
 async function pivotResultColIds(page: Page): Promise<string[]> {
   return page.evaluate(() => {
     const grid = (window as unknown as {
-      __cgrid: { columnOrder: Array<{ colId: string }> };
+      __velocity-grid: { columnOrder: Array<{ colId: string }> };
     }).__cgrid;
     return (grid.columnOrder ?? [])
       .map((c) => c.colId)
@@ -82,7 +82,7 @@ test.describe('Cycle 18 / Task 8c — enableStrictPivotColumnOrder', () => {
     await gridReady(page, '?pivotDemo=on');
 
     await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       api.setPivotColumns(['region']);
       api.addValueColumn('notionalAmount', 'sum');
       api.setPivotMode(true);
@@ -97,7 +97,7 @@ test.describe('Cycle 18 / Task 8c — enableStrictPivotColumnOrder', () => {
 
     // Inject a row with a brand-new region that sorts FIRST alphabetically.
     await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       api.applyTransaction({
         add: [{
           positionId: 'NEW-0000', cusip: 'CUSIP-NEW',
@@ -125,7 +125,7 @@ test.describe('Cycle 18 / Task 8c — enableStrictPivotColumnOrder', () => {
     await gridReady(page, '?pivotDemo=on');
 
     await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       api.setGridOption('enableStrictPivotColumnOrder', true);
       api.setPivotColumns(['region']);
       api.addValueColumn('notionalAmount', 'sum');
@@ -134,7 +134,7 @@ test.describe('Cycle 18 / Task 8c — enableStrictPivotColumnOrder', () => {
     await waitForFrames(page, 12);
 
     await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       api.applyTransaction({
         add: [{
           positionId: 'NEW-0001', cusip: 'CUSIP-AAA',

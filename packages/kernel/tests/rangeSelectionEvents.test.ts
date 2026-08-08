@@ -14,11 +14,11 @@
 // listen for this one to avoid the per-tick drag firehose.
 
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { RangeSelection } from '../src/interaction/features/rangeSelection';
 import { FillHandle } from '../src/interaction/features/fillHandle';
 import { SelectionModel } from '../src/interaction/selectionModel';
-import type { CGridEventCtx } from '../src/interaction/feature';
+import type { VelocityGridEventCtx } from '../src/interaction/feature';
 import type { Hit } from '../src/interaction/hitTester';
 import type { SelectionRange } from '../src/types';
 
@@ -49,17 +49,17 @@ beforeAll(() => {
 });
 
 interface Row { id: string; a: number; b: number }
-function build(): { grid: CGrid<Row> } {
+function build(): { grid: VelocityGrid<Row> } {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
   const rows: Row[] = [
     { id: '1', a: 1, b: 2 },
     { id: '2', a: 3, b: 4 },
     { id: '3', a: 5, b: 6 },
   ];
-  const grid = new CGrid<Row>(container, {
+  const grid = new VelocityGrid<Row>(container, {
     columnDefs: [{ field: 'id' }, { field: 'a' }, { field: 'b' }],
     getRowId: (r) => r.id,
     rowData: rows,
@@ -69,7 +69,7 @@ function build(): { grid: CGrid<Row> } {
   return { grid };
 }
 
-// --- API-driven events (CGrid integration) ----------------------------------
+// --- API-driven events (VelocityGrid integration) ----------------------------------
 
 describe('rangeSelectionChanged + cellSelectionChanged — API mutations (Cycle 9 / Task 7)', () => {
   it('addCellRange fires rangeSelectionChanged with started + finished, plus cellSelectionChanged', () => {
@@ -162,12 +162,12 @@ describe('rangeSelectionChanged + cellSelectionChanged — API mutations (Cycle 
   });
 });
 
-// --- Feature-driven events via the CGridLike emit hook ----------------------
+// --- Feature-driven events via the VelocityGridLike emit hook ----------------------
 //
 // RangeSelection + FillHandle call into `ctx.grid.emitRangeSelectionChanged`
 // at the start, mid, and end of a gesture. The mocks below capture every
 // call so we can assert exact start/mid/end semantics without spinning the
-// full CGrid harness.
+// full VelocityGrid harness.
 
 interface EmitCall { started: boolean; finished: boolean }
 
@@ -221,11 +221,11 @@ function ctx(
   grid: MockGrid,
   raw: MouseEvent = new MouseEvent('mousedown'),
   point: { x: number; y: number } = { x: 0, y: 0 },
-): CGridEventCtx {
+): VelocityGridEventCtx {
   return {
     hit,
     point,
-    grid: grid as unknown as CGridEventCtx['grid'],
+    grid: grid as unknown as VelocityGridEventCtx['grid'],
     raw,
   };
 }
@@ -339,7 +339,7 @@ describe('FillHandle — emits start/mid/end (Cycle 9 / Task 7)', () => {
 
 // --- cellSelectionChanged dedupe semantics ---------------------------------
 //
-// Drives the CGrid integration directly: simulate a programmatic mutation
+// Drives the VelocityGrid integration directly: simulate a programmatic mutation
 // path that ends with no net change in the range set and assert the
 // cellSelectionChanged event is suppressed even though rangeSelectionChanged
 // still fires with finished:true.
@@ -352,7 +352,7 @@ describe('cellSelectionChanged — only on finished + actual change (Cycle 9 / T
     grid.on('rangeSelectionChanged', (e) => rangeEvents.push(e));
     grid.on('cellSelectionChanged', (e) => cellEvents.push(e));
 
-    // Drive the integration directly via the CGridLike emit hook on the
+    // Drive the integration directly via the VelocityGridLike emit hook on the
     // grid surface so we don't need to plumb pointer events through the
     // canvas. emitRangeSelectionChanged is plumbed through to features
     // via featureChain; calling it directly on the grid here exercises

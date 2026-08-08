@@ -6,7 +6,7 @@ import {
 } from '../src/core/editController';
 import { DisposableRegistry } from '../src/core/disposable';
 import { TypedEventEmitter } from '../src/core/eventEmitter';
-import type { CGridEvent } from '../src/types';
+import type { VelocityGridEvent } from '../src/types';
 import type { ResolvedColDef } from '../src/core/propertyChain';
 
 /**
@@ -72,7 +72,7 @@ interface Harness {
   controller: EditController<Record<string, unknown>>;
   deps: EditControllerDeps<Record<string, unknown>>;
   disposables: DisposableRegistry;
-  events: TypedEventEmitter<CGridEvent>;
+  events: TypedEventEmitter<VelocityGridEvent>;
   root: HTMLDivElement;
   editorContainer: HTMLDivElement;
   columns: ResolvedColDef<Record<string, unknown>>[];
@@ -82,7 +82,7 @@ interface Harness {
   getRowByIndex: ReturnType<typeof vi.fn>;
   focusCanvas: ReturnType<typeof vi.fn>;
   options: EditOptions;
-  seen: CGridEvent[];
+  seen: VelocityGridEvent[];
 }
 
 function makeHarness(opts: {
@@ -109,22 +109,22 @@ function makeHarness(opts: {
   const rowCount = opts.rowCount ?? 2;
 
   const disposables = new DisposableRegistry();
-  const events = new TypedEventEmitter<CGridEvent>();
-  const seen: CGridEvent[] = [];
+  const events = new TypedEventEmitter<VelocityGridEvent>();
+  const seen: VelocityGridEvent[] = [];
   // Cast to `any` to sidestep the discriminated-union `handler(ev: T & { type })`
   // narrowing — the test collects every event type uniformly for assertions.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  events.on('cellEditingStarted' as any, ((e: CGridEvent) => { seen.push(e); }) as any);
+  events.on('cellEditingStarted' as any, ((e: VelocityGridEvent) => { seen.push(e); }) as any);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  events.on('cellEditingStopped' as any, ((e: CGridEvent) => { seen.push(e); }) as any);
+  events.on('cellEditingStopped' as any, ((e: VelocityGridEvent) => { seen.push(e); }) as any);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  events.on('cellValueChanged' as any, ((e: CGridEvent) => { seen.push(e); }) as any);
+  events.on('cellValueChanged' as any, ((e: VelocityGridEvent) => { seen.push(e); }) as any);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  events.on('rowEditingStarted' as any, ((e: CGridEvent) => { seen.push(e); }) as any);
+  events.on('rowEditingStarted' as any, ((e: VelocityGridEvent) => { seen.push(e); }) as any);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  events.on('rowEditingStopped' as any, ((e: CGridEvent) => { seen.push(e); }) as any);
+  events.on('rowEditingStopped' as any, ((e: VelocityGridEvent) => { seen.push(e); }) as any);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  events.on('rowValueChanged' as any, ((e: CGridEvent) => { seen.push(e); }) as any);
+  events.on('rowValueChanged' as any, ((e: VelocityGridEvent) => { seen.push(e); }) as any);
 
   const focus: Harness['focus'] = { rowIndex: null, colId: null };
   const focusCanvas = vi.fn();

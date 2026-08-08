@@ -4,7 +4,7 @@
 // button is down, so handleMouseDrag fires for every drag tick even when the
 // pointer leaves the canvas.
 
-import { Feature, type CGridEventCtx } from '../feature';
+import { Feature, type VelocityGridEventCtx } from '../feature';
 
 export class ColumnResizing extends Feature {
   // `edge` records whether the drag started on the column's left or right
@@ -14,7 +14,7 @@ export class ColumnResizing extends Feature {
   // the canvas right edge), and dragging RIGHT shrinks it.
   private resizing: { colId: string; lastX: number; edge: 'left' | 'right' } | null = null;
 
-  override handleMouseDown(ctx: CGridEventCtx): void {
+  override handleMouseDown(ctx: VelocityGridEventCtx): void {
     if (ctx.hit.kind === 'headerResizer') {
       this.resizing = { colId: ctx.hit.colId, lastX: ctx.point.x, edge: ctx.hit.edge };
       // Consume — do not forward; CellSelection must not steal focus.
@@ -23,7 +23,7 @@ export class ColumnResizing extends Feature {
     super.handleMouseDown(ctx);
   }
 
-  override handleMouseDrag(ctx: CGridEventCtx): void {
+  override handleMouseDrag(ctx: VelocityGridEventCtx): void {
     if (this.resizing) {
       const rawDx = ctx.point.x - this.resizing.lastX;
       const dx = this.resizing.edge === 'left' ? -rawDx : rawDx;
@@ -36,7 +36,7 @@ export class ColumnResizing extends Feature {
     super.handleMouseDrag(ctx);
   }
 
-  override handleMouseUp(ctx: CGridEventCtx): void {
+  override handleMouseUp(ctx: VelocityGridEventCtx): void {
     if (this.resizing) {
       const finishedColId = this.resizing.colId;
       this.resizing = null;
@@ -49,7 +49,7 @@ export class ColumnResizing extends Feature {
     super.handleMouseUp(ctx);
   }
 
-  override handleDoubleClick(ctx: CGridEventCtx): void {
+  override handleDoubleClick(ctx: VelocityGridEventCtx): void {
     if (ctx.hit.kind === 'headerResizer') {
       void ctx.grid.autoSizeColumn(ctx.hit.colId);
       return;
@@ -57,7 +57,7 @@ export class ColumnResizing extends Feature {
     super.handleDoubleClick(ctx);
   }
 
-  override handleMouseMove(ctx: CGridEventCtx): void {
+  override handleMouseMove(ctx: VelocityGridEventCtx): void {
     this.cursor = ctx.hit.kind === 'headerResizer' ? 'col-resize' : null;
     super.handleMouseMove(ctx);
   }

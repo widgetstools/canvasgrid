@@ -1,11 +1,11 @@
 /**
  * `<cgc-expression-editor>` — foundation ExpressionEditor (Phase 3 lite).
  *
- * Textarea + live `@cgrid/expression` validate. CodeMirror can replace the
+ * Textarea + live `@wellsfargo-starui/velocity-grid-expression` validate. CodeMirror can replace the
  * textarea later behind the same value / schema / cgc-change API.
  */
 import { LitElement, html, css, nothing } from 'lit';
-import { validate, type Schema, type ValidationError } from '@cgrid/expression';
+import { validate, type Schema, type ValidationError } from '@wellsfargo-starui/velocity-grid-expression';
 import { chromeBase } from './styles';
 
 function emitChange(el: HTMLElement, value: string): void {
@@ -24,27 +24,27 @@ export class CgcExpressionEditor extends LitElement {
       textarea {
         width: 100%; box-sizing: border-box; min-height: 72px; resize: vertical;
         font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-        background: var(--cg-input-bg, #1a1f2b);
-        color: var(--cg-fg-color, #e5e9f0);
-        border: 1px solid var(--cg-border-color, rgba(255,255,255,0.12));
+        background: var(--vg-input-bg, #1a1f2b);
+        color: var(--vg-fg-color, #e5e9f0);
+        border: 1px solid var(--vg-border-color, rgba(255,255,255,0.12));
         border-radius: 2px;
         padding: 8px 10px;
       }
       textarea:focus {
-        outline: 2px solid color-mix(in srgb, var(--cg-accent-color, #5b8def) 55%, transparent);
+        outline: 2px solid color-mix(in srgb, var(--vg-accent-color, #5b8def) 55%, transparent);
         outline-offset: 1px;
       }
       textarea.is-invalid {
-        border-color: var(--cg-danger-color, #f87171);
+        border-color: var(--vg-danger-color, #f87171);
       }
       .errors {
         margin: 6px 0 0; padding: 0; list-style: none;
-        font-size: 11px; color: var(--cg-danger-color, #f87171);
+        font-size: 11px; color: var(--vg-danger-color, #f87171);
       }
       .errors li { margin: 2px 0; }
       .ok {
         margin-top: 6px; font-size: 11px;
-        color: var(--cg-success-color, #4ade80);
+        color: var(--vg-success-color, #4ade80);
       }
     `,
   ];

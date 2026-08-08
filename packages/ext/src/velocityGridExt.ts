@@ -1,14 +1,14 @@
-import { CGrid } from '@cgrid/kernel';
-import type { CGridOptions, GridState } from '@cgrid/kernel';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
+import type { VelocityGridOptions, GridState } from '@wellsfargo-starui/velocity-grid';
 import { ExtensionRegistry, type ExtensionSpec } from './extension/registry';
 import { ShellLayout } from './shell/shell';
 import { createExtContext } from './extension/context';
 import { ProfilesController } from './profiles/controller';
 import { LocalStorageProfileStore } from './profiles/localStorageStore';
-import { isSettingsModule, isToolbarItem, type CgExtContext, type ProfileStore } from './extension/types';
+import { isSettingsModule, isToolbarItem, type VelocityGridExtContext, type ProfileStore } from './extension/types';
 import { buildDefaultBundle } from './defaultBundle';
 
-export interface CGridExtOptions<TRow = any> extends CGridOptions<TRow> {
+export interface VelocityGridExtOptions<TRow = any> extends VelocityGridOptions<TRow> {
   ext?: {
     extensions?: ExtensionSpec[];
     profiles?: { store?: ProfileStore; initialId?: string };
@@ -16,28 +16,28 @@ export interface CGridExtOptions<TRow = any> extends CGridOptions<TRow> {
   };
 }
 
-/** Batteries-included wrapper: owns a CGrid + an ExtensionRegistry, wires
+/** Batteries-included wrapper: owns a VelocityGrid + an ExtensionRegistry, wires
  *  every extension to the kernel through a shared context, and lays the
  *  grid + tooling out via ShellLayout. */
-export class CGridExt<TRow = any> {
-  private _grid: CGrid<TRow>;
+export class VelocityGridExt<TRow = any> {
+  private _grid: VelocityGrid<TRow>;
   private shell: ShellLayout;
   private registry = new ExtensionRegistry();
   private profiles: ProfilesController;
-  private ctx: CgExtContext;
+  private ctx: VelocityGridExtContext;
 
-  constructor(container: HTMLElement, options: CGridExtOptions<TRow> = {} as any) {
+  constructor(container: HTMLElement, options: VelocityGridExtOptions<TRow> = {} as any) {
     const { ext, ...gridOptions } = options;
     this.shell = new ShellLayout(container);
     // Mirror a string theme class onto the shell root so the kernel's
-    // `--cg-*` theme tokens (defined on the grid's own `.cg-theme-*` element)
-    // cascade to CGridExt's chrome (title bar, settings drawer) — otherwise
+    // `--vg-*` theme tokens (defined on the grid's own `.vg-theme-*` element)
+    // cascade to VelocityGridExt's chrome (title bar, settings drawer) — otherwise
     // the chrome, a sibling of the grid, would fall back to its neutral dark
     // defaults instead of matching the active theme.
     if (typeof gridOptions.theme === 'string') {
       container.classList.add(gridOptions.theme);
     }
-    this._grid = new CGrid<TRow>(this.shell.gridMount, gridOptions as CGridOptions<TRow>);
+    this._grid = new VelocityGrid<TRow>(this.shell.gridMount, gridOptions as VelocityGridOptions<TRow>);
 
     const store = ext?.profiles?.store ?? new LocalStorageProfileStore();
     this.profiles = new ProfilesController(this._grid, store, {
@@ -72,15 +72,15 @@ export class CGridExt<TRow = any> {
       this.shell.openSettings((e as { id?: string }).id));
   }
 
-  get grid(): CGrid<TRow> { return this._grid; }
+  get grid(): VelocityGrid<TRow> { return this._grid; }
 
   setRowData(rows: TRow[]): void { this._grid.setRowData(rows); }
   getState(): GridState { return this._grid.getState(); }
   // Kernel `setState` is typed to take a full `GridState`, but at runtime
   // every field is optional — each step is a no-op when the snapshot omits
-  // the corresponding slice (see cgrid.ts `setState` docblock, and the same
+  // the corresponding slice (see velocityGrid.ts `setState` docblock, and the same
   // cast in extension/context.ts). Cast localized to this composition
-  // boundary; `CGridExt.setState`'s own signature stays the accurate
+  // boundary; `VelocityGridExt.setState`'s own signature stays the accurate
   // `Partial<GridState>` contract for callers.
   setState(state: Partial<GridState>): void { this._grid.setState(state as GridState); }
   on(type: string, fn: (e: unknown) => void): () => void {
@@ -89,6 +89,18 @@ export class CGridExt<TRow = any> {
 
   openSettings(id?: string): void { this.shell.openSettings(id); }
   closeSettings(): void { this.shell.closeSettings(); }
+
+  /**
+   * Re-apply the active profile after late-wired engines (`wireEdit` /
+   * `wireCalc` / `wireRules`) register their state modules. The ctor fires
+   * `profiles.bootstrap()` before hosts typically call those wires, so the
+   * first `setState` can miss `editSettings` / `calc` / `rules` slices.
+   * Await this after wiring so those modules restore from the saved snapshot.
+   */
+  async reapplyActiveProfile(): Promise<void> {
+    await this.profiles.bootstrap();
+    await this.profiles.switchTo(this.profiles.activeId());
+  }
 
   /** Registry → shell → grid, in that order — but the kernel Worker MUST be
    *  released even if registry or shell teardown throws, so grid.destroy()

@@ -1,4 +1,4 @@
-// @cgrid/edit — smart-edit async target collection (spec §3.6a) + patch build.
+// @wellsfargo-starui/velocity-grid-edit — smart-edit async target collection (spec §3.6a) + patch build.
 // Authoritative reference: docs/superpowers/specs/2026-07-02-cycle-21g-edit-design.md
 // section 1.1.4 (smart-edit), section 3.6a (async target collection + batching).
 // Recon: docs/superpowers/plans/notes/2026-07-02-cycle-21g-recon.md A.3.

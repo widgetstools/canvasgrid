@@ -8,7 +8,7 @@
  *  1. Calls `event.preventDefault()` so the native browser menu does NOT
  *     fire.
  *  2. Resolves `MenuItem[]` via `ctx.grid.resolveContextMenuItems(hit)`
- *     (which reads `CGridOptions.getContextMenuItems(params)` and falls
+ *     (which reads `VelocityGridOptions.getContextMenuItems(params)` and falls
  *     back to the empty list; Task 2 plugs in the default registry).
  *  3. Mounts the menu at the cursor via `ctx.grid.openContextMenu(items, x, y, hit)`.
  *
@@ -22,10 +22,10 @@
  * other feature claims `contextmenu`, so the position only matters for
  * future-proofing.
  */
-import { Feature, type CGridEventCtx } from '../feature';
+import { Feature, type VelocityGridEventCtx } from '../feature';
 
 export class RightClick extends Feature {
-  override handleContextMenu(ctx: CGridEventCtx): void {
+  override handleContextMenu(ctx: VelocityGridEventCtx): void {
     const raw = ctx.raw;
     if (!(raw instanceof MouseEvent)) {
       super.handleContextMenu(ctx);

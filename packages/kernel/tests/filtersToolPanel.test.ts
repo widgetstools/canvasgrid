@@ -109,10 +109,10 @@ describe('FiltersToolPanel', () => {
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
 
-    expect(root.classList.contains('cg-filters-panel')).toBe(true);
-    expect(root.querySelector('.cg-filters-panel-search')).not.toBeNull();
-    expect(root.querySelector('.cg-filters-panel-expand-all')).not.toBeNull();
-    expect(root.querySelector('.cg-filters-panel-list')).not.toBeNull();
+    expect(root.classList.contains('vg-filters-panel')).toBe(true);
+    expect(root.querySelector('.vg-filters-panel-search')).not.toBeNull();
+    expect(root.querySelector('.vg-filters-panel-expand-all')).not.toBeNull();
+    expect(root.querySelector('.vg-filters-panel-list')).not.toBeNull();
   });
 
   it('renders one collapsible row per FILTERABLE column from getColumnState (skips columns with no filter type)', () => {
@@ -120,10 +120,10 @@ describe('FiltersToolPanel', () => {
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
 
-    const rows = Array.from(root.querySelectorAll<HTMLElement>('.cg-filters-panel-row'));
+    const rows = Array.from(root.querySelectorAll<HTMLElement>('.vg-filters-panel-row'));
     // misc has filterType: null → skipped.
     expect(rows.map((r) => r.dataset.colId)).toEqual(['athlete', 'age', 'country', 'year', 'gold']);
-    expect(rows.map((r) => r.querySelector<HTMLElement>('.cg-filters-panel-row-label')?.textContent))
+    expect(rows.map((r) => r.querySelector<HTMLElement>('.vg-filters-panel-row-label')?.textContent))
       .toEqual(['Athlete', 'Age', 'Country', 'Year', 'Gold']);
   });
 
@@ -132,10 +132,10 @@ describe('FiltersToolPanel', () => {
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
 
-    const rows = Array.from(root.querySelectorAll<HTMLElement>('.cg-filters-panel-row'));
+    const rows = Array.from(root.querySelectorAll<HTMLElement>('.vg-filters-panel-row'));
     for (const row of rows) {
       expect(row.dataset.expanded).toBe('false');
-      const chevron = row.querySelector<HTMLElement>('.cg-filters-panel-row-chevron');
+      const chevron = row.querySelector<HTMLElement>('.vg-filters-panel-row-chevron');
       expect(chevron?.textContent).toBe('›'); // ›
     }
   });
@@ -148,7 +148,7 @@ describe('FiltersToolPanel', () => {
     });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    const label = root.querySelector<HTMLElement>('.cg-filters-panel-row-label');
+    const label = root.querySelector<HTMLElement>('.vg-filters-panel-row-label');
     expect(label?.textContent).toBe('unlabelled');
   });
 
@@ -157,8 +157,8 @@ describe('FiltersToolPanel', () => {
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
 
-    const ageRow = root.querySelector<HTMLElement>('.cg-filters-panel-row[data-col-id="age"]')!;
-    const header = ageRow.querySelector<HTMLElement>('.cg-filters-panel-row-header')!;
+    const ageRow = root.querySelector<HTMLElement>('.vg-filters-panel-row[data-col-id="age"]')!;
+    const header = ageRow.querySelector<HTMLElement>('.vg-filters-panel-row-header')!;
     header.click();
     // Wait one microtask + a tick for the async buildColumnFilterEditor.
     await Promise.resolve();
@@ -166,9 +166,9 @@ describe('FiltersToolPanel', () => {
 
     expect(api.buildColumnFilterEditor).toHaveBeenCalledWith('age');
     expect(ageRow.dataset.expanded).toBe('true');
-    const chevron = ageRow.querySelector<HTMLElement>('.cg-filters-panel-row-chevron');
+    const chevron = ageRow.querySelector<HTMLElement>('.vg-filters-panel-row-chevron');
     expect(chevron?.textContent).toBe('⌄'); // ⌄
-    const editorHost = ageRow.querySelector<HTMLElement>('.cg-filters-panel-row-editor');
+    const editorHost = ageRow.querySelector<HTMLElement>('.vg-filters-panel-row-editor');
     expect(editorHost?.querySelector('.mock-filter-editor')).not.toBeNull();
   });
 
@@ -180,8 +180,8 @@ describe('FiltersToolPanel', () => {
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
 
-    const ageRow = root.querySelector<HTMLElement>('.cg-filters-panel-row[data-col-id="age"]')!;
-    const header = ageRow.querySelector<HTMLElement>('.cg-filters-panel-row-header')!;
+    const ageRow = root.querySelector<HTMLElement>('.vg-filters-panel-row[data-col-id="age"]')!;
+    const header = ageRow.querySelector<HTMLElement>('.vg-filters-panel-row-header')!;
     header.click();
     await Promise.resolve(); await Promise.resolve();
     expect(ageRow.dataset.expanded).toBe('true');
@@ -189,7 +189,7 @@ describe('FiltersToolPanel', () => {
     header.click();
     expect(ageRow.dataset.expanded).toBe('false');
     expect(destroy).toHaveBeenCalledTimes(1);
-    const chevron = ageRow.querySelector<HTMLElement>('.cg-filters-panel-row-chevron');
+    const chevron = ageRow.querySelector<HTMLElement>('.vg-filters-panel-row-chevron');
     expect(chevron?.textContent).toBe('›');
   });
 
@@ -206,13 +206,13 @@ describe('FiltersToolPanel', () => {
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
 
-    const ageRow = root.querySelector<HTMLElement>('.cg-filters-panel-row[data-col-id="age"]')!;
-    const goldRow = root.querySelector<HTMLElement>('.cg-filters-panel-row[data-col-id="gold"]')!;
-    ageRow.querySelector<HTMLElement>('.cg-filters-panel-row-header')!.click();
+    const ageRow = root.querySelector<HTMLElement>('.vg-filters-panel-row[data-col-id="age"]')!;
+    const goldRow = root.querySelector<HTMLElement>('.vg-filters-panel-row[data-col-id="gold"]')!;
+    ageRow.querySelector<HTMLElement>('.vg-filters-panel-row-header')!.click();
     await Promise.resolve(); await Promise.resolve();
     expect(ageRow.dataset.expanded).toBe('true');
 
-    goldRow.querySelector<HTMLElement>('.cg-filters-panel-row-header')!.click();
+    goldRow.querySelector<HTMLElement>('.vg-filters-panel-row-header')!.click();
     await Promise.resolve(); await Promise.resolve();
     expect(goldRow.dataset.expanded).toBe('true');
     expect(ageRow.dataset.expanded).toBe('false');
@@ -224,17 +224,17 @@ describe('FiltersToolPanel', () => {
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
 
-    const search = root.querySelector<HTMLInputElement>('.cg-filters-panel-search input')!;
+    const search = root.querySelector<HTMLInputElement>('.vg-filters-panel-search input')!;
     search.value = 'go';
     search.dispatchEvent(new Event('input', { bubbles: true }));
-    const rows = Array.from(root.querySelectorAll<HTMLElement>('.cg-filters-panel-row'));
+    const rows = Array.from(root.querySelectorAll<HTMLElement>('.vg-filters-panel-row'));
     const visible = rows.filter((r) => r.style.display !== 'none');
     expect(visible.map((r) => r.dataset.colId)).toEqual(['gold']);
 
     // Clear → all rows return.
     search.value = '';
     search.dispatchEvent(new Event('input', { bubbles: true }));
-    const restored = Array.from(root.querySelectorAll<HTMLElement>('.cg-filters-panel-row'))
+    const restored = Array.from(root.querySelectorAll<HTMLElement>('.vg-filters-panel-row'))
       .filter((r) => r.style.display !== 'none');
     expect(restored.length).toBe(5);
   });
@@ -244,11 +244,11 @@ describe('FiltersToolPanel', () => {
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
 
-    const btn = root.querySelector<HTMLButtonElement>('.cg-filters-panel-expand-all button')!;
+    const btn = root.querySelector<HTMLButtonElement>('.vg-filters-panel-expand-all button')!;
     btn.click();
     // Wait a couple of microtasks for every editor promise to resolve.
     await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
-    const rows = Array.from(root.querySelectorAll<HTMLElement>('.cg-filters-panel-row'));
+    const rows = Array.from(root.querySelectorAll<HTMLElement>('.vg-filters-panel-row'));
     for (const row of rows) {
       expect(row.dataset.expanded).toBe('true');
     }
@@ -259,11 +259,11 @@ describe('FiltersToolPanel', () => {
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
 
-    const btn = root.querySelector<HTMLButtonElement>('.cg-filters-panel-expand-all button')!;
+    const btn = root.querySelector<HTMLButtonElement>('.vg-filters-panel-expand-all button')!;
     btn.click();
     await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
     btn.click();
-    const rows = Array.from(root.querySelectorAll<HTMLElement>('.cg-filters-panel-row'));
+    const rows = Array.from(root.querySelectorAll<HTMLElement>('.vg-filters-panel-row'));
     for (const row of rows) {
       expect(row.dataset.expanded).toBe('false');
     }
@@ -273,14 +273,14 @@ describe('FiltersToolPanel', () => {
     const api = makeApi();
     const { panel, root } = mountPanel(api, { suppressFilterSearch: true });
     hosts.push(panel);
-    expect(root.querySelector('.cg-filters-panel-search')).toBeNull();
+    expect(root.querySelector('.vg-filters-panel-search')).toBeNull();
   });
 
   it('suppressExpandAll hides the expand-all button', () => {
     const api = makeApi();
     const { panel, root } = mountPanel(api, { suppressExpandAll: true });
     hosts.push(panel);
-    expect(root.querySelector('.cg-filters-panel-expand-all')).toBeNull();
+    expect(root.querySelector('.vg-filters-panel-expand-all')).toBeNull();
   });
 
   it('subscribes to columnMoved + columnVisible events on init and unsubscribes on destroy (default sync behaviour)', () => {
@@ -311,8 +311,8 @@ describe('FiltersToolPanel', () => {
     });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    expect(root.querySelector('.cg-filters-panel-row')).toBeNull();
-    const empty = root.querySelector<HTMLElement>('.cg-filters-panel-empty');
+    expect(root.querySelector('.vg-filters-panel-row')).toBeNull();
+    const empty = root.querySelector<HTMLElement>('.vg-filters-panel-empty');
     expect(empty?.textContent?.trim()).toBe('No filterable columns');
   });
 
@@ -344,7 +344,7 @@ describe('FiltersToolPanel', () => {
     panel.refresh();
 
     expect(panel.getGui()).toBe(originalRoot);
-    const rows = Array.from(root.querySelectorAll<HTMLElement>('.cg-filters-panel-row'));
+    const rows = Array.from(root.querySelectorAll<HTMLElement>('.vg-filters-panel-row'));
     expect(rows.map((r) => r.dataset.colId)).toEqual(['b', 'c']);
   });
 
@@ -356,8 +356,8 @@ describe('FiltersToolPanel', () => {
     const { panel, root } = mountPanel(api);
     expect(document.body.contains(root)).toBe(true);
 
-    const ageRow = root.querySelector<HTMLElement>('.cg-filters-panel-row[data-col-id="age"]')!;
-    ageRow.querySelector<HTMLElement>('.cg-filters-panel-row-header')!.click();
+    const ageRow = root.querySelector<HTMLElement>('.vg-filters-panel-row[data-col-id="age"]')!;
+    ageRow.querySelector<HTMLElement>('.vg-filters-panel-row-header')!.click();
     await Promise.resolve(); await Promise.resolve();
 
     panel.destroy();

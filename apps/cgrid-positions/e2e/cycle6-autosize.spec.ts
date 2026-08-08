@@ -45,7 +45,7 @@ test.describe('Cycle 6 / Task 4 — autoSizeAllColumns', () => {
     await gridReady(page);
 
     const before = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return grid.getColumnState();
     });
     const beforeCusip = before.find((e) => e.colId === 'cusip');
@@ -59,7 +59,7 @@ test.describe('Cycle 6 / Task 4 — autoSizeAllColumns', () => {
     // lands and main has applied widths. Drive it directly so the test
     // doesn't race with the requestAnimationFrame tail.
     await page.evaluate(async () => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       await grid.autoSizeAllColumns();
     });
     await page.evaluate(
@@ -71,7 +71,7 @@ test.describe('Cycle 6 / Task 4 — autoSizeAllColumns', () => {
     );
 
     const after = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return grid.getColumnState();
     });
 

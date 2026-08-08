@@ -3,6 +3,11 @@ import { drawIcon, hasIcon } from '../icons';
 import { wrapHeaderLines, fontPxSize, HEADER_LINE_HEIGHT_FACTOR } from './headerWrap';
 import { paintCellBorders } from '../painters/cellBordersPainter';
 import { paintCellDecorators } from '../painters/cellDecoratorsPainter';
+import {
+  paintCheckboxBox,
+  paintCheckboxCheck,
+  paintCheckboxDash,
+} from './checkboxGlyph';
 import type { CellContent } from '../../types';
 import type { RendererPalette } from '../../theming/cssReader';
 
@@ -77,7 +82,7 @@ export interface CellPaintConfig {
   /** Cycle 8 / Task 5 — when `true` and `sortDirection` is unset, the
    *  header painter draws a faint up/down chevron pair so the user can
    *  see at a glance that the column is sortable. The color resolves
-   *  from `unSortIconColor` (theme's `--cg-unsort-icon-color`) and the
+   *  from `unSortIconColor` (theme's `--vg-unsort-icon-color`) and the
    *  icon paints at 50% alpha so it never competes with the active
    *  sort chevron on other columns. */
   unSortIcon?: boolean;
@@ -116,7 +121,7 @@ export interface CellPaintConfig {
   headerCheckboxState?: 'none' | 'partial' | 'all';
   // Flash overlay (Cycle 4 / Task 11 — `flashAlpha` is the per-cell
   // alpha drained from FlashRegistry; `flashFromColor` is the theme's
-  // current --cg-flash-from-color so light + dark themes both paint
+  // current --vg-flash-from-color so light + dark themes both paint
   // their declared color instead of a hard-coded swatch).
   flashAlpha?: number;
   flashFromColor?: string;
@@ -146,7 +151,7 @@ export interface CellPaintConfig {
    * Cycle 15 / Task 8 — tri-state checkbox tokens for the `'group'`
    * cell renderer. Threaded onto every cell config so the renderer
    * reads colors without reaching into the theme. All four default to
-   * `var(--cg-fg-color)` so the box reads exactly like the existing
+   * `var(--vg-fg-color)` so the box reads exactly like the existing
    * `checkboxCell` painter (one checkbox vocabulary across the grid).
    * Apps that want a filled brand-accent checkbox override
    * `groupCheckboxFill + groupCheckboxCheckColor` via the theme.
@@ -211,7 +216,7 @@ export interface CellPaintConfig {
   /**
    * Workstream A (2026-07-06 CSS styling model) — compact renderer-palette
    * bundle (semantic colors + bar/chip geometry), threaded straight from
-   * `ResolvedTheme.rendererPalette` by `applyCellProps`. `@cgrid/renderers`
+   * `ResolvedTheme.rendererPalette` by `applyCellProps`. `@wellsfargo-starui/velocity-grid-renderers`
    * painters resolve `overrides ?? p.palette?.<field> ?? <literal>` so
    * data-viz appearance comes from theme tokens instead of hardcoded
    * constants. `undefined` on hand-built `CellPaintConfig` test fixtures
@@ -233,7 +238,7 @@ export interface RegisterCellRendererOpts {
    *  covered-field list (opaque `params`, `rowData` reads, module state,
    *  time) must paint live — a bypass is a perf miss, a stale bitmap is a
    *  bug. Only set `true` after auditing every `config.` read against the
-   *  signature (built-ins that qualify are opted in at their cgrid.ts
+   *  signature (built-ins that qualify are opted in at their velocityGrid.ts
    *  registration site). */
   cacheable?: boolean;
 }
@@ -257,7 +262,7 @@ export class CellRendererRegistry {
   }
   get(name: string): CellPainter {
     const p = this.map.get(name);
-    if (!p) throw new Error(`[cgrid] unknown cellRenderer '${name}'`);
+    if (!p) throw new Error(`[velocity-grid] unknown cellRenderer '${name}'`);
     return p;
   }
   /** Cycle 21i Phase 2 / T3 — instance-truth enumeration (registration
@@ -538,7 +543,7 @@ export const checkboxCell: CellPainter = {
     paintBackground(gc, p);
     // Three-state indicator for boolean columns:
     //   true  → outlined 14×14 box + checkmark (accent fill when
-    //           `--cg-checkbox-checked-bg` opts in);
+    //           `--vg-checkbox-checked-bg` opts in);
     //   false → outlined 14×14 empty box;
     //   null / undefined / '' → centered em-dash at 50% alpha of `fg`,
     //           no box — the absence of the box IS the "no value" signal.
@@ -582,20 +587,9 @@ export const checkboxCell: CellPainter = {
     const accent = isTrue && p.checkboxCheckedBg && p.checkboxCheckedBg !== 'transparent'
       ? p.checkboxCheckedBg
       : null;
-    if (accent) {
-      gc.cache.fillStyle = accent;
-      gc.fillRect(cx, cy, size, size);
-    }
-    gc.cache.strokeStyle = p.fg;
-    gc.cache.lineWidth = 1;
-    gc.strokeRect(cx + 0.5, cy + 0.5, size, size);
+    paintCheckboxBox(gc, cx, cy, size, { borderColor: p.fg, fill: accent });
     if (isTrue) {
-      gc.cache.strokeStyle = accent ? (p.checkboxCheckedFg ?? p.fg) : p.fg;
-      gc.beginPath();
-      gc.moveTo(cx + 3, cy + size / 2);
-      gc.lineTo(cx + size / 2 - 1, cy + size - 3);
-      gc.lineTo(cx + size - 2, cy + 3);
-      gc.stroke();
+      paintCheckboxCheck(gc, cx, cy, size, accent ? (p.checkboxCheckedFg ?? p.fg) : p.fg);
     }
   },
 };
@@ -650,26 +644,11 @@ export const headerCell: CellPainter = {
         && p.checkboxCheckedBg !== 'transparent'
         ? p.checkboxCheckedBg
         : null;
-      if (accent) {
-        gc.cache.fillStyle = accent;
-        gc.fillRect(cx, cy2, size, size);
-      }
-      gc.cache.strokeStyle = p.fg;
-      gc.cache.lineWidth = 1;
-      gc.strokeRect(cx + 0.5, cy2 + 0.5, size, size);
+      paintCheckboxBox(gc, cx, cy2, size, { borderColor: p.fg, fill: accent });
       if (checked) {
-        gc.cache.strokeStyle = accent ? (p.checkboxCheckedFg ?? p.fg) : p.fg;
-        gc.beginPath();
-        gc.moveTo(cx + 3, cy2 + size / 2);
-        gc.lineTo(cx + size / 2 - 1, cy2 + size - 3);
-        gc.lineTo(cx + size - 2, cy2 + 3);
-        gc.stroke();
+        paintCheckboxCheck(gc, cx, cy2, size, accent ? (p.checkboxCheckedFg ?? p.fg) : p.fg);
       } else if (partial) {
-        gc.cache.strokeStyle = accent ? (p.checkboxCheckedFg ?? p.fg) : p.fg;
-        gc.beginPath();
-        gc.moveTo(cx + 3, cy2 + size / 2);
-        gc.lineTo(cx + size - 3, cy2 + size / 2);
-        gc.stroke();
+        paintCheckboxDash(gc, cx, cy2, size, accent ? (p.checkboxCheckedFg ?? p.fg) : p.fg);
       }
       return;
     }

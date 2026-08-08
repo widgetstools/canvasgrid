@@ -67,7 +67,7 @@ async function settle(page: import('@playwright/test').Page): Promise<void> {
 
 async function visibleColIds(page: import('@playwright/test').Page): Promise<string[]> {
   return page.evaluate(() => {
-    const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+    const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
     return grid.getColumnState()
       .filter((e) => e.hide !== true)
       .map((e) => e.colId);
@@ -93,7 +93,7 @@ test.describe('Cycle 6 / Task 5 — imperative column API', () => {
 
     // getColumnState still reports the hidden columns (symmetric round-trip).
     const state = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return grid.getColumnState();
     });
     const hiddenPnl = state.find((s) => s.colId === 'pnl');
@@ -104,7 +104,7 @@ test.describe('Cycle 6 / Task 5 — imperative column API', () => {
     await gridReady(page);
 
     const stateBefore = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return grid.getColumnState();
     });
     expect(stateBefore.find((s) => s.colId === 'spread')?.pinned ?? null).toBe(null);
@@ -113,7 +113,7 @@ test.describe('Cycle 6 / Task 5 — imperative column API', () => {
     await settle(page);
 
     const stateAfter = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return grid.getColumnState();
     });
     expect(stateAfter.find((s) => s.colId === 'spread')?.pinned).toBe('left');
@@ -126,7 +126,7 @@ test.describe('Cycle 6 / Task 5 — imperative column API', () => {
     // Handler writes to the live window slot every fire so resetting
     // `__resizeEvents.length = 0` between assertions works.
     await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       (window as unknown as { __resizeEvents: ResizedEventPayload[] }).__resizeEvents = [];
       grid.on('columnResized', (e) => {
         (window as unknown as { __resizeEvents: ResizedEventPayload[] })
@@ -139,7 +139,7 @@ test.describe('Cycle 6 / Task 5 — imperative column API', () => {
     // to 200 so the reset back to 100 produces a measurable event.
     await page.evaluate(() => {
       const api = (window as unknown as {
-        __cgrid: { setColumnWidths: (w: Array<{ key: string; newWidth: number }>) => void };
+        __velocity-grid: { setColumnWidths: (w: Array<{ key: string; newWidth: number }>) => void };
       }).__cgrid;
       api.setColumnWidths([{ key: 'ticker', newWidth: 200 }]);
     });

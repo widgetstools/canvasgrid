@@ -15,7 +15,7 @@ export class LargeTextCellEditor implements ICellEditor<unknown, string> {
     this.params = params;
     const ltParams = (params.params ?? {}) as LargeTextParams;
     const textarea = document.createElement('textarea');
-    textarea.className = 'cg-cell-editor cg-cell-editor--large-text';
+    textarea.className = 'vg-cell-editor vg-cell-editor--large-text';
     textarea.value = params.charPress ?? (params.value == null ? '' : String(params.value));
     textarea.maxLength = ltParams.maxLength ?? 200;
     textarea.rows = ltParams.rows ?? 10;
@@ -26,9 +26,9 @@ export class LargeTextCellEditor implements ICellEditor<unknown, string> {
     textarea.style.cssText =
       'box-sizing:border-box; ' +
       'border:0; padding:6px 8px; margin:0; resize:none; ' +
-      'background:var(--cg-cell-editor-bg, var(--cg-bg-color, #fff)); color:var(--cg-text-color, var(--cg-fg-color, #111)); ' +
-      'font-family:var(--cg-font-family, inherit); font-size:var(--cg-font-size, inherit); ' +
-      'outline:2px solid var(--cg-focus-ring-color, #4a90e2);';
+      'background:var(--vg-cell-editor-bg, var(--vg-bg-color, #fff)); color:var(--vg-text-color, var(--vg-fg-color, #111)); ' +
+      'font-family:var(--vg-font-family, inherit); font-size:var(--vg-font-size, inherit); ' +
+      'outline:2px solid var(--vg-focus-ring-color, #4a90e2);';
     this.keydownHandler = (e: KeyboardEvent) => {
       // Ctrl/Cmd+Enter commits; bare Enter inserts a newline (default).
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {

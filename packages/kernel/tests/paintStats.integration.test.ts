@@ -1,7 +1,7 @@
 /**
  * Damage-region rendering (Task 3) — end-to-end proof that an async
  * transaction's worker-reported `touchedRows` drives a PARTIAL repaint
- * through `CGrid.repaintRows`, not a full one. Also the empirical check
+ * through `VelocityGrid.repaintRows`, not a full one. Also the empirical check
  * flagged by the task brief: does `chunk.rowStart + r` (the touchedRows
  * index space) land in the same coordinate space as the viewport's
  * `ViewportRow.localRowIndex` (the `rowBand()` resolver's input)? If the
@@ -22,9 +22,9 @@
  * against explicit `canvas.tickPaint()` calls.
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
-import type { CGridOptions } from '../src/types/options';
+import type { VelocityGridOptions } from '../src/types/options';
 
 let rafQueue: Array<() => void> = [];
 
@@ -49,7 +49,7 @@ beforeAll(() => {
   }
 
   // Manual RAF queue (same idiom as tests/workerClientCoalesce.test.ts) —
-  // both `CGridCanvas`'s background paint loop AND `WorkerClient`'s
+  // both `VelocityGridCanvas`'s background paint loop AND `WorkerClient`'s
   // modelUpdated-push coalescing schedule through `requestAnimationFrame`.
   // Driving it manually via `flushFrame()` keeps the test deterministic:
   // paints only ever happen via the explicit `canvas.tickPaint()` calls
@@ -98,11 +98,11 @@ beforeAll(() => {
 function buildWiredGrid<T extends { id: string }>(
   rows: T[],
   cols: any[],
-  options: Partial<CGridOptions<T>> = {},
+  options: Partial<VelocityGridOptions<T>> = {},
 ) {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
   const prevWorker = (globalThis as any).Worker;
   (globalThis as any).Worker = class {
@@ -116,7 +116,7 @@ function buildWiredGrid<T extends { id: string }>(
     addEventListener(_: string, cb: (e: { data: any }) => void) { this.listeners.push(cb); }
     terminate() {}
   };
-  const grid = new CGrid<T>(container, {
+  const grid = new VelocityGrid<T>(container, {
     columnDefs: cols,
     getRowId: (r) => r.id,
     rowData: rows,
@@ -229,12 +229,12 @@ describe('Damage-region rendering — tick + flash damage (paint stats)', () => 
  * `rowIndex` from `ViewportRow.localRowIndex` on a `DataSubgrid` row (see
  * `src/interaction/hitTester.ts`, "Hits only count when they land in a
  * DataSubgrid row — `localRowIndex` is the data-row index"). That's the
- * SAME index space `CGrid.repaintRows` expects (`cellAt`'s `rowIndex` /
+ * SAME index space `VelocityGrid.repaintRows` expects (`cellAt`'s `rowIndex` /
  * the chunk's `rowStart`-relative local index — confirmed by Task 3's
  * report). So `OnHover` can forward `hit.rowIndex` straight into
  * `ctx.grid.repaintRows` with no conversion. These tests dispatch a real
  * `mousemove` at the canvas element (not a synthetic feature-level ctx)
- * so the whole hit-test → OnHover → CGrid.repaintRows → paint path is
+ * so the whole hit-test → OnHover → VelocityGrid.repaintRows → paint path is
  * exercised end-to-end, the same way the touchedRows test above exercises
  * the worker → chunk → repaintRows path.
  */

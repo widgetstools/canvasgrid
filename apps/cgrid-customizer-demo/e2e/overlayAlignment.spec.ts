@@ -14,7 +14,7 @@ import { test, expect, type Page } from '@playwright/test';
  * this spec pins the symptom.
  */
 
-const STORAGE_KEY = 'cgrid:state:customizer-demo';
+const STORAGE_KEY = 'velocity-grid:state:customizer-demo';
 
 async function waitForGridReady(page: Page): Promise<void> {
   await page.waitForFunction(() => (window as unknown as { __cgridReady?: boolean }).__cgridReady === true, {
@@ -25,9 +25,9 @@ async function waitForGridReady(page: Page): Promise<void> {
 /** Vertical geometry the overlays + canvas must agree on. */
 async function measure(page: Page): Promise<{ canvasTop: number; filterTop: number }> {
   return page.evaluate(() => {
-    const grid = document.querySelector('.cg-grid')!;
+    const grid = document.querySelector('.vg-grid')!;
     const canvas = grid.querySelector('canvas')!;
-    const filterInput = grid.querySelector('.cg-floating-filter-overlay input, .cg-grid input')!;
+    const filterInput = grid.querySelector('.vg-floating-filter-overlay input, .vg-grid input')!;
     return {
       canvasTop: Math.round(canvas.getBoundingClientRect().top),
       filterTop: Math.round(filterInput.getBoundingClientRect().top),
@@ -48,13 +48,13 @@ test('floating filters + canvas stay put when a side-bar panel opens and closes'
   // Opening a tool panel fires reserveSideBarSpace (horizontal reflow) —
   // vertical geometry must not move.
   await page.getByRole('button', { name: 'Column Groups' }).click();
-  await expect(page.locator('.cg-colgroups-panel')).toBeVisible();
+  await expect(page.locator('.vg-colgroups-panel')).toBeVisible();
   const open = await measure(page);
   expect(open).toEqual(before);
 
   // Close it again — still no vertical drift.
   await page.getByRole('button', { name: 'Column Groups' }).click();
-  await expect(page.locator('.cg-colgroups-panel')).toBeHidden();
+  await expect(page.locator('.vg-colgroups-panel')).toBeHidden();
   const closed = await measure(page);
   expect(closed).toEqual(before);
 });

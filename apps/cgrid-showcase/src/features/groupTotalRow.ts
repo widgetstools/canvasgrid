@@ -1,4 +1,4 @@
-import { CGrid } from '@cgrid/kernel';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
 import type { ShowcaseRow } from '../seedData';
 import type { Feature } from './index';
 import { makeRows } from '../seedData';
@@ -9,7 +9,7 @@ export const groupTotalRow: Feature = {
   description: 'groupTotalRow: "bottom" — each group shows an aggregated subtotal row at its bottom.',
 
   mount(gridHost, controls, theme) {
-    const grid = new CGrid<ShowcaseRow>(gridHost, {
+    const grid = new VelocityGrid<ShowcaseRow>(gridHost, {
       getRowId: (r) => r.id,
       columnDefs: [
         { colId: 'desk',     field: 'desk',     headerName: 'Desk',     cellDataType: 'text',   flex: 1 },

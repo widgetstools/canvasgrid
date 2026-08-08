@@ -10,7 +10,7 @@
  * tiny, tree-shakeable, and side-effect free.
  *
  * `resolveTokenName` maps a *param* name (e.g. `'accentColor'`) to its
- * primary `--cg-*` custom-property name (e.g. `'--cg-chrome-accent'`). It is
+ * primary `--vg-*` custom-property name (e.g. `'--vg-chrome-accent'`). It is
  * supplied by `theming/theme/params.ts` (Task 2) — this module has no
  * knowledge of the param vocabulary itself, so it stays independently
  * testable and reusable.
@@ -34,10 +34,10 @@ export type FontFamilyValue = string | string[];
 /** A font-weight value: a numeric weight or a verbatim keyword (e.g. `'bold'`). */
 export type FontWeightValue = number | string;
 
-const DEFAULT_BORDER_COLOR_TOKEN = '--cg-border-color';
+const DEFAULT_BORDER_COLOR_TOKEN = '--vg-border-color';
 
 /**
- * Resolve a param name to `var(--cg-*)`, using `resolveTokenName`. If the
+ * Resolve a param name to `var(--vg-*)`, using `resolveTokenName`. If the
  * resolver can't find a token for the param (typo, unknown param), we don't
  * throw — the compiler's job is to emit a CSS expression, not to validate
  * the param vocabulary (that's Task 2's job, at compile-time in `params.ts`).

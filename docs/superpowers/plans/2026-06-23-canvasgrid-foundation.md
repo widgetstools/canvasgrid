@@ -4,7 +4,7 @@
 
 **Goal:** Build the Foundation of a vanilla TS canvas-based grid library (`cgrid`) — render engine + viewport virtualization + Web Worker data pipeline (CSRM) + minimum interactive viability — and a demo app (`apps/cgrid-positions`) that consumes the existing STOMP positions feed for apples-to-apples comparison against the current AG Grid showcase.
 
-**Architecture:** Vanilla TypeScript library exposing `class CGrid` with imperative API + typed event emitter. Data lives in a Web Worker that runs Filter → Sort → GroupAgg → ViewportSlicer; viewport requests return zero-copy transferable typed-array chunks. Main thread paints to one `<canvas>` with layered painters (header / pinned-left / body / pinned-right / overlay). DOM overlays handle cell editing + ARIA accessibility scaffold.
+**Architecture:** Vanilla TypeScript library exposing `class VelocityGrid` with imperative API + typed event emitter. Data lives in a Web Worker that runs Filter → Sort → GroupAgg → ViewportSlicer; viewport requests return zero-copy transferable typed-array chunks. Main thread paints to one `<canvas>` with layered painters (header / pinned-left / body / pinned-right / overlay). DOM overlays handle cell editing + ARIA accessibility scaffold.
 
 **Tech Stack:** TypeScript 5.9, Vite 7 (library mode for `cgrid`, app mode for demos), Vitest for unit tests, npm workspaces, `@stomp/stompjs` (demo only), `axe-core` (a11y verification). React stays only in `apps/showcase` (relocated existing app); `cgrid/` and `apps/cgrid-positions/` are framework-free.
 
@@ -14,14 +14,14 @@ These apply to **every task** in this plan.
 
 - **No framework dependency in `cgrid/`.** No React, Vue, Svelte. Pure vanilla TS. Consumers wrap with their framework of choice.
 - **TypeScript strict mode** (`"strict": true` in `cgrid/tsconfig.json`). Every `cgrid/src/**/*.ts` must compile clean under `tsc --noEmit`.
-- **Public types live in `cgrid/src/types.ts`** and are re-exported from `cgrid/src/cgrid.ts`. Nothing leaks from inner folders except via these exports.
+- **Public types live in `cgrid/src/types.ts`** and are re-exported from `cgrid/src/velocityGrid.ts`. Nothing leaks from inner folders except via these exports.
 - **Worker boundary types are shared.** `cgrid/src/worker/protocol.ts` is imported by BOTH `worker/client.ts` (main) and `worker/worker.ts` (worker). Never re-define types on either side.
-- **`getRowId` is mandatory.** Every public method that ingests row data requires `getRowId` to be set in `CGridOptions`. Missing it is a constructor-time throw.
+- **`getRowId` is mandatory.** Every public method that ingests row data requires `getRowId` to be set in `VelocityGridOptions`. Missing it is a constructor-time throw.
 - **Transferable typed arrays** for every viewport response. `postMessage(msg, [...transferList])` carries every `ArrayBuffer` underlying chunk fields.
 - **Async transaction batching** is the default for `applyTransactionAsync`. Default `asyncTransactionWaitMillis = 50`. Catalog reference: `04-data-updates.md`.
 - **Single-canvas with layered painters.** Five painters in z-order: header, pinned-left, body, pinned-right, overlay. No stacked DOM canvases.
 - **DPR-aware paint.** `canvas.{width,height}` is logical × DPR; `ctx.setTransform(dpr, 0, 0, dpr, 0, 0)` runs once per resize.
-- **Theme tokens use `--cg-*` CSS custom properties.** Library ships `cg-theme-quartz` + `cg-theme-quartz-dark`. Catalog reference: `21-themes-and-styling.md`.
+- **Theme tokens use `--vg-*` CSS custom properties.** Library ships `vg-theme-quartz` + `vg-theme-quartz-dark`. Catalog reference: `21-themes-and-styling.md`.
 - **`apps/showcase/`** is the existing AG Grid React app, moved as-is. Do NOT modify its `src/` content in this cycle.
 - **Commits:** small, per-task, conventional commits (e.g. `feat(cgrid): …`, `feat(demo): …`, `chore(repo): …`).
 - **Test runner:** Vitest. Run via `npm test --workspace=cgrid`. Pure-logic tasks are TDD (red → green → refactor); rendering/worker integration tasks use smoke tests + demo verification.
@@ -52,7 +52,7 @@ canvasgrid/                              ← repo root
     vitest.config.ts
     README.md
     src/
-      cgrid.ts                           ← Task 24 (public class) + re-exports
+      velocityGrid.ts                           ← Task 24 (public class) + re-exports
       types.ts                           ← Task 3
       core/
         eventEmitter.ts                  ← Task 4
@@ -105,7 +105,7 @@ canvasgrid/                              ← repo root
 - **Worker integration** (client.ts, worker.ts wiring) — contract tests using `vitest`'s worker support + a fake worker stub.
 - **Rendering** (renderer, painters, cell renderers) — smoke test against a `node-canvas` or `OffscreenCanvas`-equivalent harness. Visual verification through the demo.
 - **DOM overlays** (editor, a11y) — DOM tests using `vitest`'s `happy-dom` env.
-- **Public class** (`CGrid`) — integration test asserting the full data-in / event-out round trip on a tiny fixture.
+- **Public class** (`VelocityGrid`) — integration test asserting the full data-in / event-out round trip on a tiny fixture.
 
 ---
 
@@ -185,12 +185,12 @@ Create `/Users/develop/wfh/canvasgrid/cgrid/package.json`:
   "name": "cgrid",
   "version": "0.0.0",
   "type": "module",
-  "main": "./dist/cgrid.js",
-  "types": "./dist/cgrid.d.ts",
+  "main": "./dist/velocity-grid.js",
+  "types": "./dist/velocity-grid.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/cgrid.d.ts",
-      "import": "./dist/cgrid.js"
+      "types": "./dist/velocity-grid.d.ts",
+      "import": "./dist/velocity-grid.js"
     }
   },
   "scripts": {
@@ -251,7 +251,7 @@ git commit -m "chore(repo): restructure into npm workspaces (apps/showcase, apps
 - Create: `cgrid/tsconfig.json`
 - Create: `cgrid/vite.config.ts`
 - Create: `cgrid/vitest.config.ts`
-- Create: `cgrid/src/cgrid.ts` (empty re-export shell)
+- Create: `cgrid/src/velocityGrid.ts` (empty re-export shell)
 - Create: `cgrid/README.md`
 - Create: `cgrid/tests/.gitkeep`
 
@@ -296,7 +296,7 @@ import { resolve } from 'node:path';
 export default defineConfig({
   build: {
     lib: {
-      entry: resolve(__dirname, 'src/cgrid.ts'),
+      entry: resolve(__dirname, 'src/velocityGrid.ts'),
       formats: ['es'],
       fileName: 'cgrid',
     },
@@ -330,7 +330,7 @@ export default defineConfig({
 });
 ```
 
-- [ ] **Step 4: Write `cgrid/src/cgrid.ts` (empty re-export shell)**
+- [ ] **Step 4: Write `cgrid/src/velocityGrid.ts` (empty re-export shell)**
 
 ```typescript
 // cgrid — vanilla TS canvas grid library
@@ -347,12 +347,12 @@ export const CGRID_VERSION = '0.0.0';
   "name": "cgrid",
   "version": "0.0.0",
   "type": "module",
-  "main": "./dist/cgrid.js",
-  "types": "./dist/cgrid.d.ts",
+  "main": "./dist/velocity-grid.js",
+  "types": "./dist/velocity-grid.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/cgrid.d.ts",
-      "import": "./dist/cgrid.js"
+      "types": "./dist/velocity-grid.d.ts",
+      "import": "./dist/velocity-grid.js"
     }
   },
   "scripts": {
@@ -406,7 +406,7 @@ npm run typecheck --workspace=cgrid
 npm test --workspace=cgrid
 npm run build --workspace=cgrid
 ```
-Expected: typecheck clean, vitest reports 0 tests (no error), `cgrid/dist/cgrid.js` and `cgrid/dist/cgrid.d.ts` produced.
+Expected: typecheck clean, vitest reports 0 tests (no error), `cgrid/dist/velocity-grid.js` and `cgrid/dist/velocity-grid.d.ts` produced.
 
 - [ ] **Step 8: Commit**
 
@@ -421,12 +421,12 @@ git commit -m "feat(cgrid): scaffold library package with vite library mode + vi
 
 **Files:**
 - Create: `cgrid/src/types.ts`
-- Modify: `cgrid/src/cgrid.ts` (add the re-export)
+- Modify: `cgrid/src/velocityGrid.ts` (add the re-export)
 - Test: `cgrid/tests/types.test.ts` (type-only smoke test)
 
 **Interfaces:**
 - Consumes: package scaffold from Task 2.
-- Produces: every public type used by later tasks. Types reach consumers via `import { CGridOptions, CColDef, … } from 'cgrid'`. Subsequent tasks IMPORT from `../types` (inside the library) or `cgrid` (from outside) but never re-define.
+- Produces: every public type used by later tasks. Types reach consumers via `import { VelocityGridOptions, CColDef, … } from 'cgrid'`. Subsequent tasks IMPORT from `../types` (inside the library) or `cgrid` (from outside) but never re-define.
 
 - [ ] **Step 1: Write the type-only smoke test (TDD red)**
 
@@ -434,13 +434,13 @@ git commit -m "feat(cgrid): scaffold library package with vite library mode + vi
 ```typescript
 import { describe, it, expectTypeOf } from 'vitest';
 import type {
-  CGridOptions, CColDef, CGridApi, CGridEvent, CValueGetterParams,
+  VelocityGridOptions, CColDef, VelocityGridApi, VelocityGridEvent, CValueGetterParams,
   CValueFormatterParams, SortModel, FilterModel, GroupModel, TransactionResult,
 } from '../src/types';
 
 describe('public types', () => {
-  it('CGridOptions requires getRowId', () => {
-    type Required = CGridOptions<{ id: string }>['getRowId'];
+  it('VelocityGridOptions requires getRowId', () => {
+    type Required = VelocityGridOptions<{ id: string }>['getRowId'];
     expectTypeOf<Required>().toBeFunction();
   });
 
@@ -450,8 +450,8 @@ describe('public types', () => {
     expectTypeOf<Field>().toEqualTypeOf<keyof Row & string | undefined>();
   });
 
-  it('CGridEvent is a discriminated union on .type', () => {
-    type T = CGridEvent['type'];
+  it('VelocityGridEvent is a discriminated union on .type', () => {
+    type T = VelocityGridEvent['type'];
     expectTypeOf<T>().toEqualTypeOf<
       'gridReady' | 'cellClicked' | 'cellDoubleClicked' | 'cellFocused' |
       'cellValueChanged' | 'selectionChanged' | 'viewportChanged' |
@@ -472,10 +472,10 @@ Expected: FAIL (`Cannot find module '../src/types'`).
 - [ ] **Step 3: Write `cgrid/src/types.ts`**
 
 ```typescript
-// Public types for cgrid. Re-exported from src/cgrid.ts.
+// Public types for cgrid. Re-exported from src/velocityGrid.ts.
 // See docs/superpowers/specs/2026-06-23-canvasgrid-foundation-design.md §9.
 
-export interface CGridOptions<TRow = any> {
+export interface VelocityGridOptions<TRow = any> {
   columnDefs: CColDef<TRow>[];
   defaultColDef?: Partial<CColDef<TRow>>;
   rowData?: TRow[];
@@ -539,8 +539,8 @@ export interface TransactionResult {
   remove: { rowId: string }[];
 }
 
-export type CGridEvent =
-  | { type: 'gridReady'; api: CGridApi }
+export type VelocityGridEvent =
+  | { type: 'gridReady'; api: VelocityGridApi }
   | { type: 'cellClicked'; rowId: string; colId: string; value: unknown; mouse: MouseEvent }
   | { type: 'cellDoubleClicked'; rowId: string; colId: string; value: unknown; mouse: MouseEvent }
   | { type: 'cellFocused'; rowId: string; colId: string }
@@ -553,7 +553,7 @@ export type CGridEvent =
   | { type: 'columnResized'; colId: string; width: number }
   | { type: 'asyncTransactionsFlushed'; results: TransactionResult[] };
 
-export interface CGridApi {
+export interface VelocityGridApi {
   setRowData(rows: any[]): void;
   applyTransaction(t: Tx): TransactionResult;
   applyTransactionAsync(t: Tx): void;
@@ -575,15 +575,15 @@ export interface CGridApi {
 }
 ```
 
-- [ ] **Step 4: Re-export from `cgrid/src/cgrid.ts`**
+- [ ] **Step 4: Re-export from `cgrid/src/velocityGrid.ts`**
 
 ```typescript
 export const CGRID_VERSION = '0.0.0';
 
 export type {
-  CGridOptions, CColDef, CValueGetterParams, CValueFormatterParams,
+  VelocityGridOptions, CColDef, CValueGetterParams, CValueFormatterParams,
   SortModel, SortModelEntry, FilterModel, FilterModelEntry, GroupModel,
-  Tx, TransactionResult, CGridEvent, CGridApi,
+  Tx, TransactionResult, VelocityGridEvent, VelocityGridApi,
 } from './types';
 ```
 
@@ -598,8 +598,8 @@ Expected: PASS (all 3 type assertions). Typecheck clean.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add cgrid/src/types.ts cgrid/src/cgrid.ts cgrid/tests/types.test.ts
-git commit -m "feat(cgrid): add public types (CGridOptions, CColDef, events, api)"
+git add cgrid/src/types.ts cgrid/src/velocityGrid.ts cgrid/tests/types.test.ts
+git commit -m "feat(cgrid): add public types (VelocityGridOptions, CColDef, events, api)"
 ```
 
 ---
@@ -611,7 +611,7 @@ git commit -m "feat(cgrid): add public types (CGridOptions, CColDef, events, api
 - Test: `cgrid/tests/eventEmitter.test.ts`
 
 **Interfaces:**
-- Consumes: `CGridEvent` from Task 3.
+- Consumes: `VelocityGridEvent` from Task 3.
 - Produces:
   ```typescript
   class TypedEventEmitter<E extends { type: string }> {
@@ -620,7 +620,7 @@ git commit -m "feat(cgrid): add public types (CGridOptions, CColDef, events, api
     destroy(): void;
   }
   ```
-  Used by Task 24 (`CGrid` class) to back its public `on(...)` API.
+  Used by Task 24 (`VelocityGrid` class) to back its public `on(...)` API.
 
 - [ ] **Step 1: Write failing test**
 
@@ -743,7 +743,7 @@ Expected: 5 tests PASS; typecheck clean.
 
 ```bash
 git add cgrid/src/core/eventEmitter.ts cgrid/tests/eventEmitter.test.ts
-git commit -m "feat(cgrid): typed event emitter for public CGrid API"
+git commit -m "feat(cgrid): typed event emitter for public VelocityGrid API"
 ```
 
 ---
@@ -755,7 +755,7 @@ git commit -m "feat(cgrid): typed event emitter for public CGrid API"
 - Test: `cgrid/tests/propertyChain.test.ts`
 
 **Interfaces:**
-- Consumes: `CColDef`, `CGridOptions` from Task 3.
+- Consumes: `CColDef`, `VelocityGridOptions` from Task 3.
 - Produces:
   ```typescript
   function resolveColDef<TRow>(
@@ -2351,47 +2351,47 @@ git commit -m "feat(cgrid): main-side WorkerClient (typed RPC + push event routi
 - [ ] **Step 1: Write `cgrid/src/theming/tokens.css`**
 
 ```css
-.cg-theme-quartz {
-  --cg-font-family: Inter, system-ui, -apple-system, sans-serif;
-  --cg-font-size: 13px;
-  --cg-row-height: 30px;
-  --cg-header-height: 32px;
-  --cg-fg-color: #1a1f24;
-  --cg-bg-color: #ffffff;
-  --cg-row-alt-bg: #f4f6f8;
-  --cg-header-bg: #e8ecef;
-  --cg-header-fg: #1a1f24;
-  --cg-border-color: #d5dbe0;
-  --cg-grid-line-color: #e8ecef;
-  --cg-row-hover-bg: #eef1f3;
-  --cg-row-selected-bg: rgb(13 148 136 / 12%);
-  --cg-focus-ring-color: #0d9488;
-  --cg-focus-ring-width: 2px;
-  --cg-flash-from-color: #fef3c7;
-  --cg-flash-to-color: rgba(254, 243, 199, 0);
-  --cg-resizer-hot-zone: 4px;
-  --cg-scrollbar-thickness: 8px;
+.vg-theme-quartz {
+  --vg-font-family: Inter, system-ui, -apple-system, sans-serif;
+  --vg-font-size: 13px;
+  --vg-row-height: 30px;
+  --vg-header-height: 32px;
+  --vg-fg-color: #1a1f24;
+  --vg-bg-color: #ffffff;
+  --vg-row-alt-bg: #f4f6f8;
+  --vg-header-bg: #e8ecef;
+  --vg-header-fg: #1a1f24;
+  --vg-border-color: #d5dbe0;
+  --vg-grid-line-color: #e8ecef;
+  --vg-row-hover-bg: #eef1f3;
+  --vg-row-selected-bg: rgb(13 148 136 / 12%);
+  --vg-focus-ring-color: #0d9488;
+  --vg-focus-ring-width: 2px;
+  --vg-flash-from-color: #fef3c7;
+  --vg-flash-to-color: rgba(254, 243, 199, 0);
+  --vg-resizer-hot-zone: 4px;
+  --vg-scrollbar-thickness: 8px;
 }
-.cg-theme-quartz-dark {
-  --cg-font-family: Inter, system-ui, -apple-system, sans-serif;
-  --cg-font-size: 13px;
-  --cg-row-height: 30px;
-  --cg-header-height: 32px;
-  --cg-fg-color: #e2e8f0;
-  --cg-bg-color: #0f172a;
-  --cg-row-alt-bg: #111c2f;
-  --cg-header-bg: #1e293b;
-  --cg-header-fg: #e2e8f0;
-  --cg-border-color: #334155;
-  --cg-grid-line-color: #1e293b;
-  --cg-row-hover-bg: #1a2540;
-  --cg-row-selected-bg: rgb(13 148 136 / 22%);
-  --cg-focus-ring-color: #2dd4bf;
-  --cg-focus-ring-width: 2px;
-  --cg-flash-from-color: #b45309;
-  --cg-flash-to-color: rgba(180, 83, 9, 0);
-  --cg-resizer-hot-zone: 4px;
-  --cg-scrollbar-thickness: 8px;
+.vg-theme-quartz-dark {
+  --vg-font-family: Inter, system-ui, -apple-system, sans-serif;
+  --vg-font-size: 13px;
+  --vg-row-height: 30px;
+  --vg-header-height: 32px;
+  --vg-fg-color: #e2e8f0;
+  --vg-bg-color: #0f172a;
+  --vg-row-alt-bg: #111c2f;
+  --vg-header-bg: #1e293b;
+  --vg-header-fg: #e2e8f0;
+  --vg-border-color: #334155;
+  --vg-grid-line-color: #1e293b;
+  --vg-row-hover-bg: #1a2540;
+  --vg-row-selected-bg: rgb(13 148 136 / 22%);
+  --vg-focus-ring-color: #2dd4bf;
+  --vg-focus-ring-width: 2px;
+  --vg-flash-from-color: #b45309;
+  --vg-flash-to-color: rgba(180, 83, 9, 0);
+  --vg-resizer-hot-zone: 4px;
+  --vg-scrollbar-thickness: 8px;
 }
 ```
 
@@ -2408,24 +2408,24 @@ describe('CssReader', () => {
   beforeEach(() => {
     container = document.createElement('div');
     container.style.cssText = `
-      --cg-font-family: Inter;
-      --cg-font-size: 14px;
-      --cg-row-height: 32px;
-      --cg-header-height: 36px;
-      --cg-fg-color: #111;
-      --cg-bg-color: #fff;
-      --cg-row-alt-bg: #fafafa;
-      --cg-header-bg: #eee;
-      --cg-header-fg: #111;
-      --cg-border-color: #ccc;
-      --cg-grid-line-color: #eee;
-      --cg-row-hover-bg: #f5f5f5;
-      --cg-row-selected-bg: rgba(0,0,0,0.1);
-      --cg-focus-ring-color: #08f;
-      --cg-focus-ring-width: 2px;
-      --cg-flash-from-color: yellow;
-      --cg-flash-to-color: transparent;
-      --cg-resizer-hot-zone: 4px;
+      --vg-font-family: Inter;
+      --vg-font-size: 14px;
+      --vg-row-height: 32px;
+      --vg-header-height: 36px;
+      --vg-fg-color: #111;
+      --vg-bg-color: #fff;
+      --vg-row-alt-bg: #fafafa;
+      --vg-header-bg: #eee;
+      --vg-header-fg: #111;
+      --vg-border-color: #ccc;
+      --vg-grid-line-color: #eee;
+      --vg-row-hover-bg: #f5f5f5;
+      --vg-row-selected-bg: rgba(0,0,0,0.1);
+      --vg-focus-ring-color: #08f;
+      --vg-focus-ring-width: 2px;
+      --vg-flash-from-color: yellow;
+      --vg-flash-to-color: transparent;
+      --vg-resizer-hot-zone: 4px;
     `;
     document.body.appendChild(container);
   });
@@ -2478,26 +2478,26 @@ export class CssReader {
       const v = parseFloat(get(name));
       return Number.isFinite(v) ? v : fallback;
     };
-    const fontSize = get('--cg-font-size') || '13px';
-    const fontFamily = get('--cg-font-family') || 'system-ui';
+    const fontSize = get('--vg-font-size') || '13px';
+    const fontFamily = get('--vg-font-family') || 'system-ui';
     return {
       font: `${fontSize} ${fontFamily}`,
-      fg:           get('--cg-fg-color')         || '#1a1f24',
-      bg:           get('--cg-bg-color')         || '#ffffff',
-      headerBg:     get('--cg-header-bg')        || '#e8ecef',
-      headerFg:     get('--cg-header-fg')        || '#1a1f24',
-      borderColor:  get('--cg-border-color')     || '#d5dbe0',
-      gridLineColor:get('--cg-grid-line-color') || '#e8ecef',
-      rowAltBg:     get('--cg-row-alt-bg')       || '#f4f6f8',
-      rowHoverBg:   get('--cg-row-hover-bg')     || '#eef1f3',
-      rowSelectedBg:get('--cg-row-selected-bg') || 'rgba(13,148,136,0.12)',
-      focusRingColor: get('--cg-focus-ring-color') || '#0d9488',
-      focusRingWidth: px('--cg-focus-ring-width', 2),
-      flashFromColor: get('--cg-flash-from-color') || '#fef3c7',
-      flashToColor:   get('--cg-flash-to-color')   || 'rgba(254,243,199,0)',
-      rowHeight:    px('--cg-row-height', 30),
-      headerHeight: px('--cg-header-height', 32),
-      resizerHotZone: px('--cg-resizer-hot-zone', 4),
+      fg:           get('--vg-fg-color')         || '#1a1f24',
+      bg:           get('--vg-bg-color')         || '#ffffff',
+      headerBg:     get('--vg-header-bg')        || '#e8ecef',
+      headerFg:     get('--vg-header-fg')        || '#1a1f24',
+      borderColor:  get('--vg-border-color')     || '#d5dbe0',
+      gridLineColor:get('--vg-grid-line-color') || '#e8ecef',
+      rowAltBg:     get('--vg-row-alt-bg')       || '#f4f6f8',
+      rowHoverBg:   get('--vg-row-hover-bg')     || '#eef1f3',
+      rowSelectedBg:get('--vg-row-selected-bg') || 'rgba(13,148,136,0.12)',
+      focusRingColor: get('--vg-focus-ring-color') || '#0d9488',
+      focusRingWidth: px('--vg-focus-ring-width', 2),
+      flashFromColor: get('--vg-flash-from-color') || '#fef3c7',
+      flashToColor:   get('--vg-flash-to-color')   || 'rgba(254,243,199,0)',
+      rowHeight:    px('--vg-row-height', 30),
+      headerHeight: px('--vg-header-height', 32),
+      resizerHotZone: px('--vg-resizer-hot-zone', 4),
     };
   }
 }
@@ -4195,7 +4195,7 @@ export class EditorOverlay {
     this.close();
     this.opts = opts;
     const w = document.createElement('div');
-    w.className = 'cg-editor-overlay';
+    w.className = 'vg-editor-overlay';
     w.style.cssText = `position:absolute; left:${opts.bounds.x}px; top:${opts.bounds.y}px; width:${opts.bounds.w}px; height:${opts.bounds.h}px; z-index:10`;
     const input = document.createElement('input');
     const editorType = opts.colDef.cellEditor ?? (opts.colDef.type === 'number' ? 'number' : 'text');
@@ -4343,7 +4343,7 @@ export class A11yOverlay {
 
   constructor(private container: HTMLElement) {
     const root = document.createElement('div');
-    root.className = 'cg-a11y-root';
+    root.className = 'vg-a11y-root';
     root.style.cssText = HIDDEN_STYLE;
     const grid = document.createElement('div');
     grid.setAttribute('role', 'grid');
@@ -4391,31 +4391,31 @@ git commit -m "feat(cgrid): hidden DOM ARIA grid scaffold for focused-row screen
 
 ---
 
-### Task 24: Public `class CGrid` (`cgrid/src/cgrid.ts`)
+### Task 24: Public `class VelocityGrid` (`cgrid/src/velocityGrid.ts`)
 
 **Files:**
-- Modify: `cgrid/src/cgrid.ts` (replace stub with the real class + re-exports + tokens.css side-effect import)
+- Modify: `cgrid/src/velocityGrid.ts` (replace stub with the real class + re-exports + tokens.css side-effect import)
 - Test: `cgrid/tests/cgrid.integration.test.ts`
 
 **Interfaces:**
 - Consumes: everything from prior tasks.
-- Produces: the public `class CGrid` per spec §10.1 — the user-facing entry point. The implementation:
+- Produces: the public `class VelocityGrid` per spec §10.1 — the user-facing entry point. The implementation:
   1. Constructs container DOM (root div + canvas + editor overlay slot + a11y overlay).
   2. Instantiates `CssReader`, `CellRendererRegistry` (pre-registered painters), `SelectionModel`, `PaintLoop`, `Renderer`, `HitTester`, `PointerInput`, `KeyboardInput`, `EditorOverlay`, `A11yOverlay`.
   3. Starts the worker (`new Worker(new URL('./worker/worker.ts', import.meta.url), { type: 'module' })`).
-  4. Wires `WorkerClient` to push events into the `TypedEventEmitter<CGridEvent>`.
+  4. Wires `WorkerClient` to push events into the `TypedEventEmitter<VelocityGridEvent>`.
   5. Wires viewport requests on scroll / model updates / size changes.
   6. Wires editor commit → `applyTransaction({ update: [...] })`.
-  7. Implements the public `CGridApi` methods and `.on(...)` subscription.
+  7. Implements the public `VelocityGridApi` methods and `.on(...)` subscription.
 
 - [ ] **Step 1: Integration test (worker mocked, canvas mocked)**
 
 `cgrid/tests/cgrid.integration.test.ts`:
 ```typescript
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 
-// Stub Worker for happy-dom env. CGrid accepts options.worker.url; in tests we inject a fake.
+// Stub Worker for happy-dom env. VelocityGrid accepts options.worker.url; in tests we inject a fake.
 beforeAll(() => {
   (globalThis as any).Worker = class {
     listeners: Array<(e: { data: any }) => void> = [];
@@ -4426,17 +4426,17 @@ beforeAll(() => {
   };
 });
 
-describe('CGrid integration', () => {
+describe('VelocityGrid integration', () => {
   it('constructs and emits gridReady', async () => {
     const container = document.createElement('div');
     container.style.cssText = 'width:800px; height:600px;';
-    container.className = 'cg-theme-quartz';
+    container.className = 'vg-theme-quartz';
     document.body.appendChild(container);
     const events: any[] = [];
-    const grid = new CGrid<{ id: string; name: string }>(container, {
+    const grid = new VelocityGrid<{ id: string; name: string }>(container, {
       columnDefs: [{ field: 'id' }, { field: 'name' }],
       getRowId: (r) => r.id,
-      theme: 'cg-theme-quartz',
+      theme: 'vg-theme-quartz',
     });
     grid.on('gridReady', (e) => events.push(e));
     // Simulate worker 'ready' response so the integration completes.
@@ -4450,14 +4450,14 @@ describe('CGrid integration', () => {
 
 (Note: the integration test is best-effort against the worker mock. It verifies the construction wiring lands without errors and the public emitter fires.)
 
-- [ ] **Step 2: Implement `cgrid/src/cgrid.ts`**
+- [ ] **Step 2: Implement `cgrid/src/velocityGrid.ts`**
 
 This file is large (~300 lines). Structure:
 
 ```typescript
 import './theming/tokens.css';
 import type {
-  CGridOptions, CGridEvent, CGridApi, Tx, TransactionResult, SortModel, FilterModel, GroupModel, CColDef,
+  VelocityGridOptions, VelocityGridEvent, VelocityGridApi, Tx, TransactionResult, SortModel, FilterModel, GroupModel, CColDef,
 } from './types';
 import { TypedEventEmitter } from './core/eventEmitter';
 import { resolveColDef, type ResolvedColDef } from './core/propertyChain';
@@ -4480,12 +4480,12 @@ import { decodeText } from './worker/chunkFormat';
 export const CGRID_VERSION = '0.0.0';
 
 export type {
-  CGridOptions, CColDef, CGridEvent, CGridApi, Tx, TransactionResult,
+  VelocityGridOptions, CColDef, VelocityGridEvent, VelocityGridApi, Tx, TransactionResult,
   SortModel, FilterModel, GroupModel,
 } from './types';
 
-export class CGrid<TRow = any> {
-  private events = new TypedEventEmitter<CGridEvent>();
+export class VelocityGrid<TRow = any> {
+  private events = new TypedEventEmitter<VelocityGridEvent>();
   private columnDefsMap = new Map<string, ResolvedColDef<TRow>>();
   private columnOrder: ResolvedColDef<TRow>[] = [];
   private columnLayout: ColumnLayout[] = [];
@@ -4515,13 +4515,13 @@ export class CGrid<TRow = any> {
   private destroyed = false;
   private resizeObs: ResizeObserver;
 
-  constructor(private container: HTMLElement, private options: CGridOptions<TRow>) {
+  constructor(private container: HTMLElement, private options: VelocityGridOptions<TRow>) {
     if (!options.getRowId) throw new Error('[cgrid] options.getRowId is required');
 
     // 1. DOM scaffold
     this.root = document.createElement('div');
     this.root.style.cssText = 'position:relative; width:100%; height:100%; overflow:hidden;';
-    this.root.classList.add(options.theme ?? 'cg-theme-quartz');
+    this.root.classList.add(options.theme ?? 'vg-theme-quartz');
     this.canvas = document.createElement('canvas');
     this.canvas.style.cssText = 'display:block; position:absolute; left:0; top:0; outline:none;';
     this.canvas.tabIndex = 0;
@@ -4637,7 +4637,7 @@ export class CGrid<TRow = any> {
 
   // --- Public API -----------------------------------------------------------
 
-  on<E extends CGridEvent['type']>(type: E, handler: (e: Extract<CGridEvent, { type: E }>) => void): () => void {
+  on<E extends VelocityGridEvent['type']>(type: E, handler: (e: Extract<VelocityGridEvent, { type: E }>) => void): () => void {
     return this.events.on(type, handler);
   }
 
@@ -4715,7 +4715,7 @@ export class CGrid<TRow = any> {
 
   // --- Internals ------------------------------------------------------------
 
-  private makeApi(): CGridApi {
+  private makeApi(): VelocityGridApi {
     return {
       setRowData: (r) => this.setRowData(r as TRow[]),
       applyTransaction: (t) => this.applyTransaction(t as Tx<TRow>),
@@ -4743,7 +4743,7 @@ export class CGrid<TRow = any> {
       filter: c.filter,
     }));
   }
-  private inferRowIdField(opts: CGridOptions<TRow>): string {
+  private inferRowIdField(opts: VelocityGridOptions<TRow>): string {
     // Foundation: parse the field name out of a `(row) => row.id` style fn body.
     const src = opts.getRowId.toString();
     const m = src.match(/(?:return\s+)?(?:\w+|\(\w+\))\.(\w+)/);
@@ -4882,8 +4882,8 @@ export class CGrid<TRow = any> {
 npm test --workspace=cgrid -- cgrid.integration.test
 npm run typecheck --workspace=cgrid
 npm run build --workspace=cgrid
-git add cgrid/src/cgrid.ts cgrid/tests/cgrid.integration.test.ts
-git commit -m "feat(cgrid): public CGrid class wiring renderer + worker + interaction + a11y"
+git add cgrid/src/velocityGrid.ts cgrid/tests/cgrid.integration.test.ts
+git commit -m "feat(cgrid): public VelocityGrid class wiring renderer + worker + interaction + a11y"
 ```
 
 ---
@@ -4972,7 +4972,7 @@ export default defineConfig({
           <button id="theme">Toggle theme</button>
         </div>
       </header>
-      <div id="grid" class="grid-host cg-theme-quartz"></div>
+      <div id="grid" class="grid-host vg-theme-quartz"></div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
@@ -4999,8 +4999,8 @@ if (host) host.textContent = 'Initializing grid…';
 document.getElementById('theme')?.addEventListener('click', () => {
   const h = document.getElementById('grid');
   if (!h) return;
-  h.classList.toggle('cg-theme-quartz');
-  h.classList.toggle('cg-theme-quartz-dark');
+  h.classList.toggle('vg-theme-quartz');
+  h.classList.toggle('vg-theme-quartz-dark');
 });
 ```
 
@@ -5141,11 +5141,11 @@ export function connectStomp(cb: StompCallbacks) {
 
 `apps/cgrid-positions/src/positionsGrid.ts`:
 ```typescript
-import { CGrid, type CGridOptions } from 'cgrid';
+import { VelocityGrid, type VelocityGridOptions } from 'cgrid';
 import type { Position } from './stomp';
 
-export function createPositionsGrid(container: HTMLElement): CGrid<Position> {
-  const options: CGridOptions<Position> = {
+export function createPositionsGrid(container: HTMLElement): VelocityGrid<Position> {
+  const options: VelocityGridOptions<Position> = {
     columnDefs: [
       { field: 'positionId',     headerName: 'Position ID', width: 150, pinned: 'left' },
       { field: 'cusip',          headerName: 'CUSIP',       width: 110, pinned: 'left' },
@@ -5167,9 +5167,9 @@ export function createPositionsGrid(container: HTMLElement): CGrid<Position> {
     cellFlashDuration: 500,
     cellFadeDuration: 800,
     asyncTransactionWaitMillis: 50,
-    theme: 'cg-theme-quartz',
+    theme: 'vg-theme-quartz',
   };
-  return new CGrid<Position>(container, options);
+  return new VelocityGrid<Position>(container, options);
 }
 ```
 
@@ -5197,8 +5197,8 @@ grid.on('gridReady', () => {
 grid.on('modelUpdated', (e) => console.log('[cgrid] modelUpdated, visible:', e.visibleRowCount));
 
 document.getElementById('theme')?.addEventListener('click', () => {
-  host.classList.toggle('cg-theme-quartz');
-  host.classList.toggle('cg-theme-quartz-dark');
+  host.classList.toggle('vg-theme-quartz');
+  host.classList.toggle('vg-theme-quartz-dark');
   grid.refresh();
 });
 ```
@@ -5219,7 +5219,7 @@ npm run dev:positions
 
 ```bash
 git add apps/cgrid-positions/
-git commit -m "feat(demo): wire cgrid-positions to STOMP feed via vanilla-ts CGrid API"
+git commit -m "feat(demo): wire cgrid-positions to STOMP feed via vanilla-ts VelocityGrid API"
 ```
 
 ---
@@ -5284,9 +5284,9 @@ npm install cgrid
 ## Quickstart
 
 ```typescript
-import { CGrid } from 'cgrid';
+import { VelocityGrid } from 'cgrid';
 
-const grid = new CGrid<{ id: string; name: string; value: number }>(
+const grid = new VelocityGrid<{ id: string; name: string; value: number }>(
   document.getElementById('grid')!,
   {
     columnDefs: [
@@ -5296,7 +5296,7 @@ const grid = new CGrid<{ id: string; name: string; value: number }>(
     ],
     getRowId: (row) => row.id,
     rowSelection: 'multiple',
-    theme: 'cg-theme-quartz',
+    theme: 'vg-theme-quartz',
   },
 );
 

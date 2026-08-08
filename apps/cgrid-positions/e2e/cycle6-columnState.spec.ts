@@ -54,7 +54,7 @@ async function gridReady(page: import('@playwright/test').Page): Promise<void> {
 async function visibleColIds(page: import('@playwright/test').Page): Promise<string[]> {
   return page.evaluate(() => {
     const grid = (window as unknown as {
-      __cgrid: GridApiSurface;
+      __velocity-grid: GridApiSurface;
     }).__cgrid;
     return grid.getColumnState()
       .filter((e) => e.hide !== true)
@@ -70,7 +70,7 @@ test.describe('Cycle 6 / Task 2 — column state round-trip', () => {
     // `page.reload()`, which would wipe the saved layout the round-trip
     // test depends on.
     await page.goto('/?stress=light');
-    await page.evaluate(() => localStorage.removeItem('cg-layout'));
+    await page.evaluate(() => localStorage.removeItem('vg-layout'));
   });
 
   test('Save → reload → Restore via the toolbar button replays the saved layout', async ({ page }) => {
@@ -79,7 +79,7 @@ test.describe('Cycle 6 / Task 2 — column state round-trip', () => {
     // Mutate: move cusip past ticker via the imperative API so we have a
     // deterministic, persistent change to round-trip.
     const before = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return grid.getColumnState().map((e) => e.colId);
     });
     const cusipIdx = before.indexOf('cusip');
@@ -88,7 +88,7 @@ test.describe('Cycle 6 / Task 2 — column state round-trip', () => {
     expect(tickerIdx).toBeGreaterThan(-1);
     await page.evaluate(
       ({ from, to }) => {
-        const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+        const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
         grid.moveColumnByIndex(from, to);
       },
       { from: cusipIdx, to: tickerIdx },
@@ -99,7 +99,7 @@ test.describe('Cycle 6 / Task 2 — column state round-trip', () => {
 
     // Capture expected order then reload.
     const expected = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return grid.getColumnState().map((e) => e.colId);
     });
     await page.reload();
@@ -111,7 +111,7 @@ test.describe('Cycle 6 / Task 2 — column state round-trip', () => {
 
     // Confirm localStorage carried the expected order (debug aid).
     const persisted = await page.evaluate(() => {
-      const raw = localStorage.getItem('cg-layout');
+      const raw = localStorage.getItem('vg-layout');
       return raw ? (JSON.parse(raw) as Array<{ colId: string }>).map((e) => e.colId) : null;
     });
     expect(persisted).toEqual(expected);
@@ -128,7 +128,7 @@ test.describe('Cycle 6 / Task 2 — column state round-trip', () => {
     );
 
     const after = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return grid.getColumnState().map((e) => e.colId);
     });
     // The restored order honors locks — `notionalAmount` carries
@@ -146,12 +146,12 @@ test.describe('Cycle 6 / Task 2 — column state round-trip', () => {
     await gridReady(page);
 
     const original = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return grid.getColumnState().map((e) => e.colId);
     });
     // Mutate via API: hide ticker.
     await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       grid.applyColumnState({ state: [{ colId: 'ticker', hide: true }] });
     });
     const afterMutate = await visibleColIds(page);
@@ -169,7 +169,7 @@ test.describe('Cycle 6 / Task 2 — column state round-trip', () => {
       }),
     );
     const afterReset = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return grid.getColumnState().map((e) => e.colId);
     });
     expect(afterReset).toEqual(original);
@@ -180,7 +180,7 @@ test.describe('Cycle 6 / Task 2 — column state round-trip', () => {
     await gridReady(page);
 
     await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       grid.applyColumnState({
         state: [{ colId: 'pnl', hide: false }],
         defaultState: { hide: true },

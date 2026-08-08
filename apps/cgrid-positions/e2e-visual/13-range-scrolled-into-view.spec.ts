@@ -25,7 +25,7 @@ test('range overlay paints visible middle when top + bottom rows scrolled out of
   // (row 400) far below bodyBottom.
   await page.evaluate(() => {
     const g = (window as unknown as {
-      __cgrid: {
+      __velocity-grid: {
         addCellRange: (range: { rowStart: number; rowEnd: number; colIds: string[] }) => void;
       };
     }).__cgrid;
@@ -47,7 +47,7 @@ test('range overlay paints visible middle when top + bottom rows scrolled out of
   // Keeps the snapshot diff diagnostic narrow to the painter.
   const rangeCount = await page.evaluate(() => {
     return (window as unknown as {
-      __cgrid: { getCellRanges: () => unknown[] };
+      __velocity-grid: { getCellRanges: () => unknown[] };
     }).__cgrid.getCellRanges().length;
   });
   expect(rangeCount).toBe(1);

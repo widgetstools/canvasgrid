@@ -1,4 +1,4 @@
-// @cgrid/edit — shared fake TargetSurface + fake KernelGridSurface for tests.
+// @wellsfargo-starui/velocity-grid-edit — shared fake TargetSurface + fake KernelGridSurface for tests.
 // Factory over an in-memory `rows` array (array index = visible row order),
 // with overridable ranges / focused cell / editability. `getRowsByIndex` is a
 // vi.fn spy so tests can assert batching behavior (spec §3.6a).

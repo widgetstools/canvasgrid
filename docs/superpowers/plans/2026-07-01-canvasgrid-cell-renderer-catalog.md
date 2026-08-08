@@ -1,12 +1,12 @@
 # Cell renderer catalog — 40 renderers for financial blotters (research + design doc)
 
-**Status:** research synthesis + design doc. Catalog locked 2026-07-01. Implementation ships as `@cgrid/renderers` — a 10th package added to Cycle 21.
+**Status:** research synthesis + design doc. Catalog locked 2026-07-01. Implementation ships as `@wellsfargo-starui/velocity-grid-renderers` — a 10th package added to Cycle 21.
 **Author:** Anand (via Claude)
 **Date:** 2026-07-01
 **Depends on:** Cycle 21 modular monorepo split; consumes format Tier 2 (composite cells), expression engine (contextual colour), calc (column-wide statistics), kernel (paint + tick semantics + icon registry).
 **Related plans:**
 - [Cycle 21 modular monorepo + intrinsic features](2026-07-01-canvasgrid-cycle-21-modular-monorepo-and-intrinsic-features.md) — the package split this catalog extends
-- [Cycle 20 Excel Pivot Grid](2026-07-01-canvasgrid-cycle-20-excel-pivot-parity.md) — consumes renderers via `@cgrid/renderers`
+- [Cycle 20 Excel Pivot Grid](2026-07-01-canvasgrid-cycle-20-excel-pivot-parity.md) — consumes renderers via `@wellsfargo-starui/velocity-grid-renderers`
 
 **Research sources:** two parallel research streams (2026-07-01) — competitor grid renderer catalogs (11 libraries: AG-Grid, Handsontable, Bryntum, Kendo, DevExtreme, Slickgrid-Universal, PrimeReact, TanStack, Perspective, Syncfusion, Glide) and financial blotter domain patterns (Bloomberg Terminal, Refinitiv Workspace, Trumid, MarketAxess X-Pro, Fidessa, TradingView, AG Grid finance demo, Bookmap, Proof Trading case study).
 
@@ -20,7 +20,7 @@ Base grid libraries treat "one scalar per cell" as canonical. AG-Grid Enterprise
 - **Contextual** — colour/size driven by column-wide statistics (heat cells), benchmarks (spread bars), or age (freshness dots)
 - **Tick-aware** — flash background, inline arrow, pulse — every professional blotter has this and it must be intrinsic
 
-Cgrid ships all three axes intrinsically via `@cgrid/renderers`. The Cycle 21 architecture (worker-only style channel, composite column type, format DSL, expression engine) already carries the right shapes; this catalog formalises the 40 renderers that fill the gap.
+Cgrid ships all three axes intrinsically via `@wellsfargo-starui/velocity-grid-renderers`. The Cycle 21 architecture (worker-only style channel, composite column type, format DSL, expression engine) already carries the right shapes; this catalog formalises the 40 renderers that fill the gap.
 
 ---
 
@@ -45,7 +45,7 @@ Every renderer conforms to these. Individual entries may add specifics but never
 
 ## 2. Category overview
 
-Forty renderers across eight categories. Tier indicators (T1/T2/T3) reflect research-stage priority — all 40 ship in `@cgrid/renderers` per user decision.
+Forty renderers across eight categories. Tier indicators (T1/T2/T3) reflect research-stage priority — all 40 ship in `@wellsfargo-starui/velocity-grid-renderers` per user decision.
 
 | Category | Count | Depends on |
 |---|---|---|
@@ -231,9 +231,9 @@ Row height accommodates the two-line stack; other columns in the same row stay s
 
 ---
 
-## 5. Package placement — `@cgrid/renderers` (10th package)
+## 5. Package placement — `@wellsfargo-starui/velocity-grid-renderers` (10th package)
 
-`@cgrid/renderers` is added to Cycle 21's package inventory as the 10th package. Base renderers (text, number, boolean, checkbox, image, hyperlink, custom-registration) stay in `@cgrid/kernel`; all rich renderers in this catalog live in `@cgrid/renderers`.
+`@wellsfargo-starui/velocity-grid-renderers` is added to Cycle 21's package inventory as the 10th package. Base renderers (text, number, boolean, checkbox, image, hyperlink, custom-registration) stay in `@wellsfargo-starui/velocity-grid`; all rich renderers in this catalog live in `@wellsfargo-starui/velocity-grid-renderers`.
 
 Rationale:
 - Plain-grid consumers skip the finance-specific bundle.
@@ -265,22 +265,22 @@ Cycle 21 § should be updated to reflect this addition. See §7 for the sequenci
 
 ## 7. Sequencing within Cycle 21
 
-Cycle 21 currently sequences packages: expression → format → rules → calc → edit → export → customizer, followed by Cycle 20 as capstone. `@cgrid/renderers` slots between `@cgrid/calc` and `@cgrid/edit`:
+Cycle 21 currently sequences packages: expression → format → rules → calc → edit → export → customizer, followed by Cycle 20 as capstone. `@wellsfargo-starui/velocity-grid-renderers` slots between `@wellsfargo-starui/velocity-grid-calc` and `@wellsfargo-starui/velocity-grid-edit`:
 
 **Updated Phase 2 order:**
 
-1. `@cgrid/expression`
-2. `@cgrid/format`
-3. `@cgrid/rules`
-4. `@cgrid/calc`
-5. **`@cgrid/renderers`** — depends on kernel + expression + format + calc + rules; delivers the 40 renderers
-6. `@cgrid/edit`
-7. `@cgrid/export`
-8. `@cgrid/customizer`
+1. `@wellsfargo-starui/velocity-grid-expression`
+2. `@wellsfargo-starui/velocity-grid-format`
+3. `@wellsfargo-starui/velocity-grid-rules`
+4. `@wellsfargo-starui/velocity-grid-calc`
+5. **`@wellsfargo-starui/velocity-grid-renderers`** — depends on kernel + expression + format + calc + rules; delivers the 40 renderers
+6. `@wellsfargo-starui/velocity-grid-edit`
+7. `@wellsfargo-starui/velocity-grid-export`
+8. `@wellsfargo-starui/velocity-grid-customizer`
 
-Then Phase 3 Cycle 20 (`@cgrid/excel-pivot`) as capstone.
+Then Phase 3 Cycle 20 (`@wellsfargo-starui/velocity-grid-excel-pivot`) as capstone.
 
-Renderers can start when calc is landed (its dependency); can partially run in parallel with `@cgrid/edit` since they don't share code. Numeric + text + indicator + badge categories don't depend on calc — those can start earlier if useful.
+Renderers can start when calc is landed (its dependency); can partially run in parallel with `@wellsfargo-starui/velocity-grid-edit` since they don't share code. Numeric + text + indicator + badge categories don't depend on calc — those can start earlier if useful.
 
 Estimated: 2 cycles worth of work (~4 weeks). Category order for feature landing:
 - Cycle 21e-i: numeric + text + indicator + badge + action (foundation)
@@ -304,4 +304,4 @@ Deferred to implementation cycles:
 
 ## Summary
 
-Forty renderers across eight categories, filling the gap left by base grid libraries in composite + contextual + tick-aware cell rendering. Ships as new `@cgrid/renderers` package (10th in Cycle 21 split), between `@cgrid/calc` and `@cgrid/edit` in sequence. Aesthetic bar set by Bloomberg/Refinitiv/Trumid professional convention: dense rows, tabular figures, restrained motion, muted grays with semantic colour reserved for signal. Composite renderers use the format DSL Tier 2 already spec'd in Cycle 21 §5 — the catalog is the payoff of the architecture.
+Forty renderers across eight categories, filling the gap left by base grid libraries in composite + contextual + tick-aware cell rendering. Ships as new `@wellsfargo-starui/velocity-grid-renderers` package (10th in Cycle 21 split), between `@wellsfargo-starui/velocity-grid-calc` and `@wellsfargo-starui/velocity-grid-edit` in sequence. Aesthetic bar set by Bloomberg/Refinitiv/Trumid professional convention: dense rows, tabular figures, restrained motion, muted grays with semantic colour reserved for signal. Composite renderers use the format DSL Tier 2 already spec'd in Cycle 21 §5 — the catalog is the payoff of the architecture.

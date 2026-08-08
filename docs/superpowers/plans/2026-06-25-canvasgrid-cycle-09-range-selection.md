@@ -24,7 +24,7 @@ draws one translucent fill + one border rect per Range (allocation-
 free per scroll frame — Range list is small, paint is fast). The
 fill-handle is a 6×6 square at the bottom-right of the focused
 range; drag extends; release applies a single `applyTransaction`.
-The range API + event are surfaced on `CGridApi`.
+The range API + event are surfaced on `VelocityGridApi`.
 
 **Tech Stack:** TypeScript strict, Vitest (unit), Playwright (E2E),
 single-canvas 2D paint, Web Worker data pipeline. No new runtime
@@ -41,8 +41,8 @@ dependencies.
   - `cgrid/src/interaction/features/` — existing features (`headerClick.ts`, `columnDrag.ts`, …)
   - `cgrid/src/renderer/painters/` — paint passes (rangeOverlayPainter lands here)
   - `cgrid/src/renderer/renderer.ts` — paint pass ordering
-  - `cgrid/src/cgrid.ts` — `CGridApi` (where range API methods land)
-  - `cgrid/src/types.ts` — `CGridEvent` union (rangeSelectionChanged), `CGridApi` interface
+  - `cgrid/src/velocityGrid.ts` — `VelocityGridApi` (where range API methods land)
+  - `cgrid/src/types.ts` — `VelocityGridEvent` union (rangeSelectionChanged), `VelocityGridApi` interface
 - Demo (verification target): `apps/cgrid-positions/`
 
 ## Global Constraints
@@ -53,8 +53,8 @@ Apply to **every task** (extend the constraints from Cycles 2–8).
   (`cellSelection`, `getCellRanges`, `addCellRange`, `clearCellRanges`,
   `enableFillHandle`, `fillHandleDirection`, `rangeSelectionChanged`,
   `cellSelectionChanged`).
-- **No regressions in the public API.** Any addition to `CGridOptions`,
-  `CGridApi`, the event union, or the worker protocol is purely
+- **No regressions in the public API.** Any addition to `VelocityGridOptions`,
+  `VelocityGridApi`, the event union, or the worker protocol is purely
   additive.
 - **TypeScript strict.** `npm run typecheck --workspaces` clean every task.
 - **No worker round-trip for range paint.** Range overlay reads from
@@ -79,12 +79,12 @@ Apply to **every task** (extend the constraints from Cycles 2–8).
 | # | Task | Files |
 |---|---|---|
 | 1 | `SelectionRange` model + extend `SelectionModel` | `types.ts`, `interaction/selectionModel.ts`, tests |
-| 2 | Range selection via drag (mousedown→mousemove→mouseup) | `interaction/features/rangeSelection.ts` (new), `featureChain.ts`, `cgrid.ts`, tests |
+| 2 | Range selection via drag (mousedown→mousemove→mouseup) | `interaction/features/rangeSelection.ts` (new), `featureChain.ts`, `velocityGrid.ts`, tests |
 | 3 | Range overlay painter | `renderer/painters/rangeOverlayPainter.ts` (new), `renderer/renderer.ts`, `theming/tokens.css`, tests |
 | 4 | Shift-click extend + Ctrl-click disjoint + header-click whole-column | `interaction/features/rangeSelection.ts`, `interaction/features/headerClick.ts`, tests |
 | 5 | Fill handle (drag bottom-right corner extends selection + commits values) | `interaction/features/fillHandle.ts` (new), `renderer/painters/rangeOverlayPainter.ts`, tests, E2E |
-| 6 | Range API: `getCellRanges` / `addCellRange` / `clearCellRanges` + `cellSelection` options | `cgrid.ts`, `types.ts`, tests |
-| 7 | `rangeSelectionChanged` + `cellSelectionChanged` events + Cycle 9 exit ritual | `cgrid.ts`, `types.ts`, FM flips, worklog Shipped + status |
+| 6 | Range API: `getCellRanges` / `addCellRange` / `clearCellRanges` + `cellSelection` options | `velocityGrid.ts`, `types.ts`, tests |
+| 7 | `rangeSelectionChanged` + `cellSelectionChanged` events + Cycle 9 exit ritual | `velocityGrid.ts`, `types.ts`, FM flips, worklog Shipped + status |
 
 ---
 
@@ -102,7 +102,7 @@ notification the existing SelectionModel already uses.
 **Read first:**
 - `cgrid/src/interaction/selectionModel.ts` — current state shape +
   notification pattern
-- `cgrid/src/cgrid.ts` — `setSelectedRowIds` / `setFocusedCell` for
+- `cgrid/src/velocityGrid.ts` — `setSelectedRowIds` / `setFocusedCell` for
   reference
 
 **Files:**
@@ -190,7 +190,7 @@ in the chain alongside the existing focus / sort / drag features.
 - Create: `cgrid/src/interaction/features/rangeSelection.ts` (~120 LOC).
 - Modify: `cgrid/src/interaction/featureChain.ts` — register the
   new feature.
-- Modify: `cgrid/src/cgrid.ts` — instantiate.
+- Modify: `cgrid/src/velocityGrid.ts` — instantiate.
 - Create: `cgrid/tests/rangeSelection.test.ts`.
 
 **Steps:**
@@ -261,8 +261,8 @@ Allocation-free on the scroll path.
 - Create: `cgrid/src/renderer/painters/rangeOverlayPainter.ts` (~100 LOC).
 - Modify: `cgrid/src/renderer/renderer.ts` — add the painter after
   the existing overlay pass.
-- Modify: `cgrid/src/theming/tokens.css` — `--cg-range-fill-color`
-  (translucent), `--cg-range-border-color` (opaque).
+- Modify: `cgrid/src/theming/tokens.css` — `--vg-range-fill-color`
+  (translucent), `--vg-range-border-color` (opaque).
 - Modify: `cgrid/src/theming/cssReader.ts` — forward both into
   `ResolvedTheme`.
 - Create: `cgrid/tests/rangeOverlayPainter.test.ts`.
@@ -297,7 +297,7 @@ opaque border per contiguous rect. Runs after the existing overlay
 pass. Reads from main-side SelectionModel only — no worker round-
 trip. Off-screen ranges contribute zero paint cost.
 
-Theme tokens --cg-range-fill-color + --cg-range-border-color in
+Theme tokens --vg-range-fill-color + --vg-range-border-color in
 both light + dark.
 
 Cycle 9 / Task 3.
@@ -337,7 +337,7 @@ from Task 2:
   handle shift/ctrl on the initial mousedown.
 - Modify: `cgrid/src/interaction/features/headerClick.ts` — when
   the click isn't on a sort affordance, route to `cgrid.selectColumn(colId, {extend})`.
-- Modify: `cgrid/src/cgrid.ts` — `selectColumn(colId, opts)` helper.
+- Modify: `cgrid/src/velocityGrid.ts` — `selectColumn(colId, opts)` helper.
 - Update: `cgrid/tests/rangeSelection.test.ts` — add modifier cases.
 
 **Steps:**
@@ -385,7 +385,7 @@ range (the most recently created/extended). Drag the handle vertically
 to extend the selection downward; release commits new cell values
 into the extended rows. Linear-extrapolation for numbers, repeat for
 text. Hidden when no range or when
-`CGridOptions.enableFillHandle === false`.
+`VelocityGridOptions.enableFillHandle === false`.
 
 **Read first:**
 - `cgrid/src/interaction/features/columnDrag.ts` — drag pattern with
@@ -396,9 +396,9 @@ text. Hidden when no range or when
 - Create: `cgrid/src/interaction/features/fillHandle.ts` (~150 LOC).
 - Modify: `cgrid/src/renderer/painters/rangeOverlayPainter.ts` —
   paint the 6×6 handle on the focused range when fill handle is on.
-- Modify: `cgrid/src/cgrid.ts` — instantiate + commit
+- Modify: `cgrid/src/velocityGrid.ts` — instantiate + commit
   `applyTransaction({ update: [...newRows] })` on release.
-- Modify: `cgrid/src/types.ts` — `CGridOptions.enableFillHandle`,
+- Modify: `cgrid/src/types.ts` — `VelocityGridOptions.enableFillHandle`,
   `fillHandleDirection: 'x' | 'y' | 'xy'`, `fillOperation` callback.
 - Create: `cgrid/tests/fillHandle.test.ts`.
 - Create: `apps/cgrid-positions/e2e/cycle9-fillHandle.spec.ts`.
@@ -458,25 +458,25 @@ batch/cycle-9-task-6-<YYYY-MM-DD>. Open PR to main when done.
 
 ## Task 6 — Range API + `cellSelection` options
 
-**Goal:** Surface the range model on `CGridApi` so apps can read /
+**Goal:** Surface the range model on `VelocityGridApi` so apps can read /
 write programmatically. Add `cellSelection` grid options bundle to
 toggle individual sub-behaviors (matches ag-grid).
 
 **Read first:**
-- `cgrid/src/cgrid.ts` — `setSelectedRowIds` / `getSelectedRowIds`
+- `cgrid/src/velocityGrid.ts` — `setSelectedRowIds` / `getSelectedRowIds`
   for shape
 
 **Files:**
-- Modify: `cgrid/src/cgrid.ts` — add `getCellRanges`,
+- Modify: `cgrid/src/velocityGrid.ts` — add `getCellRanges`,
   `addCellRange`, `clearCellRanges`.
-- Modify: `cgrid/src/types.ts` — `CGridApi` interface, `CGridOptions.cellSelection`.
+- Modify: `cgrid/src/types.ts` — `VelocityGridApi` interface, `VelocityGridOptions.cellSelection`.
 - Create: `cgrid/tests/cellRangesApi.test.ts`.
 
 **Interface produced:**
 
 ```ts
 // types.ts
-export interface CGridOptions<TRow = any> {
+export interface VelocityGridOptions<TRow = any> {
   // … existing …
   /** Cell-range selection knobs. When omitted, ranges work with the
    *  Cycle 9 defaults (drag enabled, shift extend, ctrl disjoint,
@@ -488,7 +488,7 @@ export interface CGridOptions<TRow = any> {
   };
 }
 
-export interface CGridApi<TRow = any> {
+export interface VelocityGridApi<TRow = any> {
   // … existing …
   /** Currently-selected ranges. Returns a fresh array; mutating it
    *  doesn't update selection. Cycle 9 / Task 6. */
@@ -556,11 +556,11 @@ populate this worklog's Shipped + Status sections.
 
 **Read first:**
 - `cgrid/src/core/eventEmitter.ts` — how events fan out
-- `cgrid/src/types.ts` — `CGridEvent` union
+- `cgrid/src/types.ts` — `VelocityGridEvent` union
 
 **Files:**
-- Modify: `cgrid/src/types.ts` — `CGridEvent` variants for both events.
-- Modify: `cgrid/src/cgrid.ts` — fire from `rangeSelection.ts` (mid-drag) +
+- Modify: `cgrid/src/types.ts` — `VelocityGridEvent` variants for both events.
+- Modify: `cgrid/src/velocityGrid.ts` — fire from `rangeSelection.ts` (mid-drag) +
   from `SelectionModel.onChange` (finished).
 - Modify: `cgrid/src/interaction/features/rangeSelection.ts` + `fillHandle.ts`
   — emit the start/mid/end pings.
@@ -571,8 +571,8 @@ populate this worklog's Shipped + Status sections.
 **Interface produced:**
 
 ```ts
-// CGridEvent additions
-export type CGridEvent =
+// VelocityGridEvent additions
+export type VelocityGridEvent =
   // … existing …
   | {
       type: 'rangeSelectionChanged';
@@ -655,7 +655,7 @@ selection on the same press.
 fill + one opaque border per contiguous rect, after the existing
 overlay pass. Reads from main-side `SelectionModel.ranges` (no worker
 round-trip). Off-screen ranges contribute zero paint cost. Light + dark
-theme tokens (`--cg-range-fill-color`, `--cg-range-border-color`).
+theme tokens (`--vg-range-fill-color`, `--vg-range-border-color`).
 
 **Modifier semantics.** Shift-click extends the last range to cover the
 clicked cell (rowStart/rowEnd clamp to min/max, colIds becomes the
@@ -676,7 +676,7 @@ sources; repeat for text. Per-cell override via the
 `cycle9-fillHandle.spec.ts` covers drag-preview, value commit, and the
 suppression path.
 
-**Range API.** `CGridApi.getCellRanges()`, `addCellRange(range)`,
+**Range API.** `VelocityGridApi.getCellRanges()`, `addCellRange(range)`,
 `clearCellRanges()`. Returns / mutates the live SelectionModel.
 
 **`cellSelection` options bundle.** `suppressDrag` disables the drag

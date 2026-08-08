@@ -27,7 +27,7 @@ export class DateStringCellEditor implements ICellEditor<unknown, string> {
     const dsParams = (params.params ?? {}) as DateStringParams;
     const input = document.createElement('input');
     input.type = dsParams.includeTime ? 'datetime-local' : 'date';
-    input.className = 'cg-cell-editor cg-cell-editor--date-string';
+    input.className = 'vg-cell-editor vg-cell-editor--date-string';
     input.value = params.value == null ? '' : String(params.value);
     if (dsParams.min != null) input.min = toIsoDateString(dsParams.min);
     if (dsParams.max != null) input.max = toIsoDateString(dsParams.max);
@@ -35,9 +35,9 @@ export class DateStringCellEditor implements ICellEditor<unknown, string> {
     input.style.cssText =
       'box-sizing:border-box; width:100%; height:100%; ' +
       'border:0; padding:0 8px; margin:0; ' +
-      'background:var(--cg-cell-editor-bg, var(--cg-bg-color, #fff)); color:var(--cg-text-color, var(--cg-fg-color, #111)); ' +
-      'font-family:var(--cg-font-family, inherit); font-size:var(--cg-font-size, inherit); ' +
-      'outline:2px solid var(--cg-focus-ring-color, #4a90e2);';
+      'background:var(--vg-cell-editor-bg, var(--vg-bg-color, #fff)); color:var(--vg-text-color, var(--vg-fg-color, #111)); ' +
+      'font-family:var(--vg-font-family, inherit); font-size:var(--vg-font-size, inherit); ' +
+      'outline:2px solid var(--vg-focus-ring-color, #4a90e2);';
     this.keydownHandler = (e: KeyboardEvent) => {
       if (e.key === 'Enter') {
         e.stopPropagation();

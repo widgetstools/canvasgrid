@@ -231,7 +231,7 @@ describe('PivotPass — enableStrictPivotColumnOrder + pivotComparator (Task 8c)
     const { pivot, groupOutput, ids } = setup(['region']);
     pivot.setModel({ pivotColIds: ['sector'], valueCols: [{ colId: 'pnl', aggFunc: 'sum' }] });
     // Default constructor leaves strict ON to match prior cycles' shipped
-    // alphanumeric ordering; the public CGridOptions flag flips it to OFF
+    // alphanumeric ordering; the public VelocityGridOptions flag flips it to OFF
     // (append-new-at-end). 8c verifies both branches.
     pivot.setStrictPivotColumnOrder(true);
     const out = pivot.apply(ids, groupOutput);

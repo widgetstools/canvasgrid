@@ -8,7 +8,7 @@ import {
 } from '../src/core/groupingCoordinator';
 import { TypedEventEmitter } from '../src/core/eventEmitter';
 import { resolveColumnTree, type ColumnTree } from '../src/core/columnTree';
-import type { CGridEvent, SortModel } from '../src/types';
+import type { VelocityGridEvent, SortModel } from '../src/types';
 import type { ResolvedColDef } from '../src/core/propertyChain';
 import type { ColumnLayout } from '../src/core/layout';
 
@@ -58,8 +58,8 @@ function makePrimaryTree(): ColumnTree {
 
 interface Harness {
   coord: GroupingCoordinator;
-  events: TypedEventEmitter<CGridEvent>;
-  seen: CGridEvent[];
+  events: TypedEventEmitter<VelocityGridEvent>;
+  seen: VelocityGridEvent[];
   destroyed: { value: boolean };
   options: GroupingCoordinatorOptions;
   isPivotMode: { value: boolean };
@@ -102,8 +102,8 @@ function makeHarness(opts: {
   reply?: Partial<SetGroupModelReply>;
   isPivotMode?: boolean;
 } = {}): Harness {
-  const events = new TypedEventEmitter<CGridEvent>();
-  const seen: CGridEvent[] = [];
+  const events = new TypedEventEmitter<VelocityGridEvent>();
+  const seen: VelocityGridEvent[] = [];
   events.on('columnRowGroupChanged', (e) => seen.push(e));
   const destroyed = { value: false };
   const isPivotMode = { value: opts.isPivotMode ?? false };
@@ -259,7 +259,7 @@ describe('GroupingCoordinator — state delegates', () => {
     h.coord.addRowGroupColumn('sector');
     h.coord.setRowGroupColumnSort('sector', 'asc');
     const evts = h.seen.filter(
-      (e): e is Extract<CGridEvent, { type: 'columnRowGroupChanged' }> =>
+      (e): e is Extract<VelocityGridEvent, { type: 'columnRowGroupChanged' }> =>
         e.type === 'columnRowGroupChanged',
     );
     expect(evts.map((e) => e.source)).toEqual(['add', 'sort']);

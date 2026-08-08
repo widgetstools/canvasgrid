@@ -88,15 +88,15 @@ describe('resolveColumnTree — single-level groups', () => {
 });
 
 describe('resolveColumnTree — auto-generated groupId', () => {
-  it('assigns unique cg-grp- IDs to groups missing groupId', () => {
+  it('assigns unique vg-grp- IDs to groups missing groupId', () => {
     const tree = resolveColumnTree([
       { headerName: 'Anon', children: [{ field: 'x' }] },
       { headerName: 'Anon2', children: [{ field: 'y' }] },
     ]);
     const ids = Array.from(tree.groupById.keys());
     expect(ids).toHaveLength(2);
-    expect(ids[0]).toMatch(/^cg-grp-/);
-    expect(ids[1]).toMatch(/^cg-grp-/);
+    expect(ids[0]).toMatch(/^vg-grp-/);
+    expect(ids[1]).toMatch(/^vg-grp-/);
     expect(ids[0]).not.toBe(ids[1]);
   });
 });

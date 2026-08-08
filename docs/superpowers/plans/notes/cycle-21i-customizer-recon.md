@@ -1,4 +1,4 @@
-# Cycle 21i recon — @cgrid/customizer (committed 2026-07-03)
+# Cycle 21i recon — @wellsfargo-starui/velocity-grid-customizer (committed 2026-07-03)
 
 Recon redo for 21i-S0 (original scratchpad recon lost). Sources:
 `docs/starui-customizer-ui/*.md` (00–19 + README), `docs/starui-customizer/*.md`,
@@ -26,7 +26,7 @@ the 2026-07-02 session worklog.
    Toolbar needs a **saved-filters store that does not exist anywhere yet**
    (17:130), and #19 Toolbar Date Settings is largely starui-specific — docs
    recommend shipping only a stripped row-filter panel (19:170-176).
-5. **License note in the docs:** `@cgrid/customizer` is marked "TBD (can be
+5. **License note in the docs:** `@wellsfargo-starui/velocity-grid-customizer` is marked "TBD (can be
    commercial — AG Grid Enterprise model)" (README.md:18) while core stays
    MIT. Business decision, not made anywhere.
 
@@ -82,17 +82,17 @@ shared editors → master-detail → toolbars) (README.md:173-214).
 ## 4. Engine-side readiness (source-verified)
 
 **Two-tier public surface (governs everything):** panels registered through
-the kernel tool-panel system receive `CGridApi` (`makeApi()`, cgrid.ts:5640) —
-a strict subset of the `CGrid` class. Several methods exist class-only:
-`getFilterModel()` (cgrid.ts:2543), `getState()/setState()`,
-`setThemeParams()/getThemeParams()` (cgrid.ts:5079/5089), `getSortModel()`.
+the kernel tool-panel system receive `VelocityGridApi` (`makeApi()`, velocityGrid.ts:5640) —
+a strict subset of the `VelocityGrid` class. Several methods exist class-only:
+`getFilterModel()` (velocityGrid.ts:2543), `getState()/setState()`,
+`setThemeParams()/getThemeParams()` (velocityGrid.ts:5079/5089), `getSortModel()`.
 "Public API only" must state which tier is the contract.
 
 **Panel attachment is NOT a gap.** The tool-panel registry accepts
-third-party panels: `CGridOptions.components` + `SideBarDef.toolPanels`
+third-party panels: `VelocityGridOptions.components` + `SideBarDef.toolPanels`
 (ToolPanelDef with id/label/icon/width), contract `init/getGui/refresh/
 destroy` (toolPanels/registry.ts:48-86, types.ts:29-80). Runtime control via
-`openToolPanel/closeToolPanel/getToolPanelInstance/...` — all on `CGridApi`.
+`openToolPanel/closeToolPanel/getToolPanelInstance/...` — all on `VelocityGridApi`.
 Context menu + header menu custom items are public (`getContextMenuItems`,
 `getMainMenuItems`, runtime-mutable). BUT: no generic modal/sheet/popout
 primitive exists in the kernel (only purpose-scoped PopupHost/
@@ -107,7 +107,7 @@ Tier A — missing everywhere (new engine code needed):
 2. Icon registry enumeration (`resolveIcon` lookup only; no `listIcons()`).
 3. Renderer-registry enumeration on a live grid (registry has
    register/get only; static `RENDERER_NAMES` is not instance truth).
-4. `@cgrid/export` empty scaffold — Visual Excel panel (#12) has nothing to
+4. `@wellsfargo-starui/velocity-grid-export` empty scaffold — Visual Excel panel (#12) has nothing to
    drive until 21h ships.
 5. No unified module-state persistence — `GridState` snapshot
    (stateSnapshot.ts:36-72) covers column/filter/sort/group/pivot/sideBar/
@@ -163,10 +163,10 @@ See discussion summary presented 2026-07-03; decisions to be recorded in the
   (~40-50KB gz vs ~2.5MB, shadow-DOM-native — Monaco fights Lit shadow
   roots, CM6 composes; autocomplete + lint extensions + small custom DSL
   language). **Hard theming requirement:** dark + light modes via a single
-  token bridge mapping `--wa-*`/chrome vars onto kernel `--cg-*` tokens;
+  token bridge mapping `--wa-*`/chrome vars onto kernel `--vg-*` tokens;
   customizer follows `getThemeKind()` and flips with the grid; no hardcoded
   colors anywhere; both modes get e2e visual coverage. Guardrails: all UI
-  deps confined to `@cgrid/customizer` (CI-enforced — no engine package may
+  deps confined to `@wellsfargo-starui/velocity-grid-customizer` (CI-enforced — no engine package may
   import them); Web Awesome free-core components verified at spec time.
 - **D-C State/persistence — DECIDED 2026-07-03 (user): C1 with a TOTAL-STATE
   requirement.** Kernel module-state registry: engines register versioned
@@ -237,10 +237,10 @@ See discussion summary presented 2026-07-03; decisions to be recorded in the
   can't see yet.
 - **EXECUTION MODEL — DECIDED 2026-07-03 (user): interactive phases.**
   The user names a feature increment; it is implemented IN CGRID ITSELF
-  (native tier → `@cgrid/kernel`, enterprise tier → plugin packages),
+  (native tier → `@wellsfargo-starui/velocity-grid`, enterprise tier → plugin packages),
   exactly as it ships to consumers. A NEW STANDALONE DEMO APP is the pure
   TESTBED: a thin consumer with ZERO feature code — it only instantiates
-  CGrid with the new features enabled, so what the user tests is literally
+  VelocityGrid with the new features enabled, so what the user tests is literally
   what ships. Feedback (modify/add/remove) iterates on the cgrid packages
   before the next increment. Demo app: new `apps/cgrid-customizer-demo`,
   fed by `stomp-view-server` (lives at
@@ -261,7 +261,7 @@ See discussion summary presented 2026-07-03; decisions to be recorded in the
   demo, and the demo app scaffold with STOMP feed.
 - **D-H Native state persistence — DECIDED 2026-07-03 (user).** New kernel
   options `gridId: string` (unique instance identity, storage key
-  `cgrid:state:<gridId>`) + `persistState: boolean | {adapter, debounceMs,
+  `velocity-grid:state:<gridId>`) + `persistState: boolean | {adapter, debounceMs,
   exclude}`. Autosave = debounced subscriber on the existing coalesced
   `stateUpdated` bus writing the D-C TOTAL-state document; restore on
   construction via `adapter.load(gridId)` → ordered `setState()`. Default
@@ -271,4 +271,4 @@ See discussion summary presented 2026-07-03; decisions to be recorded in the
   control. Last-write-wins by default; multi-tab/locking is host-adapter
   territory. NATIVE tier; part of the Phase -1 wave. Verified 2026-07-03:
   kernel has NO gridId concept and zero localStorage code today;
-  `stateUpdated` bus (cgrid.ts:499-504,861) is the ready-made autosave hook.
+  `stateUpdated` bus (velocityGrid.ts:499-504,861) is the ready-made autosave hook.

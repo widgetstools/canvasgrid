@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import type { CColDef } from '../src/types';
 
 /**
@@ -70,10 +70,10 @@ function mount(columnDefs: CColDef[]) {
   const el = document.createElement('div');
   el.style.cssText = 'width:800px; height:600px;';
   document.body.appendChild(el);
-  return new CGrid(el, { columnDefs, rowData: [], getRowId: (r: any) => r.id });
+  return new VelocityGrid(el, { columnDefs, rowData: [], getRowId: (r: any) => r.id });
 }
 
-function arm(grid: CGrid<any>, values: Record<string, unknown[]>) {
+function arm(grid: VelocityGrid<any>, values: Record<string, unknown[]>) {
   const coord = (grid as any).workerCoord;
   vi.spyOn(coord, 'autosizeSampleValues').mockResolvedValue({
     values, rowCount: Object.values(values)[0]?.length ?? 0,

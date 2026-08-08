@@ -52,7 +52,7 @@ async function gridReady(page: Page): Promise<void> {
 
 async function seedRows(page: Page, count: number): Promise<void> {
   await page.evaluate((n) => {
-    const g = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+    const g = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
     const TICKERS = ['AAPL', 'MSFT', 'GOOG', 'AMZN', 'META', 'NVDA', 'TSLA', 'BRK', 'JPM', 'XOM'];
     const rows: Array<Record<string, unknown>> = [];
     for (let i = 0; i < n; i++) {
@@ -93,19 +93,19 @@ test.describe('Cycle 15.5 / Task 6 — keyboard group navigation', () => {
 
     // Row 0 must be a group row.
     const isGroup = await page.evaluate(() =>
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.isGroupRow(0)
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.isGroupRow(0)
     );
     expect(isGroup).toBe(true);
 
     // Get the group key so we can check expanded state.
     const groupKey = await page.evaluate(() =>
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getGroupKeyAtRow(0)
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getGroupKeyAtRow(0)
     );
     expect(groupKey.length).toBeGreaterThan(0);
 
     // All groups expand by default → row 0 should be expanded.
     const expandedBefore = await page.evaluate((key) =>
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.isGroupExpanded(key),
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.isGroupExpanded(key),
       groupKey,
     );
     expect(expandedBefore).toBe(true);
@@ -113,7 +113,7 @@ test.describe('Cycle 15.5 / Task 6 — keyboard group navigation', () => {
     // Click the center of the auto-group cell (well past the chevron at ≈x+18)
     // to set keyboard focus without triggering a chevron toggle.
     const bounds = await page.evaluate(() =>
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getCellBoundsAt(0, 'ag-Grid-AutoColumn')
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getCellBoundsAt(0, 'ag-Grid-AutoColumn')
     );
     expect(bounds).not.toBeNull();
 
@@ -130,7 +130,7 @@ test.describe('Cycle 15.5 / Task 6 — keyboard group navigation', () => {
     await waitForFrames(page, 8);
 
     const collapsedAfterLeft = await page.evaluate((key) =>
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.isGroupExpanded(key),
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.isGroupExpanded(key),
       groupKey,
     );
     expect(collapsedAfterLeft).toBe(false);
@@ -139,7 +139,7 @@ test.describe('Cycle 15.5 / Task 6 — keyboard group navigation', () => {
     await canvas.press('ArrowLeft');
     await waitForFrames(page, 4);
     const stillCollapsed = await page.evaluate((key) =>
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.isGroupExpanded(key),
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.isGroupExpanded(key),
       groupKey,
     );
     expect(stillCollapsed).toBe(false);
@@ -148,7 +148,7 @@ test.describe('Cycle 15.5 / Task 6 — keyboard group navigation', () => {
     await canvas.press('ArrowRight');
     await waitForFrames(page, 8);
     const expandedAfterRight = await page.evaluate((key) =>
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.isGroupExpanded(key),
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.isGroupExpanded(key),
       groupKey,
     );
     expect(expandedAfterRight).toBe(true);
@@ -157,7 +157,7 @@ test.describe('Cycle 15.5 / Task 6 — keyboard group navigation', () => {
     await canvas.press('ArrowRight');
     await waitForFrames(page, 4);
     const stillExpanded = await page.evaluate((key) =>
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.isGroupExpanded(key),
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.isGroupExpanded(key),
       groupKey,
     );
     expect(stillExpanded).toBe(true);
@@ -169,7 +169,7 @@ test.describe('Cycle 15.5 / Task 6 — keyboard group navigation', () => {
 
     // Focus the group row at index 0.
     const bounds = await page.evaluate(() =>
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getCellBoundsAt(0, 'ag-Grid-AutoColumn')
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getCellBoundsAt(0, 'ag-Grid-AutoColumn')
     );
     const off = await canvasOffset(page);
     await page.mouse.click(
@@ -179,7 +179,7 @@ test.describe('Cycle 15.5 / Task 6 — keyboard group navigation', () => {
     await waitForFrames(page, 6);
 
     const ariaExpanded = (): Promise<string | null> => page.evaluate(() => {
-      const row = document.querySelector('.cg-a11y-root [role="row"]');
+      const row = document.querySelector('.vg-a11y-root [role="row"]');
       return row ? row.getAttribute('aria-expanded') : 'NO_ROW';
     });
 
@@ -199,7 +199,7 @@ test.describe('Cycle 15.5 / Task 6 — keyboard group navigation', () => {
 
     // Move focus to a leaf (data) row → attribute removed entirely.
     const leafBounds = await page.evaluate(() =>
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getCellBoundsAt(1, 'ag-Grid-AutoColumn')
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getCellBoundsAt(1, 'ag-Grid-AutoColumn')
     );
     await page.mouse.click(
       off.x + leafBounds!.x + Math.min(80, Math.round(leafBounds!.w * 0.6)),
@@ -214,12 +214,12 @@ test.describe('Cycle 15.5 / Task 6 — keyboard group navigation', () => {
     await seedRows(page, 50);
 
     const groupKey = await page.evaluate(() =>
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getGroupKeyAtRow(0)
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getGroupKeyAtRow(0)
     );
 
     // Start: expanded (default). Focus the group row.
     const bounds = await page.evaluate(() =>
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getCellBoundsAt(0, 'ag-Grid-AutoColumn')
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getCellBoundsAt(0, 'ag-Grid-AutoColumn')
     );
     const off = await canvasOffset(page);
     const clickX = off.x + bounds!.x + Math.min(80, Math.round(bounds!.w * 0.6));
@@ -233,7 +233,7 @@ test.describe('Cycle 15.5 / Task 6 — keyboard group navigation', () => {
     await canvas.press('Enter');
     await waitForFrames(page, 8);
     const afterFirstEnter = await page.evaluate((key) =>
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.isGroupExpanded(key),
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.isGroupExpanded(key),
       groupKey,
     );
     expect(afterFirstEnter).toBe(false);
@@ -242,7 +242,7 @@ test.describe('Cycle 15.5 / Task 6 — keyboard group navigation', () => {
     await canvas.press('Enter');
     await waitForFrames(page, 8);
     const afterSecondEnter = await page.evaluate((key) =>
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.isGroupExpanded(key),
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.isGroupExpanded(key),
       groupKey,
     );
     expect(afterSecondEnter).toBe(true);
@@ -253,12 +253,12 @@ test.describe('Cycle 15.5 / Task 6 — keyboard group navigation', () => {
     await seedRows(page, 50);
 
     const groupKey = await page.evaluate(() =>
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getGroupKeyAtRow(0)
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getGroupKeyAtRow(0)
     );
 
     // Focus the group row.
     const bounds = await page.evaluate(() =>
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getCellBoundsAt(0, 'ag-Grid-AutoColumn')
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getCellBoundsAt(0, 'ag-Grid-AutoColumn')
     );
     const off = await canvasOffset(page);
     await page.mouse.click(
@@ -273,7 +273,7 @@ test.describe('Cycle 15.5 / Task 6 — keyboard group navigation', () => {
     await canvas.press('Space');
     await waitForFrames(page, 8);
     const afterSpace1 = await page.evaluate((key) =>
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.isGroupExpanded(key),
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.isGroupExpanded(key),
       groupKey,
     );
     expect(afterSpace1).toBe(false);
@@ -282,7 +282,7 @@ test.describe('Cycle 15.5 / Task 6 — keyboard group navigation', () => {
     await canvas.press('Space');
     await waitForFrames(page, 8);
     const afterSpace2 = await page.evaluate((key) =>
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.isGroupExpanded(key),
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.isGroupExpanded(key),
       groupKey,
     );
     expect(afterSpace2).toBe(true);
@@ -294,14 +294,14 @@ test.describe('Cycle 15.5 / Task 6 — keyboard group navigation', () => {
 
     // Row 1 should be a leaf row (row 0 = group, row 1 = first leaf under it).
     const isLeaf = await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return !g.isGroupRow(1);
     });
     expect(isLeaf).toBe(true);
 
     // Snapshot the full expanded set before pressing keys on a leaf.
     const keysBefore = await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       const arr: string[] = [];
       [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].forEach(i => {
         const k = g.getGroupKeyAtRow(i);
@@ -312,7 +312,7 @@ test.describe('Cycle 15.5 / Task 6 — keyboard group navigation', () => {
 
     // Focus leaf row 1.
     const bounds = await page.evaluate(() =>
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getCellBoundsAt(1, 'ag-Grid-AutoColumn')
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getCellBoundsAt(1, 'ag-Grid-AutoColumn')
     );
     const off = await canvasOffset(page);
     await page.mouse.click(
@@ -329,7 +329,7 @@ test.describe('Cycle 15.5 / Task 6 — keyboard group navigation', () => {
 
     // Re-check expansion state for all rows sampled before.
     const keysAfter = await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       const arr: string[] = [];
       [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].forEach(i => {
         const k = g.getGroupKeyAtRow(i);

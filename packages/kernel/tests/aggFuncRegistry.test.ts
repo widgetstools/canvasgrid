@@ -14,7 +14,7 @@
 // can reference them with zero registration.
 
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
 import { AggFuncRegistry } from '../src/worker/aggFuncRegistry';
 import { AggPass, RowStore } from '../src/worker/dataPipeline';
@@ -245,13 +245,13 @@ describe('AggPass dispatches through AggFuncRegistry', () => {
 // pathway (`Function.toString()` → `setAggFuncs` → `new Function()` on
 // the worker) round-trips a custom func and `chunk.totals[colId]`
 // reflects it on the next viewport reply.
-describe('CGrid.setGridOption("aggFuncs", ...) — end-to-end across postMessage', () => {
-  function mkGrid(opts?: Parameters<typeof CGrid>[1]) {
+describe('VelocityGrid.setGridOption("aggFuncs", ...) — end-to-end across postMessage', () => {
+  function mkGrid(opts?: Parameters<typeof VelocityGrid>[1]) {
     const container = document.createElement('div');
     container.style.cssText = 'width:800px; height:600px;';
-    container.className = 'cg-theme-quartz';
+    container.className = 'vg-theme-quartz';
     document.body.appendChild(container);
-    const grid = new CGrid<{ id: string; price: number }>(container, {
+    const grid = new VelocityGrid<{ id: string; price: number }>(container, {
       columnDefs: [
         { field: 'id' },
         { field: 'price', aggFunc: 'p99' },

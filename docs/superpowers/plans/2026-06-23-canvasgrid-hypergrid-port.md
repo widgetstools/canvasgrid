@@ -2,7 +2,7 @@
 
 > **For agentic workers:** Each task in this worklog is designed to be executed in a **single, isolated Claude Code session** for context efficiency. Run one task per session, verify, commit, then START A NEW SESSION using the "Next session" prompt at the end of the task. Do NOT chain multiple tasks in one session — that's how we end up doing trial-and-error.
 
-**Goal:** Replace the cgrid render + interaction layers with a TypeScript port of hypergrid's proven canvas grid architecture. Keeps cgrid's deliberate choices (Web Worker pipeline, native scrollbars, TS strict mode, `CGrid` public API, CSS-variable theming); replaces only the parts that hypergrid already solved better (canvas wrapper + paint timing, graphics-state cache, renderer orchestration with single-pass gridlines, subgrid model, feature-chain interaction).
+**Goal:** Replace the cgrid render + interaction layers with a TypeScript port of hypergrid's proven canvas grid architecture. Keeps cgrid's deliberate choices (Web Worker pipeline, native scrollbars, TS strict mode, `VelocityGrid` public API, CSS-variable theming); replaces only the parts that hypergrid already solved better (canvas wrapper + paint timing, graphics-state cache, renderer orchestration with single-pass gridlines, subgrid model, feature-chain interaction).
 
 **Why now:** Resize flicker and rendering glitches keep coming back because cgrid's canvas/paint layer was built feature-by-feature without the architecture hypergrid spent years on. Trial-and-error fixes have a low ceiling; we're swapping in proven plumbing instead.
 
@@ -12,14 +12,14 @@
 - `docs/hypergrid-audit/03-interaction.md`
 - `docs/hypergrid-audit/04-models-and-cell-renderers.md`
 - Hypergrid source: `/Users/develop/wfh/hypergrid/src/`
-- Current cgrid: `cgrid/src/`
+- Current velocity-grid: `cgrid/src/`
 - Demo (verification target): `apps/cgrid-positions/`
 
 ## Global Constraints
 
 Apply to **every task**.
 
-- **No regressions in the public API.** `CGrid`, `CGridOptions`, `CGridApi`, the typed event surface, and the worker protocol are stable. Tasks that change types must add deprecation shims and migrate the demo.
+- **No regressions in the public API.** `VelocityGrid`, `VelocityGridOptions`, `VelocityGridApi`, the typed event surface, and the worker protocol are stable. Tasks that change types must add deprecation shims and migrate the demo.
 - **TypeScript strict mode.** Every `cgrid/src/**/*.ts` must compile clean under `npm run --workspace=cgrid typecheck`.
 - **`alpha: false` canvas context.** All canvases use `getContext('2d', { alpha: false })` so the backing store is opaque.
 - **Theme classes set `background-color`** on the host. Already in `tokens.css`; do NOT remove.
@@ -36,7 +36,7 @@ Apply to **every task**.
 
 | # | Task | Primary user-visible win | Files touched |
 |---|---|---|---|
-| 1 | Port Canvas wrapper + graphics cache | **Resize flicker gone.** Smoother paint. | `core/canvas.ts` (new), `renderer/gc.ts` (new), `cgrid.ts`, delete `core/paintLoop.ts` |
+| 1 | Port Canvas wrapper + graphics cache | **Resize flicker gone.** Smoother paint. | `core/canvas.ts` (new), `renderer/gc.ts` (new), `velocityGrid.ts`, delete `core/paintLoop.ts` |
 | 2 | Renderer orchestration + single-pass gridlines | Cleaner pixel alignment, no double-stroke seams | `renderer/renderer.ts`, `renderer/painters/*`, `renderer/cellRenderers/registry.ts` |
 | 3 | Subgrid model (HeaderSubgrid + DataSubgrid) | Enables Totals row / footer / status bar cleanly | `core/subgrid.ts` (new), `core/viewport.ts`, `renderer/renderer.ts` |
 | 4 | Feature chain for interaction | Clean extension point for range-select, fill-handle, etc. | `interaction/feature.ts` (new), `interaction/features/*` (new), delete `pointerInput.ts`, `keyboardInput.ts` |
@@ -46,7 +46,7 @@ Apply to **every task**.
 
 ## Task 1 — Port Canvas wrapper + graphics cache
 
-**Goal:** Replace the canvas scaffold in `cgrid.ts` and `core/paintLoop.ts` with a TypeScript port of hypergrid's `Canvas.js`, including the `gc.cache` property proxy. After this task, browser-resize should be visibly flicker-free with no code changes downstream.
+**Goal:** Replace the canvas scaffold in `velocityGrid.ts` and `core/paintLoop.ts` with a TypeScript port of hypergrid's `Canvas.js`, including the `gc.cache` property proxy. After this task, browser-resize should be visibly flicker-free with no code changes downstream.
 
 **Why this is Task 1:** It fixes the most-painful user-visible problem (resize flicker) and is fully behind the existing `Renderer.paint(gc)` boundary, so it can land without touching the painters or interaction.
 
@@ -58,7 +58,7 @@ Apply to **every task**.
 **Files:**
 - Create: `cgrid/src/core/canvas.ts` (Canvas wrapper class)
 - Create: `cgrid/src/renderer/gc.ts` (graphics-cache proxy + `clearFill` helper + types)
-- Modify: `cgrid/src/cgrid.ts` (instantiate Canvas, remove old paintLoop wiring + manual `handleResize`/`syncSize` calls; wire scroller alongside)
+- Modify: `cgrid/src/velocityGrid.ts` (instantiate Canvas, remove old paintLoop wiring + manual `handleResize`/`syncSize` calls; wire scroller alongside)
 - Modify: `cgrid/src/renderer/renderer.ts` (accept the cached `gc` instead of raw ctx; replace direct `ctx.fillStyle = …` writes with `gc.cache.fillStyle = …`)
 - Modify: `cgrid/src/renderer/painters/*.ts` (same gc replacement)
 - Modify: `cgrid/src/renderer/cellRenderers/registry.ts` (same gc replacement)
@@ -98,7 +98,7 @@ export interface CanvasOptions {
   useHiDPI?: boolean;              // default true
   contextAttributes?: CanvasRenderingContext2DSettings;  // default { alpha: false }
 }
-export class CGridCanvas {
+export class VelocityGridCanvas {
   readonly canvas: HTMLCanvasElement;
   readonly gc: CachedContext2D;
   readonly bounds: { x: number; y: number; width: number; height: number };
@@ -115,9 +115,9 @@ export class CGridCanvas {
 **Steps:**
 
 1. **Create `cgrid/src/renderer/gc.ts`.** Implement `attachGcCache`: for every property on the 2D context prototype that's NOT a function and NOT vendor-prefixed, install a getter/setter on a `props` object that caches the last set value and only writes through to the real ctx on change. Add `cache.save()` / `cache.restore()` using `Object.create(values)` / `Object.getPrototypeOf(values)` for the cached value layer. Add `clearFill(x,y,w,h,color)` as a method on the returned ctx — if the color has alpha < 1 (parse the rgba), call `clearRect` first, then `fillRect` with the color (via `cache.fillStyle`).
-2. **Create `cgrid/src/core/canvas.ts`.** `CGridCanvas` constructor: create canvas with `display:block; position:absolute; left:0; top:0; outline:none;`, append to host, call `attachGcCache` with `{ alpha: false, ...attrs }`, store `component`, init bounds, call `resize()` synchronously, then start the RAF + resize loops.
-3. **RAF loop:** module-level `paintRequest`, `paintables: Set<CGridCanvas>`. On first constructor, start `paintLoopFunction(now)` that calls `tickPaint(now)` on each paintable then re-requests RAF. `tickPaint`: gated by `fpsCap` and `this.dirty`. If `elapsed > 1000/fps && this.dirty`, call `paintNow()` and reset `lastRepaintTime`.
-4. **Resize loop:** module-level `resizables: Set<CGridCanvas>`, single `setInterval(checkSizes, resizePollMs)`. Each `checkSize()` calls `host.getBoundingClientRect()` and compares to last; on change calls `resize()`. **Do NOT use ResizeObserver — the per-frame cascade is the flicker source.**
+2. **Create `cgrid/src/core/canvas.ts`.** `VelocityGridCanvas` constructor: create canvas with `display:block; position:absolute; left:0; top:0; outline:none;`, append to host, call `attachGcCache` with `{ alpha: false, ...attrs }`, store `component`, init bounds, call `resize()` synchronously, then start the RAF + resize loops.
+3. **RAF loop:** module-level `paintRequest`, `paintables: Set<VelocityGridCanvas>`. On first constructor, start `paintLoopFunction(now)` that calls `tickPaint(now)` on each paintable then re-requests RAF. `tickPaint`: gated by `fpsCap` and `this.dirty`. If `elapsed > 1000/fps && this.dirty`, call `paintNow()` and reset `lastRepaintTime`.
+4. **Resize loop:** module-level `resizables: Set<VelocityGridCanvas>`, single `setInterval(checkSizes, resizePollMs)`. Each `checkSize()` calls `host.getBoundingClientRect()` and compares to last; on change calls `resize()`. **Do NOT use ResizeObserver — the per-frame cascade is the flicker source.**
 5. **`resize()`** mirrors hypergrid's:
    ```ts
    const rect = this.host.getBoundingClientRect();
@@ -147,19 +147,19 @@ export class CGridCanvas {
    }
    ```
 7. **`getLocal(e)`** returns canvas-local CSS-px coords by reading `getBoundingClientRect()` on the canvas.
-8. **Modify `cgrid/src/cgrid.ts`:**
+8. **Modify `cgrid/src/velocityGrid.ts`:**
    - Delete `paintLoop` member + its `start()` / `stop()` / `markFullDirty()` calls.
    - Delete the manual `handleResize()` / `syncSizer()` calls scattered through methods.
-   - Construct `CGridCanvas(this.canvasHost, paintComponent)` where `paintComponent.setBounds = b => { recomputeLayout(b); recomputeViewport(); syncSizer(); }` and `paintComponent.paint = gc => this.renderer.paint(gc)`.
+   - Construct `VelocityGridCanvas(this.canvasHost, paintComponent)` where `paintComponent.setBounds = b => { recomputeLayout(b); recomputeViewport(); syncSizer(); }` and `paintComponent.paint = gc => this.renderer.paint(gc)`.
    - On any state change that previously did `paintLoop.markFullDirty()`, call `canvas.requestRepaint()` instead.
    - `setScroll`/`onScrollerScroll`/`recomputeViewport` survive unchanged in spirit, but use `canvas.requestRepaint()` instead of `paintLoop.markFullDirty()`.
-   - The cgrid root keeps the existing scroller + sizer + canvas overlay structure — but the canvas is created and managed by `CGridCanvas`, not directly by CGrid. Have CGrid pass `canvasHost = this.root` (or a sub-div if you prefer), and the scroller can be a sibling/preceding element. Verify the canvas overlays correctly above the scroller content area (excluding scrollbar gutters).
+   - The cgrid root keeps the existing scroller + sizer + canvas overlay structure — but the canvas is created and managed by `VelocityGridCanvas`, not directly by VelocityGrid. Have VelocityGrid pass `canvasHost = this.root` (or a sub-div if you prefer), and the scroller can be a sibling/preceding element. Verify the canvas overlays correctly above the scroller content area (excluding scrollbar gutters).
 9. **Modify `cgrid/src/renderer/renderer.ts`:**
    - Change `paint(_rects: DirtyRect[])` to `paint(gc: CachedContext2D)` — the new Canvas calls this with its cached ctx, no more dirty-rect arg.
    - Inside, replace every direct `ctx.fillStyle = …` / `ctx.font = …` / `ctx.strokeStyle = …` with `gc.cache.fillStyle = …` etc. **Direct API calls like `fillRect`, `fillText`, `beginPath`, `moveTo`, `lineTo`, `stroke`, `arc`, `arcTo`, `clearRect` still go on `gc` directly** — only the state properties go through `gc.cache`.
    - The constructor no longer needs to retain a ctx — it's passed in per-call.
 10. **Same gc-cache migration in `cgrid/src/renderer/painters/headerPainter.ts`, `bodyPainter.ts`, `pinnedPainter.ts`, `overlayPainter.ts`, and `cellRenderers/registry.ts`.** Change the painter signature to accept `gc: CachedContext2D`. Inside, swap state-property writes onto `gc.cache`.
-11. **Delete `cgrid/src/core/paintLoop.ts`** and remove its import from `cgrid.ts`. Delete `cgrid/tests/paintLoop.test.ts` if it exists.
+11. **Delete `cgrid/src/core/paintLoop.ts`** and remove its import from `velocityGrid.ts`. Delete `cgrid/tests/paintLoop.test.ts` if it exists.
 12. **Update `cgrid/tests/renderer.test.ts`** to construct a fake `CachedContext2D`. The fake's `.cache` is a plain object with the same property names; `clearFill` is a stub. Make sure tests still pass.
 13. **Run tests:**
     ```bash
@@ -175,19 +175,19 @@ export class CGridCanvas {
 15. **Manual verification:** open `http://127.0.0.1:5180/`, grab the bottom-right corner of the browser, drag-resize. Canvas must follow without blanking. No transparent flash, no jumpy column shift.
 16. **Commit:**
     ```bash
-    git add cgrid/src/core/canvas.ts cgrid/src/renderer/gc.ts cgrid/src/cgrid.ts cgrid/src/renderer/ cgrid/tests/renderer.test.ts
+    git add cgrid/src/core/canvas.ts cgrid/src/renderer/gc.ts cgrid/src/velocityGrid.ts cgrid/src/renderer/ cgrid/tests/renderer.test.ts
     git rm cgrid/src/core/paintLoop.ts
     git commit -m "feat(cgrid): port hypergrid Canvas + graphics cache; fixes resize flicker"
     ```
 
 **Acceptance criteria:**
-- [ ] `cgrid/src/core/canvas.ts` exists and exports `CGridCanvas`.
+- [ ] `cgrid/src/core/canvas.ts` exists and exports `VelocityGridCanvas`.
 - [ ] `cgrid/src/renderer/gc.ts` exists and exports `attachGcCache` + types.
 - [ ] `cgrid/src/core/paintLoop.ts` is deleted.
 - [ ] No ResizeObserver usage anywhere in `cgrid/src/`.
 - [ ] `npm test --workspace=cgrid` passes (all unit tests).
 - [ ] `npm --workspace=cgrid run typecheck` is clean.
-- [ ] `npm --workspace=cgrid run build` produces `dist/cgrid.js` and `dist/worker.js`.
+- [ ] `npm --workspace=cgrid run build` produces `dist/velocity-grid.js` and `dist/worker.js`.
 - [ ] E2E suite (all 7 tests) passes when dev server + STOMP are up.
 - [ ] Manual browser drag-resize shows no canvas blank/transparent frames.
 
@@ -291,7 +291,7 @@ Read docs/superpowers/plans/2026-06-23-canvasgrid-hypergrid-port.md and execute 
 - Create: `cgrid/src/core/subgrid.ts` (interface + impls)
 - Modify: `cgrid/src/core/viewport.ts` (accept `subgrids` arg; build `visibleRows` across them)
 - Modify: `cgrid/src/renderer/renderer.ts` (paint one section per subgrid)
-- Modify: `cgrid/src/cgrid.ts` (build `subgrids: [HeaderSubgrid, DataSubgrid]` from options)
+- Modify: `cgrid/src/velocityGrid.ts` (build `subgrids: [HeaderSubgrid, DataSubgrid]` from options)
 - Update: `cgrid/tests/viewport.test.ts` (test multi-subgrid row layout)
 
 **Interfaces:**
@@ -329,7 +329,7 @@ export interface ViewportRow {
 
 1. Define `Subgrid` interface and two implementations:
    - `HeaderSubgrid`: `getRowCount() = 1` (single header row for now), `getRowHeight() = theme.headerHeight`, `getCell(0, colId) = { value: colDef.headerName, valueFormatted: colDef.headerName }`.
-   - `DataSubgrid`: `getRowCount() = rowCountFromWorker`, `getRowHeight() = theme.rowHeight`, `getCell(local, colId) = this.cellAt(local, colId)` — delegates to the existing `cellAt(rowIndex, colId)` in `cgrid.ts`.
+   - `DataSubgrid`: `getRowCount() = rowCountFromWorker`, `getRowHeight() = theme.rowHeight`, `getCell(local, colId) = this.cellAt(local, colId)` — delegates to the existing `cellAt(rowIndex, colId)` in `velocityGrid.ts`.
 2. Extend `computeViewport` to accept `subgrids: Subgrid[]`. Walk them in order, building `visibleRows`:
    ```ts
    let y = bodyTop;
@@ -356,7 +356,7 @@ export interface ViewportRow {
    }
    ```
 3. Body & header painters: replace the existing `vs.visibleRows` iteration. For each row, dispatch by `row.subgrid.isHeader` / `isData`. Header rows render with header style; data rows render with body style. **Eventually the painters merge — Task 5 handles that.** For Task 3, keep two painters but loop over `visibleRows` once each, filtering by subgrid type.
-4. `cgrid.ts` builds the subgrid array in the constructor:
+4. `velocityGrid.ts` builds the subgrid array in the constructor:
    ```ts
    this.subgrids = [
      new HeaderSubgrid(this.columnDefsMap, () => this.theme),
@@ -410,14 +410,14 @@ Read docs/superpowers/plans/2026-06-23-canvasgrid-hypergrid-port.md and execute 
 - Create: `cgrid/src/interaction/featureChain.ts` (builds + dispatches)
 - Delete: `cgrid/src/interaction/pointerInput.ts`
 - Delete: `cgrid/src/interaction/keyboardInput.ts`
-- Modify: `cgrid/src/cgrid.ts` (instantiate FeatureChain, wire canvas events through it)
+- Modify: `cgrid/src/velocityGrid.ts` (instantiate FeatureChain, wire canvas events through it)
 - Update: `cgrid/tests/keyboardInput.test.ts` → rename to `featureChain.test.ts`; update `pointerInput.test.ts` likewise
 
 **Interfaces:**
 ```ts
 // cgrid/src/interaction/feature.ts
-export interface CGridEventCtx {
-  grid: CGridLike;                 // exposes hitTester, viewport, selection, cgrid api
+export interface VelocityGridEventCtx {
+  grid: VelocityGridLike;                 // exposes hitTester, viewport, selection, cgrid api
   hit: Hit;                         // already typed in hitTester.ts
   point: { x: number; y: number };
   mousePoint?: { x: number; y: number };  // cell-local
@@ -428,14 +428,14 @@ export abstract class Feature {
   next: Feature | null = null;
   cursor: string | null = null;    // assigned during mousemove; chain walk picks last non-null
   append(f: Feature): this { let cur: Feature = this; while (cur.next) cur = cur.next; cur.next = f; return this; }
-  handleMouseDown(ctx: CGridEventCtx): void  { this.next?.handleMouseDown(ctx); }
-  handleMouseUp(ctx: CGridEventCtx): void    { this.next?.handleMouseUp(ctx); }
-  handleMouseMove(ctx: CGridEventCtx): void  { this.next?.handleMouseMove(ctx); }
-  handleClick(ctx: CGridEventCtx): void      { this.next?.handleClick(ctx); }
-  handleDoubleClick(ctx: CGridEventCtx): void{ this.next?.handleDoubleClick(ctx); }
-  handleKeyDown(ctx: CGridEventCtx): void    { this.next?.handleKeyDown(ctx); }
-  handleWheel(ctx: CGridEventCtx): void      { this.next?.handleWheel(ctx); }
-  setCursor(grid: CGridLike): void {
+  handleMouseDown(ctx: VelocityGridEventCtx): void  { this.next?.handleMouseDown(ctx); }
+  handleMouseUp(ctx: VelocityGridEventCtx): void    { this.next?.handleMouseUp(ctx); }
+  handleMouseMove(ctx: VelocityGridEventCtx): void  { this.next?.handleMouseMove(ctx); }
+  handleClick(ctx: VelocityGridEventCtx): void      { this.next?.handleClick(ctx); }
+  handleDoubleClick(ctx: VelocityGridEventCtx): void{ this.next?.handleDoubleClick(ctx); }
+  handleKeyDown(ctx: VelocityGridEventCtx): void    { this.next?.handleKeyDown(ctx); }
+  handleWheel(ctx: VelocityGridEventCtx): void      { this.next?.handleWheel(ctx); }
+  setCursor(grid: VelocityGridLike): void {
     this.next?.setCursor(grid);
     if (this.cursor) grid.canvas.canvas.style.cursor = this.cursor;
   }
@@ -450,8 +450,8 @@ export abstract class Feature {
 4. Port `CellSelection`: on mousedown over a cell, call `grid.selection.setFocus(rowIndex, colId)` and `selectSingle` / `toggleMulti` / `range` based on modifiers (same logic as current `pointerInput.ts`). On `handleKeyDown` for arrow keys, compute next focused cell using `grid.allColIds()` and `grid.totalRowCount()`, set focus, then `grid.ensureRowVisible / ensureColIdVisible`.
 5. Port `KeyPaging`: PageDown / PageUp / Home / End.
 6. Port `HeaderClick`: on `handleClick` if `hit.kind === 'header'`, call `grid.cycleSort(colId)`.
-7. `FeatureChain` class assembles the chain, owns the canvas event listeners (mousedown/up/move/click/dblclick/wheel + keydown on the canvas), translates events to `CGridEventCtx`, dispatches into the chain, then walks `setCursor` to reconcile cursor.
-8. `cgrid.ts`: replace `this.pointer` and `this.keyboard` with `this.featureChain = new FeatureChain(...)`. On destroy, call `featureChain.destroy()`.
+7. `FeatureChain` class assembles the chain, owns the canvas event listeners (mousedown/up/move/click/dblclick/wheel + keydown on the canvas), translates events to `VelocityGridEventCtx`, dispatches into the chain, then walks `setCursor` to reconcile cursor.
+8. `velocityGrid.ts`: replace `this.pointer` and `this.keyboard` with `this.featureChain = new FeatureChain(...)`. On destroy, call `featureChain.destroy()`.
 9. Migrate tests: the existing `keyboardInput.test.ts` becomes `featureChain.test.ts`, dispatches synthetic KeyboardEvents on the canvas, asserts `selection.state.focusedRowIndex` updates. The pointerInput tests likewise.
 10. Manual verification: click cells, arrow-key navigate, Tab/Shift+Tab, drag column edges to resize, click header to cycle sort. All work.
 11. Run unit + typecheck + build + E2E. Commit:

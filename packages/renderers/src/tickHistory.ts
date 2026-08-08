@@ -1,4 +1,4 @@
-// @cgrid/renderers — main-side per-cell rolling tick history. §2.4b.
+// @wellsfargo-starui/velocity-grid-renderers — main-side per-cell rolling tick history. §2.4b.
 // Authoritative reference: docs/superpowers/specs/2026-07-02-cycle-21f-renderers-design.md §2.4b.
 //
 // Bounded ring buffers per (rowId, colId) for opted-in columns (`window` size
@@ -6,7 +6,7 @@
 // family and SpreadBarCell's rolling-σ band. O(1) push, evicts on row removal.
 // Memory: window × liveRows × 8 bytes per opted-in column (Float64Array entries).
 
-import type { CGridApi } from '@cgrid/kernel';
+import type { VelocityGridApi } from '@wellsfargo-starui/velocity-grid';
 
 /** Per-column ring-buffer options (§2.4b). */
 export interface TickHistoryColumnOptions {
@@ -57,7 +57,7 @@ function ringMaterialize(buf: RingBuffer): number[] {
 
 /**
  * Bounded per-(rowId, colId) rolling value history for opted-in columns.
- * `CGridApi` is a peerDependency type-only import — erased at runtime.
+ * `VelocityGridApi` is a peerDependency type-only import — erased at runtime.
  */
 export class TickHistory<TRow = unknown> {
   private readonly _columns: Readonly<Record<string, TickHistoryColumnOptions>>;
@@ -65,10 +65,10 @@ export class TickHistory<TRow = unknown> {
   private readonly _buffers: Map<string, Map<string, RingBuffer>>;
   private readonly _valueGetter: (row: TRow, colId: string) => unknown;
   private readonly _handler: (e: RowsChangedEvent<TRow>) => void;
-  private readonly _grid: CGridApi<TRow>;
+  private readonly _grid: VelocityGridApi<TRow>;
 
   constructor(
-    grid: CGridApi<TRow>,
+    grid: VelocityGridApi<TRow>,
     columns: Record<string, TickHistoryColumnOptions>,
     opts?: { valueGetter?: (row: TRow, colId: string) => unknown },
   ) {

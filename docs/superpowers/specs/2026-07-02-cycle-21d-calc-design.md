@@ -1,9 +1,9 @@
-# Cycle 21d — `@cgrid/calc` (Calculated Columns + Aggregates + Overrides/Templates) — Design
+# Cycle 21d — `@wellsfargo-starui/velocity-grid-calc` (Calculated Columns + Aggregates + Overrides/Templates) — Design
 
 **Date:** 2026-07-02
 **Parent brief:** [Cycle 21 decision doc](../plans/2026-07-01-canvasgrid-cycle-21-modular-monorepo-and-intrinsic-features.md) §4.5, §6, §7.4
 **Source requirements:** `docs/starui-customizer/02-calculated-columns.md`, `docs/starui-customizer/05-column-customization.md`, `docs/starui-customizer/07-column-templates.md`, `docs/starui-customizer-ui/03-calculated-columns.md`
-**Depends on:** `@cgrid/expression` (21b), `@cgrid/format` (21c), `@cgrid/rules` (21e, PR #95) — rules is a peer consumer, not a dependency.
+**Depends on:** `@wellsfargo-starui/velocity-grid-expression` (21b), `@wellsfargo-starui/velocity-grid-format` (21c), `@wellsfargo-starui/velocity-grid-rules` (21e, PR #95) — rules is a peer consumer, not a dependency.
 **Baselines (main @ `e68231e`):** kernel `2477`, rules `144`, format `171`, expression `185`; showcase E2E `125`; typecheck 21/21; build 13/13; kernel dist 771.49 KiB (+2% budget vs 760.90K → ceiling 776.12 KB — 21d gets a fresh +2% ceiling measured in Task 1 of its plan).
 
 ---
@@ -12,7 +12,7 @@
 
 ### 1.1 In scope (parent §4.5 — all of it, no deferral)
 
-1. **Expression aggregate support** — `AggregateNode`/`PrevNode` come alive: a post-parse transform in `@cgrid/calc` rewrites `CallNode`s whose name ∈ `AGGREGATE_NAMES` ∪ {`PREV`} into `AggregateNode`/`PrevNode` (MIN/MAX disambiguated by arg shape: single field-ref arg → aggregate; otherwise variadic builtin). The 21b `not-yet-implemented` reserve is honored: `packages/expression` stays **untouched**; the transform + split compiler live in calc.
+1. **Expression aggregate support** — `AggregateNode`/`PrevNode` come alive: a post-parse transform in `@wellsfargo-starui/velocity-grid-calc` rewrites `CallNode`s whose name ∈ `AGGREGATE_NAMES` ∪ {`PREV`} into `AggregateNode`/`PrevNode` (MIN/MAX disambiguated by arg shape: single field-ref arg → aggregate; otherwise variadic builtin). The 21b `not-yet-implemented` reserve is honored: `packages/expression` stays **untouched**; the transform + split compiler live in calc.
 2. **Two-pass compilation** (parent §6.1) — `compileCalc(source, schema?)` splits the AST into a **pre-pass plan** (aggregates to compute, each `{fn, colId, scope}`) and a **per-row program** (aggregate refs become slot reads). Row-local-only expressions have an empty pre-pass.
 3. **Scope model** (parent §6.2) — `all` / `visible` / `group` / `parent` literal scopes this cycle; scope syntax `SUM([x], scope: group)` parsed by the calc transform (sugared to an extra string-literal arg before `expression.parse` — mirror of 21c's bracket sugar). `window:{order,size}` scopes and the order-dependent aggregate family are **structurally reserved** (parse → `not-yet-implemented`), because RUNNING_*/MOVING_AVG demand sorted-window state that belongs with the same machinery — see 1.2.
 4. **Delta-aware aggregate registry** (parent §6.3/§6.4) — `registerAggregate(name, impl)` with the `{init, addRow, removeRow, updateRow, finalize}` contract. Built-ins this cycle: **Basic** (SUM, AVG, MIN, MAX, COUNT, COUNT_DISTINCT), **Statistical** (MEDIAN, PERCENTILE, STDEV, VAR, MODE — sorted-multiset exact path; t-digest threshold reserved per Q5 with the sorted path used at all sizes this cycle, threshold option accepted + documented), **Ratio/share** (PCT_OF_TOTAL, PCT_OF_GROUP, PCT_OF_PARENT, PCT_OF_GRAND), **Comparative FIRST/LAST** (order-aware, computed directly by the worker CalcPass per scope — NOT delta-registry impls; O(scope) recompute on version bump). MIN/MAX heap-backed for O(log n) deltas. PERCENTILE parameter rides the canonical fn-string `PERCENTILE(<p>)` (percent points 0–100).
@@ -31,8 +31,8 @@
 - **Order-dependent aggregates** — RANK / DENSE_RANK / PERCENT_RANK / RUNNING_SUM / RUNNING_AVG / MOVING_AVG / DELTA_FROM_* and `window:` scopes: registered names, `not-yet-implemented` compile error with a pointer to the follow-up cycle. Rationale: they need per-scope ORDERED state coupled to the sort model; wiring that correctly is its own cycle-sized feature and none of the downstream 21f–21i cycles block on it (renderers need windowed data for sparklines — 21f consumes the RPC surface reserved here). This is the ONLY feature-level reserve and it is a grammar-honest one (mirrors 21b/21c reserves).
 - **t-digest approximate percentiles** — the threshold option exists; the approximate implementation lands with the order-dependent family (same follow-up); exact sorted-multiset is used at every size this cycle.
 - **Customizer editor panels** — 21i.
-- **Editing calculated columns / editable overrides UI** — `@cgrid/edit` (21g) + 21i.
-- **Aggregates inside `@cgrid/rules` conditions / format Tier-1 interiors** — stays reserved (their compilers reject as today); wiring rule conditions to the calc pre-pass is a follow-up once both engines coexist.
+- **Editing calculated columns / editable overrides UI** — `@wellsfargo-starui/velocity-grid-edit` (21g) + 21i.
+- **Aggregates inside `@wellsfargo-starui/velocity-grid-rules` conditions / format Tier-1 interiors** — stays reserved (their compilers reject as today); wiring rule conditions to the calc pre-pass is a follow-up once both engines coexist.
 
 ---
 
@@ -44,9 +44,9 @@
 calc → kernel (peerDep, bridge-only runtime), expression (dep), format (dep — override/template format strings compile via the kernel's registered compiler, format dep is for types + validation)
 ```
 
-Kernel gains `@cgrid/calc` as devDependency (types in tests only); zero runtime imports — DI slots + structural types (formatCompilerSlot / ruleEngineSlot precedents).
+Kernel gains `@wellsfargo-starui/velocity-grid-calc` as devDependency (types in tests only); zero runtime imports — DI slots + structural types (formatCompilerSlot / ruleEngineSlot precedents).
 
-### 2.2 `@cgrid/calc` source layout
+### 2.2 `@wellsfargo-starui/velocity-grid-calc` source layout
 
 ```
 packages/calc/src/
@@ -71,7 +71,7 @@ packages/calc/src/
 
 Calculated values must exist where filter/sort/group run: the worker. The kernel is zero-dep, so calc ships its evaluator the way aggFuncs already travel (`Function.toString()` → `new Function` reconstruction, `worker/aggFuncRegistry.ts:14` precedent, CSP caveat documented there):
 
-- `@cgrid/calc` exports a **self-contained interpreter function** (`evaluateCalcAst(ast, row, aggSlots, prevLookup)`) written with zero free variables (no imports, no closures) — property-tested against `expression.evaluate` for row-local semantics parity.
+- `@wellsfargo-starui/velocity-grid-calc` exports a **self-contained interpreter function** (`evaluateCalcAst(ast, row, aggSlots, prevLookup)`) written with zero free variables (no imports, no closures) — property-tested against `expression.evaluate` for row-local semantics parity.
 - The bridge ships, per calc column: the portable AST (plain JSON — 21b guarantee), the pre-pass `AggSpec[]`, `cellDataType`, plus (once) the interpreter source and the delta-aggregate implementations' sources (each aggregate impl is itself written self-contained for serialization, mirroring how custom aggFuncs already cross).
 - Kernel worker gains a **CalcPass** with two stages:
   - **Stage A (row-local)** — runs at row materialization (before FilterPass): computes row-local calc values into per-column Float64/side text arrays, so filter/sort/group treat calc columns as ordinary columns.
@@ -83,7 +83,7 @@ Calculated values must exist where filter/sort/group run: the worker. The kernel
 ### 2.4 Kernel diff footprint (slot-gated, surgical)
 
 - `core/calcSlot.ts` — DI slot: `registerCalcProvider(provider)` with structural `CalcProviderShape` (synthesized colDefs + worker program payload + override patches).
-- `cgrid.ts` — `registerCalcProvider` public method; column-defs rebuild consults the slot (synthesized calc ColDefs appended per `position` hints; override/template patches folded pre-`resolveColDefs`); worker coordinator ships/updates the calc program on register + on calc-column changes; `getDistinctValues(colId, limit?)` gains the `limit` param end-to-end.
+- `velocityGrid.ts` — `registerCalcProvider` public method; column-defs rebuild consults the slot (synthesized calc ColDefs appended per `position` hints; override/template patches folded pre-`resolveColDefs`); worker coordinator ships/updates the calc program on register + on calc-column changes; `getDistinctValues(colId, limit?)` gains the `limit` param end-to-end.
 - `worker/passes/calcPass.ts` (+ pipeline wiring in `dataPipeline.ts` / `dispatch.ts` / `protocol.ts` message) — Stage A/B as §2.3; program installed via a `setCalcProgram` message; absent program → zero-cost no-op (empty pass skipped).
 - Behavior byte-identical when no calc provider is registered; kernel baseline (2477) preserved.
 
@@ -93,7 +93,7 @@ Calculated values must exist where filter/sort/group run: the worker. The kernel
 
 ```ts
 // types.ts — verbatim contract for the plan
-import type { Loc, Schema, Ast } from '@cgrid/expression';
+import type { Loc, Schema, Ast } from '@wellsfargo-starui/velocity-grid-expression';
 
 export type CellDataType = 'number' | 'currency' | 'percent' | 'date' | 'datetime' | 'string' | 'boolean';
 
@@ -206,7 +206,7 @@ Grammar corrections locked from 21e experience (bind every plan task): expressio
 - calc unit: transform table (aggregate detection, MIN/MAX shapes, scope sugar, reserves), two-pass split, interpreter ⇄ `expression.evaluate` parity property (≥200 generated row-local cases), delta contract per aggregate (add/remove/update streams === recompute), cache invalidation by scope, template/override fold precedence table.
 - kernel new-code: calcSlot; CalcPass Stage A (filter/sort/group over calc values), Stage B (group scopes, parent scopes, cache reuse across untouched scopes), PREV tick lifecycle, program install/update/remove, no-provider zero-diff, `getDistinctValues` limit.
 - E2E: calculated-columns page (row-local col sorts/filters/groups; `PCT_OF_GROUP` re-scopes live on regroup; PREV-driven delta column ticks; template applied to a column set).
-- Gates (final task): typecheck 21/21 · lint · build 13/13 · kernel 2477+new · rules 144 · format 171 · expression 185 untouched · calc suite · showcase E2E 125+new · kernel dist ≤ new-baseline+2% · zero runtime `@cgrid/calc` imports in kernel dist · no raw NULs.
+- Gates (final task): typecheck 21/21 · lint · build 13/13 · kernel 2477+new · rules 144 · format 171 · expression 185 untouched · calc suite · showcase E2E 125+new · kernel dist ≤ new-baseline+2% · zero runtime `@wellsfargo-starui/velocity-grid-calc` imports in kernel dist · no raw NULs.
 
 ## §5 Risks
 

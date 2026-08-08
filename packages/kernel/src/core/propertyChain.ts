@@ -34,22 +34,22 @@ export interface ResolvedColDef<TRow = any> {
    * `cellRenderer` + the default halign. Cycle 6 / Task 6 replaces the
    * previous `type: 'text' | 'number'` slot with this canonical field;
    * `CColDef.type` is now `string | string[]` referring to
-   * `CGridOptions.columnTypes` bundle names.
+   * `VelocityGridOptions.columnTypes` bundle names.
    */
   cellDataType: 'text' | 'number';
   valueGetter?: (params: CValueGetterParams<TRow>) => unknown;
   /** Narrowed to function form only — string is compiled by compileFormatSlots. */
   valueFormatter?: (params: CValueFormatterParams<TRow, unknown>) => string;
   /** Icon resolver derived from the format string by compileFormatSlots. */
-  cellIcon?: (params: CValueFormatterParams<TRow, unknown>) => import('@cgrid/format').IconRef | null;
+  cellIcon?: (params: CValueFormatterParams<TRow, unknown>) => import('@wellsfargo-starui/velocity-grid-format').IconRef | null;
   /** Cycle 28 — leaf-header prefix/suffix icon. Always a fn after resolve —
    *  static IconRef forms are wrapped by `normalizeHeaderIcon`. */
-  headerIcon?: (params: { colId: string }) => import('@cgrid/format').IconRef | null;
+  headerIcon?: (params: { colId: string }) => import('@wellsfargo-starui/velocity-grid-format').IconRef | null;
   /** @internal — populated by compileFormatSlots for composite ColDefs. */
   _compositeProgram?: import('../types/formatProgramShape').FormatProgramShape;
   /** @internal — populated by compileFormatSlots' string-valueFormatter
    *  path (the tier-0/1 DSL). Read ONLY by the Tier-2 strip patch's
-   *  cross-column bail (`CGrid.stripPatchCrossColumnSafe`): every format
+   *  cross-column bail (`VelocityGrid.stripPatchCrossColumnSafe`): every format
    *  program receives the FULL row (`FormatEvalCtxShape.row`), and the
    *  `tiers` flags cannot prove row-independence (the `=expr` form is
    *  tier0-flagged yet evaluates against the row), so a visible column
@@ -87,7 +87,7 @@ export interface ResolvedColDef<TRow = any> {
   /** AG parity 2026-07-21 — group-key derivation for this column; ships
    *  to the worker as serialized source (see `CColDef.keyCreator`). */
   keyCreator?: (params: { value: unknown; data: TRow }) => string;
-  /** Per-column override of `CGridOptions.floatingFilter`. `undefined` means
+  /** Per-column override of `VelocityGridOptions.floatingFilter`. `undefined` means
    *  inherit the grid-level value at `rebuildSubgridStack` time. The
    *  floating-filter overlay reads this on every `repositionAll`; explicit
    *  `false` collapses to "no input for this column". Cycle 7 / Task 1. */
@@ -105,7 +105,7 @@ export interface ResolvedColDef<TRow = any> {
    *  array fallback form) flow through to the worker. */
   aggFunc?: string | string[];
   /** See `CColDef.suppressAggFuncInHeader`. `undefined` means inherit the
-   *  grid-level `CGridOptions.suppressAggFuncInHeader`; explicit `true`
+   *  grid-level `VelocityGridOptions.suppressAggFuncInHeader`; explicit `true`
    *  / `false` wins regardless of the grid-level value. Cycle 14 / Task 4. */
   suppressAggFuncInHeader?: boolean;
   /** See `CColDef.totalsCellRenderer`. Per-column override of the cell
@@ -291,7 +291,7 @@ export interface ApplyCellPropsInput {
   isTotals?: boolean;
   /** Cycle 15 / Task 12 — set to `true` when this cell sits on a
    *  per-group footer row (`chunk.rowKinds[i] === 3`). Same lift
-   *  treatment as `isTotals` but reads from the `--cg-group-footer-*`
+   *  treatment as `isTotals` but reads from the `--vg-group-footer-*`
    *  token family, so apps can dial the per-group footer chrome down
    *  independently of the grand-total row. Defaults to `false`.
    *  Mutually exclusive with `isTotals` — a row is either a footer
@@ -386,7 +386,7 @@ export interface ApplyCellPropsInput {
   themeKind?: 'light' | 'dark';
 }
 
-/** Workstream C (2026-07-06 CSS styling model) — resolve `var(--cg-…)`
+/** Workstream C (2026-07-06 CSS styling model) — resolve `var(--vg-…)`
  *  color refs on each declared border side (`all`/`top`/`right`/`bottom`/
  *  `left`) before the spec lands on the paint config. Only touches
  *  `.color`; `width`/`style` pass through untouched — this pass is scoped
@@ -408,7 +408,7 @@ function resolveBorderSpecColors(
   return out;
 }
 
-/** Workstream C (completion) — resolve `var(--cg-…)` refs in a cell-content
+/** Workstream C (completion) — resolve `var(--vg-…)` refs in a cell-content
  *  slot's color fields (`icon.color`, `icon-text.iconColor`). Returns a shallow
  *  clone; other kinds (text/emoji) pass through untouched. */
 function resolveContentColors(
@@ -424,7 +424,7 @@ function resolveContentColors(
   return content;
 }
 
-/** Workstream C (completion) — resolve `var(--cg-…)` refs in each decorator's
+/** Workstream C (completion) — resolve `var(--vg-…)` refs in each decorator's
  *  `color` / `bg` fields so token-referenced decorator colors track the theme
  *  (mode-aware). Returns a new array of shallow clones. */
 function resolveDecoratorColors(
@@ -451,7 +451,7 @@ function resolveDecoratorColors(
  *  shorthand replaces wholesale. `valign` also passes through here.
  *
  *  Workstream C (2026-07-06 CSS styling model) — `resolveVarRef`, when
- *  supplied, resolves `var(--cg-…)` token references on `fg`/`bg`/border
+ *  supplied, resolves `var(--vg-…)` token references on `fg`/`bg`/border
  *  side colors before they land on `target` (`cellStyle`/`headerStyle`
  *  callers pass `theme.resolveVarRef`; CSS-class-variant and rule-engine
  *  callers omit it — those patches are handled by their own mechanisms
@@ -492,7 +492,7 @@ function applyOverridePatch(
     target.border = resolveVarRef ? resolveBorderSpecColors(patch.border, resolveVarRef) : patch.border;
   }
   // Cycle 27 / Task 3 — content + decorators replace wholesale. Workstream C
-  // (completion) — their color fields resolve var(--cg-…) refs when a resolver
+  // (completion) — their color fields resolve var(--vg-…) refs when a resolver
   // is supplied (cellStyle/headerStyle callers), so token-referenced icon /
   // decorator colors are mode-aware like fg/bg/border.
   if (patch.content !== undefined) {
@@ -664,7 +664,7 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   target.checkboxCheckedFg = theme.checkboxCheckedFg;
   target.params = ctx.params;
   // Workstream A (2026-07-06 CSS styling model) — thread the resolved
-  // renderer-palette bundle onto every cell so @cgrid/renderers painters
+  // renderer-palette bundle onto every cell so @wellsfargo-starui/velocity-grid-renderers painters
   // can resolve data-viz colors/geometry from theme tokens instead of
   // hardcoded constants. Constant per theme (not per-cell computed).
   target.palette = theme.rendererPalette;
@@ -737,7 +737,7 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   }
   // Cycle 15 / Task 12 — per-group footer lift. Same shape as totals
   // (fg + weight + emptyFg) but routed through the
-  // `--cg-group-footer-*` tokens so apps can dial them independently.
+  // `--vg-group-footer-*` tokens so apps can dial them independently.
   // The row bg is laid down by the row-bg bundle in `byRows.ts` reading
   // `theme.groupFooterBg`; this branch only handles the per-cell
   // typography lift. `isTotals` and `isGroupFooter` are mutually
@@ -750,7 +750,7 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
 
   // ── 2. Static cellStyle object ─────────────────────────────────────────
   // Workstream C — token-referenceable values: fg/bg/border colors of the
-  // form `var(--cg-…)` resolve through `theme.resolveVarRef`.
+  // form `var(--vg-…)` resolve through `theme.resolveVarRef`.
   // DATA CELLS ONLY: a column's cell styling never restyles its header —
   // the header branch below picks up JUST the alignment from cellStyle
   // (the one attribute that carries onto the caption); everything else on
@@ -1151,12 +1151,12 @@ function compileFormatSlots<TRow>(
         },
       ),
       cellIcon: (() => {
-        const staticRef: import('@cgrid/format').IconRef | null =
+        const staticRef: import('@wellsfargo-starui/velocity-grid-format').IconRef | null =
           typeof merged.cellIcon === 'string' ? { name: merged.cellIcon }
           : (merged.cellIcon !== undefined && typeof merged.cellIcon === 'object') ? merged.cellIcon
           : null;
         return (p: CValueFormatterParams<TRow, unknown>) =>
-          (evalFormatProgram(program, p).icon as import('@cgrid/format').IconRef | null) ?? staticRef;
+          (evalFormatProgram(program, p).icon as import('@wellsfargo-starui/velocity-grid-format').IconRef | null) ?? staticRef;
       })(),
     } as CColDef<TRow>;
   }
@@ -1206,14 +1206,14 @@ export function resolveColDef<TRow>(
     if (name === 'composite') {
       continue;
     }
-    throw new Error(`[cgrid] unknown column type '${name}' (not declared in CGridOptions.columnTypes)`);
+    throw new Error(`[velocity-grid] unknown column type '${name}' (not declared in VelocityGridOptions.columnTypes)`);
   }
 
   const merged: CColDef<TRow> = { ...typeBundle, ...defaultColDef, ...colDef };
 
   const colId = merged.colId ?? merged.field;
   if (!colId) {
-    throw new Error('[cgrid] ColDef must have colId or field');
+    throw new Error('[velocity-grid] ColDef must have colId or field');
   }
 
   const cellDataType: 'text' | 'number' = merged.cellDataType ?? 'text';
@@ -1376,8 +1376,8 @@ function normalizeCellIcon<TRow>(
 }
 
 function normalizeHeaderIcon(
-  v: import('@cgrid/format').IconRef | ((params: { colId: string }) => import('@cgrid/format').IconRef | null) | undefined,
-): ((params: { colId: string }) => import('@cgrid/format').IconRef | null) | undefined {
+  v: import('@wellsfargo-starui/velocity-grid-format').IconRef | ((params: { colId: string }) => import('@wellsfargo-starui/velocity-grid-format').IconRef | null) | undefined,
+): ((params: { colId: string }) => import('@wellsfargo-starui/velocity-grid-format').IconRef | null) | undefined {
   if (v === undefined) return undefined;
   if (typeof v === 'function') return v;
   return () => v;

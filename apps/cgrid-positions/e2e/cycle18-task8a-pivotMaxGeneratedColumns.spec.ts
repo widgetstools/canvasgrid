@@ -61,7 +61,7 @@ async function gridReady(page: Page, qs: string): Promise<void> {
 async function installBreachListener(page: Page): Promise<void> {
   await page.evaluate(() => {
     const w = window as unknown as {
-      __cgrid: GridApiSurface;
+      __velocity-grid: GridApiSurface;
       __pivotBreaches: Array<{ generatedColumns: number; cap: number }>;
     };
     w.__pivotBreaches = [];
@@ -85,7 +85,7 @@ async function pivotResultColCount(page: Page): Promise<number> {
     // Task 9 fix for AG-Grid parity). Read the actually-rendered list
     // from `columnOrder` instead so we count synthesized leaves.
     const grid = (window as unknown as {
-      __cgrid: { columnOrder: Array<{ colId: string }> };
+      __velocity-grid: { columnOrder: Array<{ colId: string }> };
     }).__cgrid;
     return (grid.columnOrder ?? []).filter((c) => c.colId.startsWith('pivotcol')).length;
   });
@@ -101,7 +101,7 @@ test.describe('Cycle 18 / Task 8a — pivotMaxGeneratedColumns cap', () => {
     // distinct-key set discovered from data will produce more than 1
     // synthesized column → breach.
     await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       api.setPivotColumns(['region']);
       api.addValueColumn('notionalAmount', 'sum');
       api.setPivotMode(true);
@@ -123,7 +123,7 @@ test.describe('Cycle 18 / Task 8a — pivotMaxGeneratedColumns cap', () => {
     await installBreachListener(page);
 
     await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       api.setPivotColumns(['region']);
       api.addValueColumn('notionalAmount', 'sum');
       api.setPivotMode(true);
@@ -133,7 +133,7 @@ test.describe('Cycle 18 / Task 8a — pivotMaxGeneratedColumns cap', () => {
 
     // Raise the cap → next chunk has pivot output, no further breach.
     await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       api.setGridOption('pivotMaxGeneratedColumns', 5000);
     });
     await waitForFrames(page, 12);
@@ -146,7 +146,7 @@ test.describe('Cycle 18 / Task 8a — pivotMaxGeneratedColumns cap', () => {
     await installBreachListener(page);
 
     await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       api.setPivotColumns(['region']);
       api.addValueColumn('notionalAmount', 'sum');
       api.setPivotMode(true);

@@ -11,7 +11,7 @@
 in `docs/catalog/FEATURE_MATRIX.md` (501 Community + 311 Enterprise) AND ship
 the result at **many times AG Grid's runtime performance**, while preserving
 cgrid's original architectural choices (Web Worker pipeline, native scrollbars,
-single-canvas paint, TypeScript strict, CSS-variable theming, the `CGrid`
+single-canvas paint, TypeScript strict, CSS-variable theming, the `VelocityGrid`
 public surface). Every Enterprise feature in AG Grid ships in cgrid Community
 — there is no licensing tier inside this library.
 
@@ -49,11 +49,11 @@ These extend the constraints from Cycle 2/3. New ones marked **NEW**.
 - **Native browser scrollbars.**
 - **Vitest unit + Playwright E2E.** Both green at end of every task.
 - **Conventional commits.** Each task = one or more focused commits.
-- **No regressions in the public API.** `CGrid`, `CGridOptions`, `CGridApi`, the typed event surface, and the worker protocol are stable. Type-shape changes require deprecation shims + demo migration.
+- **No regressions in the public API.** `VelocityGrid`, `VelocityGridOptions`, `VelocityGridApi`, the typed event surface, and the worker protocol are stable. Type-shape changes require deprecation shims + demo migration.
 - **Hypergrid source is reference, not gospel.** Same applies to ag-grid: port the API shape, not the JS class system.
 
 ### NEW for this plan
-- **API parity, not API mimicry.** Where ag-grid spells a field one way and that spelling causes no perf cost, cgrid spells it identically (verbatim field names like `columnDefs`, `defaultColDef`, `valueGetter`, `pinned`, `flex`, `aggFunc`). Top-level type names keep the `C` prefix (`CColDef`, `CGridOptions`, `CGridApi`) to avoid namespace collisions in apps that import both. String identifiers drop the `ag` prefix (`'text'` not `'agTextCellEditor'`). The internal model may diverge freely (no `RowNode`, no event bus polymorphism, no Vue/React adapters) — only the **public surface** mirrors.
+- **API parity, not API mimicry.** Where ag-grid spells a field one way and that spelling causes no perf cost, cgrid spells it identically (verbatim field names like `columnDefs`, `defaultColDef`, `valueGetter`, `pinned`, `flex`, `aggFunc`). Top-level type names keep the `C` prefix (`CColDef`, `VelocityGridOptions`, `VelocityGridApi`) to avoid namespace collisions in apps that import both. String identifiers drop the `ag` prefix (`'text'` not `'agTextCellEditor'`). The internal model may diverge freely (no `RowNode`, no event bus polymorphism, no Vue/React adapters) — only the **public surface** mirrors.
 - **Enterprise = Community.** Every feature behind an ag-grid enterprise license ships in cgrid Community. No license keys, no module gates, no nag overlays.
 - **Worker-first.** Any computation that touches >1k rows runs on the worker. Main thread is for paint, hit-test, and input dispatch. New features default to a worker pass unless paint-only.
 - **Off-main-thread paint candidate.** Cycle 25 explores `OffscreenCanvas` + worker paint. Main-thread paint stays the supported default; OffscreenCanvas is an opt-in performance mode.
@@ -71,7 +71,7 @@ these thresholds. Cycle 25 dedicates itself to lowering them further.
 
 | Metric | Target | Notes |
 |---|---|---|
-| Cold start to first paint (1k rows × 10 cols) | < 50 ms | From `new CGrid()` to first `paint()` complete |
+| Cold start to first paint (1k rows × 10 cols) | < 50 ms | From `new VelocityGrid()` to first `paint()` complete |
 | Cold start to interactive (1M rows × 50 cols) | < 200 ms | Includes worker init + first viewport fetch |
 | Scroll FPS (1M rows × 50 cols, modern laptop) | ≥ 120 fps | Native scroll + repaint at every frame |
 | Streaming update throughput | ≥ 50k row-updates/sec | Sustained via `applyTransactionAsync` |
@@ -115,7 +115,7 @@ at cycle exit when the matrix is updated.
 | 13 | Status bar | Status bar host, built-in panels, custom panels | ~15 | Cycle 11 | 5 |
 | 14 | Aggregation UI | TotalsSubgrid, custom aggFunc, suppressAggFuncInHeader, totals events | ~25 | Cycle 5 | 6 |
 | 15 | Row grouping (Enterprise feature) | GroupPass on worker, group rows, collapse/expand, groupSelectsChildren | ~55 | Cycle 14 | 11 |
-| 16 | Master/Detail | Detail subgrid, nested CGrid, expand/collapse, detail params | ~25 | Cycle 5 | 7 |
+| 16 | Master/Detail | Detail subgrid, nested VelocityGrid, expand/collapse, detail params | ~25 | Cycle 5 | 7 |
 | 17 | Tree data | getDataPath, auto-group column, tree filter/sort | ~25 | Cycle 15 | 6 |
 | 18 | Pivoting | Pivot model on worker, pivot column synthesis, pivot panel | ~45 | Cycle 15 | 9 |
 | 19 | Server-Side Row Model | SSRM datasource API, block cache, lazy group expand, infinite scroll | ~30 | Cycle 15 | 10 |
@@ -158,14 +158,14 @@ linearly with group depth.
 1. **Column group model + ColGroupDef types** — Add `CColGroupDef` to types.ts; extend `resolveColumnTree()` to walk groups; build flat `columnOrder` + `columnGroupTree` from a heterogeneous `columnDefs: (CColDef | CColGroupDef)[]`. Files: `types.ts`, `core/propertyChain.ts`, `core/columnTree.ts` (new).
 2. **HeaderGroupSubgrid** — Multi-row header subgrid: each level of group nesting adds a row. Spans render via the `cellSpan` extension on `ViewportColumn`. Files: `core/subgrid.ts`, `renderer/painters/byRows.ts`, `interaction/hitTester.ts`.
 3. **Column group open/close** — `marryChildren` enforces locked group cohesion; `openByDefault` controls collapsed state; clicking group header toggles expanded set. Files: `core/columnGroupState.ts` (new), `interaction/features/headerClick.ts`.
-4. **`setGridOption` + `updateGridOptions`** — Runtime-mutable subset on `CGridApi`. Build `INITIAL_ONLY_OPTIONS` set; throw on attempting to mutate initial-only. Wire 15 runtime-safe options first (theme, rowHeight, headerHeight, defaultColDef, animateRows, rowSelection, suppressColumnVirtualisation, enableCellChangeFlash, cellFlashDuration, cellFadeDuration, asyncTransactionWaitMillis, rowBuffer, context, loading, debug). Files: `cgrid.ts`, `types.ts`, `tests/runtimeOptions.test.ts`.
-5. **rowBuffer + virtualization toggles** — Replace hardcoded `overscanRows = 3` with `options.rowBuffer ?? 3`. Implement `suppressColumnVirtualisation` (compute all columns, paint all) and `suppressRowVirtualisation` (data + render entire row count). Files: `core/viewport.ts`, `cgrid.ts`.
-6. **`ensureRowVisible` with worker lookup** — Resolve `rowId → rowIndex` via a worker query (`getRowIndexForId`); scroll viewport so the row aligns to position (`top` / `middle` / `bottom`). Add `ensureColumnVisible` and `ensureColumnGroupVisible`. Files: `worker/protocol.ts`, `worker/index.ts`, `worker/client.ts`, `cgrid.ts`.
-7. **`setFocusedCell` + `setSelectedRowIds`** — Selection by ID now possible via the same worker `getRowIndexForId`. Persist focus across data updates by ID, not index. Files: `interaction/selectionModel.ts`, `cgrid.ts`.
-8. **Custom cell renderer + `cellRendererParams`** — Public API: `cgrid.registerCellRenderer(name, painter)`. `CColDef.cellRendererParams` flows into the `CellPaintConfig` as `config.params`. Files: `renderer/cellRenderers/registry.ts`, `cgrid.ts`, `types.ts`.
-9. **`valueSetter` + `valueParser` + commit-back** — Editor commit invokes `valueParser` (if defined) on the raw string, then `valueSetter` (if defined) — falls back to `data[field] = parsed`. Commit fires `applyTransaction({ update: [row] })` so the worker re-runs pipeline. Files: `interaction/editorOverlay.ts`, `cgrid.ts`, `worker/index.ts`.
-10. **Lifecycle events** — Wire `gridPreDestroyed` (fires inside `destroy()` before teardown, with state snapshot), `gridSizeChanged` (fires when host bounds change, from `CGridCanvas.setBounds`), `firstDataRendered` (fires once on first non-empty viewport paint). Files: `cgrid.ts`, `types.ts`.
-11. **(PATCH) Cell flash: FlashRegistry + worker `flashMask` producer + `api.flashCells` + theme color** — *Single-task addendum, separate worklog at `docs/superpowers/plans/2026-06-25-canvasgrid-cycle-04-cell-flash-patch.md`. Originally elided from Task 10; surfaced when Cycle 7 noticed Cycles 24 + 25 both presume flash works. Must land BEFORE Cycle 24 (reduced-motion opt-out) or Cycle 25 (GPU overlay) start.* Files: `core/flashRegistry.ts` (new), `worker/dataPipeline.ts`, `worker/worker.ts`, `worker/protocol.ts`, `worker/client.ts`, `theming/cssReader.ts`, `renderer/cellRenderers/registry.ts`, `renderer/cellRenderers/wrapText.ts`, `cgrid.ts`, `types.ts`, `apps/cgrid-positions/src/positionsGrid.ts`.
+4. **`setGridOption` + `updateGridOptions`** — Runtime-mutable subset on `VelocityGridApi`. Build `INITIAL_ONLY_OPTIONS` set; throw on attempting to mutate initial-only. Wire 15 runtime-safe options first (theme, rowHeight, headerHeight, defaultColDef, animateRows, rowSelection, suppressColumnVirtualisation, enableCellChangeFlash, cellFlashDuration, cellFadeDuration, asyncTransactionWaitMillis, rowBuffer, context, loading, debug). Files: `velocityGrid.ts`, `types.ts`, `tests/runtimeOptions.test.ts`.
+5. **rowBuffer + virtualization toggles** — Replace hardcoded `overscanRows = 3` with `options.rowBuffer ?? 3`. Implement `suppressColumnVirtualisation` (compute all columns, paint all) and `suppressRowVirtualisation` (data + render entire row count). Files: `core/viewport.ts`, `velocityGrid.ts`.
+6. **`ensureRowVisible` with worker lookup** — Resolve `rowId → rowIndex` via a worker query (`getRowIndexForId`); scroll viewport so the row aligns to position (`top` / `middle` / `bottom`). Add `ensureColumnVisible` and `ensureColumnGroupVisible`. Files: `worker/protocol.ts`, `worker/index.ts`, `worker/client.ts`, `velocityGrid.ts`.
+7. **`setFocusedCell` + `setSelectedRowIds`** — Selection by ID now possible via the same worker `getRowIndexForId`. Persist focus across data updates by ID, not index. Files: `interaction/selectionModel.ts`, `velocityGrid.ts`.
+8. **Custom cell renderer + `cellRendererParams`** — Public API: `cgrid.registerCellRenderer(name, painter)`. `CColDef.cellRendererParams` flows into the `CellPaintConfig` as `config.params`. Files: `renderer/cellRenderers/registry.ts`, `velocityGrid.ts`, `types.ts`.
+9. **`valueSetter` + `valueParser` + commit-back** — Editor commit invokes `valueParser` (if defined) on the raw string, then `valueSetter` (if defined) — falls back to `data[field] = parsed`. Commit fires `applyTransaction({ update: [row] })` so the worker re-runs pipeline. Files: `interaction/editorOverlay.ts`, `velocityGrid.ts`, `worker/index.ts`.
+10. **Lifecycle events** — Wire `gridPreDestroyed` (fires inside `destroy()` before teardown, with state snapshot), `gridSizeChanged` (fires when host bounds change, from `VelocityGridCanvas.setBounds`), `firstDataRendered` (fires once on first non-empty viewport paint). Files: `velocityGrid.ts`, `types.ts`.
+11. **(PATCH) Cell flash: FlashRegistry + worker `flashMask` producer + `api.flashCells` + theme color** — *Single-task addendum, separate worklog at `docs/superpowers/plans/2026-06-25-canvasgrid-cycle-04-cell-flash-patch.md`. Originally elided from Task 10; surfaced when Cycle 7 noticed Cycles 24 + 25 both presume flash works. Must land BEFORE Cycle 24 (reduced-motion opt-out) or Cycle 25 (GPU overlay) start.* Files: `core/flashRegistry.ts` (new), `worker/dataPipeline.ts`, `worker/worker.ts`, `worker/protocol.ts`, `worker/client.ts`, `theming/cssReader.ts`, `renderer/cellRenderers/registry.ts`, `renderer/cellRenderers/wrapText.ts`, `velocityGrid.ts`, `types.ts`, `apps/cgrid-positions/src/positionsGrid.ts`.
 
 **Exit criteria:**
 - All 10 tasks committed, reviewed clean.
@@ -198,11 +198,11 @@ O(log n). Edit-mode entry must not trigger a full re-layout.
 
 **Tasks (9):**
 
-1. **Custom editor registry** — Mirrors cell-renderer registry: `cgrid.registerCellEditor(name, editor)` where `editor` implements `init/getValue/destroy/isPopup`. Default editors: `'text'`, `'number'`, `'date'`, `'select'`, `'largeText'`. Files: `interaction/editors/registry.ts` (new), `cgrid.ts`, `types.ts`.
+1. **Custom editor registry** — Mirrors cell-renderer registry: `cgrid.registerCellEditor(name, editor)` where `editor` implements `init/getValue/destroy/isPopup`. Default editors: `'text'`, `'number'`, `'date'`, `'select'`, `'largeText'`. Files: `interaction/editors/registry.ts` (new), `velocityGrid.ts`, `types.ts`.
 2. **Popup editors** — `editor.isPopup() === true` mounts the DOM editor in a portal pinned next to the cell with collision avoidance. Files: `interaction/editors/popupHost.ts` (new), `interaction/editorOverlay.ts`.
-3. **Edit triggers** — `editType: 'singleClick' | 'doubleClick' | 'fullRow' | undefined`; `enterMovesDown`, `enterMovesDownAfterEdit`, `tabToNextCell`. F2 enters edit; ESC cancels; Enter commits + moves down. Files: `interaction/features/editTrigger.ts` (new), `cgrid.ts`.
+3. **Edit triggers** — `editType: 'singleClick' | 'doubleClick' | 'fullRow' | undefined`; `enterMovesDown`, `enterMovesDownAfterEdit`, `tabToNextCell`. F2 enters edit; ESC cancels; Enter commits + moves down. Files: `interaction/features/editTrigger.ts` (new), `velocityGrid.ts`.
 4. **Type-to-edit** — Pressing a printable character while a cell is focused starts edit with that char as the initial value. Files: `interaction/features/keyPaging.ts` (extended).
-5. **Variable row heights — `getRowHeight` callback + `rowHeight` per row** — `CGridOptions.getRowHeight(params): number` lets the app return per-row heights. Heights are cached on the worker (in the SoA chunk metadata) and shipped per viewport chunk. Files: `worker/protocol.ts`, `worker/index.ts`, `worker/rowStore.ts`, `core/viewport.ts`.
+5. **Variable row heights — `getRowHeight` callback + `rowHeight` per row** — `VelocityGridOptions.getRowHeight(params): number` lets the app return per-row heights. Heights are cached on the worker (in the SoA chunk metadata) and shipped per viewport chunk. Files: `worker/protocol.ts`, `worker/index.ts`, `worker/rowStore.ts`, `core/viewport.ts`.
 6. **Fenwick tree for cumulative row-top lookup** — O(log n) scroll-to-row index given variable heights. Used by `ensureRowVisible` and pointer hit-test. Files: `core/rowHeightIndex.ts` (new), `interaction/hitTester.ts`.
 7. **`autoHeight` per column** — When ≥1 column has `autoHeight: true`, the worker measures wrapped-text height per cell (via worker-side `OffscreenCanvas` + `measureText`) and feeds row-height calc. Files: `worker/measureText.ts` (new), `core/rowHeightIndex.ts`.
 8. **`wrapText` cell renderer mode** — Text cell paints multi-line; height drives autoHeight feedback loop. Files: `renderer/cellRenderers/registry.ts`.
@@ -235,13 +235,13 @@ pass — not N+1. Autosize sweeps measure text on the worker.
 **Tasks (8):**
 
 1. **Drag-reorder via header drag** — `suppressMovable` opt-out per column; `lockPosition` enforces fixed index; `marryChildren` keeps groups intact during drag. Files: `interaction/features/columnDrag.ts` (new).
-2. **Column state round-trip** — `getColumnState() → ColumnState[]`, `applyColumnState({state, applyOrder?, defaultState?})`, `resetColumnState()`. Captures width, hide, pinned, sort, sortIndex, rowGroup, pivot, aggFunc, flex. Files: `core/columnState.ts` (new), `cgrid.ts`, `types.ts`.
-3. **`sizeColumnsToFit`** — Distribute container width among unfixed columns respecting min/max. `suppressSizeToFit` opt-out. Files: `core/layout.ts`, `cgrid.ts`.
-4. **`autoSizeColumns` + `autoSizeAllColumns`** — Worker measures longest cell text per column via `measureText`; resize. `skipHeader` option. Files: `worker/protocol.ts`, `worker/autosize.ts` (new), `cgrid.ts`.
-5. **`setColumnsVisible` / `setColumnsPinned` / `setColumnWidths` / `moveColumns`** — Imperative column-state API. Files: `cgrid.ts`.
-6. **`columnTypes` templates** — `CGridOptions.columnTypes: Record<string, Partial<CColDef>>`; `CColDef.type: string | string[]` references one or more templates that merge into the resolved coldef. Files: `core/propertyChain.ts`, `types.ts`.
+2. **Column state round-trip** — `getColumnState() → ColumnState[]`, `applyColumnState({state, applyOrder?, defaultState?})`, `resetColumnState()`. Captures width, hide, pinned, sort, sortIndex, rowGroup, pivot, aggFunc, flex. Files: `core/columnState.ts` (new), `velocityGrid.ts`, `types.ts`.
+3. **`sizeColumnsToFit`** — Distribute container width among unfixed columns respecting min/max. `suppressSizeToFit` opt-out. Files: `core/layout.ts`, `velocityGrid.ts`.
+4. **`autoSizeColumns` + `autoSizeAllColumns`** — Worker measures longest cell text per column via `measureText`; resize. `skipHeader` option. Files: `worker/protocol.ts`, `worker/autosize.ts` (new), `velocityGrid.ts`.
+5. **`setColumnsVisible` / `setColumnsPinned` / `setColumnWidths` / `moveColumns`** — Imperative column-state API. Files: `velocityGrid.ts`.
+6. **`columnTypes` templates** — `VelocityGridOptions.columnTypes: Record<string, Partial<CColDef>>`; `CColDef.type: string | string[]` references one or more templates that merge into the resolved coldef. Files: `core/propertyChain.ts`, `types.ts`.
 7. **`cellClass` / `cellClassRules` / `cellStyle` (function + rules)** — `cellClass` is a CSS-class hint we resolve to a *named theme variant* (no per-cell DOM, no per-cell `class`). `cellClassRules` evaluates predicates per cell, picks first match. `cellStyle` (function form) returns overrides into `CellPaintConfig` per cell. Files: `core/propertyChain.ts`, `renderer/painters/byRows.ts`.
-8. **All column events fire** — columnVisible, columnPinned, columnResized (already fires), columnMoved, displayedColumnsChanged, virtualColumnsChanged. Files: `cgrid.ts`.
+8. **All column events fire** — columnVisible, columnPinned, columnResized (already fires), columnMoved, displayedColumnsChanged, virtualColumnsChanged. Files: `velocityGrid.ts`.
 
 **Exit criteria:** FM Area 02 + 16 + column-related Area 22 = ≥95% ✅; demo shows column reorder + state persistence + sizeToFit + cellClassRules.
 
@@ -266,14 +266,14 @@ for the dictionary; cycle 7 uses naïve `String.includes`).
 
 **Tasks (9):**
 
-1. **FloatingFilterSubgrid** — Second header row showing per-column filter inputs (text input, number input, date picker). Toggled by `CGridOptions.floatingFilter` or per-column `floatingFilter: true`. Files: `core/subgrid.ts`, `renderer/cellRenderers/floatingFilterCell.ts` (new).
+1. **FloatingFilterSubgrid** — Second header row showing per-column filter inputs (text input, number input, date picker). Toggled by `VelocityGridOptions.floatingFilter` or per-column `floatingFilter: true`. Files: `core/subgrid.ts`, `renderer/cellRenderers/floatingFilterCell.ts` (new).
 2. **Number filter (range + operators)** — `eq / ne / gt / gte / lt / lte / between / blank / notBlank`. Files: `worker/passes/filterPass.ts`, `interaction/filters/numberFilter.ts` (new — popup UI).
 3. **Date filter** — Same operators as number + `inRange`. Date storage uses ISO strings on the worker side. Files: `worker/passes/filterPass.ts`, `interaction/filters/dateFilter.ts` (new).
 4. **Text filter (full operator set)** — `equals / notEqual / contains / notContains / startsWith / endsWith / blank / notBlank`. Case-insensitive option. Files: `worker/passes/filterPass.ts`.
 5. **Multi-condition filter UI** — Up to 2 conditions joined by AND/OR. Filter popup rendered as a portal anchored to header. Files: `interaction/filters/multiCondition.ts` (new).
-6. **Quick filter (`quickFilterText`)** — Single text input matches across all visible columns; uses each column's valueGetter + valueFormatter result. Worker pass: `QuickFilterPass` before `FilterPass`. Files: `worker/passes/quickFilterPass.ts` (new), `cgrid.ts`.
-7. **External filter (`isExternalFilterPresent` + `doesExternalFilterPass`)** — Lets the app provide a predicate run on every row. Callback executed on main thread per row id (row ids shipped from worker as the candidate set). Files: `worker/protocol.ts`, `cgrid.ts`.
-8. **`getFilterModel` / `setFilterModel` round-trip + `filterChanged` event** — Already partially wired; complete with per-column filter state including multi-condition. Files: `cgrid.ts`, `types.ts`.
+6. **Quick filter (`quickFilterText`)** — Single text input matches across all visible columns; uses each column's valueGetter + valueFormatter result. Worker pass: `QuickFilterPass` before `FilterPass`. Files: `worker/passes/quickFilterPass.ts` (new), `velocityGrid.ts`.
+7. **External filter (`isExternalFilterPresent` + `doesExternalFilterPass`)** — Lets the app provide a predicate run on every row. Callback executed on main thread per row id (row ids shipped from worker as the candidate set). Files: `worker/protocol.ts`, `velocityGrid.ts`.
+8. **`getFilterModel` / `setFilterModel` round-trip + `filterChanged` event** — Already partially wired; complete with per-column filter state including multi-condition. Files: `velocityGrid.ts`, `types.ts`.
 9. **Set Filter** (lightweight version) — Distinct-value checkboxes per column; worker computes uniques via a hashing pass. Files: `worker/passes/distinctValues.ts` (new), `interaction/filters/setFilter.ts` (new).
 
 **Exit criteria:** FM Area 08 ≥95% ✅; demo has floating filters + multi-condition number filter + quick filter + set filter on the symbol column.
@@ -304,7 +304,7 @@ no main-thread compute. Sort 1M rows × 3 cols < 200 ms.
 1. **Multi-column sort (Shift+click)** — Holding Shift on header click appends to sort model; without Shift, replaces it. Sort indicator shows position number when >1 column sorted. Files: `interaction/features/headerClick.ts`, `renderer/cellRenderers/registry.ts` (header cell), `interaction/featureChain.ts`.
 2. **`initialSort` / `sortable` per column + `defaultColDef.sortable`** — Already partial; complete and document. Files: `core/propertyChain.ts`.
 3. **`comparator` per column + custom value comparators** — Comparator runs on worker (function string-serialized via `Function.prototype.toString` + re-eval — alternative: passable comparator registry keyed by name). Files: `worker/passes/sortPass.ts`, `worker/comparatorRegistry.ts` (new).
-4. **`postSortRows` callback** — Fires after sort, before viewport ship; lets app re-order specific rows (e.g., pin a "selected" row to top). Files: `worker/index.ts`, `cgrid.ts`.
+4. **`postSortRows` callback** — Fires after sort, before viewport ship; lets app re-order specific rows (e.g., pin a "selected" row to top). Files: `worker/index.ts`, `velocityGrid.ts`.
 5. **`accentedSort` + `unSortIcon` + tri-state sort cycle** — `sortingOrder: ['asc', 'desc', null]` configurable. Files: `worker/passes/sortPass.ts`, `interaction/features/headerClick.ts`, `renderer/cellRenderers/registry.ts`.
 
 **Exit criteria:** FM Area 07 ≥95% ✅; demo shows multi-sort with order indicators.
@@ -336,8 +336,8 @@ applies as a single transaction.
 3. **Range overlay painter** — New paint pass after `paintOverlay` (or extend overlay): draws range fill (translucent) + range border per contiguous rect. Files: `renderer/painters/rangeOverlayPainter.ts` (new), `renderer/renderer.ts`.
 4. **Header & row click selection** — Click column header = select entire column range; click row header (Cycle 15 introduces row-header column for groups; for now: click row's first pinned cell with ctrl) = select entire row. `cellSelection: { suppressHeader, suppressRow }` options. Files: `interaction/features/cellSelection.ts`.
 5. **Fill handle** — Bottom-right of the focused cell / range gets a square handle; drag extends selection vertically; release fills new cells with linear-extrapolated values (numbers) or repeated values (text). Files: `interaction/features/fillHandle.ts` (new), `renderer/painters/rangeOverlayPainter.ts`.
-6. **Range API** — `getCellRanges()`, `clearRangeSelection()`, `addCellRange(opts)`. Files: `cgrid.ts`, `types.ts`.
-7. **`rangeSelectionChanged` event** — Fires on range start/end/clear; carries `ranges: Range[]` + `started/finished` flags. Files: `cgrid.ts`.
+6. **Range API** — `getCellRanges()`, `clearRangeSelection()`, `addCellRange(opts)`. Files: `velocityGrid.ts`, `types.ts`.
+7. **`rangeSelectionChanged` event** — Fires on range start/end/clear; carries `ranges: Range[]` + `started/finished` flags. Files: `velocityGrid.ts`.
 
 **Exit criteria:** FM Area 12 ≥85% ✅; demo has range-drag + fill handle.
 
@@ -359,12 +359,12 @@ Worker handles serialization (TSV); main thread does only the
 
 **Tasks (6):**
 
-1. **Context menu host** — Right-click anywhere in grid → context menu portal. Menu items config via `CGridOptions.getContextMenuItems(params): MenuItem[]`. Default items: Copy / Copy with Headers / Paste / Cut / Export / Autosize / Pin / Reset Columns. Files: `interaction/contextMenu/host.ts` (new), `interaction/features/contextMenu.ts` (new).
+1. **Context menu host** — Right-click anywhere in grid → context menu portal. Menu items config via `VelocityGridOptions.getContextMenuItems(params): MenuItem[]`. Default items: Copy / Copy with Headers / Paste / Cut / Export / Autosize / Pin / Reset Columns. Files: `interaction/contextMenu/host.ts` (new), `interaction/features/contextMenu.ts` (new).
 2. **Default menu items** — Implementations for the 8 defaults. Files: `interaction/contextMenu/defaults.ts` (new).
-3. **Clipboard copy** — Ctrl+C / menu Copy: serialize current range(s) as TSV (tab-separated values) via worker, write to clipboard. `clipboardDelimiter` option. Files: `worker/clipboard.ts` (new), `cgrid.ts`.
-4. **Clipboard paste** — Ctrl+V: read TSV from clipboard, parse, apply as transaction (`update: [rows...]`) to current range top-left anchor. `processCellForClipboard` and `processCellFromClipboard` callbacks. Files: `worker/clipboard.ts`, `cgrid.ts`.
+3. **Clipboard copy** — Ctrl+C / menu Copy: serialize current range(s) as TSV (tab-separated values) via worker, write to clipboard. `clipboardDelimiter` option. Files: `worker/clipboard.ts` (new), `velocityGrid.ts`.
+4. **Clipboard paste** — Ctrl+V: read TSV from clipboard, parse, apply as transaction (`update: [rows...]`) to current range top-left anchor. `processCellForClipboard` and `processCellFromClipboard` callbacks. Files: `worker/clipboard.ts`, `velocityGrid.ts`.
 5. **Cut + paste round-trip** — Cut = copy + clear. Preserves type via `valueSetter`. Files: same as paste.
-6. **Suppress options** — `suppressClipboardPaste`, `suppressClipboardApi`, `suppressContextMenu`. Files: `cgrid.ts`.
+6. **Suppress options** — `suppressClipboardPaste`, `suppressClipboardApi`, `suppressContextMenu`. Files: `velocityGrid.ts`.
 
 **Exit criteria:** FM Area 19 ≥90% ✅; demo: right-click → Copy → paste into spreadsheet round-trips.
 
@@ -386,13 +386,13 @@ state shrinks the canvas region by the panel width and triggers one
 
 **Tasks (8):**
 
-1. **Tool panel base + registry** — `ToolPanel` interface (`init/getGui/refresh/destroy`); registry on `CGrid`. Files: `interaction/toolPanels/registry.ts` (new), `types.ts`.
-2. **Side bar shell** — Right-edge collapsible panel host; icon strip for tab switching. `CGridOptions.sideBar: SideBarDef | 'columns' | 'filters' | boolean`. Files: `interaction/sideBar/host.ts` (new), `cgrid.ts`.
+1. **Tool panel base + registry** — `ToolPanel` interface (`init/getGui/refresh/destroy`); registry on `VelocityGrid`. Files: `interaction/toolPanels/registry.ts` (new), `types.ts`.
+2. **Side bar shell** — Right-edge collapsible panel host; icon strip for tab switching. `VelocityGridOptions.sideBar: SideBarDef | 'columns' | 'filters' | boolean`. Files: `interaction/sideBar/host.ts` (new), `velocityGrid.ts`.
 3. **Columns tool panel** — Lists every column with checkboxes (visible) + drag handles (reorder) + drop zones (Row Groups, Pivot Columns, Values, Pinned Left/Right). Files: `interaction/toolPanels/columnsPanel.ts` (new).
 4. **Filters tool panel** — Lists every column with a filter; clicking expands the column's filter UI inline. Files: `interaction/toolPanels/filtersPanel.ts` (new).
-5. **Custom panel API** — `CGridApi.refreshToolPanel(id)`, `getToolPanelInstance(id)`. Files: `cgrid.ts`.
-6. **Side bar state API** — `setSideBarVisible / setSideBarPosition / openToolPanel / closeToolPanel`. Files: `cgrid.ts`.
-7. **Side bar events** — `toolPanelVisibleChanged`, `sideBarVisibleChanged`. Files: `cgrid.ts`.
+5. **Custom panel API** — `VelocityGridApi.refreshToolPanel(id)`, `getToolPanelInstance(id)`. Files: `velocityGrid.ts`.
+6. **Side bar state API** — `setSideBarVisible / setSideBarPosition / openToolPanel / closeToolPanel`. Files: `velocityGrid.ts`.
+7. **Side bar events** — `toolPanelVisibleChanged`, `sideBarVisibleChanged`. Files: `velocityGrid.ts`.
 8. **DOM-canvas coexistence audit** — Confirm pointer events route correctly when side bar is open; canvas hit-test respects clipped bounds. Files: `core/canvas.ts`, `interaction/featureChain.ts`.
 
 **Exit criteria:** FM Area 17 ≥90% ✅; demo shows side bar with both panels; column drag from panel to body works.
@@ -421,7 +421,7 @@ overlays — it must be allocation-free and O(visibleColumns).
 
 **Tasks (6):**
 
-1. **`getVisibleCellBounds` helper + 12 unit tests** — Add to `CGrid` as a sibling of `getCellBoundsAt`; returns `null` when the cell exits its column's band (center / pinned-left / pinned-right) or the body region. Files: `cgrid/src/cgrid.ts`, `cgrid/tests/visibleCellBounds.test.ts` (new).
+1. **`getVisibleCellBounds` helper + 12 unit tests** — Add to `VelocityGrid` as a sibling of `getCellBoundsAt`; returns `null` when the cell exits its column's band (center / pinned-left / pinned-right) or the body region. Files: `cgrid/src/velocityGrid.ts`, `cgrid/tests/visibleCellBounds.test.ts` (new).
 2. **Refactor focus ring + range overlay** — Both painters delegate to `getVisibleCellBounds` via `PainterCtx`. Removes the inlined band-clip rects from `overlayPainter.ts` and `rangeOverlayPainter.ts`.
 3. **Refactor DOM editor + floating-filter overlay** — `syncOpenEditorPosition` shrinks to a 7-line "ask the helper, reposition or commit" body. `FloatingFilterOverlay.repositionAll` takes the helper as a new dep and uses it for the visibility check.
 4. **Playwright visual-regression infrastructure** — `playwright-visual.config.ts` (Chromium, 1440×900, forced colour scheme, bundled font, 0.5 % tolerance) + `e2e-visual/_setup.ts` + smoke spec. Files: `apps/cgrid-positions/playwright-visual.config.ts` (new), `apps/cgrid-positions/e2e-visual/` (new directory).
@@ -453,11 +453,11 @@ repaints of the body canvas.
 
 **Tasks (5):**
 
-1. **Status bar host** — Bottom-edge DOM bar; same shrink-canvas pattern as side bar. `CGridOptions.statusBar: StatusBarDef`. Files: `interaction/statusBar/host.ts` (new).
+1. **Status bar host** — Bottom-edge DOM bar; same shrink-canvas pattern as side bar. `VelocityGridOptions.statusBar: StatusBarDef`. Files: `interaction/statusBar/host.ts` (new).
 2. **`agAggregationComponent`** — Displays sum/avg/min/max/count for current selection or all rows. Driven by the existing `AggregationChanged` event. Files: `interaction/statusBar/panels/aggregation.ts` (new).
 3. **`agTotalRowCountComponent`, `agFilteredRowCountComponent`, `agSelectedRowCountComponent`, `agTotalAndFilteredRowCountComponent`** — Simple count panels. Files: `interaction/statusBar/panels/counts.ts` (new).
-4. **Custom panel API** — Same registration pattern as tool panels. Files: `cgrid.ts`.
-5. **Status events** — `statusBarValueChanged` (or use selection/filter change events as triggers). Files: `cgrid.ts`.
+4. **Custom panel API** — Same registration pattern as tool panels. Files: `velocityGrid.ts`.
+5. **Status events** — `statusBarValueChanged` (or use selection/filter change events as triggers). Files: `velocityGrid.ts`.
 
 **Exit criteria:** FM Area 18 = 100% ✅; demo has status bar with aggregation panel.
 
@@ -480,12 +480,12 @@ distinct heights).
 
 **Tasks (6):**
 
-1. **`TotalsSubgrid`** — Implements `Subgrid` with `isTotals = true`; `getCell` returns `chunk.totals[colId]`. Push into `this.subgrids` after `DataSubgrid` (bottom-pinned) or before (top-pinned) per `pinnedTopRowData` / `pinnedBottomRowData`-style option. Files: `core/subgrid.ts`, `cgrid.ts`.
+1. **`TotalsSubgrid`** — Implements `Subgrid` with `isTotals = true`; `getCell` returns `chunk.totals[colId]`. Push into `this.subgrids` after `DataSubgrid` (bottom-pinned) or before (top-pinned) per `pinnedTopRowData` / `pinnedBottomRowData`-style option. Files: `core/subgrid.ts`, `velocityGrid.ts`.
 2. **`pinnedTopRowData` + `pinnedBottomRowData`** — Arbitrary pinned rows (not just totals) — same subgrid mechanism. Static data shipped from main thread. Files: `core/subgrid.ts`, `types.ts`.
-3. **Custom aggFunc** — `CGridOptions.aggFuncs: Record<string, AggFunc>`; `CColDef.aggFunc: string | string[] | AggFunc`. Functions string-serialized to worker (or named-registry pattern). Files: `worker/passes/aggPass.ts`, `worker/aggFuncRegistry.ts` (new).
+3. **Custom aggFunc** — `VelocityGridOptions.aggFuncs: Record<string, AggFunc>`; `CColDef.aggFunc: string | string[] | AggFunc`. Functions string-serialized to worker (or named-registry pattern). Files: `worker/passes/aggPass.ts`, `worker/aggFuncRegistry.ts` (new).
 4. **`suppressAggFuncInHeader`** — Toggle whether the header shows `Sum(price)` vs `price`. Files: `renderer/cellRenderers/registry.ts` (header cell).
-5. **Totals cell renderer** — New `'totals'` registered renderer: subtle border-top, different bg, value formatted via column's formatter. Files: `renderer/cellRenderers/registry.ts`, `cgrid.ts`.
-6. **`aggregationChanged` event polish** — Already fires; expand payload with full totals breakdown by group when available. Files: `cgrid.ts`.
+5. **Totals cell renderer** — New `'totals'` registered renderer: subtle border-top, different bg, value formatted via column's formatter. Files: `renderer/cellRenderers/registry.ts`, `velocityGrid.ts`.
+6. **`aggregationChanged` event polish** — Already fires; expand payload with full totals breakdown by group when available. Files: `velocityGrid.ts`.
 
 **Exit criteria:** FM Area 10 ≥95% ✅; demo has bottom totals row showing sum/avg of P&L.
 
@@ -510,11 +510,11 @@ only).
 1. **`GroupPass` on worker** — New pipeline stage between FilterPass and SortPass. Builds tree from `groupModel: { rowGroupCols: string[] }`. Produces `groupedRows` structure: tree of group nodes with child counts. Files: `worker/passes/groupPass.ts` (new), `worker/passes/index.ts`.
 2. **Group-aware ViewportSlicer** — Walks the group tree producing a flat list of visible (non-collapsed) row indices + group rows interleaved. Files: `worker/viewportSlicer.ts`.
 3. **`GroupedRow` chunk format** — Worker chunk gains parallel arrays: `rowKind: Uint8Array` (data | group | footer), `groupDepth: Uint8Array`, `groupValue: string[]`, `groupChildCount: Uint32Array`, `isExpanded: Uint8Array`. Files: `worker/chunkFormat.ts`, `worker/protocol.ts`.
-4. **Auto-group column** — Synthesized first column (or per-group columns if `groupDisplayType: 'multipleColumns'`) renders chevron + indent + value. `autoGroupColumnDef` configures it. Files: `core/autoGroupColumn.ts` (new), `cgrid.ts`.
+4. **Auto-group column** — Synthesized first column (or per-group columns if `groupDisplayType: 'multipleColumns'`) renders chevron + indent + value. `autoGroupColumnDef` configures it. Files: `core/autoGroupColumn.ts` (new), `velocityGrid.ts`.
 5. **Group cell renderer** — Renders chevron icon, indent based on depth, group value, optional `(count)` suffix. Files: `renderer/cellRenderers/registry.ts` (new `'group'` renderer).
-6. **Expand / collapse interaction** — Click chevron toggles expansion; expanded state persisted on worker; viewport recomputed. `expandAll/collapseAll/setExpanded` API. Files: `interaction/features/groupExpand.ts` (new), `cgrid.ts`.
+6. **Expand / collapse interaction** — Click chevron toggles expansion; expanded state persisted on worker; viewport recomputed. `expandAll/collapseAll/setExpanded` API. Files: `interaction/features/groupExpand.ts` (new), `velocityGrid.ts`.
 7. **`groupSelectsChildren`** — Selecting a group row selects all descendants; selecting all children of a group selects the group (tri-state checkbox). Files: `interaction/selectionModel.ts`.
-8. **`groupDefaultExpanded`** — Initial expansion depth on first render. Files: `cgrid.ts`.
+8. **`groupDefaultExpanded`** — Initial expansion depth on first render. Files: `velocityGrid.ts`.
 9. **`showOpenedGroup` + `groupRemoveSingleChildren`** — UX polish: single-child groups can be elided. Files: `worker/passes/groupPass.ts`.
 10. **Group sort** — When grouping is active, sort sorts within group + across groups by group value. Files: `worker/passes/sortPass.ts`.
 11. **Group totals (footer rows)** — Per-group totals rows show under each expanded group; uses TotalsSubgrid pattern. `groupIncludeFooter: boolean` option. Files: `core/subgrid.ts`, `worker/passes/aggPass.ts`.
@@ -525,7 +525,7 @@ only).
 
 ## Cycle 16 — Master/Detail
 
-**Goal:** Each row can expand to reveal a nested CGrid (or arbitrary DOM).
+**Goal:** Each row can expand to reveal a nested VelocityGrid (or arbitrary DOM).
 The nested grid renders inside an expanded "detail" row whose height is
 configurable + per-row.
 
@@ -543,10 +543,10 @@ grid (configurable cache).
 
 1. **`MasterDetail` subgrid extension** — Expanded rows insert a one-row `DetailSubgrid` immediately after their master row. Detail rows have configurable height (`detailRowHeight` or `getDetailRowHeight`). Files: `core/subgrid.ts`.
 2. **Detail row rendering** — Detail row is a DOM portal (not canvas-painted) anchored at the row's y-position. Re-positioned on scroll. Files: `interaction/masterDetail/detailRow.ts` (new).
-3. **Nested CGrid wiring** — `detailCellRenderer` callback receives parent row + a `detailGridOptions` (or returns custom DOM); cgrid auto-creates a nested `CGrid` from those options. Files: `interaction/masterDetail/nestedGrid.ts` (new), `cgrid.ts`.
+3. **Nested VelocityGrid wiring** — `detailCellRenderer` callback receives parent row + a `detailGridOptions` (or returns custom DOM); cgrid auto-creates a nested `VelocityGrid` from those options. Files: `interaction/masterDetail/nestedGrid.ts` (new), `velocityGrid.ts`.
 4. **Expand/collapse interaction** — Click toggle button on master row (or `setRowExpanded` API). State persisted on master. Files: `interaction/features/masterDetailExpand.ts` (new).
 5. **Lazy create + cache** — `keepDetailRows: boolean` + `keepDetailRowsCount: number`. LRU eviction. Files: `interaction/masterDetail/cache.ts` (new).
-6. **Detail events** — `rowGroupOpened` (reused), `firstDataRendered` on nested grid bubbles up as `detailGridReady`. Files: `cgrid.ts`.
+6. **Detail events** — `rowGroupOpened` (reused), `firstDataRendered` on nested grid bubbles up as `detailGridReady`. Files: `velocityGrid.ts`.
 7. **Detail-row scroll containment** — Wheel events inside nested grid don't propagate to master grid until detail grid reaches scroll boundary. Files: `interaction/masterDetail/scrollLock.ts` (new).
 
 **Exit criteria:** FM Area 13 ≥90% ✅; demo: row expand → nested orderbook grid.
@@ -569,12 +569,12 @@ build < 250 ms; expand single node < 1 frame.
 
 **Tasks (6):**
 
-1. **`getDataPath` callback** — `CGridOptions.getDataPath(data): string[]` returns the path for each row. Worker builds tree from paths. Files: `worker/passes/treePass.ts` (new — runs instead of GroupPass when treeData = true).
+1. **`getDataPath` callback** — `VelocityGridOptions.getDataPath(data): string[]` returns the path for each row. Worker builds tree from paths. Files: `worker/passes/treePass.ts` (new — runs instead of GroupPass when treeData = true).
 2. **Tree auto-group column reuse** — Same auto-group column as row grouping; just uses path levels for indent + value. Files: `core/autoGroupColumn.ts`.
-3. **Tree expand/collapse + state** — `isGroupOpenByDefault`, `setExpanded`, `expandAll/collapseAll`. Files: `worker/passes/treePass.ts`, `cgrid.ts`.
+3. **Tree expand/collapse + state** — `isGroupOpenByDefault`, `setExpanded`, `expandAll/collapseAll`. Files: `worker/passes/treePass.ts`, `velocityGrid.ts`.
 4. **Tree filter** — Filter shows ancestors of matching leaves (`excludeChildrenWhenTreeDataFiltering` opt-out). Files: `worker/passes/treePass.ts`, `worker/passes/filterPass.ts`.
 5. **Tree sort** — Sort within siblings; tree structure preserved. Files: `worker/passes/sortPass.ts`.
-6. **Tree data event** — `rowGroupOpened` reused. Files: `cgrid.ts`.
+6. **Tree data event** — `rowGroupOpened` reused. Files: `velocityGrid.ts`.
 
 **Exit criteria:** FM Area 14 = 100% ✅; demo: tree-of-trades by `[region/desk/trader]`.
 
@@ -596,14 +596,14 @@ column headers via Cycle 4's HeaderGroupSubgrid.
 **Tasks (9):**
 
 1. **`PivotPass` on worker** — New stage: takes grouped rows + `pivotColIds[]` + `aggCols[]`, produces synthetic columns (`Sector_Sum_PnL`, etc.). Files: `worker/passes/pivotPass.ts` (new).
-2. **Pivot column synthesis** — Worker emits a virtual column tree shipped alongside chunks. Main thread merges into `columnOrder` for the duration of pivot mode. Files: `worker/protocol.ts`, `cgrid.ts`.
+2. **Pivot column synthesis** — Worker emits a virtual column tree shipped alongside chunks. Main thread merges into `columnOrder` for the duration of pivot mode. Files: `worker/protocol.ts`, `velocityGrid.ts`.
 3. **Pivot column groups** — Each pivot level becomes a column-group level (uses Cycle-4 HeaderGroupSubgrid). Files: `core/columnTree.ts`.
 4. **`pivotMode`, `pivot` per column, `aggFunc` per column** — Pivot config flows through column state. Files: `core/columnState.ts`.
 5. **Pivot totals** — Optional totals row + total columns per pivot level. `pivotRowTotals`, `pivotColumnGroupTotals`. Files: `worker/passes/pivotPass.ts`.
-6. **`processPivotResultColDef` / `processPivotResultColGroupDef`** — Customizer callbacks for synthetic column defs. Files: `cgrid.ts`.
+6. **`processPivotResultColDef` / `processPivotResultColGroupDef`** — Customizer callbacks for synthetic column defs. Files: `velocityGrid.ts`.
 7. **Pivot panel in side bar** — Drop zones in the Columns panel for pivot col selection. Files: `interaction/toolPanels/columnsPanel.ts`.
 8. **`pivotMaxGeneratedColumns`** — Cap on synthesized column count; throws / warns past. Files: `worker/passes/pivotPass.ts`.
-9. **Pivot events** — `pivotModeChanged`, `pivotChanged`. Files: `cgrid.ts`.
+9. **Pivot events** — `pivotModeChanged`, `pivotChanged`. Files: `velocityGrid.ts`.
 
 **Exit criteria:** FM Area 11 ≥90% ✅; demo: pivot trades by sector × side, sum PnL.
 
@@ -633,9 +633,9 @@ the boundary at typical scroll speeds.
 5. **Lazy group expansion** — Expanding a group triggers a `getRows({ groupKeys: [...] })` fetch. Result becomes a sub-block. Files: `worker/ssrm/blockCache.ts`, `interaction/features/groupExpand.ts`.
 6. **Server-side sort + filter** — Sort/filter models flow into `getRows` params; cache invalidates on change. Files: `worker/ssrm/blockCache.ts`.
 7. **Server-side pivot mode** — Pivot synthesizes columns from a metadata fetch; data fetched per visible (group × pivot col) intersection. Files: `worker/ssrm/pivot.ts` (new).
-8. **`refreshServerSide`, `purgeServerSideCache`, `getServerSideStoreState`** — Cache control API. Files: `cgrid.ts`.
+8. **`refreshServerSide`, `purgeServerSideCache`, `getServerSideStoreState`** — Cache control API. Files: `velocityGrid.ts`.
 9. **Infinite row model** (simpler cousin) — `rowModelType: 'infinite'` for flat datasets without grouping; just block cache + lazy fetch. Files: `worker/infinite/index.ts` (new).
-10. **SSRM events** — `storeRefreshed`, `storeUpdated`. Files: `cgrid.ts`.
+10. **SSRM events** — `storeRefreshed`, `storeUpdated`. Files: `velocityGrid.ts`.
 
 **Exit criteria:** FM Area 15 ≥95% ✅; demo: SSRM connected to mock server endpoint scrolls 10M rows.
 
@@ -658,11 +658,11 @@ XLSX < 10 s.
 
 1. **CSV writer on worker** — Streams TSV/CSV to a `Blob`; handles quoting, line endings, BOM option. Files: `worker/export/csv.ts` (new).
 2. **Excel writer on worker** — Minimal XLSX (sheet + cells + simple styles) — vendor a small XLSX writer or embed `exceljs-lite` if size budget allows. Files: `worker/export/xlsx.ts` (new).
-3. **`exportDataAsCsv` + `exportDataAsExcel` API** — Returns `Promise<Blob>` or auto-downloads via `URL.createObjectURL`. Files: `cgrid.ts`.
+3. **`exportDataAsCsv` + `exportDataAsExcel` API** — Returns `Promise<Blob>` or auto-downloads via `URL.createObjectURL`. Files: `velocityGrid.ts`.
 4. **`processCellCallback` + `processRowGroupCallback` + `processHeaderCallback`** — Transformation hooks fire on worker via the named-function-registry pattern (or string-serialized). Files: `worker/export/csv.ts`, `worker/export/xlsx.ts`.
-5. **Export options** — `columnKeys`, `onlySelected`, `skipPinnedTop`, `skipPinnedBottom`, `skipRowGroups`, etc. Files: `cgrid.ts`.
-6. **`domLayout: 'print'`** — Switches host height to content-height so browser print captures all rows. Files: `cgrid.ts`.
-7. **Print-friendly theme** — `cg-theme-print` with black-on-white, no row stripes, page breaks at group boundaries (via CSS only — canvas screenshots to images on print). Files: `theming/tokens.css`.
+5. **Export options** — `columnKeys`, `onlySelected`, `skipPinnedTop`, `skipPinnedBottom`, `skipRowGroups`, etc. Files: `velocityGrid.ts`.
+6. **`domLayout: 'print'`** — Switches host height to content-height so browser print captures all rows. Files: `velocityGrid.ts`.
+7. **Print-friendly theme** — `vg-theme-print` with black-on-white, no row stripes, page breaks at group boundaries (via CSS only — canvas screenshots to images on print). Files: `theming/tokens.css`.
 
 **Exit criteria:** FM Area 25 ≥90% ✅; demo: Export to CSV + Excel buttons.
 
@@ -691,11 +691,11 @@ app brings AG Charts as a peer dep; cgrid wires it).
 1. **Sparkline base renderer + line chart** — `sparklineCell` registered cell renderer; reads `cellRendererParams.sparkline: { type, options }` and array value. Files: `renderer/cellRenderers/sparkline/lineSparkline.ts` (new).
 2. **Column + area + bar sparklines** — Variants on the same registered renderer. Files: `renderer/cellRenderers/sparkline/*.ts`.
 3. **Sparkline tooltips** — Hover-anchored tooltip showing the data point. Files: `interaction/features/sparklineTooltip.ts` (new).
-4. **AG Charts integration scaffold** — Optional peer dep; `CGridOptions.chartingDependencies: { agCharts }` to inject. Files: `interaction/charts/agChartsAdapter.ts` (new).
-5. **Range chart API** — `createRangeChart({ cellRange, chartType, chartContainer })`. Builds an AG Charts options object from the range data + opens chart in a popup or app-provided container. Files: `interaction/charts/rangeChart.ts` (new), `cgrid.ts`.
+4. **AG Charts integration scaffold** — Optional peer dep; `VelocityGridOptions.chartingDependencies: { agCharts }` to inject. Files: `interaction/charts/agChartsAdapter.ts` (new).
+5. **Range chart API** — `createRangeChart({ cellRange, chartType, chartContainer })`. Builds an AG Charts options object from the range data + opens chart in a popup or app-provided container. Files: `interaction/charts/rangeChart.ts` (new), `velocityGrid.ts`.
 6. **Pivot chart** — Special range-chart shape from pivot output. Files: `interaction/charts/pivotChart.ts` (new).
 7. **Chart context menu items** — Default menu adds "Chart Range" submenu. Files: `interaction/contextMenu/defaults.ts`.
-8. **Chart events** — `chartCreated`, `chartDestroyed`, `chartOptionsChanged`. Files: `cgrid.ts`.
+8. **Chart events** — `chartCreated`, `chartDestroyed`, `chartOptionsChanged`. Files: `velocityGrid.ts`.
 
 **Exit criteria:** FM Area 24 ≥85% ✅; demo: sparkline column + range → bar chart popup.
 
@@ -717,10 +717,10 @@ overrides without class swaps). `prefers-color-scheme` auto-detect.
 **Tasks (6):**
 
 1. **Audit + add missing CSS variables** — Diff our `theme/tokens.css` against the ag-grid variable list (see catalog Area 21). Add row-hover bg, header-cell-text-color, cell-horizontal-border-color, range-selection-border-color, etc. Files: `theming/tokens.css`, `theming/cssReader.ts`.
-2. **Density modes** — `cg-density-compact` / `cg-density-normal` / `cg-density-comfortable` classes adjust `--cg-row-height`, `--cg-header-height`, `--cg-cell-padding`. Files: `theming/tokens.css`.
-3. **Theme parameter API** — `cgrid.setThemeParams({ '--cg-row-height': '40px', ... })` writes inline CSS variables on the host. Files: `cgrid.ts`, `theming/themeParams.ts` (new).
-4. **`prefers-color-scheme` auto** — `cg-theme-auto` class listens to media query, toggles light/dark. Files: `theming/tokens.css`.
-5. **Theme variants per-grid via shadow root option** — `CGridOptions.shadowRoot: true` mounts the grid inside a shadow root for full CSS encapsulation. Files: `cgrid.ts`.
+2. **Density modes** — `vg-density-compact` / `vg-density-normal` / `vg-density-comfortable` classes adjust `--vg-row-height`, `--vg-header-height`, `--vg-cell-padding`. Files: `theming/tokens.css`.
+3. **Theme parameter API** — `cgrid.setThemeParams({ '--vg-row-height': '40px', ... })` writes inline CSS variables on the host. Files: `velocityGrid.ts`, `theming/themeParams.ts` (new).
+4. **`prefers-color-scheme` auto** — `vg-theme-auto` class listens to media query, toggles light/dark. Files: `theming/tokens.css`.
+5. **Theme variants per-grid via shadow root option** — `VelocityGridOptions.shadowRoot: true` mounts the grid inside a shadow root for full CSS encapsulation. Files: `velocityGrid.ts`.
 6. **Theme docs site section** — Updates to `docs/catalog/21-themes-and-styling.md`. Files: docs.
 
 **Exit criteria:** FM Area 21 = 100% ✅; demo theme toggle plus density toggle.
@@ -741,13 +741,13 @@ API that Cycles 23+ (a11y, persistence demos) depend on.
 
 **Tasks (7):**
 
-1. **Remaining events audit** — Compare our `CGridEvent` union to ag-grid's. List missing: e.g., `cellMouseOver`, `cellMouseOut`, `cellKeyDown`, `cellKeyPress`, `bodyScroll`, `bodyScrollEnd`, `viewportChanged` refinement. Files: `types.ts`, `cgrid.ts`.
+1. **Remaining events audit** — Compare our `VelocityGridEvent` union to ag-grid's. List missing: e.g., `cellMouseOver`, `cellMouseOut`, `cellKeyDown`, `cellKeyPress`, `bodyScroll`, `bodyScrollEnd`, `viewportChanged` refinement. Files: `types.ts`, `velocityGrid.ts`.
 2. **Wire mouse hover events** — `cellMouseOver`, `cellMouseOut`, `cellMouseDown`, `rowMouseOver`. Coalesce per row crossing. Files: `interaction/features/onHover.ts`.
-3. **Wire body-scroll events** — `bodyScroll` (per scroll event) + `bodyScrollEnd` (debounced). Files: `cgrid.ts`.
+3. **Wire body-scroll events** — `bodyScroll` (per scroll event) + `bodyScrollEnd` (debounced). Files: `velocityGrid.ts`.
 4. **Wire key events** — `cellKeyDown` / `cellKeyPress` on the focused cell. Files: `interaction/features/keyPaging.ts`.
-5. **`getState()`** — Returns a snapshot of column state + filter model + sort model + side bar state + pivot mode + group state + scroll position. Files: `cgrid.ts`, `core/stateSnapshot.ts` (new).
-6. **`setState(snapshot)`** — Restores from snapshot. Files: `cgrid.ts`.
-7. **`stateUpdated` event** — Fires when any state component changes (debounced). `gridState` initial option for first-render state. Files: `cgrid.ts`.
+5. **`getState()`** — Returns a snapshot of column state + filter model + sort model + side bar state + pivot mode + group state + scroll position. Files: `velocityGrid.ts`, `core/stateSnapshot.ts` (new).
+6. **`setState(snapshot)`** — Restores from snapshot. Files: `velocityGrid.ts`.
+7. **`stateUpdated` event** — Fires when any state component changes (debounced). `gridState` initial option for first-render state. Files: `velocityGrid.ts`.
 
 **Exit criteria:** FM Area 22 ≥95% ✅; FM Area 23 state rows ✅; demo: save state to localStorage, reload restores.
 
@@ -772,7 +772,7 @@ API that Cycles 23+ (a11y, persistence demos) depend on.
 2. **`suppressKeyboardEvent` per column** — Callback opts cells out of grid's key handling. Files: `core/propertyChain.ts`, `interaction/featureChain.ts`.
 3. **A11y overlay completeness** — Aria-roles (grid, row, columnheader, gridcell), aria-rowcount, aria-colcount, aria-rowindex, aria-colindex, aria-sort, aria-expanded, aria-level. Files: `interaction/a11yOverlay.ts`.
 4. **Screen-reader announcements** — Sort change, filter change, selection change, edit start/end. Files: `interaction/a11yOverlay.ts`.
-5. **High-contrast theme** — `cg-theme-high-contrast` with WCAG AAA contrast ratios, thicker focus rings, no semi-transparent selection. Files: `theming/tokens.css`.
+5. **High-contrast theme** — `vg-theme-high-contrast` with WCAG AAA contrast ratios, thicker focus rings, no semi-transparent selection. Files: `theming/tokens.css`.
 6. **Focus management** — Focus trap inside grid; `tabToNextHeader` / `tabToPreviousHeader` config. Files: `interaction/features/keyPaging.ts`.
 7. **Reduced motion** — `prefers-reduced-motion` disables row animations, flash, scroll-smoothing. Files: `theming/tokens.css`, `renderer/painters/byRows.ts`.
 8. **axe-core CI gate** — Add automated a11y check to E2E suite. Files: `apps/cgrid-positions/tests/a11y.spec.ts`.
@@ -801,11 +801,11 @@ numbers.
 1. **Benchmark harness** — Vitest bench suite covering all targets in the Performance Budget table. Outputs JSON; uploads to a `perf/baselines.json` checked into git for diff. Files: `cgrid/bench/*.ts` (new), `.github/workflows/perf.yml` (or local-only).
 2. **Dictionary-coded text columns** — String columns with low cardinality (< 256 distinct values) ship as `Uint8Array` indices + a small string table. Compression ratio + scan-speed win. Files: `worker/chunkFormat.ts`.
 3. **Varint-encoded delta-coded numeric columns** — For monotonically-increasing or low-magnitude integer columns. Decodes to `Float64Array` at viewport time. Files: `worker/chunkFormat.ts`.
-4. **OffscreenCanvas paint mode (opt-in)** — `CGridOptions.useOffscreenCanvas: true` mounts the canvas as an `OffscreenCanvas` transferred to a paint worker. Main thread sends viewport state via `postMessage`; worker does the entire byRows + gridLines paint. Files: `core/canvasOffscreen.ts` (new), `renderer/paintWorker.ts` (new).
+4. **OffscreenCanvas paint mode (opt-in)** — `VelocityGridOptions.useOffscreenCanvas: true` mounts the canvas as an `OffscreenCanvas` transferred to a paint worker. Main thread sends viewport state via `postMessage`; worker does the entire byRows + gridLines paint. Files: `core/canvasOffscreen.ts` (new), `renderer/paintWorker.ts` (new).
 5. **Allocation audit** — Profile hot paths (paint loop, hit test, scroll handler, worker dispatch). Remove all `.map / .filter / .slice / spread` in those paths. Files: across `cgrid/src/**`.
 6. **Direct typed-array views into chunk** — Cell-data lookup returns the raw typed-array slot, not a `{ value, valueFormatted }` object. Formatter applied lazily by renderer. Files: `worker/chunkFormat.ts`, `renderer/painters/byRows.ts`.
 7. **GPU cell-flash overlay** — Switch from per-cell repaint to a single offscreen alpha-mask canvas redrawn on the flash schedule; composited over the body via `globalAlpha`. Files: `renderer/flashOverlay.ts` (new).
-8. **Pre-emptive viewport fetch** — Predictive scroll: when scroll velocity > threshold, fetch the next 5 chunks ahead in scroll direction. Files: `cgrid.ts`.
+8. **Pre-emptive viewport fetch** — Predictive scroll: when scroll velocity > threshold, fetch the next 5 chunks ahead in scroll direction. Files: `velocityGrid.ts`.
 9. **Worker message coalescing** — Multiple `getViewport` requests within one frame collapse to a single dispatch. Files: `worker/client.ts`.
 10. **Memory-pressure release** — `WeakRef`-based chunk eviction when memory budget exceeded. Files: `worker/chunkCache.ts` (new).
 
@@ -871,7 +871,7 @@ section on ColGroupDef before touching any code. Follow the per-task workflow.
 ## What this plan does NOT include (deliberate omissions)
 
 - **No React / Vue / Svelte / Angular adapters.** cgrid is vanilla TS; framework integration is left to the consuming app (a thin adapter is a 50-line file, not a cycle).
-- **No Polaris-style declarative DSL.** cgrid stays imperative — `new CGrid(host, options)`.
+- **No Polaris-style declarative DSL.** cgrid stays imperative — `new VelocityGrid(host, options)`.
 - **No license keys, no telemetry, no enterprise edition.** Single-tier OSS.
 - **No legacy IE / pre-2020 browser support.** Modern browsers only (Chromium ≥ 100, Firefox ≥ 100, Safari ≥ 15.4).
 - **No SSR.** Canvas-grid by definition is client-render. SSR shells render an empty host that hydrates client-side.

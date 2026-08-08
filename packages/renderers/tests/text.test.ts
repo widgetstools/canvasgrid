@@ -1,7 +1,7 @@
-// @cgrid/renderers — text category tests (Cycle 21f / Task 6).
+// @wellsfargo-starui/velocity-grid-renderers — text category tests (Cycle 21f / Task 6).
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { CellPaintConfig } from '@cgrid/kernel';
+import type { CellPaintConfig } from '@wellsfargo-starui/velocity-grid';
 import { makeFakeGc } from './helpers/fakeGc';
 import type { FakeGc } from './helpers/fakeGc';
 import {

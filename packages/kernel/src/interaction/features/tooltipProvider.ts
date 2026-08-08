@@ -1,6 +1,6 @@
 // Cycle 21c / Task 14 — per-column tooltip provider hook.
 //
-// Apps (or @cgrid/format's bridge) register a provider per colId via
+// Apps (or @wellsfargo-starui/velocity-grid-format's bridge) register a provider per colId via
 // `grid.registerTooltipProvider(colId, fn)`. The provider returns
 // `{ plain }` or `{ html }` (or null for "no tooltip on this cell").
 // The TooltipProvider feature debounces hover 500ms, invokes the
@@ -12,7 +12,7 @@
 // specialized sibling for sparkline columns) — both forward via
 // `super.handleMouseMove` so neither claims the move.
 
-import { Feature, type CGridEventCtx } from '../feature';
+import { Feature, type VelocityGridEventCtx } from '../feature';
 import { sanitizeTooltipHtml } from '../../core/sanitizeHtml';
 
 export interface TooltipParams {
@@ -56,7 +56,7 @@ export class TooltipProvider extends Feature {
    *  debounce while the pointer moves WITHIN the same cell. */
   private lastCellKey: string | null = null;
 
-  override handleMouseMove(ctx: CGridEventCtx): void {
+  override handleMouseMove(ctx: VelocityGridEventCtx): void {
     const hit = ctx.hit;
     if (hit.kind === 'cell' && providers.has(hit.colId)) {
       const key = `${hit.rowIndex}:${hit.colId}`;
@@ -109,7 +109,7 @@ export class TooltipProvider extends Feature {
   }
 
   /** Overridable — default DOM tooltip using the kernel's tooltip
-   *  chrome tokens (`--cg-tooltip-bg/fg/border`). A single element is
+   *  chrome tokens (`--vg-tooltip-bg/fg/border`). A single element is
    *  pooled on document.body; `{ plain }` renders via textContent,
    *  `{ html }` via allowlist-sanitized innerHTML. Prefer `{ plain }`
    *  for untrusted row data. */
@@ -125,9 +125,9 @@ export class TooltipProvider extends Feature {
         'pointer-events:none',
         'padding:4px 8px',
         'font:12px Inter, system-ui, sans-serif',
-        'background:var(--cg-tooltip-bg, rgba(17,24,39,0.92))',
-        'color:var(--cg-tooltip-fg, #fff)',
-        'border:1px solid var(--cg-tooltip-border, transparent)',
+        'background:var(--vg-tooltip-bg, rgba(17,24,39,0.92))',
+        'color:var(--vg-tooltip-fg, #fff)',
+        'border:1px solid var(--vg-tooltip-border, transparent)',
         'border-radius:4px',
         'box-shadow:0 2px 8px rgba(0,0,0,0.25)',
         'white-space:nowrap',

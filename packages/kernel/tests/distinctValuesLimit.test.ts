@@ -17,11 +17,11 @@ import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { DistinctValuesPass, RowStore } from '../src/worker/dataPipeline';
 import type { WorkerColumn, WorkerRequest, WorkerResponse, WorkerPush } from '../src/worker/protocol';
 import { createWorkerHost } from '../src/worker/worker';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 
 beforeAll(() => {
   // Canvas 2D context stub — mirrors tests/calcKernelApi.test.ts /
-  // tests/cgrid.integration.test.ts so a mounted CGrid can construct.
+  // tests/cgrid.integration.test.ts so a mounted VelocityGrid can construct.
   HTMLCanvasElement.prototype.getContext = (() => {
     const fakeCtx: any = {
       fillRect: vi.fn(), strokeRect: vi.fn(), fillText: vi.fn(),
@@ -191,11 +191,11 @@ describe('worker host — getDistinctValues limit (Cycle 21d / Task 13)', () => 
 
 // ─── 4. API-level: mounted grid round-trip ─────────────────────────────────
 
-describe('CGridApi.getDistinctValues — mounted grid (Cycle 21d / Task 13)', () => {
+describe('VelocityGridApi.getDistinctValues — mounted grid (Cycle 21d / Task 13)', () => {
   function buildWiredGrid<T extends { id: string }>(rows: T[], cols: any[]) {
     const container = document.createElement('div');
     container.style.cssText = 'width:800px; height:600px;';
-    container.className = 'cg-theme-quartz';
+    container.className = 'vg-theme-quartz';
     document.body.appendChild(container);
     const prevWorker = (globalThis as any).Worker;
     (globalThis as any).Worker = class {
@@ -208,7 +208,7 @@ describe('CGridApi.getDistinctValues — mounted grid (Cycle 21d / Task 13)', ()
       addEventListener(_: string, cb: (e: { data: any }) => void) { this.listeners.push(cb); }
       terminate() {}
     };
-    const grid = new CGrid<T>(container, {
+    const grid = new VelocityGrid<T>(container, {
       columnDefs: cols,
       getRowId: (r) => r.id,
       rowData: rows,
@@ -243,7 +243,7 @@ describe('CGridApi.getDistinctValues — mounted grid (Cycle 21d / Task 13)', ()
     restore();
   });
 
-  it('grid.getDistinctValues (direct CGrid method) threads limit too', async () => {
+  it('grid.getDistinctValues (direct VelocityGrid method) threads limit too', async () => {
     const { grid, restore } = buildWiredGrid<Row>(
       fixtureRows(),
       [{ field: 'id' }, { field: 'ticker' }],

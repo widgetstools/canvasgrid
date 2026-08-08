@@ -15,12 +15,12 @@
     "@stomp/stompjs": "^7.3.0",
     "ag-grid-community": "^35.3.1",
     "ag-grid-enterprise": "^35.3.1",
-    "@cgrid/calc": "*",
-    "@cgrid/edit": "*",
-    "@cgrid/format": "*",
-    "@cgrid/kernel": "*",
-    "@cgrid/renderers": "*",
-    "@cgrid/rules": "*"
+    "@wellsfargo-starui/velocity-grid-calc": "*",
+    "@wellsfargo-starui/velocity-grid-edit": "*",
+    "@wellsfargo-starui/velocity-grid-format": "*",
+    "@wellsfargo-starui/velocity-grid": "*",
+    "@wellsfargo-starui/velocity-grid-renderers": "*",
+    "@wellsfargo-starui/velocity-grid-rules": "*"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

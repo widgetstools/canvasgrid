@@ -6,8 +6,8 @@
   },
   "startup_app": {
     "uuid": "cgrid-ext-demo-dev",
-    "name": "CGridExt Demo (dev)",
-    "description": "CGridExt ribbon demo hosted in OpenFin against the Vite dev server (:5188, HMR). Served from public/ so @openfin/node-adapter can fetch it over HTTP. Runtime pinned to 41.134.102.3 — 44.x measured MORE frame hitches on macOS; see openfin/PERF-NOTES.md. The :4188 build-preview manifest (openfin/app.json) is for perf measurement.",
+    "name": "VelocityGridExt Demo (dev)",
+    "description": "VelocityGridExt ribbon demo hosted in OpenFin against the Vite dev server (:5188, HMR). Served from public/ so @openfin/node-adapter can fetch it over HTTP. Runtime pinned to 41.134.102.3 — 44.x measured MORE frame hitches on macOS; see openfin/PERF-NOTES.md. The :4188 build-preview manifest (openfin/app.json) is for perf measurement.",
     "url": "http://localhost:5188/",
     "autoShow": true,
     "frame": true,

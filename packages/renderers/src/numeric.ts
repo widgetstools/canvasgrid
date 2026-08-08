@@ -1,6 +1,6 @@
-// @cgrid/renderers — category 1: Numeric (tick-aware). Catalog §3.1.
+// @wellsfargo-starui/velocity-grid-renderers — category 1: Numeric (tick-aware). Catalog §3.1.
 
-import type { CellPaintConfig, CellPainter } from '@cgrid/kernel';
+import type { CellPaintConfig, CellPainter } from '@wellsfargo-starui/velocity-grid';
 import { fragText, withAlpha } from './paintUtils';
 import { SEMANTIC_COLORS } from './palette';
 import type {
@@ -112,8 +112,8 @@ function tickDirection(
  * Workstream A (2026-07-06 CSS styling model) — resolves each semantic
  * color as `overrides ?? p.palette?.<x> ?? SEMANTIC_COLORS.<x>`. `overrides`
  * (a column's `params.colors`) always wins; `p.palette` (threaded from the
- * resolved theme's `--cg-pos-color` / `--cg-neg-color` / `--cg-warning-
- * color` / `--cg-info-color` / `--cg-muted-color` tokens) is the new
+ * resolved theme's `--vg-pos-color` / `--vg-neg-color` / `--vg-warning-
+ * color` / `--vg-info-color` / `--vg-muted-color` tokens) is the new
  * theme-driven middle tier; `SEMANTIC_COLORS` is the last-resort literal
  * fallback used only when neither of the above supplies a value (e.g. a
  * hand-built `CellPaintConfig` test fixture with no `palette`).

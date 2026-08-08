@@ -5,7 +5,7 @@ import { gridReadyWithQuery, seedGrid, waitForFrames } from './_setup';
 // empty bar (no panels yet — Tasks 2 + 3 add the count + agg panels).
 //
 // What regression this catches:
-//   - Bar chrome disappearing (border-top, --cg-header-bg tint, 28px
+//   - Bar chrome disappearing (border-top, --vg-header-bg tint, 28px
 //     height) — any of these slipping breaks the "shelf below the body"
 //     read and reverts the bar to a slapped-together `<div>`. Per the
 //     design notes, a transparent/unstyled bar fails the task acceptance

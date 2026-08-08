@@ -30,7 +30,7 @@ async function gridReady(page: import('@playwright/test').Page): Promise<void> {
 
 async function readDisplayedRowCount(page: import('@playwright/test').Page): Promise<number> {
   return await page.evaluate(
-    () => (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
+    () => (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
   );
 }
 
@@ -56,7 +56,7 @@ test.describe('Cycle 7 / Task 1 — floating-filter parser', () => {
     // greaterThan branch end-to-end and shouldn't reduce the set to
     // zero. Use 999_999_999 as the impossible threshold below for the
     // "reduces to zero" assertion.
-    await page.fill('input[data-cg-floating-filter][data-cg-col-id="currentPrice"]', '>999999999');
+    await page.fill('input[data-vg-floating-filter][data-vg-col-id="currentPrice"]', '>999999999');
     await waitForFilterApply(page);
     const after = await readDisplayedRowCount(page);
     expect(after).toBe(0);
@@ -65,7 +65,7 @@ test.describe('Cycle 7 / Task 1 — floating-filter parser', () => {
   test('typing 100..999999999 on a number column filters via inRange', async ({ page }) => {
     await gridReady(page);
     const before = await readDisplayedRowCount(page);
-    await page.fill('input[data-cg-floating-filter][data-cg-col-id="currentPrice"]', '100..999999999');
+    await page.fill('input[data-vg-floating-filter][data-vg-col-id="currentPrice"]', '100..999999999');
     await waitForFilterApply(page);
     const after = await readDisplayedRowCount(page);
     // Range should yield at least some matches (prices > 100 exist) but
@@ -76,7 +76,7 @@ test.describe('Cycle 7 / Task 1 — floating-filter parser', () => {
   test('typing >100 AND <200 on a number column composes a multi-AND entry', async ({ page }) => {
     await gridReady(page);
     const before = await readDisplayedRowCount(page);
-    await page.fill('input[data-cg-floating-filter][data-cg-col-id="currentPrice"]', '>100 AND <200');
+    await page.fill('input[data-vg-floating-filter][data-vg-col-id="currentPrice"]', '>100 AND <200');
     await waitForFilterApply(page);
     const after = await readDisplayedRowCount(page);
     expect(after).toBeLessThan(before);
@@ -85,7 +85,7 @@ test.describe('Cycle 7 / Task 1 — floating-filter parser', () => {
   test('clearing the input restores the full row set', async ({ page }) => {
     await gridReady(page);
     const before = await readDisplayedRowCount(page);
-    const sel = 'input[data-cg-floating-filter][data-cg-col-id="currentPrice"]';
+    const sel = 'input[data-vg-floating-filter][data-vg-col-id="currentPrice"]';
     await page.fill(sel, '>999999999');
     await waitForFilterApply(page);
     expect(await readDisplayedRowCount(page)).toBe(0);
@@ -96,7 +96,7 @@ test.describe('Cycle 7 / Task 1 — floating-filter parser', () => {
 
   test('user-typed operator prefix survives the worker round-trip (>100 stays >100)', async ({ page }) => {
     await gridReady(page);
-    const sel = 'input[data-cg-floating-filter][data-cg-col-id="currentPrice"]';
+    const sel = 'input[data-vg-floating-filter][data-vg-col-id="currentPrice"]';
     // Type >100. The parser emits {filterType:'number', type:'greaterThan',
     // filter:100} — note the canonical string form of that v2 entry is
     // "100", not ">100". This test guards against the regression where
@@ -113,9 +113,9 @@ test.describe('Cycle 7 / Task 1 — floating-filter parser', () => {
   test('clear button appears after typing and clears the column on click', async ({ page }) => {
     await gridReady(page);
     const before = await readDisplayedRowCount(page);
-    const inputSel = 'input[data-cg-floating-filter][data-cg-col-id="currentPrice"]';
-    const clearSel = 'button[data-cg-floating-filter-clear][data-cg-col-id="currentPrice"]';
-    const cellSel  = 'div[data-cg-floating-filter-cell][data-cg-col-id="currentPrice"]';
+    const inputSel = 'input[data-vg-floating-filter][data-vg-col-id="currentPrice"]';
+    const clearSel = 'button[data-vg-floating-filter-clear][data-vg-col-id="currentPrice"]';
+    const cellSel  = 'div[data-vg-floating-filter-cell][data-vg-col-id="currentPrice"]';
 
     // Before typing: button hidden via CSS (cell lacks .has-value class).
     expect(await page.evaluate(
@@ -156,7 +156,7 @@ test.describe('Cycle 7 / Task 1 — floating-filter parser', () => {
   test('unparseable number input leaves the row set unchanged (clears filter)', async ({ page }) => {
     await gridReady(page);
     const before = await readDisplayedRowCount(page);
-    const sel = 'input[data-cg-floating-filter][data-cg-col-id="currentPrice"]';
+    const sel = 'input[data-vg-floating-filter][data-vg-col-id="currentPrice"]';
     await page.fill(sel, 'not-a-number');
     await waitForFilterApply(page);
     // Parser returns null, cgrid clears the column filter, visible

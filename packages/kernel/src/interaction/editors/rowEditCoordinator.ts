@@ -9,7 +9,7 @@
 //   - Tab/Shift+Tab cycles `activeIndex` within the row (wrap-around);
 //     `focusOut` fires on the previous editor, `focusIn` on the next.
 //   - Enter commits every editor's value together; Escape cancels them all.
-//   - The host (cgrid.ts) routes commit through valueParser → valueSetter
+//   - The host (velocityGrid.ts) routes commit through valueParser → valueSetter
 //     and dispatches a single `applyTransaction({ update })` per commit.
 //
 // The coordinator does NOT know about valueParser / valueSetter / events —
@@ -99,7 +99,7 @@ export class RowEditCoordinator {
       if (editor.isCancelBeforeStart?.()) { editor.destroy(); continue; }
       const gui = editor.getGui();
       const wrapper = document.createElement('div');
-      wrapper.className = 'cg-editor-overlay cg-editor-overlay--row';
+      wrapper.className = 'vg-editor-overlay vg-editor-overlay--row';
       wrapper.dataset.colId = spec.colId;
       wrapper.style.cssText =
         `position:absolute; left:${spec.cellBounds.x}px; top:${spec.cellBounds.y}px;` +

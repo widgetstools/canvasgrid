@@ -1,7 +1,7 @@
 /**
  * Cycle 25 / Task 10 — memory-pressure release.
  *
- * `CGridOptions.memoryBudgetMB` (optional) caps the cumulative byte
+ * `VelocityGridOptions.memoryBudgetMB` (optional) caps the cumulative byte
  * size of chunks the grid keeps in its main-side cache. We hold cached
  * chunks via `WeakRef` so V8/JSC can collect them before our eviction
  * runs if real memory pressure builds; the LRU walks them in

@@ -1,6 +1,6 @@
 // Cycle 18 / Task 3 — pivot render integration (main thread, end-to-end).
 //
-// Drives a fully-wired CGrid (real worker host bridged into the fake
+// Drives a fully-wired VelocityGrid (real worker host bridged into the fake
 // Worker, same harness as cgrid.integration / groupExpand) and asserts
 // that turning pivot mode on:
 //   - synthesizes the secondary (pivot result) columns into the visible
@@ -14,7 +14,7 @@
 // Design note: docs/superpowers/plans/notes/cycle-18-pivoting-design.md (Task 3).
 
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
 import { pivotResultColumnId, isPivotResultColumnId } from '../src/core/pivotColumns';
 import { isAutoGroupColumnId } from '../src/core/autoGroupColumn';
@@ -60,7 +60,7 @@ const COLS = [
 function buildWiredGrid() {
   const container = document.createElement('div');
   container.style.cssText = 'width:900px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
   const prevWorker = (globalThis as { Worker?: unknown }).Worker;
   (globalThis as { Worker?: unknown }).Worker = class {
@@ -73,8 +73,8 @@ function buildWiredGrid() {
     addEventListener(_: string, cb: (e: { data: unknown }) => void) { this.listeners.push(cb); }
     terminate() {}
   };
-  const grid = new CGrid<Row>(container, {
-    columnDefs: COLS as Parameters<typeof CGrid<Row>>[1]['columnDefs'],
+  const grid = new VelocityGrid<Row>(container, {
+    columnDefs: COLS as Parameters<typeof VelocityGrid<Row>>[1]['columnDefs'],
     getRowId: (r) => r.id,
     rowData: ROWS,
   });
@@ -88,14 +88,14 @@ function buildWiredGrid() {
 const tick = (ms = 50) => new Promise((r) => setTimeout(r, ms));
 
 /** Visible column ids in render order (white-box read of columnOrder). */
-function orderIds(grid: CGrid<Row>): string[] {
+function orderIds(grid: VelocityGrid<Row>): string[] {
   return (grid as unknown as { columnOrder: Array<{ colId: string }> }).columnOrder.map((c) => c.colId);
 }
 
 /** Resolve a group row's pivot cell value via the grid's private cellAt
  *  (the exact path the renderer paints through). Finds the group row whose
  *  composite key matches `groupKey` in the current chunk. */
-function pivotCell(grid: CGrid<Row>, groupKey: string, pivotColId: string): unknown {
+function pivotCell(grid: VelocityGrid<Row>, groupKey: string, pivotColId: string): unknown {
   const g = grid as unknown as {
     chunk: { rowStart: number; rowCount: number; rowKinds: Uint8Array; groupKey?: string[] };
     cellAt: (rowIndex: number, colId: string) => { value: unknown; valueFormatted: string } | null;
@@ -110,7 +110,7 @@ function pivotCell(grid: CGrid<Row>, groupKey: string, pivotColId: string): unkn
   return undefined;
 }
 
-describe('CGrid pivot — render integration', () => {
+describe('VelocityGrid pivot — render integration', () => {
   it('synthesizes pivot result columns, hides primaries, keeps auto-group column', async () => {
     const { grid, restore } = buildWiredGrid();
     await tick();
@@ -319,7 +319,7 @@ describe('CGrid pivot — render integration', () => {
 
   // Cycle 18 / Task 4 — pivot column-group expand / collapse.
   //
-  // Wires the full CGrid → real worker host on a 2-level pivot (Sector ×
+  // Wires the full VelocityGrid → real worker host on a 2-level pivot (Sector ×
   // AssetClass). Asserts the collapsed-state defaults (only the per-Sector
   // total leaves visible, rolled-up aggregates correct), then toggles a
   // pivot group through `toggleColumnGroup` (the same call the canvas
@@ -354,7 +354,7 @@ describe('CGrid pivot — render integration', () => {
     function buildSubGrid() {
       const container = document.createElement('div');
       container.style.cssText = 'width:900px; height:600px;';
-      container.className = 'cg-theme-quartz';
+      container.className = 'vg-theme-quartz';
       document.body.appendChild(container);
       const prevWorker = (globalThis as { Worker?: unknown }).Worker;
       (globalThis as { Worker?: unknown }).Worker = class {
@@ -367,8 +367,8 @@ describe('CGrid pivot — render integration', () => {
         addEventListener(_: string, cb: (e: { data: unknown }) => void) { this.listeners.push(cb); }
         terminate() {}
       };
-      const grid = new CGrid<SubRow>(container, {
-        columnDefs: SUB_COLS as Parameters<typeof CGrid<SubRow>>[1]['columnDefs'],
+      const grid = new VelocityGrid<SubRow>(container, {
+        columnDefs: SUB_COLS as Parameters<typeof VelocityGrid<SubRow>>[1]['columnDefs'],
         getRowId: (r) => r.id,
         rowData: SUB_ROWS,
         // Pin closed-by-default; the engine default flipped to
@@ -383,11 +383,11 @@ describe('CGrid pivot — render integration', () => {
       return { grid, restore };
     }
 
-    function subOrderIds(grid: CGrid<SubRow>): string[] {
+    function subOrderIds(grid: VelocityGrid<SubRow>): string[] {
       return (grid as unknown as { columnOrder: Array<{ colId: string }> }).columnOrder.map((c) => c.colId);
     }
 
-    function subPivotCell(grid: CGrid<SubRow>, groupKey: string, pivotColId: string): unknown {
+    function subPivotCell(grid: VelocityGrid<SubRow>, groupKey: string, pivotColId: string): unknown {
       const g = grid as unknown as {
         chunk: { rowStart: number; rowCount: number; rowKinds: Uint8Array; groupKey?: string[] };
         cellAt: (rowIndex: number, colId: string) => { value: unknown; valueFormatted: string } | null;
@@ -499,7 +499,7 @@ describe('CGrid pivot — render integration', () => {
     it('pivotDefaultExpanded: 1 starts with depth-0 groups expanded so deeper leaves are visible from first paint', async () => {
       const container = document.createElement('div');
       container.style.cssText = 'width:900px; height:600px;';
-      container.className = 'cg-theme-quartz';
+      container.className = 'vg-theme-quartz';
       document.body.appendChild(container);
       const prevWorker = (globalThis as { Worker?: unknown }).Worker;
       (globalThis as { Worker?: unknown }).Worker = class {
@@ -512,8 +512,8 @@ describe('CGrid pivot — render integration', () => {
         addEventListener(_: string, cb: (e: { data: unknown }) => void) { this.listeners.push(cb); }
         terminate() {}
       };
-      const grid = new CGrid<SubRow>(container, {
-        columnDefs: SUB_COLS as Parameters<typeof CGrid<SubRow>>[1]['columnDefs'],
+      const grid = new VelocityGrid<SubRow>(container, {
+        columnDefs: SUB_COLS as Parameters<typeof VelocityGrid<SubRow>>[1]['columnDefs'],
         getRowId: (r) => r.id,
         rowData: SUB_ROWS,
         pivotDefaultExpanded: 1,

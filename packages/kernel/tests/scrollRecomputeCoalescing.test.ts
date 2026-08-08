@@ -17,7 +17,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { ViewportManager, type ViewportManagerDeps } from '../src/core/viewportManager';
 import { DisposableRegistry } from '../src/core/disposable';
 import { TypedEventEmitter } from '../src/core/eventEmitter';
-import type { CGridEvent } from '../src/types';
+import type { VelocityGridEvent } from '../src/types';
 import type { Subgrid } from '../src/core/subgrid';
 import type { ColumnLayout } from '../src/core/layout';
 
@@ -71,7 +71,7 @@ function makeHarness(opts: {
     rowHeight: 30,
     destroyed: false,
   };
-  const events = new TypedEventEmitter<CGridEvent>();
+  const events = new TypedEventEmitter<VelocityGridEvent>();
   const deps: ViewportManagerDeps = {
     disposables: new DisposableRegistry(),
     events,
@@ -137,7 +137,7 @@ describe('virtualColumnsChanged — vertical ticks skip detection', () => {
       colId: `c${i}`, left: i * 100, width: 100,
     }));
     const h = makeHarness({ columns: cols });
-    const seen: CGridEvent[] = [];
+    const seen: VelocityGridEvent[] = [];
     h.events.on('virtualColumnsChanged', (e) => seen.push(e));
     h.manager.onScrollerScroll(1200, 0);
     expect(seen.length).toBe(1);
@@ -149,7 +149,7 @@ describe('virtualColumnsChanged — vertical ticks skip detection', () => {
       colId: `c${i}`, left: i * 100, width: 100,
     }));
     const h = makeHarness({ columns: cols });
-    const seen: CGridEvent[] = [];
+    const seen: VelocityGridEvent[] = [];
     h.events.on('virtualColumnsChanged', (e) => seen.push(e));
     h.manager.onScrollerScroll(0, 90);
     h.manager.onScrollerScroll(0, 300);

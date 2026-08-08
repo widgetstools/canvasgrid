@@ -8,14 +8,14 @@
 //
 // FeatureChain.ts builds the chain and dispatches DOM events into the head.
 
-import type { CGridCanvas } from '../core/canvas';
+import type { VelocityGridCanvas } from '../core/canvas';
 import type { HitTester, Hit } from './hitTester';
 import type { SelectionModel } from './selectionModel';
 import type { CCellSelectionOptions, SelectionRange } from '../types';
 import type { MenuItem } from './contextMenu/types';
 
-/** Subset of `CGridOptions` consumed by the edit-trigger and keyboard
- *  features. Pulled into the chain via `CGridLike.getEditingFlags()`. */
+/** Subset of `VelocityGridOptions` consumed by the edit-trigger and keyboard
+ *  features. Pulled into the chain via `VelocityGridLike.getEditingFlags()`. */
 export interface EditingFlags {
   singleClickEdit: boolean;
   suppressClickEdit: boolean;
@@ -35,8 +35,8 @@ export type SuppressKeyboardEventFn = (
 
 /** Grid surface exposed to features. Minimal by design — additions get a new
  *  method here, not a back-channel via globals. */
-export interface CGridLike {
-  readonly canvas: CGridCanvas;
+export interface VelocityGridLike {
+  readonly canvas: VelocityGridCanvas;
   readonly selection: SelectionModel;
   readonly hitTester: HitTester;
   /** Data-row indices currently in the viewport (excludes header/totals). Used by PageDown/PageUp. */
@@ -117,7 +117,7 @@ export interface CGridLike {
    *  rows in `target` that are NOT in `source`, build the update set,
    *  and fire a single `applyTransaction({ update: [...] })`. Linear
    *  extrapolation for numeric source values; repeat for text. Custom
-   *  override via `CGridOptions.fillOperation`. */
+   *  override via `VelocityGridOptions.fillOperation`. */
   commitFill(source: SelectionRange, target: SelectionRange): void;
   /** Cycle 9 / Task 7 — emit `rangeSelectionChanged` from a feature.
    *  Reads the current ranges off the SelectionModel and fans them out
@@ -236,7 +236,7 @@ export interface CGridLike {
   isEditing(): boolean;
   /** Open the cell editor at `(rowIndex, colId)`. No-op when the cell is
    *  not editable or not currently in the viewport. `mode` controls
-   *  Excel's Enter / Edit dichotomy (see `CGridOptions.enableExcelEditing`).
+   *  Excel's Enter / Edit dichotomy (see `VelocityGridOptions.enableExcelEditing`).
    *  Defaults to `'edit'` (arrows = caret-move). */
   openEditor(
     rowIndex: number, colId: string,
@@ -257,7 +257,7 @@ export interface CGridLike {
 
   // --- Context menu (Cycle 10 / Task 1) ---
   /** Resolve the menu items for a right-click hit. Reads
-   *  `CGridOptions.getContextMenuItems(params)` and falls back to an empty
+   *  `VelocityGridOptions.getContextMenuItems(params)` and falls back to an empty
    *  list when no callback is configured (Task 2 plugs the default registry
    *  into this fallback). `hit` is the same `Hit` the feature already has —
    *  the grid maps it to the `rowIndex` / `colId` slots in `params`. */
@@ -293,18 +293,18 @@ export interface CGridLike {
   cutSelectedRanges(): Promise<void>;
 
   // --- Suppression gates (Cycle 10 / Task 6) ---
-  /** Resolved `CGridOptions.suppressContextMenu` flag. Read by `RightClick`
+  /** Resolved `VelocityGridOptions.suppressContextMenu` flag. Read by `RightClick`
    *  on every `contextmenu` event so a runtime
    *  `setGridOption('suppressContextMenu', true)` lights up on the next
    *  right-click without re-wiring the feature chain. */
   isContextMenuSuppressed(): boolean;
-  /** Resolved `CGridOptions.suppressClipboardApi` flag. Read by
+  /** Resolved `VelocityGridOptions.suppressClipboardApi` flag. Read by
    *  `KeyboardShortcuts` on every Ctrl+C / Ctrl+V / Ctrl+X keydown so a
    *  runtime flip lights up on the next keypress. When `true`, the
    *  shortcut forwards via `super.handleKeyDown(ctx)` (no preventDefault)
    *  so the host page's own clipboard listeners can take over. */
   isClipboardApiSuppressed(): boolean;
-  /** Resolved `CGridOptions.suppressClipboardPaste` flag. Read by
+  /** Resolved `VelocityGridOptions.suppressClipboardPaste` flag. Read by
    *  `KeyboardShortcuts` on every Ctrl+V keydown. When `true`, the
    *  shortcut forwards via super (no preventDefault). */
   isClipboardPasteSuppressed(): boolean;
@@ -411,15 +411,15 @@ export interface CGridLike {
   /** True when `groupKey` is currently in the expanded set. Returns false
    *  for unknown / collapsed keys. */
   isGroupExpanded(groupKey: string): boolean;
-  /** AG parity — mirrors `CGridOptions.suppressDoubleClickExpand`. When
+  /** AG parity — mirrors `VelocityGridOptions.suppressDoubleClickExpand`. When
    *  true, the GroupExpandFeature ignores double-clicks on group rows. */
   isGroupDoubleClickExpandSuppressed(): boolean;
 
   // --- Column autosize (Cycle 6 / Task 4) ---
   /** Autosize a single column — equivalent to `autoSizeColumns([colId])`.
-   *  Exposed on `CGridLike` so features (e.g. double-click on the
+   *  Exposed on `VelocityGridLike` so features (e.g. double-click on the
    *  column resizer hot-zone) can trigger it without a direct reference
-   *  to the CGrid instance. */
+   *  to the VelocityGrid instance. */
   autoSizeColumn(colId: string): Promise<void>;
   /** Cycle 15.5 — composite group key for the row at `rowIndex`, or `''`
    *  when the row is not a group row or is outside the current chunk. */
@@ -473,8 +473,8 @@ export interface CGridLike {
   isColumnGroupMarried(groupId: string): boolean;
 }
 
-export interface CGridEventCtx {
-  grid: CGridLike;
+export interface VelocityGridEventCtx {
+  grid: VelocityGridLike;
   hit: Hit;
   /** Canvas-local CSS-px coords. For KeyboardEvents this is {0,0}. */
   point: { x: number; y: number };
@@ -496,19 +496,19 @@ export abstract class Feature {
     return this;
   }
 
-  handleMouseDown(ctx: CGridEventCtx): void { this.next?.handleMouseDown(ctx); }
-  handleMouseUp(ctx: CGridEventCtx): void { this.next?.handleMouseUp(ctx); }
-  handleMouseMove(ctx: CGridEventCtx): void { this.next?.handleMouseMove(ctx); }
-  handleMouseDrag(ctx: CGridEventCtx): void { this.next?.handleMouseDrag(ctx); }
-  handleClick(ctx: CGridEventCtx): void { this.next?.handleClick(ctx); }
-  handleDoubleClick(ctx: CGridEventCtx): void { this.next?.handleDoubleClick(ctx); }
-  handleContextMenu(ctx: CGridEventCtx): void { this.next?.handleContextMenu(ctx); }
-  handleKeyDown(ctx: CGridEventCtx): void { this.next?.handleKeyDown(ctx); }
-  handleWheel(ctx: CGridEventCtx): void { this.next?.handleWheel(ctx); }
+  handleMouseDown(ctx: VelocityGridEventCtx): void { this.next?.handleMouseDown(ctx); }
+  handleMouseUp(ctx: VelocityGridEventCtx): void { this.next?.handleMouseUp(ctx); }
+  handleMouseMove(ctx: VelocityGridEventCtx): void { this.next?.handleMouseMove(ctx); }
+  handleMouseDrag(ctx: VelocityGridEventCtx): void { this.next?.handleMouseDrag(ctx); }
+  handleClick(ctx: VelocityGridEventCtx): void { this.next?.handleClick(ctx); }
+  handleDoubleClick(ctx: VelocityGridEventCtx): void { this.next?.handleDoubleClick(ctx); }
+  handleContextMenu(ctx: VelocityGridEventCtx): void { this.next?.handleContextMenu(ctx); }
+  handleKeyDown(ctx: VelocityGridEventCtx): void { this.next?.handleKeyDown(ctx); }
+  handleWheel(ctx: VelocityGridEventCtx): void { this.next?.handleWheel(ctx); }
 
   /** Tail-first cursor walk: recurse to the tail, then back up the stack each
    *  feature applies its own cursor if non-null. Result: head's cursor wins. */
-  setCursor(grid: CGridLike): void {
+  setCursor(grid: VelocityGridLike): void {
     this.next?.setCursor(grid);
     if (this.cursor) grid.canvas.canvas.style.cursor = this.cursor;
   }

@@ -11,8 +11,8 @@
     "smoke:phase1": "node scripts/phase1-smoke.mjs"
   },
   "dependencies": {
-    "@cgrid/kernel": "*",
-    "@cgrid/perspective": "*",
+    "@wellsfargo-starui/velocity-grid": "*",
+    "@wellsfargo-starui/velocity-grid-perspective": "*",
     "@stomp/stompjs": "^7.3.0"
   },
   "devDependencies": {

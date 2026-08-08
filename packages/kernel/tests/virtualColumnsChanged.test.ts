@@ -13,7 +13,7 @@
 // they can correlate against the matching per-slot event.
 
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { resolveColumnWidths } from '../src/core/layout';
 
 beforeAll(() => {
@@ -46,12 +46,12 @@ function build<TRow extends { id: string }>(
   cols: any[],
   rows: TRow[] = [],
   containerCss = 'width:400px; height:400px;',
-): { grid: CGrid<TRow>; container: HTMLDivElement } {
+): { grid: VelocityGrid<TRow>; container: HTMLDivElement } {
   const container = document.createElement('div');
   container.style.cssText = containerCss;
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
-  const grid = new CGrid<TRow>(container, {
+  const grid = new VelocityGrid<TRow>(container, {
     columnDefs: cols,
     getRowId: (r) => r.id,
     rowData: rows,

@@ -4,7 +4,7 @@
  * (`risk.dv01`). Rows are flattened so the worker's `row[field]` read
  * resolves dotted keys without a kernel change.
  */
-import type { CColDef, CColGroupDef } from '@cgrid/kernel';
+import type { CColDef, CColGroupDef } from '@wellsfargo-starui/velocity-grid';
 
 export type FlatRow = Record<string, unknown> & { positionId: string };
 

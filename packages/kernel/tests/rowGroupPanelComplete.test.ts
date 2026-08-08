@@ -144,7 +144,7 @@ function mountPanel(
  *  every element; we override per-instance for the panel + chip elements
  *  so the host's gap-finder + drop hit-test produce realistic values. */
 function pinChipRects(root: HTMLElement, chipWidth = 60, chipGap = 12, panelLeft = 0, panelWidth = 800): void {
-  const panel = root.querySelector('.cg-row-group-panel') as HTMLElement | null;
+  const panel = root.querySelector('.vg-row-group-panel') as HTMLElement | null;
   if (!panel) return;
   panel.getBoundingClientRect = function (): DOMRect {
     return {
@@ -159,7 +159,7 @@ function pinChipRects(root: HTMLElement, chipWidth = 60, chipGap = 12, panelLeft
       toJSON: () => ({}),
     } as DOMRect;
   };
-  const chips = panel.querySelectorAll('.cg-row-group-panel-chip');
+  const chips = panel.querySelectorAll('.vg-row-group-panel-chip');
   let x = panelLeft + 8;
   chips.forEach((chip) => {
     const element = chip as HTMLElement;
@@ -189,7 +189,7 @@ describe('Cycle 15.5 / Task 1 — Row group panel completeness', () => {
       root.parentElement?.removeChild(root);
     }
     cleanupRoots = [];
-    document.querySelectorAll('.cg-row-group-panel-chip-ghost').forEach((el) => {
+    document.querySelectorAll('.vg-row-group-panel-chip-ghost').forEach((el) => {
       el.parentElement?.removeChild(el);
     });
   });
@@ -211,7 +211,7 @@ describe('Cycle 15.5 / Task 1 — Row group panel completeness', () => {
     const ctx = makeContext();
     const { host, root } = mount(ctx, ['desk', 'region', 'ticker']);
     pinChipRects(root);
-    const chips = root.querySelectorAll('.cg-row-group-panel-chip');
+    const chips = root.querySelectorAll('.vg-row-group-panel-chip');
     const sourceChip = chips[2] as HTMLElement; // ticker
     // Press inside the ticker chip
     dispatchPointer(sourceChip, 'pointerdown', { clientX: 160, clientY: 16 });
@@ -233,9 +233,9 @@ describe('Cycle 15.5 / Task 1 — Row group panel completeness', () => {
   it('pill × click dispatches ctx.removeRowGroupColumn', () => {
     const ctx = makeContext();
     const { host, root } = mount(ctx, ['ticker', 'sector']);
-    const chips = root.querySelectorAll('.cg-row-group-panel-chip');
+    const chips = root.querySelectorAll('.vg-row-group-panel-chip');
     const removeBtn = (chips[0] as HTMLElement).querySelector(
-      '.cg-row-group-panel-chip-remove',
+      '.vg-row-group-panel-chip-remove',
     ) as HTMLButtonElement;
     removeBtn.click();
     expect(ctx.removeCalls).toEqual(['ticker']);
@@ -250,8 +250,8 @@ describe('Cycle 15.5 / Task 1 — Row group panel completeness', () => {
     const { host, root } = mount(ctx, ['ticker']);
     // No indicator is rendered when the level has no sort entry —
     // chip width matches the byte-stable Task 6 baseline.
-    expect(root.querySelector('.cg-row-group-panel-chip-sort')).toBeNull();
-    const chip = root.querySelector('.cg-row-group-panel-chip') as HTMLElement;
+    expect(root.querySelector('.vg-row-group-panel-chip-sort')).toBeNull();
+    const chip = root.querySelector('.vg-row-group-panel-chip') as HTMLElement;
     chip.click();
     expect(ctx.sortCalls).toEqual([{ colId: 'ticker', direction: 'asc' }]);
     host.destroy();
@@ -264,7 +264,7 @@ describe('Cycle 15.5 / Task 1 — Row group panel completeness', () => {
     const ctx = makeContext();
     const { host, root } = mount(ctx, ['ticker']);
     host.setGroupingState(['ticker'], [{ direction: 'asc' }]);
-    const sortBtn = root.querySelector('.cg-row-group-panel-chip-sort') as HTMLButtonElement;
+    const sortBtn = root.querySelector('.vg-row-group-panel-chip-sort') as HTMLButtonElement;
     expect(sortBtn.dataset.direction).toBe('asc');
     expect(sortBtn.textContent).toBe('↑');
     sortBtn.click();
@@ -279,7 +279,7 @@ describe('Cycle 15.5 / Task 1 — Row group panel completeness', () => {
     const ctx = makeContext();
     const { host, root } = mount(ctx, ['ticker']);
     host.setGroupingState(['ticker'], [{ direction: 'desc' }]);
-    const sortBtn = root.querySelector('.cg-row-group-panel-chip-sort') as HTMLButtonElement;
+    const sortBtn = root.querySelector('.vg-row-group-panel-chip-sort') as HTMLButtonElement;
     expect(sortBtn.dataset.direction).toBe('desc');
     expect(sortBtn.textContent).toBe('↓');
     sortBtn.click();
@@ -293,10 +293,10 @@ describe('Cycle 15.5 / Task 1 — Row group panel completeness', () => {
   it('rowGroupPanelSuppressSort: true removes the sort-button DOM and the click handler', () => {
     const ctx = makeContext();
     const { host, root } = mount(ctx, ['ticker'], { suppressSort: true });
-    const sortBtn = root.querySelector('.cg-row-group-panel-chip-sort');
+    const sortBtn = root.querySelector('.vg-row-group-panel-chip-sort');
     expect(sortBtn).toBeNull();
     // Click the chip body (no sort indicator) — no sort call fires.
-    const chip = root.querySelector('.cg-row-group-panel-chip') as HTMLElement;
+    const chip = root.querySelector('.vg-row-group-panel-chip') as HTMLElement;
     chip.click();
     expect(ctx.sortCalls).toEqual([]);
     host.destroy();
@@ -309,14 +309,14 @@ describe('Cycle 15.5 / Task 1 — Row group panel completeness', () => {
     const ctx = makeContext();
     const { host, root } = mount(ctx, ['desk', 'region', 'ticker']);
     pinChipRects(root);
-    const chips = root.querySelectorAll('.cg-row-group-panel-chip');
+    const chips = root.querySelectorAll('.vg-row-group-panel-chip');
     const sourceChip = chips[0] as HTMLElement;
     dispatchPointer(sourceChip, 'pointerdown', { clientX: 30, clientY: 16 });
     dispatchPointer(window, 'pointermove', { clientX: 100, clientY: 16 });
     // Pointer now over middle of region; snap should land between
     // region (72–132) and ticker (144–204), at gap idx 2.
     dispatchPointer(window, 'pointermove', { clientX: 138, clientY: 16 });
-    const line = root.querySelector('.cg-row-group-panel-insertion-line') as HTMLElement;
+    const line = root.querySelector('.vg-row-group-panel-insertion-line') as HTMLElement;
     expect(line).not.toBeNull();
     expect(line.style.display).not.toBe('none');
     // Snap target: gap between region.right (132) and ticker.left (144),
@@ -336,14 +336,14 @@ describe('Cycle 15.5 / Task 1 — Row group panel completeness', () => {
     const ctx = makeContext();
     const { host, root } = mount(ctx, ['desk', 'region']);
     pinChipRects(root);
-    const chips = root.querySelectorAll('.cg-row-group-panel-chip');
+    const chips = root.querySelectorAll('.vg-row-group-panel-chip');
     const sourceChip = chips[0] as HTMLElement;
     dispatchPointer(sourceChip, 'pointerdown', { clientX: 30, clientY: 16 });
     dispatchPointer(window, 'pointermove', { clientX: 100, clientY: 16 });
-    expect(document.querySelector('.cg-row-group-panel-chip-ghost')).not.toBeNull();
+    expect(document.querySelector('.vg-row-group-panel-chip-ghost')).not.toBeNull();
     dispatchPointer(window, 'pointercancel', { clientX: 100, clientY: 16 });
-    expect(document.querySelector('.cg-row-group-panel-chip-ghost')).toBeNull();
-    const line = root.querySelector('.cg-row-group-panel-insertion-line') as HTMLElement | null;
+    expect(document.querySelector('.vg-row-group-panel-chip-ghost')).toBeNull();
+    const line = root.querySelector('.vg-row-group-panel-insertion-line') as HTMLElement | null;
     if (line) expect(line.style.display).toBe('none');
     host.destroy();
   });
@@ -355,16 +355,16 @@ describe('Cycle 15.5 / Task 1 — Row group panel completeness', () => {
     const ctx = makeContext();
     const { host, root } = mount(ctx, ['ticker']);
     pinChipRects(root);
-    const sourceChip = root.querySelector('.cg-row-group-panel-chip') as HTMLElement;
+    const sourceChip = root.querySelector('.vg-row-group-panel-chip') as HTMLElement;
     // Pointerdown: no ghost yet (still in 'press' state).
     dispatchPointer(sourceChip, 'pointerdown', { clientX: 30, clientY: 16 });
-    expect(document.querySelector('.cg-row-group-panel-chip-ghost')).toBeNull();
+    expect(document.querySelector('.vg-row-group-panel-chip-ghost')).toBeNull();
     // Move 2px — below threshold, no ghost.
     dispatchPointer(window, 'pointermove', { clientX: 32, clientY: 16 });
-    expect(document.querySelector('.cg-row-group-panel-chip-ghost')).toBeNull();
+    expect(document.querySelector('.vg-row-group-panel-chip-ghost')).toBeNull();
     // Move 6px — crosses threshold, ghost mounts.
     dispatchPointer(window, 'pointermove', { clientX: 36, clientY: 16 });
-    const ghost = document.querySelector('.cg-row-group-panel-chip-ghost') as HTMLElement;
+    const ghost = document.querySelector('.vg-row-group-panel-chip-ghost') as HTMLElement;
     expect(ghost).not.toBeNull();
     expect(parseFloat(ghost.style.left)).toBe(36 + 0);
     expect(parseFloat(ghost.style.top)).toBe(16 + -11);
@@ -374,7 +374,7 @@ describe('Cycle 15.5 / Task 1 — Row group panel completeness', () => {
     expect(parseFloat(ghost.style.top)).toBe(20 + -11);
     // Release — ghost unmounts.
     dispatchPointer(window, 'pointerup', { clientX: 100, clientY: 20 });
-    expect(document.querySelector('.cg-row-group-panel-chip-ghost')).toBeNull();
+    expect(document.querySelector('.vg-row-group-panel-chip-ghost')).toBeNull();
     host.destroy();
   });
 
@@ -411,7 +411,7 @@ describe('Cycle 15.5 / Task 1 — Row group panel completeness', () => {
     const ctx = makeContext();
     const { host, root } = mount(ctx, ['desk']);
     host.setGroupingState(['ticker', 'region', 'desk'], [null, null, null]);
-    const chips = root.querySelectorAll('.cg-row-group-panel-chip');
+    const chips = root.querySelectorAll('.vg-row-group-panel-chip');
     expect(Array.from(chips).map((c) => (c as HTMLElement).dataset.colId)).toEqual([
       'ticker',
       'region',
@@ -430,7 +430,7 @@ describe('Cycle 15.5 / Task 1 — Row group panel completeness', () => {
       ['ticker', 'sector'],
       [{ direction: 'asc' }, { direction: 'desc' }],
     );
-    const sortBtns = root.querySelectorAll('.cg-row-group-panel-chip-sort');
+    const sortBtns = root.querySelectorAll('.vg-row-group-panel-chip-sort');
     expect(sortBtns).toHaveLength(2);
     expect((sortBtns[0] as HTMLElement).dataset.direction).toBe('asc');
     expect((sortBtns[0] as HTMLElement).textContent).toBe('↑');
@@ -446,7 +446,7 @@ describe('Cycle 15.5 / Task 1 — Row group panel completeness', () => {
     const ctx = makeContext();
     const { host, root } = mount(ctx, ['desk', 'region', 'ticker']);
     pinChipRects(root);
-    const chips = root.querySelectorAll('.cg-row-group-panel-chip');
+    const chips = root.querySelectorAll('.vg-row-group-panel-chip');
     // Drag chip[0] to the trailing slot (after ticker).
     const source = chips[0] as HTMLElement;
     dispatchPointer(source, 'pointerdown', { clientX: 30, clientY: 16 });
@@ -465,7 +465,7 @@ describe('Cycle 15.5 / Task 1 — Row group panel completeness', () => {
     const { host, root } = mount(ctx, []);
     pinChipRects(root);
     host.setDragHover('ticker', 100, 16);
-    const panel = root.querySelector('.cg-row-group-panel') as HTMLElement;
+    const panel = root.querySelector('.vg-row-group-panel') as HTMLElement;
     expect(panel.dataset.drop).toBe('accept');
     host.clearDragHover();
     expect(panel.dataset.drop).toBeUndefined();
@@ -478,7 +478,7 @@ describe('Cycle 15.5 / Task 1 — Row group panel completeness', () => {
   it('empty-state placeholder mounts when rowGroupColumns is empty under always mode', () => {
     const ctx = makeContext();
     const { host, root } = mount(ctx, []);
-    const empty = root.querySelector('.cg-row-group-panel-empty') as HTMLElement | null;
+    const empty = root.querySelector('.vg-row-group-panel-empty') as HTMLElement | null;
     expect(empty).not.toBeNull();
     expect(empty!.textContent).toBe('Drag here to set row groups');
     host.destroy();
@@ -490,10 +490,10 @@ describe('Cycle 15.5 / Task 1 — Row group panel completeness', () => {
   it('empty-state clears when first chip lands via setGroupingState', () => {
     const ctx = makeContext();
     const { host, root } = mount(ctx, []);
-    expect(root.querySelector('.cg-row-group-panel-empty')).not.toBeNull();
+    expect(root.querySelector('.vg-row-group-panel-empty')).not.toBeNull();
     host.setGroupingState(['ticker'], [null]);
-    expect(root.querySelector('.cg-row-group-panel-empty')).toBeNull();
-    expect(root.querySelectorAll('.cg-row-group-panel-chip')).toHaveLength(1);
+    expect(root.querySelector('.vg-row-group-panel-empty')).toBeNull();
+    expect(root.querySelectorAll('.vg-row-group-panel-chip')).toHaveLength(1);
     host.destroy();
   });
 
@@ -504,12 +504,12 @@ describe('Cycle 15.5 / Task 1 — Row group panel completeness', () => {
     const ctx = makeContext();
     const { host, root } = mount(ctx, ['ticker']);
     pinChipRects(root);
-    const source = root.querySelector('.cg-row-group-panel-chip') as HTMLElement;
+    const source = root.querySelector('.vg-row-group-panel-chip') as HTMLElement;
     dispatchPointer(source, 'pointerdown', { clientX: 30, clientY: 16 });
     dispatchPointer(window, 'pointermove', { clientX: 100, clientY: 16 });
-    expect(document.querySelector('.cg-row-group-panel-chip-ghost')).not.toBeNull();
+    expect(document.querySelector('.vg-row-group-panel-chip-ghost')).not.toBeNull();
     host.destroy();
-    expect(document.querySelector('.cg-row-group-panel-chip-ghost')).toBeNull();
+    expect(document.querySelector('.vg-row-group-panel-chip-ghost')).toBeNull();
     expect(() => host.destroy()).not.toThrow();
   });
 
@@ -519,7 +519,7 @@ describe('Cycle 15.5 / Task 1 — Row group panel completeness', () => {
   it('Delete / Backspace on a focused chip dispatches removeRowGroupColumn', () => {
     const ctx = makeContext();
     const { host, root } = mount(ctx, ['ticker']);
-    const chip = root.querySelector('.cg-row-group-panel-chip') as HTMLElement;
+    const chip = root.querySelector('.vg-row-group-panel-chip') as HTMLElement;
     chip.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
     expect(ctx.removeCalls).toEqual(['ticker']);
     host.destroy();
@@ -531,7 +531,7 @@ describe('Cycle 15.5 / Task 1 — Row group panel completeness', () => {
   it('Cmd+ArrowLeft / Cmd+ArrowRight on a focused chip dispatches moveRowGroupColumn', () => {
     const ctx = makeContext();
     const { host, root } = mount(ctx, ['desk', 'region', 'ticker']);
-    const chips = root.querySelectorAll('.cg-row-group-panel-chip');
+    const chips = root.querySelectorAll('.vg-row-group-panel-chip');
     const middle = chips[1] as HTMLElement; // region @ index 1
     middle.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'ArrowLeft', metaKey: true, bubbles: true }),
@@ -551,7 +551,7 @@ describe('Cycle 15.5 / Task 1 — Row group panel completeness', () => {
   it('chip carries an aria-label naming the column + its group level', () => {
     const ctx = makeContext();
     const { host, root } = mount(ctx, ['ticker', 'sector']);
-    const chips = root.querySelectorAll('.cg-row-group-panel-chip');
+    const chips = root.querySelectorAll('.vg-row-group-panel-chip');
     expect(chips[0]!.getAttribute('aria-label')).toBe('Ticker group level 1');
     expect(chips[1]!.getAttribute('aria-label')).toBe('Sector group level 2');
     host.destroy();
@@ -564,11 +564,11 @@ describe('Cycle 15.5 / Task 1 — Row group panel completeness', () => {
     const ctx = makeContext();
     const { host, root } = mount(ctx, ['ticker']);
     pinChipRects(root);
-    const source = root.querySelector('.cg-row-group-panel-chip') as HTMLElement;
+    const source = root.querySelector('.vg-row-group-panel-chip') as HTMLElement;
     dispatchPointer(source, 'pointerdown', { clientX: 30, clientY: 16 });
     dispatchPointer(window, 'pointermove', { clientX: 32, clientY: 18 });
     dispatchPointer(window, 'pointerup', { clientX: 32, clientY: 18 });
-    expect(document.querySelector('.cg-row-group-panel-chip-ghost')).toBeNull();
+    expect(document.querySelector('.vg-row-group-panel-chip-ghost')).toBeNull();
     expect(ctx.moveCalls).toEqual([]);
     host.destroy();
   });

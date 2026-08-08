@@ -7,14 +7,14 @@
  */
 import { test, expect } from '@playwright/test';
 
-type CGridGlobal = {
+type VelocityGridGlobal = {
   getCellBoundsAt: (r: number, c: string) => { x: number; y: number; w: number; h: number } | null;
   getCellValue: (r: number, c: string) => unknown;
 };
 
 async function bounds(page: import('@playwright/test').Page, row: number, colId: string) {
   return page.evaluate(([r, c]) => {
-    const grid = (window as unknown as { __cgrid: CGridGlobal }).__cgrid;
+    const grid = (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid;
     return grid.getCellBoundsAt(r as number, c as string);
   }, [row, colId]);
 }
@@ -38,7 +38,7 @@ test.describe('Cell editing — built-in editors (Cycle 5 / Task 2)', () => {
     const clickY = canvasRect!.y + b!.y + b!.h / 2;
     await page.mouse.dblclick(clickX, clickY);
 
-    const input = page.locator('input.cg-cell-editor--number');
+    const input = page.locator('input.vg-cell-editor--number');
     await expect(input).toBeVisible();
     // Negative input should clamp to min: 0 on commit.
     await input.fill('-50.555');
@@ -47,7 +47,7 @@ test.describe('Cell editing — built-in editors (Cycle 5 / Task 2)', () => {
 
     await expect.poll(
       () => page.evaluate(() => {
-        const g = (window as unknown as { __cgrid: CGridGlobal }).__cgrid;
+        const g = (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid;
         return g.getCellValue(0, 'notionalAmount');
       }),
       { timeout: 5_000 },
@@ -56,7 +56,7 @@ test.describe('Cell editing — built-in editors (Cycle 5 / Task 2)', () => {
 
   test('select editor: double-click → pick value → Enter commits typed value', async ({ page }) => {
     const original = await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: CGridGlobal }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid;
       return g.getCellValue(0, 'ticker');
     });
     const b = await bounds(page, 0, 'ticker');
@@ -66,7 +66,7 @@ test.describe('Cell editing — built-in editors (Cycle 5 / Task 2)', () => {
     const clickY = canvasRect!.y + b!.y + b!.h / 2;
     await page.mouse.dblclick(clickX, clickY);
 
-    const select = page.locator('select.cg-cell-editor--select');
+    const select = page.locator('select.vg-cell-editor--select');
     await expect(select).toBeVisible();
     await expect(select.locator('option')).toHaveCount(7);
     // Pick a value that differs from the row's original ticker so the test
@@ -78,7 +78,7 @@ test.describe('Cell editing — built-in editors (Cycle 5 / Task 2)', () => {
 
     await expect.poll(
       () => page.evaluate(() => {
-        const g = (window as unknown as { __cgrid: CGridGlobal }).__cgrid;
+        const g = (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid;
         return g.getCellValue(0, 'ticker');
       }),
       { timeout: 5_000 },

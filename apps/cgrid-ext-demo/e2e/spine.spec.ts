@@ -8,10 +8,10 @@ test('spine: shell renders, settings sheet opens, row height applies', async ({ 
   await bootCustomizer(page);
 
   await page.locator('[data-item-id="overflow"] button').click();
-  await expect(page.locator('.cgext-sheet')).toBeVisible();
-  await expect(page.locator('.cgext-sheet [data-field-key="rowHeight"]')).toBeVisible();
+  await expect(page.locator('.vgext-sheet')).toBeVisible();
+  await expect(page.locator('.vgext-sheet [data-field-key="rowHeight"]')).toBeVisible();
 
-  const input = page.locator('.cgext-sheet [data-field-key="rowHeight"] input.cg-settings-input-number');
+  const input = page.locator('.vgext-sheet [data-field-key="rowHeight"] input.vg-settings-input-number');
   await input.fill('40');
   await input.blur();
 
@@ -26,7 +26,7 @@ test('spine: shell renders, settings sheet opens, row height applies', async ({ 
 
 // Overflow-menu theme toggle: flips the `-dark` suffix of the active theme
 // family on BOTH the kernel's themed element and the shell root (which
-// mirrors the class so the chrome's `--cg-*` tokens track the grid). The
+// mirrors the class so the chrome's `--vg-*` tokens track the grid). The
 // menu stays open across the toggle and the checkmark repaints.
 test('overflow menu: dark-theme toggle flips theme on shell and kernel', async ({ page }) => {
   // Theme toggle lives on the "More" (settings-launcher) menu, not overflow.
@@ -37,23 +37,23 @@ test('overflow menu: dark-theme toggle flips theme on shell and kernel', async (
 
   const themes = () =>
     page.evaluate(() => ({
-      root: Array.from(document.querySelector('.cgext-root')!.classList).filter((c) => c.startsWith('cg-theme-')),
-      grid: Array.from(document.querySelector('.cgext-grid [class*="cg-theme-"]')!.classList).filter((c) => c.startsWith('cg-theme-')),
+      root: Array.from(document.querySelector('.vgext-root')!.classList).filter((c) => c.startsWith('vg-theme-')),
+      grid: Array.from(document.querySelector('.vgext-grid [class*="vg-theme-"]')!.classList).filter((c) => c.startsWith('vg-theme-')),
     }));
 
-  expect(await themes()).toEqual({ root: ['cg-theme-quartz-dark'], grid: ['cg-theme-quartz-dark'] });
+  expect(await themes()).toEqual({ root: ['vg-theme-cursor-dark'], grid: ['vg-theme-cursor-dark'] });
 
   await page.locator('[data-item-id="settings-launcher"] button').click();
-  const item = page.locator('.cgext-menu-item', { hasText: 'Dark theme' });
+  const item = page.locator('.vgext-menu-item', { hasText: 'Dark theme' });
   await expect(item).toHaveClass(/is-active/);
 
   await item.click();
-  expect(await themes()).toEqual({ root: ['cg-theme-quartz'], grid: ['cg-theme-quartz'] });
+  expect(await themes()).toEqual({ root: ['vg-theme-cursor'], grid: ['vg-theme-cursor'] });
   await expect(item).not.toHaveClass(/is-active/);
-  await expect(page.locator('.cgext-menu')).toBeVisible();
+  await expect(page.locator('.vgext-menu')).toBeVisible();
 
   await item.click();
-  expect(await themes()).toEqual({ root: ['cg-theme-quartz-dark'], grid: ['cg-theme-quartz-dark'] });
+  expect(await themes()).toEqual({ root: ['vg-theme-cursor-dark'], grid: ['vg-theme-cursor-dark'] });
   await expect(item).toHaveClass(/is-active/);
 });
 

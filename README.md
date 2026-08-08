@@ -1,6 +1,6 @@
 # canvasgrid
 
-Vanilla TypeScript **canvas data grid** (`@cgrid/kernel` / **cgrid**) aiming for AG Grid API parity. Data ops (sort / filter / group / pivot / agg) run in a Web Worker; the main thread paints visible cells.
+Vanilla TypeScript **canvas data grid** (`@wellsfargo-starui/velocity-grid` / **cgrid**) aiming for AG Grid API parity. Data ops (sort / filter / group / pivot / agg) run in a Web Worker; the main thread paints visible cells.
 
 AG Grid React apps under `apps/showcase` and `apps/colgroups` are **comparison references**, not the product library.
 
@@ -25,9 +25,9 @@ npm run dev:showcase    # cgrid feature tour (no external services)
 |--------|-----|------|--------------|-------|
 | `npm run dev:showcase` | `cgrid-showcase` | 5185 | No | CSRM feature tour (seed data) |
 | `npm run dev:ssrm-demo` | `cgrid-ssrm-demo` | 5191 | No* | SSRM + Perspective; `?feed=stomp` for live |
-| `npm run dev:ext-ssrm-demo` | `cgrid-ext-ssrm-demo` | 5195 | No | SSRM + CGridExt with in-process mock server |
+| `npm run dev:ext-ssrm-demo` | `cgrid-ext-ssrm-demo` | 5195 | No | SSRM + VelocityGridExt with in-process mock server |
 | `npm run dev:positions` | `cgrid-positions` | 5175 | Yes | Live blotter |
-| `npm run dev:ext-demo` | `cgrid-ext-demo` | 5188 | Yes | CGridExt chrome |
+| `npm run dev:ext-demo` | `cgrid-ext-demo` | 5188 | Yes | VelocityGridExt chrome |
 | `npm run dev:customizer` | `cgrid-customizer-demo` | 5187 | Yes | Customizer UI |
 | `npm run dev:colgroups` | `colgroups` | 5176 | No | AG Grid column-groups reference |
 | `npm run dev:ag-showcase` | `showcase` | 5174 | Optional | AG Grid React reference |
@@ -94,7 +94,7 @@ Starts each Vite app briefly, checks HTTP on its port, then stops it. Safe on ma
 
 ## Trust boundaries
 
-- **`aggFuncs` / custom comparators** serialize via `new Function` on main + worker. Treat them as **trusted application code** only. Prefer `@cgrid/expression` for user-authored formulas.
+- **`aggFuncs` / custom comparators** serialize via `new Function` on main + worker. Treat them as **trusted application code** only. Prefer `@wellsfargo-starui/velocity-grid-expression` for user-authored formulas.
 - **Tooltip `{ html }`** and context-menu icons are allowlist-sanitized; prefer `{ plain }` / trusted SVG.
 
 ## Docs

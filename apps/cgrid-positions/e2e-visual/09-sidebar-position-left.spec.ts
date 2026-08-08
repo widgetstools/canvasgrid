@@ -12,7 +12,7 @@ test('side bar — Columns panel open on the left', async ({ page }) => {
   await setupGrid(page, 50);
   await page.evaluate(() => {
     const g = (window as unknown as {
-      __cgrid: {
+      __velocity-grid: {
         setSideBarPosition: (pos: 'left' | 'right') => void;
         openToolPanel: (id: string) => void;
       };

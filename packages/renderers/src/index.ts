@@ -1,4 +1,4 @@
-// @cgrid/renderers — public re-exports.
+// @wellsfargo-starui/velocity-grid-renderers — public re-exports.
 // See docs/superpowers/specs/2026-07-02-cycle-21f-renderers-design.md §2.1
 // for the authoritative package layout this mirrors.
 

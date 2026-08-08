@@ -1,4 +1,4 @@
-// @cgrid/renderers — palette function tests (Cycle 21f / Task 2).
+// @wellsfargo-starui/velocity-grid-renderers — palette function tests (Cycle 21f / Task 2).
 //
 // Tests for the theme-aware functions added to palette.ts in Task 2.
 // The catalog CONST data maps (SEMANTIC_COLORS etc.) are tested in types.test.ts.

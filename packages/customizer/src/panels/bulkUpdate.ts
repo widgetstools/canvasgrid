@@ -1,7 +1,7 @@
 /**
  * Cycle 21i Phase 2 / T7 — #10 Bulk Update settings panel.
  *
- * Flat settings panel over the @cgrid/edit engine's bulk-update slice,
+ * Flat settings panel over the @wellsfargo-starui/velocity-grid-edit engine's bulk-update slice,
  * per docs/starui-customizer-ui/10-bulk-update.md: GLOBAL (enabled /
  * confirm threshold / single column / record history) + DROPDOWN
  * (distinct values / max dropdown size). Same immediate-apply +
@@ -10,9 +10,9 @@
  * actually reusable.
  */
 import { html, css } from 'lit';
-import type { ToolPanel } from '@cgrid/kernel';
-import type { EditBridgeHandle, BulkUpdateSettings } from '@cgrid/edit';
-import { DEFAULT_EDIT_SETTINGS } from '@cgrid/edit';
+import type { ToolPanel } from '@wellsfargo-starui/velocity-grid';
+import type { EditBridgeHandle, BulkUpdateSettings } from '@wellsfargo-starui/velocity-grid-edit';
+import { DEFAULT_EDIT_SETTINGS } from '@wellsfargo-starui/velocity-grid-edit';
 import { CgcPanelElement, litToolPanel } from '../litToolPanel';
 import { chromeBase } from '../styles';
 import { switchRow, numberRow } from './rows';
@@ -30,8 +30,8 @@ class BulkUpdatePanel extends CgcPanelElement {
       }
       .empty {
         padding: 10px 12px;
-        font-size: var(--cg-font-size-sm);
-        color: color-mix(in srgb, var(--cg-fg-color) 55%, transparent);
+        font-size: var(--vg-font-size-sm);
+        color: color-mix(in srgb, var(--vg-fg-color) 55%, transparent);
       }
     `];
 

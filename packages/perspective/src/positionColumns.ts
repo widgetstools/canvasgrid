@@ -1,4 +1,4 @@
-import type { CColDef } from '@cgrid/kernel';
+import type { CColDef } from '@wellsfargo-starui/velocity-grid';
 
 import type { PositionRow } from './bootstrap';
 

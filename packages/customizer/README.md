@@ -1,4 +1,4 @@
-# @cgrid/customizer
+# @wellsfargo-starui/velocity-grid-customizer
 
 StarUI editor panels + toolbars, popout window primitive, template manager UI.
 

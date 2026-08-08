@@ -1,4 +1,4 @@
-# @cgrid/export
+# @wellsfargo-starui/velocity-grid-export
 
 Excel/CSV export with visual formatting.
 

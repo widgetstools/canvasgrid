@@ -1,5 +1,5 @@
 // Deterministic PRNG for property tests (self-contained copy — renderers has
-// no @cgrid/calc dep). Algorithm identical to packages/calc/tests/helpers/lcg.ts.
+// no @wellsfargo-starui/velocity-grid-calc dep). Algorithm identical to packages/calc/tests/helpers/lcg.ts.
 // Global constraint: seeded LCG only — no Math.random / Date.now anywhere.
 
 export function makeLcg(seed: number): () => number {

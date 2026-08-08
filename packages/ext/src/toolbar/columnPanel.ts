@@ -131,7 +131,7 @@ export function effectiveFlag(grid: ColumnConfigGrid, colId: string, key: FlagKe
   if (key === 'floatingFilter') { try { return grid.getGridOption('floatingFilter') !== false; } catch { return true; } }
   // Same `!!undefined` collapse, on the other grid-option-inheriting key
   // (`byRows.ts` `decorateHeader`: an unset per-column flag defers to the
-  // grid-level `CGridOptions.suppressAggFuncInHeader`, default off).
+  // grid-level `VelocityGridOptions.suppressAggFuncInHeader`, default off).
   if (key === 'suppressAggFuncInHeader') {
     try { return grid.getGridOption('suppressAggFuncInHeader') === true; } catch { return false; }
   }
@@ -173,10 +173,10 @@ export function columnPanelMenu(anchor: HTMLElement, host: ColumnPanelHost): { t
 
 function buildPanel(host: ColumnPanelHost, close: () => void): HTMLElement {
   const el = document.createElement('div');
-  el.className = 'cgext-col';
+  el.className = 'vgext-col';
   el.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
   if (host.targetCols().length === 0) {
-    el.innerHTML = `<div class="cgext-fmt-empty">Select a cell or column first.</div>`;
+    el.innerHTML = `<div class="vgext-fmt-empty">Select a cell or column first.</div>`;
     return el;
   }
   renderColumnSettingsSections(el, host);
@@ -190,17 +190,17 @@ export function switchRow(
   onToggle: (next: boolean) => void,
 ): HTMLElement {
   const row = document.createElement('div');
-  row.className = 'cgext-col-row';
+  row.className = 'vgext-col-row';
   row.dataset.k = key;
   const lab = document.createElement('span');
-  lab.className = 'cgext-col-label';
+  lab.className = 'vgext-col-label';
   lab.textContent = label;
   const sw = document.createElement('button');
   sw.type = 'button';
-  sw.className = 'cgext-col-switch' + (state.mixed ? ' is-mixed' : '');
+  sw.className = 'vgext-col-switch' + (state.mixed ? ' is-mixed' : '');
   sw.setAttribute('role', 'switch');
   sw.setAttribute('aria-checked', state.mixed ? 'mixed' : String(!!state.value));
-  sw.innerHTML = '<span class="cgext-col-knob"></span>';
+  sw.innerHTML = '<span class="vgext-col-knob"></span>';
   sw.addEventListener('click', () => onToggle(state.mixed ? true : !state.value));
   row.append(lab, sw);
   return row;
@@ -213,13 +213,13 @@ export function segRow(
   onPick: (v: string) => void,
 ): HTMLElement {
   const row = document.createElement('div');
-  row.className = 'cgext-col-row';
+  row.className = 'vgext-col-row';
   row.dataset.k = key;
   const lab = document.createElement('span');
-  lab.className = 'cgext-col-label';
+  lab.className = 'vgext-col-label';
   lab.textContent = label;
   const seg = document.createElement('span');
-  seg.className = 'cgext-col-seg';
+  seg.className = 'vgext-col-seg';
   for (const opt of options) {
     const b = document.createElement('button');
     b.type = 'button';
@@ -235,7 +235,7 @@ export function segRow(
 
 export function sectionCaps(text: string): HTMLElement {
   const h = document.createElement('div');
-  h.className = 'cgext-col-caps';
+  h.className = 'vgext-col-caps';
   h.textContent = text;
   return h;
 }
@@ -246,7 +246,7 @@ export function renderColumnSettingsSections(el: HTMLElement, host: ColumnPanelH
   const { grid } = host;
   const cols = host.targetCols();
   const rerender = () => {
-    el.querySelectorAll('.cgext-col-caps, .cgext-col-row').forEach((n) => n.remove());
+    el.querySelectorAll('.vgext-col-caps, .vgext-col-row').forEach((n) => n.remove());
     renderColumnSettingsSections(el, host);
   };
   /** Fan an apply over every target; error-tints the row on throw. */
@@ -304,13 +304,13 @@ export function renderColumnSettingsSections(el: HTMLElement, host: ColumnPanelH
     const mixed = !aggs.every((a) => a === aggs[0]);
     const current = mixed ? '' : (aggs[0] ?? 'none');
     const row = document.createElement('div');
-    row.className = 'cgext-col-row';
+    row.className = 'vgext-col-row';
     row.dataset.k = 'aggFunc';
     const lab = document.createElement('span');
-    lab.className = 'cgext-col-label';
+    lab.className = 'vgext-col-label';
     lab.textContent = 'Function';
     const sel = document.createElement('select');
-    sel.className = 'cgext-col-select';
+    sel.className = 'vgext-col-select';
     for (const v of ['none', ...aggFuncChoices(grid)]) {
       const o = document.createElement('option');
       o.value = v;
@@ -342,7 +342,7 @@ export function renderColumnSettingsSections(el: HTMLElement, host: ColumnPanelH
     const hdrRow = switchRow('aggHeader', 'Show in header', shown, (next) => {
       applyAll(hdrRow, (colId) => grid.editColumn(colId, { suppressAggFuncInHeader: !next }));
     });
-    const hdrSwitch = hdrRow.querySelector<HTMLButtonElement>('.cgext-col-switch')!;
+    const hdrSwitch = hdrRow.querySelector<HTMLButtonElement>('.vgext-col-switch')!;
     hdrSwitch.disabled = !anyAgg;
     el.append(hdrRow);
   }
@@ -375,62 +375,62 @@ export function renderColumnSettingsSections(el: HTMLElement, host: ColumnPanelH
 
 export function injectColumnPanelStyles(): void {
   if (typeof document === 'undefined') return;
-  let style = document.getElementById('cgext-col-styles') as HTMLStyleElement | null;
+  let style = document.getElementById('vgext-col-styles') as HTMLStyleElement | null;
   if (!style) {
     style = document.createElement('style');
-    style.id = 'cgext-col-styles';
+    style.id = 'vgext-col-styles';
     document.head.appendChild(style);
   }
   style.textContent = COL_CSS;
 }
 
 const COL_CSS = `
-.cgext-menu.cgext-col { width: 300px; padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 2px; }
-.cgext-col-caps {
+.vgext-menu.vgext-col { width: 300px; padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 2px; }
+.vgext-col-caps {
   padding: 8px 2px 4px; font-size: 11px; font-weight: 650; letter-spacing: 0.08em;
-  color: var(--cg-muted-fg-color, #9aa4b6);
+  color: var(--vg-muted-fg-color, #9aa4b6);
 }
-.cgext-col-row {
+.vgext-col-row {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  padding: 5px 4px; border-radius: var(--cg-radius, 6px);
+  padding: 5px 4px; border-radius: var(--vg-radius, 6px);
 }
-.cgext-col-row:hover { background: var(--cg-row-alt-bg, rgba(255,255,255,0.05)); }
-.cgext-col-label { font-size: 12px; color: var(--cg-fg-color, #e5e9f0); }
-.cgext-col-switch {
+.vgext-col-row:hover { background: var(--vg-row-alt-bg, rgba(255,255,255,0.05)); }
+.vgext-col-label { font-size: 12px; color: var(--vg-fg-color, #e5e9f0); }
+.vgext-col-switch {
   appearance: none; width: 30px; height: 17px; border-radius: 9px; position: relative;
   border: 1px solid transparent;
-  background: color-mix(in srgb, var(--cg-fg-color, #e5e9f0) 28%, transparent);
+  background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 28%, transparent);
   cursor: pointer; flex: 0 0 auto;
   transition: background 120ms ease, border-color 120ms ease;
 }
-.cgext-col-switch[aria-checked="true"] {
-  background: var(--cg-accent-color, #4f9cf9);
+.vgext-col-switch[aria-checked="true"] {
+  background: var(--vg-accent-color, #4f9cf9);
   border-color: transparent;
 }
-.cgext-col-knob {
+.vgext-col-knob {
   position: absolute; top: 1px; left: 1px; width: 13px; height: 13px; border-radius: 50%;
-  background: var(--cg-bg-color, #e5e9f0); transition: left 120ms ease;
+  background: var(--vg-bg-color, #e5e9f0); transition: left 120ms ease;
 }
-.cgext-col-switch[aria-checked="true"] .cgext-col-knob { left: 14px; }
-.cgext-col-switch.is-mixed { border: 1px dashed var(--cg-muted-fg-color, #9aa4b6); }
-.cgext-col-switch.is-mixed .cgext-col-knob { left: 7.5px; opacity: 0.6; }
-.cgext-col-switch:focus-visible { outline: 2px solid var(--cg-accent-color, #4f9cf9); outline-offset: 1px; }
-.cgext-col-seg { display: inline-flex; gap: 2px; }
-.cgext-col-seg > button {
-  appearance: none; height: 22px; padding: 0 8px; border-radius: var(--cg-radius, 5px);
-  border: 1px solid var(--cg-border-color, #2a3140); background: transparent;
-  color: var(--cg-muted-fg-color, #9aa4b6); font: inherit; font-size: 11.5px; cursor: pointer;
+.vgext-col-switch[aria-checked="true"] .vgext-col-knob { left: 14px; }
+.vgext-col-switch.is-mixed { border: 1px dashed var(--vg-muted-fg-color, #9aa4b6); }
+.vgext-col-switch.is-mixed .vgext-col-knob { left: 7.5px; opacity: 0.6; }
+.vgext-col-switch:focus-visible { outline: 2px solid var(--vg-accent-color, #4f9cf9); outline-offset: 1px; }
+.vgext-col-seg { display: inline-flex; gap: 2px; }
+.vgext-col-seg > button {
+  appearance: none; height: 22px; padding: 0 8px; border-radius: var(--vg-radius, 5px);
+  border: 1px solid var(--vg-border-color, #2a3140); background: transparent;
+  color: var(--vg-muted-fg-color, #9aa4b6); font: inherit; font-size: 11.5px; cursor: pointer;
 }
-.cgext-col-seg > button.is-on {
-  color: var(--cg-accent-color, #4f9cf9); border-color: var(--cg-accent-color, #4f9cf9);
-  background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 12%, transparent);
+.vgext-col-seg > button.is-on {
+  color: var(--vg-accent-color, #4f9cf9); border-color: var(--vg-accent-color, #4f9cf9);
+  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 12%, transparent);
 }
-.cgext-col-row.is-error { box-shadow: inset 0 0 0 1px var(--cg-neg-color, #e2606c); }
-.cgext-col-select {
-  height: 24px; padding: 0 6px; border-radius: var(--cg-radius, 2px);
-  border: 1px solid var(--cg-border-color, #2a3140);
-  background: var(--cg-control-bg, rgba(0,0,0,0.25)); color: var(--cg-fg-color, #e5e9f0);
+.vgext-col-row.is-error { box-shadow: inset 0 0 0 1px var(--vg-neg-color, #e2606c); }
+.vgext-col-select {
+  height: 24px; padding: 0 6px; border-radius: var(--vg-radius, 2px);
+  border: 1px solid var(--vg-border-color, #2a3140);
+  background: var(--vg-control-bg, rgba(0,0,0,0.25)); color: var(--vg-fg-color, #e5e9f0);
   font: inherit; font-size: 12px;
 }
-.cgext-col .cgext-fmt-empty { padding: 18px 10px; font-size: 12.5px; color: var(--cg-muted-fg-color, #9aa4b6); }
+.vgext-col .vgext-fmt-empty { padding: 18px 10px; font-size: 12.5px; color: var(--vg-muted-fg-color, #9aa4b6); }
 `;

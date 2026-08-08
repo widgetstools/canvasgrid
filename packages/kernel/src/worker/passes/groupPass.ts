@@ -155,7 +155,7 @@ export class GroupPass<TRow = any> {
    *  `defaultExpanded` / `defaultExpandedKeys` when set. Cannot be
    *  threaded through the worker postMessage interface — set by unit tests
    *  directly; runtime evaluation runs on the main thread via
-   *  `cgrid.ts`'s `applyIsGroupOpenByDefault`. */
+   *  `velocityGrid.ts`'s `applyIsGroupOpenByDefault`. */
   private isGroupOpenByDefaultCb:
     | ((params: { key: string; route: string[] }) => boolean)
     | null = null;
@@ -181,11 +181,11 @@ export class GroupPass<TRow = any> {
       const seen = new Set<string>();
       for (const colId of cols) {
         if (!this.colIndex.has(colId)) {
-          throw new Error(`[cgrid] GroupPass: unknown column id '${colId}' in rowGroupCols`);
+          throw new Error(`[velocity-grid] GroupPass: unknown column id '${colId}' in rowGroupCols`);
         }
         if (seen.has(colId)) {
           throw new Error(
-            `[cgrid] GroupPass: duplicate column id '${colId}' in rowGroupCols (circular group order)`,
+            `[velocity-grid] GroupPass: duplicate column id '${colId}' in rowGroupCols (circular group order)`,
           );
         }
         seen.add(colId);
@@ -221,7 +221,7 @@ export class GroupPass<TRow = any> {
           this.keyCreators.delete(col.colId);
         }
       } catch (err) {
-        console.error(`[cgrid] keyCreator for '${col.colId}' failed to deserialise:`, err);
+        console.error(`[velocity-grid] keyCreator for '${col.colId}' failed to deserialise:`, err);
         this.keyCreators.delete(col.colId);
       }
     }
@@ -256,7 +256,7 @@ export class GroupPass<TRow = any> {
 
   /** Cycle 15 / Task 10 — toggle the single-child elision rule. Called
    *  from the worker init handshake when `groupRemoveSingleChildren` /
-   *  `groupHideParentOfSingleChild` is set on `CGridOptions`. Off by
+   *  `groupHideParentOfSingleChild` is set on `VelocityGridOptions`. Off by
    *  default; `'leafGroupsOnly'` (AG v33
    *  `groupHideParentOfSingleChild: 'leafGroupsOnly'`) elides only
    *  LEAF-level single-child groups, leaving higher levels intact.
@@ -292,7 +292,7 @@ export class GroupPass<TRow = any> {
   /** Cycle 15.5 / Task 6 — install the per-node open-by-default callback.
    *  Pass `null` to clear. Has no effect in the worker (functions cannot
    *  cross the postMessage boundary); used by unit tests and main-thread
-   *  evaluation in `cgrid.ts`. */
+   *  evaluation in `velocityGrid.ts`. */
   setIsGroupOpenByDefault(
     cb: ((params: { key: string; route: string[] }) => boolean) | null,
   ): void {

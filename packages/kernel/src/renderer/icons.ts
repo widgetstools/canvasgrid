@@ -22,6 +22,7 @@ export type IconName =
   | 'chevrons-up-down'
   | 'filter'
   | 'menu'
+  | 'group'
   | 'x'
   | 'layout-grid'
   | 'list-filter'
@@ -47,6 +48,10 @@ const PATHS: Record<IconName, string> = {
   'filter': 'M22 3H2l8 9.46V19l4 2v-8.54L22 3z',
   // Menu (hamburger)
   'menu': 'M4 6h16 M4 12h16 M4 18h16',
+  // Row-group / column-drop icon — indented bars matching AG Grid's
+  // `ag-icon-group` (hierarchy / group-by affordance on the top strip
+  // and Columns → Row Groups section header).
+  'group': 'M4 6h16 M8 12h12 M12 18h8',
   // Close
   'x': 'M18 6L6 18 M6 6l12 12',
   // 2x2 grid — used for the Columns tool-panel sidebar tab (Lucide layout-grid)
@@ -81,7 +86,7 @@ function getPath(name: string): Path2D {
   let p = cache.get(name);
   if (!p) {
     const d = lookupPath(name);
-    if (d === undefined) throw new Error(`[cgrid] unknown icon '${name}'`);
+    if (d === undefined) throw new Error(`[velocity-grid] unknown icon '${name}'`);
     p = new Path2D(d);
     cache.set(name, p);
   }
@@ -110,7 +115,7 @@ export function hasIcon(name: string): boolean {
 }
 
 /** Cycle 27 / Task 3 — test-only. Drains a single custom registration.
- *  Not exposed via the public CGrid API. */
+ *  Not exposed via the public VelocityGrid API. */
 export function unregisterIconForTest(name: string): void {
   CUSTOM_PATHS.delete(name);
   cache.delete(name);

@@ -16,7 +16,7 @@
  */
 
 import type { TypedEventEmitter } from './eventEmitter';
-import type { CGridEvent } from '../types';
+import type { VelocityGridEvent } from '../types';
 import type { GridState } from './stateSnapshot';
 
 /** Persist keys the bus can mark dirty: every `GridState` field, plus the
@@ -74,7 +74,7 @@ export class StateUpdatedBus {
   private destroyed = false;
 
   constructor(
-    private events: TypedEventEmitter<CGridEvent>,
+    private events: TypedEventEmitter<VelocityGridEvent>,
     private snapshotState: () => GridState,
   ) {
     // Subscribe to every state-affecting event type. The handler

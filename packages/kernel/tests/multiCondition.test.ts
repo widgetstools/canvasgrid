@@ -28,7 +28,7 @@ function makeConditionFactory(): (
     row.className = 'fake-condition-row';
     const input = document.createElement('input');
     input.type = 'text';
-    input.setAttribute('data-cg-test-condition', '');
+    input.setAttribute('data-vg-test-condition', '');
     if (initial && initial.filterType === 'text' && initial.filter != null) {
       input.value = initial.filter;
     }
@@ -43,7 +43,7 @@ function makeConditionFactory(): (
 }
 
 function fillRow(row: HTMLElement, value: string): void {
-  const input = row.querySelector('input[data-cg-test-condition]') as HTMLInputElement;
+  const input = row.querySelector('input[data-vg-test-condition]') as HTMLInputElement;
   input.value = value;
   input.dispatchEvent(new Event('input', { bubbles: true }));
 }
@@ -202,7 +202,7 @@ describe('MultiConditionWrapper — onChange composition', () => {
       numAlwaysVisibleConditions: 1,
       onChange: vi.fn(),
     });
-    const inputs = host.querySelectorAll<HTMLInputElement>('input[data-cg-test-condition]');
+    const inputs = host.querySelectorAll<HTMLInputElement>('input[data-vg-test-condition]');
     expect(inputs.length).toBe(1);
     expect(inputs[0].value).toBe('seed1');
   });

@@ -2,7 +2,7 @@
 
 Branch: `cycle21/customizer-*`. Follows Phase 1
 (`specs/2026-07-03-cycle-21i-phase1-design.md`, decisions D-A…D-H).
-Tier: **NATIVE** — vanilla DOM in `@cgrid/kernel`, zero new dependencies,
+Tier: **NATIVE** — vanilla DOM in `@wellsfargo-starui/velocity-grid`, zero new dependencies,
 themed by `tokens.css` vars, reusing the Phase 1 `settingsForm` controls.
 Built and verified in `apps/cgrid-customizer-demo` on live STOMP data.
 
@@ -98,7 +98,7 @@ Consequences (why this is the elegant choice):
 ## 3. Deliverables (tasks)
 
 ### T1 — Kernel: read the current group tree for editing
-- `CGridApi.getColumnGroupDefs(): (CColDef | CColGroupDef)[]` — returns the
+- `VelocityGridApi.getColumnGroupDefs(): (CColDef | CColGroupDef)[]` — returns the
   current, live column-def tree (post user reorders/hides) so the editor
   seeds from what the user sees, not the original static defs. If an
   equivalent internal accessor exists on `columnDefsMap`, expose it; else

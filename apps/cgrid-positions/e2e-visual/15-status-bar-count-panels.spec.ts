@@ -6,7 +6,7 @@ import { gridReadyWithQuery, seedGrid, waitForFrames } from './_setup';
 // TotalAndFiltered) all mounted in the right zone.
 //
 // What regression this catches:
-//   - Hierarchy collapse: if `--cg-status-bar-fg-muted` lost its 60%
+//   - Hierarchy collapse: if `--vg-status-bar-fg-muted` lost its 60%
 //     alpha mix (or the label class dropped its color rule), label
 //     and value would render at the same weight and the panels would
 //     read as flat text rows — exactly the "labels and numbers
@@ -18,7 +18,7 @@ import { gridReadyWithQuery, seedGrid, waitForFrames } from './_setup';
 //     as four loose tokens (`Total Rows: 200 Rows: 200`) instead of
 //     two paired facts.
 //   - Inter-panel gap regression: if the zone's
-//     `--cg-status-bar-gap` (16px) shifted, panels would either
+//     `--vg-status-bar-gap` (16px) shifted, panels would either
 //     touch (looks broken) or sprawl across the bar (loses the
 //     "right-loaded glance" pattern).
 //   - en-US comma grouping vanishing: `Intl.NumberFormat('en-US')`

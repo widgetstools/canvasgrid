@@ -1,7 +1,7 @@
-// @cgrid/renderers — badges category tests (Cycle 21f / Task 8).
+// @wellsfargo-starui/velocity-grid-renderers — badges category tests (Cycle 21f / Task 8).
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { CellPaintConfig } from '@cgrid/kernel';
+import type { CellPaintConfig } from '@wellsfargo-starui/velocity-grid';
 import { makeFakeGc } from './helpers/fakeGc';
 import type { FakeGc } from './helpers/fakeGc';
 import {
@@ -146,7 +146,7 @@ describe('tagCell', () => {
 
 // ───────────────────────────────────────────────────────────────────────
 // Workstream A (2026-07-06 CSS styling model) — chip geometry-as-style.
-// `--cg-chip-height` / `--cg-chip-radius` → `RendererPalette.chipHeight` /
+// `--vg-chip-height` / `--vg-chip-radius` → `RendererPalette.chipHeight` /
 // `.chipRadius`, read by `paintCapsPill()`. bounds.h is 24 in `baseConfig`,
 // so the default chip (16px) centers at y = (24-16)/2 = 4.
 // ───────────────────────────────────────────────────────────────────────

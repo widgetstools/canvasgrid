@@ -1,7 +1,7 @@
 /**
  * Cycle 25 / Task 4 — OffscreenCanvas paint-mode foundation.
  *
- * `paintMode` is a CGridOptions field that lets apps opt into a
+ * `paintMode` is a VelocityGridOptions field that lets apps opt into a
  * worker-side painter. `'auto'` (default) picks `'offscreen'` only on
  * platforms where the `OffscreenCanvas` + `Worker` APIs are present,
  * and falls back to `'main'` otherwise. `'offscreen'` is an explicit

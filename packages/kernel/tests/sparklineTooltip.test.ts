@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SparklineTooltip } from '../src/interaction/features/sparklineTooltip';
-import type { CGridLike, CGridEventCtx } from '../src/interaction/feature';
+import type { VelocityGridLike, VelocityGridEventCtx } from '../src/interaction/feature';
 import type { Hit } from '../src/interaction/hitTester';
 
 /**
@@ -12,8 +12,8 @@ import type { Hit } from '../src/interaction/hitTester';
  * a canvas repaint (pure DOM overlay positioning).
  */
 
-function makeGrid(over: Partial<CGridLike> = {}): {
-  grid: CGridLike;
+function makeGrid(over: Partial<VelocityGridLike> = {}): {
+  grid: VelocityGridLike;
   overlay: HTMLElement;
   requestRepaint: ReturnType<typeof vi.fn>;
   getSparklineData: ReturnType<typeof vi.fn>;
@@ -33,11 +33,11 @@ function makeGrid(over: Partial<CGridLike> = {}): {
     columnLeftOf: (_colId: string) => 0,
     columnWidthOf: (_colId: string) => 100,
     ...over,
-  } as unknown as CGridLike;
+  } as unknown as VelocityGridLike;
   return { grid, overlay, requestRepaint, getSparklineData };
 }
 
-function moveCtx(grid: CGridLike, hit: Hit, raw: Partial<MouseEvent>): CGridEventCtx {
+function moveCtx(grid: VelocityGridLike, hit: Hit, raw: Partial<MouseEvent>): VelocityGridEventCtx {
   return {
     grid,
     hit,
@@ -58,7 +58,7 @@ describe('SparklineTooltip — mount + content', () => {
     feature.handleMouseMove(moveCtx(grid, { kind: 'cell', rowIndex: 0, colId: 'spark' }, {
       clientX: 100, clientY: 200, offsetX: 50,
     }));
-    const tip = overlay.querySelector('.cg-sparkline-tooltip') as HTMLElement | null;
+    const tip = overlay.querySelector('.vg-sparkline-tooltip') as HTMLElement | null;
     expect(tip).not.toBeNull();
     expect(tip!.textContent).toMatch(/\d+/); // shows at least the value
   });
@@ -76,7 +76,7 @@ describe('SparklineTooltip — mount + content', () => {
     feature.handleMouseMove(moveCtx(grid, { kind: 'cell', rowIndex: 1, colId: 'spark' }, {
       clientX: 200, clientY: 100, offsetX: 50,
     }));
-    const tip = overlay.querySelector('.cg-sparkline-tooltip') as HTMLElement;
+    const tip = overlay.querySelector('.vg-sparkline-tooltip') as HTMLElement;
     expect(tip.textContent).toContain('30');
   });
 });
@@ -95,7 +95,7 @@ describe('SparklineTooltip — nearest-index math', () => {
     feature.handleMouseMove(moveCtx(grid, { kind: 'cell', rowIndex: 0, colId: 'spark' }, {
       clientX: offsetX, clientY: 100, offsetX,
     }));
-    const tip = overlay.querySelector('.cg-sparkline-tooltip') as HTMLElement;
+    const tip = overlay.querySelector('.vg-sparkline-tooltip') as HTMLElement;
     expect(tip.textContent).toContain(String(expectedValue));
   });
 });
@@ -108,7 +108,7 @@ describe('SparklineTooltip — positioning', () => {
     feature.handleMouseMove(moveCtx(grid, { kind: 'cell', rowIndex: 0, colId: 'spark' }, {
       clientX: 300, clientY: 400, offsetX: 50,
     }));
-    const tip = overlay.querySelector('.cg-sparkline-tooltip') as HTMLElement;
+    const tip = overlay.querySelector('.vg-sparkline-tooltip') as HTMLElement;
     // Tooltip is positioned via inline styles — assert the two coords.
     expect(tip.style.left).toBe('300px');
     expect(tip.style.top).toBe('376px');
@@ -123,7 +123,7 @@ describe('SparklineTooltip — hide lifecycle', () => {
     feature.handleMouseMove(moveCtx(grid, { kind: 'cell', rowIndex: 0, colId: 'spark' }, {
       clientX: 100, clientY: 100, offsetX: 10,
     }));
-    let tip = overlay.querySelector('.cg-sparkline-tooltip') as HTMLElement;
+    let tip = overlay.querySelector('.vg-sparkline-tooltip') as HTMLElement;
     expect(tip.style.display).not.toBe('none');
 
     // Mouse moves to a non-sparkline cell (different colId, no data).
@@ -131,7 +131,7 @@ describe('SparklineTooltip — hide lifecycle', () => {
     feature.handleMouseMove(moveCtx(grid, { kind: 'cell', rowIndex: 0, colId: 'plain' }, {
       clientX: 200, clientY: 100, offsetX: 10,
     }));
-    tip = overlay.querySelector('.cg-sparkline-tooltip') as HTMLElement;
+    tip = overlay.querySelector('.vg-sparkline-tooltip') as HTMLElement;
     expect(tip.style.display).toBe('none');
   });
 
@@ -145,7 +145,7 @@ describe('SparklineTooltip — hide lifecycle', () => {
     feature.handleMouseMove(moveCtx(grid, { kind: 'empty' }, {
       clientX: 200, clientY: 100, offsetX: 10,
     }));
-    const tip = overlay.querySelector('.cg-sparkline-tooltip') as HTMLElement;
+    const tip = overlay.querySelector('.vg-sparkline-tooltip') as HTMLElement;
     expect(tip.style.display).toBe('none');
   });
 });

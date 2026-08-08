@@ -30,7 +30,7 @@ import { gridReadyWithQuery, seedGrid, waitForFrames } from './_setup';
 //     headers and the on-snapshot diff would catch the missing
 //     `sum(` / `avg(` prefixes.
 //   - Toggle propagation: if the runtime option failed to flow from
-//     `CGridOptions.suppressAggFuncInHeader` through the renderer's
+//     `VelocityGridOptions.suppressAggFuncInHeader` through the renderer's
 //     `getSuppressAggFuncInHeader` callback into `PainterCtx`, the
 //     off-snapshot would still show the decoration. The diff between
 //     `?suppressAggHeader=1` and the default URL isolates the

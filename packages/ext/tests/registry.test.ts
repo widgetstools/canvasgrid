@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ExtensionRegistry } from '../src/extension/registry';
-import type { CgExtContext, SettingsModule, ToolbarItem } from '../src/extension/types';
+import type { VelocityGridExtContext, SettingsModule, ToolbarItem } from '../src/extension/types';
 
 const mod = (id: string): SettingsModule => ({
   id, kind: 'settings-module', title: id, icon: 'i', category: 'layout',
@@ -32,7 +32,7 @@ describe('ExtensionRegistry', () => {
     const disposed = vi.fn();
     (m as any).dispose = disposed;
     r.register(m);
-    const ctx = {} as CgExtContext;
+    const ctx = {} as VelocityGridExtContext;
     r.initAll(ctx);
     expect(m.init).toHaveBeenCalledWith(ctx);
     r.disposeAll();

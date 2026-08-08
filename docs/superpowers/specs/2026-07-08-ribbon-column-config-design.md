@@ -1,4 +1,4 @@
-# CGridExt — Quick Column Configuration from the Ribbon
+# VelocityGridExt — Quick Column Configuration from the Ribbon
 
 - **Status:** Approved design; ready for implementation planning.
 - **Date:** 2026-07-08

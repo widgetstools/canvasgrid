@@ -4,7 +4,7 @@ import {
   evaluate as evaluateExpression,
   type Ast,
   type Compiled,
-} from '@cgrid/expression';
+} from '@wellsfargo-starui/velocity-grid-expression';
 import type { FormatEvalContext, StyleObj, IconRef } from '../types';
 import type { Tier1Node } from './parser';
 

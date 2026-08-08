@@ -1,10 +1,10 @@
-# Cycle 21e — `@cgrid/rules` (Rule Engine + Conditional Styling + Alerts Core) Implementation Plan
+# Cycle 21e — `@wellsfargo-starui/velocity-grid-rules` (Rule Engine + Conditional Styling + Alerts Core) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship `@cgrid/rules` — condition-driven conditional styling (theme-aware styles, flash, indicator badges, per-rule value formatters, auto-expire), the alerts core (3 trigger kinds, severity, message templating, debounce + token bucket, history), live match counts — plus the kernel bridge and the `rule:<ruleId>` resolver that `@cgrid/format` reserved in Cycle 21c.
+**Goal:** Ship `@wellsfargo-starui/velocity-grid-rules` — condition-driven conditional styling (theme-aware styles, flash, indicator badges, per-rule value formatters, auto-expire), the alerts core (3 trigger kinds, severity, message templating, debounce + token bucket, history), live match counts — plus the kernel bridge and the `rule:<ruleId>` resolver that `@wellsfargo-starui/velocity-grid-format` reserved in Cycle 21c.
 
-**Architecture:** Thread-agnostic engine package under `packages/rules/` depending on `@cgrid/expression` (condition compile/eval) and `@cgrid/format` (per-rule formatter compile), with `@cgrid/kernel` as peerDep touched only through public registration APIs from `bridge.ts`. Kernel gains a rule-engine DI slot (structural types, zero runtime imports — mirrors `core/formatCompilerSlot.ts`), a rule-patch fold point in `applyCellProps`, a listener-gated `rowsChanged` event off the `rowDataById` transaction sync, per-call flash overrides (`color`/`mode`/`flashDuration`), indicator paint fold, and a format-eval memo (carried 21c perf Minor). Conditions compile once via `expression.parse` → diff-aware AST rewrite (`[col.old]` → `__cgridDiff` injection) → `expression.compile`; styling evaluates lazily at paint for visible cells; match counts + alerts evaluate eagerly over change records on main. Full rationale: [design spec](../specs/2026-07-01-cycle-21e-rules-design.md).
+**Architecture:** Thread-agnostic engine package under `packages/rules/` depending on `@wellsfargo-starui/velocity-grid-expression` (condition compile/eval) and `@wellsfargo-starui/velocity-grid-format` (per-rule formatter compile), with `@wellsfargo-starui/velocity-grid` as peerDep touched only through public registration APIs from `bridge.ts`. Kernel gains a rule-engine DI slot (structural types, zero runtime imports — mirrors `core/formatCompilerSlot.ts`), a rule-patch fold point in `applyCellProps`, a listener-gated `rowsChanged` event off the `rowDataById` transaction sync, per-call flash overrides (`color`/`mode`/`flashDuration`), indicator paint fold, and a format-eval memo (carried 21c perf Minor). Conditions compile once via `expression.parse` → diff-aware AST rewrite (`[col.old]` → `__cgridDiff` injection) → `expression.compile`; styling evaluates lazily at paint for visible cells; match counts + alerts evaluate eagerly over change records on main. Full rationale: [design spec](../specs/2026-07-01-cycle-21e-rules-design.md).
 
 **Tech Stack:** TypeScript 5.9 strict (extends repo `tsconfig.base.json`), Vitest 2.1 (node env + coverage-v8), turborepo (pipeline unchanged), npm workspaces, Playwright E2E in `apps/cgrid-showcase`.
 
@@ -13,14 +13,14 @@
 Copied from the [Cycle 21e design spec](../specs/2026-07-01-cycle-21e-rules-design.md) and the parent Cycle 21 brief:
 
 - **L1 (Cycle 21 §0) — No retroactive layering.** All kernel additions (slot, fold, rowsChanged, flash overrides, indicator paint, memo) land in this cycle. No hooks-only landings.
-- **No feature deferral** (memory `feedback_no_feature_deferral.md`): every §1.1 spec feature lands this cycle. The only reserves are aggregate/`PREV()` rule conditions (Cycle 21d, already rejected by `@cgrid/expression` with `not-yet-implemented`). Plus/minus nudges and customizer panels are explicitly other cycles' features (spec §1.2), not deferrals from this one.
-- **Dep-graph acyclic:** `@cgrid/rules` imports `@cgrid/expression` + `@cgrid/format` (deps) and calls `@cgrid/kernel` only via the grid instance passed to `wireIntoKernel` (peerDep; structural interfaces; zero static kernel imports in `packages/rules/src/**`). Kernel gets `@cgrid/rules` as devDependency ONLY (type resolution in tests); zero runtime imports — verified in Task 17 by grepping kernel dist.
+- **No feature deferral** (memory `feedback_no_feature_deferral.md`): every §1.1 spec feature lands this cycle. The only reserves are aggregate/`PREV()` rule conditions (Cycle 21d, already rejected by `@wellsfargo-starui/velocity-grid-expression` with `not-yet-implemented`). Plus/minus nudges and customizer panels are explicitly other cycles' features (spec §1.2), not deferrals from this one.
+- **Dep-graph acyclic:** `@wellsfargo-starui/velocity-grid-rules` imports `@wellsfargo-starui/velocity-grid-expression` + `@wellsfargo-starui/velocity-grid-format` (deps) and calls `@wellsfargo-starui/velocity-grid` only via the grid instance passed to `wireIntoKernel` (peerDep; structural interfaces; zero static kernel imports in `packages/rules/src/**`). Kernel gets `@wellsfargo-starui/velocity-grid-rules` as devDependency ONLY (type resolution in tests); zero runtime imports — verified in Task 17 by grepping kernel dist.
 - **Kernel behavioral compatibility:** apps that never call `wireIntoKernel` see byte-identical behavior. Kernel baseline `2399` unit tests remain PASS unmodified; new kernel tests add to that count.
 - **Format baseline:** `packages/format` existing `161` tests stay green (161 measured on `main` @ `28d2d5a`; 21c's Task 20 note of 158 predates its final-review commits); Task 9 may UPDATE (not delete) the 21c reserve test `tests/tier1/resolver.test.ts` ("rule-ref node returns null") to cover both accessor-absent and accessor-present branches.
-- **Expression untouched:** `packages/expression/**` not modified; `185/185` unchanged. The diff-aware rewrite happens in `@cgrid/rules` on the portable AST.
+- **Expression untouched:** `packages/expression/**` not modified; `185/185` unchanged. The diff-aware rewrite happens in `@wellsfargo-starui/velocity-grid-rules` on the portable AST.
 - **E2E baselines:** showcase `109` preserved + new `conditionalStyling`/`alerts` specs; positions `262` untouched (no positions changes this cycle beyond none).
 - **rowId / colId vocabulary** (repo ESLint `no-restricted-syntax`): never `columnId`/`rowKey`/`columnKey` in new code. NOTE: the StarUI docs write `columnIds` in rule shapes — this plan's public types use `columnIds` on `RuleScope`/`AlertTrigger` ONLY as an array-of-colId field name; the linter rule targets `columnId` singular. Use `colId` for all singular identifiers.
-- **CSP-safe:** no `new Function`/`eval` anywhere in `packages/rules/**` (closure composition via `@cgrid/expression`).
+- **CSP-safe:** no `new Function`/`eval` anywhere in `packages/rules/**` (closure composition via `@wellsfargo-starui/velocity-grid-expression`).
 - **Date-free engines:** no `Date.now()` in `packages/rules/src/**` decision logic — engines take an injectable `now?: () => number` (default wraps `performance.now()` at the bridge layer) so tests are deterministic. `AlertEvent.seq` is a monotonic counter, not wall-clock.
 - **Strict-boolean conditions:** a rule matches only when its compiled condition evaluates `=== true`.
 - **One PR** for all 17 tasks. Feature branch `cycle21e/rules` off current `main`. Mirrors 21b/21c cadence.
@@ -36,7 +36,7 @@ Copied from the [Cycle 21e design spec](../specs/2026-07-01-cycle-21e-rules-desi
 
 ## File Structure Overview
 
-**`@cgrid/rules` — all new (except scaffold files overwritten):**
+**`@wellsfargo-starui/velocity-grid-rules` — all new (except scaffold files overwritten):**
 
 - `packages/rules/src/types.ts` — all public types (spec §3.1, §3.2, §4.2 verbatim).
 - `packages/rules/src/conditionCompiler.ts` — `compileCondition`, `validateRule`, diff-aware AST rewrite, watched-column extraction.
@@ -51,7 +51,7 @@ Copied from the [Cycle 21e design spec](../specs/2026-07-01-cycle-21e-rules-desi
 - `packages/rules/vitest.config.ts`, `packages/rules/README.md`.
 - `packages/rules/tests/` — `conditionCompiler.test.ts`, `ruleEngine.test.ts`, `matchCounter.test.ts`, `expiryHeap.test.ts`, `alerts/messageTemplate.test.ts`, `alerts/tokenBucket.test.ts`, `alerts/alertsEngine.test.ts`, `bridge.test.ts`.
 
-**`@cgrid/format` — touched (Task 9):**
+**`@wellsfargo-starui/velocity-grid-format` — touched (Task 9):**
 
 - `packages/format/src/types.ts` — `FormatEvalContext.resolveRuleRef?`; `FormatProgram.hasRuleRefs?: boolean`.
 - `packages/format/src/tier1/resolver.ts` — RuleRefNode resolution via accessor.
@@ -59,24 +59,24 @@ Copied from the [Cycle 21e design spec](../specs/2026-07-01-cycle-21e-rules-desi
 - `packages/format/src/compile.ts` — surface `hasRuleRefs` on compiled programs (tier-1 brackets AND composite fragment channels/cellBackground).
 - `packages/format/tests/tier1/resolver.test.ts` — reserve test updated + new accessor tests.
 
-**`@cgrid/kernel` — new files:**
+**`@wellsfargo-starui/velocity-grid` — new files:**
 
 - `packages/kernel/src/core/ruleEngineSlot.ts` — DI slot + structural `RuleEngineShape`/`RuleCellPatchShape`.
 - `packages/kernel/src/core/formatEvalMemo.ts` — per-cell format-eval memo (Task 14).
 
-**`@cgrid/kernel` — touched existing files:**
+**`@wellsfargo-starui/velocity-grid` — touched existing files:**
 
 - `packages/kernel/src/core/propertyChain.ts` — rule-patch fold in `applyCellProps` (after cellClassRules variants at ~line 730, before function-form `cellStyle` at ~line 733); rule `valueFormatter` override + memo wiring in `compileFormatSlots` wrappers (~lines 840–903); `resolveRuleRef` threading into `FormatEvalContext` construction.
 - `packages/kernel/src/core/eventEmitter.ts` — `hasListener(type): boolean`.
-- `packages/kernel/src/cgrid.ts` — `registerRuleEngine` method (next to `registerFormatCompiler` ~line 4826); `rowsChanged` emission in the `rowDataById` transaction sync (~lines 1974–1991) + async-flush and edit-commit paths; `forEachRow(fn)`; `getThemeKind()`.
-- `packages/kernel/src/types/api.ts` — `registerRuleEngine`, `forEachRow`, `getThemeKind` on `CGridApi`.
+- `packages/kernel/src/velocityGrid.ts` — `registerRuleEngine` method (next to `registerFormatCompiler` ~line 4826); `rowsChanged` emission in the `rowDataById` transaction sync (~lines 1974–1991) + async-flush and edit-commit paths; `forEachRow(fn)`; `getThemeKind()`.
+- `packages/kernel/src/types/api.ts` — `registerRuleEngine`, `forEachRow`, `getThemeKind` on `VelocityGridApi`.
 - `packages/kernel/src/types/event.ts` — `rowsChanged` event member.
 - `packages/kernel/src/types/column.ts` — `FlashCellsParams` + `flashDuration?/color?/mode?` (the line 47–49 "reserved for a follow-up patch" comment is retired this cycle).
 - `packages/kernel/src/core/flashRegistry.ts` + `src/core/flashAlphaMask.ts` + `src/renderer/painters/byRows.ts` — per-cell flash color/mode overrides (flash timing is main-side in `FlashRegistry` — no worker protocol change); indicator icon fold into the cellIcon paint path (~lines 505–640).
 - `packages/kernel/src/worker/protocol.ts` (+ chunk producer) — `ViewportChunk.stringRowIds?: string[]` + a `stringRowIdAt` accessor: the paint path has no string rowId today (the legacy `rowIdAt` is a `row-${i}` stub, untouched); this field keys rule eval, flash overrides, and the format memo (Task 11).
 - `packages/kernel/src/types/column.ts` + text/number cell renderers — minimal `textDecoration` paint channel (none exists today; rule styles need underline/line-through per no-deferral).
-- `packages/kernel/src/core/editController.ts` (or its cgrid.ts commit-back seam) — edit commits bypass `rowDataById`; a listener-gated `mirrorEditCommit` wrapper freshens the mirror + emits `rowsChanged` with `source: 'edit'` (Task 12).
-- `packages/kernel/package.json` — `@cgrid/rules` devDependency (type-only, for kernel tests that exercise the slot with real types).
+- `packages/kernel/src/core/editController.ts` (or its velocityGrid.ts commit-back seam) — edit commits bypass `rowDataById`; a listener-gated `mirrorEditCommit` wrapper freshens the mirror + emits `rowsChanged` with `source: 'edit'` (Task 12).
+- `packages/kernel/package.json` — `@wellsfargo-starui/velocity-grid-rules` devDependency (type-only, for kernel tests that exercise the slot with real types).
 
 **Files NOT modified (verify in Task 17):** `packages/expression/**`; root `package.json` / `turbo.json` / `tsconfig.base.json`; `eslint.config.mjs` (protected by config hook — boundary holds by inspection, as in 21c).
 
@@ -89,7 +89,7 @@ Copied from the [Cycle 21e design spec](../specs/2026-07-01-cycle-21e-rules-desi
 
 ---
 
-## Phase A — `@cgrid/rules` scaffold + shared types (1 task)
+## Phase A — `@wellsfargo-starui/velocity-grid-rules` scaffold + shared types (1 task)
 
 ---
 
@@ -111,7 +111,7 @@ Copied from the [Cycle 21e design spec](../specs/2026-07-01-cycle-21e-rules-desi
 - Test: `packages/rules/tests/types.test.ts`
 
 **Interfaces:**
-- Consumes: `@cgrid/expression` types (`Loc`, `Schema`) — already exported from `packages/expression/src/index.ts`.
+- Consumes: `@wellsfargo-starui/velocity-grid-expression` types (`Loc`, `Schema`) — already exported from `packages/expression/src/index.ts`.
 - Produces: every public type in the package, verbatim from spec §3.1/§3.2/§4.2 — ALL later tasks import from `./types`. Skeleton functions/classes that throw `new Error('not-yet-implemented: <name> ships in Task N')`.
 
 - [ ] **Step 1: Create the feature branch**
@@ -128,7 +128,7 @@ Replace the whole file with (changes vs scaffold: kernel moved to `peerDependenc
 
 ```json
 {
-  "name": "@cgrid/rules",
+  "name": "@wellsfargo-starui/velocity-grid-rules",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -141,17 +141,17 @@ Replace the whole file with (changes vs scaffold: kernel moved to `peerDependenc
     }
   },
   "scripts": {
-    "build": "echo '@cgrid/rules is a scaffold — no build yet' && exit 0",
+    "build": "echo '@wellsfargo-starui/velocity-grid-rules is a scaffold — no build yet' && exit 0",
     "test": "vitest run --passWithNoTests",
     "test:coverage": "vitest run --coverage --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@cgrid/expression": "*",
-    "@cgrid/format": "*"
+    "@wellsfargo-starui/velocity-grid-expression": "*",
+    "@wellsfargo-starui/velocity-grid-format": "*"
   },
   "peerDependencies": {
-    "@cgrid/kernel": "*"
+    "@wellsfargo-starui/velocity-grid": "*"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^2.1.0",
@@ -187,12 +187,12 @@ export default defineConfig({
 Copy the spec types verbatim (single authoritative file — spec §3.1, §3.2, §4.2):
 
 ```ts
-// @cgrid/rules — public types.
+// @wellsfargo-starui/velocity-grid-rules — public types.
 // Authoritative reference: docs/superpowers/specs/2026-07-01-cycle-21e-rules-design.md
 // §3.1 (rule shapes), §3.2 (alert shapes), §4.2 (engine contracts).
 
-import type { Loc } from '@cgrid/expression';
-import type { FormatProgram } from '@cgrid/format';
+import type { Loc } from '@wellsfargo-starui/velocity-grid-expression';
+import type { FormatProgram } from '@wellsfargo-starui/velocity-grid-format';
 
 export type ThemeKind = 'light' | 'dark';
 
@@ -251,7 +251,7 @@ export interface ConditionalStyleRule extends RuleBase {
   style: ThemeAwareStyle;
   flash?: FlashConfig;
   indicator?: RuleIndicator;
-  /** Format-DSL string (any tier @cgrid/format compiles); matching cells
+  /** Format-DSL string (any tier @wellsfargo-starui/velocity-grid-format compiles); matching cells
    *  render through this program instead of the ColDef formatter. */
   valueFormatter?: string;
   /** Auto-expire: the match stays active this long after activation, then
@@ -404,7 +404,7 @@ export interface WireRulesOptions {
   rules?: StyleRule[];
   alertRules?: AlertRule[];
   alertsSettings?: Partial<AlertsSettings>;
-  schema?: import('@cgrid/expression').Schema;
+  schema?: import('@wellsfargo-starui/velocity-grid-expression').Schema;
 }
 ```
 
@@ -414,7 +414,7 @@ Every skeleton exports its final public signature and throws. `packages/rules/sr
 
 ```ts
 // Condition string → CompiledCondition. Ships in Task 2.
-import type { Schema } from '@cgrid/expression';
+import type { Schema } from '@wellsfargo-starui/velocity-grid-expression';
 import type { RuleValidationError, StyleRule } from './types';
 
 export interface CompiledCondition {
@@ -446,7 +446,7 @@ export function validateRule(
 
 ```ts
 // RuleEngine — evaluate/fold/counts. Ships in Tasks 3–5.
-import type { Schema } from '@cgrid/expression';
+import type { Schema } from '@wellsfargo-starui/velocity-grid-expression';
 import type {
   FlashDirective, RowChangeSet, RuleCellResult, RuleEvalContext,
   SetRulesResult, StyleRule, Unsubscribe,
@@ -529,7 +529,7 @@ export class TokenBucket {
 
 ```ts
 // AlertsEngine — triggers/debounce/history. Ships in Tasks 7–8.
-import type { Schema } from '@cgrid/expression';
+import type { Schema } from '@wellsfargo-starui/velocity-grid-expression';
 import type {
   AlertEvent, AlertRule, AlertsSettings, RowChangeSet, SetRulesResult, Unsubscribe,
 } from '../types';
@@ -571,7 +571,7 @@ export function wireIntoKernel(
 - [ ] **Step 6: Overwrite `packages/rules/src/index.ts`**
 
 ```ts
-// @cgrid/rules — public re-exports.
+// @wellsfargo-starui/velocity-grid-rules — public re-exports.
 // See docs/superpowers/specs/2026-07-01-cycle-21e-rules-design.md §4.1.
 
 export { RuleEngine } from './ruleEngine';
@@ -686,8 +686,8 @@ git commit -m "feat(rules): cycle 21e task 1 — package scaffold, public types,
 **Interfaces:**
 - Consumes (from Task 1 / dependencies):
     - `./types`: `RuleValidationError`, `StyleRule`
-    - `@cgrid/expression`: `parse(source) → ParseResult`, `compile(ast, opts?) → CompileResult`, `evaluate(compiled, { row }) → unknown` (throws `EvalError`), types `AstNode`, `FieldNode`, `Schema`
-    - `@cgrid/format`: `compileFormat(source, opts?) → CompileFormatResult`
+    - `@wellsfargo-starui/velocity-grid-expression`: `parse(source) → ParseResult`, `compile(ast, opts?) → CompileResult`, `evaluate(compiled, { row }) → unknown` (throws `EvalError`), types `AstNode`, `FieldNode`, `Schema`
+    - `@wellsfargo-starui/velocity-grid-format`: `compileFormat(source, opts?) → CompileFormatResult`
 - Produces (for Tasks 3–5, 15):
     - `compileCondition(condition: string, ruleId: string, schema?: Schema, opts?: CompileConditionOptions): { ok: true; compiled: CompiledCondition } | { ok: false; error: RuleValidationError }` — the Task-1 skeleton signature extended with a fourth optional `opts` argument (skeleton-compatible: all existing 2- and 3-arg call sites keep working; this is the one permitted signature extension and it is shown in full below).
     - `CompileConditionOptions = { onEvalError?: () => void }` (module-level export; NOT re-exported from `index.ts` — engine-internal wiring).
@@ -709,7 +709,7 @@ Full test file (operator forms follow the spec §3.4 canonical example `[price.o
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import type { Schema } from '@cgrid/expression';
+import type { Schema } from '@wellsfargo-starui/velocity-grid-expression';
 import { compileCondition, validateRule } from '../src/conditionCompiler';
 import type { ConditionalStyleRule, IndicatorRule } from '../src/types';
 
@@ -892,15 +892,15 @@ Full file:
 // parse → diff-aware AST rewrite ([col.old]/[col.new] → __cgridDiff
 // injection) → compile → strict-boolean matcher.
 //
-// CSP-safe: closure composition via @cgrid/expression only — no new
+// CSP-safe: closure composition via @wellsfargo-starui/velocity-grid-expression only — no new
 // Function / eval anywhere in this package. Date-free: zero clock access.
 //
 // Authoritative reference:
 // docs/superpowers/specs/2026-07-01-cycle-21e-rules-design.md §3.3 + §3.4.
 
-import { compile, evaluate, parse, EvalError } from '@cgrid/expression';
-import type { AstNode, FieldNode, Schema } from '@cgrid/expression';
-import { compileFormat } from '@cgrid/format';
+import { compile, evaluate, parse, EvalError } from '@wellsfargo-starui/velocity-grid-expression';
+import type { AstNode, FieldNode, Schema } from '@wellsfargo-starui/velocity-grid-expression';
+import { compileFormat } from '@wellsfargo-starui/velocity-grid-format';
 import type { RuleValidationError, StyleRule } from './types';
 
 export interface CompiledCondition {
@@ -1140,14 +1140,14 @@ git commit -m "feat(rules): cycle 21e task 2 — condition compiler: diff-aware 
 **Interfaces:**
 - Consumes:
     - Task 2: `compileCondition(condition, ruleId, schema?, opts?)`, `CompiledCondition`, `validateRuleShape(rule)`
-    - `@cgrid/format`: `compileFormat(source) → CompileFormatResult`, type `FormatProgram`
+    - `@wellsfargo-starui/velocity-grid-format`: `compileFormat(source) → CompileFormatResult`, type `FormatProgram`
     - `./types`: `RuleCellResult`, `RuleEvalContext`, `RuleValidationError`, `SetRulesResult`, `StyleRule`, `StyleSlice`, `ThemeAwareStyle`, `ThemeKind`, `RuleIndicator`, `FlashDirective`, `RowChangeSet`, `Unsubscribe`
 - Produces (for Tasks 4, 5, 9, 15):
     - Working `RuleEngine` constructor `(opts?: { schema?: Schema; now?: () => number })` — `now` accepted (contract stable) but only consumed from Task 5.
     - `setRules(rules: StyleRule[]): SetRulesResult` — compiles conditions + valueFormatters once; invalid rules skipped + reported (`ok === (errors.length === 0)`); rebuilds all indexes.
     - `getRules(): StyleRule[]` — the full supplied set (including skipped-invalid and disabled rules — the customizer needs them back for editing), fresh array each call.
     - `evaluateCell(ctx: RuleEvalContext): RuleCellResult` — spec §3.5 fold; shared frozen `EMPTY_RESULT` on no match (zero allocation).
-    - `resolveRuleRef(ruleId: string, ctx: RuleEvalContext): string | null` — the `rule:<ruleId>` accessor Task 9 threads into `@cgrid/format`.
+    - `resolveRuleRef(ruleId: string, ctx: RuleEvalContext): string | null` — the `rule:<ruleId>` accessor Task 9 threads into `@wellsfargo-starui/velocity-grid-format`.
     - Internal seam for Task 4: `#ruleMatches(ir, ctx)` is the single matching gate used by both `evaluateCell` and `resolveRuleRef`.
     - `matchCount` / `recount` / `applyChanges` / `endTick` / `onExpire` / `evalErrorCount` still throw (Tasks 4–5).
 
@@ -1404,9 +1404,9 @@ Full file:
 // Authoritative reference:
 // docs/superpowers/specs/2026-07-01-cycle-21e-rules-design.md §3.5 + §4.2.
 
-import type { Schema } from '@cgrid/expression';
-import { compileFormat } from '@cgrid/format';
-import type { FormatProgram } from '@cgrid/format';
+import type { Schema } from '@wellsfargo-starui/velocity-grid-expression';
+import { compileFormat } from '@wellsfargo-starui/velocity-grid-format';
+import type { FormatProgram } from '@wellsfargo-starui/velocity-grid-format';
 import { compileCondition, validateRuleShape } from './conditionCompiler';
 import type { CompiledCondition } from './conditionCompiler';
 import type {
@@ -1569,7 +1569,7 @@ export class RuleEngine {
     return { matched, style, indicator, formatProgram };
   }
 
-  /** rule:<ruleId> color accessor for @cgrid/format (Task 9 threads it).
+  /** rule:<ruleId> color accessor for @wellsfargo-starui/velocity-grid-format (Task 9 threads it).
    *  Condition-level match — scope column targeting governs where the rule
    *  paints, not whether a format rule-ref may read its color. */
   resolveRuleRef(ruleId: string, ctx: RuleEvalContext): string | null {
@@ -2833,8 +2833,8 @@ Expected: 63/63 PASS (3 types + 24 conditionCompiler + 24 ruleEngine + 5 matchCo
 
 ```bash
 cd /Users/develop/wfh/canvasgrid
-npm --workspace @cgrid/expression run test 2>&1 | tail -5
-npm --workspace @cgrid/format run test 2>&1 | tail -5
+npm --workspace @wellsfargo-starui/velocity-grid-expression run test 2>&1 | tail -5
+npm --workspace @wellsfargo-starui/velocity-grid-format run test 2>&1 | tail -5
 ```
 
 Expected: expression 185/185, format 158/158 — Phase B touched neither package.
@@ -3133,7 +3133,7 @@ git commit -m "feat(rules): cycle 21e task 6 — message templating + token buck
 - Test: `packages/rules/tests/alerts/alertsEngine.test.ts`
 
 **Interfaces:**
-- Consumes: `@cgrid/expression` — `parse(src): ParseResult`, `compile(ast): CompileResult`, `evaluate(compiled, { row }): unknown` (throws `EvalError`), types `Compiled`/`Schema`; Task 1 types — `AlertRule`, `AlertEvent`, `AlertTrigger`, `AlertsSettings`, `DEFAULT_ALERTS_SETTINGS`, `RowChangeSet`, `RuleValidationError`, `SetRulesResult`, `Unsubscribe`; Task 6 — `renderMessage(template, ctx)`, `TokenBucket`. Deliberately reuses NOTHING from `conditionCompiler` — alert `dataChange` expressions are plain expressions with NO `.old`/`.new` rewrite (`relativeChange` covers deltas).
+- Consumes: `@wellsfargo-starui/velocity-grid-expression` — `parse(src): ParseResult`, `compile(ast): CompileResult`, `evaluate(compiled, { row }): unknown` (throws `EvalError`), types `Compiled`/`Schema`; Task 1 types — `AlertRule`, `AlertEvent`, `AlertTrigger`, `AlertsSettings`, `DEFAULT_ALERTS_SETTINGS`, `RowChangeSet`, `RuleValidationError`, `SetRulesResult`, `Unsubscribe`; Task 6 — `renderMessage(template, ctx)`, `TokenBucket`. Deliberately reuses NOTHING from `conditionCompiler` — alert `dataChange` expressions are plain expressions with NO `.old`/`.new` rewrite (`relativeChange` covers deltas).
 - Produces (for Tasks 8/15/16): `AlertsEngine` realtime-complete — `setRules(rules: AlertRule[]): SetRulesResult`, `getRules(): AlertRule[]`, `applyChanges(changes: RowChangeSet): void`, `onAlert(fn: (alert: AlertEvent) => void): Unsubscribe`, `getHistory(): AlertEvent[]`, `unreadCount(): number`, `markAllRead(): void`, `droppedCount(): number`, ctor `opts?: { settings?: Partial<AlertsSettings>; schema?: Schema; now?: () => number }`. `getSettings`/`setSettings`/`flushThrottled` keep throwing `not-yet-implemented … ships in Task 8`. Task 15's `wireIntoKernel` constructs this engine and feeds it `RowChangeSet`s off `rowsChanged`; Task 16's showcase subscribes `onAlert`.
 
 **Locked decisions (documented in code + tests):**
@@ -3624,7 +3624,7 @@ Replace `packages/rules/src/alerts/alertsEngine.ts` (public signatures identical
 // AlertsEngine — trigger evaluation, debounce, token bucket, history ring.
 // Spec: docs/superpowers/specs/2026-07-01-cycle-21e-rules-design.md §4.3.
 // Evaluation modes (throttled queue) + settings surface complete in Task 8.
-import { compile, evaluate, parse, type Compiled, type Schema } from '@cgrid/expression';
+import { compile, evaluate, parse, type Compiled, type Schema } from '@wellsfargo-starui/velocity-grid-expression';
 import { DEFAULT_ALERTS_SETTINGS } from '../types';
 import type {
   AlertEvent, AlertRule, AlertsSettings, AlertTrigger,
@@ -4254,7 +4254,7 @@ Deviations found here are fixed and committed as `fix(rules): cycle 21e checkpoi
 ---
 
 
-## Phase D — `@cgrid/format` rule-ref plug-in (1 task)
+## Phase D — `@wellsfargo-starui/velocity-grid-format` rule-ref plug-in (1 task)
 
 ---
 
@@ -4280,7 +4280,7 @@ hasRuleRefs?: boolean;   // present-and-true iff any tier-1 bracket carried a ru
 ```
 
 - Consumes (all landed in Cycle 21c): `Tier1Node.ruleRefs: RuleRefNode[]` (`src/tier1/parser.ts:6-11`), `RuleRefNode` (`src/types.ts:134-139`), `canonicalize`'s `rule:<id> → 'null'` rewrite + `RuleRefNode` capture (`src/tier1/sugar.ts:30-41`).
-- No changes to `@cgrid/expression`, the tokenizer, or the excel tiers. `evaluateIfSelector` stays untouched: `[if rule:<id>]` has `ast === null` and keeps returning `false` — the accessor never drives section selection.
+- No changes to `@wellsfargo-starui/velocity-grid-expression`, the tokenizer, or the excel tiers. `evaluateIfSelector` stays untouched: `[if rule:<id>]` has `ast === null` and keeps returning `false` — the accessor never drives section selection.
 
 **Verified current-source behavior (read 2026-07-01, `main` @ `28d2d5a`) — the implementation below is anchored to these facts:**
 
@@ -4807,9 +4807,9 @@ git commit -m "feat(format): cycle 21e task 9 — rule:<ruleId> resolver accesso
 > **Reality notes for this phase (read before Task 10).** These plan tasks were written against the actual kernel sources on `main`; where the design spec guessed line numbers or mechanisms, the tasks below follow reality and say so:
 >
 > 1. **Flash timing is main-side, not worker-side.** `flashCells` → `workerCoord.flashCells(rowIds, colIds)` only resolves string→numeric rowIds and stages `pendingFlashes` worker-side; the *timing* (flashDuration/fadeDuration capture, alpha math) lives entirely in the main-thread `FlashRegistry` (`src/core/flashRegistry.ts:81-94, 156-168`). Per-call overrides therefore need **no protocol change** — they ride a main-side override map consumed when the worker's 1-bit `flashMask` is ingested (Task 13).
-> 2. **The paint path has no string rowId today.** `chunk.rowIds` is numeric (worker-interned counter, `src/worker/dataPipeline.ts:218-226` — NOT a reproducible hash despite the protocol comment), and `cgrid.rowIdAt` is a stub returning `` `row-${rowIndex}` `` (`src/cgrid.ts:6622-6626`). Rule evaluation, flash overrides, and the format memo all need the real string rowId per visible row. Task 11 adds an optional `stringRowIds?: string[]` field to `ViewportChunk` — riding the structured-clone path exactly like `groupValue` (Cycle 15 precedent, see `collectViewportTransferables` comment at `src/worker/protocol.ts:700-703`). The `rowIdAt` stub is deliberately NOT changed (event payloads stay byte-identical).
-> 3. **Row snapshots at paint are visible-columns-only** (`rowDataSnapshotAt`, `src/cgrid.ts:7406-7413`). Rule conditions must see full rows (hidden meta columns are common in blotters), so the fold's eval row comes from `rowDataById` via the new string rowId, with the snapshot as fallback (Task 11).
-> 4. **The edit commit path never touches `rowDataById`.** `cellValueChanged` is emitted in `src/core/editController.ts` (~315, ~585), and its commit-back calls `this.workerCoord.applyTransaction(payload)` directly via the dep at `src/cgrid.ts:1524` — bypassing `updateRowDataCache`. Task 12's `source: 'edit'` emission therefore lives in that dep wrapper, fully listener-gated.
+> 2. **The paint path has no string rowId today.** `chunk.rowIds` is numeric (worker-interned counter, `src/worker/dataPipeline.ts:218-226` — NOT a reproducible hash despite the protocol comment), and `cgrid.rowIdAt` is a stub returning `` `row-${rowIndex}` `` (`src/velocityGrid.ts:6622-6626`). Rule evaluation, flash overrides, and the format memo all need the real string rowId per visible row. Task 11 adds an optional `stringRowIds?: string[]` field to `ViewportChunk` — riding the structured-clone path exactly like `groupValue` (Cycle 15 precedent, see `collectViewportTransferables` comment at `src/worker/protocol.ts:700-703`). The `rowIdAt` stub is deliberately NOT changed (event payloads stay byte-identical).
+> 3. **Row snapshots at paint are visible-columns-only** (`rowDataSnapshotAt`, `src/velocityGrid.ts:7406-7413`). Rule conditions must see full rows (hidden meta columns are common in blotters), so the fold's eval row comes from `rowDataById` via the new string rowId, with the snapshot as fallback (Task 11).
+> 4. **The edit commit path never touches `rowDataById`.** `cellValueChanged` is emitted in `src/core/editController.ts` (~315, ~585), and its commit-back calls `this.workerCoord.applyTransaction(payload)` directly via the dep at `src/velocityGrid.ts:1524` — bypassing `updateRowDataCache`. Task 12's `source: 'edit'` emission therefore lives in that dep wrapper, fully listener-gated.
 > 5. **`textDecoration` has no existing paint channel** (no key in `ColCellOverrides`, `src/types/cell.ts:111-168`; decorators are corner badges). Per the no-deferral rule, Task 11 adds a minimal `textDecoration` channel to `ColCellOverrides` + `CellPaintConfig` + the `textCell`/`numberCell` painters.
 > 6. **The rule `valueFormatter` override cannot live in the `compileFormatSlots` wrapped lambda** — that lambda exists only for columns that declared a format string. The override folds into `applyCellProps` (Task 14) so it works on every column.
 >
@@ -4822,16 +4822,16 @@ git commit -m "feat(format): cycle 21e task 9 — rule:<ruleId> resolver accesso
 **Files:**
 - Create: `packages/kernel/src/core/ruleEngineSlot.ts`
 - Create: `packages/kernel/src/theming/themeKind.ts`
-- Modify: `packages/kernel/src/cgrid.ts` (three methods + api literal entries)
-- Modify: `packages/kernel/src/types/api.ts` (three `CGridApi` signatures)
-- Modify: `packages/kernel/package.json` (`@cgrid/rules` devDependency)
+- Modify: `packages/kernel/src/velocityGrid.ts` (three methods + api literal entries)
+- Modify: `packages/kernel/src/types/api.ts` (three `VelocityGridApi` signatures)
+- Modify: `packages/kernel/package.json` (`@wellsfargo-starui/velocity-grid-rules` devDependency)
 - Create: `packages/kernel/tests/core/ruleEngineSlot.test.ts`
 - Create: `packages/kernel/tests/core/themeKind.test.ts`
 - Create: `packages/kernel/tests/rulesKernelApi.test.ts`
 
 **Interfaces:**
-- Consumes: spec §5.2 structural shapes (`RuleEngineShape` with `evaluateCell` + `resolveRuleRef`) — copied verbatim below; nothing from `@cgrid/rules` at runtime (devDep is type-resolution only, for Task 15's bridge integration tests).
-- Produces (for Tasks 11/13/14 kernel-side): `registerRuleEngine(engine)`, `getRuleEngine()`, `_resetRuleEngine_forTests()`, types `RuleEngineShape` / `RuleCellPatchShape` / `RuleEvalCtxShape`. Produces (for Task 15's `wireIntoKernel` in `@cgrid/rules`): `grid.registerRuleEngine(engine)`, `grid.forEachRow(fn)`, `grid.getThemeKind()` on both `CGrid` and `CGridApi`.
+- Consumes: spec §5.2 structural shapes (`RuleEngineShape` with `evaluateCell` + `resolveRuleRef`) — copied verbatim below; nothing from `@wellsfargo-starui/velocity-grid-rules` at runtime (devDep is type-resolution only, for Task 15's bridge integration tests).
+- Produces (for Tasks 11/13/14 kernel-side): `registerRuleEngine(engine)`, `getRuleEngine()`, `_resetRuleEngine_forTests()`, types `RuleEngineShape` / `RuleCellPatchShape` / `RuleEvalCtxShape`. Produces (for Task 15's `wireIntoKernel` in `@wellsfargo-starui/velocity-grid-rules`): `grid.registerRuleEngine(engine)`, `grid.forEachRow(fn)`, `grid.getThemeKind()` on both `VelocityGrid` and `VelocityGridApi`.
 
 - [ ] **Step 1: Write the rule-engine slot module**
 
@@ -4840,10 +4840,10 @@ Create `packages/kernel/src/core/ruleEngineSlot.ts`, mirroring `formatCompilerSl
 ```ts
 // Kernel-side rule-engine dependency-injection slot.
 //
-// @cgrid/rules registers its engine adapter via wireIntoKernel(); kernel
+// @wellsfargo-starui/velocity-grid-rules registers its engine adapter via wireIntoKernel(); kernel
 // consults the registered engine in propertyChain.applyCellProps (Cycle 21e
 // Task 11) and threads resolveRuleRef into format-eval contexts (Task 14).
-// Kernel does NOT import @cgrid/rules at runtime — only structural types,
+// Kernel does NOT import @wellsfargo-starui/velocity-grid-rules at runtime — only structural types,
 // exactly like core/formatCompilerSlot.ts.
 
 /** Evaluation context the kernel paint path supplies per data cell.
@@ -4856,7 +4856,7 @@ export interface RuleEvalCtxShape {
   theme: 'light' | 'dark';
 }
 
-/** Folded per-cell rule result. Structural mirror of @cgrid/rules'
+/** Folded per-cell rule result. Structural mirror of @wellsfargo-starui/velocity-grid-rules'
  *  RuleCellResult (spec §4.2) — formatProgram stays `unknown` because
  *  kernel only forwards it into FormatProgramShape.formatText. */
 export interface RuleCellPatchShape {
@@ -4897,15 +4897,15 @@ export function _resetRuleEngine_forTests(): void {
 
 - [ ] **Step 2: Write the theme-kind helper**
 
-The kernel has NO stored theme "kind" — the design spec's assumption had to be resolved against reality. What actually exists: `setTheme(themeClass)` swaps a `cg-theme-*` class on the grid root (`src/cgrid.ts:4879-4887`), the shipped themes are `cg-theme-quartz`, `cg-theme-quartz-dark`, `cg-theme-high-contrast`, `cg-theme-high-contrast-dark`, and `cg-theme-auto` (OS-following via `@media (prefers-color-scheme: dark)`, `src/theming/tokens.css:416-425`), and `this.theme = this.cssReader.read()` re-resolves tokens (`ResolvedTheme` carries no kind flag). So `getThemeKind()` derives the kind from (a) the root's `cg-theme-*` class `-dark` suffix, (b) `matchMedia` for `cg-theme-auto`, (c) a bg-luminance fallback for custom themes.
+The kernel has NO stored theme "kind" — the design spec's assumption had to be resolved against reality. What actually exists: `setTheme(themeClass)` swaps a `vg-theme-*` class on the grid root (`src/velocityGrid.ts:4879-4887`), the shipped themes are `vg-theme-quartz`, `vg-theme-quartz-dark`, `vg-theme-high-contrast`, `vg-theme-high-contrast-dark`, and `vg-theme-auto` (OS-following via `@media (prefers-color-scheme: dark)`, `src/theming/tokens.css:416-425`), and `this.theme = this.cssReader.read()` re-resolves tokens (`ResolvedTheme` carries no kind flag). So `getThemeKind()` derives the kind from (a) the root's `vg-theme-*` class `-dark` suffix, (b) `matchMedia` for `vg-theme-auto`, (c) a bg-luminance fallback for custom themes.
 
 Create `packages/kernel/src/theming/themeKind.ts`:
 
 ```ts
 // Cycle 21e / Task 10 — derive a binary light/dark "kind" for the active
 // theme. The kernel has no stored kind: shipped themes signal darkness by
-// class-name convention (`cg-theme-quartz-dark`, `cg-theme-high-contrast-dark`),
-// `cg-theme-auto` follows the OS preference, and custom themes fall back to
+// class-name convention (`vg-theme-quartz-dark`, `vg-theme-high-contrast-dark`),
+// `vg-theme-auto` follows the OS preference, and custom themes fall back to
 // the relative luminance of the resolved background color.
 
 /** Parse `#rgb` / `#rrggbb` / `rgb(...)` / `rgba(...)` into [r,g,b] 0-255.
@@ -4953,9 +4953,9 @@ export function resolveThemeKind(
 ): 'light' | 'dark' {
   let themeClass: string | undefined;
   for (const c of classList) {
-    if (c.startsWith('cg-theme-')) { themeClass = c; break; }
+    if (c.startsWith('vg-theme-')) { themeClass = c; break; }
   }
-  if (themeClass === 'cg-theme-auto') {
+  if (themeClass === 'vg-theme-auto') {
     return typeof matchMedia === 'function'
       && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   }
@@ -4966,20 +4966,20 @@ export function resolveThemeKind(
 }
 ```
 
-- [ ] **Step 3: Wire the three public methods in `cgrid.ts`**
+- [ ] **Step 3: Wire the three public methods in `velocityGrid.ts`**
 
-Add the imports next to the existing slot import (`src/cgrid.ts:141` currently reads `registerFormatCompiler as slotRegisterFormatCompiler,` inside the `./core/formatCompilerSlot` import group):
+Add the imports next to the existing slot import (`src/velocityGrid.ts:141` currently reads `registerFormatCompiler as slotRegisterFormatCompiler,` inside the `./core/formatCompilerSlot` import group):
 
 ```ts
 import { registerRuleEngine as slotRegisterRuleEngine, type RuleEngineShape } from './core/ruleEngineSlot';
 import { resolveThemeKind } from './theming/themeKind';
 ```
 
-Add `registerRuleEngine` directly below the existing `registerFormatCompiler` method. Current code (`src/cgrid.ts:4822-4828`):
+Add `registerRuleEngine` directly below the existing `registerFormatCompiler` method. Current code (`src/velocityGrid.ts:4822-4828`):
 
 ```ts
-  /** Cycle 21c / Task 10 — register the @cgrid/format compiler into the
-   *  kernel DI slot. Invoked by wireIntoKernel(grid) in @cgrid/format;
+  /** Cycle 21c / Task 10 — register the @wellsfargo-starui/velocity-grid-format compiler into the
+   *  kernel DI slot. Invoked by wireIntoKernel(grid) in @wellsfargo-starui/velocity-grid-format;
    *  kernel's compileFormatSlots pass (Task 11) calls getFormatCompiler()
    *  to obtain it. Apps that never call this see no behavior change. */
   registerFormatCompiler(fn: FormatCompiler): void {
@@ -4990,8 +4990,8 @@ Add `registerRuleEngine` directly below the existing `registerFormatCompiler` me
 Insert after it:
 
 ```ts
-  /** Cycle 21e / Task 10 — register the @cgrid/rules engine adapter into
-   *  the kernel DI slot. Invoked by wireIntoKernel(grid) in @cgrid/rules;
+  /** Cycle 21e / Task 10 — register the @wellsfargo-starui/velocity-grid-rules engine adapter into
+   *  the kernel DI slot. Invoked by wireIntoKernel(grid) in @wellsfargo-starui/velocity-grid-rules;
    *  kernel's applyCellProps fold (Task 11) calls getRuleEngine() to
    *  obtain it. Apps that never call this see no behavior change. */
   registerRuleEngine(engine: RuleEngineShape): void {
@@ -5000,15 +5000,15 @@ Insert after it:
   }
 
   /** Cycle 21e / Task 10 — binary light/dark kind of the active theme.
-   *  Derived from the root's `cg-theme-*` class (`-dark` suffix
-   *  convention), `matchMedia` for `cg-theme-auto`, or the resolved
+   *  Derived from the root's `vg-theme-*` class (`-dark` suffix
+   *  convention), `matchMedia` for `vg-theme-auto`, or the resolved
    *  `theme.bg` luminance for custom themes. */
   getThemeKind(): 'light' | 'dark' {
     return resolveThemeKind(Array.from(this.root.classList), this.theme.bg);
   }
 ```
 
-Add `forEachRow` next to the existing `getTotalRowCount` — current code (`src/cgrid.ts:2978-2982`):
+Add `forEachRow` next to the existing `getTotalRowCount` — current code (`src/velocityGrid.ts:2978-2982`):
 
 ```ts
    *  main-thread `rowDataById` cache (populated by `setRowData` +
@@ -5022,13 +5022,13 @@ Insert after `getTotalRowCount`:
   /** Cycle 21e / Task 10 — iterate every row in the main-thread
    *  `rowDataById` mirror (setRowData + all transaction paths keep it in
    *  sync since Cycle 7 / Task 8). Insertion order. Used by
-   *  @cgrid/rules' wireIntoKernel to seed match counts. */
+   *  @wellsfargo-starui/velocity-grid-rules' wireIntoKernel to seed match counts. */
   forEachRow(fn: (rowId: string, row: TRow) => void): void {
     for (const [rowId, row] of this.rowDataById) fn(rowId, row);
   }
 ```
 
-Add the three api-literal entries next to the existing one at `src/cgrid.ts:5505` (`registerFormatCompiler: (fn) => this.registerFormatCompiler(fn),`):
+Add the three api-literal entries next to the existing one at `src/velocityGrid.ts:5505` (`registerFormatCompiler: (fn) => this.registerFormatCompiler(fn),`):
 
 ```ts
       registerRuleEngine: (engine) => this.registerRuleEngine(engine),
@@ -5036,13 +5036,13 @@ Add the three api-literal entries next to the existing one at `src/cgrid.ts:5505
       getThemeKind: () => this.getThemeKind(),
 ```
 
-- [ ] **Step 4: Add the `CGridApi` signatures in `types/api.ts`**
+- [ ] **Step 4: Add the `VelocityGridApi` signatures in `types/api.ts`**
 
 Directly below the existing `registerFormatCompiler` signature (`src/types/api.ts:403`):
 
 ```ts
   /** Cycle 21e / Task 10 — register the rule engine (supplied by
-   *  @cgrid/rules' wireIntoKernel). Kernel consults it in the
+   *  @wellsfargo-starui/velocity-grid-rules' wireIntoKernel). Kernel consults it in the
    *  applyCellProps fold (Task 11). Apps that never call this see
    *  identical behavior to before. */
   registerRuleEngine(engine: import('../core/ruleEngineSlot').RuleEngineShape): void;
@@ -5055,15 +5055,15 @@ Directly below the existing `registerFormatCompiler` signature (`src/types/api.t
   getThemeKind(): 'light' | 'dark';
 ```
 
-- [ ] **Step 5: Add the `@cgrid/rules` devDependency**
+- [ ] **Step 5: Add the `@wellsfargo-starui/velocity-grid-rules` devDependency**
 
-In `packages/kernel/package.json`, `devDependencies` currently starts with `"@cgrid/format": "*",` — add alphabetically after it:
+In `packages/kernel/package.json`, `devDependencies` currently starts with `"@wellsfargo-starui/velocity-grid-format": "*",` — add alphabetically after it:
 
 ```json
-    "@cgrid/rules": "*",
+    "@wellsfargo-starui/velocity-grid-rules": "*",
 ```
 
-Run `npm install` at the repo root. (Type-resolution only — Task 17 greps kernel dist for zero `@cgrid/rules` runtime imports.)
+Run `npm install` at the repo root. (Type-resolution only — Task 17 greps kernel dist for zero `@wellsfargo-starui/velocity-grid-rules` runtime imports.)
 
 - [ ] **Step 6: Slot + themeKind unit tests**
 
@@ -5137,30 +5137,30 @@ describe('isDarkColor', () => {
 
 describe('resolveThemeKind', () => {
   it('-dark suffixed theme classes are dark', () => {
-    expect(resolveThemeKind(['cg-theme-quartz-dark'], '#fff')).toBe('dark');
-    expect(resolveThemeKind(['cg-theme-high-contrast-dark'], '#fff')).toBe('dark');
+    expect(resolveThemeKind(['vg-theme-quartz-dark'], '#fff')).toBe('dark');
+    expect(resolveThemeKind(['vg-theme-high-contrast-dark'], '#fff')).toBe('dark');
   });
   it('non-dark theme classes are light regardless of bg', () => {
-    expect(resolveThemeKind(['cg-theme-quartz'], '#000')).toBe('light');
-    expect(resolveThemeKind(['cg-theme-high-contrast'], '#000')).toBe('light');
+    expect(resolveThemeKind(['vg-theme-quartz'], '#000')).toBe('light');
+    expect(resolveThemeKind(['vg-theme-high-contrast'], '#000')).toBe('light');
   });
-  it('no cg-theme class falls back to bg luminance', () => {
+  it('no vg-theme class falls back to bg luminance', () => {
     expect(resolveThemeKind(['my-custom-grid'], '#0b0e14')).toBe('dark');
     expect(resolveThemeKind([], '#ffffff')).toBe('light');
   });
-  it('cg-theme-auto follows prefers-color-scheme (light default in happy-dom)', () => {
-    expect(resolveThemeKind(['cg-theme-auto'], '#000')).toBe('light');
+  it('vg-theme-auto follows prefers-color-scheme (light default in happy-dom)', () => {
+    expect(resolveThemeKind(['vg-theme-auto'], '#000')).toBe('light');
   });
 });
 ```
 
 - [ ] **Step 7: Real-grid fixture test for `forEachRow` + `getThemeKind`**
 
-Create `packages/kernel/tests/rulesKernelApi.test.ts`. Reuse the `Worker` + canvas-context stubs from `tests/cgrid.integration.test.ts:1-36` verbatim (fake `Worker` class + `HTMLCanvasElement.prototype.getContext` stub). Key facts making this test synchronous: `applyTransaction` calls `updateRowDataCache(t)` BEFORE the worker round-trip (`src/cgrid.ts:1949`), so `rowDataById` — and therefore `forEachRow` — is populated even with a stubbed worker.
+Create `packages/kernel/tests/rulesKernelApi.test.ts`. Reuse the `Worker` + canvas-context stubs from `tests/cgrid.integration.test.ts:1-36` verbatim (fake `Worker` class + `HTMLCanvasElement.prototype.getContext` stub). Key facts making this test synchronous: `applyTransaction` calls `updateRowDataCache(t)` BEFORE the worker round-trip (`src/velocityGrid.ts:1949`), so `rowDataById` — and therefore `forEachRow` — is populated even with a stubbed worker.
 
 ```ts
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 
 beforeAll(() => {
   // ── stubs copied from tests/cgrid.integration.test.ts ──
@@ -5189,19 +5189,19 @@ beforeAll(() => {
   })() as any;
 });
 
-function makeGrid(themeClass = 'cg-theme-quartz') {
+function makeGrid(themeClass = 'vg-theme-quartz') {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
   container.className = themeClass;
   document.body.appendChild(container);
-  return new CGrid<{ id: string; px: number }>(container, {
+  return new VelocityGrid<{ id: string; px: number }>(container, {
     columnDefs: [{ field: 'id' }, { field: 'px' }],
     getRowId: (r) => r.id,
     theme: themeClass,
   });
 }
 
-describe('CGrid rules-facing API (Cycle 21e / Task 10)', () => {
+describe('VelocityGrid rules-facing API (Cycle 21e / Task 10)', () => {
   it('forEachRow iterates the rowDataById mirror in insertion order', () => {
     const grid = makeGrid();
     grid.applyTransaction({ add: [{ id: 'a', px: 1 }, { id: 'b', px: 2 }] });
@@ -5222,18 +5222,18 @@ describe('CGrid rules-facing API (Cycle 21e / Task 10)', () => {
     grid.destroy();
   });
 
-  it('getThemeKind reads light from cg-theme-quartz and dark from cg-theme-quartz-dark', () => {
-    const light = makeGrid('cg-theme-quartz');
+  it('getThemeKind reads light from vg-theme-quartz and dark from vg-theme-quartz-dark', () => {
+    const light = makeGrid('vg-theme-quartz');
     expect(light.getThemeKind()).toBe('light');
     light.destroy();
-    const dark = makeGrid('cg-theme-quartz-dark');
+    const dark = makeGrid('vg-theme-quartz-dark');
     expect(dark.getThemeKind()).toBe('dark');
     dark.destroy();
   });
 
   it('setTheme flips getThemeKind at runtime', () => {
-    const grid = makeGrid('cg-theme-quartz');
-    grid.setTheme('cg-theme-quartz-dark');
+    const grid = makeGrid('vg-theme-quartz');
+    grid.setTheme('vg-theme-quartz-dark');
     expect(grid.getThemeKind()).toBe('dark');
     grid.destroy();
   });
@@ -5254,7 +5254,7 @@ describe('CGrid rules-facing API (Cycle 21e / Task 10)', () => {
 });
 ```
 
-Note: if the `CGrid` constructor requires additional fixture plumbing that `tests/cgrid.integration.test.ts` performs beyond the two stubs (check its full body during implementation), copy that plumbing too — the fixture file is the authority.
+Note: if the `VelocityGrid` constructor requires additional fixture plumbing that `tests/cgrid.integration.test.ts` performs beyond the two stubs (check its full body during implementation), copy that plumbing too — the fixture file is the authority.
 
 - [ ] **Step 8: Run new tests + typecheck**
 
@@ -5277,7 +5277,7 @@ Expected: `2399` baseline + 16 new = **2415 PASS**, 0 failures.
 
 ```bash
 cd /Users/develop/wfh/canvasgrid
-git add packages/kernel/src/core/ruleEngineSlot.ts packages/kernel/src/theming/themeKind.ts packages/kernel/src/cgrid.ts packages/kernel/src/types/api.ts packages/kernel/package.json package-lock.json packages/kernel/tests/core/ruleEngineSlot.test.ts packages/kernel/tests/core/themeKind.test.ts packages/kernel/tests/rulesKernelApi.test.ts
+git add packages/kernel/src/core/ruleEngineSlot.ts packages/kernel/src/theming/themeKind.ts packages/kernel/src/velocityGrid.ts packages/kernel/src/types/api.ts packages/kernel/package.json package-lock.json packages/kernel/tests/core/ruleEngineSlot.test.ts packages/kernel/tests/core/themeKind.test.ts packages/kernel/tests/rulesKernelApi.test.ts
 git commit -m "feat(kernel): cycle 21e task 10 — rule-engine DI slot + registerRuleEngine + getThemeKind + forEachRow"
 ```
 
@@ -5288,7 +5288,7 @@ git commit -m "feat(kernel): cycle 21e task 10 — rule-engine DI slot + registe
 **Files:**
 - Modify: `packages/kernel/src/worker/protocol.ts` (`ViewportChunk.stringRowIds?` + normalize)
 - Modify: `packages/kernel/src/worker/viewportSlicer.ts` + `packages/kernel/src/worker/dataPipeline.ts` (populate `stringRowIds` at the two `store.getNumericId` slice sites)
-- Modify: `packages/kernel/src/cgrid.ts` (`stringRowIdAt` accessor; Renderer deps `stringRowIdAt`/`getThemeKind`/`getRowDataById`; `getCellPaintedBg` threading)
+- Modify: `packages/kernel/src/velocityGrid.ts` (`stringRowIdAt` accessor; Renderer deps `stringRowIdAt`/`getThemeKind`/`getRowDataById`; `getCellPaintedBg` threading)
 - Modify: `packages/kernel/src/renderer/renderer.ts` + `packages/kernel/src/renderer/painters/types.ts` (PainterCtx fields)
 - Modify: `packages/kernel/src/renderer/painters/byRows.ts` (per-row rowId/ruleRow resolution + ctx threading)
 - Modify: `packages/kernel/src/core/propertyChain.ts` (fold + `ApplyCellPropsInput` fields)
@@ -5376,9 +5376,9 @@ with `const stringRowIds: string[] = new Array<string>(count).fill('');` declare
 
 (b) `src/worker/dataPipeline.ts:871` (flat slicer) — same three-line pattern: locate `rowIds[i] = this.store.getNumericId(id);`, add `stringRowIds[i] = id;`, declare the array parallel to `rowIds` in that function, and add `stringRowIds` to its returned chunk. Quote the surrounding function during implementation; the shape mirrors (a).
 
-- [ ] **Step 3: `stringRowIdAt` accessor + Renderer deps in `cgrid.ts`**
+- [ ] **Step 3: `stringRowIdAt` accessor + Renderer deps in `velocityGrid.ts`**
 
-Add next to the existing `rowIdAt` stub (`src/cgrid.ts:6622-6626` — which is deliberately left untouched so `cellClicked` etc. payloads stay byte-identical):
+Add next to the existing `rowIdAt` stub (`src/velocityGrid.ts:6622-6626` — which is deliberately left untouched so `cellClicked` etc. payloads stay byte-identical):
 
 ```ts
   /** Cycle 21e / Task 11 — real string rowId for a visible data row, from
@@ -5395,7 +5395,7 @@ Add next to the existing `rowIdAt` stub (`src/cgrid.ts:6622-6626` — which is d
   }
 ```
 
-In the `new Renderer({ ... })` options literal (`src/cgrid.ts:1006-1017`, next to `rowDataSnapshotAt: (rowIndex) => this.rowDataSnapshotAt(rowIndex),`), add:
+In the `new Renderer({ ... })` options literal (`src/velocityGrid.ts:1006-1017`, next to `rowDataSnapshotAt: (rowIndex) => this.rowDataSnapshotAt(rowIndex),`), add:
 
 ```ts
       // Cycle 21e / Task 11 — rule-fold threading: string rowId per data
@@ -5764,7 +5764,7 @@ Note the fold sits INSIDE the `else` (data-cell) branch — the header branch is
 
 (e) `BorderStyle` is exported from `src/types` (via `types/cell.ts`) — the inline `import('../types').BorderStyle` above avoids widening the top import list; alternatively add `BorderStyle` to the existing type import at line 1-6. Either is fine; keep whichever typechecks cleanest.
 
-- [ ] **Step 8: Thread rule inputs into `getCellPaintedBg`** (E2E assertion surface — memory: E2E asserts via this API, `src/cgrid.ts:7584-7618`)
+- [ ] **Step 8: Thread rule inputs into `getCellPaintedBg`** (E2E assertion surface — memory: E2E asserts via this API, `src/velocityGrid.ts:7584-7618`)
 
 Current `applyCellProps` call there ends with:
 
@@ -5988,7 +5988,7 @@ git commit -m "feat(kernel): cycle 21e task 11 — applyCellProps rule-patch fol
 **Files:**
 - Modify: `packages/kernel/src/core/eventEmitter.ts` (`hasListener`)
 - Modify: `packages/kernel/src/types/event.ts` (`rowsChanged` union member)
-- Modify: `packages/kernel/src/cgrid.ts` (`updateRowDataCache` source + emission; edit-commit dep wrapper)
+- Modify: `packages/kernel/src/velocityGrid.ts` (`updateRowDataCache` source + emission; edit-commit dep wrapper)
 - Modify: `packages/kernel/tests/eventEmitter.test.ts` (extend)
 - Create: `packages/kernel/tests/rowsChangedEvent.test.ts`
 
@@ -5997,9 +5997,9 @@ git commit -m "feat(kernel): cycle 21e task 11 — applyCellProps rule-patch fol
 - Produces (Task 15): the `rowsChanged` event (`added/updated/removed/source`) that `wireIntoKernel` subscribes to build `RowChangeSet`s; `TypedEventEmitter.hasListener(type)`.
 
 Reality vs spec §5.1, verified against sources:
-- The "transaction sync method" is `updateRowDataCache` (`src/cgrid.ts:1974-1994`), called synchronously by BOTH `applyTransaction` (line 1949) and `applyTransactionAsync` (line 1963). **There is no separate main-side async-flush handler for `rowDataById`** — the async path mirrors rows at enqueue time (the worker batches internally). `source: 'transactionAsync'` therefore emits at `applyTransactionAsync()` call time; documented in the event doc-comment.
-- The "edit commit path" does NOT go through `updateRowDataCache`: `EditController` commits via the dep `applyTransaction: (payload) => this.workerCoord.applyTransaction(payload)` (`src/cgrid.ts:1524`), which bypasses the mirror entirely (the `cellValueChanged` emission lives in `editController.ts:314-318` / `584-588`). The `'edit'` source is implemented by replacing that one-line dep with a wrapper. To preserve strict byte-identity, the wrapper is fully listener-gated — including its `rowDataById.set` freshening (documented below).
-- `setRowData` (`src/cgrid.ts:1921-1923`) is untouched — full replace does not emit.
+- The "transaction sync method" is `updateRowDataCache` (`src/velocityGrid.ts:1974-1994`), called synchronously by BOTH `applyTransaction` (line 1949) and `applyTransactionAsync` (line 1963). **There is no separate main-side async-flush handler for `rowDataById`** — the async path mirrors rows at enqueue time (the worker batches internally). `source: 'transactionAsync'` therefore emits at `applyTransactionAsync()` call time; documented in the event doc-comment.
+- The "edit commit path" does NOT go through `updateRowDataCache`: `EditController` commits via the dep `applyTransaction: (payload) => this.workerCoord.applyTransaction(payload)` (`src/velocityGrid.ts:1524`), which bypasses the mirror entirely (the `cellValueChanged` emission lives in `editController.ts:314-318` / `584-588`). The `'edit'` source is implemented by replacing that one-line dep with a wrapper. To preserve strict byte-identity, the wrapper is fully listener-gated — including its `rowDataById.set` freshening (documented below).
+- `setRowData` (`src/velocityGrid.ts:1921-1923`) is untouched — full replace does not emit.
 
 - [ ] **Step 1: `hasListener` on `TypedEventEmitter`**
 
@@ -6042,7 +6042,7 @@ Reality vs spec §5.1, verified against sources:
 
 - [ ] **Step 3: Gate + emit in `updateRowDataCache`**
 
-Current code (`src/cgrid.ts:1974-1994`):
+Current code (`src/velocityGrid.ts:1974-1994`):
 
 ```ts
   /** Cycle 7 / Task 8 — keep `rowDataById` in sync with a transaction.
@@ -6144,8 +6144,8 @@ Replacement (the no-listener path executes the exact same statements as today �
 ```
 
 Update the two call sites:
-- `src/cgrid.ts:1949` — `this.updateRowDataCache(t);` → `this.updateRowDataCache(t, 'transaction');`
-- `src/cgrid.ts:1963` — `this.updateRowDataCache(t);` → `this.updateRowDataCache(t, 'transactionAsync');`
+- `src/velocityGrid.ts:1949` — `this.updateRowDataCache(t);` → `this.updateRowDataCache(t, 'transaction');`
+- `src/velocityGrid.ts:1963` — `this.updateRowDataCache(t);` → `this.updateRowDataCache(t, 'transactionAsync');`
 
 - [ ] **Step 4: The edit-commit wrapper**
 
@@ -6179,7 +6179,7 @@ Add a private method near `updateRowDataCache`:
   }
 ```
 
-Then change the EditController dep. Current code (`src/cgrid.ts:1524`):
+Then change the EditController dep. Current code (`src/velocityGrid.ts:1524`):
 
 ```ts
         applyTransaction: (payload) => this.workerCoord.applyTransaction(payload),
@@ -6330,7 +6330,7 @@ Expected: 2399 baseline + Tasks 10-11 new + this task's new, 0 failures (watch `
 
 ```bash
 cd /Users/develop/wfh/canvasgrid
-git add packages/kernel/src/core/eventEmitter.ts packages/kernel/src/types/event.ts packages/kernel/src/cgrid.ts packages/kernel/tests/eventEmitter.test.ts packages/kernel/tests/rowsChangedEvent.test.ts
+git add packages/kernel/src/core/eventEmitter.ts packages/kernel/src/types/event.ts packages/kernel/src/velocityGrid.ts packages/kernel/tests/eventEmitter.test.ts packages/kernel/tests/rowsChangedEvent.test.ts
 git commit -m "feat(kernel): cycle 21e task 12 — rowsChanged event (listener-gated) + emitter hasListener"
 ```
 
@@ -6342,7 +6342,7 @@ git commit -m "feat(kernel): cycle 21e task 12 — rowsChanged event (listener-g
 - Modify: `packages/kernel/src/types/column.ts` (`FlashCellsParams` — retire the reserved comment)
 - Create: `packages/kernel/src/core/flashShaper.ts` (pure alpha curves)
 - Modify: `packages/kernel/src/core/flashRegistry.ts` (entry color/mode/per-call durations; override-aware `ingestMask`; `getColor`)
-- Modify: `packages/kernel/src/cgrid.ts` (override map in `flashCells`; ingest call site; tick-loop sweep; `cellAt` flashColor)
+- Modify: `packages/kernel/src/velocityGrid.ts` (override map in `flashCells`; ingest call site; tick-loop sweep; `cellAt` flashColor)
 - Modify: `packages/kernel/src/renderer/painters/types.ts` + `src/renderer/painters/byRows.ts` (flashColor pass-through)
 - Create: `packages/kernel/tests/core/flashShaper.test.ts`
 - Create: `packages/kernel/tests/flashOverrides.test.ts`
@@ -6352,7 +6352,7 @@ git commit -m "feat(kernel): cycle 21e task 12 — rowsChanged event (listener-g
 - Consumes (Task 11): `chunk.stringRowIds` (the string→numeric join at mask-ingest time).
 - Produces (Task 15): `grid.flashCells({ rowIds, colIds?, flashDuration?, fadeDuration?, color?, mode? })` — the API `wireIntoKernel` drives from `FlashDirective[]`. Produces (internal): `shapeFlashAlpha(mode, elapsed, flashDuration, fadeDuration)`.
 
-**Chosen design (documented tradeoff).** The prompt's fallback design is the correct one here, and it is not a compromise: the worker does NOT own flash timing. `flashCells` round-trips to the worker only to resolve string rowIds and stage `pendingFlashes`; the mask that comes back is 1 bit/cell (`viewportSlicer.ts:900-930`) and all timing lives in the main-side `FlashRegistry` (entries capture `getFlashDuration()`/`getFadeDuration()` at `flash()` time — `flashRegistry.ts:85-93`). So per-call duration/color/mode are implemented entirely main-side: `flashCells` records an override keyed by string rowId+colId; when the next chunk's mask is ingested, each set bit consults the override (joined via the chunk's new `stringRowIds`) and captures it INTO the `FlashEntry` — per-call durations then drive `tick()` pruning and `getAlpha` shaping natively. **No protocol change.** Limitation (inherent, documented): overrides apply to flashes that arrive via the mask after the `flashCells` call; the pre-existing one-frame latency of `flashCells` (see its doc comment, `cgrid.ts:6494-6499`) is unchanged.
+**Chosen design (documented tradeoff).** The prompt's fallback design is the correct one here, and it is not a compromise: the worker does NOT own flash timing. `flashCells` round-trips to the worker only to resolve string rowIds and stage `pendingFlashes`; the mask that comes back is 1 bit/cell (`viewportSlicer.ts:900-930`) and all timing lives in the main-side `FlashRegistry` (entries capture `getFlashDuration()`/`getFadeDuration()` at `flash()` time — `flashRegistry.ts:85-93`). So per-call duration/color/mode are implemented entirely main-side: `flashCells` records an override keyed by string rowId+colId; when the next chunk's mask is ingested, each set bit consults the override (joined via the chunk's new `stringRowIds`) and captures it INTO the `FlashEntry` — per-call durations then drive `tick()` pruning and `getAlpha` shaping natively. **No protocol change.** Limitation (inherent, documented): overrides apply to flashes that arrive via the mask after the `flashCells` call; the pre-existing one-frame latency of `flashCells` (see its doc comment, `velocityGrid.ts:6494-6499`) is unchanged.
 
 - [ ] **Step 1: `FlashCellsParams`**
 
@@ -6578,7 +6578,7 @@ becomes:
   }
 ```
 
-- [ ] **Step 4: The main-side override map in `cgrid.ts`**
+- [ ] **Step 4: The main-side override map in `velocityGrid.ts`**
 
 (a) Field, next to `private flashRegistry: FlashRegistry;` (line 637):
 
@@ -6591,7 +6591,7 @@ becomes:
   private flashOverrides = new Map<string, import('./core/flashRegistry').FlashOverride & { expiresAt: number }>();
 ```
 
-(b) `flashCells` — current code (`src/cgrid.ts:6500-6515`) gains override registration before the worker call. Replace the body:
+(b) `flashCells` — current code (`src/velocityGrid.ts:6500-6515`) gains override registration before the worker call. Replace the body:
 
 ```ts
   flashCells(params: FlashCellsParams): void {
@@ -6638,9 +6638,9 @@ becomes:
   }
 ```
 
-(The default fallbacks `?? 500` / `?? 1000` mirror the tick loop's own defaults at `cgrid.ts:6479-6480`.)
+(The default fallbacks `?? 500` / `?? 1000` mirror the tick loop's own defaults at `velocityGrid.ts:6479-6480`.)
 
-(c) The ingest call site — current code (`src/cgrid.ts:6323-6330`):
+(c) The ingest call site — current code (`src/velocityGrid.ts:6323-6330`):
 
 ```ts
     if (chunk.flashMask) {
@@ -6676,7 +6676,7 @@ becomes:
     }
 ```
 
-(d) Sweep in the tick loop — inside `startFlashTickLoop`'s `tick` (after the `groupFlashMap` pruning block at `cgrid.ts:6478-6486`), add:
+(d) Sweep in the tick loop — inside `startFlashTickLoop`'s `tick` (after the `groupFlashMap` pruning block at `velocityGrid.ts:6478-6486`), add:
 
 ```ts
       // Cycle 21e / Task 13 — expire staged flash overrides.
@@ -6689,7 +6689,7 @@ becomes:
 
 - [ ] **Step 5: Color pass-through to the painter**
 
-(a) `cellAt` — current flash read (`src/cgrid.ts:6525-6527`):
+(a) `cellAt` — current flash read (`src/velocityGrid.ts:6525-6527`):
 
 ```ts
     const numericRowId = this.chunk.rowIds[localIndex]!;
@@ -6844,7 +6844,7 @@ git commit -m "feat(kernel): cycle 21e task 13 — flashCells per-call color/mod
 - Modify: `packages/kernel/tests/core/propertyChain-ruleFold.test.ts` (extend: formatter override)
 
 **Interfaces:**
-- Consumes (Task 10/11): `getRuleEngine()`, `CellPaintConfig.ruleIndicator` (stored by the Task 11 fold), `ApplyCellPropsInput.rowId/ruleRow/themeKind`. Consumes (Task 9, Phase D): `@cgrid/format`'s `FormatEvalContext.resolveRuleRef?: (ruleId: string) => string | null` and `FormatProgram.hasRuleRefs?: boolean` — mirrored here STRUCTURALLY in `FormatProgramShape` (kernel still imports nothing from `@cgrid/format` at runtime; the type-only `IconRef` import in `propertyChain.ts:41` stays type-only).
+- Consumes (Task 10/11): `getRuleEngine()`, `CellPaintConfig.ruleIndicator` (stored by the Task 11 fold), `ApplyCellPropsInput.rowId/ruleRow/themeKind`. Consumes (Task 9, Phase D): `@wellsfargo-starui/velocity-grid-format`'s `FormatEvalContext.resolveRuleRef?: (ruleId: string) => string | null` and `FormatProgram.hasRuleRefs?: boolean` — mirrored here STRUCTURALLY in `FormatProgramShape` (kernel still imports nothing from `@wellsfargo-starui/velocity-grid-format` at runtime; the type-only `IconRef` import in `propertyChain.ts:41` stays type-only).
 - Produces (Task 15/16): rule indicators painted through the icon registry with colDef-`cellIcon` precedence; per-rule `valueFormatter` rendering; `rule:<ruleId>` live colors inside format programs on a real grid (E2E §9.3); the 21c-carried memo (one program eval per cell per paint).
 
 - [ ] **Step 1: Widen the structural `FormatProgramShape`**
@@ -6873,7 +6873,7 @@ becomes (one shared ctx alias + the new flag; structurally identical for existin
 ```ts
 /** Cycle 21e / Task 14 — eval context accepted by format programs.
  *  `resolveRuleRef` is the rule:<ruleId> accessor (spec §5.5) — the
- *  kernel closes it over the rule slot + current cell; @cgrid/format's
+ *  kernel closes it over the rule slot + current cell; @wellsfargo-starui/velocity-grid-format's
  *  tier1 resolver consults it when present (Cycle 21e Task 9). */
 export interface FormatEvalCtxShape {
   value: unknown;
@@ -6898,7 +6898,7 @@ export interface FormatProgramShape {
   /** Cycle 21e / Task 14 — true when the program contains rule:<ruleId>
    *  refs. Such programs bypass the format-eval memo (a matched-set
    *  change without a value change must not serve stale colors) and
-   *  always receive a resolveRuleRef accessor. Set by @cgrid/format's
+   *  always receive a resolveRuleRef accessor. Set by @wellsfargo-starui/velocity-grid-format's
    *  compile() (Task 9); undefined (older compilers) → treated false. */
   hasRuleRefs?: boolean;
 }
@@ -6928,7 +6928,7 @@ export interface CValueFormatterParams<TRow, TValue> {
 }
 ```
 
-Both fields are optional — every existing caller (worker-independent: `pinnedCellLookup` at `cgrid.ts:5221`, `formatNumber`, tests) stays valid unchanged.
+Both fields are optional — every existing caller (worker-independent: `pinnedCellLookup` at `velocityGrid.ts:5221`, `formatNumber`, tests) stays valid unchanged.
 
 - [ ] **Step 3: The memo module**
 
@@ -7042,7 +7042,7 @@ In `src/core/propertyChain.ts`, the Tier 0/1 wrapped lambdas — current code (l
         },
       ),
       cellIcon: (p: CValueFormatterParams<TRow, unknown>) =>
-        program.resolveIcon({ value: p.value, row: p.data, colId: p.colId }) as import('@cgrid/format').IconRef | null,
+        program.resolveIcon({ value: p.value, row: p.data, colId: p.colId }) as import('@wellsfargo-starui/velocity-grid-format').IconRef | null,
     } as CColDef<TRow>;
 ```
 
@@ -7065,7 +7065,7 @@ becomes (all three share one `evalFormatProgram` call — the memo makes it one 
         },
       ),
       cellIcon: (p: CValueFormatterParams<TRow, unknown>) =>
-        evalFormatProgram(program, p).icon as import('@cgrid/format').IconRef | null,
+        evalFormatProgram(program, p).icon as import('@wellsfargo-starui/velocity-grid-format').IconRef | null,
     } as CColDef<TRow>;
 ```
 
@@ -7355,7 +7355,7 @@ export interface WireRulesOptions {
   rules?: StyleRule[];
   alertRules?: AlertRule[];
   alertsSettings?: Partial<AlertsSettings>;
-  schema?: import('@cgrid/expression').Schema;
+  schema?: import('@wellsfargo-starui/velocity-grid-expression').Schema;
   /** Injectable clock for both engines. Default: `() => performance.now()`
    *  (the wall-clock wrap lives HERE, at the bridge layer — engines stay
    *  Date-free per the global constraint). */
@@ -7665,8 +7665,8 @@ Replace the skeleton with:
 ```ts
 // Cycle 21e / Task 15 — the kernel bridge.
 //
-// `wireIntoKernel(grid, opts?)` wires @cgrid/rules' engines onto a
-// CGrid instance via kernel's PUBLIC registration APIs, mirroring
+// `wireIntoKernel(grid, opts?)` wires @wellsfargo-starui/velocity-grid-rules' engines onto a
+// VelocityGrid instance via kernel's PUBLIC registration APIs, mirroring
 // packages/format/src/bridge.ts:
 //
 //   1. constructs RuleEngine + AlertsEngine (seeded from opts),
@@ -7680,7 +7680,7 @@ Replace the skeleton with:
 //   4. seeds match counts from grid.forEachRow,
 //   5. repaints on activeDurationMs expiry via grid.refresh().
 //
-// Kernel never runtime-imports @cgrid/rules; this module reaches into
+// Kernel never runtime-imports @wellsfargo-starui/velocity-grid-rules; this module reaches into
 // kernel only through the grid surface passed in (structural types —
 // zero static kernel imports). Idempotent per grid instance via a
 // `__rulesBridgeWired` marker that stores — and re-returns — the SAME
@@ -7713,7 +7713,7 @@ interface CellValueChangedEvent {
   data?: Record<string, unknown>;
 }
 
-/** Structural surface of the CGrid instance (or CGridApi) the bridge
+/** Structural surface of the VelocityGrid instance (or VelocityGridApi) the bridge
  *  registers against. Type-only — no runtime kernel import; mirrors
  *  format's KernelGridSurface. NOTE: kernel's public repaint API is
  *  `refresh()` (types/api.ts:292) — there is no per-row refreshCells,
@@ -7797,7 +7797,7 @@ const defaultNow = (): number => performance.now();
 // ─── The bridge ────────────────────────────────────────────────────────
 
 /**
- * Wire @cgrid/rules into a CGrid instance. Idempotent — re-calling on
+ * Wire @wellsfargo-starui/velocity-grid-rules into a VelocityGrid instance. Idempotent — re-calling on
  * an already-wired grid returns the SAME `{ rules, alerts }` object.
  */
 export function wireIntoKernel(
@@ -7934,7 +7934,7 @@ Expected: full rules suite PASS (Phase A–C baselines + 15 new bridge tests: 12
 - [ ] **Step 6: Verify zero static kernel imports**
 
 ```bash
-grep -rn "from '@cgrid/kernel'" /Users/develop/wfh/canvasgrid/packages/rules/src/
+grep -rn "from '@wellsfargo-starui/velocity-grid'" /Users/develop/wfh/canvasgrid/packages/rules/src/
 ```
 
 Expected: no output (structural interfaces only — mirrors format's bridge).
@@ -7966,7 +7966,7 @@ feat(rules): cycle 21e task 15 — wireIntoKernel(grid, opts?) kernel bridge
   dedupe, coalesced endTick + diff-map clear, idempotency, expiry
   refresh, diffRows/watchedColIdUnion helpers.
 
-Zero static @cgrid/kernel imports in packages/rules/src (grep-verified).
+Zero static @wellsfargo-starui/velocity-grid imports in packages/rules/src (grep-verified).
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
 COMMIT_EOF
@@ -7981,26 +7981,26 @@ COMMIT_EOF
 - Create: `apps/cgrid-showcase/src/features/conditionalStyling.ts`
 - Create: `apps/cgrid-showcase/src/features/alerts.ts`
 - Modify: `apps/cgrid-showcase/src/features/index.ts` (register both)
-- Modify: `apps/cgrid-showcase/package.json` (add `"@cgrid/rules": "*"` dependency)
+- Modify: `apps/cgrid-showcase/package.json` (add `"@wellsfargo-starui/velocity-grid-rules": "*"` dependency)
 - Create: `apps/cgrid-showcase/e2e/conditionalStyling.spec.ts`
 - Create: `apps/cgrid-showcase/e2e/alerts.spec.ts`
 
 **Interfaces:**
-- Consumes: `wireIntoKernel` from `@cgrid/rules` (Task 15), `wireIntoKernel` from `@cgrid/format` (21c), the full kernel Phase E surface (slot, flash overrides, indicator paint, `rowsChanged`).
+- Consumes: `wireIntoKernel` from `@wellsfargo-starui/velocity-grid-rules` (Task 15), `wireIntoKernel` from `@wellsfargo-starui/velocity-grid-format` (21c), the full kernel Phase E surface (slot, flash overrides, indicator paint, `rowsChanged`).
 - Produces: two demo pages + 12 new E2E tests (7 conditional-styling + 5 alerts) → showcase E2E total **109 baseline + 12 new = 121**.
 
 **Reality checks (deviations from earlier drafts of this plan):**
 1. **Showcase sources are TypeScript.** `index.html` loads `/src/main.ts`; the registration file is `src/features/index.ts` (typed `Feature` interface). The `src/features/*.js` files in the untracked-straggler list are `tsc -b` emit artifacts, NOT sources. This task creates `.ts` files and commits ONLY them (never the `.js` siblings) — exactly what 21c Task 18 actually did with `formatDSL.ts`.
-2. **Feature contract** (from `features/index.ts`): `{ id, label, description, mount(gridHost, controls, theme): CGrid }`. Controls use `.ctrl-btn` / `.ctrl-btn.primary` classes + `data-testid` attributes; ticking cleanup piggybacks on `grid.destroy()` (the `realtimeStomp.ts` pattern). Descriptions render into `#desc-bar`.
+2. **Feature contract** (from `features/index.ts`): `{ id, label, description, mount(gridHost, controls, theme): VelocityGrid }`. Controls use `.ctrl-btn` / `.ctrl-btn.primary` classes + `data-testid` attributes; ticking cleanup piggybacks on `grid.destroy()` (the `realtimeStomp.ts` pattern). Descriptions render into `#desc-bar`.
 3. **Wiring order** (from `formatDSL.ts`): string/composite defs compile during column resolution, so construct the grid with the plain symbol column only, wire format + rules, THEN `updateGridOptions({ columnDefs })` + `setRowData`.
 4. **E2E assertion mechanism** (from `formatDSL.spec.ts`): canvas text is not in the DOM — assert through `window.__cgrid` resolved defs and engine probes exposed on `window`; DOM assertions only for real DOM (controls, alert log, desc bar). Flash is proven by monkey-patching `grid.flashCells` in-page and asserting the recorded params (the bridge calls through the property at flash time).
 
-- [ ] **Step 1: Add the `@cgrid/rules` dependency**
+- [ ] **Step 1: Add the `@wellsfargo-starui/velocity-grid-rules` dependency**
 
-In `apps/cgrid-showcase/package.json`, add to `dependencies` (alongside `@cgrid/format`):
+In `apps/cgrid-showcase/package.json`, add to `dependencies` (alongside `@wellsfargo-starui/velocity-grid-format`):
 
 ```json
-    "@cgrid/rules": "*",
+    "@wellsfargo-starui/velocity-grid-rules": "*",
 ```
 
 Then `npm install` at the repo root.
@@ -8008,11 +8008,11 @@ Then `npm install` at the repo root.
 - [ ] **Step 2: Create `apps/cgrid-showcase/src/features/conditionalStyling.ts`**
 
 ```ts
-import { CGrid } from '@cgrid/kernel';
-import type { CColDef } from '@cgrid/kernel';
-import { wireIntoKernel as wireFormat } from '@cgrid/format';
-import { wireIntoKernel as wireRules } from '@cgrid/rules';
-import type { RuleEngine, StyleRule } from '@cgrid/rules';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
+import type { CColDef } from '@wellsfargo-starui/velocity-grid';
+import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid-format';
+import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid-rules';
+import type { RuleEngine, StyleRule } from '@wellsfargo-starui/velocity-grid-rules';
 import type { Feature } from './index';
 
 /**
@@ -8114,7 +8114,7 @@ export const conditionalStyling: Feature = {
   id: 'conditional-styling',
   label: 'Conditional Styling',
   description:
-    'Cycle 21e — @cgrid/rules conditional styling. Theme-aware style ' +
+    'Cycle 21e — @wellsfargo-starui/velocity-grid-rules conditional styling. Theme-aware style ' +
     'rules ([pnl] < 0), a row-scope threshold rule ([qty] > 500), a ' +
     'diff-aware flash rule ([price.old] comparison, pulse, 1.5s ' +
     'auto-expire), an indicator badge for stale rows, and a composite ' +
@@ -8122,7 +8122,7 @@ export const conditionalStyling: Feature = {
     'reserve resolving live. Match counts update as the data ticks.',
 
   mount(gridHost, controls, theme) {
-    const grid = new CGrid<BlotterRow>(gridHost, {
+    const grid = new VelocityGrid<BlotterRow>(gridHost, {
       getRowId: (r) => r.symbol,
       columnDefs: [COLUMNS[0]!],
       theme,
@@ -8227,10 +8227,10 @@ export const conditionalStyling: Feature = {
 - [ ] **Step 3: Create `apps/cgrid-showcase/src/features/alerts.ts`**
 
 ```ts
-import { CGrid } from '@cgrid/kernel';
-import type { CColDef } from '@cgrid/kernel';
-import { wireIntoKernel as wireRules } from '@cgrid/rules';
-import type { AlertRule, AlertSeverity, AlertsEngine } from '@cgrid/rules';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
+import type { CColDef } from '@wellsfargo-starui/velocity-grid';
+import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid-rules';
+import type { AlertRule, AlertSeverity, AlertsEngine } from '@wellsfargo-starui/velocity-grid-rules';
 import type { Feature } from './index';
 
 /**
@@ -8302,7 +8302,7 @@ export const alertsFeature: Feature = {
   id: 'alerts',
   label: 'Alerts',
   description:
-    'Cycle 21e — @cgrid/rules alerts core. Three trigger kinds ' +
+    'Cycle 21e — @wellsfargo-starui/velocity-grid-rules alerts core. Three trigger kinds ' +
     '(relativeChange 1% price moves with 1.5s debounce, dataChange ' +
     'deep-loss on [pnl], rowChange on adds), severity chips, message ' +
     'templating, unread badge with mark-all-read, and an evaluation ' +
@@ -8310,7 +8310,7 @@ export const alertsFeature: Feature = {
     'stays in the host — this log IS the host surface.',
 
   mount(gridHost, controls, theme) {
-    const grid = new CGrid<BlotterRow>(gridHost, {
+    const grid = new VelocityGrid<BlotterRow>(gridHost, {
       getRowId: (r) => r.symbol,
       columnDefs: COLUMNS,
       theme,
@@ -8714,7 +8714,7 @@ COMMIT_EOF
 
 **Files:**
 - Create: `packages/rules/README.md`
-- Modify: `packages/rules/package.json` — ONLY IF a real build step became necessary during the cycle. It should NOT have: the package ships as TS source (`main`/`exports` → `./src/index.ts`), exactly like `@cgrid/format`, and its `build` script stays the no-op echo. Leave untouched.
+- Modify: `packages/rules/package.json` — ONLY IF a real build step became necessary during the cycle. It should NOT have: the package ships as TS source (`main`/`exports` → `./src/index.ts`), exactly like `@wellsfargo-starui/velocity-grid-format`, and its `build` script stays the no-op echo. Leave untouched.
 - Modify: `.superpowers/sdd/progress.md` (cycle ledger)
 
 **Interfaces:**
@@ -8724,7 +8724,7 @@ COMMIT_EOF
 - [ ] **Step 1: Write `packages/rules/README.md`**
 
 ```markdown
-# `@cgrid/rules`
+# `@wellsfargo-starui/velocity-grid-rules`
 
 Rule engine for the cgrid monorepo — conditional styling, indicator
 badges, flash-on-change, live match counts, and the alerts core.
@@ -8739,19 +8739,19 @@ badges, flash-on-change, live match counts, and the alerts core.
   + global token bucket, bounded history with unread count.
 
 **Status:** Cycle 21e — everything above shipped, including the kernel
-bridge and the `rule:<ruleId>` resolver that `@cgrid/format` reserved
+bridge and the `rule:<ruleId>` resolver that `@wellsfargo-starui/velocity-grid-format` reserved
 in Cycle 21c. Aggregate / `PREV()` rule conditions stay reserved
-(`not-yet-implemented`) until `@cgrid/calc` (Cycle 21d). Full spec:
+(`not-yet-implemented`) until `@wellsfargo-starui/velocity-grid-calc` (Cycle 21d). Full spec:
 `docs/superpowers/specs/2026-07-01-cycle-21e-rules-design.md`.
 
 ## Quickstart
 
 ```ts
-import { CGrid } from '@cgrid/kernel';
-import { wireIntoKernel as wireFormat } from '@cgrid/format';
-import { wireIntoKernel as wireRules } from '@cgrid/rules';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
+import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid-format';
+import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid-rules';
 
-const grid = new CGrid(host, { /* ... */ });
+const grid = new VelocityGrid(host, { /* ... */ });
 wireFormat(grid);   // optional — needed for per-rule valueFormatter
                     // strings and rule:<id> composite fragments
 const { rules, alerts } = wireRules(grid, {
@@ -8801,7 +8801,7 @@ Alert triggers:
 
 ## Condition language
 
-Conditions are `@cgrid/expression` predicates. `[price.old]` /
+Conditions are `@wellsfargo-starui/velocity-grid-expression` predicates. `[price.old]` /
 `[price.new]` are diff-aware: `.old` resolves against the tick-scoped
 diff map (populated from change records, cleared after the repaint);
 `.new` is the current row value. Quiescent cells read `[col.old]` as
@@ -8813,7 +8813,7 @@ diff map (populated from change records, cleared after the repaint);
 
 Truthiness is **strict boolean** — a rule matches only when the
 compiled condition evaluates `=== true`. `SUM(...)` / `PREV(...)`
-inside a condition surfaces `@cgrid/expression`'s `not-yet-implemented`
+inside a condition surfaces `@wellsfargo-starui/velocity-grid-expression`'s `not-yet-implemented`
 error (→ Cycle 21d).
 
 ## Precedence
@@ -8888,11 +8888,11 @@ that cell and `evalErrorCount(ruleId)` increments.
 
 ## What's not in this cycle
 
-- Aggregate / `PREV()` rule conditions — Cycle 21d (`@cgrid/calc`).
-- Rule/alert editor panels — Cycle 21i (`@cgrid/customizer`).
-- Plus/minus nudge rules — keyboard-edit cycle (`@cgrid/edit`).
+- Aggregate / `PREV()` rule conditions — Cycle 21d (`@wellsfargo-starui/velocity-grid-calc`).
+- Rule/alert editor panels — Cycle 21i (`@wellsfargo-starui/velocity-grid-customizer`).
+- Plus/minus nudge rules — keyboard-edit cycle (`@wellsfargo-starui/velocity-grid-edit`).
 - Worker-side rule evaluation / typed-array style channel — Cycle 20.
-- Excel export of resolved rule styles — Cycle 21h (`@cgrid/export`).
+- Excel export of resolved rule styles — Cycle 21h (`@wellsfargo-starui/velocity-grid-export`).
 ```
 
 - [ ] **Step 2: Commit the README**
@@ -8942,10 +8942,10 @@ Expected: `Tasks: 13 successful, 13 total` (rules' build stays the scaffold no-o
 - [ ] **Step 6: Unit suites — all four packages**
 
 ```bash
-npm --workspace @cgrid/kernel run test 2>&1 | tail -3
-npm --workspace @cgrid/format run test 2>&1 | tail -3
-npm --workspace @cgrid/expression run test 2>&1 | tail -3
-npm --workspace @cgrid/rules run test:coverage 2>&1 | tail -25
+npm --workspace @wellsfargo-starui/velocity-grid run test 2>&1 | tail -3
+npm --workspace @wellsfargo-starui/velocity-grid-format run test 2>&1 | tail -3
+npm --workspace @wellsfargo-starui/velocity-grid-expression run test 2>&1 | tail -3
+npm --workspace @wellsfargo-starui/velocity-grid-rules run test:coverage 2>&1 | tail -25
 ```
 
 Expected:
@@ -8973,8 +8973,8 @@ Expected: **121 passed** (109 baseline + 12 new). Positions app untouched this c
 - [ ] **Step 8: Kernel dist size vs baseline**
 
 ```bash
-npx turbo build --filter=@cgrid/kernel 2>&1 | tail -3
-du -k packages/kernel/dist/cgrid.js
+npx turbo build --filter=@wellsfargo-starui/velocity-grid 2>&1 | tail -3
+du -k packages/kernel/dist/velocity-grid.js
 ```
 
 Expected: ≤ **777 KB** (Cycle 21a baseline 760.90 KB + 2% = 776.1 KB; `du -k` rounds to KiB blocks). If over: the rule slot/fold/flash additions should be a few KB — investigate before shipping.
@@ -8982,8 +8982,8 @@ Expected: ≤ **777 KB** (Cycle 21a baseline 760.90 KB + 2% = 776.1 KB; `du -k` 
 - [ ] **Step 9: Boundary grep proofs**
 
 ```bash
-grep -r "@cgrid/rules" packages/kernel/dist/ ; echo "exit=$?"
-grep -rn "from '@cgrid/kernel'" packages/rules/src/ ; echo "exit=$?"
+grep -r "@wellsfargo-starui/velocity-grid-rules" packages/kernel/dist/ ; echo "exit=$?"
+grep -rn "from '@wellsfargo-starui/velocity-grid'" packages/rules/src/ ; echo "exit=$?"
 ```
 
 Expected: both greps print nothing, `exit=1` — kernel dist has zero rules imports (devDependency is type-only) and rules' src reaches kernel only structurally through the bridge surface.
@@ -9010,10 +9010,10 @@ git commit -m "chore(sdd): cycle 21e progress ledger update"
 
 ```bash
 git push -u origin cycle21e/rules
-gh pr create --title "cycle 21e — @cgrid/rules conditional styling + alerts core + kernel bridge" --body "$(cat <<'PR_EOF'
+gh pr create --title "cycle 21e — @wellsfargo-starui/velocity-grid-rules conditional styling + alerts core + kernel bridge" --body "$(cat <<'PR_EOF'
 ## Summary
 
-Cycle 21e ships `@cgrid/rules` — condition-driven conditional styling and the alerts core — plus the surgical kernel bridge and the `rule:<ruleId>` resolver that `@cgrid/format` reserved in Cycle 21c.
+Cycle 21e ships `@wellsfargo-starui/velocity-grid-rules` — condition-driven conditional styling and the alerts core — plus the surgical kernel bridge and the `rule:<ruleId>` resolver that `@wellsfargo-starui/velocity-grid-format` reserved in Cycle 21c.
 
 **Rule engine:**
 - `ConditionalStyleRule` / `IndicatorRule` with theme-aware `{ base, light, dark }` style slices, CSS-cascade precedence (priority asc, later overrides per-property), cell/row scope.
@@ -9042,17 +9042,17 @@ Cycle 21e ships `@cgrid/rules` — condition-driven conditional styling and the 
 
 - Spec: `docs/superpowers/specs/2026-07-01-cycle-21e-rules-design.md`
 - Plan: `docs/superpowers/plans/2026-07-01-cycle-21e-rules.md`
-- Predecessors: PR #93 (`@cgrid/expression`, 21b), PR #94 (`@cgrid/format`, 21c)
+- Predecessors: PR #93 (`@wellsfargo-starui/velocity-grid-expression`, 21b), PR #94 (`@wellsfargo-starui/velocity-grid-format`, 21c)
 
 ## Test plan
 
-- [ ] `npm --workspace @cgrid/rules run test:coverage` — full suite + coverage, all PASS
-- [ ] `npm --workspace @cgrid/kernel run test` — 2399 baseline preserved + new slot/fold/flash/event/memo tests
-- [ ] `npm --workspace @cgrid/format run test` — 158 baseline + resolver-accessor tests
-- [ ] `npm --workspace @cgrid/expression run test` — 185/185 (package untouched; `git diff main --stat -- packages/expression` empty)
+- [ ] `npm --workspace @wellsfargo-starui/velocity-grid-rules run test:coverage` — full suite + coverage, all PASS
+- [ ] `npm --workspace @wellsfargo-starui/velocity-grid run test` — 2399 baseline preserved + new slot/fold/flash/event/memo tests
+- [ ] `npm --workspace @wellsfargo-starui/velocity-grid-format run test` — 158 baseline + resolver-accessor tests
+- [ ] `npm --workspace @wellsfargo-starui/velocity-grid-expression run test` — 185/185 (package untouched; `git diff main --stat -- packages/expression` empty)
 - [ ] `npx turbo typecheck` 21/21 · `npx turbo lint` clean · `npx turbo build` 13/13
 - [ ] Showcase E2E: 121/121 (109 baseline + 12 new)
-- [ ] Kernel dist ≤ +2% vs 760.90 KB baseline; `grep -r "@cgrid/rules" packages/kernel/dist` → no matches
+- [ ] Kernel dist ≤ +2% vs 760.90 KB baseline; `grep -r "@wellsfargo-starui/velocity-grid-rules" packages/kernel/dist` → no matches
 - [ ] Zero static kernel imports in `packages/rules/src` (structural bridge only)
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)

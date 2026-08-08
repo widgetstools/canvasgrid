@@ -117,8 +117,8 @@ UI calls `previewPatches()` before applying — shows red/yellow/green counts in
 The grid-writer contract needs to map onto cgrid's worker-backed row updates:
 
 ```ts
-class CGridEditWriter implements EditGridWriter {
-  constructor(private grid: CGrid) {}
+class VelocityGridEditWriter implements EditGridWriter {
+  constructor(private grid: VelocityGrid) {}
   async applyTransactionAsync(updates: RowUpdate[]) {
     // route through worker; cgrid currently does this via `applyRowData` patches
   }
@@ -128,7 +128,7 @@ class CGridEditWriter implements EditGridWriter {
 }
 ```
 
-Things to verify in cgrid:
+Things to verify in velocity-grid:
 - Is there a stable `getRowById(rowId)` accessor today? (Likely — `getRowId` is in `initialOnlyOptions`.)
 - Does cgrid emit a "cell value changed" event with old + new value? Both conditional-styling and alerts will need this. If only the new value is exposed today, the worker needs a small change to surface the prior value too.
 - Worker round-trip cost: 50ms-ish for large `applyTransactionAsync` calls is fine; smart-edit batches make this a non-issue. Single-cell typed edits should be near-instant.

@@ -120,7 +120,7 @@ export class FlashRegistry {
   }
 
   /** Bulk variant — flashes every (rowId × colId) pair. Used by
-   *  `CGridApi.flashCells({rowIds, colIds})`. Same disabled / reduced-
+   *  `VelocityGridApi.flashCells({rowIds, colIds})`. Same disabled / reduced-
    *  motion gating as `flash()`. */
   flashMany(rowIds: readonly number[], colIds: readonly string[], now: number = performance.now()): void {
     if (this.destroyed) return;
@@ -241,7 +241,7 @@ export class FlashRegistry {
   }
 
   /** Damage-region rendering (Task 3) — active (non-expired) cell keys, for
-   *  the registry's repaint dep to hand `CGrid.repaintCells` an exact damage
+   *  the registry's repaint dep to hand `VelocityGrid.repaintCells` an exact damage
    *  set instead of a bare `requestRepaint()` (which the ledger would
    *  resolve to a full repaint). Cheap: one array per tick, sized to the
    *  live entry count (typically small — flashes fade out fast). */
@@ -251,7 +251,7 @@ export class FlashRegistry {
     // rAF while any entry is fading (up to ~1.5s of frames per flash
     // generation) via the `requestRepaint` dep, so this is a genuine
     // per-frame hot path, not a one-off. The returned array is handed
-    // straight to `CGrid.repaintCells` → `DamageLedger.add({kind:'cells'})`,
+    // straight to `VelocityGrid.repaintCells` → `DamageLedger.add({kind:'cells'})`,
     // which only reads it (never retains it past the next `takeResolved`),
     // so pooling the {rowId,colId} objects THEMSELVES across calls isn't
     // safe here — a skipped paint frame could leave a queued ledger entry

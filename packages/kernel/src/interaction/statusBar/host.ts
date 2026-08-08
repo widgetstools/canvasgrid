@@ -8,10 +8,10 @@
  *   ┌────────────────────────────────────────────────────────────┐
  *   │  ⟨ left zone ──── ⟩    ⟨ center zone ⟩    ⟨ ──── right ⟩    │
  *   └────────────────────────────────────────────────────────────┘
- *      .cg-status-bar
- *        .cg-status-bar-zone.cg-status-bar-zone--left
- *        .cg-status-bar-zone.cg-status-bar-zone--center
- *        .cg-status-bar-zone.cg-status-bar-zone--right
+ *      .vg-status-bar
+ *        .vg-status-bar-zone.vg-status-bar-zone--left
+ *        .vg-status-bar-zone.vg-status-bar-zone--center
+ *        .vg-status-bar-zone.vg-status-bar-zone--right
  *
  * The host knows nothing about the canvas. It reports its current
  * reserved-edge height to the grid via `ctx.setReservedSpace(side,
@@ -42,7 +42,7 @@ import type {
   StatusPanelDef,
 } from './types';
 
-/** Default bar height in CSS px. Mirrors `--cg-status-bar-height: 28px`
+/** Default bar height in CSS px. Mirrors `--vg-status-bar-height: 28px`
  *  in tokens.css and the design plan in cycle-13-statusbar-design.md.
  *  Used as the reservation height when `getBoundingClientRect()` returns
  *  0 (happy-dom under unit tests, pre-layout calls during mount). */
@@ -64,9 +64,9 @@ interface PanelSlot {
   originalRefresh: (() => void) | null;
 }
 
-/** Context handed to StatusBarHost by CGrid (or a test harness). Keeps
+/** Context handed to StatusBarHost by VelocityGrid (or a test harness). Keeps
  *  the host framework-agnostic: it can resolve panel ctors + thread
- *  geometry changes back without importing CGrid directly. */
+ *  geometry changes back without importing VelocityGrid directly. */
 export interface StatusBarGridContext {
   /** Registry that resolves panel-key strings to constructors. */
   registry: StatusPanelRegistry;
@@ -81,7 +81,7 @@ export interface StatusBarGridContext {
 
 export class StatusBarHost {
   private readonly root: HTMLElement;
-  /** `.cg-status-bar` appended to the grid root. */
+  /** `.vg-status-bar` appended to the grid root. */
   private readonly bar: HTMLDivElement;
   /** Three zone containers keyed by alignment. */
   private readonly zones: Record<StatusPanelAlign, HTMLDivElement>;
@@ -118,7 +118,7 @@ export class StatusBarHost {
     this.visible = !this.def.hiddenByDefault;
 
     this.bar = document.createElement('div');
-    this.bar.className = 'cg-status-bar';
+    this.bar.className = 'vg-status-bar';
     this.bar.dataset.position = this.def.position;
 
     this.zones = {
@@ -303,7 +303,7 @@ export class StatusBarHost {
 
   private buildZone(align: StatusPanelAlign): HTMLDivElement {
     const zone = document.createElement('div');
-    zone.className = `cg-status-bar-zone cg-status-bar-zone--${align}`;
+    zone.className = `vg-status-bar-zone vg-status-bar-zone--${align}`;
     zone.dataset.zone = align;
     return zone;
   }
@@ -341,7 +341,7 @@ export class StatusBarHost {
    *  same callback drains the whole pending set. When the host has
    *  been destroyed the call is a no-op. When `requestAnimationFrame`
    *  is missing (some Node-only test envs), we flush synchronously —
-   *  matches the cell-flash loop's fallback in `cgrid.ts`. */
+   *  matches the cell-flash loop's fallback in `velocityGrid.ts`. */
   private scheduleRefresh(slot: PanelSlot): void {
     if (this.destroyed) return;
     if (!slot.instance || !slot.originalRefresh) return;
@@ -407,7 +407,7 @@ export function defaultStatusBarDef(): StatusBarDef {
   };
 }
 
-/** Resolve `CGridOptions.statusBar` (which accepts loose shapes —
+/** Resolve `VelocityGridOptions.statusBar` (which accepts loose shapes —
  *  `boolean | StatusBarDef`) into a canonical `StatusBarDef`, or `null`
  *  when the option is off. Mirrors `normalizeSideBarOption`'s acceptance
  *  shape so apps that flip both surfaces feel consistent.

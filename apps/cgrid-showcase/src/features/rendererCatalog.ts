@@ -1,7 +1,7 @@
-import { CGrid } from '@cgrid/kernel';
-import type { CColDef } from '@cgrid/kernel';
-import { RENDERER_NAMES, type RendererName } from '@cgrid/renderers';
-import type { RenderersColDefBuilders } from '@cgrid/renderers';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
+import type { CColDef } from '@wellsfargo-starui/velocity-grid';
+import { RENDERER_NAMES, type RendererName } from '@wellsfargo-starui/velocity-grid-renderers';
+import type { RenderersColDefBuilders } from '@wellsfargo-starui/velocity-grid-renderers';
 import type { Feature } from './index';
 import { wireShowcaseRenderers } from './renderersWire';
 
@@ -415,11 +415,11 @@ export const rendererCatalog: Feature = {
   id: 'renderer-catalog',
   label: 'Renderer Catalog',
   description:
-    'Cycle 21f — all 51 @cgrid/renderers painters in one horizontally scrollable ' +
+    'Cycle 21f — all 51 @wellsfargo-starui/velocity-grid-renderers painters in one horizontally scrollable ' +
     'catalog row (one column per canonical name).',
 
   mount(gridHost, controls, theme) {
-    const grid = new CGrid<CatalogRow>(gridHost, {
+    const grid = new VelocityGrid<CatalogRow>(gridHost, {
       getRowId: (r) => r.id,
       columnDefs: [],
       theme,

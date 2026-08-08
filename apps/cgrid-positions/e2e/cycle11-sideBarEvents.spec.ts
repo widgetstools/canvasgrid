@@ -28,7 +28,7 @@
 import { test, expect, Page } from '@playwright/test';
 
 const GRID_SELECTOR = '#grid canvas';
-const TAB_SELECTOR = '.cg-side-bar-tab';
+const TAB_SELECTOR = '.vg-side-bar-tab';
 
 async function waitForFrames(page: Page, n = 6): Promise<void> {
   await page.evaluate(
@@ -59,7 +59,7 @@ async function gridReady(page: Page): Promise<void> {
  *  doesn't strand prior captures or break the handlers. */
 async function attachEventRecorder(page: Page): Promise<void> {
   await page.evaluate(() => {
-    const grid = (window as unknown as { __cgrid: { on: (t: string, h: (e: unknown) => void) => () => void } }).__cgrid;
+    const grid = (window as unknown as { __velocity-grid: { on: (t: string, h: (e: unknown) => void) => () => void } }).__cgrid;
     (window as unknown as { __cgridEvents: unknown[] }).__cgridEvents = [];
     const push = (e: unknown) => {
       ((window as unknown as { __cgridEvents: unknown[] }).__cgridEvents).push(e);
@@ -164,7 +164,7 @@ test.describe('Cycle 11 / Task 7 — side bar events', () => {
 
     await page.evaluate(() => {
       const api = (window as unknown as {
-        __cgrid: { openToolPanel: (id: string) => void };
+        __velocity-grid: { openToolPanel: (id: string) => void };
       }).__cgrid;
       api.openToolPanel('agColumnsToolPanel');
     });
@@ -184,7 +184,7 @@ test.describe('Cycle 11 / Task 7 — side bar events', () => {
     await gridReady(page);
     await page.evaluate(() => {
       const api = (window as unknown as {
-        __cgrid: { openToolPanel: (id: string) => void };
+        __velocity-grid: { openToolPanel: (id: string) => void };
       }).__cgrid;
       api.openToolPanel('agColumnsToolPanel');
     });
@@ -195,7 +195,7 @@ test.describe('Cycle 11 / Task 7 — side bar events', () => {
 
     await page.evaluate(() => {
       const api = (window as unknown as {
-        __cgrid: { closeToolPanel: () => void };
+        __velocity-grid: { closeToolPanel: () => void };
       }).__cgrid;
       api.closeToolPanel();
     });
@@ -218,7 +218,7 @@ test.describe('Cycle 11 / Task 7 — side bar events', () => {
 
     await page.evaluate(() => {
       const api = (window as unknown as {
-        __cgrid: { setSideBarVisible: (show: boolean) => void };
+        __velocity-grid: { setSideBarVisible: (show: boolean) => void };
       }).__cgrid;
       api.setSideBarVisible(false);
       api.setSideBarVisible(true);
@@ -252,7 +252,7 @@ test.describe('Cycle 11 / Task 7 — side bar events', () => {
 
     await page.evaluate(() => {
       const api = (window as unknown as {
-        __cgrid: { setSideBarVisible: (show: boolean) => void };
+        __velocity-grid: { setSideBarVisible: (show: boolean) => void };
       }).__cgrid;
       api.setSideBarVisible(false);
     });

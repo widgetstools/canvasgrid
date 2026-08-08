@@ -12,7 +12,7 @@
 //      via `resolveDrop()` + `commitDrop()` (T3), calling
 //      `api.moveColumnToGroup` / `api.moveColumnGroup`.
 
-import type { CColDef, CColGroupDef, CGridApi, CColumnState } from '../../../types';
+import type { CColDef, CColGroupDef, VelocityGridApi, CColumnState } from '../../../types';
 import type {
   IToolPanelColumnCompParams,
 } from '../types';
@@ -76,7 +76,7 @@ export interface ColumnsPanelResolvedDrop {
  *  lets the row-drag orchestrator route into whatever zones the shell
  *  currently has mounted (row groups / column labels / values). */
 export interface ColumnVisibilityPanelDeps {
-  api: CGridApi;
+  api: VelocityGridApi;
   params: IToolPanelColumnCompParams;
   resolveLabel(colId: string): string;
   rootHost: HTMLElement;
@@ -113,15 +113,15 @@ export class ColumnVisibilityPanel {
   constructor(deps: ColumnVisibilityPanelDeps) {
     this.deps = deps;
     // The shell appends the search row + list DIRECTLY to
-    // `.cg-columns-panel` so the CSS flex layout — `.cg-columns-panel`
-    // is column-flex; `.cg-columns-panel-list` claims the remaining
+    // `.vg-columns-panel` so the CSS flex layout — `.vg-columns-panel`
+    // is column-flex; `.vg-columns-panel-list` claims the remaining
     // vertical space via `flex: 2 1 0` so the zone sections pin to the
     // bottom — works unchanged. Wrapping search + list in an extra
     // container breaks that flex chain (the wrapper would default to
     // `flex: 0 0 auto` and collapse the list).
     this.searchRow = deps.params.suppressColumnFilter ? null : this.buildSearchRow();
     this.listEl = document.createElement('div');
-    this.listEl.className = 'cg-columns-panel-list cg-scrollbar';
+    this.listEl.className = 'vg-columns-panel-list vg-scrollbar';
     this.buildRows();
     this.syncSelectAll();
 
@@ -171,7 +171,7 @@ export class ColumnVisibilityPanel {
   }
 
   /** Append the panel's DOM (search row + list) directly to the shell's
-   *  `.cg-columns-panel` root so the CSS flex chain reaches the list. */
+   *  `.vg-columns-panel` root so the CSS flex chain reaches the list. */
   appendTo(root: HTMLElement): void {
     if (this.searchRow) root.appendChild(this.searchRow);
     root.appendChild(this.listEl);
@@ -200,10 +200,10 @@ export class ColumnVisibilityPanel {
 
   private buildSearchRow(): HTMLElement {
     const row = document.createElement('div');
-    row.className = 'cg-columns-panel-search';
+    row.className = 'vg-columns-panel-search';
     const cb = document.createElement('input');
     cb.type = 'checkbox';
-    cb.className = 'cg-columns-panel-select-all';
+    cb.className = 'vg-checkbox vg-columns-panel-select-all';
     cb.setAttribute('aria-label', 'Select all columns');
     cb.addEventListener('change', () => {
       const makeVisible = cb.checked;
@@ -217,9 +217,9 @@ export class ColumnVisibilityPanel {
     this.selectAllCb = cb;
     row.appendChild(cb);
     const wrap = document.createElement('div');
-    wrap.className = 'cg-columns-panel-search-wrap';
+    wrap.className = 'vg-columns-panel-search-wrap';
     const icon = document.createElement('span');
-    icon.className = 'cg-columns-panel-search-icon';
+    icon.className = 'vg-columns-panel-search-icon';
     icon.setAttribute('aria-hidden', 'true');
     const input = document.createElement('input');
     input.type = 'search';
@@ -267,7 +267,7 @@ export class ColumnVisibilityPanel {
   // depth-first) rather than the flat `getColumnState()` list, appending
   // ONE row per node — group or leaf — directly to `this.listEl` in
   // visitation order. There is no nested DOM container per group; every
-  // row is a flat sibling and indentation is purely a `--cg-indent` CSS
+  // row is a flat sibling and indentation is purely a `--vg-indent` CSS
   // custom property, exactly like the pre-existing colgroups authoring
   // panel's row family.
 
@@ -275,7 +275,7 @@ export class ColumnVisibilityPanel {
     const state = this.deps.api.getColumnState();
     const stateById = new Map(state.map((s) => [s.colId, s]));
     // Normalize BEFORE rendering — `ensureGroupIds` synthesizes the SAME
-    // `cg-grp-N` ids the mutation core (`columnGroupMutation.ts`)
+    // `vg-grp-N` ids the mutation core (`columnGroupMutation.ts`)
     // synthesizes internally, so a `data-group-id` rendered here is always
     // a valid `moveColumnToGroup`/`moveColumnGroup` target, even for a
     // group authored without an explicit `groupId`.
@@ -343,9 +343,9 @@ export class ColumnVisibilityPanel {
 
   private buildRow(entry: CColumnState, depth: number): LeafPanelRow {
     const el = document.createElement('div');
-    el.className = 'cg-columns-panel-row';
+    el.className = 'vg-columns-panel-row';
     el.dataset.colId = entry.colId;
-    el.style.setProperty('--cg-indent', String(depth));
+    el.style.setProperty('--vg-indent', String(depth));
 
     // Cycle 21i / Phase 1 — row layout is grip → label → checkbox (right),
     // moving away from the AG-style checkbox-left row. The checkbox stays a
@@ -353,20 +353,20 @@ export class ColumnVisibilityPanel {
     // select-all logic that reads `.checked` is unchanged.
     if (!this.deps.params.suppressColumnMove) {
       const handle = document.createElement('span');
-      handle.className = 'cg-columns-panel-row-handle';
+      handle.className = 'vg-columns-panel-row-handle';
       handle.setAttribute('aria-hidden', 'true');
       handle.addEventListener('mousedown', (e) => this.beginRowDrag(e, entry.colId, 'col'));
       el.appendChild(handle);
     }
 
     const label = document.createElement('span');
-    label.className = 'cg-columns-panel-row-label';
+    label.className = 'vg-columns-panel-row-label';
     label.textContent = this.deps.resolveLabel(entry.colId);
     el.appendChild(label);
 
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
-    checkbox.className = 'cg-columns-panel-row-checkbox';
+    checkbox.className = 'vg-checkbox vg-columns-panel-row-checkbox';
     checkbox.checked = this.computeRowChecked(entry);
     checkbox.setAttribute('aria-label', this.deps.resolveLabel(entry.colId));
     checkbox.addEventListener('click', (e) => {
@@ -380,7 +380,7 @@ export class ColumnVisibilityPanel {
     // not just the checkbox.
     el.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
-      if (target === checkbox || target.classList.contains('cg-columns-panel-row-handle')) return;
+      if (target === checkbox || target.classList.contains('vg-columns-panel-row-handle')) return;
       checkbox.checked = !checkbox.checked;
       this.handleRowCheckboxClick(entry.colId, checkbox);
     });
@@ -400,13 +400,13 @@ export class ColumnVisibilityPanel {
     stateById: Map<string, CColumnState>,
   ): GroupPanelRow {
     const el = document.createElement('div');
-    el.className = 'cg-columns-panel-row cg-columns-panel-row--group';
+    el.className = 'vg-columns-panel-row vg-columns-panel-row--group';
     el.dataset.groupId = groupId;
-    el.style.setProperty('--cg-indent', String(depth));
+    el.style.setProperty('--vg-indent', String(depth));
 
     if (!this.deps.params.suppressColumnMove) {
       const handle = document.createElement('span');
-      handle.className = 'cg-columns-panel-row-handle';
+      handle.className = 'vg-columns-panel-row-handle';
       handle.setAttribute('aria-hidden', 'true');
       handle.addEventListener('mousedown', (e) => this.beginRowDrag(e, groupId, 'group'));
       el.appendChild(handle);
@@ -414,7 +414,7 @@ export class ColumnVisibilityPanel {
 
     const caret = document.createElement('button');
     caret.type = 'button';
-    caret.className = 'cg-columns-panel-row-caret';
+    caret.className = 'vg-columns-panel-row-caret';
     // Horizontal disclosure caret, one vocabulary with the grid's
     // column-group header band: chevron-left when open (click collapses);
     // the stylesheet rotates it 180° into chevron-right when collapsed.
@@ -431,7 +431,7 @@ export class ColumnVisibilityPanel {
     });
 
     const label = document.createElement('span');
-    label.className = 'cg-columns-panel-row-label';
+    label.className = 'vg-columns-panel-row-label';
     label.textContent = node.headerName && node.headerName.length > 0 ? node.headerName : groupId;
     // Caption first, caret trailing it (grid header-band order).
     el.appendChild(label);
@@ -439,7 +439,7 @@ export class ColumnVisibilityPanel {
 
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
-    checkbox.className = 'cg-columns-panel-row-checkbox';
+    checkbox.className = 'vg-checkbox vg-columns-panel-row-checkbox';
     checkbox.setAttribute('aria-label', `Toggle all columns in ${label.textContent}`);
     checkbox.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -757,8 +757,8 @@ export class ColumnVisibilityPanel {
       dropLine = null;
       if (dropTargetEl) {
         dropTargetEl.classList.remove(
-          'cg-columns-panel-row--drop-target',
-          'cg-columns-panel-row--drop-reject',
+          'vg-columns-panel-row--drop-target',
+          'vg-columns-panel-row--drop-reject',
         );
         dropTargetEl = null;
       }
@@ -782,11 +782,11 @@ export class ColumnVisibilityPanel {
         lineTop = last ? last.getBoundingClientRect().bottom : listRect.top;
       }
       const line = document.createElement('div');
-      line.className = 'cg-columns-panel-drop-line';
+      line.className = 'vg-columns-panel-drop-line';
       line.style.left = `${listRect.left}px`;
       line.style.width = `${listRect.width}px`;
       line.style.top = `${Math.round(lineTop)}px`;
-      const themeHost = this.deps.rootHost.closest<HTMLElement>('[class*="cg-theme"]') ?? document.body;
+      const themeHost = this.deps.rootHost.closest<HTMLElement>('[class*="vg-theme"]') ?? document.body;
       themeHost.appendChild(line);
       dropLine = line;
 
@@ -795,7 +795,7 @@ export class ColumnVisibilityPanel {
         if (groupRow) {
           const rejected = this.isRejectedDrop(resolved);
           groupRow.el.classList.add(
-            rejected ? 'cg-columns-panel-row--drop-reject' : 'cg-columns-panel-row--drop-target',
+            rejected ? 'vg-columns-panel-row--drop-reject' : 'vg-columns-panel-row--drop-target',
           );
           dropTargetEl = groupRow.el;
         }
@@ -808,7 +808,7 @@ export class ColumnVisibilityPanel {
         const dy = ev.clientY - startY;
         if (Math.abs(dx) < DRAG_THRESHOLD_PX && Math.abs(dy) < DRAG_THRESHOLD_PX) return;
         dragStarted = true;
-        row.el.classList.add('cg-columns-panel-row--lifted');
+        row.el.classList.add('vg-columns-panel-row--lifted');
         ghost.mount(ev.clientX, ev.clientY);
       }
 
@@ -923,7 +923,7 @@ export class ColumnVisibilityPanel {
     };
 
     const onUp = (ev: MouseEvent) => {
-      row.el.classList.remove('cg-columns-panel-row--lifted');
+      row.el.classList.remove('vg-columns-panel-row--lifted');
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
       ghost.remove();
@@ -967,7 +967,7 @@ export class ColumnVisibilityPanel {
       try {
         this.commitDrop(resolved);
       } catch (err) {
-        console.error('[cg-columns-panel] group-aware drop commit failed', err);
+        console.error('[vg-columns-panel] group-aware drop commit failed', err);
       }
     };
 
@@ -1085,7 +1085,7 @@ export class ColumnVisibilityPanel {
    *  API. Public (not just test-only) so `beginRowDrag`'s `onUp` and
    *  direct callers (tests) share one commit path. A no-op resolution
    *  (unknown ids / `marryChildren` guard / already-there) is silently
-   *  absorbed by the underlying API (see `CGridApi.moveColumnToGroup` /
+   *  absorbed by the underlying API (see `VelocityGridApi.moveColumnToGroup` /
    *  `moveColumnGroup`) — nothing to catch here. */
   commitDrop(resolved: ColumnsPanelResolvedDrop): void {
     if (resolved.kind === 'group') {

@@ -1,6 +1,6 @@
-# @cgrid/customizer — UI Addon Package Spec
+# @wellsfargo-starui/velocity-grid-customizer — UI Addon Package Spec
 
-This folder documents the **UI editors** (panels, dialogs, toolbars) that ship as the `@cgrid/customizer` addon package. The addon consumes cgrid's public API to drive every customizer feature; it does not reach into cgrid internals.
+This folder documents the **UI editors** (panels, dialogs, toolbars) that ship as the `@wellsfargo-starui/velocity-grid-customizer` addon package. The addon consumes cgrid's public API to drive every customizer feature; it does not reach into cgrid internals.
 
 The companion folder [../starui-customizer/](../starui-customizer/) documents the **engine layer** that lives in `cgrid` core and defines the public API this addon depends on. Read that first — the engine API is the contract these editors target.
 
@@ -15,16 +15,16 @@ This is **a separate package** from cgrid core:
 | Package | Contains | Dependencies | License |
 |---|---|---|---|
 | **`cgrid`** (core) | Engine layer + public API. See [../starui-customizer/](../starui-customizer/). | Vanilla TS, zero UI framework | MIT |
-| **`@cgrid/customizer`** (addon) | Everything in this folder: panels, dialogs, toolbars, shared editor primitives. | Lit + Web Awesome + `cgrid` | TBD (can be commercial — AG Grid Enterprise model) |
+| **`@wellsfargo-starui/velocity-grid-customizer`** (addon) | Everything in this folder: panels, dialogs, toolbars, shared editor primitives. | Lit + Web Awesome + `cgrid` | TBD (can be commercial — AG Grid Enterprise model) |
 
 The addon imports cgrid like any third-party consumer:
 
 ```ts
-// @cgrid/customizer/src/panels/conditional-styling.ts
-import { ExpressionEngine, type ConditionalRule } from '@cgrid/kernel';
+// @wellsfargo-starui/velocity-grid-customizer/src/panels/conditional-styling.ts
+import { ExpressionEngine, type ConditionalRule } from '@wellsfargo-starui/velocity-grid';
 
 // NOT allowed:
-// import { something } from '@cgrid/kernel/src/core/internal/...';
+// import { something } from '@wellsfargo-starui/velocity-grid/src/core/internal/...';
 ```
 
 ## API-first build discipline
@@ -32,7 +32,7 @@ import { ExpressionEngine, type ConditionalRule } from '@cgrid/kernel';
 **Build the customizer as if you didn't write cgrid.** Treat cgrid as a third-party dependency at the boundary, even though both packages live in the same monorepo:
 
 1. **No deep imports.** Import only from `cgrid` — never from `cgrid/src/...` or `cgrid/internal/...`. Enforce with tsconfig `paths` restrictions + an ESLint `no-restricted-imports` rule. Make CI fail on violations.
-2. **Block private types.** If `@cgrid/customizer` needs a type that isn't exported from `cgrid`, *do not copy it locally* and do not reach in. Open a PR against cgrid that adds the export. The friction is the point — it surfaces API gaps before they become integration debt.
+2. **Block private types.** If `@wellsfargo-starui/velocity-grid-customizer` needs a type that isn't exported from `cgrid`, *do not copy it locally* and do not reach in. Open a PR against cgrid that adds the export. The friction is the point — it surfaces API gaps before they become integration debt.
 3. **Test against the built artifact, not source.** Symlink during dev for fast iteration, but CI installs the publishable cgrid package and runs the addon against that. Catches accidental internal-import leaks before publish.
 4. **API contract lives in cgrid, not the addon.** Cgrid's `api.ts` + TSDoc on the exported types are the spec; the addon implements against that spec. Don't document API behavior in the addon's code — link to cgrid's docs.
 

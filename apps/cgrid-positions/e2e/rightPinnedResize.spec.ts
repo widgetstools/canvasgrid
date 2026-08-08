@@ -36,7 +36,7 @@ test.describe('right-pinned column resize via left-edge drag', () => {
     await gridReady(page);
 
     const before = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApi }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApi }).__cgrid;
       return grid.getHeaderBoundsAt('pnl');
     });
     expect(before).not.toBeNull();
@@ -59,7 +59,7 @@ test.describe('right-pinned column resize via left-edge drag', () => {
     await page.mouse.up();
 
     const after = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApi }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApi }).__cgrid;
       return grid.getHeaderBoundsAt('pnl');
     });
     expect(after).not.toBeNull();

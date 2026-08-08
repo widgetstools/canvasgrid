@@ -1,7 +1,7 @@
 /**
  * Grid Layouts / column-group-drag feature — Task 1.
  *
- * Proves the end-to-end wiring on a REAL CGrid: a press-and-drag on a
+ * Proves the end-to-end wiring on a REAL VelocityGrid: a press-and-drag on a
  * column-GROUP header (a `headerGroup` hit from the production
  * `HitTester`) reorders/re-nests the whole group via `moveColumnGroup` —
  * the SAME primitive the Columns tool panel's hierarchy drag already
@@ -14,14 +14,14 @@
  * would run them — not a hand-rolled mock. Coordinates are derived from
  * the grid's own live layout (`columnLeftOf` / `columnWidthOf` /
  * `getLeafHeaderTop`, reached via the internal `featureChain.grid`
- * `CGridLike` surface — the exact object `FeatureChain` dispatches into)
+ * `VelocityGridLike` surface — the exact object `FeatureChain` dispatches into)
  * rather than hard-coded pixel assumptions, so the test stays correct if
  * default column widths ever change.
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import type { CColDef, CColGroupDef } from '../src/types';
-import type { CGridLike } from '../src/interaction/feature';
+import type { VelocityGridLike } from '../src/interaction/feature';
 
 beforeAll(() => {
   (globalThis as any).Worker = class {
@@ -51,15 +51,15 @@ beforeAll(() => {
 
 async function mount(
   columnDefs: (CColDef<{ id: string }> | CColGroupDef<{ id: string }>)[],
-): Promise<CGrid<{ id: string }>> {
+): Promise<VelocityGrid<{ id: string }>> {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
-  const grid = new CGrid<{ id: string }>(container, {
+  const grid = new VelocityGrid<{ id: string }>(container, {
     columnDefs,
     getRowId: (r) => r.id,
-    theme: 'cg-theme-quartz',
+    theme: 'vg-theme-quartz',
   });
   const w = (grid as any).workerClient.worker;
   w.listeners.forEach((cb: any) => cb({ data: { id: 1, type: 'ready' } }));
@@ -76,16 +76,16 @@ async function mount(
   return grid;
 }
 
-/** The `CGridLike` surface `FeatureChain` was constructed with — reached
+/** The `VelocityGridLike` surface `FeatureChain` was constructed with — reached
  *  via the same "test-only escape hatch" pattern other integration tests
  *  use for private fields (e.g. `(grid as any).workerClient.worker`).
  *  Gives the test real `columnLeftOf` / `columnWidthOf` / `getLeafHeaderTop`
  *  so drag coordinates are derived from the grid's actual live layout. */
-function gridLike(grid: CGrid<any>): CGridLike {
-  return (grid as any).featureChain.grid as CGridLike;
+function gridLike(grid: VelocityGrid<any>): VelocityGridLike {
+  return (grid as any).featureChain.grid as VelocityGridLike;
 }
 
-function centerOf(grid: CGrid<any>, colId: string): number {
+function centerOf(grid: VelocityGrid<any>, colId: string): number {
   const gl = gridLike(grid);
   const left = gl.columnLeftOf(colId);
   const width = gl.columnWidthOf(colId);
@@ -98,7 +98,7 @@ function centerOf(grid: CGrid<any>, colId: string): number {
  *  `featureChain.test.ts`) dispatches them: `mousedown` on the canvas,
  *  `mousemove`/`mouseup` on `window` (matching FeatureChain's own
  *  window-level drag-tracking listeners). */
-function dragHeader(grid: CGrid<any>, startX: number, y: number, endX: number): void {
+function dragHeader(grid: VelocityGrid<any>, startX: number, y: number, endX: number): void {
   const canvas: HTMLCanvasElement = (grid as any).cgridCanvas.canvas;
   canvas.dispatchEvent(new MouseEvent('mousedown', { clientX: startX, clientY: y, bubbles: true, button: 0 }));
   // First move past the 4px drag threshold so ColumnDrag promotes
@@ -111,7 +111,7 @@ function dragHeader(grid: CGrid<any>, startX: number, y: number, endX: number): 
 /** Top-level `columnDefs` entry ids in declaration order — groups by
  *  `groupId`, leaves by `colId`/`field` — mirroring the brief's
  *  `d.groupId ?? (d.colId ?? d.field)` mapping. */
-function topLevelIds(grid: CGrid<any>): string[] {
+function topLevelIds(grid: VelocityGrid<any>): string[] {
   return grid.getColumnGroupDefs().map((d: any) => d.groupId ?? (d.colId ?? d.field));
 }
 

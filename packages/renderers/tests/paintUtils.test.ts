@@ -1,4 +1,4 @@
-// @cgrid/renderers — paintUtils tests (Cycle 21f / Task 2).
+// @wellsfargo-starui/velocity-grid-renderers — paintUtils tests (Cycle 21f / Task 2).
 //
 // TDD: these tests are written BEFORE the implementations to prove RED → GREEN.
 // `gc.calls` assertions verify draw ORDER not just individual mock invocations.

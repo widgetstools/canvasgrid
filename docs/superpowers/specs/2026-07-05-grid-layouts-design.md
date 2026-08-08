@@ -52,9 +52,9 @@ state, not in templates.
 
 ## 3. Styling model (templates + conditional rules)
 
-### 3.1 Templates (static styling/attributes) — already ~80% in `@cgrid/calc`
+### 3.1 Templates (static styling/attributes) — already ~80% in `@wellsfargo-starui/velocity-grid-calc`
 
-`@cgrid/calc` already implements this and is the basis:
+`@wellsfargo-starui/velocity-grid-calc` already implements this and is the basis:
 - `ColumnTemplate = { id, name, overrides }`, `overrides` ⊆
   `{ format, cellRenderer, editable, hide, width, cellStyle }` — **`headerName` is excluded**
   (caption is column-unique, per §2).
@@ -103,14 +103,14 @@ interface ConditionalRule {
 - Rules are a **layout-tier module** — each layout has its own rule set.
 
 > **Implementation reconciliation (Phase C, 2026-07-05):** this `ConditionalRule` was NOT built
-> as a new subsystem. The already-shipped `@cgrid/rules` package (Cycle 21e) already provides the
-> expression→style engine (`compileCondition`/`watchedColIds` on the shared `@cgrid/expression`
+> as a new subsystem. The already-shipped `@wellsfargo-starui/velocity-grid-rules` package (Cycle 21e) already provides the
+> expression→style engine (`compileCondition`/`watchedColIds` on the shared `@wellsfargo-starui/velocity-grid-expression`
 > AST; `evaluateCell` truthiness) AND the kernel render fold (`registerRuleEngine` →
 > `ruleEngineSlot` → `applyCellProps` step 3.5, exactly the precedence above). Phase C RECONCILED
 > onto it (worklog "reconcile, don't fork"): this `ConditionalRule` is realized by 21e's
 > `StyleRule` (`condition`/`scope:{cell|row}`/theme-aware `style`, a functional superset that adds
 > flash/indicator/valueFormatter/activeDurationMs). The net-new work was persistence + the API: a
-> layout-tier `rules` state module (C1) + the `CGridApi` rules methods + `rulesChanged` (C3). The
+> layout-tier `rules` state module (C1) + the `VelocityGridApi` rules methods + `rulesChanged` (C3). The
 > module envelope is versioned (`version: 1`), so migrating the persisted shape toward this leaner
 > `{expression,target,style,priority}` later has a hook.
 
@@ -201,14 +201,14 @@ overrides them.
 
 Today only `columnGroups` (layout) and `editSettings` (grid) are registered state modules.
 This feature additionally requires registering, as state modules:
-- **`templates`** (grid-tier) — the calc column-template library (`@cgrid/calc` already holds
+- **`templates`** (grid-tier) — the calc column-template library (`@wellsfargo-starui/velocity-grid-calc` already holds
   the defs + `foldTemplateChain`; wrap its templates/overrides as a snapshot/restore module).
 - **`calc`** (layout-tier) — calculated-column definitions from `CalcEngine` (not currently
   in `GridState`).
 - **`rules`** (layout-tier) — the new conditional-styling rule store (§3.2).
 
 The template-assignment normalization (columns store `templateIds`; editing writes to the
-column's own template) also lands in `@cgrid/calc`, extending its existing override model so
+column's own template) also lands in `@wellsfargo-starui/velocity-grid-calc`, extending its existing override model so
 the inline per-column override layer becomes the column's own auto-template.
 
 If any of these grow beyond a thin wrapper, they are sequenced as their own plan tasks; the
@@ -225,7 +225,7 @@ and option/editing overrides), and the styling slices light up as their modules 
 - `saveLayout` / `updateLayout` capture `overrides.gridOptions` from `runtimeTouchedOptions`.
 - Only runtime-mutable keys participate (enforced by `setGridOption`).
 
-## 8. API surface (on `CGridApi`)
+## 8. API surface (on `VelocityGridApi`)
 
 Layout management:
 - `getLayouts()`, `getActiveLayoutId()`, `getActiveLayout()`
@@ -257,7 +257,7 @@ Events:
 - Cannot be deleted; id `'default'` fixed (display name editable, must stay unique).
 - Fresh grid with no persisted layouts → `layouts: [Default]`, active `'default'`.
 
-## 10. Construction options (`CGridOptions`)
+## 10. Construction options (`VelocityGridOptions`)
 
 - `layouts?: GridLayout[]`, `activeLayoutId?: string`
 - `templates?: ColumnTemplate[]` (seed the library; calc already accepts `templates`)
@@ -318,9 +318,9 @@ Integration (customizer-demo, browser-verified):
 ## 15. Open implementation notes
 
 - New `core/layoutManager.ts` owns the layouts registry, active id, baseline retention, tier
-  filtering, and persistence-bundle assembly; CGrid delegates API methods to it via thin
+  filtering, and persistence-bundle assembly; VelocityGrid delegates API methods to it via thin
   accessors (getState/setState, runtimeTouchedOptions, module snapshot/restore, baseline).
-- Templates + assignments extend the existing `@cgrid/calc` engine (`ColumnTemplate`,
+- Templates + assignments extend the existing `@wellsfargo-starui/velocity-grid-calc` engine (`ColumnTemplate`,
   `ColumnOverride.templateIds`, `foldTemplateChain`); the plan reconciles the exact bridge
   API rather than inventing a parallel one.
 - Conditional-rules render application layers over the template-resolved base in the painter

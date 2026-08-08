@@ -42,7 +42,7 @@ async function mountAndSeed(page: Page, urlSuffix: string): Promise<void> {
   await waitForFrames(page, 6);
 
   await page.evaluate(() => {
-    const g = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+    const g = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
     const rows: Array<Record<string, unknown>> = [];
     const TICKERS = ['AAPL', 'MSFT'];
     for (let i = 0; i < 10; i++) {
@@ -70,7 +70,7 @@ async function mountAndSeed(page: Page, urlSuffix: string): Promise<void> {
 
 async function displayedCount(page: Page): Promise<number> {
   return page.evaluate(() =>
-    (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getDisplayedRowCount());
+    (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getDisplayedRowCount());
 }
 
 test.describe('grandTotalRow pinned variants', () => {

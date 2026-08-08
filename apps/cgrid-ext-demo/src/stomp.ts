@@ -27,6 +27,9 @@ export interface StompCallbacks {
   onSnapshot: (rows: StompRow[]) => void;
   onLiveUpdate: (updates: StompRow[]) => void;
   onPhase: (phase: 'connecting' | 'snapshot' | 'live' | 'error' | 'disconnected') => void;
+  /** Fired while buffering snapshot batches — `loaded` grows; `total` is
+   *  the requested snapshot size when known. */
+  onSnapshotProgress?: (loaded: number, total: number) => void;
 }
 
 /** Testbed knobs — full 20k server snapshot by default. `?stress=light`
@@ -145,6 +148,7 @@ export function connectStomp(cb: StompCallbacks) {
             snapshotBuffer.push({ ...row, positionId: String(row.positionId) } as StompRow);
           }
         }
+        cb.onSnapshotProgress?.(snapshotBuffer.length, DEFAULTS.snapshotRows);
         return;
       }
 

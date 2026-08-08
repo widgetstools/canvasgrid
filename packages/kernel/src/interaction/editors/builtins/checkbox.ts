@@ -10,18 +10,18 @@ export class CheckboxCellEditor implements ICellEditor<unknown, boolean> {
     this.params = params;
     const input = document.createElement('input');
     input.type = 'checkbox';
-    input.className = 'cg-cell-editor cg-cell-editor--checkbox';
+    input.className = 'vg-checkbox vg-cell-editor vg-cell-editor--checkbox';
     input.checked = Boolean(params.value);
     input.style.cssText =
       'box-sizing:border-box; margin:0; padding:0; ' +
-      'outline:2px solid var(--cg-focus-ring-color, #4a90e2);';
+      'outline:2px solid var(--vg-focus-ring-color, #4a90e2);';
     // The `<input type="checkbox">` is intrinsically sized (~13px) and won't
     // stretch to fill the wrapper EditorOverlay mounts at the cell's full
     // pixel rect — so it defaults to the top-left corner. Wrap it in a
     // flex-centered container so the editor visually replaces the canvas-
     // painted 14×14 checkbox at the same centered position.
     const wrapper = document.createElement('div');
-    wrapper.className = 'cg-cell-editor--checkbox-wrapper';
+    wrapper.className = 'vg-cell-editor--checkbox-wrapper';
     wrapper.style.cssText =
       'display:flex; align-items:center; justify-content:center; ' +
       'width:100%; height:100%;';

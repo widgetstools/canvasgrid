@@ -1,8 +1,8 @@
-import { CGrid } from '@cgrid/kernel';
-import type { CColDef } from '@cgrid/kernel';
-import { wireIntoKernel as wireFormat } from '@cgrid/format';
-import { wireIntoKernel as wireCalc } from '@cgrid/calc';
-import type { CalcEngine, CalculatedColumnDef } from '@cgrid/calc';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
+import type { CColDef } from '@wellsfargo-starui/velocity-grid';
+import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid-format';
+import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid-calc';
+import type { CalcEngine, CalculatedColumnDef } from '@wellsfargo-starui/velocity-grid-calc';
 import type { Feature } from './index';
 
 /**
@@ -74,7 +74,7 @@ const START_ROWS: PositionRow[] = [
 // numericCols vs textCols storage and left-align-text vs number cell
 // rendering; the paint path only invokes the compiled `valueFormatter`
 // for numericCols-backed (cellDataType 'number') columns
-// (cgrid.ts:cellAt's `numeric` branch calls `formatNumber`; the `text`
+// (velocityGrid.ts:cellAt's `numeric` branch calls `formatNumber`; the `text`
 // branch renders the raw decoded string with no formatter pass). A
 // non-'number' calc cellDataType (kernelCellDataTypeOf degrades
 // 'currency'/'percent' to kernel 'text') would ship correctly but
@@ -108,7 +108,7 @@ export const calculatedColumns: Feature = {
   id: 'calculated-columns',
   label: 'Calculated Columns',
   description:
-    'Cycle 21d — @cgrid/calc worker-evaluated calculated columns. ' +
+    'Cycle 21d — @wellsfargo-starui/velocity-grid-calc worker-evaluated calculated columns. ' +
     'Row-local Notional ([qty] * [price]) sorts/filters/groups like a ' +
     "data column; % of Sector ([qty] / SUM([qty], 'group')) re-scopes " +
     'live when grouping by sector toggles; Px Δ ([price] - ' +
@@ -116,7 +116,7 @@ export const calculatedColumns: Feature = {
     'a compact-numeric template + per-column override onto Qty/Price.',
 
   mount(gridHost, controls, theme) {
-    const grid = new CGrid<PositionRow>(gridHost, {
+    const grid = new VelocityGrid<PositionRow>(gridHost, {
       getRowId: (r) => r.symbol,
       columnDefs: [COLUMNS[0]!],
       theme,

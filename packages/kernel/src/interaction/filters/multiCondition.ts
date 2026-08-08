@@ -74,7 +74,7 @@ export class MultiConditionWrapper {
     this.host = host;
     this.deps = deps;
     this.operator = deps.initial.operator;
-    this.radioGroup = `cg-multi-join-${++RADIO_GROUP_SEQ}`;
+    this.radioGroup = `vg-multi-join-${++RADIO_GROUP_SEQ}`;
     this.max = Math.max(1, deps.maxNumConditions);
     this.alwaysVisible = Math.min(
       Math.max(1, deps.numAlwaysVisibleConditions),
@@ -114,8 +114,8 @@ export class MultiConditionWrapper {
       slot.joinEl = joinEl;
     }
     const slotWrap = document.createElement('div');
-    slotWrap.className = 'cg-filter-popup-condition-slot';
-    slotWrap.setAttribute('data-cg-multi-slot', String(idx));
+    slotWrap.className = 'vg-filter-popup-condition-slot';
+    slotWrap.setAttribute('data-vg-multi-slot', String(idx));
     const row = this.deps.buildConditionRow(slot.value, (next) => {
       slot.value = next;
       this.handleSlotChange(idx);
@@ -137,16 +137,16 @@ export class MultiConditionWrapper {
 
   private buildJoinRow(): HTMLElement {
     const row = document.createElement('div');
-    row.className = 'cg-filter-popup-row cg-filter-popup-join';
+    row.className = 'vg-filter-popup-row vg-filter-popup-join';
     for (const value of ['AND', 'OR'] as const) {
       const label = document.createElement('label');
-      label.className = 'cg-filter-popup-join-label';
+      label.className = 'vg-filter-popup-join-label';
       const radio = document.createElement('input');
       radio.type = 'radio';
       radio.name = this.radioGroup;
       radio.value = value;
       radio.checked = this.operator === value;
-      radio.setAttribute('data-cg-filter-join', value);
+      radio.setAttribute('data-vg-filter-join', value);
       radio.addEventListener('change', () => {
         if (!radio.checked) return;
         this.operator = value;

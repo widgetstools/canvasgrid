@@ -8,7 +8,7 @@
  *   node scripts/verify-demos.mjs --only cgrid-showcase,cgrid-ssrm-demo
  *
  * Requires `npm run build` (or at least kernel dist) beforehand for demos
- * that alias @cgrid/kernel to packages/kernel/dist.
+ * that alias @wellsfargo-starui/velocity-grid to packages/kernel/dist.
  */
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';

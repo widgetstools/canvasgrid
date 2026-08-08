@@ -63,7 +63,7 @@ export interface ResolvedDrawableIcon {
 
 /** Cycle 22 / closeout I-3 — THE drawability decision for an inline cell /
  *  rule icon, shared between byRows' pendingIcon construction below and
- *  `CGrid.patchStripCells`' bail (the icon draws OVER the painter at live
+ *  `VelocityGrid.patchStripCells`' bail (the icon draws OVER the painter at live
  *  coords, which a strip patch cannot reproduce — so the patch bails
  *  exactly when this returns non-null, and ONLY then). Contract per
  *  IconRef: exactly one of name|emoji resolves; both or neither paints
@@ -274,7 +274,7 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx, mode?: ByRo
       const dataIdx = row.localRowIndex;
       // Cycle 21i / Phase 1 — hover highlight sits below selection: a
       // selected row keeps its selection bg; an unselected hovered row
-      // gets `--cg-row-hover-bg`; otherwise the alt/base zebra.
+      // gets `--vg-row-hover-bg`; otherwise the alt/base zebra.
       rowBgs[r] = selectedRowIndices.has(dataIdx)
         ? theme.rowSelectedBg
         : dataIdx === p.hoveredRowIndex
@@ -1020,7 +1020,7 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
         // in `applyCellProps`: +1 font-weight stop + totalsFg.
         isTotals: row.subgrid.isTotals,
         // Cycle 15 / Task 12 — per-group footer rows trigger the same
-        // shape lift but via the `--cg-group-footer-*` token family.
+        // shape lift but via the `--vg-group-footer-*` token family.
         // Mutually exclusive with isTotals (the input contract on
         // `ApplyCellPropsInput` documents this; the `else if` in
         // `applyCellProps` enforces it).
@@ -1112,7 +1112,7 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
       if (ruleIconRef !== null || (row.subgrid.isData && !isFooterRow[r])) {
         // Closeout I-3 — the drawability decision lives in
         // `resolveDrawableIcon` / `resolveDrawableCellIcon` (shared with
-        // `CGrid.patchStripCells`' bail so the two sites cannot drift; the
+        // `VelocityGrid.patchStripCells`' bail so the two sites cannot drift; the
         // strip patch must bail EXACTLY when an icon draws here).
         const drawable = ruleIconRef !== null
           ? resolveDrawableIcon(ruleIconRef)
@@ -1153,7 +1153,7 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
         && def.headerIcon !== undefined
         && config.headerCheckboxState === undefined
       ) {
-        let iconRef: import('@cgrid/format').IconRef | null = null;
+        let iconRef: import('@wellsfargo-starui/velocity-grid-format').IconRef | null = null;
         try {
           iconRef = def.headerIcon({ colId: col.colId });
         } catch {

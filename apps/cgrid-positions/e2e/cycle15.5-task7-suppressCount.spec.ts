@@ -50,7 +50,7 @@ async function waitForFrames(page: Page, n = 8): Promise<void> {
 
 async function seedRows(page: Page, count = 20): Promise<void> {
   await page.evaluate((n) => {
-    const g = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+    const g = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
     const TICKERS = ['AAPL', 'MSFT'];
     const rows: Array<Record<string, unknown>> = [];
     for (let i = 0; i < n; i++) {
@@ -86,7 +86,7 @@ test.describe('Cycle 15.5 / Task 7 — suppressCount', () => {
     await seedRows(page);
 
     const val = await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return api.getCellValue(0, 'ag-Grid-AutoColumn') as GroupCellValue;
     });
     expect(val).not.toBeNull();
@@ -105,7 +105,7 @@ test.describe('Cycle 15.5 / Task 7 — suppressCount', () => {
     await seedRows(page);
 
     const val = await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return api.getCellValue(0, 'ag-Grid-AutoColumn') as GroupCellValue;
     });
     expect(val).not.toBeNull();
@@ -125,7 +125,7 @@ test.describe('Cycle 15.5 / Task 7 — suppressGroupChangesColumnVisibility', ()
     await seedRows(page);
 
     const tickerState = await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       const colStates = api.getColumnState();
       return colStates.find((c) => c.colId === 'ticker');
     });
@@ -144,7 +144,7 @@ test.describe('Cycle 15.5 / Task 7 — suppressGroupChangesColumnVisibility', ()
     await seedRows(page);
 
     const tickerState = await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       const colStates = api.getColumnState();
       return colStates.find((c) => c.colId === 'ticker');
     });

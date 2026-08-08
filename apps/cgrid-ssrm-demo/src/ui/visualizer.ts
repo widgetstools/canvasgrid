@@ -1,4 +1,4 @@
-import type { BookTelemetry } from '@cgrid/perspective';
+import type { BookTelemetry } from '@wellsfargo-starui/velocity-grid-perspective';
 
 function fmt(n: number): string {
   return n.toLocaleString();

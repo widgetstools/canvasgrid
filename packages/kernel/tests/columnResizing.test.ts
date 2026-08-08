@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ColumnResizing } from '../src/interaction/features/columnResizing';
-import type { CGridEventCtx } from '../src/interaction/feature';
+import type { VelocityGridEventCtx } from '../src/interaction/feature';
 import type { Hit } from '../src/interaction/hitTester';
 
 interface MockGrid {
@@ -8,11 +8,11 @@ interface MockGrid {
   finishColumnResize: ReturnType<typeof vi.fn>;
 }
 
-function ctx(hit: Hit, point: { x: number; y: number }, grid: MockGrid): CGridEventCtx {
+function ctx(hit: Hit, point: { x: number; y: number }, grid: MockGrid): VelocityGridEventCtx {
   return {
     hit,
     point,
-    grid: grid as unknown as CGridEventCtx['grid'],
+    grid: grid as unknown as VelocityGridEventCtx['grid'],
     raw: new MouseEvent('mousedown'),
   };
 }

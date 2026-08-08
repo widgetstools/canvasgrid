@@ -57,11 +57,11 @@ marked **NEW** for this cycle.
   `stopEditingWhenCellsLoseFocus`, `enterNavigatesVertically`,
   `enterNavigatesVerticallyAfterEdit`, `editType`, `getRowHeight`, `rowHeight`,
   `autoHeight`, `wrapText`, `suppressKeyboardEvent`). Top-level type names keep
-  the `C` prefix (`CGridApi`, `CGridOptions`, `CColDef`). String editor
+  the `C` prefix (`VelocityGridApi`, `VelocityGridOptions`, `CColDef`). String editor
   identifiers drop the `ag` prefix (`'text'`, not `'agTextCellEditor'`) —
   matches Cycle 4's renderer registry convention.
 - **No regressions in the public API.** All additions are purely additive in
-  Cycle 5. `CGridApi.openEditor(rowIndex, colId)` remains as a thin shim for
+  Cycle 5. `VelocityGridApi.openEditor(rowIndex, colId)` remains as a thin shim for
   Cycle 4 callers until Cycle 6's `startEditingCell(params)` formalises it.
 - **TypeScript strict mode.** Every `cgrid/src/**/*.ts` compiles clean under
   `npm run --workspace=cgrid typecheck` at the end of every task.
@@ -156,16 +156,16 @@ marked **NEW** for this cycle.
 
 | # | Task | Primary user-visible win | Files touched |
 |---|---|---|---|
-| 1 | `ICellEditor` + registry + `'text'` editor + `CGridApi.on/off/addEventListener` | Public editor registry; `cellEditingStarted/Stopped` events; addEventListener carry-over closed | `types.ts`, `interaction/editors/iCellEditor.ts` (new), `interaction/editors/registry.ts` (new), `interaction/editors/builtins/text.ts` (new), `interaction/editorOverlay.ts`, `cgrid.ts`, `core/eventEmitter.ts`, tests |
-| 2 | Built-in editors: `'number'`, `'date'`, `'dateString'`, `'select'`, `'largeText'`, `'checkbox'` | All ag-grid Community built-ins available | `interaction/editors/builtins/{number,date,dateString,select,largeText,checkbox}.ts` (new), `cgrid.ts`, demo |
+| 1 | `ICellEditor` + registry + `'text'` editor + `VelocityGridApi.on/off/addEventListener` | Public editor registry; `cellEditingStarted/Stopped` events; addEventListener carry-over closed | `types.ts`, `interaction/editors/iCellEditor.ts` (new), `interaction/editors/registry.ts` (new), `interaction/editors/builtins/text.ts` (new), `interaction/editorOverlay.ts`, `velocityGrid.ts`, `core/eventEmitter.ts`, tests |
+| 2 | Built-in editors: `'number'`, `'date'`, `'dateString'`, `'select'`, `'largeText'`, `'checkbox'` | All ag-grid Community built-ins available | `interaction/editors/builtins/{number,date,dateString,select,largeText,checkbox}.ts` (new), `velocityGrid.ts`, demo |
 | 3 | Popup editors (`isPopup()` + `cellEditorPopup`) | Editor can float over the cell; collision-aware positioning | `interaction/editors/popupHost.ts` (new), `interaction/editorOverlay.ts`, demo |
-| 4 | Edit triggers (`singleClickEdit`, `suppressClickEdit`, F2/Esc/Enter, `enterNavigatesVertically*`, `stopEditingWhenCellsLoseFocus`, `suppressKeyboardEvent`) | Click + keyboard parity with ag-grid | `interaction/features/editTrigger.ts` (new), `interaction/features/keyPaging.ts`, `core/propertyChain.ts`, `cgrid.ts`, `types.ts` |
+| 4 | Edit triggers (`singleClickEdit`, `suppressClickEdit`, F2/Esc/Enter, `enterNavigatesVertically*`, `stopEditingWhenCellsLoseFocus`, `suppressKeyboardEvent`) | Click + keyboard parity with ag-grid | `interaction/features/editTrigger.ts` (new), `interaction/features/keyPaging.ts`, `core/propertyChain.ts`, `velocityGrid.ts`, `types.ts` |
 | 5 | Type-to-edit (printable char while focused starts edit with char as initial value) | Spreadsheet-style typing | `interaction/features/keyPaging.ts`, `interaction/features/editTrigger.ts`, `interaction/editorOverlay.ts` |
-| 6 | Variable row heights — `getRowHeight` + per-row `rowHeight` + heights TypedArray in chunks | App can return per-row heights; viewport uses them | `worker/protocol.ts`, `worker/index.ts`, `worker/rowStore.ts`, `worker/chunkFormat.ts`, `core/viewport.ts`, `cgrid.ts`, `types.ts` |
-| 7 | Fenwick tree (`core/rowHeightIndex.ts`) for cumulative row-top lookup | O(log n) `scrollTop ↔ rowIndex`; replaces uniform-height assumption in viewport + hit-test | `core/rowHeightIndex.ts` (new), `core/viewport.ts`, `interaction/hitTester.ts`, `cgrid.ts` |
-| 8 | `autoHeight` per column — worker `OffscreenCanvas.measureText` + main-thread fallback | Cells size their row to fit wrapped content | `worker/measureText.ts` (new), `worker/index.ts`, `worker/protocol.ts`, `worker/rowStore.ts`, `cgrid.ts`, demo |
+| 6 | Variable row heights — `getRowHeight` + per-row `rowHeight` + heights TypedArray in chunks | App can return per-row heights; viewport uses them | `worker/protocol.ts`, `worker/index.ts`, `worker/rowStore.ts`, `worker/chunkFormat.ts`, `core/viewport.ts`, `velocityGrid.ts`, `types.ts` |
+| 7 | Fenwick tree (`core/rowHeightIndex.ts`) for cumulative row-top lookup | O(log n) `scrollTop ↔ rowIndex`; replaces uniform-height assumption in viewport + hit-test | `core/rowHeightIndex.ts` (new), `core/viewport.ts`, `interaction/hitTester.ts`, `velocityGrid.ts` |
+| 8 | `autoHeight` per column — worker `OffscreenCanvas.measureText` + main-thread fallback | Cells size their row to fit wrapped content | `worker/measureText.ts` (new), `worker/index.ts`, `worker/protocol.ts`, `worker/rowStore.ts`, `velocityGrid.ts`, demo |
 | 9 | `wrapText` per column — multi-line text paint with cached `lineBuffer` | Long text wraps inside the cell | `renderer/cellRenderers/registry.ts`, `renderer/cellRenderers/wrapText.ts` (new), demo |
-| 10 | Full-row edit (`editType: 'fullRow'`) — all editable cells open together; Tab navigates; Esc cancels row | `rowEditingStarted/Stopped/rowValueChanged` events; full-row UX | `interaction/editorOverlay.ts`, `interaction/features/editTrigger.ts`, `interaction/editors/rowEditCoordinator.ts` (new), `cgrid.ts`, `types.ts` |
+| 10 | Full-row edit (`editType: 'fullRow'`) — all editable cells open together; Tab navigates; Esc cancels row | `rowEditingStarted/Stopped/rowValueChanged` events; full-row UX | `interaction/editorOverlay.ts`, `interaction/features/editTrigger.ts`, `interaction/editors/rowEditCoordinator.ts` (new), `velocityGrid.ts`, `types.ts` |
 
 ---
 
@@ -179,7 +179,7 @@ registry for an editor instead of hard-coding an `<input>`. Fire the three
 edit-lifecycle events that catalog 22 names: `cellEditingStarted`,
 `cellEditingStopped`, `cellValueChanged` (last one already partial — refine
 the payload to match catalog 06 shape). Expose Cycle 4's carry-over
-`CGridApi.on / off / addEventListener` so apps can subscribe.
+`VelocityGridApi.on / off / addEventListener` so apps can subscribe.
 
 **Why this is Task 1:** Every other editing task (2 — built-ins, 3 — popup,
 4 — triggers, 10 — fullRow) consumes the registry + the `ICellEditor`
@@ -203,13 +203,13 @@ exposing the emitter surface in the same commit is symmetrical.
 - Create: `cgrid/src/interaction/editors/registry.ts` (`CellEditorRegistry`)
 - Create: `cgrid/src/interaction/editors/builtins/text.ts` (`'text'` editor)
 - Modify: `cgrid/src/interaction/editorOverlay.ts` (registry-driven host)
-- Modify: `cgrid/src/cgrid.ts` (instantiate registry; add `registerCellEditor`;
+- Modify: `cgrid/src/velocityGrid.ts` (instantiate registry; add `registerCellEditor`;
   expose `on`/`off`/`addEventListener`/`removeEventListener`; refine
   `openEditor` to use the registry; fire `cellEditingStarted` /
   `cellEditingStopped` / refined `cellValueChanged`)
 - Modify: `cgrid/src/types.ts` (`ICellEditor`, `ICellEditorParams`,
   `CellEditingStartedEvent`, `CellEditingStoppedEvent`, refined
-  `CellValueChangedEvent`, `CGridApi.on/off/addEventListener` signatures,
+  `CellValueChangedEvent`, `VelocityGridApi.on/off/addEventListener` signatures,
   `CColDef.cellEditor: string | (new () => ICellEditor) | undefined`,
   `CColDef.cellEditorParams`)
 - Create: `cgrid/tests/cellEditorRegistry.test.ts`
@@ -268,7 +268,7 @@ export class CellEditorRegistry {
   register(name: string, ctor: CellEditorCtor): void;
   resolve(name: string): CellEditorCtor;            // throws if missing
   has(name: string): boolean;
-  /** Built-in seed — called by CGrid constructor. */
+  /** Built-in seed — called by VelocityGrid constructor. */
   static seed(reg: CellEditorRegistry): void;
 }
 
@@ -306,27 +306,27 @@ export interface CellValueChangedEvent<TRow = any> {
   data: TRow;
 }
 
-export interface CGridApi<TRow = any> {
+export interface VelocityGridApi<TRow = any> {
   // … existing methods …
   registerCellEditor(name: string, ctor: CellEditorCtor<TRow>): void;
   /** Subscribe to a typed event. Returns unsubscribe. */
-  on<K extends CGridEvent['type']>(
+  on<K extends VelocityGridEvent['type']>(
     type: K,
-    handler: (event: Extract<CGridEvent, { type: K }>) => void,
+    handler: (event: Extract<VelocityGridEvent, { type: K }>) => void,
   ): () => void;
-  off<K extends CGridEvent['type']>(
+  off<K extends VelocityGridEvent['type']>(
     type: K,
-    handler: (event: Extract<CGridEvent, { type: K }>) => void,
+    handler: (event: Extract<VelocityGridEvent, { type: K }>) => void,
   ): void;
   /** Alias for on(), present for ag-grid API parity. */
-  addEventListener<K extends CGridEvent['type']>(
+  addEventListener<K extends VelocityGridEvent['type']>(
     type: K,
-    handler: (event: Extract<CGridEvent, { type: K }>) => void,
+    handler: (event: Extract<VelocityGridEvent, { type: K }>) => void,
   ): () => void;
   /** Alias for off(), present for ag-grid API parity. */
-  removeEventListener<K extends CGridEvent['type']>(
+  removeEventListener<K extends VelocityGridEvent['type']>(
     type: K,
-    handler: (event: Extract<CGridEvent, { type: K }>) => void,
+    handler: (event: Extract<VelocityGridEvent, { type: K }>) => void,
   ): void;
 }
 
@@ -423,13 +423,13 @@ export class TextCellEditor implements ICellEditor<unknown, string> {
     this.params = params;
     const input = document.createElement('input');
     input.type = 'text';
-    input.className = 'cg-cell-editor cg-cell-editor--text';
+    input.className = 'vg-cell-editor vg-cell-editor--text';
     // Type-to-edit: charPress replaces the initial value entirely.
     input.value = params.charPress ?? (params.value == null ? '' : String(params.value));
     input.style.cssText = `
       box-sizing: border-box; width: 100%; height: 100%;
-      border: 0; padding: 0 8px; margin: 0; background: var(--cg-cell-editor-bg, #fff);
-      color: var(--cg-text-color, #111); font: inherit; outline: 2px solid var(--cg-focus-ring-color, #4a90e2);
+      border: 0; padding: 0 8px; margin: 0; background: var(--vg-cell-editor-bg, #fff);
+      color: var(--vg-text-color, #111); font: inherit; outline: 2px solid var(--vg-focus-ring-color, #4a90e2);
     `;
     this.input = input;
   }
@@ -508,13 +508,13 @@ describe('EditorOverlay (registry-driven)', () => {
       params: {}, charPress: null,
       onCommit, onCancel: vi.fn(),
     });
-    expect(host.querySelector('input.cg-cell-editor--text')).not.toBeNull();
+    expect(host.querySelector('input.vg-cell-editor--text')).not.toBeNull();
     const input = host.querySelector('input') as HTMLInputElement;
     input.value = 'new';
     overlay.commit();
     expect(onCommit).toHaveBeenCalledWith('new');
     overlay.close();
-    expect(host.querySelector('input.cg-cell-editor--text')).toBeNull();
+    expect(host.querySelector('input.vg-cell-editor--text')).toBeNull();
   });
 
   it('opens with charPress as the initial value (type-to-edit)', () => {
@@ -610,7 +610,7 @@ export class EditorOverlay {
   }
 
   /** Read getValue from the editor and dispatch onCommit. Host is responsible
-   *  for routing through valueParser/valueSetter (cgrid.ts does that). */
+   *  for routing through valueParser/valueSetter (velocityGrid.ts does that). */
   commit(): void {
     if (!this.current) return;
     const { editor, opts } = this.current;
@@ -636,7 +636,7 @@ export class EditorOverlay {
 }
 ```
 
-- [ ] **Step 7: Wire the registry + new events into `cgrid.ts`**
+- [ ] **Step 7: Wire the registry + new events into `velocityGrid.ts`**
 
 In the constructor, after the renderer-registry seed block:
 
@@ -668,10 +668,10 @@ then `cellEditingStopped` with `valueChanged: true`. On cancel, emit only
 Expose the public emitter surface (the Cycle 4 carry-over):
 
 ```ts
-public on<K extends CGridEvent['type']>(type: K, handler: (e: Extract<CGridEvent, { type: K }>) => void): () => void {
+public on<K extends VelocityGridEvent['type']>(type: K, handler: (e: Extract<VelocityGridEvent, { type: K }>) => void): () => void {
   return this.events.on(type, handler);
 }
-public off<K extends CGridEvent['type']>(type: K, handler: (e: Extract<CGridEvent, { type: K }>) => void): void {
+public off<K extends VelocityGridEvent['type']>(type: K, handler: (e: Extract<VelocityGridEvent, { type: K }>) => void): void {
   this.events.off(type, handler);
 }
 public addEventListener = this.on.bind(this);
@@ -691,15 +691,15 @@ cellEditorParams?: Record<string, unknown> | ((row: TRow) => Record<string, unkn
 ```
 
 Add the three event payload shapes from the "Interfaces produced" block to
-the `CGridEvent` union. Refine the existing `CellValueChangedEvent` (if any)
+the `VelocityGridEvent` union. Refine the existing `CellValueChangedEvent` (if any)
 to match the new shape; if Cycle 4 emitted a thinner payload, the change
 is purely additive — old listeners still work because the type is a
 superset.
 
-- [ ] **Step 9: Add `CGridApi.on/off/addEventListener/removeEventListener` to types.ts**
+- [ ] **Step 9: Add `VelocityGridApi.on/off/addEventListener/removeEventListener` to types.ts**
 
 From the "Interfaces produced" block, paste the four method signatures into
-the `CGridApi` interface.
+the `VelocityGridApi` interface.
 
 - [ ] **Step 10: Update the demo to make one column editable**
 
@@ -725,7 +725,7 @@ test.describe('Cell editing — text editor', () => {
       return r;
     });
     await page.mouse.dblclick(bounds.x + 10, bounds.y + 5);
-    const input = page.locator('input.cg-cell-editor--text');
+    const input = page.locator('input.vg-cell-editor--text');
     await expect(input).toBeVisible();
     await input.fill('CHANGED');
     await input.press('Enter');
@@ -741,7 +741,7 @@ test.describe('Cell editing — text editor', () => {
     const original = await page.evaluate(() => (window as any).__cgrid.getCellValue(0, 'trader'));
     const bounds = await page.evaluate(() => (window as any).__cgrid.getCellBoundsAt(0, 'trader'));
     await page.mouse.dblclick(bounds.x + 10, bounds.y + 5);
-    const input = page.locator('input.cg-cell-editor--text');
+    const input = page.locator('input.vg-cell-editor--text');
     await input.fill('TYPED');
     await input.press('Escape');
     await expect(input).toHaveCount(0);
@@ -752,7 +752,7 @@ test.describe('Cell editing — text editor', () => {
 ```
 
 Add `getCellBoundsAt(rowIndex, colId)` + `getCellValue(rowIndex, colId)` to
-`CGridApi` if not already present. (Both are 5-line read-only helpers
+`VelocityGridApi` if not already present. (Both are 5-line read-only helpers
 using the existing column layout + worker `getCellValue` path. If they
 exist, fix the test signature to call them.)
 
@@ -780,7 +780,7 @@ git add cgrid/src/types.ts \
         cgrid/src/interaction/editors/registry.ts \
         cgrid/src/interaction/editors/builtins/text.ts \
         cgrid/src/interaction/editorOverlay.ts \
-        cgrid/src/cgrid.ts \
+        cgrid/src/velocityGrid.ts \
         cgrid/tests/cellEditorRegistry.test.ts \
         cgrid/tests/editorOverlay.registry.test.ts \
         apps/cgrid-positions/src/positionsGrid.ts \
@@ -794,7 +794,7 @@ CColDef.cellEditor (string key or constructor), forwards
 cellEditorParams, and runs the init → getGui → afterGuiAttached
 lifecycle. Wires cellEditingStarted + cellEditingStopped events and
 refines cellValueChanged to the catalog-06 payload shape. Closes the
-Cycle 4 carry-over by exposing CGridApi.on / off / addEventListener /
+Cycle 4 carry-over by exposing VelocityGridApi.on / off / addEventListener /
 removeEventListener over the existing TypedEventEmitter.
 
 Cycle 5 / Task 1.
@@ -807,7 +807,7 @@ EOF
 - [ ] `CellEditorRegistry.seed` registers `'text'`; no other built-ins yet.
 - [ ] `EditorOverlay` constructor takes `(host, registry)`; `open()` accepts
       `editorName` + `params` + `charPress`.
-- [ ] `CGridApi.registerCellEditor / on / off / addEventListener /
+- [ ] `VelocityGridApi.registerCellEditor / on / off / addEventListener /
       removeEventListener` typed + implemented; `addEventListener` is an
       alias for `on`.
 - [ ] `cellEditingStarted` fires after editor mounts.
@@ -984,7 +984,7 @@ out-of-cell DOM.
   editor.isPopup() OR colDef.cellEditorPopup is true)
 - Modify: `cgrid/src/types.ts` (`CColDef.cellEditorPopup?: boolean`,
   `CColDef.cellEditorPopupPosition?: 'over' | 'under'`)
-- Modify: `cgrid/src/cgrid.ts` (pass colDef.cellEditorPopup + position into
+- Modify: `cgrid/src/velocityGrid.ts` (pass colDef.cellEditorPopup + position into
   `EditorOverlay.open`; honor `editor.getPopupPosition?.()` when set)
 - Modify: `apps/cgrid-positions/src/positionsGrid.ts` (mark `description` or
   another text column as `editable: true, cellEditor: 'largeText'` —
@@ -1023,7 +1023,7 @@ export class PopupHost {
       either is true, push the gui through `PopupHost.mount` instead of
       appending to the editor layer.
 - [ ] **Step 4:** Update `EditorAttachOpts` to include `cellEditorPopup` and
-      `cellEditorPopupPosition`; have `cgrid.ts.openEditor` pass them.
+      `cellEditorPopupPosition`; have `velocityGrid.ts.openEditor` pass them.
 - [ ] **Step 5:** Update demo — `description` column `editable: true,
       cellEditor: 'largeText'`.
 - [ ] **Step 6:** Add E2E — double-click description cell opens a textarea
@@ -1077,7 +1077,7 @@ all gate downstream behavior in Tasks 5 + 10.
 - Modify: `cgrid/src/interaction/featureChain.ts` (wire `editTrigger` into the chain)
 - Modify: `cgrid/src/core/propertyChain.ts` (resolve `editable: boolean | EditableCallback`
   per cell; resolve `suppressKeyboardEvent`)
-- Modify: `cgrid/src/cgrid.ts` (read the new options; route Tab to find the
+- Modify: `cgrid/src/velocityGrid.ts` (read the new options; route Tab to find the
   next editable cell)
 - Modify: `cgrid/src/types.ts` — additions:
 
@@ -1085,7 +1085,7 @@ all gate downstream behavior in Tasks 5 + 10.
 export type EditableCallback<TRow = any, TValue = any> =
   (params: { data: TRow; colId: string; rowIndex: number; value: TValue }) => boolean;
 
-export interface CGridOptions<TRow = any> {
+export interface VelocityGridOptions<TRow = any> {
   // … existing fields …
   singleClickEdit?: boolean;
   suppressClickEdit?: boolean;
@@ -1141,7 +1141,7 @@ export interface CColDef<TRow = any, TValue = any> {
 - [ ] **Step 9:** Run unit + E2E + typecheck + build; commit.
 
 **Acceptance criteria:**
-- [ ] All 7 trigger options from catalog-06 lines 33–46 land on `CGridOptions`.
+- [ ] All 7 trigger options from catalog-06 lines 33–46 land on `VelocityGridOptions`.
 - [ ] `editable` resolves both `boolean` and callback per cell.
 - [ ] F2 / Esc / Enter / Tab keyboard matrix works per catalog 06.
 - [ ] `suppressKeyboardEvent` short-circuits before grid handlers when truthy.
@@ -1165,7 +1165,7 @@ in Task 1's iCellEditor.ts. Follow the per-task workflow.
 1. **Type-to-edit.** Printable char while a focused editable cell is in
    non-editing state opens the editor with the char as initial value via
    `ICellEditorParams.charPress` (already wired in `TextCellEditor`).
-2. **Excel-mode arrows (opt-in via `CGridOptions.enableExcelEditing`).**
+2. **Excel-mode arrows (opt-in via `VelocityGridOptions.enableExcelEditing`).**
    Each open edit carries a `mode: 'enter' | 'edit'` flag:
    - `'enter'` — Excel's "Enter mode". Arrow keys commit + move focus to
      the adjacent cell (Up/Down/Left/Right). Type-to-edit starts here.
@@ -1190,21 +1190,21 @@ root capture-phase handler that already owns Tab / Enter / Escape.
 - `cgrid/src/interaction/features/keyPaging.ts`
 - `cgrid/src/interaction/features/editTrigger.ts` (Task 4)
 - `cgrid/src/interaction/editors/iCellEditor.ts` — `charPress` field
-- `cgrid/src/cgrid.ts` — root capture-phase keydown handler (Task 4)
+- `cgrid/src/velocityGrid.ts` — root capture-phase keydown handler (Task 4)
 
 **Files:**
 - Modify: `cgrid/src/interaction/features/keyPaging.ts` (printable-char
   → `openEditor(rowIndex, colId, charPress)`)
 - Modify: `cgrid/src/interaction/features/editTrigger.ts` (single/double
   click open in `'edit'` mode)
-- Modify: `cgrid/src/cgrid.ts`:
+- Modify: `cgrid/src/velocityGrid.ts`:
   - `openEditor` takes an optional `mode: 'enter' | 'edit'`; type-to-edit
     passes `'enter'`, every other path passes `'edit'`.
   - `activeEdit` carries `mode` and a mutation entry point.
   - Editor-container mousedown listener flips `'enter'` → `'edit'`.
   - Root capture keydown extends to handle Arrow* in `'enter'` mode
     (commit + move focus).
-- Modify: `cgrid/src/types.ts` (`CGridOptions.enableExcelEditing?: boolean`).
+- Modify: `cgrid/src/types.ts` (`VelocityGridOptions.enableExcelEditing?: boolean`).
 - Update: `cgrid/tests/editTrigger.test.ts` (single-click opens with `mode:
   'edit'`) + `cgrid/tests/excelEditing.test.ts` (new — arrow-commit dispatch).
 - Update: `apps/cgrid-positions/src/positionsGrid.ts` (`enableExcelEditing:
@@ -1214,7 +1214,7 @@ root capture-phase handler that already owns Tab / Enter / Escape.
 
 **Steps:**
 
-- [ ] **Step 1:** Add `enableExcelEditing?: boolean` to `CGridOptions`.
+- [ ] **Step 1:** Add `enableExcelEditing?: boolean` to `VelocityGridOptions`.
 - [ ] **Step 2:** Extend `activeEdit` to track `mode: 'enter' | 'edit'`.
       `openEditor` accepts the mode (default `'edit'`).
 - [ ] **Step 3:** Failing unit test in `cgrid/tests/excelEditing.test.ts`
@@ -1248,7 +1248,7 @@ root capture-phase handler that already owns Tab / Enter / Escape.
 - [ ] **Step 10:** Run unit + typecheck + build + E2E; commit.
 
 **Acceptance criteria:**
-- [ ] `CGridOptions.enableExcelEditing` typed + storage-wired.
+- [ ] `VelocityGridOptions.enableExcelEditing` typed + storage-wired.
 - [ ] Type-to-edit opens with `charPress` AND starts in `'enter'` mode.
 - [ ] F2 / dblclick / single-click / api.startEditingCell open in `'edit'`
       mode.
@@ -1277,7 +1277,7 @@ Follow the per-task workflow.
 
 ## Task 6 — Variable row heights — data layer
 
-**Goal:** Wire per-row heights end-to-end. Add `CGridOptions.getRowHeight`
+**Goal:** Wire per-row heights end-to-end. Add `VelocityGridOptions.getRowHeight`
 callback (param-typed per catalog 03). Heights canonical on the worker.
 Ship a `heights: Float32Array` alongside each `ViewportChunk`. Replace the
 uniform `getRowHeight(0)` assumption in `core/viewport.ts` with per-row
@@ -1313,7 +1313,7 @@ regression in Task 6 doesn't entangle editor verification.
 - Modify: `cgrid/src/core/viewport.ts` (`computeViewport` takes a
   `getRowHeight(localRowIndex): number` function instead of a uniform constant;
   internal accumulator becomes `top += getRowHeight(i)`)
-- Modify: `cgrid/src/cgrid.ts` (compute per-row heights via `getRowHeight`
+- Modify: `cgrid/src/velocityGrid.ts` (compute per-row heights via `getRowHeight`
   callback main-side before `applyTransaction`; main thread holds a small
   height-cache mirror for the current viewport pre-Fenwick; pass to
   computeViewport)
@@ -1326,7 +1326,7 @@ export interface GetRowHeightParams<TRow = any> {
   rowIndex: number;
 }
 
-export interface CGridOptions<TRow = any> {
+export interface VelocityGridOptions<TRow = any> {
   // … existing fields …
   /** Per-row height in CSS px. Return null/undefined to fall back to
    *  `rowHeight`. Called by cgrid main thread on row insert/update; the
@@ -1380,11 +1380,11 @@ for (let local = firstDataRow; local <= lastDataRow; local++) {
 }
 ```
 
-Caller in `cgrid.ts` passes a `(local) => heightsBuffer[local] ?? globalRowHeight`
+Caller in `velocityGrid.ts` passes a `(local) => heightsBuffer[local] ?? globalRowHeight`
 closure. Heights buffer here is the latest chunk's `heights` (Task 7's
 Fenwick takes over for global lookups).
 
-- [ ] **Step 9:** Main-thread side of `getRowHeight` — `cgrid.ts.applyTransaction`
+- [ ] **Step 9:** Main-thread side of `getRowHeight` — `velocityGrid.ts.applyTransaction`
       computes heights for added/updated rows main-side and includes them
       in the worker postMessage. (Main thread is the only side that can
       run user callbacks.) Worker stores them in `heightsByRowId`.
@@ -1395,7 +1395,7 @@ Fenwick takes over for global lookups).
 - [ ] **Step 12:** Run unit + E2E + typecheck + build; commit.
 
 **Acceptance criteria:**
-- [ ] `CGridOptions.getRowHeight` typed + honored.
+- [ ] `VelocityGridOptions.getRowHeight` typed + honored.
 - [ ] `ViewportChunk.heights` ships per chunk; length matches `rowIds`.
 - [ ] `computeViewport` accumulates row tops from per-row heights.
 - [ ] Demo renders a mixed-height grid; hit-test still locates correct row
@@ -1429,14 +1429,14 @@ canonical structure for this problem.
 
 **Read first:**
 - `cgrid/src/core/viewport.ts` — `computeViewport` (now per-row from Task 6)
-- `cgrid/src/cgrid.ts` — `ensureRowVisible` + scroll handlers
+- `cgrid/src/velocityGrid.ts` — `ensureRowVisible` + scroll handlers
 - Master plan Performance Budget (Cycle 5 row above) for the O(log n) gate
 
 **Files:**
 - Create: `cgrid/src/core/rowHeightIndex.ts`
 - Modify: `cgrid/src/core/viewport.ts` (delegate first-visible-row search to
   the index when present)
-- Modify: `cgrid/src/cgrid.ts` (build + rebuild the index on chunk arrival;
+- Modify: `cgrid/src/velocityGrid.ts` (build + rebuild the index on chunk arrival;
   pass it to viewport; route `ensureRowVisible` through it)
 - Modify: `cgrid/src/interaction/hitTester.ts` — no change required; binary
   search over `visibleRows[]` already handles variable heights
@@ -1489,7 +1489,7 @@ export class RowHeightIndex {
 - [ ] **Step 4:** Write `rowHeightIndex.bench.ts` — Vitest bench for
       `topOf` + `rowAt` at n = 1,000,000. Assert mean < 50 µs.
 - [ ] **Step 5:** Run bench; record numbers in the worklog perf section.
-- [ ] **Step 6:** Wire into `cgrid.ts` — build a `RowHeightIndex` on first
+- [ ] **Step 6:** Wire into `velocityGrid.ts` — build a `RowHeightIndex` on first
       chunk arrival; rebuild on subsequent chunks (heights array changes
       with sort/filter). Pass to `computeViewport`.
 - [ ] **Step 7:** Refactor `core/viewport.ts` — first-visible-row search
@@ -1554,7 +1554,7 @@ content — the dominant pattern in admin UIs.
 - Modify: `cgrid/src/worker/rowStore.ts` (`autoHeightContributions: Map<rowId, Map<colId, number>>`
   to track per-(row,col) measured heights so removing autoHeight on one
   column doesn't drop others' contribution)
-- Modify: `cgrid/src/cgrid.ts` (handle `measureTextRequest` from worker —
+- Modify: `cgrid/src/velocityGrid.ts` (handle `measureTextRequest` from worker —
   main-thread fallback path)
 - Modify: `cgrid/src/types.ts`:
 
@@ -1745,12 +1745,12 @@ never invoked.
   overlay; row-edit coordinator decides single-cell vs full-row)
 - Modify: `cgrid/src/interaction/features/editTrigger.ts` (dispatch
   full-row vs single-cell based on `editType`)
-- Modify: `cgrid/src/cgrid.ts` (`editType` option; route Tab during
+- Modify: `cgrid/src/velocityGrid.ts` (`editType` option; route Tab during
   full-row edit; emit row-level events)
 - Modify: `cgrid/src/types.ts`:
 
 ```ts
-export interface CGridOptions<TRow = any> {
+export interface VelocityGridOptions<TRow = any> {
   // … existing fields …
   editType?: 'fullRow';
 }
@@ -1890,7 +1890,7 @@ on/addEventListener). Read docs/catalog/06-cell-editing.md sections on
 ICellEditor (lines 70-84) and events (lines 102-116). This is the first
 session of Cycle 5; follow the Global Constraints, do not skip the
 verification commands, and commit at the end. Also close the Cycle 4
-addEventListener carry-over in the same commit (CGridApi.on/off +
+addEventListener carry-over in the same commit (VelocityGridApi.on/off +
 addEventListener/removeEventListener aliases).
 ```
 
@@ -1917,7 +1917,7 @@ addEventListener/removeEventListener aliases).
   editor with the char as initial value (`'enter'` mode); arrows commit +
   navigate when `enableExcelEditing` is on. Default `'edit'` mode keeps
   arrow keys for caret-move.
-- **Variable row heights** — `CGridOptions.getRowHeight` callback +
+- **Variable row heights** — `VelocityGridOptions.getRowHeight` callback +
   per-row `rowHeight` via the worker's `heightsByRowId` map. Heights ship
   per-chunk as a `Float32Array`; main thread layers them into the
   Fenwick index.
@@ -1936,9 +1936,9 @@ addEventListener/removeEventListener aliases).
   commits all on Enter, cancels all on Esc. Emits `rowEditingStarted`,
   `rowEditingStopped`, `rowValueChanged` alongside per-cell
   `cellValueChanged`.
-- **Public emitter surface** — `CGridApi.on` / `off` /
+- **Public emitter surface** — `VelocityGridApi.on` / `off` /
   `addEventListener` / `removeEventListener` (the ag-grid aliases) +
-  `CGridApi.registerCellEditor`. Closes the Cycle 4 carry-over.
+  `VelocityGridApi.registerCellEditor`. Closes the Cycle 4 carry-over.
 
 ---
 

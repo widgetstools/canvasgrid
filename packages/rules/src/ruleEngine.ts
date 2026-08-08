@@ -5,9 +5,9 @@
 // Authoritative reference:
 // docs/superpowers/specs/2026-07-01-cycle-21e-rules-design.md §3.5 + §4.2.
 
-import type { Schema } from '@cgrid/expression';
-import { compileFormat } from '@cgrid/format';
-import type { FormatProgram } from '@cgrid/format';
+import type { Schema } from '@wellsfargo-starui/velocity-grid-expression';
+import { compileFormat } from '@wellsfargo-starui/velocity-grid-format';
+import type { FormatProgram } from '@wellsfargo-starui/velocity-grid-format';
 import { compileCondition, validateRuleShape } from './conditionCompiler';
 import type { CompiledCondition } from './conditionCompiler';
 import { ExpiryHeap } from './expiryHeap';
@@ -229,7 +229,7 @@ export class RuleEngine {
     return { matched, style, indicator, formatProgram };
   }
 
-  /** rule:<ruleId> color accessor for @cgrid/format (Task 9 threads it).
+  /** rule:<ruleId> color accessor for @wellsfargo-starui/velocity-grid-format (Task 9 threads it).
    *  Condition-level match — scope column targeting governs where the rule
    *  paints, not whether a format rule-ref may read its color. */
   resolveRuleRef(ruleId: string, ctx: RuleEvalContext): string | null {

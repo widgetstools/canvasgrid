@@ -1,7 +1,7 @@
 // Cycle 21d / Task 13 — calc program lifecycle verification.
 //
 // Confirms, black-box through the worker host (and one main-side case
-// through CGrid), the claims made in the Task 13 brief:
+// through VelocityGrid), the claims made in the Task 13 brief:
 //   1. program survives setRowData — a full data replace re-derives calc
 //      values for the NEW rows (onSetRowData marks full-dirty; the
 //      `setRowData` handler never touches `state.calc.install`).
@@ -20,7 +20,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { createWorkerHost } from '../src/worker/worker';
 import type { WorkerRequest, WorkerResponse, WorkerPush, WorkerCalcProgram } from '../src/worker/protocol';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { _resetCalcProvider_forTests, type CalcProviderShape } from '../src/core/calcSlot';
 
 function makeHost() {
@@ -151,7 +151,7 @@ describe('calc provider teardown on grid.destroy() (Cycle 21d / Task 13)', () =>
   it('grid.destroy() runs the calc provider unsubscribe (Task 9 slot); the calc module-level slot is intentionally NOT cleared', () => {
     const container = document.createElement('div');
     container.style.cssText = 'width:800px; height:600px;';
-    container.className = 'cg-theme-quartz';
+    container.className = 'vg-theme-quartz';
     document.body.appendChild(container);
     (globalThis as any).Worker = class {
       listeners: Array<(e: { data: any }) => void> = [];
@@ -177,10 +177,10 @@ describe('calc provider teardown on grid.destroy() (Cycle 21d / Task 13)', () =>
       return () => fakeCtx as any;
     })() as any;
 
-    const grid = new CGrid<{ id: string; px: number }>(container, {
+    const grid = new VelocityGrid<{ id: string; px: number }>(container, {
       columnDefs: [{ field: 'id' }, { field: 'px' }],
       getRowId: (r) => r.id,
-      theme: 'cg-theme-quartz',
+      theme: 'vg-theme-quartz',
     });
 
     const unsub = vi.fn();

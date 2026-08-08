@@ -6,7 +6,7 @@
   },
   "startup_app": {
     "uuid": "cgrid-grain-bench",
-    "name": "CGrid Grain Bench",
+    "name": "VelocityGrid Grain Bench",
     "description": "Raster-grain benchmark page (Cycle 22 Task 0) hosted in OpenFin (vite preview :4188). Runtime pinned to 41.134.102.3 like app.json.",
     "url": "http://localhost:4188/bench/raster-grain.html",
     "autoShow": true,

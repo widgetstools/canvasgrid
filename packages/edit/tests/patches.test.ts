@@ -1,4 +1,4 @@
-// @cgrid/edit — patches.test.ts
+// @wellsfargo-starui/velocity-grid-edit — patches.test.ts
 // Covers dedupePatches, buildPatchesFromTargets, buildRowUpdatesFromPatches,
 // assertSingleColumnSelection.
 // Spec: docs/superpowers/specs/2026-07-02-cycle-21g-edit-design.md §1.1.2, §2.3.

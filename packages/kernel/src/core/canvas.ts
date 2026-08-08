@@ -49,10 +49,10 @@ const DEFAULT_RESIZE_POLL_MS = 200;
  *  sub-millisecond jitter without materially weakening the cap. */
 const FPS_GATE_JITTER_MS = 1;
 
-// Module-level loops, shared across all CGridCanvas instances.
+// Module-level loops, shared across all VelocityGridCanvas instances.
 // Mirrors hypergrid's single RAF + single resize interval design.
-const paintables: Set<CGridCanvas> = new Set();
-const resizables: Set<CGridCanvas> = new Set();
+const paintables: Set<VelocityGridCanvas> = new Set();
+const resizables: Set<VelocityGridCanvas> = new Set();
 let paintRequest: number | null = null;
 let resizeInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -96,7 +96,7 @@ function stopLoopsIfIdle(): void {
   }
 }
 
-export class CGridCanvas {
+export class VelocityGridCanvas {
   readonly canvas: HTMLCanvasElement;
   readonly gc: CachedContext2D;
   bounds: Bounds = { x: 0, y: 0, width: 0, height: 0 };
@@ -137,7 +137,7 @@ export class CGridCanvas {
     });
 
     this.canvas = document.createElement('canvas');
-    this.canvas.className = 'cg-canvas';
+    this.canvas.className = 'vg-canvas';
     this.canvas.style.cssText = 'display:block; position:absolute; left:0; top:0; outline:none;';
     this.canvas.tabIndex = 0;
     this.gc = attachGcCache(this.canvas, opts.contextAttributes ?? { alpha: false });

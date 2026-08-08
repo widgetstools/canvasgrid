@@ -1,4 +1,4 @@
-// Grid Layouts — Phase B / B3: engine additions behind the CGridApi
+// Grid Layouts — Phase B / B3: engine additions behind the VelocityGridApi
 // template surface — `renameTemplate` (grid-wide unique name) and
 // `removeTemplate(colId, templateId)` (unassign a template from a column).
 //

@@ -1,4 +1,4 @@
-// @cgrid/renderers — palette data.
+// @wellsfargo-starui/velocity-grid-renderers — palette data.
 // Authoritative references:
 //   docs/superpowers/specs/2026-07-02-cycle-21f-renderers-design.md
 //     §2.6.6 (structure glyph map), §2.6.7 (palette defaults)

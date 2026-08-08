@@ -26,7 +26,7 @@
 import { test, expect, Page } from '@playwright/test';
 
 const GRID = '#grid canvas';
-const PANEL = '.cg-pivot-panel';
+const PANEL = '.vg-pivot-panel';
 
 async function waitForFrames(page: Page, n = 6): Promise<void> {
   await page.evaluate(
@@ -75,7 +75,7 @@ test.describe('Cycle 18 / Task 6 — pivot panel (top-of-grid)', () => {
     await gridReady(page);
     const panel = page.locator(PANEL);
     await expect(panel).toBeVisible();
-    const empty = panel.locator('.cg-pivot-panel-empty');
+    const empty = panel.locator('.vg-pivot-panel-empty');
     await expect(empty).toBeVisible();
     await expect(empty).toHaveText('Drag here to set column labels');
   });
@@ -87,7 +87,7 @@ test.describe('Cycle 18 / Task 6 — pivot panel (top-of-grid)', () => {
     // panel's top edge.
     await gridReady(page, '?pivotDemo=on&pivotPanel=always&rowGroupPanel=always');
     const pivotBox = await page.locator(PANEL).boundingBox();
-    const rgBox = await page.locator('.cg-row-group-panel').boundingBox();
+    const rgBox = await page.locator('.vg-row-group-panel').boundingBox();
     expect(pivotBox).not.toBeNull();
     expect(rgBox).not.toBeNull();
     // Pivot panel top is at or above row group panel top.
@@ -143,9 +143,9 @@ test.describe('Cycle 18 / Task 6 — pivot panel (top-of-grid)', () => {
 
     state = await readPivotState(page);
     expect(state.pivotColumns).toEqual(['sector']);
-    const pill = page.locator(`${PANEL} .cg-pivot-panel-pill[data-col-id="sector"]`);
+    const pill = page.locator(`${PANEL} .vg-pivot-panel-pill[data-col-id="sector"]`);
     await expect(pill).toBeVisible();
-    await expect(pill.locator('.cg-pivot-panel-pill-label')).toHaveText('Sector');
+    await expect(pill.locator('.vg-pivot-panel-pill-label')).toHaveText('Sector');
   });
 
   test('drag a non-pivot-enabled column header shows reject state and does NOT mutate PivotState', async ({ page }) => {
@@ -188,10 +188,10 @@ test.describe('Cycle 18 / Task 6 — pivot panel (top-of-grid)', () => {
       api?.addPivotColumn('region');
     });
     await waitForFrames(page, 3);
-    const pill = page.locator(`${PANEL} .cg-pivot-panel-pill[data-col-id="region"]`);
+    const pill = page.locator(`${PANEL} .vg-pivot-panel-pill[data-col-id="region"]`);
     await expect(pill).toBeVisible();
 
-    await pill.locator('.cg-pivot-panel-pill-remove').click();
+    await pill.locator('.vg-pivot-panel-pill-remove').click();
     await waitForFrames(page, 3);
     const state = await readPivotState(page);
     expect(state.pivotColumns).toEqual([]);
@@ -201,9 +201,9 @@ test.describe('Cycle 18 / Task 6 — pivot panel (top-of-grid)', () => {
   test('top-of-grid pivot panel + sidebar plz zone share PivotState (both update on either mutation)', async ({ page }) => {
     await gridReady(page);
     // Open the sidebar columns panel so the plz zone is mounted.
-    const COLUMNS_TAB = '.cg-side-bar-tab[data-id="agColumnsToolPanel"]';
-    const SIDEBAR_PANEL = '.cg-columns-panel';
-    const PLZ = `${SIDEBAR_PANEL} .cg-columns-panel-plz`;
+    const COLUMNS_TAB = '.vg-side-bar-tab[data-id="agColumnsToolPanel"]';
+    const SIDEBAR_PANEL = '.vg-columns-panel';
+    const PLZ = `${SIDEBAR_PANEL} .vg-columns-panel-plz`;
     if (!(await page.locator(SIDEBAR_PANEL).isVisible().catch(() => false))) {
       await page.locator(COLUMNS_TAB).click();
       await page.waitForSelector(SIDEBAR_PANEL, { state: 'visible' });
@@ -232,18 +232,18 @@ test.describe('Cycle 18 / Task 6 — pivot panel (top-of-grid)', () => {
     await waitForFrames(page, 3);
 
     // Top panel shows the pill.
-    await expect(page.locator(`${PANEL} .cg-pivot-panel-pill[data-col-id="desk"]`)).toBeVisible();
+    await expect(page.locator(`${PANEL} .vg-pivot-panel-pill[data-col-id="desk"]`)).toBeVisible();
     // Sidebar plz zone shows a pill for the same column ON THE NEXT
     // EVENT TICK — no manual refresh required. Both surfaces are
     // views over the SAME ordered pivotColumns list.
-    await expect(page.locator(`${PLZ} .cg-columns-panel-plz-pill[data-col-id="desk"]`)).toBeVisible();
+    await expect(page.locator(`${PLZ} .vg-columns-panel-plz-pill[data-col-id="desk"]`)).toBeVisible();
 
     // Mutate via the SIDEBAR (`×` on the plz pill) — pill must
     // disappear from BOTH surfaces.
-    await page.locator(`${PLZ} .cg-columns-panel-plz-pill[data-col-id="desk"] .cg-columns-panel-plz-pill-remove`).click();
+    await page.locator(`${PLZ} .vg-columns-panel-plz-pill[data-col-id="desk"] .vg-columns-panel-plz-pill-remove`).click();
     await waitForFrames(page, 3);
-    await expect(page.locator(`${PANEL} .cg-pivot-panel-pill[data-col-id="desk"]`)).toHaveCount(0);
-    await expect(page.locator(`${PLZ} .cg-columns-panel-plz-pill[data-col-id="desk"]`)).toHaveCount(0);
+    await expect(page.locator(`${PANEL} .vg-pivot-panel-pill[data-col-id="desk"]`)).toHaveCount(0);
+    await expect(page.locator(`${PLZ} .vg-columns-panel-plz-pill[data-col-id="desk"]`)).toHaveCount(0);
 
     const state = await readPivotState(page);
     expect(state.pivotColumns).toEqual([]);
@@ -261,8 +261,8 @@ test.describe('Cycle 18 / Task 6 — pivot panel (top-of-grid)', () => {
     const panel = page.locator(PANEL);
     // Display is `none` while inactive; the bounding box is collapsed.
     await expect(panel).toBeHidden();
-    await expect(panel.locator('.cg-pivot-panel-empty')).toHaveCount(0);
-    await expect(panel.locator('.cg-pivot-panel-pill')).toHaveCount(0);
+    await expect(panel.locator('.vg-pivot-panel-empty')).toHaveCount(0);
+    await expect(panel.locator('.vg-pivot-panel-pill')).toHaveCount(0);
 
     // Activate pivot — strip paints the empty placeholder (pivot
     // active but no pivot columns yet).
@@ -278,6 +278,6 @@ test.describe('Cycle 18 / Task 6 — pivot panel (top-of-grid)', () => {
     });
     await waitForFrames(page, 3);
     await expect(panel).toHaveAttribute('data-active', 'true');
-    await expect(panel.locator('.cg-pivot-panel-pill[data-col-id="sector"]')).toBeVisible();
+    await expect(panel.locator('.vg-pivot-panel-pill[data-col-id="sector"]')).toBeVisible();
   });
 });

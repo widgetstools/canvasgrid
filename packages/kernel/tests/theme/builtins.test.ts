@@ -10,8 +10,8 @@ describe('themeQuartz — byte-identical to the quartz CSS class', () => {
   it('has the quartz light/dark baseClass pair', () => {
     const compiled = themeQuartz.compile('dark');
     expect(compiled.baseClass).toEqual({
-      light: 'cg-theme-quartz',
-      dark: 'cg-theme-quartz-dark',
+      light: 'vg-theme-quartz',
+      dark: 'vg-theme-quartz-dark',
     });
   });
 
@@ -22,11 +22,11 @@ describe('themeQuartz — byte-identical to the quartz CSS class', () => {
 
 describe('themeStarui — starui baseClass pair', () => {
   it('has the starui light baseClass', () => {
-    expect(themeStarui.compile('light').baseClass.light).toBe('cg-theme-starui');
+    expect(themeStarui.compile('light').baseClass.light).toBe('vg-theme-starui');
   });
 
   it('has the starui dark baseClass', () => {
-    expect(themeStarui.compile('dark').baseClass.dark).toBe('cg-theme-starui-dark');
+    expect(themeStarui.compile('dark').baseClass.dark).toBe('vg-theme-starui-dark');
   });
 
   it('compiles to empty vars just like themeQuartz', () => {
@@ -45,16 +45,16 @@ describe('themeQuartz.withParams — accent-dependent derivations, immutability'
     const themed = themeQuartz.withParams({ accentColor: '#ff0000' });
     const vars = themed.compile('dark').vars;
 
-    expect(vars['--cg-chrome-accent']).toBe('#ff0000');
-    expect(vars['--cg-row-hover-bg']).toBe(
-      'color-mix(in srgb, var(--cg-chrome-accent) 7%, var(--cg-bg-color))'
+    expect(vars['--vg-chrome-accent']).toBe('#ff0000');
+    expect(vars['--vg-row-hover-bg']).toBe(
+      'color-mix(in srgb, var(--vg-chrome-accent) 7%, var(--vg-bg-color))'
     );
-    expect(vars['--cg-row-selected-bg']).toBe(
-      'color-mix(in srgb, var(--cg-chrome-accent) 12%, var(--cg-bg-color))'
+    expect(vars['--vg-row-selected-bg']).toBe(
+      'color-mix(in srgb, var(--vg-chrome-accent) 12%, var(--vg-bg-color))'
     );
-    expect(vars['--cg-range-border-color']).toBe('var(--cg-chrome-accent)');
+    expect(vars['--vg-range-border-color']).toBe('var(--vg-chrome-accent)');
 
-    expect(vars['--cg-border-color']).toBeUndefined();
+    expect(vars['--vg-border-color']).toBeUndefined();
   });
 
   it('does not mutate themeQuartz itself', () => {

@@ -1,4 +1,4 @@
-// @cgrid/edit — smartEdit.test.ts
+// @wellsfargo-starui/velocity-grid-edit — smartEdit.test.ts
 // Covers collectTargetCells (async target collection, spec §3.6a) and
 // buildSmartEditPatches.
 // Spec: docs/superpowers/specs/2026-07-02-cycle-21g-edit-design.md §1.1.4, §3.6a.

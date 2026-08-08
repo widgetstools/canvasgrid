@@ -1,7 +1,7 @@
 // Cycle 21e / Task 15 — the kernel bridge.
 //
-// `wireIntoKernel(grid, opts?)` wires @cgrid/rules' engines onto a
-// CGrid instance via kernel's PUBLIC registration APIs, mirroring
+// `wireIntoKernel(grid, opts?)` wires @wellsfargo-starui/velocity-grid-rules' engines onto a
+// VelocityGrid instance via kernel's PUBLIC registration APIs, mirroring
 // packages/format/src/bridge.ts:
 //
 //   1. constructs RuleEngine + AlertsEngine (seeded from opts),
@@ -15,7 +15,7 @@
 //   4. seeds match counts from grid.forEachRow,
 //   5. repaints on activeDurationMs expiry via grid.refresh().
 //
-// Kernel never runtime-imports @cgrid/rules; this module reaches into
+// Kernel never runtime-imports @wellsfargo-starui/velocity-grid-rules; this module reaches into
 // kernel only through the grid surface passed in (structural types —
 // zero static kernel imports). Idempotent per grid instance via a
 // `__rulesBridgeWired` marker that stores — and re-returns — the SAME
@@ -23,6 +23,7 @@
 
 import type {
   AlertRule, ChangeRecord, RowChangeSet, StyleRule, WireRulesOptions,
+  AlertsSettings, AlertEvent,
 } from './types';
 import { RuleEngine } from './ruleEngine';
 import { AlertsEngine } from './alerts/alertsEngine';
@@ -48,7 +49,7 @@ interface CellValueChangedEvent {
   data?: Record<string, unknown>;
 }
 
-/** Structural surface of the CGrid instance (or CGridApi) the bridge
+/** Structural surface of the VelocityGrid instance (or VelocityGridApi) the bridge
  *  registers against. Type-only — no runtime kernel import; mirrors
  *  format's KernelGridSurface. NOTE: kernel's public repaint API is
  *  `refresh()` (types/api.ts:292) — there is no per-row refreshCells,
@@ -69,7 +70,21 @@ interface KernelGridSurface {
   // Grid Layouts / Phase C (C1) — optional so a minimal grid surface (or a
   // pre-Grid-Layouts kernel) still wires; it just won't persist the rule set.
   registerStateModule?(module: StateModuleShape): () => void;
+  notifyModuleStateChanged?(id: string): void;
   __rulesBridgeWired?: { rules: RuleEngine; alerts: AlertsEngine };
+  // Public alerts CRUD (attached by wireIntoKernel — mirrors style-rule
+  // VelocityGridApi surface without requiring a kernel bump for every host).
+  getAlertRules?(): AlertRule[];
+  addAlertRule?(rule: AlertRule): void;
+  updateAlertRule?(id: string, patch: Partial<AlertRule>): void;
+  deleteAlertRule?(id: string): void;
+  getAlertsSettings?(): AlertsSettings;
+  setAlertsSettings?(patch: Partial<AlertsSettings>): void;
+  getAlertHistory?(): AlertEvent[];
+  markAlertRead?(): void;
+  clearAlertHistory?(): void;
+  getAlertUnreadCount?(): number;
+  onAlert?(fn: (alert: AlertEvent) => void): () => void;
 }
 
 /** Structural mirror of kernel's `StateModule` (core/moduleState.ts) — a
@@ -146,7 +161,7 @@ const defaultNow = (): number => performance.now();
 // ─── The bridge ────────────────────────────────────────────────────────
 
 /**
- * Wire @cgrid/rules into a CGrid instance. Idempotent — re-calling on
+ * Wire @wellsfargo-starui/velocity-grid-rules into a VelocityGrid instance. Idempotent — re-calling on
  * an already-wired grid returns the SAME `{ rules, alerts }` object.
  */
 export function wireIntoKernel(
@@ -181,7 +196,7 @@ export function wireIntoKernel(
 
   // setRules resets match counts and expects the caller to re-seed over the
   // current dataset — shared by the wire-time seed (step 4), the `rules`
-  // state-module restore (step 6, C1), and the CGridApi setRules op (C3).
+  // state-module restore (step 6, C1), and the VelocityGridApi setRules op (C3).
   const reseedCounts = (): void => {
     const seed: Array<{ rowId: string; row: Record<string, unknown> }> = [];
     g.forEachRow((rowId, row) => seed.push({ rowId, row }));
@@ -195,7 +210,7 @@ export function wireIntoKernel(
   //    remains only as a fallback for callers that omit theme. Shape
   //    mirrors kernel's structural RuleEngineShape (core/ruleEngineSlot.ts).
   //    Grid Layouts / Phase C (C3) — getRules/setRules let the kernel's
-  //    CGridApi rule methods drive the engine's rule set imperatively
+  //    VelocityGridApi rule methods drive the engine's rule set imperatively
   //    (mirrors the calc provider's template ops); setRules re-seeds counts.
   g.registerRuleEngine({
     evaluateCell: (ctx: { row: Record<string, unknown>; rowId: string; colId: string | null; theme?: 'light' | 'dark' }) =>
@@ -322,6 +337,88 @@ export function wireIntoKernel(
       // setRules zeroed the counters — re-seed over the current dataset so the
       // live match counts reflect the restored rule set.
       reseedCounts();
+    },
+  });
+
+  // 7. Dedicated `alerts` state module (Markets parity / worklog Phase 2) —
+  //    rules + settings only. Notification history is session-only and MUST
+  //    serialize as empty. Grid-level (see DEFAULT_GRID_LEVEL_MODULES) so
+  //    layout switches do not wipe alert config.
+  let alertsTouched =
+    (opts?.alertRules?.length ?? 0) > 0
+    || opts?.alertsSettings !== undefined;
+
+  const notifyAlerts = (): void => {
+    alertsTouched = true;
+    g.notifyModuleStateChanged?.('alerts');
+  };
+
+  const replaceAlertRules = (next: AlertRule[]): void => {
+    for (const err of alerts.setRules(next).errors) {
+      console.warn(`[cgrid/rules] skipped alert rule '${err.ruleId}': ${err.message}`);
+    }
+    notifyAlerts();
+  };
+
+  g.getAlertRules = () => alerts.getRules();
+  g.addAlertRule = (rule: AlertRule) => {
+    const current = alerts.getRules();
+    if (current.some((r) => r.id === rule.id)) return;
+    replaceAlertRules([...current, rule]);
+  };
+  g.updateAlertRule = (id: string, patch: Partial<AlertRule>) => {
+    const current = alerts.getRules();
+    if (!current.some((r) => r.id === id)) return;
+    replaceAlertRules(current.map((r) => (r.id === id ? { ...r, ...patch, id } : r)));
+  };
+  g.deleteAlertRule = (id: string) => {
+    const current = alerts.getRules();
+    const next = current.filter((r) => r.id !== id);
+    if (next.length === current.length) return;
+    replaceAlertRules(next);
+  };
+  g.getAlertsSettings = () => alerts.getSettings();
+  g.setAlertsSettings = (patch) => {
+    alerts.setSettings(patch);
+    notifyAlerts();
+  };
+  g.getAlertHistory = () => alerts.getHistory();
+  g.markAlertRead = () => { alerts.markAllRead(); };
+  g.clearAlertHistory = () => { alerts.clearHistory(); };
+  g.getAlertUnreadCount = () => alerts.unreadCount();
+  g.onAlert = (fn) => alerts.onAlert(fn);
+
+  g.registerStateModule?.({
+    id: 'alerts',
+    version: 1,
+    get: () => {
+      if (!alertsTouched && alerts.getRules().length === 0) return undefined;
+      return {
+        rules: alerts.getRules(),
+        settings: alerts.getSettings(),
+        history: [] as const,
+      };
+    },
+    set: (data) => {
+      const slice = (data && typeof data === 'object') ? data as {
+        rules?: AlertRule[];
+        settings?: Parameters<AlertsEngine['setSettings']>[0];
+      } : null;
+      if (slice?.settings) {
+        alerts.setSettings(slice.settings);
+        alertsTouched = true;
+      }
+      if (Array.isArray(slice?.rules)) {
+        for (const err of alerts.setRules(slice.rules).errors) {
+          console.warn(`[cgrid/rules] restore skipped alert '${err.ruleId}': ${err.message}`);
+        }
+        alertsTouched = true;
+      } else if (data === undefined || data === null) {
+        // Layout clearAbsent / empty restore — drop rules, keep settings.
+        alerts.setRules([]);
+      }
+      // Never restore history — session-only.
+      alerts.clearHistory();
     },
   });
 

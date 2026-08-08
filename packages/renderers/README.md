@@ -1,4 +1,4 @@
-# `@cgrid/renderers`
+# `@wellsfargo-starui/velocity-grid-renderers`
 
 Rich canvas cell renderers for financial blotters — numeric tick-aware
 cells, indicators, badges, bars, in-cell sparklines, multi-field
@@ -13,11 +13,11 @@ Design spec: `docs/superpowers/specs/2026-07-02-cycle-21f-renderers-design.md`
 ## Quickstart
 
 ```ts
-import { CGrid } from '@cgrid/kernel';
-import { wireIntoKernel as wireFormat } from '@cgrid/format';
-import { wireRenderersIntoKernel } from '@cgrid/renderers';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
+import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid-format';
+import { wireRenderersIntoKernel } from '@wellsfargo-starui/velocity-grid-renderers';
 
-const grid = new CGrid(host, { columnDefs: [], getRowId: (r) => r.id });
+const grid = new VelocityGrid(host, { columnDefs: [], getRowId: (r) => r.id });
 
 // Wire format first when columns use DSL format strings.
 wireFormat(grid);
@@ -68,7 +68,7 @@ returns the same handle (`grid.__renderersBridgeWired` marker).
 Multi-field painters read `p.rowData` via the kernel's composite paint
 channel. The bridge attaches a minimal `_compositeProgram` stub
 (`THREADING_PROGRAM`) — **without** `type: 'composite'`, so
-`@cgrid/format` does not attempt fragment compilation. Explicit
+`@wellsfargo-starui/velocity-grid-format` does not attempt fragment compilation. Explicit
 `cellRenderer` always wins over the composite fallback.
 
 Value-only painters (`number`, sparklines, etc.) omit the stub.
@@ -139,8 +139,8 @@ tests — Playwright does not assert painted pixels.
 
 ## Dependencies
 
-- **peer:** `@cgrid/kernel`
-- **runtime:** `@cgrid/format` (format bridge should be wired when columns use DSL strings)
+- **peer:** `@wellsfargo-starui/velocity-grid`
+- **runtime:** `@wellsfargo-starui/velocity-grid-format` (format bridge should be wired when columns use DSL strings)
 
 ## Verification gates (cycle 21f)
 

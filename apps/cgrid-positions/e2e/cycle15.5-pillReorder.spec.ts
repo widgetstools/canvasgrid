@@ -11,7 +11,7 @@
  *
  * This E2E pins the FULL pipeline end-to-end:
  *   pointerdown → pointermove (drag past threshold) → pointerup →
- *   GroupingState.moveRowGroupColumn → CGrid.setGroupModel →
+ *   GroupingState.moveRowGroupColumn → VelocityGrid.setGroupModel →
  *   worker round-trip → viewport reply → repaint with new spine.
  *
  * Demo wiring (`apps/cgrid-positions/src/positionsGrid.ts`):
@@ -51,7 +51,7 @@ test.describe('Cycle 15.5 / Task 1 — pill reorder via drag', () => {
     // Three pills are present in the panel — order is Ticker, Sector,
     // Sub Sector. Sanity-check before the gesture.
     const before = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('.cg-row-group-panel-chip')).map(
+      Array.from(document.querySelectorAll('.vg-row-group-panel-chip')).map(
         (el) => (el as HTMLElement).dataset.colId ?? '',
       ),
     );
@@ -59,7 +59,7 @@ test.describe('Cycle 15.5 / Task 1 — pill reorder via drag', () => {
 
     // Resolve the chip rects so the gesture lands at real coords.
     const rects = await page.evaluate(() => {
-      const chips = document.querySelectorAll('.cg-row-group-panel-chip');
+      const chips = document.querySelectorAll('.vg-row-group-panel-chip');
       return Array.from(chips).map((el) => {
         const r = (el as HTMLElement).getBoundingClientRect();
         return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width };
@@ -85,7 +85,7 @@ test.describe('Cycle 15.5 / Task 1 — pill reorder via drag', () => {
     // The chip strip re-renders in the new order.
     await page.waitForFunction(
       () => {
-        const chips = Array.from(document.querySelectorAll('.cg-row-group-panel-chip'));
+        const chips = Array.from(document.querySelectorAll('.vg-row-group-panel-chip'));
         return chips.length === 3
           && (chips[0] as HTMLElement).dataset.colId === 'subSector'
           && (chips[1] as HTMLElement).dataset.colId === 'ticker'
@@ -96,14 +96,14 @@ test.describe('Cycle 15.5 / Task 1 — pill reorder via drag', () => {
     );
 
     const after = await page.evaluate(() => {
-      const chips = Array.from(document.querySelectorAll('.cg-row-group-panel-chip'));
+      const chips = Array.from(document.querySelectorAll('.vg-row-group-panel-chip'));
       return chips.map((el) => (el as HTMLElement).dataset.colId ?? '');
     });
     expect(after).toEqual(['subSector', 'ticker', 'sector']);
 
     // The primitive API getter reflects the same order.
     const apiOrder = await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return api.getRowGroupColumns ? api.getRowGroupColumns() : [];
     });
     expect(apiOrder).toEqual(['subSector', 'ticker', 'sector']);
@@ -113,7 +113,7 @@ test.describe('Cycle 15.5 / Task 1 — pill reorder via drag', () => {
     await gridReady(page);
 
     const rects = await page.evaluate(() => {
-      const chips = document.querySelectorAll('.cg-row-group-panel-chip');
+      const chips = document.querySelectorAll('.vg-row-group-panel-chip');
       return Array.from(chips).map((el) => {
         const r = (el as HTMLElement).getBoundingClientRect();
         return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width };
@@ -133,7 +133,7 @@ test.describe('Cycle 15.5 / Task 1 — pill reorder via drag', () => {
 
     // No move dispatched — order stays.
     const after = await page.evaluate(() => {
-      const chips = Array.from(document.querySelectorAll('.cg-row-group-panel-chip'));
+      const chips = Array.from(document.querySelectorAll('.vg-row-group-panel-chip'));
       return chips.map((el) => (el as HTMLElement).dataset.colId ?? '');
     });
     expect(after).toEqual(['ticker', 'sector', 'subSector']);

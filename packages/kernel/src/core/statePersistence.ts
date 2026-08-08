@@ -4,7 +4,7 @@
  * A grid constructed with `gridId` + `persistState` automatically restores
  * its full `GridState` snapshot on construction and autosaves it (debounced)
  * on every coalesced `stateUpdated` emit. The storage backend is pluggable:
- * the default adapter writes `localStorage` under `cgrid:state:<gridId>`;
+ * the default adapter writes `localStorage` under `velocity-grid:state:<gridId>`;
  * container apps swap in their own `StateStorageAdapter` to persist through
  * a config service (REST / IndexedDB / host ConfigManager) without touching
  * anything else.
@@ -24,7 +24,7 @@ export interface StateStorageAdapter {
   clear(gridId: string): void | Promise<void>;
 }
 
-/** Object form of `CGridOptions.persistState`. */
+/** Object form of `VelocityGridOptions.persistState`. */
 export interface PersistStateOptions {
   /** Storage backend. Defaults to the localStorage adapter. */
   adapter?: StateStorageAdapter;
@@ -34,7 +34,7 @@ export interface PersistStateOptions {
 
 export const DEFAULT_PERSIST_DEBOUNCE_MS = 500;
 
-const STORAGE_KEY_PREFIX = 'cgrid:state:';
+const STORAGE_KEY_PREFIX = 'velocity-grid:state:';
 
 export function persistenceStorageKey(gridId: string): string {
   return `${STORAGE_KEY_PREFIX}${gridId}`;
@@ -49,7 +49,7 @@ export class LocalStorageStateAdapter implements StateStorageAdapter {
       if (!raw) return null;
       return JSON.parse(raw) as GridState;
     } catch (err) {
-      console.warn('[cgrid] persistState: failed to load saved state', err);
+      console.warn('[velocity-grid] persistState: failed to load saved state', err);
       return null;
     }
   }
@@ -58,7 +58,7 @@ export class LocalStorageStateAdapter implements StateStorageAdapter {
     try {
       globalThis.localStorage?.setItem(persistenceStorageKey(gridId), JSON.stringify(state));
     } catch (err) {
-      console.warn('[cgrid] persistState: failed to save state', err);
+      console.warn('[velocity-grid] persistState: failed to save state', err);
     }
   }
 
@@ -110,14 +110,14 @@ export class StatePersistenceController {
     try {
       saved = await this.adapter.load(this.gridId);
     } catch (err) {
-      console.warn('[cgrid] persistState: adapter.load failed', err);
+      console.warn('[velocity-grid] persistState: adapter.load failed', err);
     }
     if (this.destroyed) return;
     if (saved) {
       try {
         this.hooks.applyState(saved);
       } catch (err) {
-        console.warn('[cgrid] persistState: failed to apply saved state', err);
+        console.warn('[velocity-grid] persistState: failed to apply saved state', err);
       }
     }
     this.unsubscribe = this.hooks.onStateUpdated((state) => this.scheduleSave(state));
@@ -141,7 +141,7 @@ export class StatePersistenceController {
     try {
       void this.adapter.save(this.gridId, state);
     } catch (err) {
-      console.warn('[cgrid] persistState: adapter.save failed', err);
+      console.warn('[velocity-grid] persistState: adapter.save failed', err);
     }
   }
 
@@ -155,7 +155,7 @@ export class StatePersistenceController {
     try {
       void this.adapter.clear(this.gridId);
     } catch (err) {
-      console.warn('[cgrid] persistState: adapter.clear failed', err);
+      console.warn('[velocity-grid] persistState: adapter.clear failed', err);
     }
   }
 

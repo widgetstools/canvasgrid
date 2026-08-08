@@ -5,7 +5,7 @@
  * (Copy, Copy with Headers, Paste, Cut, Export, Autosize Columns, Pin
  * Column ►, Reset Columns) plus two separators between the logical
  * groups (clipboard / export / column-ops). Apps that don't supply
- * `CGridOptions.getContextMenuItems` see this list directly; apps that
+ * `VelocityGridOptions.getContextMenuItems` see this list directly; apps that
  * DO supply a callback receive the same list via `params.defaultItems`
  * and mix-and-match (filter / concat / spread).
  *
@@ -27,8 +27,8 @@
  */
 import type { GetContextMenuItemsParams, MenuItem } from './types';
 
-/** The slice of the CGrid surface the default registry depends on.
- *  Deliberately a structural interface rather than the full `CGrid`
+/** The slice of the VelocityGrid surface the default registry depends on.
+ *  Deliberately a structural interface rather than the full `VelocityGrid`
  *  class so the registry stays test-friendly and Tasks 3–5 can extend
  *  it without churning every call site. */
 export interface DefaultMenuGrid {
@@ -48,7 +48,7 @@ export interface DefaultMenuGrid {
   /** Cycle 10 / Task 5 — copy ranges then clear the source cells via
    *  `applyTransaction`. The Cut default-menu item routes here. */
   cutSelectedRanges(): Promise<void>;
-  /** Cycle 10 / Task 6 — resolved `CGridOptions.suppressClipboardPaste`.
+  /** Cycle 10 / Task 6 — resolved `VelocityGridOptions.suppressClipboardPaste`.
    *  The default `Paste` item renders disabled when `true` so users see
    *  the gate visually instead of hitting a silent no-op. Optional for
    *  back-compat: registries built before Task 6 land continue to work
@@ -76,7 +76,7 @@ export function buildDefaultMenuItems(
 
   const pinAction = (pinned: 'left' | 'right' | null) => () => {
     // The registry is rebuilt per right-click (see
-    // `CGrid.resolveContextMenuItems`), so the closure-captured `colId`
+    // `VelocityGrid.resolveContextMenuItems`), so the closure-captured `colId`
     // is always the freshly-clicked column. `colId === null` happens
     // when the right-click landed outside any column (the menu is
     // already gated via `disabled: !hasColumn` so this is defence in
@@ -98,7 +98,7 @@ export function buildDefaultMenuItems(
       action: () => {
         void grid.cutSelectedRanges().catch((err) => {
           if (err instanceof Error && err.message === 'no-ranges') return;
-          console.warn('[cgrid] cutSelectedRanges:', err);
+          console.warn('[velocity-grid] cutSelectedRanges:', err);
         });
       },
     },
@@ -115,7 +115,7 @@ export function buildDefaultMenuItems(
       action: () => {
         void grid.copySelectedRangesToClipboard().catch((err) => {
           if (err instanceof Error && err.message === 'no-ranges') return;
-          console.warn('[cgrid] copySelectedRangesToClipboard:', err);
+          console.warn('[velocity-grid] copySelectedRangesToClipboard:', err);
         });
       },
     },
@@ -125,7 +125,7 @@ export function buildDefaultMenuItems(
       action: () => {
         void grid.copySelectedRangesToClipboard({ includeHeaders: true }).catch((err) => {
           if (err instanceof Error && err.message === 'no-ranges') return;
-          console.warn('[cgrid] copySelectedRangesToClipboard (headers):', err);
+          console.warn('[velocity-grid] copySelectedRangesToClipboard (headers):', err);
         });
       },
     },
@@ -144,7 +144,7 @@ export function buildDefaultMenuItems(
       // gesture if invoked programmatically) get a single warn line.
       action: () => {
         void grid.pasteFromClipboard().catch((err) => {
-          console.warn('[cgrid] pasteFromClipboard:', err);
+          console.warn('[velocity-grid] pasteFromClipboard:', err);
         });
       },
     },
@@ -163,7 +163,7 @@ export function buildDefaultMenuItems(
           disabled: !grid.exportDataAsCsv,
           action: () => {
             void grid.exportDataAsCsv?.().catch((err) => {
-              console.warn('[cgrid] exportDataAsCsv:', err);
+              console.warn('[velocity-grid] exportDataAsCsv:', err);
             });
           },
         },
@@ -172,7 +172,7 @@ export function buildDefaultMenuItems(
           disabled: !grid.exportDataAsExcel,
           action: () => {
             void grid.exportDataAsExcel?.().catch((err) => {
-              console.warn('[cgrid] exportDataAsExcel:', err);
+              console.warn('[velocity-grid] exportDataAsExcel:', err);
             });
           },
         },

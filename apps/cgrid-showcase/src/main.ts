@@ -1,12 +1,12 @@
-import '@cgrid/kernel/style.css';
+import '@wellsfargo-starui/velocity-grid/style.css';
 import './showcase.css';
 import { FEATURES, FEATURE_MAP } from './features/index';
-import type { CGrid } from '@cgrid/kernel';
+import type { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
 import type { ShowcaseRow } from './seedData';
 
 declare global {
   interface Window {
-    __cgrid: CGrid<ShowcaseRow> | null;
+    __velocity-grid: VelocityGrid<ShowcaseRow> | null;
     __cgridReady: boolean;
   }
 }
@@ -16,7 +16,7 @@ window.__cgridReady = false;
 
 // ─── Theme state ──────────────────────────────────────────────────────────────
 
-let currentTheme = 'cg-theme-starui-dark';
+let currentTheme = 'vg-theme-starui-dark';
 
 // ─── Build shell ──────────────────────────────────────────────────────────────
 
@@ -61,7 +61,7 @@ FEATURES.forEach((f) => {
 
 // ─── Feature mounting ─────────────────────────────────────────────────────────
 
-let activeGrid: CGrid<ShowcaseRow> | null = null;
+let activeGrid: VelocityGrid<ShowcaseRow> | null = null;
 
 function mount(featureId: string): void {
   const feature = FEATURE_MAP.get(featureId) ?? FEATURES[0]!;
@@ -101,8 +101,8 @@ function mount(featureId: string): void {
 // ─── Theme toggle ─────────────────────────────────────────────────────────────
 
 themeToggle.addEventListener('click', () => {
-  const isDark = currentTheme === 'cg-theme-starui-dark';
-  currentTheme = isDark ? 'cg-theme-starui' : 'cg-theme-starui-dark';
+  const isDark = currentTheme === 'vg-theme-starui-dark';
+  currentTheme = isDark ? 'vg-theme-starui' : 'vg-theme-starui-dark';
   themeToggle.textContent = isDark ? '☾' : '☀';
 
   // Apply to running grid

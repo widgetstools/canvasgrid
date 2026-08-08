@@ -4,7 +4,7 @@
  * STOMP/seed → Table.update → Views → sparse SSRM getRows (windowed only).
  * Grouping / agg / filter / sort owned by Perspective — never full hydrate.
  */
-import type { FilterModel, SkeletonGroup, SortModel } from '@cgrid/kernel';
+import type { FilterModel, SkeletonGroup, SortModel } from '@wellsfargo-starui/velocity-grid';
 import { Client, type IMessage } from '@stomp/stompjs';
 import {
   getPerspectiveWorkerMode,

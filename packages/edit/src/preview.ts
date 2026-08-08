@@ -1,4 +1,4 @@
-// @cgrid/edit - pure preview classification for confirm dialogs.
+// @wellsfargo-starui/velocity-grid-edit - pure preview classification for confirm dialogs.
 // Authoritative reference: docs/superpowers/specs/2026-07-02-cycle-21g-edit-design.md
 // section 1.1.2 (patch model), section 3.3 (preview never mutates).
 // Recon: docs/superpowers/plans/notes/2026-07-02-cycle-21g-recon.md A.1.

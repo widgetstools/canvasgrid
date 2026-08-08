@@ -2,10 +2,10 @@ import { describe, it, expect, vi } from 'vitest';
 import { FeatureChain } from '../src/interaction/featureChain';
 import { HitTester } from '../src/interaction/hitTester';
 import { SelectionModel } from '../src/interaction/selectionModel';
-import type { CGridLike } from '../src/interaction/feature';
+import type { VelocityGridLike } from '../src/interaction/feature';
 import type { ViewportState } from '../src/core/viewport';
 import type { Subgrid } from '../src/core/subgrid';
-import type { CGridCanvas } from '../src/core/canvas';
+import type { VelocityGridCanvas } from '../src/core/canvas';
 
 const dataSubgrid: Subgrid = {
   type: 'data', isHeader: false, isData: true, isTotals: false, isFooter: false,
@@ -31,7 +31,7 @@ function setup(opts: { rowCount?: number; cols?: string[]; initialFocus?: { row:
   const cgridCanvas = {
     canvas,
     requestRepaint: vi.fn(),
-  } as unknown as CGridCanvas;
+  } as unknown as VelocityGridCanvas;
   const sel = new SelectionModel('multiple');
   if (opts.initialFocus) sel.setFocus(opts.initialFocus.row, opts.initialFocus.col);
   const hit = new HitTester(() => vs, () => 32, () => 4);
@@ -127,7 +127,7 @@ function setup(opts: { rowCount?: number; cols?: string[]; initialFocus?: { row:
     isGroupRow: () => false,
     isGroupExpanded: () => false,
     isGroupDoubleClickExpandSuppressed: () => false,
-  } as unknown as CGridLike;
+  } as unknown as VelocityGridLike;
   const chain = new FeatureChain(grid);
   return { canvas, sel, chain, emitClicked, emitDoubleClicked, resizeColumn, cycleSort, scrollBy, openEditor, stopEditing };
 }

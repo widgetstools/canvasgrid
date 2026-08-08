@@ -5,12 +5,12 @@
  * bundles the template defs its columns reference, and importing it into a
  * FRESH grid (empty library) re-materializes those defs AND restores the
  * per-column template assignments (which now ride in the layout-tier
- * `columnOverrides` module). Exercised end-to-end on real CGrids wired to
- * @cgrid/calc.
+ * `columnOverrides` module). Exercised end-to-end on real VelocityGrids wired to
+ * @wellsfargo-starui/velocity-grid-calc.
  */
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { CGrid } from '../src/cgrid';
-import { wireIntoKernel } from '@cgrid/calc';
+import { VelocityGrid } from '../src/velocityGrid';
+import { wireIntoKernel } from '@wellsfargo-starui/velocity-grid-calc';
 import { _resetCalcProvider_forTests } from '../src/core/calcSlot';
 
 beforeEach(() => { _resetCalcProvider_forTests(); });
@@ -44,12 +44,12 @@ beforeAll(() => {
 async function mountWired() {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
-  const grid = new CGrid<{ id: string; qty: number; price: number }>(container, {
+  const grid = new VelocityGrid<{ id: string; qty: number; price: number }>(container, {
     columnDefs: [{ field: 'id' }, { field: 'qty' }, { field: 'price' }],
     getRowId: (r) => r.id,
-    theme: 'cg-theme-quartz',
+    theme: 'vg-theme-quartz',
   });
   const { calc } = wireIntoKernel(grid);
   const w = (grid as any).workerClient.worker;

@@ -45,7 +45,7 @@ test.describe('Cycle 6 / Task 3 — sizeColumnsToFit', () => {
     await gridReady(page);
 
     const before = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return grid.getColumnState();
     });
     const beforePosId = before.find((e) => e.colId === 'positionId');
@@ -70,7 +70,7 @@ test.describe('Cycle 6 / Task 3 — sizeColumnsToFit', () => {
     );
 
     const after = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return grid.getColumnState();
     });
 

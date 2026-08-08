@@ -1,21 +1,21 @@
-# CGridExt Foundation — Wave 0 (Spine) Implementation Plan
+# VelocityGridExt Foundation — Wave 0 (Spine) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Stand up `@cgrid/ext` with the `CGridExt` composer, `<cgrid-ext>` element, the extension contract + registry, the three-region shell (title bar · ribbon · settings sheet), a minimal-but-real profiles controller, one real settings module (Grid Options), and a live-STOMP demo — proving composition top-to-bottom.
+**Goal:** Stand up `@wellsfargo-starui/velocity-grid-ext` with the `VelocityGridExt` composer, `<cgrid-ext>` element, the extension contract + registry, the three-region shell (title bar · ribbon · settings sheet), a minimal-but-real profiles controller, one real settings module (Grid Options), and a live-STOMP demo — proving composition top-to-bottom.
 
-**Architecture:** `CGridExt` *owns* a kernel `CGrid` (composition, public API only) plus an `ExtensionRegistry`. Every tooling piece is a `CgExtension` (`settings-module` | `toolbar-item` | `service`) that receives a `CgExtContext` (grid + state + modal + events + profiles). The shell is a vertical stack of DOM strips reserving space above the kernel canvas.
+**Architecture:** `VelocityGridExt` *owns* a kernel `VelocityGrid` (composition, public API only) plus an `ExtensionRegistry`. Every tooling piece is a `VelocityGridExtension` (`settings-module` | `toolbar-item` | `service`) that receives a `VelocityGridExtContext` (grid + state + modal + events + profiles). The shell is a vertical stack of DOM strips reserving space above the kernel canvas.
 
-**Tech Stack:** TypeScript (ES2022, strict), `@cgrid/kernel`, `@cgrid/customizer` (Lit chrome), Lit 3, Vitest + happy-dom (unit), Playwright + Vite (demo/E2E).
+**Tech Stack:** TypeScript (ES2022, strict), `@wellsfargo-starui/velocity-grid`, `@wellsfargo-starui/velocity-grid-customizer` (Lit chrome), Lit 3, Vitest + happy-dom (unit), Playwright + Vite (demo/E2E).
 
 ## Global Constraints
 
-- **Package name:** `@cgrid/ext`. Source-direct (`main`/`types` → `./src/index.ts`), no build step (scaffold `build` script echoes + exits 0), mirroring `@cgrid/customizer`.
-- **Kernel access is public-API-only.** Never import from `@cgrid/kernel/src/...` internals; only the package entry `@cgrid/kernel`. Any capability gap is a kernel change, not a workaround (no retroactive layering).
-- **No decorators.** Lit components/classes use `static properties`, not TC39 decorators (esbuild passes decorators through untransformed in source-direct packages). Mirror `@cgrid/customizer`.
+- **Package name:** `@wellsfargo-starui/velocity-grid-ext`. Source-direct (`main`/`types` → `./src/index.ts`), no build step (scaffold `build` script echoes + exits 0), mirroring `@wellsfargo-starui/velocity-grid-customizer`.
+- **Kernel access is public-API-only.** Never import from `@wellsfargo-starui/velocity-grid/src/...` internals; only the package entry `@wellsfargo-starui/velocity-grid`. Any capability gap is a kernel change, not a workaround (no retroactive layering).
+- **No decorators.** Lit components/classes use `static properties`, not TC39 decorators (esbuild passes decorators through untransformed in source-direct packages). Mirror `@wellsfargo-starui/velocity-grid-customizer`.
 - **State single-source:** every module owns a named `GridState` slice via `grid.registerStateModule(...)`. No shadow state.
 - **TS base:** extends `../../tsconfig.base.json` (`strict`, `noUncheckedIndexedAccess`, `useDefineForClassFields`).
-- **Tests:** Vitest `environment: 'happy-dom'`, files `tests/**/*.test.ts`. Constructing a `CGrid` under happy-dom requires the Worker + canvas stubs — provide them once in `tests/setup.ts` (Task 1) and import in every test that builds a grid.
+- **Tests:** Vitest `environment: 'happy-dom'`, files `tests/**/*.test.ts`. Constructing a `VelocityGrid` under happy-dom requires the Worker + canvas stubs — provide them once in `tests/setup.ts` (Task 1) and import in every test that builds a grid.
 - **Commit style:** end commit messages with `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
 - **Branch:** `cgridext/foundation` (already created off latest main).
 
@@ -25,15 +25,15 @@
 
 ```
 packages/ext/
-  package.json                     # @cgrid/ext manifest (Task 1)
+  package.json                     # @wellsfargo-starui/velocity-grid-ext manifest (Task 1)
   tsconfig.json                    # extends base (Task 1)
   vitest.config.ts                 # happy-dom (Task 1)
   README.md                        # purpose + status (Task 1)
-  tests/setup.ts                   # Worker + canvas stubs for CGrid-under-happy-dom (Task 1)
+  tests/setup.ts                   # Worker + canvas stubs for VelocityGrid-under-happy-dom (Task 1)
   src/
     index.ts                       # public exports (grows each task)
     extension/
-      types.ts                     # CgExtension, SettingsModule, ToolbarItem, CgExtContext, ProfileController, ProfileStore… (Task 2)
+      types.ts                     # VelocityGridExtension, SettingsModule, ToolbarItem, VelocityGridExtContext, ProfileController, ProfileStore… (Task 2)
       registry.ts                  # ExtensionRegistry (Task 3)
       context.ts                   # createExtContext(...) factory (Task 4)
     profiles/
@@ -41,7 +41,7 @@ packages/ext/
       controller.ts                # ProfileController impl (dirty + snapshot save/load) (Task 4)
     shell/
       shell.ts                     # ShellLayout: strips, mounts grid, region hosts (Task 5)
-    cgridExt.ts                    # CGridExt composer + default bundle wiring (Task 6, 9)
+    velocityGridExt.ts                    # VelocityGridExt composer + default bundle wiring (Task 6, 9)
     element.ts                     # <cgrid-ext> custom element (Task 7)
     modules/
       gridOptions.ts               # Grid Options settings-module (Task 8)
@@ -54,7 +54,7 @@ apps/cgrid-ext-demo/               # live-STOMP demo + E2E (Task 10, 11)
 
 ---
 
-### Task 1: Package scaffold `@cgrid/ext`
+### Task 1: Package scaffold `@wellsfargo-starui/velocity-grid-ext`
 
 **Files:**
 - Create: `packages/ext/package.json`
@@ -67,13 +67,13 @@ apps/cgrid-ext-demo/               # live-STOMP demo + E2E (Task 10, 11)
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: the `@cgrid/ext` workspace package; `tests/setup.ts` exporting `installGridTestEnv()` used by every later test that constructs a `CGrid`.
+- Produces: the `@wellsfargo-starui/velocity-grid-ext` workspace package; `tests/setup.ts` exporting `installGridTestEnv()` used by every later test that constructs a `VelocityGrid`.
 
 - [ ] **Step 1: Create `packages/ext/package.json`**
 
 ```json
 {
-  "name": "@cgrid/ext",
+  "name": "@wellsfargo-starui/velocity-grid-ext",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -86,18 +86,18 @@ apps/cgrid-ext-demo/               # live-STOMP demo + E2E (Task 10, 11)
     }
   },
   "scripts": {
-    "build": "echo '@cgrid/ext is source-direct — no build yet' && exit 0",
+    "build": "echo '@wellsfargo-starui/velocity-grid-ext is source-direct — no build yet' && exit 0",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@cgrid/calc": "*",
-    "@cgrid/customizer": "*",
-    "@cgrid/edit": "*",
-    "@cgrid/format": "*",
-    "@cgrid/kernel": "*",
-    "@cgrid/renderers": "*",
-    "@cgrid/rules": "*",
+    "@wellsfargo-starui/velocity-grid-calc": "*",
+    "@wellsfargo-starui/velocity-grid-customizer": "*",
+    "@wellsfargo-starui/velocity-grid-edit": "*",
+    "@wellsfargo-starui/velocity-grid-format": "*",
+    "@wellsfargo-starui/velocity-grid": "*",
+    "@wellsfargo-starui/velocity-grid-renderers": "*",
+    "@wellsfargo-starui/velocity-grid-rules": "*",
     "@lit/context": "^1.1.6",
     "lit": "^3.3.3"
   },
@@ -139,9 +139,9 @@ export default defineConfig({
 - [ ] **Step 4: Create `packages/ext/README.md`**
 
 ```markdown
-# @cgrid/ext
+# @wellsfargo-starui/velocity-grid-ext
 
-`CGridExt` — cgrid's self-contained, batteries-included wrapper: owns a `CGrid`
+`VelocityGridExt` — cgrid's self-contained, batteries-included wrapper: owns a `VelocityGrid`
 and layers on all config tooling (two-tier toolbar, settings sheet, profiles)
 via a plugin/extension registry. Zero StarUI dependency.
 
@@ -150,12 +150,12 @@ via a plugin/extension registry. Zero StarUI dependency.
 `docs/superpowers/plans/2026-07-07-cgridext-foundation-wave0-spine.md`.
 ```
 
-- [ ] **Step 5: Create `packages/ext/tests/setup.ts`** (Worker + canvas stubs so `new CGrid(...)` runs under happy-dom — mirrors `packages/customizer/tests/registration.test.ts`)
+- [ ] **Step 5: Create `packages/ext/tests/setup.ts`** (Worker + canvas stubs so `new VelocityGrid(...)` runs under happy-dom — mirrors `packages/customizer/tests/registration.test.ts`)
 
 ```ts
 import { vi } from 'vitest';
 
-/** Install the Worker + canvas 2D stubs a `CGrid` needs under happy-dom.
+/** Install the Worker + canvas 2D stubs a `VelocityGrid` needs under happy-dom.
  *  Idempotent — safe to call from every test file's `beforeAll`. */
 export function installGridTestEnv(): void {
   const g = globalThis as any;
@@ -202,7 +202,7 @@ export const CGRID_EXT_VERSION = '0.0.0';
 import { describe, it, expect } from 'vitest';
 import { CGRID_EXT_VERSION } from '../src/index';
 
-describe('@cgrid/ext scaffold', () => {
+describe('@wellsfargo-starui/velocity-grid-ext scaffold', () => {
   it('exposes a version constant', () => {
     expect(CGRID_EXT_VERSION).toBe('0.0.0');
   });
@@ -211,19 +211,19 @@ describe('@cgrid/ext scaffold', () => {
 
 - [ ] **Step 8: Install workspace deps and run the test**
 
-Run: `npm install && npm test --workspace=@cgrid/ext`
-Expected: install links `@cgrid/ext`; test PASSES (1 passed).
+Run: `npm install && npm test --workspace=@wellsfargo-starui/velocity-grid-ext`
+Expected: install links `@wellsfargo-starui/velocity-grid-ext`; test PASSES (1 passed).
 
 - [ ] **Step 9: Verify typecheck**
 
-Run: `npm run typecheck --workspace=@cgrid/ext`
+Run: `npm run typecheck --workspace=@wellsfargo-starui/velocity-grid-ext`
 Expected: exits 0, no errors.
 
 - [ ] **Step 10: Commit**
 
 ```bash
 git add packages/ext package-lock.json
-git commit -m "feat(ext): scaffold @cgrid/ext package + test env
+git commit -m "feat(ext): scaffold @wellsfargo-starui/velocity-grid-ext package + test env
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
@@ -238,8 +238,8 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Test: `packages/ext/tests/types.test.ts`
 
 **Interfaces:**
-- Consumes: `CGrid`, `StateModule`, `GridState` from `@cgrid/kernel`; `ModalHost` type (re-derive locally — see below).
-- Produces: `CgExtension`, `ExtensionKind`, `SettingsModule`, `ModuleCategory`, `ModuleInstance`, `ToolbarItem`, `ToolbarSlot`, `ToolbarItemInstance`, `CgExtContext`, `ProfileController`, `ProfileStore`, `ProfileMeta`, `ProfileSnapshot`, `Unsub`, `ExtEvent`, `ExtEventBus`. These names are the contract every later task depends on.
+- Consumes: `VelocityGrid`, `StateModule`, `GridState` from `@wellsfargo-starui/velocity-grid`; `ModalHost` type (re-derive locally — see below).
+- Produces: `VelocityGridExtension`, `ExtensionKind`, `SettingsModule`, `ModuleCategory`, `ModuleInstance`, `ToolbarItem`, `ToolbarSlot`, `ToolbarItemInstance`, `VelocityGridExtContext`, `ProfileController`, `ProfileStore`, `ProfileMeta`, `ProfileSnapshot`, `Unsub`, `ExtEvent`, `ExtEventBus`. These names are the contract every later task depends on.
 
 - [ ] **Step 1: Write the failing test** `packages/ext/tests/types.test.ts`
 
@@ -269,13 +269,13 @@ describe('extension type guards', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm test --workspace=@cgrid/ext -- types`
+Run: `npm test --workspace=@wellsfargo-starui/velocity-grid-ext -- types`
 Expected: FAIL — cannot find module `../src/extension/types`.
 
 - [ ] **Step 3: Create `packages/ext/src/extension/types.ts`**
 
 ```ts
-import type { CGrid, StateModule, GridState } from '@cgrid/kernel';
+import type { VelocityGrid, StateModule, GridState } from '@wellsfargo-starui/velocity-grid';
 
 export type Unsub = () => void;
 
@@ -329,8 +329,8 @@ export interface ProfileController {
 
 /** Handed to every extension's `init` and `mount`/`render`. Kernel is
  *  reached through its PUBLIC api only. */
-export interface CgExtContext {
-  grid: CGrid;
+export interface VelocityGridExtContext {
+  grid: VelocityGrid;
   getState(): GridState;
   setState(state: Partial<GridState>): void;
   registerStateModule(module: StateModule): Unsub;
@@ -341,10 +341,10 @@ export interface CgExtContext {
 
 export type ExtensionKind = 'settings-module' | 'toolbar-item' | 'service';
 
-export interface CgExtension {
+export interface VelocityGridExtension {
   id: string;
   kind: ExtensionKind;
-  init(ctx: CgExtContext): void;
+  init(ctx: VelocityGridExtContext): void;
   dispose?(): void;
 }
 
@@ -353,12 +353,12 @@ export type ModuleCategory =
 
 export interface ModuleInstance { destroy(): void; refresh?(): void }
 
-export interface SettingsModule extends CgExtension {
+export interface SettingsModule extends VelocityGridExtension {
   kind: 'settings-module';
   title: string;
   icon: string;
   category: ModuleCategory;
-  mount(host: HTMLElement, ctx: CgExtContext): ModuleInstance;
+  mount(host: HTMLElement, ctx: VelocityGridExtContext): ModuleInstance;
 }
 
 export type ToolbarSlot =
@@ -366,17 +366,17 @@ export type ToolbarSlot =
 
 export interface ToolbarItemInstance { destroy(): void; refresh?(): void }
 
-export interface ToolbarItem extends CgExtension {
+export interface ToolbarItem extends VelocityGridExtension {
   kind: 'toolbar-item';
   slot: ToolbarSlot;
   toggleable?: boolean;
-  render(host: HTMLElement, ctx: CgExtContext): ToolbarItemInstance;
+  render(host: HTMLElement, ctx: VelocityGridExtContext): ToolbarItemInstance;
 }
 
-export function isSettingsModule(e: CgExtension): e is SettingsModule {
+export function isSettingsModule(e: VelocityGridExtension): e is SettingsModule {
   return e.kind === 'settings-module';
 }
-export function isToolbarItem(e: CgExtension): e is ToolbarItem {
+export function isToolbarItem(e: VelocityGridExtension): e is ToolbarItem {
   return e.kind === 'toolbar-item';
 }
 ```
@@ -390,13 +390,13 @@ export * from './extension/types';
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `npm test --workspace=@cgrid/ext -- types`
+Run: `npm test --workspace=@wellsfargo-starui/velocity-grid-ext -- types`
 Expected: PASS.
 
 - [ ] **Step 6: Typecheck + commit**
 
 ```bash
-npm run typecheck --workspace=@cgrid/ext
+npm run typecheck --workspace=@wellsfargo-starui/velocity-grid-ext
 git add packages/ext
 git commit -m "feat(ext): extension contract types
 
@@ -413,15 +413,15 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Test: `packages/ext/tests/registry.test.ts`
 
 **Interfaces:**
-- Consumes: `CgExtension`, `SettingsModule`, `ToolbarItem`, `ExtensionKind`, `isSettingsModule`, `isToolbarItem` from `./types`.
-- Produces: `ExtensionRegistry` with `register(ext)`, `remove(id)`, `has(id)`, `get(id)`, `all()`, `settingsModules()`, `toolbarItems()`, `initAll(ctx)`, `disposeAll()`; and `ExtensionSpec` (`CgExtension | { remove: string } | { id: string; factory: () => CgExtension }`) used by CGridExt to apply consumer overrides.
+- Consumes: `VelocityGridExtension`, `SettingsModule`, `ToolbarItem`, `ExtensionKind`, `isSettingsModule`, `isToolbarItem` from `./types`.
+- Produces: `ExtensionRegistry` with `register(ext)`, `remove(id)`, `has(id)`, `get(id)`, `all()`, `settingsModules()`, `toolbarItems()`, `initAll(ctx)`, `disposeAll()`; and `ExtensionSpec` (`VelocityGridExtension | { remove: string } | { id: string; factory: () => VelocityGridExtension }`) used by VelocityGridExt to apply consumer overrides.
 
 - [ ] **Step 1: Write the failing test** `packages/ext/tests/registry.test.ts`
 
 ```ts
 import { describe, it, expect, vi } from 'vitest';
 import { ExtensionRegistry } from '../src/extension/registry';
-import type { CgExtContext, SettingsModule, ToolbarItem } from '../src/extension/types';
+import type { VelocityGridExtContext, SettingsModule, ToolbarItem } from '../src/extension/types';
 
 const mod = (id: string): SettingsModule => ({
   id, kind: 'settings-module', title: id, icon: 'i', category: 'layout',
@@ -453,7 +453,7 @@ describe('ExtensionRegistry', () => {
     const disposed = vi.fn();
     (m as any).dispose = disposed;
     r.register(m);
-    const ctx = {} as CgExtContext;
+    const ctx = {} as VelocityGridExtContext;
     r.initAll(ctx);
     expect(m.init).toHaveBeenCalledWith(ctx);
     r.disposeAll();
@@ -464,26 +464,26 @@ describe('ExtensionRegistry', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm test --workspace=@cgrid/ext -- registry`
+Run: `npm test --workspace=@wellsfargo-starui/velocity-grid-ext -- registry`
 Expected: FAIL — cannot find `../src/extension/registry`.
 
 - [ ] **Step 3: Create `packages/ext/src/extension/registry.ts`**
 
 ```ts
-import type { CgExtension, CgExtContext, SettingsModule, ToolbarItem } from './types';
+import type { VelocityGridExtension, VelocityGridExtContext, SettingsModule, ToolbarItem } from './types';
 import { isSettingsModule, isToolbarItem } from './types';
 
 /** How a consumer mutates the default bundle via `options.ext.extensions`. */
 export type ExtensionSpec =
-  | CgExtension
+  | VelocityGridExtension
   | { remove: string }
-  | { id: string; factory: () => CgExtension };
+  | { id: string; factory: () => VelocityGridExtension };
 
 export class ExtensionRegistry {
-  private map = new Map<string, CgExtension>();
+  private map = new Map<string, VelocityGridExtension>();
   private order: string[] = [];
 
-  register(ext: CgExtension): void {
+  register(ext: VelocityGridExtension): void {
     if (!this.map.has(ext.id)) this.order.push(ext.id);
     this.map.set(ext.id, ext);
   }
@@ -493,8 +493,8 @@ export class ExtensionRegistry {
   }
 
   has(id: string): boolean { return this.map.has(id); }
-  get(id: string): CgExtension | undefined { return this.map.get(id); }
-  all(): CgExtension[] { return this.order.map(id => this.map.get(id)!); }
+  get(id: string): VelocityGridExtension | undefined { return this.map.get(id); }
+  all(): VelocityGridExtension[] { return this.order.map(id => this.map.get(id)!); }
 
   settingsModules(): SettingsModule[] { return this.all().filter(isSettingsModule); }
   toolbarItems(): ToolbarItem[] { return this.all().filter(isToolbarItem); }
@@ -508,7 +508,7 @@ export class ExtensionRegistry {
     }
   }
 
-  initAll(ctx: CgExtContext): void { for (const e of this.all()) e.init(ctx); }
+  initAll(ctx: VelocityGridExtContext): void { for (const e of this.all()) e.init(ctx); }
   disposeAll(): void {
     for (const e of this.all()) e.dispose?.();
     this.map.clear();
@@ -525,13 +525,13 @@ export { ExtensionRegistry, type ExtensionSpec } from './extension/registry';
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `npm test --workspace=@cgrid/ext -- registry`
+Run: `npm test --workspace=@wellsfargo-starui/velocity-grid-ext -- registry`
 Expected: PASS (2 passed).
 
 - [ ] **Step 6: Typecheck + commit**
 
 ```bash
-npm run typecheck --workspace=@cgrid/ext
+npm run typecheck --workspace=@wellsfargo-starui/velocity-grid-ext
 git add packages/ext
 git commit -m "feat(ext): extension registry
 
@@ -550,8 +550,8 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Test: `packages/ext/tests/profiles.test.ts`, `packages/ext/tests/context.test.ts`
 
 **Interfaces:**
-- Consumes: `CGrid` (`getState`/`setState`/`registerStateModule`/`getModal`), `ProfileStore`/`ProfileController`/`ProfileSnapshot`/`ProfileMeta`/`CgExtContext`/`ExtEventBus` from `./types`.
-- Produces: `LocalStorageProfileStore` (impl of `ProfileStore`), `ProfilesController` (impl of `ProfileController`; ctor `(grid, store, opts)`), `createExtEventBus()`, `createExtContext(grid, profiles): CgExtContext`.
+- Consumes: `VelocityGrid` (`getState`/`setState`/`registerStateModule`/`getModal`), `ProfileStore`/`ProfileController`/`ProfileSnapshot`/`ProfileMeta`/`VelocityGridExtContext`/`ExtEventBus` from `./types`.
+- Produces: `LocalStorageProfileStore` (impl of `ProfileStore`), `ProfilesController` (impl of `ProfileController`; ctor `(grid, store, opts)`), `createExtEventBus()`, `createExtContext(grid, profiles): VelocityGridExtContext`.
 
 - [ ] **Step 1: Write the failing test** `packages/ext/tests/profiles.test.ts`
 
@@ -584,7 +584,7 @@ describe('LocalStorageProfileStore', () => {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `npm test --workspace=@cgrid/ext -- profiles`
+Run: `npm test --workspace=@wellsfargo-starui/velocity-grid-ext -- profiles`
 Expected: FAIL — cannot find `../src/profiles/localStorageStore`.
 
 - [ ] **Step 3: Create `packages/ext/src/profiles/localStorageStore.ts`**
@@ -627,7 +627,7 @@ export class LocalStorageProfileStore implements ProfileStore {
 ```ts
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { installGridTestEnv } from './setup';
-import { CGrid } from '@cgrid/kernel';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
 import { LocalStorageProfileStore } from '../src/profiles/localStorageStore';
 import { ProfilesController } from '../src/profiles/controller';
 import { createExtContext } from '../src/extension/context';
@@ -635,10 +635,10 @@ import { createExtContext } from '../src/extension/context';
 beforeAll(() => installGridTestEnv());
 beforeEach(() => localStorage.clear());
 
-function makeGrid(): CGrid {
+function makeGrid(): VelocityGrid {
   const host = document.createElement('div');
   document.body.appendChild(host);
-  return new CGrid(host, { columnDefs: [{ colId: 'a', field: 'a' }], rowData: [] } as any);
+  return new VelocityGrid(host, { columnDefs: [{ colId: 'a', field: 'a' }], rowData: [] } as any);
 }
 
 describe('createExtContext + ProfilesController', () => {
@@ -675,13 +675,13 @@ describe('createExtContext + ProfilesController', () => {
 
 - [ ] **Step 5: Run to verify it fails**
 
-Run: `npm test --workspace=@cgrid/ext -- context`
+Run: `npm test --workspace=@wellsfargo-starui/velocity-grid-ext -- context`
 Expected: FAIL — cannot find `../src/profiles/controller`.
 
 - [ ] **Step 6: Create `packages/ext/src/profiles/controller.ts`**
 
 ```ts
-import type { CGrid } from '@cgrid/kernel';
+import type { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
 import type {
   ProfileController, ProfileStore, ProfileMeta, Unsub,
 } from '../extension/types';
@@ -699,7 +699,7 @@ export class ProfilesController implements ProfileController {
   private listeners = new Set<(d: boolean) => void>();
 
   constructor(
-    private grid: CGrid,
+    private grid: VelocityGrid,
     private store: ProfileStore,
     private opts: ProfilesOptions = {},
   ) {
@@ -747,9 +747,9 @@ function nowStamp(): number { return Date.now(); }
 - [ ] **Step 7: Create `packages/ext/src/extension/context.ts`**
 
 ```ts
-import type { CGrid, StateModule } from '@cgrid/kernel';
+import type { VelocityGrid, StateModule } from '@wellsfargo-starui/velocity-grid';
 import type {
-  CgExtContext, ExtEventBus, ExtEvent, ProfileController, ExtModalHost, Unsub,
+  VelocityGridExtContext, ExtEventBus, ExtEvent, ProfileController, ExtModalHost, Unsub,
 } from './types';
 
 export function createExtEventBus(): ExtEventBus {
@@ -767,7 +767,7 @@ export function createExtEventBus(): ExtEventBus {
 /** Build the context every extension receives. The kernel is reached
  *  through its public api only. `grid.getModal()` returns the kernel
  *  ModalHost, which structurally satisfies `ExtModalHost`. */
-export function createExtContext(grid: CGrid, profiles: ProfileController): CgExtContext {
+export function createExtContext(grid: VelocityGrid, profiles: ProfileController): VelocityGridExtContext {
   const events = createExtEventBus();
   return {
     grid,
@@ -791,13 +791,13 @@ export { createExtContext, createExtEventBus } from './extension/context';
 
 - [ ] **Step 9: Run both tests to verify they pass**
 
-Run: `npm test --workspace=@cgrid/ext -- profiles context`
+Run: `npm test --workspace=@wellsfargo-starui/velocity-grid-ext -- profiles context`
 Expected: PASS (all).
 
 - [ ] **Step 10: Typecheck + commit**
 
 ```bash
-npm run typecheck --workspace=@cgrid/ext
+npm run typecheck --workspace=@wellsfargo-starui/velocity-grid-ext
 git add packages/ext
 git commit -m "feat(ext): context factory + profiles controller + localStorage store
 
@@ -814,17 +814,17 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Test: `packages/ext/tests/shell.test.ts`
 
 **Interfaces:**
-- Consumes: `CgExtContext`, `SettingsModule`, `ToolbarItem`, `ToolbarSlot` from `../extension/types`; a `CGrid` mounted by the caller.
-- Produces: `ShellLayout` class with ctor `(root: HTMLElement)`; `gridMount: HTMLElement` (where the caller constructs the CGrid); `mountToolbarItem(item, ctx)`; `mountSettingsModule(module, ctx)` (registers it into the sheet's category menubar); `openSettings(id?)`; `closeSettings()`; `isSettingsOpen()`; `destroy()`. DOM regions carry stable classes `cgext-titlebar`, `cgext-ribbon`, `cgext-grid`, `cgext-sheet`.
+- Consumes: `VelocityGridExtContext`, `SettingsModule`, `ToolbarItem`, `ToolbarSlot` from `../extension/types`; a `VelocityGrid` mounted by the caller.
+- Produces: `ShellLayout` class with ctor `(root: HTMLElement)`; `gridMount: HTMLElement` (where the caller constructs the VelocityGrid); `mountToolbarItem(item, ctx)`; `mountSettingsModule(module, ctx)` (registers it into the sheet's category menubar); `openSettings(id?)`; `closeSettings()`; `isSettingsOpen()`; `destroy()`. DOM regions carry stable classes `vgext-titlebar`, `vgext-ribbon`, `vgext-grid`, `vgext-sheet`.
 
 - [ ] **Step 1: Write the failing test** `packages/ext/tests/shell.test.ts`
 
 ```ts
 import { describe, it, expect, vi } from 'vitest';
 import { ShellLayout } from '../src/shell/shell';
-import type { CgExtContext, SettingsModule, ToolbarItem } from '../src/extension/types';
+import type { VelocityGridExtContext, SettingsModule, ToolbarItem } from '../src/extension/types';
 
-const ctx = {} as CgExtContext;
+const ctx = {} as VelocityGridExtContext;
 
 function toolbarItem(id: string, slot: any): ToolbarItem {
   return {
@@ -844,17 +844,17 @@ describe('ShellLayout', () => {
   it('builds the strip regions and exposes a grid mount', () => {
     const root = document.createElement('div');
     const shell = new ShellLayout(root);
-    expect(root.querySelector('.cgext-titlebar')).toBeTruthy();
-    expect(root.querySelector('.cgext-ribbon')).toBeTruthy();
-    expect(root.querySelector('.cgext-grid')).toBeTruthy();
-    expect(shell.gridMount.classList.contains('cgext-grid')).toBe(true);
+    expect(root.querySelector('.vgext-titlebar')).toBeTruthy();
+    expect(root.querySelector('.vgext-ribbon')).toBeTruthy();
+    expect(root.querySelector('.vgext-grid')).toBeTruthy();
+    expect(shell.gridMount.classList.contains('vgext-grid')).toBe(true);
   });
 
   it('mounts a toolbar item into its slot', () => {
     const root = document.createElement('div');
     const shell = new ShellLayout(root);
     shell.mountToolbarItem(toolbarItem('save', 'primary-right'), ctx);
-    expect(root.querySelector('.cgext-titlebar')!.textContent).toContain('save');
+    expect(root.querySelector('.vgext-titlebar')!.textContent).toContain('save');
   });
 
   it('opens the settings sheet and renders the requested module panel', () => {
@@ -864,7 +864,7 @@ describe('ShellLayout', () => {
     expect(shell.isSettingsOpen()).toBe(false);
     shell.openSettings('grid-options');
     expect(shell.isSettingsOpen()).toBe(true);
-    expect(root.querySelector('.cgext-sheet')!.textContent).toContain('panel:grid-options');
+    expect(root.querySelector('.vgext-sheet')!.textContent).toContain('panel:grid-options');
     shell.closeSettings();
     expect(shell.isSettingsOpen()).toBe(false);
   });
@@ -873,22 +873,22 @@ describe('ShellLayout', () => {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `npm test --workspace=@cgrid/ext -- shell`
+Run: `npm test --workspace=@wellsfargo-starui/velocity-grid-ext -- shell`
 Expected: FAIL — cannot find `../src/shell/shell`.
 
 - [ ] **Step 3: Create `packages/ext/src/shell/shell.ts`**
 
 ```ts
 import type {
-  CgExtContext, SettingsModule, ToolbarItem, ToolbarSlot, ModuleInstance,
+  VelocityGridExtContext, SettingsModule, ToolbarItem, ToolbarSlot, ModuleInstance,
 } from '../extension/types';
 
 /** The shell is a vertical stack of DOM strips wrapping the kernel canvas:
  *
- *    [ .cgext-titlebar ]   primary toolbar slots
- *    [ .cgext-ribbon   ]   toggleable ribbon sections
- *    [ .cgext-grid     ]   ← caller mounts the CGrid here
- *    [ .cgext-sheet    ]   settings drawer (hidden until opened)
+ *    [ .vgext-titlebar ]   primary toolbar slots
+ *    [ .vgext-ribbon   ]   toggleable ribbon sections
+ *    [ .vgext-grid     ]   ← caller mounts the VelocityGrid here
+ *    [ .vgext-sheet    ]   settings drawer (hidden until opened)
  *
  *  Reserving the strips above the canvas is exactly how the kernel already
  *  handles rowGroupPanel/statusBar, so the canvas viewport sizes correctly.
@@ -898,16 +898,16 @@ export class ShellLayout {
   private titlebar: HTMLElement;
   private ribbon: HTMLElement;
   private sheet: HTMLElement;
-  private modules = new Map<string, { module: SettingsModule; ctx: CgExtContext }>();
+  private modules = new Map<string, { module: SettingsModule; ctx: VelocityGridExtContext }>();
   private openModuleId: string | null = null;
   private live: ModuleInstance | null = null;
 
   constructor(private root: HTMLElement) {
-    root.classList.add('cgext-root');
-    this.titlebar = el('cgext-titlebar');
-    this.ribbon = el('cgext-ribbon');
-    this.gridMount = el('cgext-grid');
-    this.sheet = el('cgext-sheet');
+    root.classList.add('vgext-root');
+    this.titlebar = el('vgext-titlebar');
+    this.ribbon = el('vgext-ribbon');
+    this.gridMount = el('vgext-grid');
+    this.sheet = el('vgext-sheet');
     this.sheet.hidden = true;
     root.append(this.titlebar, this.ribbon, this.gridMount, this.sheet);
   }
@@ -917,14 +917,14 @@ export class ShellLayout {
     return sub(this.titlebar, slot); // primary-left | primary-center | primary-right
   }
 
-  mountToolbarItem(item: ToolbarItem, ctx: CgExtContext): void {
-    const host = el('cgext-toolbar-item');
+  mountToolbarItem(item: ToolbarItem, ctx: VelocityGridExtContext): void {
+    const host = el('vgext-toolbar-item');
     host.dataset.itemId = item.id;
     this.slotHost(item.slot).appendChild(host);
     item.render(host, ctx);
   }
 
-  mountSettingsModule(module: SettingsModule, ctx: CgExtContext): void {
+  mountSettingsModule(module: SettingsModule, ctx: VelocityGridExtContext): void {
     this.modules.set(module.id, { module, ctx });
   }
 
@@ -956,7 +956,7 @@ export class ShellLayout {
   destroy(): void {
     this.live?.destroy();
     this.root.replaceChildren();
-    this.root.classList.remove('cgext-root');
+    this.root.classList.remove('vgext-root');
   }
 }
 
@@ -967,7 +967,7 @@ function el(cls: string): HTMLElement {
 }
 /** Get-or-create a stable named child of `parent`. */
 function sub(parent: HTMLElement, name: string): HTMLElement {
-  const key = `cgext-slot-${name}`;
+  const key = `vgext-slot-${name}`;
   let found = parent.querySelector<HTMLElement>(`:scope > .${key}`);
   if (!found) { found = el(key); parent.appendChild(found); }
   return found;
@@ -982,13 +982,13 @@ export { ShellLayout } from './shell/shell';
 
 - [ ] **Step 5: Run to verify it passes**
 
-Run: `npm test --workspace=@cgrid/ext -- shell`
+Run: `npm test --workspace=@wellsfargo-starui/velocity-grid-ext -- shell`
 Expected: PASS (3 passed).
 
 - [ ] **Step 6: Typecheck + commit**
 
 ```bash
-npm run typecheck --workspace=@cgrid/ext
+npm run typecheck --workspace=@wellsfargo-starui/velocity-grid-ext
 git add packages/ext
 git commit -m "feat(ext): shell layout with title bar / ribbon / grid / sheet regions
 
@@ -997,23 +997,23 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 6: `CGridExt` composer
+### Task 6: `VelocityGridExt` composer
 
 **Files:**
-- Create: `packages/ext/src/cgridExt.ts`
+- Create: `packages/ext/src/velocityGridExt.ts`
 - Modify: `packages/ext/src/index.ts`
 - Test: `packages/ext/tests/cgridExt.test.ts`
 
 **Interfaces:**
-- Consumes: `CGrid`, `CGridOptions`, `GridState` from `@cgrid/kernel`; `ExtensionRegistry`/`ExtensionSpec`; `ShellLayout`; `createExtContext`; `ProfilesController`; `LocalStorageProfileStore`. Default bundle arrives via a `buildDefaultBundle()` injected in Task 9 — for Task 6 the constructor accepts `options.ext.extensions` only and registers nothing built-in yet (the bundle import is added in Task 9).
-- Produces: `CGridExt` class: ctor `(container, options: CGridExtOptions)`; `.grid` getter; pass-throughs `setRowData`, `getState`, `setState`, `on`, `destroy`; `.openSettings(id?)`, `.closeSettings()`; and `CGridExtOptions` type.
+- Consumes: `VelocityGrid`, `VelocityGridOptions`, `GridState` from `@wellsfargo-starui/velocity-grid`; `ExtensionRegistry`/`ExtensionSpec`; `ShellLayout`; `createExtContext`; `ProfilesController`; `LocalStorageProfileStore`. Default bundle arrives via a `buildDefaultBundle()` injected in Task 9 — for Task 6 the constructor accepts `options.ext.extensions` only and registers nothing built-in yet (the bundle import is added in Task 9).
+- Produces: `VelocityGridExt` class: ctor `(container, options: VelocityGridExtOptions)`; `.grid` getter; pass-throughs `setRowData`, `getState`, `setState`, `on`, `destroy`; `.openSettings(id?)`, `.closeSettings()`; and `VelocityGridExtOptions` type.
 
 - [ ] **Step 1: Write the failing test** `packages/ext/tests/cgridExt.test.ts`
 
 ```ts
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { installGridTestEnv } from './setup';
-import { CGridExt } from '../src/cgridExt';
+import { VelocityGridExt } from '../src/velocityGridExt';
 import type { SettingsModule } from '../src/extension/types';
 
 beforeAll(() => installGridTestEnv());
@@ -1021,13 +1021,13 @@ beforeEach(() => localStorage.clear());
 
 const opts = () => ({ columnDefs: [{ colId: 'a', field: 'a' }], rowData: [{ a: 1 }] } as any);
 
-describe('CGridExt', () => {
+describe('VelocityGridExt', () => {
   it('constructs a grid inside the shell and exposes .grid', () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const ext = new CGridExt(host, opts());
-    expect(host.querySelector('.cgext-root')).toBeTruthy();
-    expect(host.querySelector('.cgext-grid')).toBeTruthy();
+    const ext = new VelocityGridExt(host, opts());
+    expect(host.querySelector('.vgext-root')).toBeTruthy();
+    expect(host.querySelector('.vgext-grid')).toBeTruthy();
     expect(ext.grid).toBeTruthy();
     expect(typeof ext.getState).toBe('function');
     ext.destroy();
@@ -1042,10 +1042,10 @@ describe('CGridExt', () => {
       init: vi.fn(),
       mount: (el) => { mounted(); el.textContent = 'demo-panel'; return { destroy() {} }; },
     };
-    const ext = new CGridExt(host, { ...opts(), ext: { extensions: [mod] } });
+    const ext = new VelocityGridExt(host, { ...opts(), ext: { extensions: [mod] } });
     ext.openSettings('demo');
     expect(mounted).toHaveBeenCalled();
-    expect(host.querySelector('.cgext-sheet')!.textContent).toContain('demo-panel');
+    expect(host.querySelector('.vgext-sheet')!.textContent).toContain('demo-panel');
     ext.destroy();
   });
 });
@@ -1053,22 +1053,22 @@ describe('CGridExt', () => {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `npm test --workspace=@cgrid/ext -- cgridExt`
+Run: `npm test --workspace=@wellsfargo-starui/velocity-grid-ext -- cgridExt`
 Expected: FAIL — cannot find `../src/cgridExt`.
 
-- [ ] **Step 3: Create `packages/ext/src/cgridExt.ts`**
+- [ ] **Step 3: Create `packages/ext/src/velocityGridExt.ts`**
 
 ```ts
-import { CGrid } from '@cgrid/kernel';
-import type { CGridOptions, GridState } from '@cgrid/kernel';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
+import type { VelocityGridOptions, GridState } from '@wellsfargo-starui/velocity-grid';
 import { ExtensionRegistry, type ExtensionSpec } from './extension/registry';
 import { ShellLayout } from './shell/shell';
 import { createExtContext } from './extension/context';
 import { ProfilesController } from './profiles/controller';
 import { LocalStorageProfileStore } from './profiles/localStorageStore';
-import { isSettingsModule, isToolbarItem, type CgExtContext, type ProfileStore } from './extension/types';
+import { isSettingsModule, isToolbarItem, type VelocityGridExtContext, type ProfileStore } from './extension/types';
 
-export interface CGridExtOptions<TRow = any> extends CGridOptions<TRow> {
+export interface VelocityGridExtOptions<TRow = any> extends VelocityGridOptions<TRow> {
   ext?: {
     extensions?: ExtensionSpec[];
     profiles?: { store?: ProfileStore; initialId?: string };
@@ -1076,20 +1076,20 @@ export interface CGridExtOptions<TRow = any> extends CGridOptions<TRow> {
   };
 }
 
-/** Batteries-included wrapper: owns a CGrid + an ExtensionRegistry, wires
+/** Batteries-included wrapper: owns a VelocityGrid + an ExtensionRegistry, wires
  *  every extension to the kernel through a shared context, and lays the
  *  grid + tooling out via ShellLayout. */
-export class CGridExt<TRow = any> {
-  private _grid: CGrid<TRow>;
+export class VelocityGridExt<TRow = any> {
+  private _grid: VelocityGrid<TRow>;
   private shell: ShellLayout;
   private registry = new ExtensionRegistry();
   private profiles: ProfilesController;
-  private ctx: CgExtContext;
+  private ctx: VelocityGridExtContext;
 
-  constructor(container: HTMLElement, options: CGridExtOptions<TRow> = {} as any) {
+  constructor(container: HTMLElement, options: VelocityGridExtOptions<TRow> = {} as any) {
     const { ext, ...gridOptions } = options;
     this.shell = new ShellLayout(container);
-    this._grid = new CGrid<TRow>(this.shell.gridMount, gridOptions as CGridOptions<TRow>);
+    this._grid = new VelocityGrid<TRow>(this.shell.gridMount, gridOptions as VelocityGridOptions<TRow>);
 
     const store = ext?.profiles?.store ?? new LocalStorageProfileStore();
     this.profiles = new ProfilesController(this._grid, store, {
@@ -1112,7 +1112,7 @@ export class CGridExt<TRow = any> {
   /** Overridden/populated in Task 9 to register the built-in bundle. */
   protected registerDefaults(): void { /* bundle wired in Task 9 */ }
 
-  get grid(): CGrid<TRow> { return this._grid; }
+  get grid(): VelocityGrid<TRow> { return this._grid; }
 
   setRowData(rows: TRow[]): void { this._grid.setRowData(rows); }
   getState(): GridState { return this._grid.getState(); }
@@ -1132,26 +1132,26 @@ export class CGridExt<TRow = any> {
 }
 ```
 
-Note: if `CGrid.addEventListener` has a narrower signature in the kernel types, keep the `as any` casts localized here — they are the composition boundary, not leaked to consumers.
+Note: if `VelocityGrid.addEventListener` has a narrower signature in the kernel types, keep the `as any` casts localized here — they are the composition boundary, not leaked to consumers.
 
 - [ ] **Step 4: Re-export from `packages/ext/src/index.ts`** (append)
 
 ```ts
-export { CGridExt, type CGridExtOptions } from './cgridExt';
+export { VelocityGridExt, type VelocityGridExtOptions } from './velocityGridExt';
 ```
 
 - [ ] **Step 5: Run to verify it passes**
 
-Run: `npm test --workspace=@cgrid/ext -- cgridExt`
+Run: `npm test --workspace=@wellsfargo-starui/velocity-grid-ext -- cgridExt`
 Expected: PASS (2 passed).
 
 - [ ] **Step 6: Full suite + typecheck + commit**
 
 ```bash
-npm test --workspace=@cgrid/ext
-npm run typecheck --workspace=@cgrid/ext
+npm test --workspace=@wellsfargo-starui/velocity-grid-ext
+npm run typecheck --workspace=@wellsfargo-starui/velocity-grid-ext
 git add packages/ext
-git commit -m "feat(ext): CGridExt composer wrapping CGrid + registry + shell
+git commit -m "feat(ext): VelocityGridExt composer wrapping VelocityGrid + registry + shell
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
@@ -1166,8 +1166,8 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Test: `packages/ext/tests/element.test.ts`
 
 **Interfaces:**
-- Consumes: `CGridExt`, `CGridExtOptions`.
-- Produces: `CgridExtElement extends HTMLElement` registered as `cgrid-ext`; a `.options` property (set before/after connect) and a `.instance` getter returning the live `CGridExt`; `defineCgridExt()` idempotent registrar.
+- Consumes: `VelocityGridExt`, `VelocityGridExtOptions`.
+- Produces: `CgridExtElement extends HTMLElement` registered as `cgrid-ext`; a `.options` property (set before/after connect) and a `.instance` getter returning the live `VelocityGridExt`; `defineCgridExt()` idempotent registrar.
 
 - [ ] **Step 1: Write the failing test** `packages/ext/tests/element.test.ts`
 
@@ -1180,11 +1180,11 @@ beforeAll(() => { installGridTestEnv(); defineCgridExt(); });
 beforeEach(() => localStorage.clear());
 
 describe('<cgrid-ext>', () => {
-  it('constructs a CGridExt on connect using .options', () => {
+  it('constructs a VelocityGridExt on connect using .options', () => {
     const el = document.createElement('cgrid-ext') as any;
     el.options = { columnDefs: [{ colId: 'a', field: 'a' }], rowData: [] };
     document.body.appendChild(el);
-    expect(el.querySelector('.cgext-root')).toBeTruthy();
+    expect(el.querySelector('.vgext-root')).toBeTruthy();
     expect(el.instance).toBeTruthy();
     el.remove();
   });
@@ -1197,26 +1197,26 @@ describe('<cgrid-ext>', () => {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `npm test --workspace=@cgrid/ext -- element`
+Run: `npm test --workspace=@wellsfargo-starui/velocity-grid-ext -- element`
 Expected: FAIL — cannot find `../src/element`.
 
 - [ ] **Step 3: Create `packages/ext/src/element.ts`**
 
 ```ts
-import { CGridExt, type CGridExtOptions } from './cgridExt';
+import { VelocityGridExt, type VelocityGridExtOptions } from './velocityGridExt';
 
-/** Thin custom element over CGridExt. The class is the source of truth; the
+/** Thin custom element over VelocityGridExt. The class is the source of truth; the
  *  element is a shell. Set `.options` before or after connect; it (re)builds
  *  the instance on connect. */
 export class CgridExtElement extends HTMLElement {
-  options: CGridExtOptions = {} as CGridExtOptions;
-  private _instance: CGridExt | null = null;
+  options: VelocityGridExtOptions = {} as VelocityGridExtOptions;
+  private _instance: VelocityGridExt | null = null;
 
-  get instance(): CGridExt | null { return this._instance; }
+  get instance(): VelocityGridExt | null { return this._instance; }
 
   connectedCallback(): void {
     if (this._instance) return;
-    this._instance = new CGridExt(this, this.options);
+    this._instance = new VelocityGridExt(this, this.options);
   }
   disconnectedCallback(): void {
     this._instance?.destroy();
@@ -1237,13 +1237,13 @@ export { CgridExtElement, defineCgridExt } from './element';
 
 - [ ] **Step 5: Run to verify it passes**
 
-Run: `npm test --workspace=@cgrid/ext -- element`
+Run: `npm test --workspace=@wellsfargo-starui/velocity-grid-ext -- element`
 Expected: PASS (2 passed).
 
 - [ ] **Step 6: Typecheck + commit**
 
 ```bash
-npm run typecheck --workspace=@cgrid/ext
+npm run typecheck --workspace=@wellsfargo-starui/velocity-grid-ext
 git add packages/ext
 git commit -m "feat(ext): <cgrid-ext> custom element
 
@@ -1260,7 +1260,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Test: `packages/ext/tests/gridOptionsModule.test.ts`
 
 **Interfaces:**
-- Consumes: `SettingsModule`, `CgExtContext`, `ModuleInstance` from `../extension/types`; `CgcNumber`/`CgcSwitch`/`defineChromeComponents` from `@cgrid/customizer`; kernel `setGridOption`/`getGridOption` (public) via `ctx.grid`.
+- Consumes: `SettingsModule`, `VelocityGridExtContext`, `ModuleInstance` from `../extension/types`; `CgcNumber`/`CgcSwitch`/`defineChromeComponents` from `@wellsfargo-starui/velocity-grid-customizer`; kernel `setGridOption`/`getGridOption` (public) via `ctx.grid`.
 - Produces: `gridOptionsModule(): SettingsModule` (id `'grid-options'`, category `'layout'`). On mount renders a Row Height number field + a Row-hover switch; edits call `ctx.grid.setGridOption(...)` and `ctx.profiles.markDirty()`; registers a `'grid-options'` state slice mirroring the touched option values.
 
 - [ ] **Step 1: Write the failing test** `packages/ext/tests/gridOptionsModule.test.ts`
@@ -1268,7 +1268,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```ts
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { installGridTestEnv } from './setup';
-import { CGrid } from '@cgrid/kernel';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
 import { gridOptionsModule } from '../src/modules/gridOptions';
 import { LocalStorageProfileStore } from '../src/profiles/localStorageStore';
 import { ProfilesController } from '../src/profiles/controller';
@@ -1280,7 +1280,7 @@ beforeEach(() => localStorage.clear());
 function makeCtx() {
   const host = document.createElement('div');
   document.body.appendChild(host);
-  const grid = new CGrid(host, { columnDefs: [{ colId: 'a', field: 'a' }], rowData: [] } as any);
+  const grid = new VelocityGrid(host, { columnDefs: [{ colId: 'a', field: 'a' }], rowData: [] } as any);
   const profiles = new ProfilesController(grid, new LocalStorageProfileStore('t'), {});
   return { grid, ctx: createExtContext(grid, profiles), profiles };
 }
@@ -1324,19 +1324,19 @@ describe('gridOptionsModule', () => {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `npm test --workspace=@cgrid/ext -- gridOptionsModule`
+Run: `npm test --workspace=@wellsfargo-starui/velocity-grid-ext -- gridOptionsModule`
 Expected: FAIL — cannot find `../src/modules/gridOptions`.
 
 - [ ] **Step 3: Create `packages/ext/src/modules/gridOptions.ts`**
 
 ```ts
-import { defineChromeComponents } from '@cgrid/customizer';
-import type { SettingsModule, CgExtContext, ModuleInstance } from '../extension/types';
+import { defineChromeComponents } from '@wellsfargo-starui/velocity-grid-customizer';
+import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 
 /** Grid Options module — the spine's proof module. Reads/writes kernel
  *  options through the public `setGridOption`, marks the profile dirty on
  *  edit, and owns a `grid-options` state slice so its values persist with
- *  profiles. Built from @cgrid/customizer chrome (cgc-* controls). */
+ *  profiles. Built from @wellsfargo-starui/velocity-grid-customizer chrome (cgc-* controls). */
 export function gridOptionsModule(): SettingsModule {
   // Touched values, mirrored into the state slice.
   const touched: Record<string, unknown> = {};
@@ -1348,7 +1348,7 @@ export function gridOptionsModule(): SettingsModule {
     icon: 'sliders',
     category: 'layout',
 
-    init(ctx: CgExtContext): void {
+    init(ctx: VelocityGridExtContext): void {
       defineChromeComponents(); // idempotent registration of cgc-* elements
       ctx.registerStateModule({
         id: 'grid-options',
@@ -1365,7 +1365,7 @@ export function gridOptionsModule(): SettingsModule {
       });
     },
 
-    mount(host: HTMLElement, ctx: CgExtContext): ModuleInstance {
+    mount(host: HTMLElement, ctx: VelocityGridExtContext): ModuleInstance {
       const band = document.createElement('cgc-band');
       band.setAttribute('band-title', 'Display');
 
@@ -1400,7 +1400,7 @@ export function gridOptionsModule(): SettingsModule {
 }
 ```
 
-Note: confirm the kernel exposes `setGridOption(key, value)` publicly (it does — `CGridExt` uses it via `ctx.grid`). If the option key `suppressRowHoverHighlight` is not persistable, the slice still round-trips because `set` re-applies via `setGridOption`; adjust the sample option only if the kernel rejects the key at runtime (the test asserts `rowHeight`, which is always valid).
+Note: confirm the kernel exposes `setGridOption(key, value)` publicly (it does — `VelocityGridExt` uses it via `ctx.grid`). If the option key `suppressRowHoverHighlight` is not persistable, the slice still round-trips because `set` re-applies via `setGridOption`; adjust the sample option only if the kernel rejects the key at runtime (the test asserts `rowHeight`, which is always valid).
 
 - [ ] **Step 4: Re-export from `packages/ext/src/index.ts`** (append)
 
@@ -1410,13 +1410,13 @@ export { gridOptionsModule } from './modules/gridOptions';
 
 - [ ] **Step 5: Run to verify it passes**
 
-Run: `npm test --workspace=@cgrid/ext -- gridOptionsModule`
+Run: `npm test --workspace=@wellsfargo-starui/velocity-grid-ext -- gridOptionsModule`
 Expected: PASS (2 passed).
 
 - [ ] **Step 6: Typecheck + commit**
 
 ```bash
-npm run typecheck --workspace=@cgrid/ext
+npm run typecheck --workspace=@wellsfargo-starui/velocity-grid-ext
 git add packages/ext
 git commit -m "feat(ext): Grid Options settings module (spine proof module)
 
@@ -1429,20 +1429,20 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 **Files:**
 - Create: `packages/ext/src/defaultBundle.ts`
-- Modify: `packages/ext/src/cgridExt.ts` (populate `registerDefaults`)
+- Modify: `packages/ext/src/velocityGridExt.ts` (populate `registerDefaults`)
 - Modify: `packages/ext/src/index.ts`
 - Test: `packages/ext/tests/defaultBundle.test.ts`
 
 **Interfaces:**
-- Consumes: `gridOptionsModule`; `ToolbarItem` contract; `CgExtContext`.
-- Produces: `buildDefaultBundle(): CgExtension[]` returning `[settingsLauncher, profileSelector, saveButton, gridOptionsModule()]`; `CGridExt.registerDefaults` registers them. `settingsLauncher` is a `primary-right` toolbar item whose click calls `ctx` → opens settings; `saveButton` reflects `ctx.profiles` dirty state.
+- Consumes: `gridOptionsModule`; `ToolbarItem` contract; `VelocityGridExtContext`.
+- Produces: `buildDefaultBundle(): VelocityGridExtension[]` returning `[settingsLauncher, profileSelector, saveButton, gridOptionsModule()]`; `VelocityGridExt.registerDefaults` registers them. `settingsLauncher` is a `primary-right` toolbar item whose click calls `ctx` → opens settings; `saveButton` reflects `ctx.profiles` dirty state.
 
 - [ ] **Step 1: Write the failing test** `packages/ext/tests/defaultBundle.test.ts`
 
 ```ts
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { installGridTestEnv } from './setup';
-import { CGridExt } from '../src/cgridExt';
+import { VelocityGridExt } from '../src/velocityGridExt';
 
 beforeAll(() => installGridTestEnv());
 beforeEach(() => localStorage.clear());
@@ -1451,7 +1451,7 @@ describe('default bundle', () => {
   it('registers Grid Options + primary toolbar items out of the box', () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const ext = new CGridExt(host, { columnDefs: [{ colId: 'a', field: 'a' }], rowData: [] } as any);
+    const ext = new VelocityGridExt(host, { columnDefs: [{ colId: 'a', field: 'a' }], rowData: [] } as any);
 
     // Settings launcher present in the title bar.
     const launcher = host.querySelector('[data-item-id="settings-launcher"]');
@@ -1461,7 +1461,7 @@ describe('default bundle', () => {
 
     // Clicking the launcher opens the Grid Options sheet.
     (launcher!.querySelector('button') as HTMLButtonElement).click();
-    expect(host.querySelector('.cgext-sheet')!.textContent).toContain('Row height');
+    expect(host.querySelector('.vgext-sheet')!.textContent).toContain('Row height');
     ext.destroy();
   });
 });
@@ -1469,23 +1469,23 @@ describe('default bundle', () => {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `npm test --workspace=@cgrid/ext -- defaultBundle`
+Run: `npm test --workspace=@wellsfargo-starui/velocity-grid-ext -- defaultBundle`
 Expected: FAIL — cannot find `../src/defaultBundle` (and launcher missing).
 
 - [ ] **Step 3: Create `packages/ext/src/defaultBundle.ts`**
 
 ```ts
-import type { CgExtension, ToolbarItem, CgExtContext } from './extension/types';
+import type { VelocityGridExtension, ToolbarItem, VelocityGridExtContext } from './extension/types';
 import { gridOptionsModule } from './modules/gridOptions';
 
 /** A tiny helper for building an icon button toolbar item. */
-function button(id: string, label: string, onClick: (ctx: CgExtContext) => void): ToolbarItem {
+function button(id: string, label: string, onClick: (ctx: VelocityGridExtContext) => void): ToolbarItem {
   return {
     id, kind: 'toolbar-item', slot: 'primary-right', init() {},
     render(host, ctx) {
       const b = document.createElement('button');
       b.type = 'button';
-      b.className = 'cgext-btn';
+      b.className = 'vgext-btn';
       b.textContent = label;
       b.setAttribute('aria-label', label);
       b.addEventListener('click', () => onClick(ctx));
@@ -1502,7 +1502,7 @@ function saveButton(): ToolbarItem {
     render(host, ctx) {
       const b = document.createElement('button');
       b.type = 'button';
-      b.className = 'cgext-btn cgext-save';
+      b.className = 'vgext-btn vgext-save';
       const sync = (dirty: boolean) => {
         b.textContent = dirty ? 'Save*' : 'Save';
         b.disabled = !dirty;
@@ -1516,17 +1516,17 @@ function saveButton(): ToolbarItem {
   };
 }
 
-/** The built-in extension set CGridExt registers before consumer specs.
+/** The built-in extension set VelocityGridExt registers before consumer specs.
  *  The settings launcher needs a way to open the sheet; it emits an ext
- *  event the shell subscribes to via CGridExt (see registerDefaults). */
-export function buildDefaultBundle(): CgExtension[] {
+ *  event the shell subscribes to via VelocityGridExt (see registerDefaults). */
+export function buildDefaultBundle(): VelocityGridExtension[] {
   const launcher = button('settings-launcher', 'Settings', (ctx) =>
     ctx.events.emit({ type: 'open-settings', id: 'grid-options' }));
   return [launcher, saveButton(), gridOptionsModule()];
 }
 ```
 
-- [ ] **Step 4: Populate `registerDefaults` in `packages/ext/src/cgridExt.ts`**
+- [ ] **Step 4: Populate `registerDefaults` in `packages/ext/src/velocityGridExt.ts`**
 
 Replace the placeholder `registerDefaults` with:
 
@@ -1539,7 +1539,7 @@ Replace the placeholder `registerDefaults` with:
   }
 ```
 
-And add the import at the top of `cgridExt.ts`:
+And add the import at the top of `velocityGridExt.ts`:
 
 ```ts
 import { buildDefaultBundle } from './defaultBundle';
@@ -1555,14 +1555,14 @@ export { buildDefaultBundle } from './defaultBundle';
 
 - [ ] **Step 6: Run to verify it passes**
 
-Run: `npm test --workspace=@cgrid/ext -- defaultBundle`
+Run: `npm test --workspace=@wellsfargo-starui/velocity-grid-ext -- defaultBundle`
 Expected: PASS.
 
 - [ ] **Step 7: Full suite + typecheck + commit**
 
 ```bash
-npm test --workspace=@cgrid/ext
-npm run typecheck --workspace=@cgrid/ext
+npm test --workspace=@wellsfargo-starui/velocity-grid-ext
+npm run typecheck --workspace=@wellsfargo-starui/velocity-grid-ext
 git add packages/ext
 git commit -m "feat(ext): default bundle (settings launcher, save, grid options)
 
@@ -1582,8 +1582,8 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Create: `apps/cgrid-ext-demo/src/stomp.ts`
 
 **Interfaces:**
-- Consumes: `CGridExt` from `@cgrid/ext`; `@cgrid/kernel/style.css`; the STOMP feed at `ws://localhost:8081` (run `starui/apps/stomp-view-server`).
-- Produces: a runnable demo on port **5188** mounting `CGridExt` with the default bundle over the live feed. Zero feature code — a plain consumer.
+- Consumes: `VelocityGridExt` from `@wellsfargo-starui/velocity-grid-ext`; `@wellsfargo-starui/velocity-grid/style.css`; the STOMP feed at `ws://localhost:8081` (run `starui/apps/stomp-view-server`).
+- Produces: a runnable demo on port **5188** mounting `VelocityGridExt` with the default bundle over the live feed. Zero feature code — a plain consumer.
 
 - [ ] **Step 1: Create `apps/cgrid-ext-demo/package.json`**
 
@@ -1602,8 +1602,8 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
   },
   "dependencies": {
     "@stomp/stompjs": "^7.1.1",
-    "@cgrid/ext": "*",
-    "@cgrid/kernel": "*"
+    "@wellsfargo-starui/velocity-grid-ext": "*",
+    "@wellsfargo-starui/velocity-grid": "*"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
@@ -1640,11 +1640,11 @@ export default defineConfig({
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>CGridExt Demo</title>
+    <title>VelocityGridExt Demo</title>
     <style>
       html, body, #app { height: 100%; margin: 0; }
-      .cgext-root { display: flex; flex-direction: column; height: 100%; }
-      .cgext-grid { flex: 1 1 auto; min-height: 0; }
+      .vgext-root { display: flex; flex-direction: column; height: 100%; }
+      .vgext-grid { flex: 1 1 auto; min-height: 0; }
     </style>
   </head>
   <body>
@@ -1686,13 +1686,13 @@ export function connectStomp(onRows: (rows: Position[]) => void): () => void {
 - [ ] **Step 6: Create `apps/cgrid-ext-demo/src/main.ts`**
 
 ```ts
-import { CGridExt } from '@cgrid/ext';
-import '@cgrid/kernel/style.css';
+import { VelocityGridExt } from '@wellsfargo-starui/velocity-grid-ext';
+import '@wellsfargo-starui/velocity-grid/style.css';
 import { connectStomp, type Position } from './stomp';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
-const ext = new CGridExt<Position>(app, {
+const ext = new VelocityGridExt<Position>(app, {
   columnDefs: [
     { colId: 'positionId', field: 'positionId', headerName: 'Position Id' },
     { colId: 'cusip', field: 'cusip', headerName: 'Cusip' },
@@ -1764,17 +1764,17 @@ test('spine: shell renders, settings sheet opens, row height applies', async ({ 
   await page.goto('/');
 
   // Shell chrome is present.
-  await expect(page.locator('.cgext-titlebar')).toBeVisible();
-  await expect(page.locator('.cgext-grid canvas')).toBeVisible();
+  await expect(page.locator('.vgext-titlebar')).toBeVisible();
+  await expect(page.locator('.vgext-grid canvas')).toBeVisible();
 
   // Open settings via the launcher.
   await page.locator('[data-item-id="settings-launcher"] button').click();
-  await expect(page.locator('.cgext-sheet')).toBeVisible();
-  await expect(page.locator('.cgext-sheet')).toContainText('Row height');
+  await expect(page.locator('.vgext-sheet')).toBeVisible();
+  await expect(page.locator('.vgext-sheet')).toContainText('Row height');
 
   // Change row height to 40 via the module, then assert the option took.
   await page.evaluate(() => {
-    const el = document.querySelector('.cgext-sheet [data-opt="rowHeight"]')!;
+    const el = document.querySelector('.vgext-sheet [data-opt="rowHeight"]')!;
     el.dispatchEvent(new CustomEvent('cgc-change', { detail: { value: 40 }, bubbles: true }));
   });
   const applied = await page.evaluate(() => (window as any).__ext.getState().gridOptions?.rowHeight
@@ -1812,17 +1812,17 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ## Self-Review
 
 **1. Spec coverage (Wave 0 scope of the design doc):**
-- §2 package & form factor → Tasks 1 (package), 6 (`CGridExt`), 7 (`<cgrid-ext>`). ✓
-- §3 extension contract + registry + state slices + Lit chrome → Tasks 2, 3, 8 (uses `@cgrid/customizer` chrome + `registerStateModule`). ✓
+- §2 package & form factor → Tasks 1 (package), 6 (`VelocityGridExt`), 7 (`<cgrid-ext>`). ✓
+- §3 extension contract + registry + state slices + Lit chrome → Tasks 2, 3, 8 (uses `@wellsfargo-starui/velocity-grid-customizer` chrome + `registerStateModule`). ✓
 - §4 shell layout (title bar · ribbon · grid · sheet regions) → Task 5. ✓ (row-group panel / status bar / tool-panel tabs are kernel-native, configured not rebuilt — no task needed for the spine.)
 - §5 two-tier toolbar → Task 9 primary items (settings launcher, save); ribbon *host* exists (Task 5) and ribbon sections land in later waves per §10. ✓ (spine scope)
 - §7 profiles (dirty + store) → Task 4. ✓
-- §8 state model + data seam → state slice mechanism in Task 8; `dataProvider` reserved seam is typed but not built (spine defers to Data-services spec — consistent with design §11). Note: `CGridExtOptions.ext.dataProvider` from design §2 is intentionally omitted from Task 6's options to avoid a dangling unused field; it is added by the Data-services spec. This is a deliberate scope trim, recorded here.
+- §8 state model + data seam → state slice mechanism in Task 8; `dataProvider` reserved seam is typed but not built (spine defers to Data-services spec — consistent with design §11). Note: `VelocityGridExtOptions.ext.dataProvider` from design §2 is intentionally omitted from Task 6's options to avoid a dangling unused field; it is added by the Data-services spec. This is a deliberate scope trim, recorded here.
 - §9 demo + E2E gate → Tasks 10, 11. ✓
 - Modules beyond Grid Options → later waves (own plans), per design §10. ✓
 
 **2. Placeholder scan:** No "TBD"/"handle edge cases"/"similar to". Each code step shows full code. The two "Note:" callouts flag runtime-verification points (kernel option getter name; option key validity) with a concrete fallback, not a placeholder. ✓
 
-**3. Type consistency:** `CgExtContext`, `SettingsModule.mount`, `ToolbarItem.render`, `ProfileController` members (`isDirty`/`markDirty`/`onDirtyChange`/`save`/`switchTo`/`list`/`activeId`), `ExtensionRegistry` methods, `ShellLayout` API (`gridMount`/`mountToolbarItem`/`mountSettingsModule`/`openSettings`/`closeSettings`/`isSettingsOpen`/`destroy`), and `buildDefaultBundle` are used identically across Tasks 2→9. `data-item-id`/`data-opt`/`.cgext-*` DOM contracts match between shell (Task 5), module (Task 8), bundle (Task 9), and E2E (Task 11). ✓
+**3. Type consistency:** `VelocityGridExtContext`, `SettingsModule.mount`, `ToolbarItem.render`, `ProfileController` members (`isDirty`/`markDirty`/`onDirtyChange`/`save`/`switchTo`/`list`/`activeId`), `ExtensionRegistry` methods, `ShellLayout` API (`gridMount`/`mountToolbarItem`/`mountSettingsModule`/`openSettings`/`closeSettings`/`isSettingsOpen`/`destroy`), and `buildDefaultBundle` are used identically across Tasks 2→9. `data-item-id`/`data-opt`/`.vgext-*` DOM contracts match between shell (Task 5), module (Task 8), bundle (Task 9), and E2E (Task 11). ✓
 
 **Follow-on plans (not this document):** Wave 1 Layout&Columns, Wave 2 Data, Wave 3 Format&Style, Wave 4 Editing, Wave 5 Workspace, Wave 6 Profiles — each written against the *built* contract once the spine lands.

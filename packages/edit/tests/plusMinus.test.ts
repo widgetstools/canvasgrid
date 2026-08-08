@@ -1,5 +1,5 @@
-// @cgrid/edit — plusMinus.test.ts
-// Covers makeExpressionEvaluate (real @cgrid/expression engine + compile
+// @wellsfargo-starui/velocity-grid-edit — plusMinus.test.ts
+// Covers makeExpressionEvaluate (real @wellsfargo-starui/velocity-grid-expression engine + compile
 // cache), resolveNudgeForCell, buildNudgePatches.
 // Spec: docs/superpowers/specs/2026-07-02-cycle-21g-edit-design.md §1.1.6.
 // Recon: docs/superpowers/plans/notes/2026-07-02-cycle-21g-recon.md A.5.

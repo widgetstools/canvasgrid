@@ -1,12 +1,12 @@
 /**
  * Cycle 22 / Task 3 — Tier-2 row-strip cache integration: capture/consume
- * in the retained layer's band raster (`Renderer.paintLayer`) + CGrid
+ * in the retained layer's band raster (`Renderer.paintLayer`) + VelocityGrid
  * wiring (eligibility, rowVersionByRowId, layoutEpoch bump sites,
  * patch-on-tick from the cell-damage path, PaintStats strip counters).
  *
  * Renderer-level tests use the recorded-gc idiom from
  * tests/rendererPaintCache.test.ts plus the fake canvas factory from
- * tests/rasterCacheCore.test.ts. CGrid-level tests use the buildWiredGrid
+ * tests/rasterCacheCore.test.ts. VelocityGrid-level tests use the buildWiredGrid
  * idiom (real worker host, mocked canvases).
  */
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
@@ -20,9 +20,9 @@ import type { Subgrid } from '../src/core/subgrid';
 import type { PaintCacheCanvasFactory } from '../src/core/paintCache';
 import type { RasterStripsCtx } from '../src/renderer/painters/types';
 import { RasterBudget, RowStripCache } from '../src/renderer/rasterCache';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
-import type { CGridOptions } from '../src/types/options';
+import type { VelocityGridOptions } from '../src/types/options';
 
 // ─── fakeGc (rendererPaintCache.test.ts idiom + setTransform + .canvas) ──────
 
@@ -360,7 +360,7 @@ describe('Renderer.paintLayer — Tier-2 strip capture/consume (Task 3)', () => 
   });
 });
 
-// ─── CGrid-level integration ─────────────────────────────────────────────────
+// ─── VelocityGrid-level integration ─────────────────────────────────────────────────
 
 beforeAll(() => {
   (globalThis as any).Worker = class {
@@ -404,11 +404,11 @@ afterEach(() => {
 function buildWiredGrid<T extends { id: string }>(
   rows: T[],
   cols: any[],
-  options: Partial<CGridOptions<T>> = {},
+  options: Partial<VelocityGridOptions<T>> = {},
 ) {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
   const prevWorker = (globalThis as any).Worker;
   (globalThis as any).Worker = class {
@@ -421,7 +421,7 @@ function buildWiredGrid<T extends { id: string }>(
     addEventListener(_: string, cb: (e: { data: any }) => void) { this.listeners.push(cb); }
     terminate() {}
   };
-  const grid = new CGrid<T>(container, {
+  const grid = new VelocityGrid<T>(container, {
     columnDefs: cols,
     getRowId: (r) => r.id,
     rowData: rows,
@@ -443,12 +443,12 @@ function rows(n: number): Array<{ id: string; v: number }> {
 
 const cols = [{ field: 'id' }, { field: 'v', type: 'number' }];
 
-async function settle(grid: CGrid<any>, ms = 60): Promise<void> {
+async function settle(grid: VelocityGrid<any>, ms = 60): Promise<void> {
   await new Promise((r) => setTimeout(r, ms));
   ((grid as any).cgridCanvas).tickPaint(performance.now());
 }
 
-describe('CGrid + Tier-2 strips — eligibility, versions, epochs, patch (Task 3)', () => {
+describe('VelocityGrid + Tier-2 strips — eligibility, versions, epochs, patch (Task 3)', () => {
   it('paints capture strips for plain data rows; PaintStats carries the four strip counters', async () => {
     const { grid, restore } = buildWiredGrid(rows(200), cols);
     await settle(grid);
@@ -653,7 +653,7 @@ describe('CGrid + Tier-2 strips — eligibility, versions, epochs, patch (Task 3
     expect(g.stripLayoutEpoch).toBeGreaterThan(e);
 
     e = g.stripLayoutEpoch;
-    grid.setThemeParams({ '--cg-bg-color': '#123456' });
+    grid.setThemeParams({ '--vg-bg-color': '#123456' });
     expect(g.stripLayoutEpoch).toBeGreaterThan(e);
 
     grid.destroy();

@@ -1,7 +1,7 @@
 /**
  * Cycle 8 / Task 3 — worker-side registry of named comparators.
  *
- * Apps register a comparator by name via `CGridApi.registerComparator(name,
+ * Apps register a comparator by name via `VelocityGridApi.registerComparator(name,
  * fn)`. The function string-serialises on the main thread, ships across
  * `postMessage` as source text, and reconstructs on the worker via
  * `new Function(...)`. Column defs reference the registered comparator

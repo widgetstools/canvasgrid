@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../../src/cgrid';
+import { VelocityGrid } from '../../src/velocityGrid';
 import { themeQuartz, themeStarui, createTheme } from '../../src/theming/theme';
 
-// Stub Worker + canvas 2D context for happy-dom so CGrid can construct.
+// Stub Worker + canvas 2D context for happy-dom so VelocityGrid can construct.
 // Mirrors the setup in cgrid.integration.test.ts / theming.test.ts.
 beforeAll(() => {
   (globalThis as any).Worker = class {
@@ -38,7 +38,7 @@ function makeContainer(): HTMLElement {
 }
 
 function makeGrid(container: HTMLElement, theme: any) {
-  return new CGrid<{ id: string }>(container, {
+  return new VelocityGrid<{ id: string }>(container, {
     columnDefs: [{ field: 'id' }],
     getRowId: (r) => r.id,
     theme,
@@ -46,18 +46,18 @@ function makeGrid(container: HTMLElement, theme: any) {
 }
 
 describe('CgTheme DOM integration — construction', () => {
-  it('injects withParams vars as inline --cg-* overrides on the grid root', () => {
+  it('injects withParams vars as inline --vg-* overrides on the grid root', () => {
     const container = makeContainer();
     const theme = themeQuartz.withParams({ accentColor: '#2f7bc4' });
     const grid = makeGrid(container, theme);
     const root = (grid as any).root as HTMLElement;
 
-    expect(root.style.getPropertyValue('--cg-chrome-accent')).toBe('#2f7bc4');
+    expect(root.style.getPropertyValue('--vg-chrome-accent')).toBe('#2f7bc4');
     // Accent-dependent derivations should also be present (row hover/selected/range).
-    expect(root.style.getPropertyValue('--cg-row-hover-bg')).toContain('color-mix');
-    expect(root.style.getPropertyValue('--cg-row-selected-bg')).toContain('color-mix');
-    expect(root.style.getPropertyValue('--cg-range-border-color')).toBe('var(--cg-chrome-accent)');
-    expect(root.style.getPropertyValue('--cg-range-fill-color')).toContain('color-mix');
+    expect(root.style.getPropertyValue('--vg-row-hover-bg')).toContain('color-mix');
+    expect(root.style.getPropertyValue('--vg-row-selected-bg')).toContain('color-mix');
+    expect(root.style.getPropertyValue('--vg-range-border-color')).toBe('var(--vg-chrome-accent)');
+    expect(root.style.getPropertyValue('--vg-range-fill-color')).toContain('color-mix');
 
     // The resolved ResolvedTheme should reflect the injected accent (used
     // by the range/hover/selected painters).
@@ -73,7 +73,7 @@ describe('CgTheme DOM integration — construction', () => {
     const theme = themeQuartz.withParams({ accentColor: '#111111' });
     const grid = makeGrid(container, theme);
     const root = (grid as any).root as HTMLElement;
-    expect(root.classList.contains('cg-theme-quartz')).toBe(true);
+    expect(root.classList.contains('vg-theme-quartz')).toBe(true);
     grid.destroy();
     container.remove();
   });
@@ -83,9 +83,9 @@ describe('CgTheme DOM integration — construction', () => {
     const grid = makeGrid(container, themeQuartz);
     const root = (grid as any).root as HTMLElement;
 
-    expect(root.classList.contains('cg-theme-quartz')).toBe(true);
-    // No object-derived --cg-* inline overrides at all.
-    expect(root.style.cssText).not.toMatch(/--cg-/);
+    expect(root.classList.contains('vg-theme-quartz')).toBe(true);
+    // No object-derived --vg-* inline overrides at all.
+    expect(root.style.cssText).not.toMatch(/--vg-/);
     expect((grid as any).themeObjectVars.size).toBe(0);
 
     grid.destroy();
@@ -101,8 +101,8 @@ describe('CgTheme DOM integration — construction', () => {
     expect((grid as any).themeObjectVars.size).toBeGreaterThan(0);
     expect(grid.getThemeParams()).toEqual({});
 
-    grid.setThemeParams({ '--cg-row-height': '40px' });
-    expect(grid.getThemeParams()).toEqual({ '--cg-row-height': '40px' });
+    grid.setThemeParams({ '--vg-row-height': '40px' });
+    expect(grid.getThemeParams()).toEqual({ '--vg-row-height': '40px' });
 
     grid.destroy();
     container.remove();
@@ -110,27 +110,27 @@ describe('CgTheme DOM integration — construction', () => {
 
   it('Part CSS is injected as a <style> element on the grid root', () => {
     const container = makeContainer();
-    const theme = themeQuartz.withPart({ feature: 'icons', css: '.cg-foo{color:red}' });
+    const theme = themeQuartz.withPart({ feature: 'icons', css: '.vg-foo{color:red}' });
     const grid = makeGrid(container, theme);
     const root = (grid as any).root as HTMLElement;
-    const styleEl = root.querySelector('style.cg-theme-object-css');
+    const styleEl = root.querySelector('style.vg-theme-object-css');
     expect(styleEl).not.toBeNull();
-    expect(styleEl!.textContent).toContain('.cg-foo{color:red}');
+    expect(styleEl!.textContent).toContain('.vg-foo{color:red}');
     grid.destroy();
     container.remove();
   });
 
-  it('data-cg-theme-mode="dark" on an ancestor applies the dark base class + dark vars', () => {
+  it('data-vg-theme-mode="dark" on an ancestor applies the dark base class + dark vars', () => {
     const container = makeContainer();
-    container.setAttribute('data-cg-theme-mode', 'dark');
+    container.setAttribute('data-vg-theme-mode', 'dark');
     const theme = themeQuartz.withParams({ accentColor: '#ffffff' }, 'dark')
       .withParams({ accentColor: '#000000' }, 'light');
     const grid = makeGrid(container, theme);
     const root = (grid as any).root as HTMLElement;
 
-    expect(root.classList.contains('cg-theme-quartz-dark')).toBe(true);
-    expect(root.classList.contains('cg-theme-quartz')).toBe(false);
-    expect(root.style.getPropertyValue('--cg-chrome-accent')).toBe('#ffffff');
+    expect(root.classList.contains('vg-theme-quartz-dark')).toBe(true);
+    expect(root.classList.contains('vg-theme-quartz')).toBe(false);
+    expect(root.style.getPropertyValue('--vg-chrome-accent')).toBe('#ffffff');
 
     grid.destroy();
     container.remove();
@@ -138,22 +138,22 @@ describe('CgTheme DOM integration — construction', () => {
 });
 
 describe('CgTheme DOM integration — string / undefined regression', () => {
-  it('theme: "cg-theme-quartz" (string) is unaffected', () => {
+  it('theme: "vg-theme-quartz" (string) is unaffected', () => {
     const container = makeContainer();
-    const grid = makeGrid(container, 'cg-theme-quartz');
+    const grid = makeGrid(container, 'vg-theme-quartz');
     const root = (grid as any).root as HTMLElement;
-    expect(root.classList.contains('cg-theme-quartz')).toBe(true);
+    expect(root.classList.contains('vg-theme-quartz')).toBe(true);
     expect((grid as any).themeObject).toBeUndefined();
     expect((grid as any).themeObjectVars.size).toBe(0);
     grid.destroy();
     container.remove();
   });
 
-  it('theme: undefined defaults to cg-theme-quartz (string path unchanged)', () => {
+  it('theme: undefined defaults to vg-theme-quartz (string path unchanged)', () => {
     const container = makeContainer();
     const grid = makeGrid(container, undefined);
     const root = (grid as any).root as HTMLElement;
-    expect(root.classList.contains('cg-theme-quartz')).toBe(true);
+    expect(root.classList.contains('vg-theme-quartz')).toBe(true);
     expect((grid as any).themeObject).toBeUndefined();
     grid.destroy();
     container.remove();
@@ -166,13 +166,13 @@ describe('CgTheme DOM integration — setTheme swap', () => {
     const theme = themeQuartz.withParams({ accentColor: '#2f7bc4' });
     const grid = makeGrid(container, theme);
     const root = (grid as any).root as HTMLElement;
-    expect(root.style.getPropertyValue('--cg-chrome-accent')).toBe('#2f7bc4');
+    expect(root.style.getPropertyValue('--vg-chrome-accent')).toBe('#2f7bc4');
 
     grid.setTheme(themeStarui);
 
-    expect(root.style.getPropertyValue('--cg-chrome-accent')).toBe('');
-    expect(root.classList.contains('cg-theme-starui')).toBe(true);
-    expect(root.classList.contains('cg-theme-quartz')).toBe(false);
+    expect(root.style.getPropertyValue('--vg-chrome-accent')).toBe('');
+    expect(root.classList.contains('vg-theme-starui')).toBe(true);
+    expect(root.classList.contains('vg-theme-quartz')).toBe(false);
     expect((grid as any).themeObjectVars.size).toBe(0);
 
     grid.destroy();
@@ -181,12 +181,12 @@ describe('CgTheme DOM integration — setTheme swap', () => {
 
   it('swapping from a string theme to an object theme injects vars', () => {
     const container = makeContainer();
-    const grid = makeGrid(container, 'cg-theme-quartz');
+    const grid = makeGrid(container, 'vg-theme-quartz');
     const root = (grid as any).root as HTMLElement;
 
     grid.setTheme(themeQuartz.withParams({ accentColor: '#123456' }));
-    expect(root.style.getPropertyValue('--cg-chrome-accent')).toBe('#123456');
-    expect(root.classList.contains('cg-theme-quartz')).toBe(true);
+    expect(root.style.getPropertyValue('--vg-chrome-accent')).toBe('#123456');
+    expect(root.classList.contains('vg-theme-quartz')).toBe(true);
 
     grid.destroy();
     container.remove();
@@ -198,9 +198,9 @@ describe('CgTheme DOM integration — setTheme swap', () => {
     const grid = makeGrid(container, theme);
     const root = (grid as any).root as HTMLElement;
 
-    grid.setTheme('cg-theme-quartz');
+    grid.setTheme('vg-theme-quartz');
 
-    expect(root.style.getPropertyValue('--cg-chrome-accent')).toBe('');
+    expect(root.style.getPropertyValue('--vg-chrome-accent')).toBe('');
     expect((grid as any).themeObject).toBeUndefined();
     expect((grid as any).themeObjectVars.size).toBe(0);
 
@@ -212,18 +212,18 @@ describe('CgTheme DOM integration — setTheme swap', () => {
 describe('CgTheme DOM integration — setThemeMode', () => {
   it('re-applies the dark base class + dark-mode vars for the active object theme', () => {
     const container = makeContainer();
-    const theme = createTheme({ baseClass: { light: 'cg-theme-quartz', dark: 'cg-theme-quartz-dark' } })
+    const theme = createTheme({ baseClass: { light: 'vg-theme-quartz', dark: 'vg-theme-quartz-dark' } })
       .withParams({ accentColor: '#111111' }, 'light')
       .withParams({ accentColor: '#eeeeee' }, 'dark');
     const grid = makeGrid(container, theme);
     const root = (grid as any).root as HTMLElement;
-    expect(root.style.getPropertyValue('--cg-chrome-accent')).toBe('#111111');
+    expect(root.style.getPropertyValue('--vg-chrome-accent')).toBe('#111111');
 
     grid.setThemeMode('dark');
 
-    expect(root.classList.contains('cg-theme-quartz-dark')).toBe(true);
-    expect(root.classList.contains('cg-theme-quartz')).toBe(false);
-    expect(root.style.getPropertyValue('--cg-chrome-accent')).toBe('#eeeeee');
+    expect(root.classList.contains('vg-theme-quartz-dark')).toBe(true);
+    expect(root.classList.contains('vg-theme-quartz')).toBe(false);
+    expect(root.style.getPropertyValue('--vg-chrome-accent')).toBe('#eeeeee');
 
     grid.destroy();
     container.remove();
@@ -231,18 +231,18 @@ describe('CgTheme DOM integration — setThemeMode', () => {
 
   it('is a no-op for a string theme', () => {
     const container = makeContainer();
-    const grid = makeGrid(container, 'cg-theme-quartz');
+    const grid = makeGrid(container, 'vg-theme-quartz');
     const root = (grid as any).root as HTMLElement;
     expect(() => grid.setThemeMode('dark')).not.toThrow();
-    expect(root.classList.contains('cg-theme-quartz')).toBe(true);
-    expect(root.classList.contains('cg-theme-quartz-dark')).toBe(false);
+    expect(root.classList.contains('vg-theme-quartz')).toBe(true);
+    expect(root.classList.contains('vg-theme-quartz-dark')).toBe(false);
     grid.destroy();
     container.remove();
   });
 });
 
 describe('CgTheme DOM integration — pickMode priority', () => {
-  it('an explicit data-cg-theme-mode="light" attribute wins even when the OS prefers dark', () => {
+  it('an explicit data-vg-theme-mode="light" attribute wins even when the OS prefers dark', () => {
     const originalMatchMedia = window.matchMedia;
     (window as any).matchMedia = vi.fn().mockImplementation((query: string) => ({
       matches: true, // OS says dark
@@ -252,14 +252,14 @@ describe('CgTheme DOM integration — pickMode priority', () => {
     }));
 
     const container = makeContainer();
-    container.setAttribute('data-cg-theme-mode', 'light');
+    container.setAttribute('data-vg-theme-mode', 'light');
     const theme = themeQuartz.withParams({ accentColor: '#aaaaaa' }, 'light')
       .withParams({ accentColor: '#bbbbbb' }, 'dark');
     const grid = makeGrid(container, theme);
     const root = (grid as any).root as HTMLElement;
 
-    expect(root.classList.contains('cg-theme-quartz')).toBe(true);
-    expect(root.style.getPropertyValue('--cg-chrome-accent')).toBe('#aaaaaa');
+    expect(root.classList.contains('vg-theme-quartz')).toBe(true);
+    expect(root.style.getPropertyValue('--vg-chrome-accent')).toBe('#aaaaaa');
 
     grid.destroy();
     container.remove();
@@ -281,8 +281,8 @@ describe('CgTheme DOM integration — pickMode priority', () => {
     const grid = makeGrid(container, theme);
     const root = (grid as any).root as HTMLElement;
 
-    expect(root.classList.contains('cg-theme-quartz-dark')).toBe(true);
-    expect(root.style.getPropertyValue('--cg-chrome-accent')).toBe('#bbbbbb');
+    expect(root.classList.contains('vg-theme-quartz-dark')).toBe(true);
+    expect(root.style.getPropertyValue('--vg-chrome-accent')).toBe('#bbbbbb');
 
     grid.destroy();
     container.remove();

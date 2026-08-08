@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ColumnDrag } from '../src/interaction/features/columnDrag';
-import type { CGridEventCtx } from '../src/interaction/feature';
+import type { VelocityGridEventCtx } from '../src/interaction/feature';
 import type { Hit } from '../src/interaction/hitTester';
 
 interface MockGrid {
@@ -39,11 +39,11 @@ interface MockGrid {
   isColumnGroupMarried: (groupId: string) => boolean;
 }
 
-function ctx(hit: Hit, point: { x: number; y: number }, grid: MockGrid): CGridEventCtx {
+function ctx(hit: Hit, point: { x: number; y: number }, grid: MockGrid): VelocityGridEventCtx {
   return {
     hit,
     point,
-    grid: grid as unknown as CGridEventCtx['grid'],
+    grid: grid as unknown as VelocityGridEventCtx['grid'],
     raw: new MouseEvent('mousedown'),
   };
 }
@@ -84,7 +84,7 @@ function makeGrid(overrides: Partial<MockGrid> = {}): MockGrid {
  *  leaf `c`, for the reject-affordance tests. Mirrors the shape of the
  *  real-DOM `columnGroupHeaderDrag.integration.test.ts` fixture but as a
  *  lightweight mock so the reject/no-drop behaviour can be unit-tested
- *  without mounting a full `CGrid`. */
+ *  without mounting a full `VelocityGrid`. */
 function makeGroupGrid(overrides: Partial<MockGrid> = {}): MockGrid {
   const lefts: Record<string, number> = { a0: 0, a1: 100, b0: 200, b1: 300, c: 400 };
   return makeGrid({
@@ -171,15 +171,15 @@ describe('ColumnDrag', () => {
     const grid = makeGrid({ getOverlayHost: () => host });
     const hit: Hit = { kind: 'header', colId: 'a' };
     f.handleMouseDown(ctx(hit, { x: 10, y: 8 }, grid));
-    // Pill ghost mounts on document.body (no cg-theme ancestor in test DOM).
-    expect(document.body.querySelector('.cg-col-drag-ghost')).toBeNull();
+    // Pill ghost mounts on document.body (no vg-theme ancestor in test DOM).
+    expect(document.body.querySelector('.vg-col-drag-ghost')).toBeNull();
     f.handleMouseDrag(ctx(hit, { x: 220, y: 8 }, grid));
-    expect(document.body.querySelector('.cg-col-drag-ghost')).not.toBeNull();
+    expect(document.body.querySelector('.vg-col-drag-ghost')).not.toBeNull();
     // Insertion line still mounts in the overlay host.
-    expect(host.querySelector('.cg-column-drag-insertion-line')).not.toBeNull();
+    expect(host.querySelector('.vg-column-drag-insertion-line')).not.toBeNull();
     f.handleMouseUp(ctx(hit, { x: 220, y: 8 }, grid));
-    expect(document.body.querySelector('.cg-col-drag-ghost')).toBeNull();
-    expect(host.querySelector('.cg-column-drag-insertion-line')).toBeNull();
+    expect(document.body.querySelector('.vg-col-drag-ghost')).toBeNull();
+    expect(host.querySelector('.vg-column-drag-insertion-line')).toBeNull();
   });
 
   it('swallows the click event that follows a drag so HeaderClick does not sort the dragged column', () => {
@@ -313,7 +313,7 @@ describe('ColumnDrag', () => {
       // Drag toward the top-level gap after 'c' — a legal re-nest-out target.
       f.handleMouseDrag(ctx(hit, { x: 480, y: 8 }, grid));
       expect(f.cursor).toBe('grabbing');
-      const line = host.querySelector<HTMLElement>('.cg-column-drag-insertion-line');
+      const line = host.querySelector<HTMLElement>('.vg-column-drag-insertion-line');
       expect(line).not.toBeNull();
       expect(line!.style.display).not.toBe('none');
     });
@@ -329,7 +329,7 @@ describe('ColumnDrag', () => {
       // resolved target's parent is the married group 'M'.
       f.handleMouseDrag(ctx(hit, { x: 300, y: 8 }, grid));
       expect(f.cursor).toBe('no-drop');
-      const line = host.querySelector<HTMLElement>('.cg-column-drag-insertion-line');
+      const line = host.querySelector<HTMLElement>('.vg-column-drag-insertion-line');
       expect(line).not.toBeNull();
       expect(line!.style.display).toBe('none');
     });
@@ -345,7 +345,7 @@ describe('ColumnDrag', () => {
       // span, with nothing shallower to fall back to (top-level group).
       f.handleMouseDrag(ctx(hit, { x: 100, y: 8 }, grid));
       expect(f.cursor).toBe('no-drop');
-      const line = host.querySelector<HTMLElement>('.cg-column-drag-insertion-line');
+      const line = host.querySelector<HTMLElement>('.vg-column-drag-insertion-line');
       expect(line).not.toBeNull();
       expect(line!.style.display).toBe('none');
     });
@@ -384,7 +384,7 @@ describe('ColumnDrag', () => {
       // still be rejected.
       f.handleMouseDrag(ctx(hit, { x: 480, y: 8 }, grid));
       expect(f.cursor).toBe('no-drop');
-      const line = host.querySelector<HTMLElement>('.cg-column-drag-insertion-line');
+      const line = host.querySelector<HTMLElement>('.vg-column-drag-insertion-line');
       expect(line).not.toBeNull();
       expect(line!.style.display).toBe('none');
     });

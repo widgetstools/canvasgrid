@@ -87,7 +87,7 @@ export function attachGcCache(
   attrs: CanvasRenderingContext2DSettings = { alpha: false },
 ): CachedContext2D {
   const raw = canvas.getContext('2d', attrs);
-  if (!raw) throw new Error('[cgrid] failed to get 2d context');
+  if (!raw) throw new Error('[velocity-grid] failed to get 2d context');
   const gc = raw as CanvasRenderingContext2D;
 
   // The values store. On save(), it's swapped for a prototype-chained child;

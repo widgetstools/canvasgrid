@@ -44,7 +44,7 @@ test('tool panel — Row Groups drop zone with 3 pills', async ({ page }) => {
 
   await page.evaluate(() => {
     const g = (window as unknown as {
-      __cgrid: { openToolPanel: (id: string) => void };
+      __velocity-grid: { openToolPanel: (id: string) => void };
     }).__cgrid;
     g.openToolPanel('agColumnsToolPanel');
   });

@@ -1,5 +1,5 @@
 // Cycle 19 / Task 5-ColState — owns the column-state round-trip extracted
-// from CGrid:
+// from VelocityGrid:
 //   • the construction-time `initialColumnStateSnapshot` used by
 //     `resetColumnState` to replay the as-coded layout,
 //   • `getColumnState()` — the pivot-aware snapshot that always reflects
@@ -15,7 +15,7 @@
 //     role fan-out that reconciles the `rowGroup` / `pivot` / `aggFunc`
 //     slots into the runtime `GroupingState` + `PivotState` primitives.
 //
-// CGrid is the thin consumer: the public `getColumnState` /
+// VelocityGrid is the thin consumer: the public `getColumnState` /
 // `applyColumnState` / `resetColumnState` methods delegate here, and
 // `getState` / `setState` reach through `columnState.*` for the snapshot
 // + restore leg.
@@ -24,7 +24,7 @@
 // state field mutation touches (the def slots, the tree, the visible
 // order, the layout, the sort model, the role primitives, and the
 // worker column metadata) — and routing each one through explicit deps
-// callbacks keeps the manager unaware of CGrid's private fields. The
+// callbacks keeps the manager unaware of VelocityGrid's private fields. The
 // pivot-aware "snapshot / apply against primaries under pivot mode"
 // invariant (Cycle 18 / Task 9) survives untouched: the manager consults
 // `deps.isPivotActive()` + `deps.getPrimaryColumnTree()` to pick the
@@ -34,7 +34,7 @@ import type { TypedEventEmitter } from './eventEmitter';
 import type { ColumnTree } from './columnTree';
 import type { ResolvedColDef } from './propertyChain';
 import type { ColumnLayout } from './layout';
-import type { CGridEvent, SortModel } from '../types';
+import type { VelocityGridEvent, SortModel } from '../types';
 import type { CColumnState, CApplyColumnStateParams } from '../types';
 import type { CColDef, CColGroupDef } from '../types';
 import {
@@ -56,14 +56,14 @@ export interface ColumnStateValueColumn {
   aggFunc: string;
 }
 
-/** Deps interface: every access the manager needs into CGrid state, the
+/** Deps interface: every access the manager needs into VelocityGrid state, the
  *  worker plumbing, the layout pipeline, and the runtime state
  *  primitives (pivot + grouping). Intentionally fat — column-state
  *  restore orchestrates every rendering-state field mutation touches,
  *  and routing each one through explicit callbacks keeps the manager
- *  unaware of CGrid's private fields. */
+ *  unaware of VelocityGrid's private fields. */
 export interface ColumnStateManagerDeps<TRow> {
-  events: TypedEventEmitter<CGridEvent>;
+  events: TypedEventEmitter<VelocityGridEvent>;
   isDestroyed(): boolean;
 
   // ── column tree / order / layout / defs ──────────────────────────────
@@ -89,8 +89,8 @@ export interface ColumnStateManagerDeps<TRow> {
   /** Helper: rebuild the nested `CColDef` / `CColGroupDef` tree so its
    *  leaf order matches the given flat `newLeafOrder`. Kept as a deps
    *  callback (rather than an import) because the same free function is
-   *  used elsewhere on CGrid (e.g. `reorderColumn`) and lives at the top
-   *  of `cgrid.ts` as a private helper. */
+   *  used elsewhere on VelocityGrid (e.g. `reorderColumn`) and lives at the top
+   *  of `velocityGrid.ts` as a private helper. */
   rebuildColumnDefsByLeafOrder(
     defs: (CColDef<TRow> | CColGroupDef<TRow>)[],
     newLeafOrder: string[],
@@ -134,7 +134,7 @@ export interface ColumnStateManagerDeps<TRow> {
 export class ColumnStateManager<TRow = unknown> {
   /** Cycle 6 / Task 2 — construction-time snapshot replayed by
    *  `resetColumnState`. Empty until `captureInitialSnapshot()` runs
-   *  (called by CGrid once the initial layout has resolved). */
+   *  (called by VelocityGrid once the initial layout has resolved). */
   private initialSnapshot: CColumnState[] = [];
 
   constructor(private readonly deps: ColumnStateManagerDeps<TRow>) {}
@@ -142,7 +142,7 @@ export class ColumnStateManager<TRow = unknown> {
   // ── Public read surface ───────────────────────────────────────────────────
 
   /** Capture the initial column state so `resetColumnState` can replay
-   *  the as-coded layout. Called by CGrid once at construction, AFTER
+   *  the as-coded layout. Called by VelocityGrid once at construction, AFTER
    *  the initial `columnLayout` is resolved — snapshotting earlier
    *  would miss `initial*` field defaults + widths. */
   captureInitialSnapshot(): void {
@@ -404,7 +404,7 @@ export class ColumnStateManager<TRow = unknown> {
         this.deps.events.emit({ type: 'displayedColumnsChanged', source: displayedSource });
         this.deps.requestViewport();
       })
-      .catch((err) => { if (!this.deps.isDestroyed()) console.error('[cgrid] applyColumnState:', err); });
+      .catch((err) => { if (!this.deps.isDestroyed()) console.error('[velocity-grid] applyColumnState:', err); });
 
     return allFound;
   }

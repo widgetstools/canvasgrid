@@ -1,4 +1,4 @@
-// @cgrid/edit — settings.test.ts
+// @wellsfargo-starui/velocity-grid-edit — settings.test.ts
 // Covers DEFAULT_EDIT_SETTINGS, mergeEditSettings, recordSourceKey, shouldRecord.
 // Spec: docs/superpowers/specs/2026-07-02-cycle-21g-edit-design.md §2.2, §1.1.8.
 // Plan: docs/superpowers/plans/2026-07-02-cycle-21g-edit.md — Task 1, Step 1 (9 cases).
@@ -19,6 +19,7 @@ describe('DEFAULT_EDIT_SETTINGS', () => {
         enabled: true,
         maxEntries: 50,
         suspended: false,
+        unifyUndo: true,
         recordSources: {
           smartEdit: true,
           bulkUpdate: true,
@@ -163,6 +164,7 @@ describe('shouldRecord', () => {
       enabled: true,
       maxEntries: 50,
       suspended: false,
+      unifyUndo: true,
       recordSources: {
         smartEdit: true,
         bulkUpdate: false,

@@ -5,7 +5,7 @@
  * Passes the shared Formatting ribbon Font / Alignment / Borders chrome into
  * the panel so group header style editing matches the toolbar.
  */
-import { ColumnGroupsToolPanel } from '@cgrid/kernel';
+import { ColumnGroupsToolPanel } from '@wellsfargo-starui/velocity-grid';
 import type { SettingsModule } from '../extension/types';
 import { mountToolPanel } from './toolPanelHost';
 import { mountFormatterStyleChrome } from '../toolbar/styleChrome';

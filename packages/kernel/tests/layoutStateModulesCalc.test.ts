@@ -1,14 +1,14 @@
 /**
  * Grid Layouts — Phase B / B1: the calc bridge's `templates` (grid-tier) +
- * `calc` (layout-tier) state modules, exercised end-to-end on a real CGrid.
+ * `calc` (layout-tier) state modules, exercised end-to-end on a real VelocityGrid.
  *
  * Proves the worklog's B1 gate — "both round-trip through getState/setState" —
  * and that the tier split works: a saved layout carries the layout-tier `calc`
  * module but NOT the grid-tier `templates` library (shared across layouts).
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
-import { wireIntoKernel } from '@cgrid/calc';
+import { VelocityGrid } from '../src/velocityGrid';
+import { wireIntoKernel } from '@wellsfargo-starui/velocity-grid-calc';
 
 beforeAll(() => {
   (globalThis as any).Worker = class {
@@ -39,12 +39,12 @@ beforeAll(() => {
 async function mountWired() {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
-  const grid = new CGrid<{ id: string; qty: number; price: number }>(container, {
+  const grid = new VelocityGrid<{ id: string; qty: number; price: number }>(container, {
     columnDefs: [{ field: 'id' }, { field: 'qty' }, { field: 'price' }],
     getRowId: (r) => r.id,
-    theme: 'cg-theme-quartz',
+    theme: 'vg-theme-quartz',
   });
   const { calc } = wireIntoKernel(grid);
   const w = (grid as any).workerClient.worker;

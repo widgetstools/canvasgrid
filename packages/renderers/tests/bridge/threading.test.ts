@@ -2,7 +2,7 @@
  * Minimal-composite threading proof — spec §2.3 LOCKED design.
  *
  * Pure integration test over landed kernel mechanics: calls resolveColDef /
- * applyCellProps directly (no CGrid instantiation). Style mirrors
+ * applyCellProps directly (no VelocityGrid instantiation). Style mirrors
  * packages/kernel/tests/cellClassRules.test.ts — inline fixtures, no imports
  * from that file.
  *

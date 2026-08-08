@@ -1,4 +1,4 @@
-import { CGrid } from '@cgrid/kernel';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
 import type { ShowcaseRow } from '../seedData';
 import type { Feature } from './index';
 import { makeRows } from '../seedData';
@@ -9,7 +9,7 @@ export const filteringWithGroups: Feature = {
   description: 'Floating filters sit below each column header. Type a value to filter leaf rows; groups with no matching leaves collapse. Number columns accept ranges like <code>&gt;0</code>, <code>-5000..5000</code>, or comma-separated values.',
 
   mount(gridHost, controls, theme) {
-    const grid = new CGrid<ShowcaseRow>(gridHost, {
+    const grid = new VelocityGrid<ShowcaseRow>(gridHost, {
       getRowId: (r) => r.id,
       columnDefs: [
         { colId: 'desk',   field: 'desk',   headerName: 'Desk',   cellDataType: 'text',   flex: 1 },

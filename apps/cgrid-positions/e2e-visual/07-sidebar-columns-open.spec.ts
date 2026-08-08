@@ -10,7 +10,7 @@ test('side bar — Columns panel open on the right', async ({ page }) => {
   await setupGrid(page, 50);
   await page.evaluate(() => {
     const g = (window as unknown as {
-      __cgrid: { openToolPanel: (id: string) => void };
+      __velocity-grid: { openToolPanel: (id: string) => void };
     }).__cgrid;
     g.openToolPanel('agColumnsToolPanel');
   });

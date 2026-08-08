@@ -1,7 +1,7 @@
 // AlertsEngine — trigger evaluation, debounce, token bucket, history ring.
 // Spec: docs/superpowers/specs/2026-07-01-cycle-21e-rules-design.md §4.3.
 // Evaluation modes (throttled queue) + settings surface complete in Task 8.
-import { compile, evaluate, parse, type Compiled, type Schema } from '@cgrid/expression';
+import { compile, evaluate, parse, type Compiled, type Schema } from '@wellsfargo-starui/velocity-grid-expression';
 import { DEFAULT_ALERTS_SETTINGS } from '../types';
 import type {
   AlertEvent, AlertRule, AlertsSettings, AlertTrigger,
@@ -230,6 +230,14 @@ export class AlertsEngine {
     const out: AlertEvent[] = new Array(n);
     for (let i = 0; i < n; i++) out[i] = this.ring[(newest - i + n) % n]!; // index math keeps this in-bounds
     return out;
+  }
+
+  /** Drop the session notification ring and reset the unread counter.
+   *  Rules + settings are untouched. */
+  clearHistory(): void {
+    this.ring = [];
+    this.nextWrite = 0;
+    this.unread = 0;
   }
 
   unreadCount(): number {

@@ -16,7 +16,7 @@
 
 /** One visible leaf column's horizontal slot + its ancestor group path
  *  (root→parent). Built per-drag-tick by `columnDrag.ts`'s
- *  `buildHeaderSlots`, which maps `CGridLike.allColIds()` through
+ *  `buildHeaderSlots`, which maps `VelocityGridLike.allColIds()` through
  *  `columnLeftOf` / `columnWidthOf` / `getColGroupPath`. */
 export interface HeaderLeafSlot {
   colId: string;

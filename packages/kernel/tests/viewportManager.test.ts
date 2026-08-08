@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ViewportManager, type ViewportManagerDeps } from '../src/core/viewportManager';
 import { DisposableRegistry } from '../src/core/disposable';
 import { TypedEventEmitter } from '../src/core/eventEmitter';
-import type { CGridEvent } from '../src/types';
+import type { VelocityGridEvent } from '../src/types';
 import type { Subgrid } from '../src/core/subgrid';
 import type { ColumnLayout } from '../src/core/layout';
 
@@ -40,7 +40,7 @@ function data(rowCount = 1000, rowHeight = 30): Subgrid {
 interface Harness {
   manager: ViewportManager;
   disposables: DisposableRegistry;
-  events: TypedEventEmitter<CGridEvent>;
+  events: TypedEventEmitter<VelocityGridEvent>;
   scroller: HTMLDivElement;
   sizer: HTMLDivElement;
   dispatch: ReturnType<typeof vi.fn>;
@@ -91,7 +91,7 @@ function makeHarness(opts: {
   };
 
   const disposables = new DisposableRegistry();
-  const events = new TypedEventEmitter<CGridEvent>();
+  const events = new TypedEventEmitter<VelocityGridEvent>();
   const dispatch = vi.fn(opts.dispatchImpl ?? (() => Promise.resolve()));
   const afterRecompute = vi.fn();
   const afterScrollTick = vi.fn();
@@ -150,7 +150,7 @@ describe('ViewportManager — scroll state', () => {
 
   it('emits viewportChanged + bodyScroll on each scroll tick', () => {
     const h = makeHarness();
-    const seen: CGridEvent['type'][] = [];
+    const seen: VelocityGridEvent['type'][] = [];
     h.events.on('viewportChanged', () => seen.push('viewportChanged'));
     h.events.on('bodyScroll', () => seen.push('bodyScroll'));
     h.manager.setScroll(0, 60);
@@ -205,7 +205,7 @@ describe('ViewportManager — recompute', () => {
       colId: `c${i}`, left: i * 100, width: 100,
     }));
     const h = makeHarness({ columns, containerWidth: 400 });
-    const events: CGridEvent[] = [];
+    const events: VelocityGridEvent[] = [];
     h.events.on('virtualColumnsChanged', (e) => events.push(e));
     // First recompute after construction captures baseline silently.
     h.manager.recompute();
@@ -421,7 +421,7 @@ describe('ViewportManager — teardown', () => {
     const addSpy = vi.spyOn(scroller, 'addEventListener');
     const removeSpy = vi.spyOn(scroller, 'removeEventListener');
     const disposables = new DisposableRegistry();
-    const events = new TypedEventEmitter<CGridEvent>();
+    const events = new TypedEventEmitter<VelocityGridEvent>();
     const m = new ViewportManager({
       disposables, events, scroller, sizer, root,
       getColumnLayout: () => [{ colId: 'a', left: 0, width: 100 }],

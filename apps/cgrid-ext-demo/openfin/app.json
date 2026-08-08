@@ -6,8 +6,8 @@
   },
   "startup_app": {
     "uuid": "cgrid-ext-demo",
-    "name": "CGridExt Demo",
-    "description": "CGridExt ribbon demo hosted in OpenFin (vite preview :4188). Runtime pinned to 41.134.102.3 \u2014 44.146.101.5 measured MORE frame hitches on macOS; see openfin/PERF-NOTES.md.",
+    "name": "VelocityGridExt Demo",
+    "description": "VelocityGridExt ribbon demo hosted in OpenFin (vite preview :4188). Runtime pinned to 41.134.102.3 \u2014 44.146.101.5 measured MORE frame hitches on macOS; see openfin/PERF-NOTES.md.",
     "url": "http://localhost:4188/",
     "autoShow": true,
     "frame": true,

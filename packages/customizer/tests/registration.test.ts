@@ -1,17 +1,17 @@
 /**
  * Cycle 21i Phase 2 / T5 — registration proof.
  *
- * A Lit panel built from @cgrid/customizer chrome registers through the
- * EXISTING kernel tool-panel registry (`CGridOptions.components` +
+ * A Lit panel built from @wellsfargo-starui/velocity-grid-customizer chrome registers through the
+ * EXISTING kernel tool-panel registry (`VelocityGridOptions.components` +
  * `SideBarDef.toolPanels`) with ZERO kernel changes: the litToolPanel
  * adapter satisfies init/getGui/refresh/destroy, the api arrives on the
  * element, and the chrome components render into shadow DOM.
  *
  * Worker/canvas stubs mirror the kernel's runtimeOptions.test.ts so a
- * CGrid constructs under happy-dom.
+ * VelocityGrid constructs under happy-dom.
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '@cgrid/kernel';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
 import { html } from 'lit';
 import { litToolPanel, CgcPanelElement } from '../src/litToolPanel';
 import { CgcSwitch } from '../src/components';
@@ -87,7 +87,7 @@ describe('Lit panel registration through the kernel tool-panel registry', () => 
     document.body.appendChild(host);
 
     const ProbeToolPanel = litToolPanel('cgc-probe-panel', ProbePanel);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       columnDefs: [{ colId: 'a', field: 'a' }],
       rowData: [],
       getRowId: (r: any) => r.id,

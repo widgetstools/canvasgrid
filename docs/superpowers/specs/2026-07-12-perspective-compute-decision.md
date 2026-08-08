@@ -77,7 +77,7 @@ patch seam now also depends on) fully co-designed.
 shipped pivoting, but re-agg-on-tick at 60Hz × 50k is unproven); that is the
 single hardest piece of Cycle 20.
 
-### B. Scoped — Perspective as the pivot-cube engine INSIDE `@cgrid/excel-pivot`
+### B. Scoped — Perspective as the pivot-cube engine INSIDE `@wellsfargo-starui/velocity-grid-excel-pivot`
 Flat-grid pipeline stays cgrid end-to-end (it is already fast — Cycle 22
 measured kernel-attributed scroll cost in single-digit ms; the flat path's
 bottlenecks are paint-side, now solved). Perspective owns ONLY the cube:
@@ -87,7 +87,7 @@ whatever Excel features the engine can't express natively (show-values-as
 variants, calculated items, value filters) as post-processing over the view.
 **Fit:** consistent with [[feedback_wrapper_native_semantics]] — Perspective as
 neutral substrate behind a bridge, target semantics owned by us. Composition
-matches the locked "composition, `@cgrid/excel-pivot` package" decision.
+matches the locked "composition, `@wellsfargo-starui/velocity-grid-excel-pivot` package" decision.
 **Risks:** (1) semantic impedance — if too much of the Excel matrix ends up in
 the post-processing layer, we're re-implementing the cube anyway with an extra
 dependency underneath (the exact wrapper-shaped-by-base failure the memory

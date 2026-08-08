@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
 import type { WorkerRequest } from '../src/worker/protocol';
 import { groupFooterCell } from '../src/renderer/cellRenderers/groupFooter';
@@ -233,7 +233,7 @@ describe('agGroupColumnFilter redirect', () => {
     document.body.appendChild(el);
 
     interface Row { id: string; desk: string; notional: number }
-    const grid = new CGrid<Row>(el, {
+    const grid = new VelocityGrid<Row>(el, {
       columnDefs: [
         { field: 'desk', enableRowGroup: true, filter: 'text' },
         { field: 'notional', type: 'number' },

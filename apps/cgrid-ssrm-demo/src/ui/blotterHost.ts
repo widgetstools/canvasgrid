@@ -1,8 +1,8 @@
-import { CGrid, type AnyServerSideDatasource } from '@cgrid/kernel';
+import { VelocityGrid, type AnyServerSideDatasource } from '@wellsfargo-starui/velocity-grid';
 
-import { COLUMNS } from '@cgrid/perspective';
+import { COLUMNS } from '@wellsfargo-starui/velocity-grid-perspective';
 
-import type { PositionRow } from '@cgrid/perspective';
+import type { PositionRow } from '@wellsfargo-starui/velocity-grid-perspective';
 
 
 
@@ -10,7 +10,7 @@ export interface BlotterMount {
 
   root: HTMLElement;
 
-  grid: CGrid<PositionRow>;
+  grid: VelocityGrid<PositionRow>;
 
   destroy(): void;
 
@@ -74,7 +74,7 @@ export function mountBlotter(
 
 
 
-  const grid = new CGrid<PositionRow>(body, {
+  const grid = new VelocityGrid<PositionRow>(body, {
 
     getRowId: (r: PositionRow) => r.positionId,
 

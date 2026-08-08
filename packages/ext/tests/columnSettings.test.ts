@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { columnSettingsModule } from '../src/modules/columnSettings';
-import type { CgExtContext } from '../src/extension/types';
+import type { VelocityGridExtContext } from '../src/extension/types';
 
 function makeCtx(colDefs: Array<Record<string, unknown>> = [
   { colId: 'a', headerName: 'Alpha', sortable: true },
@@ -71,7 +71,7 @@ function makeCtx(colDefs: Array<Record<string, unknown>> = [
   const ctx = {
     grid,
     profiles: { markDirty, isDirty: () => false, onDirtyChange: () => () => {} },
-  } as unknown as CgExtContext;
+  } as unknown as VelocityGridExtContext;
 
   return { ctx, edits, markDirty, state, overrides };
 }

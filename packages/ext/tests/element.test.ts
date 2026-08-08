@@ -1,21 +1,21 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { installGridTestEnv } from './setup';
-import { defineCgridExt } from '../src/element';
+import { defineVelocityGridExt } from '../src/element';
 
-beforeAll(() => { installGridTestEnv(); defineCgridExt(); });
+beforeAll(() => { installGridTestEnv(); defineVelocityGridExt(); });
 beforeEach(() => localStorage.clear());
 
-describe('<cgrid-ext>', () => {
-  it('constructs a CGridExt on connect using .options', () => {
-    const el = document.createElement('cgrid-ext') as any;
+describe('<velocity-grid-ext>', () => {
+  it('constructs a VelocityGridExt on connect using .options', () => {
+    const el = document.createElement('velocity-grid-ext') as any;
     el.options = { columnDefs: [{ colId: 'a', field: 'a' }], rowData: [], getRowId: (r: any) => r.a };
     document.body.appendChild(el);
-    expect(el.classList.contains('cgext-root')).toBe(true);
+    expect(el.classList.contains('vgext-root')).toBe(true);
     expect(el.instance).toBeTruthy();
     el.remove();
   });
 
-  it('defineCgridExt is idempotent', () => {
-    expect(() => { defineCgridExt(); defineCgridExt(); }).not.toThrow();
+  it('defineVelocityGridExt is idempotent', () => {
+    expect(() => { defineVelocityGridExt(); defineVelocityGridExt(); }).not.toThrow();
   });
 });

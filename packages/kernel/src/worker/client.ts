@@ -373,7 +373,7 @@ export class WorkerClient {
   }
 
   /** Cycle 7 / Task 8 — re-run the filter pipeline against the current
-   *  model. Used by `CGridApi.onFilterChanged(source)` after the app
+   *  model. Used by `VelocityGridApi.onFilterChanged(source)` after the app
    *  mutates external-filter state without changing the column / quick /
    *  sort model. Resolves with the post-pipeline visible row count. */
   refilter(): Promise<{ visibleCount: number }> {
@@ -590,7 +590,7 @@ export class WorkerClient {
   /** Cycle 10 / Task 4 — parse a TSV / CSV payload into a `string[][]`
    *  off the main thread. `text` is the raw clipboard payload from
    *  `navigator.clipboard.readText`; `delimiter` matches
-   *  `CGridOptions.clipboardDelimiter` (default `\t`). The main thread
+   *  `VelocityGridOptions.clipboardDelimiter` (default `\t`). The main thread
    *  uses the result to assemble a focus-anchored
    *  `applyTransaction({ update: [...] })`. */
   clipboardDeserialize(text: string, delimiter: string): Promise<string[][]> {
@@ -629,7 +629,7 @@ export class WorkerClient {
     // (1) real Workers may flush queued messages around terminate; we don't
     //     want late deliveries hitting the now-stale handlers closure.
     // (2) the listener arrow function captures `this` (and transitively the
-    //     handlers / CGrid instance) — explicit removal lets GC reclaim the
+    //     handlers / VelocityGrid instance) — explicit removal lets GC reclaim the
     //     graph immediately rather than waiting for the Worker itself.
     this.worker.removeEventListener?.('message', this.messageHandler);
     this.worker.terminate();

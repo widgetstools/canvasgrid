@@ -1,12 +1,12 @@
 /**
- * Profile switcher for the CGridExt title bar — list / switch / rename /
+ * Profile switcher for the VelocityGridExt title bar — list / switch / rename /
  * save-as / delete, plus a dirty-aware profile Save disk.
  *
  * Profiles are full grid+ext snapshots (distinct from kernel *layouts*,
  * which are named view lenses). Both live in the title bar: layouts for
  * "how the grid looks", profiles for "trader workspace".
  */
-import type { ToolbarItem, CgExtContext, ProfileMeta } from '../extension/types';
+import type { ToolbarItem, VelocityGridExtContext, ProfileMeta } from '../extension/types';
 import { menu, svg, iconButton } from './ui';
 
 const I = {
@@ -30,7 +30,7 @@ export function profileSaveItem(): ToolbarItem {
     init() {},
     render(host, ctx) {
       const btn = iconButton(I.save, 'Profile up to date');
-      btn.classList.add('cgext-save');
+      btn.classList.add('vgext-save');
       const sync = (dirty: boolean) => {
         btn.classList.toggle('is-dirty', dirty);
         btn.disabled = !dirty;
@@ -59,14 +59,14 @@ export function profilesItem(): ToolbarItem {
       injectProfileStyles();
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'cgext-pill cgext-profile cgext-profiles-trigger';
+      btn.className = 'vgext-pill vgext-profile vgext-profiles-trigger';
       btn.setAttribute('aria-haspopup', 'menu');
       btn.setAttribute('aria-expanded', 'false');
       btn.innerHTML =
-        `<span class="cgext-profile-avatar">${svg(I.user, 13)}</span>` +
-        `<span class="cgext-pill-name cgext-profile-name"></span>` +
-        `<span class="cgext-pill-caret">${svg(I.chevronDown, 13)}</span>`;
-      const nameEl = btn.querySelector('.cgext-profile-name')!;
+        `<span class="vgext-profile-avatar">${svg(I.user, 13)}</span>` +
+        `<span class="vgext-pill-name vgext-profile-name"></span>` +
+        `<span class="vgext-pill-caret">${svg(I.chevronDown, 13)}</span>`;
+      const nameEl = btn.querySelector('.vgext-profile-name')!;
 
       const paint = async () => {
         const id = ctx.profiles.activeId();
@@ -112,11 +112,11 @@ export function profilesItem(): ToolbarItem {
   };
 }
 
-function buildPanel(ctx: CgExtContext, close: () => void): { el: HTMLElement; refresh: () => void } {
+function buildPanel(ctx: VelocityGridExtContext, close: () => void): { el: HTMLElement; refresh: () => void } {
   const el = document.createElement('div');
-  el.className = 'cgext-profiles-menu';
+  el.className = 'vgext-profiles-menu';
   const err = document.createElement('div');
-  err.className = 'cgext-profiles-err';
+  err.className = 'vgext-profiles-err';
   err.hidden = true;
   el.appendChild(err);
 
@@ -127,7 +127,7 @@ function buildPanel(ctx: CgExtContext, close: () => void): { el: HTMLElement; re
   };
 
   const refresh = () => {
-    el.querySelectorAll('.cgext-profiles-row, .cgext-profiles-actions').forEach((n) => n.remove());
+    el.querySelectorAll('.vgext-profiles-row, .vgext-profiles-actions').forEach((n) => n.remove());
     setErr(null);
     void ctx.profiles.list().then((list) => {
       const active = ctx.profiles.activeId();
@@ -145,21 +145,21 @@ function buildPanel(ctx: CgExtContext, close: () => void): { el: HTMLElement; re
 function rowEl(
   m: ProfileMeta,
   activeId: string,
-  ctx: CgExtContext,
+  ctx: VelocityGridExtContext,
   setErr: (msg: string | null) => void,
   done: () => void,
 ): HTMLElement {
   const row = document.createElement('div');
-  row.className = 'cgext-profiles-row';
+  row.className = 'vgext-profiles-row';
   if (m.id === activeId) row.classList.add('is-active');
 
   const main = document.createElement('button');
   main.type = 'button';
-  main.className = 'cgext-profiles-main';
+  main.className = 'vgext-profiles-main';
   if (m.id === activeId) main.insertAdjacentHTML('afterbegin', svg(I.check, 14));
   else {
     const spacer = document.createElement('span');
-    spacer.className = 'cgext-profiles-check-spacer';
+    spacer.className = 'vgext-profiles-check-spacer';
     main.append(spacer);
   }
   const name = document.createElement('span');
@@ -190,15 +190,15 @@ function rowEl(
 }
 
 function actionsEl(
-  ctx: CgExtContext,
+  ctx: VelocityGridExtContext,
   setErr: (msg: string | null) => void,
   done: () => void,
 ): HTMLElement {
   const wrap = document.createElement('div');
-  wrap.className = 'cgext-profiles-actions';
+  wrap.className = 'vgext-profiles-actions';
   const saveAs = document.createElement('button');
   saveAs.type = 'button';
-  saveAs.className = 'cgext-btn';
+  saveAs.className = 'vgext-btn';
   saveAs.innerHTML = `${svg(I.plus, 14)} Save as…`;
   saveAs.addEventListener('click', () => {
     const name = window.prompt('New profile name');
@@ -211,38 +211,38 @@ function actionsEl(
 
 function injectProfileStyles(): void {
   if (typeof document === 'undefined') return;
-  let style = document.getElementById('cgext-profiles-styles') as HTMLStyleElement | null;
+  let style = document.getElementById('vgext-profiles-styles') as HTMLStyleElement | null;
   if (!style) {
     style = document.createElement('style');
-    style.id = 'cgext-profiles-styles';
+    style.id = 'vgext-profiles-styles';
     document.head.appendChild(style);
   }
   style.textContent = `
-.cgext-profiles-menu { min-width: 240px; max-width: 320px; padding: 6px; }
-.cgext-profiles-err {
-  color: var(--cg-danger-color, #f87171); font-size: 11px;
+.vgext-profiles-menu { min-width: 240px; max-width: 320px; padding: 6px; }
+.vgext-profiles-err {
+  color: var(--vg-danger-color, #f87171); font-size: 11px;
   padding: 4px 6px; margin-bottom: 4px;
 }
-.cgext-profiles-row {
+.vgext-profiles-row {
   display: flex; align-items: center; gap: 2px;
-  border-radius: var(--cg-radius, 6px);
+  border-radius: var(--vg-radius, 6px);
 }
-.cgext-profiles-row.is-active { background: var(--cg-row-alt-bg, rgba(255,255,255,0.06)); }
-.cgext-profiles-main {
+.vgext-profiles-row.is-active { background: var(--vg-row-alt-bg, rgba(255,255,255,0.06)); }
+.vgext-profiles-main {
   flex: 1; display: inline-flex; align-items: center; gap: 6px;
   border: 0; background: transparent; color: inherit; cursor: pointer;
   padding: 6px 8px; text-align: left; font: inherit; min-width: 0;
 }
-.cgext-profiles-main span {
+.vgext-profiles-main span {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.cgext-profiles-check-spacer { width: 14px; height: 14px; flex: 0 0 auto; }
-.cgext-profiles-actions {
+.vgext-profiles-check-spacer { width: 14px; height: 14px; flex: 0 0 auto; }
+.vgext-profiles-actions {
   display: flex; gap: 6px; padding: 8px 4px 4px;
-  border-top: 1px solid var(--cg-border-color, rgba(255,255,255,0.08));
+  border-top: 1px solid var(--vg-border-color, rgba(255,255,255,0.08));
   margin-top: 4px;
 }
-.cgext-profiles-actions .cgext-btn {
+.vgext-profiles-actions .vgext-btn {
   display: inline-flex; align-items: center; gap: 6px;
 }
 `;

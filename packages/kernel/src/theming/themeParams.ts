@@ -1,11 +1,11 @@
 /**
  * Cycle 22 / Task 3 — runtime theme-parameter overrides.
  *
- * Apps tune individual `--cg-*` tokens without writing CSS:
+ * Apps tune individual `--vg-*` tokens without writing CSS:
  *
  *   grid.setThemeParams({
- *     '--cg-row-height': '36px',
- *     '--cg-header-bg': '#0f172a',
+ *     '--vg-row-height': '36px',
+ *     '--vg-header-bg': '#0f172a',
  *   });
  *
  * Each call writes the variables to the grid root's inline style, so
@@ -25,7 +25,7 @@
  *  each track their own override set. */
 const STATE = new WeakMap<HTMLElement, Map<string, string>>();
 
-/** Apply a patch of `--cg-*` overrides to `root`. Returns the merged
+/** Apply a patch of `--vg-*` overrides to `root`. Returns the merged
  *  override map after the patch has been applied (the same map the
  *  next `getThemeParams(root)` would return). */
 export function setThemeParams(
@@ -54,7 +54,7 @@ export function getThemeParams(root: HTMLElement): Record<string, string> {
 }
 
 /** Remove every override managed by this module for `root`. Used by
- *  `CGrid.destroy()` to keep the WeakMap entry's cleanup explicit
+ *  `VelocityGrid.destroy()` to keep the WeakMap entry's cleanup explicit
  *  (the WeakMap itself will gc when the host element is detached,
  *  but the inline styles linger on the DOM node until removed). */
 export function clearThemeParams(root: HTMLElement): void {

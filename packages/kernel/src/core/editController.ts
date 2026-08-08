@@ -1,4 +1,4 @@
-// Cycle 19 / Task 4 — owns the cell-edit subsystem extracted from CGrid:
+// Cycle 19 / Task 4 — owns the cell-edit subsystem extracted from VelocityGrid:
 // the `editorContainer` DOM host, the `EditorOverlay` + `RowEditCoordinator`
 // instances + the `CellEditorRegistry` they dispatch against, the capture-
 // phase keydown matrix that gates F2/Enter/Tab/Escape/arrow nav, the
@@ -6,7 +6,7 @@
 // into 'edit' mode, and the `activeEdit` lifecycle state that drives the
 // editor open/close pipeline + the scroll-anchor resync.
 //
-// CGrid is the thin consumer: `editController.openEditor(...)` /
+// VelocityGrid is the thin consumer: `editController.openEditor(...)` /
 // `editController.stopEditing(...)` for the edit primitives,
 // `editController.isOpen()` for the host blur listener gate,
 // `editController.syncOpenEditorPosition()` for the viewport-tick anchor,
@@ -35,13 +35,13 @@
 import type { TypedEventEmitter } from './eventEmitter';
 import type { DisposableRegistry } from './disposable';
 import type { ResolvedColDef } from './propertyChain';
-import type { CGridEvent } from '../types';
+import type { VelocityGridEvent } from '../types';
 import { EditorOverlay } from '../interaction/editorOverlay';
 import { CellEditorRegistry } from '../interaction/editors/registry';
 import { RowEditCoordinator, type RowEditCellSpec } from '../interaction/editors/rowEditCoordinator';
 import type { CellEditorCtor } from '../interaction/editors/iCellEditor';
 
-/** Subset of `CGridOptions` the edit subsystem reads. Passed through a
+/** Subset of `VelocityGridOptions` the edit subsystem reads. Passed through a
  *  closure so per-tick `setGridOption` flips light up on the next
  *  edit / keydown without re-wiring the controller. */
 export interface EditOptions {
@@ -71,15 +71,15 @@ export interface EditViewportRow {
 
 export interface EditControllerDeps<TRow> {
   disposables: DisposableRegistry;
-  events: TypedEventEmitter<CGridEvent>;
+  events: TypedEventEmitter<VelocityGridEvent>;
   /** The root host that the capture-phase keydown listener attaches to.
-   *  Same element as `CGrid.root` — the editor's <input> / <select> /
+   *  Same element as `VelocityGrid.root` — the editor's <input> / <select> /
    *  <textarea> has focus while editing, so the keydown matrix lives
    *  on the root to see the keys before any per-editor handler runs. */
   root: HTMLDivElement;
   /** Shared DOM host for the editor overlay, floating-filter overlay,
    *  filter popup, context menu, and column-drop insertion line. Created
-   *  by CGrid early (before StatusBarHost / SideBarHost, which read from
+   *  by VelocityGrid early (before StatusBarHost / SideBarHost, which read from
    *  it during their construction) and handed in here so ownership of the
    *  mousedown listener + tear-down still moves. `pointer-events:none`
    *  on the host + `pointer-events:auto` on the children keeps the canvas
@@ -167,7 +167,7 @@ export interface EditControllerDeps<TRow> {
 
 export class EditController<TRow = unknown> {
   /** DOM host shared with floating-filter overlay, filter popup, context
-   *  menu, and the column-drop insertion line. Created by CGrid at
+   *  menu, and the column-drop insertion line. Created by VelocityGrid at
    *  construction step 1 (before StatusBarHost / SideBarHost consume it)
    *  and handed into the controller at step 9; the controller owns the
    *  mousedown listener + the tear-down hook. */
@@ -180,7 +180,7 @@ export class EditController<TRow = unknown> {
   /** Tracks the cell currently being edited (single-cell mode). Cleared on
    *  close. Used to compose `cellEditingStarted/Stopped` payloads. The
    *  `mode` field implements Excel's Enter / Edit dichotomy — see
-   *  `CGridOptions.enableExcelEditing` for the dispatch rules. */
+   *  `VelocityGridOptions.enableExcelEditing` for the dispatch rules. */
   private activeEdit: {
     rowIndex: number;
     rowId: string;
@@ -194,7 +194,7 @@ export class EditController<TRow = unknown> {
     private readonly deps: EditControllerDeps<TRow>,
     private readonly getOptions: () => EditOptions,
   ) {
-    // editorContainer is created + appended to `root` by CGrid before this
+    // editorContainer is created + appended to `root` by VelocityGrid before this
     // controller comes online (StatusBarHost / SideBarHost consume it
     // during their own construction, which runs upstream). Ownership of
     // the mousedown listener + the editor / rowEdit teardown hook still
@@ -212,7 +212,7 @@ export class EditController<TRow = unknown> {
     // close() can't paint into a torn-down container. DisposableRegistry
     // runs disposers in LIFO so this fires before the listeners above
     // unwire — matches the destroy-time `editor.close()` / `rowEdit.close()`
-    // sequence the pre-extraction CGrid.destroy() ran inline.
+    // sequence the pre-extraction VelocityGrid.destroy() ran inline.
     this.deps.disposables.add(() => {
       this.editor.close();
       this.rowEdit.close();
@@ -229,7 +229,7 @@ export class EditController<TRow = unknown> {
     return this.editor.isOpen() || this.rowEdit.isOpen();
   }
 
-  /** Surface exposed by `CGridApi.getCellEditorInstances` (later cycle) +
+  /** Surface exposed by `VelocityGridApi.getCellEditorInstances` (later cycle) +
    *  the debug flows that reach into the underlying registry. */
   getCellEditorRegistry(): CellEditorRegistry { return this.registry; }
 
@@ -335,8 +335,8 @@ export class EditController<TRow = unknown> {
           });
           this.activeEdit = null;
           this.deps.applyTransaction({ update: [rowData], async: false })
-            .catch((err) => { if (!this.deps.isDestroyed()) console.error('[cgrid] commit-back:', err); });
-        }).catch((err) => { if (!this.deps.isDestroyed()) console.error('[cgrid] commit-back fetch:', err); });
+            .catch((err) => { if (!this.deps.isDestroyed()) console.error('[velocity-grid] commit-back:', err); });
+        }).catch((err) => { if (!this.deps.isDestroyed()) console.error('[velocity-grid] commit-back fetch:', err); });
       },
       onCancel: () => {
         // Mirrors onCommit — restore canvas focus so the keyboard nav layer
@@ -605,9 +605,9 @@ export class EditController<TRow = unknown> {
       if (anyChanged) {
         this.deps.events.emit({ type: 'rowValueChanged', rowIndex, rowId: resolvedId, data: rowData });
         this.deps.applyTransaction({ update: [rowData], async: false })
-          .catch((err) => { if (!this.deps.isDestroyed()) console.error('[cgrid] row commit-back:', err); });
+          .catch((err) => { if (!this.deps.isDestroyed()) console.error('[velocity-grid] row commit-back:', err); });
       }
-    }).catch((err) => { if (!this.deps.isDestroyed()) console.error('[cgrid] row commit-back fetch:', err); });
+    }).catch((err) => { if (!this.deps.isDestroyed()) console.error('[velocity-grid] row commit-back fetch:', err); });
   }
 
   /** Cycle 5 / Task 10 — full-row cancel. No worker round-trip; emit

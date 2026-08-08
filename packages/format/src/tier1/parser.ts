@@ -1,5 +1,5 @@
-import { parse as parseExpression, compile as compileExpression, type Ast } from '@cgrid/expression';
-import type { Loc } from '@cgrid/expression';
+import { parse as parseExpression, compile as compileExpression, type Ast } from '@wellsfargo-starui/velocity-grid-expression';
+import type { Loc } from '@wellsfargo-starui/velocity-grid-expression';
 import type { CompileFormatError, RuleRefNode } from '../types';
 import { canonicalize } from './sugar';
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Cycle 21a Task 3 — scaffold one empty @cgrid/* package.
+# Cycle 21a Task 3 — scaffold one empty @wellsfargo-starui/velocity-grid-* package.
 #
 # Usage: scripts/scaffold-empty-package.sh <name> <description> [<dep1> <dep2> ...]
 # Example: scripts/scaffold-empty-package.sh expression "DSL parser + compiler + evaluator"
-# Example: scripts/scaffold-empty-package.sh format "Unified formatting DSL parser" @cgrid/expression
+# Example: scripts/scaffold-empty-package.sh format "Unified formatting DSL parser" @wellsfargo-starui/velocity-grid-expression
 set -euo pipefail
 
 name="$1"
@@ -29,7 +29,7 @@ deps_json+="}"
 
 cat > "$pkg_dir/package.json" <<PKGJSON
 {
-  "name": "@cgrid/$name",
+  "name": "@wellsfargo-starui/velocity-grid-$name",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -42,7 +42,7 @@ cat > "$pkg_dir/package.json" <<PKGJSON
     }
   },
   "scripts": {
-    "build": "echo '@cgrid/$name is a scaffold — no build yet' && exit 0",
+    "build": "echo '@wellsfargo-starui/velocity-grid-$name is a scaffold — no build yet' && exit 0",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },
@@ -68,7 +68,7 @@ cat > "$pkg_dir/tsconfig.json" <<TSJSON
 TSJSON
 
 cat > "$pkg_dir/README.md" <<READMEMD
-# @cgrid/$name
+# @wellsfargo-starui/velocity-grid-$name
 
 $description.
 
@@ -80,7 +80,7 @@ See the [cycle 21 spec §4](../../docs/superpowers/plans/2026-07-01-canvasgrid-c
 READMEMD
 
 cat > "$pkg_dir/src/index.ts" <<TSINDEX
-// @cgrid/$name — empty scaffold (cycle 21a).
+// @wellsfargo-starui/velocity-grid-$name — empty scaffold (cycle 21a).
 // Implementation lands in a subsequent cycle per the cycle 21 roadmap.
 // See: docs/superpowers/plans/2026-07-01-canvasgrid-cycle-21-modular-monorepo-and-intrinsic-features.md
 export {};

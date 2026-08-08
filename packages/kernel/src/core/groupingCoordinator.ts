@@ -1,5 +1,5 @@
 // Cycle 19 / Task 5-Grouping — owns the row-grouping subsystem extracted
-// from CGrid: the canonical `GroupModel` (rowGroupCols) held on the main
+// from VelocityGrid: the canonical `GroupModel` (rowGroupCols) held on the main
 // thread and shipped to the worker via `setWorkerGroupModel`, the
 // canonical `GroupingState` primitive the three grouping UIs (row group
 // panel, columns tool panel Row Groups drop zone, header context menu
@@ -9,7 +9,7 @@
 // `groupRowStripCtx` the body painter reads to allocate a full-row
 // strip under `'groupRows'` / `'custom'` mode.
 //
-// CGrid is the thin consumer:
+// VelocityGrid is the thin consumer:
 //   • Public grouping API (`setGroupModel` / `setRowGroupColumns` /
 //     `addRowGroupColumn` / `removeRowGroupColumn` / `moveRowGroupColumn`
 //     / `setRowGroupColumnSort` / `getRowGroupColumns`) delegates to
@@ -26,7 +26,7 @@
 // column tree rebuild, the expansion mirror reset, the descendants cache
 // update, and the auto-hide-on-group / restore-on-ungroup pass — every
 // touch routed through explicit deps callbacks so the coordinator stays
-// unaware of CGrid's private fields.
+// unaware of VelocityGrid's private fields.
 //
 // The AG-v36 pivot-mode invariant (Task 5b, PR #81) is preserved
 // verbatim: the auto-show-on-ungroup branch is gated by
@@ -37,7 +37,7 @@ import type { TypedEventEmitter } from './eventEmitter';
 import type { ColumnTree } from './columnTree';
 import type { ResolvedColDef } from './propertyChain';
 import type { ColumnLayout } from './layout';
-import type { CGridEvent, CGridOptions, GroupModel, SortModel } from '../types';
+import type { VelocityGridEvent, VelocityGridOptions, GroupModel, SortModel } from '../types';
 import type { GroupCellValue } from '../renderer/cellRenderers/group';
 import type { CColDef } from '../types';
 import {
@@ -48,7 +48,7 @@ import {
 import { resolveColumnWidths } from './layout';
 import { resolveGroupDisplayType, synthesizeAutoGroupColumns } from './autoGroupColumn';
 
-/** Subset of `CGridOptions` the coordinator reads. Passed through a
+/** Subset of `VelocityGridOptions` the coordinator reads. Passed through a
  *  closure so per-tick `setGridOption` flips light up on the next
  *  `setGroupModel` / `rebuildAutoGroupColumn` call without re-wiring the
  *  coordinator. */
@@ -57,9 +57,9 @@ export interface GroupingCoordinatorOptions {
     | boolean
     | 'suppressHideOnGroup'
     | 'suppressShowOnUngroup';
-  groupDisplayType?: CGridOptions<unknown>['groupDisplayType'];
-  autoGroupColumnDef?: CGridOptions<unknown>['autoGroupColumnDef'];
-  groupRowRenderer?: CGridOptions<unknown>['groupRowRenderer'];
+  groupDisplayType?: VelocityGridOptions<unknown>['groupDisplayType'];
+  autoGroupColumnDef?: VelocityGridOptions<unknown>['autoGroupColumnDef'];
+  groupRowRenderer?: VelocityGridOptions<unknown>['groupRowRenderer'];
 }
 
 /** Row group panel host surface consumed on grouping-state changes.
@@ -83,19 +83,19 @@ export interface SetGroupModelReply {
   expandedKeys: string[] | null;
 }
 
-/** Deps interface: every access the coordinator needs into CGrid state,
+/** Deps interface: every access the coordinator needs into VelocityGrid state,
  *  worker plumbing, layout / repaint pipeline, and expansion / descendants
  *  cache. Intentionally fat — `setGroupModel` orchestrates every rendering-
  *  state field the model swap touches, and routing each one through an
- *  explicit callback keeps the coordinator unaware of CGrid's private
+ *  explicit callback keeps the coordinator unaware of VelocityGrid's private
  *  fields. */
 export interface GroupingCoordinatorDeps<TRow> {
-  events: TypedEventEmitter<CGridEvent>;
+  events: TypedEventEmitter<VelocityGridEvent>;
   isDestroyed(): boolean;
   getOptions(): GroupingCoordinatorOptions;
 
   // ── worker round-trip ────────────────────────────────────────────────
-  /** Fresh workerColumns snapshot. CGrid owns the derivation; coordinator
+  /** Fresh workerColumns snapshot. VelocityGrid owns the derivation; coordinator
    *  ships it. Called BEFORE `setWorkerGroupModel` so the pivot-mode role
    *  filter (which may have hidden the newly-grouped colId) doesn't leave
    *  the worker's GroupPass with an "unknown column id" reject. */
@@ -157,14 +157,14 @@ export interface GroupingCoordinatorDeps<TRow> {
 
   // ── group-row strip lookup (for `groupRows` / `custom` modes) ────────
   /** Resolve a row index to its `GroupCellValue` when the row is a group
-   *  row; `null` on a data row. Closes over CGrid's chunk + viewport
+   *  row; `null` on a data row. Closes over VelocityGrid's chunk + viewport
    *  state so the coordinator doesn't need to. */
   groupCellContextAt(rowIndex: number): GroupCellValue | null;
 
   // ── auto-hide-on-group / restore-on-ungroup ──────────────────────────
   /** Same signature as the public API — the coordinator calls this on
    *  `setGroupModel` to hide newly-grouped columns and restore ungrouped
-   *  ones. Routing through CGrid reuses the `columnVisible` event +
+   *  ones. Routing through VelocityGrid reuses the `columnVisible` event +
    *  worker `updateColumns` roundtrip, keeping downstream consumers
    *  (columns panel, status bar) in sync via a single seam. */
   setColumnsVisible(colIds: string[], visible: boolean): void;
@@ -210,7 +210,7 @@ export class GroupingCoordinator<TRow = unknown> {
    *    - `'singleColumn'` + grouping active → one column.
    *    - `'multipleColumns'` + grouping active → one per `rowGroupCols`.
    *    - `'groupRows'` / `'custom'` / no grouping → empty.
-   *  CGrid's `computeVisibleColumnOrder` prepends this list to the
+   *  VelocityGrid's `computeVisibleColumnOrder` prepends this list to the
    *  visible leaves; the coordinator's `rebuildAutoGroupColumn`
    *  refreshes it on every `setGroupModel` call. */
   private autoGroupColumns: ResolvedColDef<TRow>[] = [];
@@ -354,7 +354,7 @@ export class GroupingCoordinator<TRow = unknown> {
         this.deps.requestRepaint();
         this.deps.requestViewport();
       }).catch((err) => {
-        if (!this.deps.isDestroyed()) console.error('[cgrid]', err);
+        if (!this.deps.isDestroyed()) console.error('[velocity-grid]', err);
       });
     // Hide columns that are now acting as group levels; restore visibility
     // for columns removed from grouping. Mirrors ag-grid's default behaviour
@@ -528,7 +528,7 @@ export class GroupingCoordinator<TRow = unknown> {
     // Cycle 15 / Task 5 — wire the full-row strip lookup for
     // `'groupRows'` / `'custom'` modes. The `'group'` renderer is the
     // default strip painter; apps swap it via
-    // `CGridOptions.groupRowRenderer` (e.g. for `'custom'`).
+    // `VelocityGridOptions.groupRowRenderer` (e.g. for `'custom'`).
     if (synth.fullRowStrip) {
       const renderer = opts.groupRowRenderer ?? 'group';
       this.groupRowStripCtx = {

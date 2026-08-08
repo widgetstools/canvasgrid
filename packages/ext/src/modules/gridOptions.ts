@@ -2,7 +2,7 @@
  * Grid Options — settings-sheet module wrapping the kernel's native
  * `GridOptionsToolPanel` (same UI as the former side-bar Options tab).
  */
-import { GridOptionsToolPanel } from '@cgrid/kernel';
+import { GridOptionsToolPanel } from '@wellsfargo-starui/velocity-grid';
 import type { SettingsModule } from '../extension/types';
 import { mountToolPanel } from './toolPanelHost';
 

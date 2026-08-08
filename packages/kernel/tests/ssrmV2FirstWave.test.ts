@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
 import type { WorkerRequest } from '../src/worker/protocol';
 import {
@@ -331,7 +331,7 @@ describe('full-grid sparse defaults + selection cascade', () => {
 
   async function withGrid(
     extraOpts: Record<string, unknown>,
-    run: (grid: CGrid<Row>) => Promise<void>,
+    run: (grid: VelocityGrid<Row>) => Promise<void>,
   ): Promise<void> {
     const origWorker = (globalThis as { Worker?: unknown }).Worker;
     (globalThis as { Worker: unknown }).Worker = FakeWorker;
@@ -339,7 +339,7 @@ describe('full-grid sparse defaults + selection cascade', () => {
     el.style.width = '800px';
     el.style.height = '400px';
     document.body.appendChild(el);
-    const grid = new CGrid<Row>(el, {
+    const grid = new VelocityGrid<Row>(el, {
       columnDefs: [
         { field: 'region', enableRowGroup: true },
         { field: 'desk', enableRowGroup: true },

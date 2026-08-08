@@ -60,80 +60,80 @@ async function waitForFrames(page: import('@playwright/test').Page, count = 6): 
 test.describe('Cycle 7 / Task 6 — multi-condition filter popup', () => {
   test('opening the pnl popup mounts one condition row + buttons (numAlwaysVisible=1)', async ({ page }) => {
     await gridReady(page);
-    await page.locator('button[data-cg-floating-filter-expand][data-cg-col-id="pnl"]').click();
-    const popup = page.locator('.cg-filter-popup-number');
+    await page.locator('button[data-vg-floating-filter-expand][data-vg-col-id="pnl"]').click();
+    const popup = page.locator('.vg-filter-popup-number');
     await expect(popup).toHaveCount(1);
-    const conditionRows = popup.locator('.cg-filter-popup-condition');
+    const conditionRows = popup.locator('.vg-filter-popup-condition');
     await expect(conditionRows).toHaveCount(1);
     // Join radio should NOT exist yet.
-    await expect(popup.locator('input[data-cg-filter-join]')).toHaveCount(0);
+    await expect(popup.locator('input[data-vg-filter-join]')).toHaveCount(0);
   });
 
   test('filling condition 1 reveals condition 2 + AND/OR join radio', async ({ page }) => {
     await gridReady(page);
-    await page.locator('button[data-cg-floating-filter-expand][data-cg-col-id="pnl"]').click();
-    const popup = page.locator('.cg-filter-popup-number');
+    await page.locator('button[data-vg-floating-filter-expand][data-vg-col-id="pnl"]').click();
+    const popup = page.locator('.vg-filter-popup-number');
     // Pick greaterThan on slot 0; type a value to trigger reveal.
-    const slot0 = popup.locator('[data-cg-multi-slot="0"]');
+    const slot0 = popup.locator('[data-vg-multi-slot="0"]');
     await slot0.locator('select').selectOption('greaterThan');
-    await slot0.locator('input[data-cg-filter-input="primary"]').fill('0');
+    await slot0.locator('input[data-vg-filter-input="primary"]').fill('0');
     // The second condition row + join radio now mount.
-    await expect(popup.locator('[data-cg-multi-slot="1"]')).toHaveCount(1);
-    await expect(popup.locator('input[data-cg-filter-join]')).toHaveCount(2);
-    const andRadio = popup.locator('input[data-cg-filter-join="AND"]');
+    await expect(popup.locator('[data-vg-multi-slot="1"]')).toHaveCount(1);
+    await expect(popup.locator('input[data-vg-filter-join]')).toHaveCount(2);
+    const andRadio = popup.locator('input[data-vg-filter-join="AND"]');
     await expect(andRadio).toBeChecked();
   });
 
   test('OR + greaterThan 0 + lessThan -1000 yields more rows than either condition alone', async ({ page }) => {
     await gridReady(page);
     const original = await page.evaluate(
-      () => (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
+      () => (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
     );
     expect(original).toBeGreaterThan(10);
 
     // First, count rows for greaterThan 0 alone via setColumnFilterModel.
     await page.evaluate(
-      () => (window as unknown as { __cgrid: GridApiSurface }).__cgrid.setColumnFilterModel(
+      () => (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.setColumnFilterModel(
         'pnl',
         { filterType: 'number', type: 'greaterThan', filter: 0 },
       ),
     );
     await waitForFrames(page);
     const positiveOnly = await page.evaluate(
-      () => (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
+      () => (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
     );
     // And count for lessThan -1000 alone.
     await page.evaluate(
-      () => (window as unknown as { __cgrid: GridApiSurface }).__cgrid.setColumnFilterModel(
+      () => (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.setColumnFilterModel(
         'pnl',
         { filterType: 'number', type: 'lessThan', filter: -1000 },
       ),
     );
     await waitForFrames(page);
     const negativeOnly = await page.evaluate(
-      () => (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
+      () => (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
     );
     // Reset.
     await page.evaluate(
-      () => (window as unknown as { __cgrid: GridApiSurface }).__cgrid.setColumnFilterModel('pnl', null),
+      () => (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.setColumnFilterModel('pnl', null),
     );
     await waitForFrames(page);
 
     // Now drive the popup: OR + greaterThan 0 + lessThan -1000.
-    await page.locator('button[data-cg-floating-filter-expand][data-cg-col-id="pnl"]').click();
-    const popup = page.locator('.cg-filter-popup-number');
-    const slot0 = popup.locator('[data-cg-multi-slot="0"]');
+    await page.locator('button[data-vg-floating-filter-expand][data-vg-col-id="pnl"]').click();
+    const popup = page.locator('.vg-filter-popup-number');
+    const slot0 = popup.locator('[data-vg-multi-slot="0"]');
     await slot0.locator('select').selectOption('greaterThan');
-    await slot0.locator('input[data-cg-filter-input="primary"]').fill('0');
+    await slot0.locator('input[data-vg-filter-input="primary"]').fill('0');
     // Flip the join radio to OR.
-    await popup.locator('input[data-cg-filter-join="OR"]').check();
-    const slot1 = popup.locator('[data-cg-multi-slot="1"]');
+    await popup.locator('input[data-vg-filter-join="OR"]').check();
+    const slot1 = popup.locator('[data-vg-multi-slot="1"]');
     await slot1.locator('select').selectOption('lessThan');
-    await slot1.locator('input[data-cg-filter-input="primary"]').fill('-1000');
-    await popup.locator('button[data-cg-filter-action="apply"]').click();
+    await slot1.locator('input[data-vg-filter-input="primary"]').fill('-1000');
+    await popup.locator('button[data-vg-filter-action="apply"]').click();
     await waitForFrames(page);
     const orCount = await page.evaluate(
-      () => (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
+      () => (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
     );
     // OR widens the result — must be ≥ either condition alone.
     expect(orCount).toBeGreaterThanOrEqual(positiveOnly);
@@ -144,43 +144,43 @@ test.describe('Cycle 7 / Task 6 — multi-condition filter popup', () => {
   test('Reset clears the multi-condition model and restores the row count', async ({ page }) => {
     await gridReady(page);
     const original = await page.evaluate(
-      () => (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
+      () => (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
     );
     // Apply via the popup.
-    await page.locator('button[data-cg-floating-filter-expand][data-cg-col-id="pnl"]').click();
-    const popup = page.locator('.cg-filter-popup-number');
-    const slot0 = popup.locator('[data-cg-multi-slot="0"]');
+    await page.locator('button[data-vg-floating-filter-expand][data-vg-col-id="pnl"]').click();
+    const popup = page.locator('.vg-filter-popup-number');
+    const slot0 = popup.locator('[data-vg-multi-slot="0"]');
     await slot0.locator('select').selectOption('greaterThan');
-    await slot0.locator('input[data-cg-filter-input="primary"]').fill('1000');
-    await popup.locator('button[data-cg-filter-action="apply"]').click();
+    await slot0.locator('input[data-vg-filter-input="primary"]').fill('1000');
+    await popup.locator('button[data-vg-filter-action="apply"]').click();
     await waitForFrames(page);
     const filtered = await page.evaluate(
-      () => (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
+      () => (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
     );
     expect(filtered).toBeLessThan(original);
     // Re-open + Reset.
-    await page.locator('button[data-cg-floating-filter-expand][data-cg-col-id="pnl"]').click();
-    await page.locator('.cg-filter-popup-number button[data-cg-filter-action="reset"]').click();
+    await page.locator('button[data-vg-floating-filter-expand][data-vg-col-id="pnl"]').click();
+    await page.locator('.vg-filter-popup-number button[data-vg-filter-action="reset"]').click();
     await waitForFrames(page);
     const restored = await page.evaluate(
-      () => (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
+      () => (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
     );
     expect(restored).toBe(original);
   });
 
   test('clicking outside the popup closes it', async ({ page }) => {
     await gridReady(page);
-    await page.locator('button[data-cg-floating-filter-expand][data-cg-col-id="pnl"]').click();
-    const popup = page.locator('.cg-filter-popup-number');
+    await page.locator('button[data-vg-floating-filter-expand][data-vg-col-id="pnl"]').click();
+    const popup = page.locator('.vg-filter-popup-number');
     await expect(popup).toHaveCount(1);
     await page.locator('body').click({ position: { x: 5, y: 5 } });
     await expect(popup).toHaveCount(0);
   });
 
-  test('CGridApi round-trip: setColumnFilterModel with multi shape re-opens with two filled rows', async ({ page }) => {
+  test('VelocityGridApi round-trip: setColumnFilterModel with multi shape re-opens with two filled rows', async ({ page }) => {
     await gridReady(page);
     await page.evaluate(
-      () => (window as unknown as { __cgrid: GridApiSurface }).__cgrid.setColumnFilterModel(
+      () => (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.setColumnFilterModel(
         'pnl',
         {
           filterType: 'multi',
@@ -194,20 +194,20 @@ test.describe('Cycle 7 / Task 6 — multi-condition filter popup', () => {
     );
     await waitForFrames(page);
     await page.evaluate(
-      () => (window as unknown as { __cgrid: GridApiSurface }).__cgrid.showColumnFilter('pnl'),
+      () => (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.showColumnFilter('pnl'),
     );
-    const popup = page.locator('.cg-filter-popup-number');
+    const popup = page.locator('.vg-filter-popup-number');
     await expect(popup).toHaveCount(1);
     // Both condition rows should be hydrated.
-    const slot0Select = popup.locator('[data-cg-multi-slot="0"] select');
-    const slot1Select = popup.locator('[data-cg-multi-slot="1"] select');
+    const slot0Select = popup.locator('[data-vg-multi-slot="0"] select');
+    const slot1Select = popup.locator('[data-vg-multi-slot="1"] select');
     await expect(slot0Select).toHaveValue('greaterThan');
     await expect(slot1Select).toHaveValue('lessThan');
-    await expect(popup.locator('[data-cg-multi-slot="0"] input[data-cg-filter-input="primary"]'))
+    await expect(popup.locator('[data-vg-multi-slot="0"] input[data-vg-filter-input="primary"]'))
       .toHaveValue('0');
-    await expect(popup.locator('[data-cg-multi-slot="1"] input[data-cg-filter-input="primary"]'))
+    await expect(popup.locator('[data-vg-multi-slot="1"] input[data-vg-filter-input="primary"]'))
       .toHaveValue('-1000');
     // Join radio reflects the saved OR.
-    await expect(popup.locator('input[data-cg-filter-join="OR"]')).toBeChecked();
+    await expect(popup.locator('input[data-vg-filter-join="OR"]')).toBeChecked();
   });
 });

@@ -3,13 +3,13 @@
 Branch: `cycle21i/customizer`. Decisions: S0 recon notes
 (`plans/notes/cycle-21i-customizer-recon.md`, D-A…D-H + execution model).
 Tier: **everything in this phase is NATIVE** — vanilla DOM in
-`@cgrid/kernel`, zero new dependencies, themed by `tokens.css` vars only.
+`@wellsfargo-starui/velocity-grid`, zero new dependencies, themed by `tokens.css` vars only.
 Tested via the new zero-feature-code demo app on live STOMP data.
 
 ## 1. Deliverables (tasks)
 
 ### T1 — Demo testbed `apps/cgrid-customizer-demo`
-Vite app, one full-viewport CGrid. STOMP feed cloned from
+Vite app, one full-viewport VelocityGrid. STOMP feed cloned from
 `apps/cgrid-positions/src/stomp.ts` (ws://localhost:8081, snapshot +
 applyTransactionAsync updates). `gridId: 'customizer-demo'`,
 `persistState: true`, sideBar with columns/filters/gridOptions tabs,
@@ -18,13 +18,13 @@ NO feature code — consumer API only (violations = missing kernel API,
 fixed in kernel). Dev server port 5187.
 
 ### T2 — Kernel: `gridId` + `persistState` (D-H)
-- `CGridOptions.gridId?: string`; `persistState?: boolean |
+- `VelocityGridOptions.gridId?: string`; `persistState?: boolean |
   { adapter?: StateStorageAdapter; debounceMs?: number }`.
 - `StateStorageAdapter { load(gridId): GridState|null|Promise<...>;
   save(gridId, state): void|Promise<void>; clear(gridId): void|... }`.
-- Default adapter: localStorage, key `cgrid:state:<gridId>`.
+- Default adapter: localStorage, key `velocity-grid:state:<gridId>`.
 - Autosave: subscribe the existing coalesced `stateUpdated` bus
-  (cgrid.ts:499-504); debounce (default 500ms); write full snapshot.
+  (velocityGrid.ts:499-504); debounce (default 500ms); write full snapshot.
 - Restore: after first ready, `adapter.load()` → existing ordered
   `setState()`. `persistState` without `gridId` → dev warning, no-op.
 - Public: `clearPersistedState()`. Last-write-wins; multi-tab is the
@@ -36,8 +36,8 @@ fixed in kernel). Dev server port 5187.
   `SettingsField { key, label, type: 'switch'|'checkbox'|'text'|'number'|
   'select', options?, min?, max?, step?, hint?, get(), set(v) }`.
 - Vanilla renderer `interaction/settingsForm/` → DOM per kernel
-  conventions (createElement, `.cg-settings-*` classes, tokens.css vars
-  incl. new `--cg-settings-*` tokens, dark+light).
+  conventions (createElement, `.vg-settings-*` classes, tokens.css vars
+  incl. new `--vg-settings-*` tokens, dark+light).
 - Behaviors: collapsible bands; free-text filter (match band title + field
   label/key — port of StarUI `fieldSchema.tsx` filter as pure functions);
   "modified only" toggle (field is modified iff `get() !==` its declared
@@ -69,7 +69,7 @@ fixed in kernel). Dev server port 5187.
   `formatToolbarShow?: 'always'|'never'` (default 'never').
 - Controls (quick-apply to the FOCUSED column, disabled when none):
   align left/center/right · number-format preset select (from
-  `@cgrid/format` template registry when wired, built-in presets
+  `@wellsfargo-starui/velocity-grid-format` template registry when wired, built-in presets
   otherwise: General, #,##0, #,##0.00, 0%, £/$ currency, date) ·
   decimals − / + · bold · italic · fg color · bg color (native
   `<input type=color>` in Phase 1) · clear-formatting.

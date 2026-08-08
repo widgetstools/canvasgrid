@@ -6,7 +6,7 @@
   },
   "startup_app": {
     "uuid": "cgrid-ext-demo-swraster",
-    "name": "CGridExt Demo (swraster)",
+    "name": "VelocityGridExt Demo (swraster)",
     "description": "cgrid-ext-demo in OpenFin with --disable-gpu (software raster regime) — Cycle 22 raster-cache Bar 2 measurement manifest; same pattern as app-bench-swraster.json.",
     "url": "http://localhost:4188/",
     "autoShow": true,

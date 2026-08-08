@@ -51,7 +51,7 @@ test.describe('stickyGroupRows feature', () => {
     const before = await page.evaluate(() => (window.__cgrid as unknown as { rowCount: number }).rowCount ?? 0);
 
     await page.evaluate(() => {
-      const sc = document.querySelector('.cg-scroller') as HTMLElement | null;
+      const sc = document.querySelector('.vg-scroller') as HTMLElement | null;
       if (sc) sc.scrollTop = 4000;
     });
     await page.evaluate(() => new Promise<void>((res) => {
@@ -62,7 +62,7 @@ test.describe('stickyGroupRows feature', () => {
 
     const after = await page.evaluate(() => ({
       rowCount: (window.__cgrid as unknown as { rowCount: number }).rowCount ?? 0,
-      scrollTop: (document.querySelector('.cg-scroller') as HTMLElement | null)?.scrollTop ?? 0,
+      scrollTop: (document.querySelector('.vg-scroller') as HTMLElement | null)?.scrollTop ?? 0,
     }));
 
     // The deep scroll actually moved the viewport…

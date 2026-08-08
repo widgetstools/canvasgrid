@@ -86,7 +86,7 @@ grouping (count of DESCENDANT LEAVES) and tree (count of IMMEDIATE
 CHILDREN). The renderer reads a new chunk field `groupChildSemantics:
 'leaves' | 'children'` (one byte per pass, identical for the whole
 chunk) and picks the count source accordingly. Tokens
-(`--cg-group-count-color`) and styling are IDENTICAL — only the
+(`--vg-group-count-color`) and styling are IDENTICAL — only the
 NUMBER changes.
 
 ---
@@ -160,9 +160,9 @@ NO new tokens. Tree rows render with:
 
 | Token | Source | Why |
 |---|---|---|
-| `--cg-group-chevron-color` | Cycle 15 | Same chevron color across grouping + tree |
-| `--cg-group-count-color` | Cycle 15 | Same `(N)` suffix color |
-| `--cg-group-indent` | Cycle 15 | Same per-level indent |
+| `--vg-group-chevron-color` | Cycle 15 | Same chevron color across grouping + tree |
+| `--vg-group-count-color` | Cycle 15 | Same `(N)` suffix color |
+| `--vg-group-indent` | Cycle 15 | Same per-level indent |
 
 The bet: when the user enables `treeData: true` over previously
 grouped data, the visual continuity reads as "I switched the data

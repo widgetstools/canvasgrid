@@ -117,14 +117,14 @@ style — matches the canvas vocabulary.
 
 ## Task 3 — `exportDataAsCsv` + `exportDataAsExcel` API
 
-**Goal:** Two functions on `CGridApi`. Each:
+**Goal:** Two functions on `VelocityGridApi`. Each:
 
 1. Sends `{ format, params }` message to worker.
 2. Worker assembles the bytes, returns `ArrayBuffer`.
 3. Main thread wraps in `Blob`, triggers download.
 
 ```typescript
-class CGridApi {
+class VelocityGridApi {
   exportDataAsCsv(params?: CSVExportParams): void;
   getDataAsCsv(params?: CSVExportParams): Promise<string>;
   exportDataAsExcel(params?: ExcelExportParams): void;
@@ -153,13 +153,13 @@ per header during export.
 **Choice: name-registry.** Consistency with Cycle 8 + Cycle 14.
 
 ```typescript
-interface CGridOptions {
+interface VelocityGridOptions {
   exportCallbacks?: {
     [name: string]: ProcessCellCallback | ProcessHeaderCallback;
   };
 }
 
-const grid = new CGrid(host, {
+const grid = new VelocityGrid(host, {
   exportCallbacks: {
     formatPrice: ({ value }) => Number(value).toFixed(4),
   },
@@ -216,20 +216,20 @@ print path captures the entire grid.
 
 ## Task 7 — Print-friendly theme
 
-**Goal:** A `cg-theme-print` class delivers black-on-white,
+**Goal:** A `vg-theme-print` class delivers black-on-white,
 no row stripes, no row-hover, no flash overlay, no selection bg.
 
 **Tokens:**
 
 | Token | Print value |
 |---|---|
-| `--cg-bg` | `#ffffff` |
-| `--cg-fg` | `#000000` |
-| `--cg-row-bg-odd` | `#ffffff` |
-| `--cg-row-bg-hover` | `transparent` |
-| `--cg-grid-line-color` | `#000000` (printer-friendly black gridlines) |
-| `--cg-selection-bg` | `transparent` |
-| `--cg-flash-from-color` | `transparent` |
+| `--vg-bg` | `#ffffff` |
+| `--vg-fg` | `#000000` |
+| `--vg-row-bg-odd` | `#ffffff` |
+| `--vg-row-bg-hover` | `transparent` |
+| `--vg-grid-line-color` | `#000000` (printer-friendly black gridlines) |
+| `--vg-selection-bg` | `transparent` |
+| `--vg-flash-from-color` | `transparent` |
 
 **Page breaks at group boundaries:** print mode renders one group's
 descendants per page when `groupIncludeFooter: true` — CSS only:

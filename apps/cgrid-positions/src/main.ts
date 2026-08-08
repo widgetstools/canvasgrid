@@ -1,4 +1,4 @@
-import '@cgrid/kernel/style.css';
+import '@wellsfargo-starui/velocity-grid/style.css';
 import { createPositionsGrid, setPositiveOnlyFilter, setPinSelectedToTop } from './positionsGrid';
 import { connectStomp, STOMP_PUBLISH_RATE_PER_SEC } from './stomp';
 
@@ -20,7 +20,7 @@ const variableHeights = search.get('variableHeights') === '1';
 const autoHeight = search.get('autoHeight') === '1';
 const cellClassDemo = search.get('cellClassDemo') === '1';
 // Cycle 11 / Task 5 — `?customPanel=1` registers the demo `DemoCustomPanel`
-// via `CGridOptions.components` and adds a third tab to the side bar so the
+// via `VelocityGridOptions.components` and adds a third tab to the side bar so the
 // cycle11-customPanelApi E2E can exercise refreshToolPanel +
 // getToolPanelInstance against a custom id.
 const customPanel = search.get('customPanel') === '1';
@@ -36,7 +36,7 @@ const openColumns = search.get('openColumns') === '1';
 //   - `counts`     → four built-in count panels (visual cell 15)
 //   - `full`       → aggregation + count panels (visual cell 16)
 //   - `customDemo` → a custom `DemoCustomStatusPanel` registered via
-//                    `CGridOptions.components` (Cycle 13 / Task 4) +
+//                    `VelocityGridOptions.components` (Cycle 13 / Task 4) +
 //                    the TotalAndFiltered count panel, so the live
 //                    demo exercises the custom-panel + getStatusPanel
 //                    API surface.
@@ -179,7 +179,7 @@ const pivotMaxGeneratedColumns: number | undefined = pivotMaxRaw !== null
   && Number.isFinite(Number(pivotMaxRaw))
     ? Number(pivotMaxRaw)
     : undefined;
-// Cycle 21c / Task 18 — `?formatDsl=1` wires @cgrid/format and upgrades
+// Cycle 21c / Task 18 — `?formatDsl=1` wires @wellsfargo-starui/velocity-grid-format and upgrades
 // the Price column to a Tier 1 DSL string formatter. Opt-in so the
 // existing functional + visual baselines stay byte-stable.
 const formatDsl = search.get('formatDsl') === '1';
@@ -209,7 +209,7 @@ wireFeatureToggle('toggle-open-columns',    'openColumns',   '1',      openColum
 // E2E hooks: expose the grid + a readiness flag so Playwright tests can wait
 // for first-data-rendered and call api helpers (`getCellBoundsAt`,
 // `getCellValue`) instead of guessing pixel coordinates.
-(window as unknown as { __cgrid: typeof grid }).__cgrid = grid;
+(window as unknown as { __velocity-grid: typeof grid }).__cgrid = grid;
 (window as unknown as { __cgridReady: boolean }).__cgridReady = false;
 grid.on('firstDataRendered', () => {
   (window as unknown as { __cgridReady: boolean }).__cgridReady = true;
@@ -227,7 +227,7 @@ grid.on('firstDataRendered', () => {
   __cgridPlaywright?: { pillReorderMidDrag: () => void };
 }).__cgridPlaywright = {
   pillReorderMidDrag: () => {
-    const chips = document.querySelectorAll('.cg-row-group-panel-chip');
+    const chips = document.querySelectorAll('.vg-row-group-panel-chip');
     if (chips.length < 3) return;
     const sourceChip = chips[chips.length - 1] as HTMLElement;
     const target = chips[1] as HTMLElement;
@@ -316,7 +316,7 @@ function decorateWithCategoricals<T extends { positionId: string; desk?: string;
 }
 
 grid.on('gridReady', () => {
-  console.log('[cgrid] ready');
+  console.log('[velocity-grid] ready');
   connectStomp({
     onSnapshot: (rows) => {
       // Only seed synthetic descriptions when the autoHeight demo is
@@ -340,7 +340,7 @@ grid.on('gridReady', () => {
   });
 });
 
-grid.on('modelUpdated', (e) => console.log('[cgrid] modelUpdated, visible:', e.visibleRowCount));
+grid.on('modelUpdated', (e) => console.log('[velocity-grid] modelUpdated, visible:', e.visibleRowCount));
 
 // ───────────────────────────────────────────────────────────────────
 // Status pill — row count + updates/sec. The row count reflects the
@@ -384,9 +384,9 @@ let darkTheme = true;
 const appShell = document.querySelector<HTMLElement>('.app');
 document.getElementById('theme')?.addEventListener('click', () => {
   darkTheme = !darkTheme;
-  grid.setTheme(darkTheme ? 'cg-theme-starui-dark' : 'cg-theme-starui');
-  host.classList.toggle('cg-theme-starui', !darkTheme);
-  host.classList.toggle('cg-theme-starui-dark', darkTheme);
+  grid.setTheme(darkTheme ? 'vg-theme-starui-dark' : 'vg-theme-starui');
+  host.classList.toggle('vg-theme-starui', !darkTheme);
+  host.classList.toggle('vg-theme-starui-dark', darkTheme);
   // Flip the page-chrome theme alongside the grid so the wordmark,
   // toolbar, and inputs read the matching token set.
   if (appShell) appShell.dataset.theme = darkTheme ? 'dark' : 'light';
@@ -395,7 +395,7 @@ document.getElementById('theme')?.addEventListener('click', () => {
 // Cycle 6 / Task 2 — Save / Restore / Reset column-layout buttons. The
 // state round-trips through localStorage so a page reload exercises the
 // real persistence path. Reset replays the construction-time snapshot.
-const LAYOUT_KEY = 'cg-layout';
+const LAYOUT_KEY = 'vg-layout';
 document.getElementById('save-layout')?.addEventListener('click', () => {
   const api = grid as unknown as { getColumnState: () => unknown };
   localStorage.setItem(LAYOUT_KEY, JSON.stringify(api.getColumnState()));

@@ -1,4 +1,4 @@
-// @cgrid/edit — bridge.test.ts
+// @wellsfargo-starui/velocity-grid-edit — bridge.test.ts
 // Covers `wireEditIntoKernel` (spec §4): surface/idempotency/mirror (round A),
 // key router (round B, spec §3.1), commit pipeline + selection restore
 // (round C, spec §3.2/§3.3), journal feeds + facades (round D, spec §3.5/§4.2).
@@ -236,7 +236,8 @@ describe('wireEditIntoKernel — round B: key router (spec §3.1)', () => {
     fake.setRanges(focusRange(0, 'price'));
     fake.emit('cellKeyDown', { type: 'cellKeyDown', rowId: 'r0', colId: 'price', value: 1.5, event: keyEvent('-') });
     tx = fake.applyTransactionSpy.mock.calls[1]![0] as { update: Array<Record<string, unknown>> };
-    expect(tx.update).toEqual([{ ...rows[0], price: 1.25 }]); // 1.5 - 0.25 (fallback to incrementStep)
+    // Mirror was freshened by the qty apply — price nudge rides the post-qty row.
+    expect(tx.update).toEqual([{ ...rows[0], qty: 7, price: 1.25 }]); // 1.5 - 0.25 (fallback to incrementStep)
   });
 
   it('letter-key shortcut matches (case-insensitive) and commits with source shortcut', () => {
@@ -454,6 +455,27 @@ describe('wireEditIntoKernel — round C: commit pipeline + selection restore (s
     const byId = new Map(tx.update.map((r) => [r.id as string, r]));
     expect(byId.get('r0')).toEqual({ ...rows[0], qty: 11, price: 2.5 });
     expect(byId.get('r1')).toEqual({ ...rows[1], qty: 21 });
+  });
+
+  it('commitUpdates hook replaces applyTransaction for programmatic applies + undo', async () => {
+    const fake = makeGrid();
+    const commitUpdates = vi.fn();
+    const handle = wireEditIntoKernel(fake.grid, { commitUpdates });
+    await handle.smartEdit.apply(
+      [{ rowId: 'r0', colId: 'qty', field: 'qty', value: 10, rowIndex: 0, rowData: {}, cellDataType: 'number' }],
+      'set',
+      99,
+    );
+    expect(commitUpdates).toHaveBeenCalledTimes(1);
+    expect(fake.applyTransactionSpy).not.toHaveBeenCalled();
+    const meta = commitUpdates.mock.calls[0]![1] as { direction: string; patches: unknown[] };
+    expect(meta.direction).toBe('forward');
+
+    handle.journal.undo();
+    expect(commitUpdates).toHaveBeenCalledTimes(2);
+    expect(commitUpdates.mock.calls[1]![1]).toMatchObject({ direction: 'undo' });
+    expect(fake.applyTransactionSpy).not.toHaveBeenCalled();
+    handle.destroy();
   });
 
   it('undo/redo through handle.journal: one Tx each, values flipped/restored', async () => {
@@ -759,6 +781,29 @@ describe('wireEditIntoKernel — module-state persistence (Cycle 21i Phase 2 / T
     expect((mod.get() as any).smartEdit.incrementStep).toBe(5);
   });
 
+  it('persists nudges and shortcutDefs in the editSettings envelope', () => {
+    const { fake, registered } = makeStatefulGrid();
+    const handle = wireEditIntoKernel(fake.grid);
+    const mod = registered.find((m) => m.id === 'editSettings');
+    handle.setNudges([{
+      id: 'n1', name: 'qty', enabled: true, scope: { columnIds: ['qty'] }, incrementStep: 1,
+    }]);
+    handle.setShortcuts([{
+      id: 's1', name: 'add', enabled: true, shortcutKey: 'q', operation: 'add',
+      shortcutValue: 10, scope: { columnIds: ['qty'] },
+    }]);
+    const snap = mod.get() as { nudges: unknown[]; shortcutDefs: unknown[] };
+    expect(snap.nudges).toHaveLength(1);
+    expect(snap.shortcutDefs).toHaveLength(1);
+
+    const { fake: fake2, registered: reg2 } = makeStatefulGrid();
+    const handle2 = wireEditIntoKernel(fake2.grid);
+    const mod2 = reg2.find((m) => m.id === 'editSettings');
+    mod2.set(snap, 1);
+    expect(handle2.getNudges().map((n) => n.id)).toEqual(['n1']);
+    expect(handle2.getShortcuts().map((s) => s.id)).toEqual(['s1']);
+  });
+
   it('updateSettings notifies the kernel so autosave runs; set() restores via defensive merge', () => {
     const { fake, registered, notified } = makeStatefulGrid();
     const handle = wireEditIntoKernel(fake.grid);
@@ -785,7 +830,7 @@ describe('wireEditIntoKernel — module-state persistence (Cycle 21i Phase 2 / T
   });
 });
 
-// ─── Editability resolution parity (CGridExt toolbar regression) ──────────
+// ─── Editability resolution parity (VelocityGridExt toolbar regression) ──────────
 // The kernel resolves `editable` against the RESOLVED colDef (defaultColDef
 // folded at construction); the bridge reads AUTHORED defs, so it must fold
 // defaultColDef itself — and prefer the kernel's own `isCellEditable` when

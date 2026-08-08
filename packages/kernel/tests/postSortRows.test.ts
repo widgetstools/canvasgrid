@@ -2,7 +2,7 @@
 // after worker sort).
 //
 // Apps register a `postSortRows: (params) => string[]` callback in
-// `CGridOptions`. The worker pipeline pauses after `SortPass.apply` and
+// `VelocityGridOptions`. The worker pipeline pauses after `SortPass.apply` and
 // before `ViewportSlicer.slice` to ship the sorted rowId array to main; the
 // app reorders, replies; the worker resumes with the new order. Mirrors the
 // Cycle 7 / Task 8 external-filter round-trip shape (candidate push +
@@ -19,7 +19,7 @@
 //    map every cycle.
 
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
 
 beforeAll(() => {
@@ -59,9 +59,9 @@ function mkGrid(opts: {
 } = {}) {
   const container = document.createElement('div');
   container.style.cssText = 'width:600px; height:400px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
-  const grid = new CGrid<Row>(container, {
+  const grid = new VelocityGrid<Row>(container, {
     columnDefs: [{ field: 'id' }, { field: 'name' }],
     getRowId: (r) => r.id,
     rowData: [

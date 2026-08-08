@@ -1,8 +1,8 @@
-# Cycle 21b — `@cgrid/expression` (Greenfield DSL) Implementation Plan
+# Cycle 21b — `@wellsfargo-starui/velocity-grid-expression` (Greenfield DSL) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship `@cgrid/expression` — a greenfield row-local DSL package with the full `parse` / `compile` / `evaluate` / `validate` public API from Cycle 21 spec §4.2, using the empty scaffold landed in Cycle 21a.
+**Goal:** Ship `@wellsfargo-starui/velocity-grid-expression` — a greenfield row-local DSL package with the full `parse` / `compile` / `evaluate` / `validate` public API from Cycle 21 spec §4.2, using the empty scaffold landed in Cycle 21a.
 
 **Architecture:** New leaf package under `packages/expression/`. Text source → `parse()` → JSON `Ast` (`structuredClone`-safe) → `compile()` → `Compiled` (closure via recursive lambda composition, CSP-safe, no `new Function`) → `evaluate()` (runs closure against row). AST schema reserves `AggregateNode` + `PrevNode` for Cycle 21d's post-compile transformation; 21b's parser never emits them and its compiler rejects them by name (`SUM`, `AVG`, `PREV`, etc.) with `CompileError { code: 'not-yet-implemented' }`. Zero cgrid dependencies. Kernel is untouched. Vitest per package; ESLint flat config already covers `packages/*/src/**` + `packages/*/tests/**` — no config edits needed.
 
@@ -12,9 +12,9 @@
 
 Copied verbatim from [Cycle 21b design spec](../specs/2026-07-01-cycle-21b-expression-design.md) and the parent Cycle 21 brief:
 
-- **L4 (spec §1):** Split BEFORE absorbing features. `@cgrid/expression` populated in this cycle, but downstream consumers (kernel, format, rules, calc, renderers, edit, export, customizer) are NOT touched.
+- **L4 (spec §1):** Split BEFORE absorbing features. `@wellsfargo-starui/velocity-grid-expression` populated in this cycle, but downstream consumers (kernel, format, rules, calc, renderers, edit, export, customizer) are NOT touched.
 - **L7 (spec §7):** Worker-only evaluation is a *deployment policy* on downstream packages. The expression package's evaluator is thread-agnostic — no worker/main enforcement inside the package.
-- **Zero cgrid dependencies** (spec §2.1): `packages/expression/package.json` `dependencies` stays `{}`. No `import` from `@cgrid/kernel` or any other `@cgrid/*` package anywhere in `src/**` or `tests/**`.
+- **Zero cgrid dependencies** (spec §2.1): `packages/expression/package.json` `dependencies` stays `{}`. No `import` from `@wellsfargo-starui/velocity-grid` or any other `@cgrid/*` package anywhere in `src/**` or `tests/**`.
 - **CSP-safe compile** (spec §5.1, risk table): no `new Function`, no `eval`, no string-code execution. Compile is recursive lambda composition only.
 - **AST is `structuredClone`-safe** (spec §2.3): no functions, no classes, no `undefined`, no `Symbol` in any AST node. All nodes are plain JSON discriminated union.
 - **Every node carries `Loc { start: number; end: number }`** (spec §4): char offsets into original source; used for editor error underlines.
@@ -114,7 +114,7 @@ Expected: `src/` contains only `index.ts` with body `export {};`; `tests/` conta
 
 Run from repo root:
 ```bash
-npm install --save-dev --workspace=@cgrid/expression @vitest/coverage-v8@^2.1.0
+npm install --save-dev --workspace=@wellsfargo-starui/velocity-grid-expression @vitest/coverage-v8@^2.1.0
 ```
 Expected: `packages/expression/package.json` now has `"@vitest/coverage-v8": "^2.1.0"` under `devDependencies`; root `package-lock.json` updated.
 
@@ -124,7 +124,7 @@ Edit `packages/expression/package.json` — replace the `scripts` block:
 
 ```json
   "scripts": {
-    "build": "echo '@cgrid/expression is a scaffold — no build yet' && exit 0",
+    "build": "echo '@wellsfargo-starui/velocity-grid-expression is a scaffold — no build yet' && exit 0",
     "test": "vitest run --passWithNoTests",
     "test:coverage": "vitest run --coverage --passWithNoTests",
     "typecheck": "tsc --noEmit"
@@ -178,7 +178,7 @@ Two deltas vs the 21a scaffold: `rootDir` widens from `src` → `.` so `tests/**
 Write `packages/expression/src/types.ts`:
 
 ```ts
-// @cgrid/expression — public type surface.
+// @wellsfargo-starui/velocity-grid-expression — public type surface.
 //
 // All types are plain TypeScript: discriminated unions for the AST,
 // plain interfaces for results/errors. Nothing here is runtime; this
@@ -449,7 +449,7 @@ export const BUILTINS: Record<string, BuiltinDef> = {};
 Write `packages/expression/src/index.ts`:
 
 ```ts
-// @cgrid/expression — public entrypoint.
+// @wellsfargo-starui/velocity-grid-expression — public entrypoint.
 // See docs/superpowers/specs/2026-07-01-cycle-21b-expression-design.md §5.
 
 export { parse } from './parse';
@@ -475,13 +475,13 @@ export { EvalError } from './types';
 
 Run from repo root:
 ```bash
-npm run typecheck --workspace=@cgrid/expression
+npm run typecheck --workspace=@wellsfargo-starui/velocity-grid-expression
 ```
 Expected: no errors. `tsc --noEmit` completes cleanly.
 
 Also run repo-wide to confirm no other package broke:
 ```bash
-npx turbo run typecheck --filter=@cgrid/expression --filter=@cgrid/kernel
+npx turbo run typecheck --filter=@wellsfargo-starui/velocity-grid-expression --filter=@wellsfargo-starui/velocity-grid
 ```
 Expected: 2 successful tasks.
 
@@ -489,7 +489,7 @@ Expected: 2 successful tasks.
 
 Run:
 ```bash
-npm test --workspace=@cgrid/expression
+npm test --workspace=@wellsfargo-starui/velocity-grid-expression
 ```
 Expected: `No test files found` warning; exit code 0 due to `--passWithNoTests`.
 
@@ -529,7 +529,7 @@ git add package-lock.json
 git commit -m "$(cat <<'EOF'
 feat(expression): cycle 21b task 1 — AST types + module skeletons
 
-Types-only foundation for @cgrid/expression per Cycle 21b spec §4, §5.
+Types-only foundation for @wellsfargo-starui/velocity-grid-expression per Cycle 21b spec §4, §5.
 Ships the full public discriminated union (Ast, AstNode + 8 node kinds
 including reserved AggregateNode/PrevNode), Loc, ParseResult,
 CompileResult, Compiled, EvalContext, EvalError, Schema,
@@ -1464,7 +1464,7 @@ describe('AST is structuredClone-safe (postMessage transport)', () => {
 
 Run:
 ```bash
-npm test --workspace=@cgrid/expression
+npm test --workspace=@wellsfargo-starui/velocity-grid-expression
 ```
 Expected: all tests pass. Roughly 29 (corpus) + ~19 (grammar + error) + 29 (transferability) ≈ 77 tests.
 
@@ -1478,7 +1478,7 @@ Do NOT edit the corpus to make tests pass. The corpus locks grammar decisions; a
 
 Run:
 ```bash
-npm run typecheck --workspace=@cgrid/expression && npm run lint
+npm run typecheck --workspace=@wellsfargo-starui/velocity-grid-expression && npm run lint
 ```
 Expected: clean.
 
@@ -2265,7 +2265,7 @@ describe('evaluate — error paths', () => {
 
 Run:
 ```bash
-npm test --workspace=@cgrid/expression
+npm test --workspace=@wellsfargo-starui/velocity-grid-expression
 ```
 Expected: all pass. Tally roughly 60 (compile) + 60 (evaluate) + 77 (task 2) ≈ 200 tests.
 
@@ -2273,7 +2273,7 @@ Expected: all pass. Tally roughly 60 (compile) + 60 (evaluate) + 77 (task 2) ≈
 
 Run:
 ```bash
-npm run typecheck --workspace=@cgrid/expression && npm run lint
+npm run typecheck --workspace=@wellsfargo-starui/velocity-grid-expression && npm run lint
 ```
 Expected: clean.
 
@@ -2708,7 +2708,7 @@ describe('eval errors — loc anchors to the binary op that failed', () => {
 
 Run:
 ```bash
-npm test --workspace=@cgrid/expression
+npm test --workspace=@wellsfargo-starui/velocity-grid-expression
 ```
 Expected: all pass. Tally now includes ~20 validate + ~11 errors additional.
 
@@ -2716,7 +2716,7 @@ Expected: all pass. Tally now includes ~20 validate + ~11 errors additional.
 
 Run:
 ```bash
-npm run test:coverage --workspace=@cgrid/expression
+npm run test:coverage --workspace=@wellsfargo-starui/velocity-grid-expression
 ```
 Expected: coverage summary shows:
 - `src/parse.ts` ≥ 90% lines
@@ -2731,7 +2731,7 @@ If any file is below target, add targeted tests before Task 5. Do not commit ski
 
 Run:
 ```bash
-npm run typecheck --workspace=@cgrid/expression && npm run lint
+npm run typecheck --workspace=@wellsfargo-starui/velocity-grid-expression && npm run lint
 ```
 Expected: clean.
 
@@ -2784,7 +2784,7 @@ EOF
 Read `packages/expression/src/index.ts`. Confirm the exports match §5 of the spec verbatim:
 
 ```ts
-// @cgrid/expression — public entrypoint.
+// @wellsfargo-starui/velocity-grid-expression — public entrypoint.
 // See docs/superpowers/specs/2026-07-01-cycle-21b-expression-design.md §5.
 
 export { parse } from './parse';
@@ -2813,7 +2813,7 @@ If any drift, restore to this exact content. Nothing else in this file.
 Write `packages/expression/README.md`:
 
 ```markdown
-# `@cgrid/expression`
+# `@wellsfargo-starui/velocity-grid-expression`
 
 Row-local DSL parser, compiler, evaluator, and validator for the cgrid
 monorepo. Zero cgrid dependencies. Thread-agnostic evaluator (spec §7's
@@ -2828,7 +2828,7 @@ code + Cycle 21d pointer. Full spec: `docs/superpowers/specs/2026-07-01-cycle-21
 ## Quickstart
 
 ```ts
-import { parse, compile, evaluate, validate } from '@cgrid/expression';
+import { parse, compile, evaluate, validate } from '@wellsfargo-starui/velocity-grid-expression';
 
 // 1. Parse source → portable AST.
 const parsed = parse('[price] > 100 && [symbol] == "AAPL"');
@@ -2906,7 +2906,7 @@ Every error carries `loc: { start, end }` for editor error underlines.
 
 ## Not shipped in this cycle
 
-- Aggregate evaluation (SUM/AVG/COUNT/… → Cycle 21d, `@cgrid/calc`).
+- Aggregate evaluation (SUM/AVG/COUNT/… → Cycle 21d, `@wellsfargo-starui/velocity-grid-calc`).
 - Tick-scoped `prev()` snapshot semantics (→ Cycle 21d).
 - Consumer wiring in kernel / format / rules (→ own cycles).
 - Performance benchmarks against 8ms/frame at 50k rows (→ deferred).
@@ -2918,9 +2918,9 @@ Run each of the following and confirm expected output before proceeding:
 
 ```bash
 # Local: expression alone
-npm run typecheck --workspace=@cgrid/expression
-npm test --workspace=@cgrid/expression
-npm run test:coverage --workspace=@cgrid/expression
+npm run typecheck --workspace=@wellsfargo-starui/velocity-grid-expression
+npm test --workspace=@wellsfargo-starui/velocity-grid-expression
+npm run test:coverage --workspace=@wellsfargo-starui/velocity-grid-expression
 ```
 Expected: all clean; coverage matches spec §7.4 targets.
 
@@ -2929,7 +2929,7 @@ Expected: all clean; coverage matches spec §7.4 targets.
 npx turbo run typecheck
 npx turbo run test
 ```
-Expected: all packages typecheck + test. `@cgrid/kernel` reports `2326/2326`; `@cgrid/expression` reports the new count; other 8 packages remain vacuous (`No test files found`).
+Expected: all packages typecheck + test. `@wellsfargo-starui/velocity-grid` reports `2326/2326`; `@wellsfargo-starui/velocity-grid-expression` reports the new count; other 8 packages remain vacuous (`No test files found`).
 
 ```bash
 # Kernel unchanged
@@ -2989,10 +2989,10 @@ Expected: push succeeds; branch tracked to `origin/cycle21b/expression`.
 
 Run from repo root:
 ```bash
-gh pr create --title "cycle 21b — @cgrid/expression greenfield DSL (parse + compile + evaluate + validate)" --body "$(cat <<'EOF'
+gh pr create --title "cycle 21b — @wellsfargo-starui/velocity-grid-expression greenfield DSL (parse + compile + evaluate + validate)" --body "$(cat <<'EOF'
 ## Summary
 
-- Ships `@cgrid/expression` — the DSL parser + compiler + evaluator + validator called for in Cycle 21 §3.2 + §4.2. First feature-absorption cycle after the 21a monorepo scaffold.
+- Ships `@wellsfargo-starui/velocity-grid-expression` — the DSL parser + compiler + evaluator + validator called for in Cycle 21 §3.2 + §4.2. First feature-absorption cycle after the 21a monorepo scaffold.
 - Row-local grammar: field access, literals, arithmetic/comparison/logical/ternary operators, 14 built-in functions (`IF`, `COALESCE`, `NOT`, `AND`, `OR`, `ABS`, `ROUND`, `MIN`, `MAX`, `FLOOR`, `CEIL`, `LOWER`, `UPPER`, `LEN`).
 - Aggregate names (`SUM`, `AVG`, etc.) + `PREV(...)` parse successfully but compile rejects with `code: 'not-yet-implemented'` + Cycle 21d hint. `AggregateNode` + `PrevNode` reserved in AST schema for 21d.
 - Closure-based compile (recursive lambda composition) — CSP-safe; no `new Function`, no `eval`.
@@ -3007,10 +3007,10 @@ gh pr create --title "cycle 21b — @cgrid/expression greenfield DSL (parse + co
 
 ## Test plan
 
-- [ ] `npm test --workspace=@cgrid/expression` — all pass
-- [ ] `npm run test:coverage --workspace=@cgrid/expression` — coverage per spec §7.4 (parse/compile/evaluate ≥ 90%; validate ≥ 85%)
+- [ ] `npm test --workspace=@wellsfargo-starui/velocity-grid-expression` — all pass
+- [ ] `npm run test:coverage --workspace=@wellsfargo-starui/velocity-grid-expression` — coverage per spec §7.4 (parse/compile/evaluate ≥ 90%; validate ≥ 85%)
 - [ ] `npx turbo run typecheck` — clean across all 10 packages
-- [ ] `npx turbo run test` — clean across all packages; `@cgrid/kernel` still `2326/2326`
+- [ ] `npx turbo run test` — clean across all packages; `@wellsfargo-starui/velocity-grid` still `2326/2326`
 - [ ] `npm run lint` — clean
 - [ ] `git diff origin/main -- packages/kernel/ apps/` — empty (kernel + apps untouched)
 - [ ] Golden AST corpus (`tests/fixtures/ast-corpus.json`) — 29 canonical expressions locked; any grammar change requires corpus update
@@ -3029,7 +3029,7 @@ Append to `.superpowers/sdd/progress.md`:
 Task 5: complete — pushed cycle21b/expression to origin + opened PR
   PR: <url from Step 6>
   5 commits total for Cycle 21b (Task 1..5).
-  Package @cgrid/expression fully populated:
+  Package @wellsfargo-starui/velocity-grid-expression fully populated:
     - Public API: parse + compile + evaluate + validate + all types
     - 14 built-ins (IF, COALESCE, NOT, AND, OR, ABS, ROUND, MIN, MAX,
       FLOOR, CEIL, LOWER, UPPER, LEN)

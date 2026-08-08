@@ -1,19 +1,19 @@
-// @cgrid/edit — plus/minus nudges: expression-gated rule resolution + patches.
+// @wellsfargo-starui/velocity-grid-edit — plus/minus nudges: expression-gated rule resolution + patches.
 // Authoritative reference: docs/superpowers/specs/2026-07-02-cycle-21g-edit-design.md
 // section 1.1.6 (plus/minus nudges).
 // Recon: docs/superpowers/plans/notes/2026-07-02-cycle-21g-recon.md A.5.
 //
-// This module is the package's ONLY runtime `@cgrid/expression` import
+// This module is the package's ONLY runtime `@wellsfargo-starui/velocity-grid-expression` import
 // (dependency declared in package.json — Task 1). Everything else in
-// `@cgrid/edit` stays engine-pure with zero expression-engine coupling.
+// `@wellsfargo-starui/velocity-grid-edit` stays engine-pure with zero expression-engine coupling.
 //
 // Strict-boolean gate + error-swallow precedent (cited per plan protocol):
 // packages/rules/src/conditionCompiler.ts:129 — `evaluate(...) === true`,
 // any throw (EvalError or otherwise) treated as non-matching, never breaks
 // the caller.
 
-import { compile, evaluate as evaluateCompiled, parse } from '@cgrid/expression';
-import type { Compiled } from '@cgrid/expression';
+import { compile, evaluate as evaluateCompiled, parse } from '@wellsfargo-starui/velocity-grid-expression';
+import type { Compiled } from '@wellsfargo-starui/velocity-grid-expression';
 import type { CellTarget } from './patches';
 import { buildPatchesFromTargets } from './patches';
 import type { CellPatch, PlusMinusNudge } from './types';
@@ -32,7 +32,7 @@ function compileExpression(expression: string): Compiled | null {
   return compiled.compiled;
 }
 
-/** Binds `@cgrid/expression`'s parse/compile/evaluate with a per-expression
+/** Binds `@wellsfargo-starui/velocity-grid-expression`'s parse/compile/evaluate with a per-expression
  *  compile cache: the first sighting of an expression string parses+compiles
  *  once; a parse/compile failure caches `null` so that expression is always
  *  `false` thereafter and is NEVER re-parsed. The evaluate result must be

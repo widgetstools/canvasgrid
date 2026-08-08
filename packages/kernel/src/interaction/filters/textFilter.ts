@@ -59,7 +59,7 @@ export interface TextFilterPopupDeps {
   defaultJoinOperator?: MultiConditionJoin;
   /** Cycle 7 / Task 9 — fires on every popup-internal mutation
    *  (operator change, value typed, caseSensitive toggled, multi-row
-   *  added). Wires to the `filterModified` event on `CGridApi`.
+   *  added). Wires to the `filterModified` event on `VelocityGridApi`.
    *  Optional. */
   onModified?: () => void;
 }
@@ -95,7 +95,7 @@ export class TextFilterPopup implements FilterPopupFactory {
 
   buildGui(): HTMLElement {
     const root = document.createElement('div');
-    root.className = 'cg-filter-popup cg-filter-popup-text';
+    root.className = 'vg-filter-popup vg-filter-popup-text';
 
     const maxConditions = this.deps.maxNumConditions ?? 1;
     if (maxConditions > 1) {
@@ -124,13 +124,13 @@ export class TextFilterPopup implements FilterPopupFactory {
     }
 
     const buttonsRow = document.createElement('div');
-    buttonsRow.className = 'cg-filter-popup-row cg-filter-popup-buttons';
+    buttonsRow.className = 'vg-filter-popup-row vg-filter-popup-buttons';
     const buttons = this.deps.buttons ?? ['apply', 'clear', 'reset'];
     for (const kind of buttons) {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = `cg-filter-popup-button cg-filter-popup-button-${kind}`;
-      btn.setAttribute('data-cg-filter-action', kind);
+      btn.className = `vg-filter-popup-button vg-filter-popup-button-${kind}`;
+      btn.setAttribute('data-vg-filter-action', kind);
       btn.textContent = labelFor(kind);
       btn.addEventListener('click', () => this.handleAction(kind));
       buttonsRow.appendChild(btn);
@@ -159,12 +159,12 @@ export class TextFilterPopup implements FilterPopupFactory {
     onChange: (next: CTextFilterModel | null) => void,
   ): RowController {
     const row = document.createElement('div');
-    row.className = 'cg-filter-popup-condition';
+    row.className = 'vg-filter-popup-condition';
 
     const opRow = document.createElement('div');
-    opRow.className = 'cg-filter-popup-row';
+    opRow.className = 'vg-filter-popup-row';
     const select = document.createElement('select');
-    select.className = 'cg-filter-popup-operator';
+    select.className = 'vg-filter-popup-operator';
     for (const { value, label } of OPERATOR_OPTIONS) {
       const opt = document.createElement('option');
       opt.value = value;
@@ -176,11 +176,11 @@ export class TextFilterPopup implements FilterPopupFactory {
     row.appendChild(opRow);
 
     const inputsRow = document.createElement('div');
-    inputsRow.className = 'cg-filter-popup-row cg-filter-popup-inputs';
+    inputsRow.className = 'vg-filter-popup-row vg-filter-popup-inputs';
     const primary = document.createElement('input');
     primary.type = 'text';
-    primary.className = 'cg-filter-popup-input';
-    primary.setAttribute('data-cg-filter-input', 'primary');
+    primary.className = 'vg-filter-popup-input';
+    primary.setAttribute('data-vg-filter-input', 'primary');
     primary.placeholder = 'Filter...';
     if (initial?.filter != null) primary.value = initial.filter;
     inputsRow.appendChild(primary);
@@ -189,12 +189,13 @@ export class TextFilterPopup implements FilterPopupFactory {
     let caseSensitive: HTMLInputElement | null = null;
     if (this.deps.showCaseSensitiveToggle !== false) {
       const csRow = document.createElement('div');
-      csRow.className = 'cg-filter-popup-row cg-filter-popup-case-sensitive';
+      csRow.className = 'vg-filter-popup-row vg-filter-popup-case-sensitive';
       const csLabel = document.createElement('label');
-      csLabel.className = 'cg-filter-popup-case-sensitive-label';
+      csLabel.className = 'vg-filter-popup-case-sensitive-label';
       const cs = document.createElement('input');
       cs.type = 'checkbox';
-      cs.setAttribute('data-cg-filter-case-sensitive', '');
+      cs.className = 'vg-checkbox';
+      cs.setAttribute('data-vg-filter-case-sensitive', '');
       cs.checked = initial?.caseSensitive === true;
       const csText = document.createElement('span');
       csText.textContent = 'Case sensitive';

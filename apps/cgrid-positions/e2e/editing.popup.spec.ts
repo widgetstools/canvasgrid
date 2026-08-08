@@ -4,7 +4,7 @@
  * The `notes` column wires the largeText editor (`isPopup() === true`).
  * Verifies:
  *   1. Double-click opens a popup textarea (mounted directly on the editor
- *      host, NOT wrapped in `.cg-editor-overlay`).
+ *      host, NOT wrapped in `.vg-editor-overlay`).
  *   2. The popup is wider than the cell column (proves it's not inline).
  *   3. Ctrl+Enter commits; getCellValue reads the typed text back.
  *
@@ -13,7 +13,7 @@
  */
 import { test, expect } from '@playwright/test';
 
-type CGridGlobal = {
+type VelocityGridGlobal = {
   getCellBoundsAt: (r: number, c: string) => { x: number; y: number; w: number; h: number } | null;
   getCellValue: (r: number, c: string) => unknown;
   ensureColumnVisible: (c: string, p?: 'auto' | 'start' | 'middle' | 'end') => void;
@@ -24,21 +24,21 @@ async function openNotesPopup(page: import('@playwright/test').Page) {
   // default 1400px viewport). Returns the cell bounds + canvas rect for
   // the synthetic dblclick.
   await page.evaluate(() => {
-    const grid = (window as unknown as { __cgrid: CGridGlobal }).__cgrid;
+    const grid = (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid;
     grid.ensureColumnVisible('notes', 'start');
   });
   // ensureColumnVisible kicks the worker fetch; wait a frame for the
   // chunk to land so getCellBoundsAt resolves.
   await page.waitForFunction(
     () => {
-      const grid = (window as unknown as { __cgrid: CGridGlobal }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid;
       return grid.getCellBoundsAt(0, 'notes') !== null;
     },
     null,
     { timeout: 5_000 },
   );
   const bounds = await page.evaluate(() => {
-    const grid = (window as unknown as { __cgrid: CGridGlobal }).__cgrid;
+    const grid = (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid;
     return grid.getCellBoundsAt(0, 'notes');
   });
   expect(bounds).not.toBeNull();
@@ -62,13 +62,13 @@ test.describe('Cell editing — popup editor (Cycle 5 / Task 3)', () => {
 
   test('double-click notes cell opens popup textarea (not inline)', async ({ page }) => {
     const { bounds } = await openNotesPopup(page);
-    const textarea = page.locator('textarea.cg-cell-editor--large-text');
+    const textarea = page.locator('textarea.vg-cell-editor--large-text');
     await expect(textarea).toBeVisible();
 
-    // Popup mode marker: the textarea is NOT inside the `.cg-editor-overlay`
+    // Popup mode marker: the textarea is NOT inside the `.vg-editor-overlay`
     // wrapper that inline mode creates.
     const wrapped = await textarea.evaluate(
-      (el) => el.closest('.cg-editor-overlay') !== null,
+      (el) => el.closest('.vg-editor-overlay') !== null,
     );
     expect(wrapped).toBe(false);
 
@@ -80,7 +80,7 @@ test.describe('Cell editing — popup editor (Cycle 5 / Task 3)', () => {
 
   test('popup textarea commits typed value via Ctrl+Enter', async ({ page }) => {
     await openNotesPopup(page);
-    const textarea = page.locator('textarea.cg-cell-editor--large-text');
+    const textarea = page.locator('textarea.vg-cell-editor--large-text');
     await expect(textarea).toBeVisible();
     await textarea.fill('LINE1\nLINE2 — popup commit');
     await textarea.press('Control+Enter');
@@ -88,7 +88,7 @@ test.describe('Cell editing — popup editor (Cycle 5 / Task 3)', () => {
 
     await expect.poll(
       () => page.evaluate(() => {
-        const g = (window as unknown as { __cgrid: CGridGlobal }).__cgrid;
+        const g = (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid;
         return g.getCellValue(0, 'notes');
       }),
       { timeout: 5_000 },
@@ -99,31 +99,31 @@ test.describe('Cell editing — popup editor (Cycle 5 / Task 3)', () => {
     // Read the original value AFTER scrolling notes into view so the worker
     // chunk has been requested for the now-visible column.
     await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: CGridGlobal }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid;
       grid.ensureColumnVisible('notes', 'start');
     });
     await page.waitForFunction(
       () => {
-        const g = (window as unknown as { __cgrid: CGridGlobal }).__cgrid;
+        const g = (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid;
         return g.getCellBoundsAt(0, 'notes') !== null;
       },
       null,
       { timeout: 5_000 },
     );
     const original = await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: CGridGlobal }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid;
       return g.getCellValue(0, 'notes');
     });
 
     await openNotesPopup(page);
-    const textarea = page.locator('textarea.cg-cell-editor--large-text');
+    const textarea = page.locator('textarea.vg-cell-editor--large-text');
     await expect(textarea).toBeVisible();
     await textarea.fill('discard me');
     await textarea.press('Escape');
     await expect(textarea).toHaveCount(0);
 
     const after = await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: CGridGlobal }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid;
       return g.getCellValue(0, 'notes');
     });
     expect(after).toBe(original);

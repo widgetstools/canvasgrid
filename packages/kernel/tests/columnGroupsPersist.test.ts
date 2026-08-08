@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import type { CColDef, CColGroupDef } from '../src/types';
 
 /**
  * Cycle 21i / Task 6 — column-group structure persistence round-trip.
  *
  * Mirrors the Worker/canvas stub setup in `runtimeOptions.test.ts` so a
- * `CGrid` can construct under happy-dom without a real worker thread.
+ * `VelocityGrid` can construct under happy-dom without a real worker thread.
  */
 beforeAll(() => {
   if (!(globalThis as any).__cgridFakeWorkerInstalled) {
@@ -52,7 +52,7 @@ function mount(columnDefs: (CColDef | CColGroupDef)[]) {
   const el = document.createElement('div');
   el.style.cssText = 'width:800px; height:600px;';
   document.body.appendChild(el);
-  return new CGrid(el, { columnDefs, rowData: [], getRowId: (r: any) => r.id });
+  return new VelocityGrid(el, { columnDefs, rowData: [], getRowId: (r: any) => r.id });
 }
 
 describe('column-group structure persists through getState/setState', () => {

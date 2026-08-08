@@ -9,16 +9,16 @@
 //   5. visible-order proof — result reflects post-sort visible order.
 //   6. destroyed guard → all-null aligned array (no throw).
 //   7. api-object wiring — `makeApi()` exposes `getRowsByIndex` (the
-//      `as CGridApi<TRow>` cast at cgrid.ts:5746 would not catch a
+//      `as VelocityGridApi<TRow>` cast at velocityGrid.ts:5746 would not catch a
 //      forgotten entry at compile time).
 
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { createWorkerHost } from '../src/worker/worker';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 
 beforeAll(() => {
   // Canvas 2D context stub — mirrors tests/distinctValuesLimit.test.ts /
-  // tests/calcKernelApi.test.ts so a mounted CGrid can construct.
+  // tests/calcKernelApi.test.ts so a mounted VelocityGrid can construct.
   HTMLCanvasElement.prototype.getContext = (() => {
     const fakeCtx: any = {
       fillRect: vi.fn(), strokeRect: vi.fn(), fillText: vi.fn(),
@@ -57,7 +57,7 @@ function fixtureRows(): Row[] {
 function buildWiredGrid<T extends { id: string }>(rows: T[], cols: any[]) {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
   const prevWorker = (globalThis as any).Worker;
   (globalThis as any).Worker = class {
@@ -70,7 +70,7 @@ function buildWiredGrid<T extends { id: string }>(rows: T[], cols: any[]) {
     addEventListener(_: string, cb: (e: { data: any }) => void) { this.listeners.push(cb); }
     terminate() {}
   };
-  const grid = new CGrid<T>(container, {
+  const grid = new VelocityGrid<T>(container, {
     columnDefs: cols,
     getRowId: (r) => r.id,
     rowData: rows,
@@ -81,7 +81,7 @@ function buildWiredGrid<T extends { id: string }>(rows: T[], cols: any[]) {
 
 const COLS = [{ field: 'id' }, { field: 'ticker' }, { field: 'qty', type: 'number' }];
 
-describe('CGrid.getRowsByIndex — mounted grid (Cycle 21g / Task 10)', () => {
+describe('VelocityGrid.getRowsByIndex — mounted grid (Cycle 21g / Task 10)', () => {
   it('1. basic alignment: output order matches INPUT order, not index order', async () => {
     const { grid, restore } = buildWiredGrid<Row>(fixtureRows(), COLS);
     await new Promise((r) => setTimeout(r, 50));

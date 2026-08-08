@@ -106,7 +106,7 @@ export interface GroupingStateSnapshot {
   perLevelSort: Array<{ direction: 'asc' | 'desc' } | null>;
 }
 
-/** The single state primitive. One instance lives on `CGrid`; the
+/** The single state primitive. One instance lives on `VelocityGrid`; the
  *  three grouping UIs read from + mutate via it.
  *
  *  Construction:

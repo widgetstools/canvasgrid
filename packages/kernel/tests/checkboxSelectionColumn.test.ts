@@ -6,8 +6,8 @@ import { describe, it, expect, vi, beforeAll } from 'vitest';
  * API surface added:
  *   • CColDef.checkboxSelection       — per-row toggle checkbox
  *   • CColDef.headerCheckboxSelection — tri-state select-all header checkbox
- *   • CGridOptions.suppressRowClickSelection — force checkbox-only selection
- *   • CGridOptions.rowMultiSelectWithClick   — Ctrl-key-less multi-select
+ *   • VelocityGridOptions.suppressRowClickSelection — force checkbox-only selection
+ *   • VelocityGridOptions.rowMultiSelectWithClick   — Ctrl-key-less multi-select
  */
 beforeAll(() => {
   (globalThis as any).Worker = class {
@@ -37,10 +37,10 @@ beforeAll(() => {
 
 describe('Phase 1 — checkboxSelection forces rowSelectCheckbox cell renderer', () => {
   it('a column with checkboxSelection: true resolves cellRenderer to "rowSelectCheckbox"', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [
         { colId: 'sel', checkboxSelection: true, width: 40, pinned: 'left' } as any,
@@ -106,10 +106,10 @@ describe('Phase 1 — checkboxSelection forces rowSelectCheckbox cell renderer',
 
 describe('Phase 2 — clicking a checkboxSelection cell toggles row selection', () => {
   it('mousedown on a checkboxSelection cell toggles the row, sets focus, does NOT add cell range', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [
         { colId: 'sel', checkboxSelection: true, width: 40, pinned: 'left' } as any,
@@ -132,10 +132,10 @@ describe('Phase 2 — clicking a checkboxSelection cell toggles row selection', 
   });
 
   it('the click toggles back to unselected on second press', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [
         { colId: 'sel', checkboxSelection: true, width: 40 } as any,
@@ -160,10 +160,10 @@ describe('Phase 2 — clicking a checkboxSelection cell toggles row selection', 
 
 describe('Phase 3 — headerCheckboxSelection toggles select-all', () => {
   it('clicking the header checkbox when no rows are selected selects all', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [
         { colId: 'sel', checkboxSelection: true, headerCheckboxSelection: true, width: 40 } as any,
@@ -181,10 +181,10 @@ describe('Phase 3 — headerCheckboxSelection toggles select-all', () => {
   });
 
   it('clicking the header checkbox when ALL rows are selected deselects all', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [
         { colId: 'sel', checkboxSelection: true, headerCheckboxSelection: true, width: 40 } as any,
@@ -203,10 +203,10 @@ describe('Phase 3 — headerCheckboxSelection toggles select-all', () => {
 
 describe('Phase 4 — grid-level selection options', () => {
   it('suppressRowClickSelection: true → plain click on body cell does NOT toggle row selection', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'name', field: 'name', cellDataType: 'text' }],
       rowSelection: 'multiple',
@@ -227,10 +227,10 @@ describe('Phase 4 — grid-level selection options', () => {
   });
 
   it('rowMultiSelectWithClick: true → plain click toggles row (no Ctrl/Cmd needed)', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'name', field: 'name', cellDataType: 'text' }],
       rowSelection: 'multiple',

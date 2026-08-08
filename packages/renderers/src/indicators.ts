@@ -1,6 +1,6 @@
-// @cgrid/renderers — category 3: Indicators (semantic glyphs). Catalog §3.3.
+// @wellsfargo-starui/velocity-grid-renderers — category 3: Indicators (semantic glyphs). Catalog §3.3.
 
-import type { CellPaintConfig, CellPainter } from '@cgrid/kernel';
+import type { CellPaintConfig, CellPainter } from '@wellsfargo-starui/velocity-grid';
 import { dot, fragText } from './paintUtils';
 import { SEMANTIC_COLORS } from './palette';
 import type {

@@ -10,7 +10,7 @@ import { test, expect, type Page } from '@playwright/test';
  * clean `persistState` slate so a prior test's templates can't leak.
  */
 
-const STORAGE_KEY = 'cgrid:state:customizer-demo';
+const STORAGE_KEY = 'velocity-grid:state:customizer-demo';
 
 async function waitForGridReady(page: Page): Promise<void> {
   await page.waitForFunction(() => (window as unknown as { __cgridReady?: boolean }).__cgridReady === true, {

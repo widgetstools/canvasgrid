@@ -49,12 +49,12 @@ describe('mutations', () => {
     expect(g!.parentId).toBeNull();
   });
 
-  it('createGroup never reuses an existing cg-grp-N id (post-Apply remount)', () => {
+  it('createGroup never reuses an existing vg-grp-N id (post-Apply remount)', () => {
     // Simulate seed after Apply: defs already carry synthesized group ids, and
     // the module seq may be behind those ids (fresh page / remount).
     const seeded = flatten([
       {
-        groupId: 'cg-grp-1',
+        groupId: 'vg-grp-1',
         headerName: 'Trade',
         children: [
           { colId: 'bid', field: 'bid', headerName: 'Bid' },
@@ -64,18 +64,18 @@ describe('mutations', () => {
     ]);
     const next = createGroup(seeded, null, 'New Group');
     const ids = next.filter((n) => n.kind === 'group').map((n) => n.id);
-    expect(ids).toEqual(['cg-grp-1', 'cg-grp-2']);
+    expect(ids).toEqual(['vg-grp-1', 'vg-grp-2']);
     expect(new Set(ids).size).toBe(2);
 
     const created = next.find((n) => n.kind === 'group' && n.headerName === 'New Group') as GroupNode;
-    expect(created.id).toBe('cg-grp-2');
+    expect(created.id).toBe('vg-grp-2');
     // New group starts empty — columns stay under the original group.
     expect(next.filter((n) => n.kind === 'column' && n.parentId === created.id)).toHaveLength(0);
-    expect(next.filter((n) => n.kind === 'column' && n.parentId === 'cg-grp-1')).toHaveLength(2);
+    expect(next.filter((n) => n.kind === 'column' && n.parentId === 'vg-grp-1')).toHaveLength(2);
 
     const renamed = renameGroup(next, created.id, 'Risk');
-    expect((renamed.find((n) => n.id === 'cg-grp-1') as GroupNode).headerName).toBe('Trade');
-    expect((renamed.find((n) => n.id === 'cg-grp-2') as GroupNode).headerName).toBe('Risk');
+    expect((renamed.find((n) => n.id === 'vg-grp-1') as GroupNode).headerName).toBe('Trade');
+    expect((renamed.find((n) => n.id === 'vg-grp-2') as GroupNode).headerName).toBe('Risk');
   });
 
   it('createGroupWithColumns creates a group and moves the given columns into it', () => {

@@ -1,4 +1,4 @@
-import { CGrid, registerIcon } from '@cgrid/kernel';
+import { VelocityGrid, registerIcon } from '@wellsfargo-starui/velocity-grid';
 import type { ShowcaseRow } from '../seedData';
 import type { Feature } from './index';
 import { makeRows } from '../seedData';
@@ -27,7 +27,7 @@ export const cellStyleExpansion: Feature = {
     'Demonstrates new ColCellOverrides fields: valign, font breakouts, textTransform, letterSpacing, padding, headerStyle, and groupHeaderStyle.',
 
   mount(gridHost, _controls, theme) {
-    const grid = new CGrid<ShowcaseRow>(gridHost, {
+    const grid = new VelocityGrid<ShowcaseRow>(gridHost, {
       getRowId: (r) => r.id,
       rowHeight: 48,
       headerHeight: 40,

@@ -290,12 +290,12 @@ describe('paintCellsByRows — custom cellRenderer dispatch', () => {
   });
 });
 
-describe('CGrid public API — registerCellRenderer', () => {
-  it('exposes registerCellRenderer on CGrid + CGridApi', async () => {
-    const { CGrid } = await import('../src/cgrid');
+describe('VelocityGrid public API — registerCellRenderer', () => {
+  it('exposes registerCellRenderer on VelocityGrid + VelocityGridApi', async () => {
+    const { VelocityGrid } = await import('../src/velocityGrid');
     // We don't construct a grid here (would need full DOM + worker stub);
     // we only assert the method exists on the prototype and is callable
     // shape-wise. Full construction-path coverage lives in cgrid.integration.
-    expect(typeof (CGrid.prototype as any).registerCellRenderer).toBe('function');
+    expect(typeof (VelocityGrid.prototype as any).registerCellRenderer).toBe('function');
   });
 });

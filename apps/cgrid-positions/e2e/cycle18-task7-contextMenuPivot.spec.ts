@@ -34,8 +34,8 @@
 import { test, expect, Page } from '@playwright/test';
 
 const GRID_SELECTOR = '#grid canvas';
-const MENU_SELECTOR = '.cg-context-menu';
-const LABEL_SELECTOR = `${MENU_SELECTOR} .cg-menu-item-label`;
+const MENU_SELECTOR = '.vg-context-menu';
+const LABEL_SELECTOR = `${MENU_SELECTOR} .vg-menu-item-label`;
 
 interface GridApiSurface {
   getHeaderBoundsAt: (colId: string) => { x: number; y: number; w: number; h: number } | null;
@@ -83,12 +83,12 @@ async function rightClickHeader(page: Page, colId: string): Promise<void> {
   // would otherwise be unhittable. Routes through the new
   // `ensureColumnVisible` API the "Scroll to column" item also targets.
   await page.evaluate(
-    (id) => (window as unknown as { __cgrid: GridApiSurface }).__cgrid.ensureColumnVisible(id),
+    (id) => (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.ensureColumnVisible(id),
     colId,
   );
   await waitForFrames(page, 4);
   const bounds = await page.evaluate(
-    (id) => (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getHeaderBoundsAt(id),
+    (id) => (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getHeaderBoundsAt(id),
     colId,
   );
   if (!bounds) throw new Error(`no header bounds for ${colId}`);
@@ -103,13 +103,13 @@ async function rightClickHeader(page: Page, colId: string): Promise<void> {
 
 async function readPivotColumns(page: Page): Promise<string[]> {
   return page.evaluate(() =>
-    (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getPivotColumns()
+    (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getPivotColumns()
   );
 }
 
 async function readValueColumns(page: Page): Promise<Array<{ colId: string; aggFunc: string }>> {
   return page.evaluate(() =>
-    (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getValueColumns()
+    (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getValueColumns()
   );
 }
 
@@ -123,10 +123,10 @@ test.describe('Cycle 18 / Task 7 — context menu pivot items', () => {
     // in pivot mode). The top-of-grid pivot panel is independent:
     // `pivotPanel: always` keeps it visible regardless of pivot mode.
     await page.evaluate(() => {
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.setPivotMode(true);
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.setPivotMode(true);
     });
     await waitForFrames(page, 3);
-    await page.waitForSelector('.cg-columns-panel-plz', { state: 'visible' });
+    await page.waitForSelector('.vg-columns-panel-plz', { state: 'visible' });
     // Cycle 19 / Task 5b — `setPivotMode(true)` now auto-hides every
     // primary source column (AG-v36 strict semantic). This test drives
     // the header context menu on `sector`, so re-expose sector's header
@@ -135,7 +135,7 @@ test.describe('Cycle 18 / Task 7 — context menu pivot items', () => {
     // header-menu path here specifically exercises the context-menu
     // wiring + sync invariant, not the auto-hide default.
     await page.evaluate(() => {
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.setColumnsVisible(['sector'], true);
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.setColumnsVisible(['sector'], true);
     });
     await waitForFrames(page, 3);
 
@@ -150,14 +150,14 @@ test.describe('Cycle 18 / Task 7 — context menu pivot items', () => {
     expect(await readPivotColumns(page)).toEqual(['sector']);
 
     // 2. The top-of-grid pivot panel paints a pill for sector.
-    const panelPill = page.locator('.cg-pivot-panel .cg-pivot-panel-pill[data-col-id="sector"]');
+    const panelPill = page.locator('.vg-pivot-panel .vg-pivot-panel-pill[data-col-id="sector"]');
     await expect(panelPill).toBeVisible();
 
     // 3. The sidebar columns tool panel's plz zone paints a pill for
     //    sector — the THIRD surface. THE SYNC INVARIANT (all three
     //    views over PivotState now show the same pill, mutated through
     //    a single PivotState verb).
-    const plzPill = page.locator('.cg-columns-panel-plz .cg-columns-panel-plz-pill[data-col-id="sector"]');
+    const plzPill = page.locator('.vg-columns-panel-plz .vg-columns-panel-plz-pill[data-col-id="sector"]');
     await expect(plzPill).toBeVisible();
   });
 
@@ -183,9 +183,9 @@ test.describe('Cycle 18 / Task 7 — context menu pivot items', () => {
 
     // PivotState cleared + both views show no pill for sector.
     expect(await readPivotColumns(page)).toEqual([]);
-    await expect(page.locator('.cg-pivot-panel .cg-pivot-panel-pill[data-col-id="sector"]'))
+    await expect(page.locator('.vg-pivot-panel .vg-pivot-panel-pill[data-col-id="sector"]'))
       .toHaveCount(0);
-    await expect(page.locator('.cg-columns-panel-plz .cg-columns-panel-plz-pill[data-col-id="sector"]'))
+    await expect(page.locator('.vg-columns-panel-plz .vg-columns-panel-plz-pill[data-col-id="sector"]'))
       .toHaveCount(0);
   });
 
@@ -194,23 +194,23 @@ test.describe('Cycle 18 / Task 7 — context menu pivot items', () => {
     expect(await readValueColumns(page)).toEqual([]);
 
     await rightClickHeader(page, 'notionalAmount');
-    const valueRow = page.locator(`${MENU_SELECTOR} .cg-menu-item`).filter({
-      has: page.locator('.cg-menu-item-label', { hasText: /^Value: Aggregate Notional$/ }),
+    const valueRow = page.locator(`${MENU_SELECTOR} .vg-menu-item`).filter({
+      has: page.locator('.vg-menu-item-label', { hasText: /^Value: Aggregate Notional$/ }),
     });
     await expect(valueRow).toHaveCount(1);
 
     // Hover the parent row → submenu opens with the 5 built-in agg names.
     await valueRow.hover();
-    await expect(page.locator(`${MENU_SELECTOR} .cg-menu-item-label`).filter({ hasText: /^sum$/ }))
+    await expect(page.locator(`${MENU_SELECTOR} .vg-menu-item-label`).filter({ hasText: /^sum$/ }))
       .toHaveCount(1);
     for (const name of ['avg', 'min', 'max', 'count']) {
-      await expect(page.locator(`${MENU_SELECTOR} .cg-menu-item-label`).filter({ hasText: new RegExp(`^${name}$`) }))
+      await expect(page.locator(`${MENU_SELECTOR} .vg-menu-item-label`).filter({ hasText: new RegExp(`^${name}$`) }))
         .toHaveCount(1);
     }
 
     // Click "avg" → state mutates: notionalAmount becomes a value column
     // with aggFunc avg.
-    await page.locator(`${MENU_SELECTOR} .cg-menu-item-label`).filter({ hasText: /^avg$/ }).click();
+    await page.locator(`${MENU_SELECTOR} .vg-menu-item-label`).filter({ hasText: /^avg$/ }).click();
     await page.waitForSelector(MENU_SELECTOR, { state: 'detached' });
     await waitForFrames(page, 6);
     expect(await readValueColumns(page)).toEqual([
@@ -218,7 +218,7 @@ test.describe('Cycle 18 / Task 7 — context menu pivot items', () => {
     ]);
 
     // The valz zone in the columns tool panel paints a pill.
-    await expect(page.locator('.cg-columns-panel-valz .cg-columns-panel-valz-pill[data-col-id="notionalAmount"]'))
+    await expect(page.locator('.vg-columns-panel-valz .vg-columns-panel-valz-pill[data-col-id="notionalAmount"]'))
       .toBeVisible();
   });
 
@@ -227,10 +227,10 @@ test.describe('Cycle 18 / Task 7 — context menu pivot items', () => {
 
     // Seed via the context menu (avg).
     await rightClickHeader(page, 'notionalAmount');
-    await page.locator(`${MENU_SELECTOR} .cg-menu-item`).filter({
-      has: page.locator('.cg-menu-item-label', { hasText: /^Value: Aggregate Notional$/ }),
+    await page.locator(`${MENU_SELECTOR} .vg-menu-item`).filter({
+      has: page.locator('.vg-menu-item-label', { hasText: /^Value: Aggregate Notional$/ }),
     }).hover();
-    await page.locator(`${MENU_SELECTOR} .cg-menu-item-label`).filter({ hasText: /^avg$/ }).click();
+    await page.locator(`${MENU_SELECTOR} .vg-menu-item-label`).filter({ hasText: /^avg$/ }).click();
     await waitForFrames(page, 6);
     expect(await readValueColumns(page)).toEqual([
       { colId: 'notionalAmount', aggFunc: 'avg' },
@@ -239,17 +239,17 @@ test.describe('Cycle 18 / Task 7 — context menu pivot items', () => {
     // Re-open the menu → the submenu shows ✓ next to avg → click avg
     // again to toggle off.
     await rightClickHeader(page, 'notionalAmount');
-    await page.locator(`${MENU_SELECTOR} .cg-menu-item`).filter({
-      has: page.locator('.cg-menu-item-label', { hasText: /^Value: Aggregate Notional$/ }),
+    await page.locator(`${MENU_SELECTOR} .vg-menu-item`).filter({
+      has: page.locator('.vg-menu-item-label', { hasText: /^Value: Aggregate Notional$/ }),
     }).hover();
     // ✓ sits in the icon slot of the avg row.
     await expect(
-      page.locator(`${MENU_SELECTOR} .cg-menu-item`).filter({
-        has: page.locator('.cg-menu-item-label', { hasText: /^avg$/ }),
-      }).locator('.cg-menu-item-icon')
+      page.locator(`${MENU_SELECTOR} .vg-menu-item`).filter({
+        has: page.locator('.vg-menu-item-label', { hasText: /^avg$/ }),
+      }).locator('.vg-menu-item-icon')
     ).toHaveText('✓');
 
-    await page.locator(`${MENU_SELECTOR} .cg-menu-item-label`).filter({ hasText: /^avg$/ }).click();
+    await page.locator(`${MENU_SELECTOR} .vg-menu-item-label`).filter({ hasText: /^avg$/ }).click();
     await page.waitForSelector(MENU_SELECTOR, { state: 'detached' });
     await waitForFrames(page, 6);
     expect(await readValueColumns(page)).toEqual([]);
@@ -260,19 +260,19 @@ test.describe('Cycle 18 / Task 7 — context menu pivot items', () => {
 
     // Seed avg.
     await rightClickHeader(page, 'notionalAmount');
-    await page.locator(`${MENU_SELECTOR} .cg-menu-item`).filter({
-      has: page.locator('.cg-menu-item-label', { hasText: /^Value: Aggregate Notional$/ }),
+    await page.locator(`${MENU_SELECTOR} .vg-menu-item`).filter({
+      has: page.locator('.vg-menu-item-label', { hasText: /^Value: Aggregate Notional$/ }),
     }).hover();
-    await page.locator(`${MENU_SELECTOR} .cg-menu-item-label`).filter({ hasText: /^avg$/ }).click();
+    await page.locator(`${MENU_SELECTOR} .vg-menu-item-label`).filter({ hasText: /^avg$/ }).click();
     await waitForFrames(page, 6);
 
     // Re-open menu, hover Value row, click max — column stays as a
     // value column but aggFunc swaps from avg to max.
     await rightClickHeader(page, 'notionalAmount');
-    await page.locator(`${MENU_SELECTOR} .cg-menu-item`).filter({
-      has: page.locator('.cg-menu-item-label', { hasText: /^Value: Aggregate Notional$/ }),
+    await page.locator(`${MENU_SELECTOR} .vg-menu-item`).filter({
+      has: page.locator('.vg-menu-item-label', { hasText: /^Value: Aggregate Notional$/ }),
     }).hover();
-    await page.locator(`${MENU_SELECTOR} .cg-menu-item-label`).filter({ hasText: /^max$/ }).click();
+    await page.locator(`${MENU_SELECTOR} .vg-menu-item-label`).filter({ hasText: /^max$/ }).click();
     await page.waitForSelector(MENU_SELECTOR, { state: 'detached' });
     await waitForFrames(page, 6);
 
@@ -284,7 +284,7 @@ test.describe('Cycle 18 / Task 7 — context menu pivot items', () => {
   test('"Scroll to column" appears when pivotMode === false, hides when pivotMode === true', async ({ page }) => {
     await gridReady(page);
     expect(await page.evaluate(() =>
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.isPivotMode()
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.isPivotMode()
     )).toBe(false);
 
     await rightClickHeader(page, 'ticker');
@@ -301,7 +301,7 @@ test.describe('Cycle 18 / Task 7 — context menu pivot items', () => {
     // focus is the `Scroll to column` gate on pivotMode, not the
     // auto-hide default.
     await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       api.setPivotMode(true);
       api.setColumnsVisible(['ticker'], true);
     });

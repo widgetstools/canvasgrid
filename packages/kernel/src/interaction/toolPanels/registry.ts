@@ -2,14 +2,14 @@
  * Cycle 11 / Task 1 — ToolPanelRegistry.
  *
  * Plain `Map<id, ctor>` wrapper that owns tool-panel component
- * registration. The CGrid constructor seeds the built-in IDs
+ * registration. The VelocityGrid constructor seeds the built-in IDs
  * (`agColumnsToolPanel`, `agFiltersToolPanel`) via `seedBuiltIns()`
- * and then merges `CGridOptions.components` entries on top — apps
+ * and then merges `VelocityGridOptions.components` entries on top — apps
  * can either add new IDs or override the built-in implementations
  * by registering against the same key.
  *
  * The registry is intentionally framework-agnostic: it knows nothing
- * about the side bar, CGrid, or the catalog. The Task 2 side-bar
+ * about the side bar, VelocityGrid, or the catalog. The Task 2 side-bar
  * host consumes `resolve(id)` to instantiate panels on demand.
  *
  * Task 1 ships the built-ins as inert stubs (empty `<div>` GUI, no-op
@@ -26,7 +26,7 @@ class StubBuiltInPanel implements ToolPanel {
   init(_params: ToolPanelParams): void {
     // No-op; the stub renders an empty root. The real panels land in
     // Tasks 3 + 4 and override this id via `registry.register`.
-    this.gui.className = 'cg-tool-panel-stub';
+    this.gui.className = 'vg-tool-panel-stub';
   }
   getGui(): HTMLElement {
     return this.gui;
@@ -67,7 +67,7 @@ export class ToolPanelRegistry {
   }
 
   /** Seed the built-in IDs with stub implementations. Called once at
-   *  CGrid construction BEFORE merging `CGridOptions.components`, so
+   *  VelocityGrid construction BEFORE merging `VelocityGridOptions.components`, so
    *  app-supplied entries can override the stubs (and the future
    *  real implementations from Tasks 3 + 4). */
   seedBuiltIns(): void {

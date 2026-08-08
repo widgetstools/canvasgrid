@@ -3,12 +3,12 @@
  * TemplateManager / ModuleLibrary: list + apply, save-as, update (re-snapshot),
  * rename, and two-step delete. Plain DOM; styles injected once.
  *
- * Persistence rides `@cgrid/calc` via the kernel (`saveTemplate` /
+ * Persistence rides `@wellsfargo-starui/velocity-grid-calc` via the kernel (`saveTemplate` /
  * `applyTemplate` / `renameTemplate` / `deleteTemplate` / `removeTemplate`).
  * Own-templates (`__cgridOwn:*`) are never listed — they are the per-column
  * edit fork, not the shared library.
  */
-import { isOwnTemplateId, ownTemplateId, type ColumnTemplate } from '@cgrid/calc';
+import { isOwnTemplateId, ownTemplateId, type ColumnTemplate } from '@wellsfargo-starui/velocity-grid-calc';
 import { menu, svg } from './ui';
 
 export interface TemplateManagerGrid {
@@ -147,7 +147,7 @@ export function templateManagerMenu(
 export function buildTemplateManagerPanel(host: TemplateManagerHost, close: () => void): HTMLElement {
   injectTemplateManagerStyles();
   const root = document.createElement('div');
-  root.className = 'cgext-tpl cgext-tpl-menu';
+  root.className = 'vgext-tpl vgext-tpl-menu';
   root.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') close();
   });
@@ -173,14 +173,14 @@ export function buildTemplateManagerPanel(host: TemplateManagerHost, close: () =
 
     if (templates.length === 0) {
       const empty = document.createElement('div');
-      empty.className = 'cgext-tpl-empty';
+      empty.className = 'vgext-tpl-empty';
       empty.textContent = disabled
         ? 'Select a cell or column first.'
         : 'No saved templates yet.';
       root.append(empty);
     } else {
       const list = document.createElement('div');
-      list.className = 'cgext-tpl-list';
+      list.className = 'vgext-tpl-list';
       for (const tpl of templates) {
         list.appendChild(rowEl(tpl, {
           active: tpl.id === activeId,
@@ -194,10 +194,10 @@ export function buildTemplateManagerPanel(host: TemplateManagerHost, close: () =
 
     // Save-as row
     const saveRow = document.createElement('div');
-    saveRow.className = 'cgext-tpl-save';
+    saveRow.className = 'vgext-tpl-save';
     const input = document.createElement('input');
     input.type = 'text';
-    input.className = 'cgext-tpl-save-input' + (saveFlash ? ' is-flash' : '');
+    input.className = 'vgext-tpl-save-input' + (saveFlash ? ' is-flash' : '');
     input.placeholder = 'Save current as…';
     input.value = saveName;
     input.disabled = disabled;
@@ -210,7 +210,7 @@ export function buildTemplateManagerPanel(host: TemplateManagerHost, close: () =
     });
     const addBtn = document.createElement('button');
     addBtn.type = 'button';
-    addBtn.className = 'cgext-tpl-iconbtn';
+    addBtn.className = 'vgext-tpl-iconbtn';
     addBtn.title = 'Save as new template';
     addBtn.setAttribute('aria-label', 'Save as new template');
     addBtn.disabled = disabled;
@@ -220,7 +220,7 @@ export function buildTemplateManagerPanel(host: TemplateManagerHost, close: () =
     root.append(saveRow);
 
     const hint = document.createElement('div');
-    hint.className = 'cgext-tpl-hint';
+    hint.className = 'vgext-tpl-hint';
     hint.textContent = capturable.length > 0
       ? `Will save: ${capturable.join(' · ')}`
       : disabled
@@ -255,21 +255,21 @@ export function buildTemplateManagerPanel(host: TemplateManagerHost, close: () =
     state: { active: boolean; disabled: boolean; renaming: boolean; pendingDelete: boolean },
   ): HTMLElement => {
     const row = document.createElement('div');
-    row.className = 'cgext-tpl-row' + (state.active ? ' is-active' : '');
+    row.className = 'vgext-tpl-row' + (state.active ? ' is-active' : '');
     row.dataset.templateId = tpl.id;
     row.setAttribute('role', 'button');
     row.tabIndex = state.renaming ? -1 : 0;
 
     const lead = document.createElement('span');
-    lead.className = 'cgext-tpl-lead';
+    lead.className = 'vgext-tpl-lead';
     lead.innerHTML = state.active
       ? svg(I.check, 12)
-      : '<span class="cgext-tpl-dot"></span>';
+      : '<span class="vgext-tpl-dot"></span>';
 
     if (state.renaming) {
       const input = document.createElement('input');
       input.type = 'text';
-      input.className = 'cgext-tpl-rename';
+      input.className = 'vgext-tpl-rename';
       input.value = renameDraft;
       input.setAttribute('aria-label', 'Rename template');
       input.addEventListener('click', (e) => e.stopPropagation());
@@ -284,18 +284,18 @@ export function buildTemplateManagerPanel(host: TemplateManagerHost, close: () =
       queueMicrotask(() => input.focus());
     } else {
       const name = document.createElement('span');
-      name.className = 'cgext-tpl-name';
+      name.className = 'vgext-tpl-name';
       name.textContent = tpl.name;
       row.append(lead, name);
     }
 
     const actions = document.createElement('span');
-    actions.className = 'cgext-tpl-actions';
+    actions.className = 'vgext-tpl-actions';
 
     const mk = (icon: string, title: string, onClick: () => void, danger = false): HTMLButtonElement => {
       const b = document.createElement('button');
       b.type = 'button';
-      b.className = 'cgext-tpl-iconbtn' + (danger ? ' is-danger' : '');
+      b.className = 'vgext-tpl-iconbtn' + (danger ? ' is-danger' : '');
       b.title = title;
       b.setAttribute('aria-label', title);
       b.disabled = state.disabled;
@@ -382,100 +382,100 @@ export function buildTemplateManagerPanel(host: TemplateManagerHost, close: () =
 
 export function injectTemplateManagerStyles(): void {
   if (typeof document === 'undefined') return;
-  let style = document.getElementById('cgext-tpl-styles') as HTMLStyleElement | null;
+  let style = document.getElementById('vgext-tpl-styles') as HTMLStyleElement | null;
   if (!style) {
     style = document.createElement('style');
-    style.id = 'cgext-tpl-styles';
+    style.id = 'vgext-tpl-styles';
     document.head.appendChild(style);
   }
   style.textContent = TPL_CSS;
 }
 
 const TPL_CSS = `
-.cgext-menu.cgext-tpl-menu { width: 300px; padding: 8px; }
-.cgext-tpl { display: flex; flex-direction: column; gap: 8px; min-width: 260px; }
-.cgext-tpl-empty {
+.vgext-menu.vgext-tpl-menu { width: 300px; padding: 8px; }
+.vgext-tpl { display: flex; flex-direction: column; gap: 8px; min-width: 260px; }
+.vgext-tpl-empty {
   padding: 16px 10px; text-align: center; font-size: 12px;
-  color: var(--cg-muted-fg-color, #9aa4b6);
+  color: var(--vg-muted-fg-color, #9aa4b6);
 }
-.cgext-tpl-list {
+.vgext-tpl-list {
   display: flex; flex-direction: column; gap: 1px;
   max-height: 220px; overflow-y: auto;
 }
-.cgext-tpl-row {
+.vgext-tpl-row {
   position: relative;
   display: flex; align-items: center; gap: 6px;
   min-height: 30px; padding: 0 4px 0 10px;
-  border-radius: var(--cg-radius, 2px);
+  border-radius: var(--vg-radius, 2px);
   cursor: pointer; outline: none;
-  color: var(--cg-fg-color, #e5e9f0);
+  color: var(--vg-fg-color, #e5e9f0);
 }
-.cgext-tpl-row:hover { background: color-mix(in srgb, var(--cg-fg-color, #e5e9f0) 5%, transparent); }
-.cgext-tpl-row.is-active {
-  background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 10%, transparent);
+.vgext-tpl-row:hover { background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 5%, transparent); }
+.vgext-tpl-row.is-active {
+  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 10%, transparent);
 }
-.cgext-tpl-row.is-active::before {
+.vgext-tpl-row.is-active::before {
   content: ''; position: absolute; left: 2px; top: 6px; bottom: 6px; width: 2px;
-  border-radius: 2px; background: var(--cg-accent-color, #4f9cf9);
+  border-radius: 2px; background: var(--vg-accent-color, #4f9cf9);
 }
-.cgext-tpl-lead {
+.vgext-tpl-lead {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 14px; flex: 0 0 auto; color: var(--cg-accent-color, #4f9cf9);
+  width: 14px; flex: 0 0 auto; color: var(--vg-accent-color, #4f9cf9);
 }
-.cgext-tpl-dot {
+.vgext-tpl-dot {
   width: 5px; height: 5px; border-radius: 50%;
-  background: color-mix(in srgb, var(--cg-muted-fg-color, #9aa4b6) 55%, transparent);
+  background: color-mix(in srgb, var(--vg-muted-fg-color, #9aa4b6) 55%, transparent);
 }
-.cgext-tpl-name {
+.vgext-tpl-name {
   flex: 1 1 auto; min-width: 0;
   font-size: 12.5px; font-weight: 500;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.cgext-tpl-rename {
+.vgext-tpl-rename {
   flex: 1 1 auto; min-width: 0; height: 24px; padding: 0 8px;
-  border: 1px solid var(--cg-accent-color, #4f9cf9); border-radius: var(--cg-radius, 2px);
-  background: transparent; color: var(--cg-fg-color, #e5e9f0);
+  border: 1px solid var(--vg-accent-color, #4f9cf9); border-radius: var(--vg-radius, 2px);
+  background: transparent; color: var(--vg-fg-color, #e5e9f0);
   font: inherit; font-size: 12px; outline: none;
 }
-.cgext-tpl-actions {
+.vgext-tpl-actions {
   display: inline-flex; align-items: center; gap: 1px;
   opacity: 0; transition: opacity 120ms ease;
 }
-.cgext-tpl-row:hover .cgext-tpl-actions,
-.cgext-tpl-row:focus-within .cgext-tpl-actions { opacity: 1; }
-.cgext-tpl-iconbtn {
+.vgext-tpl-row:hover .vgext-tpl-actions,
+.vgext-tpl-row:focus-within .vgext-tpl-actions { opacity: 1; }
+.vgext-tpl-iconbtn {
   appearance: none; width: 24px; height: 24px;
-  border: none; border-radius: var(--cg-radius, 2px); background: transparent;
-  color: var(--cg-muted-fg-color, #9aa4b6);
+  border: none; border-radius: var(--vg-radius, 2px); background: transparent;
+  color: var(--vg-muted-fg-color, #9aa4b6);
   display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
 }
-.cgext-tpl-iconbtn:hover { background: color-mix(in srgb, var(--cg-fg-color, #e5e9f0) 8%, transparent); color: var(--cg-fg-color, #e5e9f0); }
-.cgext-tpl-iconbtn.is-danger:hover { color: var(--cg-neg-color, #e2606c); background: color-mix(in srgb, var(--cg-neg-color, #e2606c) 12%, transparent); }
-.cgext-tpl-iconbtn:disabled { opacity: 0.4; cursor: default; }
-.cgext-tpl-save {
+.vgext-tpl-iconbtn:hover { background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 8%, transparent); color: var(--vg-fg-color, #e5e9f0); }
+.vgext-tpl-iconbtn.is-danger:hover { color: var(--vg-neg-color, #e2606c); background: color-mix(in srgb, var(--vg-neg-color, #e2606c) 12%, transparent); }
+.vgext-tpl-iconbtn:disabled { opacity: 0.4; cursor: default; }
+.vgext-tpl-save {
   display: flex; align-items: center; gap: 6px;
   padding-top: 6px;
-  border-top: 1px solid color-mix(in srgb, var(--cg-border-color, #2a3140) 85%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--vg-border-color, #2a3140) 85%, transparent);
 }
-.cgext-tpl-save-input {
+.vgext-tpl-save-input {
   flex: 1 1 auto; min-width: 0; height: 28px; padding: 0 10px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 2px);
-  background: color-mix(in srgb, var(--cg-fg-color, #e5e9f0) 3%, transparent);
-  color: var(--cg-fg-color, #e5e9f0); font: inherit; font-size: 12px; outline: none;
+  border: 1px solid var(--vg-border-color, #2a3140); border-radius: var(--vg-radius, 2px);
+  background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 3%, transparent);
+  color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: 12px; outline: none;
 }
-.cgext-tpl-save-input:focus {
-  border-color: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 65%, var(--cg-border-color, #2a3140));
+.vgext-tpl-save-input:focus {
+  border-color: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 65%, var(--vg-border-color, #2a3140));
 }
-.cgext-tpl-save-input.is-flash {
-  border-color: var(--cg-accent-color, #4f9cf9);
-  background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 10%, transparent);
+.vgext-tpl-save-input.is-flash {
+  border-color: var(--vg-accent-color, #4f9cf9);
+  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 10%, transparent);
 }
-.cgext-tpl-hint {
+.vgext-tpl-hint {
   font-size: 10.5px; letter-spacing: 0.02em;
-  color: var(--cg-muted-fg-color, #9aa4b6);
+  color: var(--vg-muted-fg-color, #9aa4b6);
   padding: 0 2px 2px;
 }
 @media (prefers-reduced-motion: reduce) {
-  .cgext-tpl-actions { transition: none; }
+  .vgext-tpl-actions { transition: none; }
 }
 `;

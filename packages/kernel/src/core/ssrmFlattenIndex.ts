@@ -102,7 +102,7 @@ export function toDisplayOrder(
 
   if (out.length !== nodes.size) {
     console.warn(
-      `[cgrid] SSRM skeleton: dropped ${nodes.size - out.length} orphan group(s) with no parent in the skeleton`,
+      `[velocity-grid] SSRM skeleton: dropped ${nodes.size - out.length} orphan group(s) with no parent in the skeleton`,
     );
   }
   return out;

@@ -4,7 +4,7 @@ import { createTheme } from '../../src/theming/theme/themeObject';
 describe('withPart — param fold', () => {
   it('folds a part`s params into the compiled vars', () => {
     const theme = createTheme().withPart({ feature: 'x', params: { accentColor: '#f00' } });
-    expect(theme.compile('dark').vars['--cg-chrome-accent']).toBe('#f00');
+    expect(theme.compile('dark').vars['--vg-chrome-accent']).toBe('#f00');
   });
 });
 
@@ -14,7 +14,7 @@ describe('withPart — one-per-feature replace', () => {
       .withPart({ feature: 'x', params: { accentColor: '#f00' } })
       .withPart({ feature: 'x', params: { accentColor: '#0f0' } });
 
-    expect(theme.compile('dark').vars['--cg-chrome-accent']).toBe('#0f0');
+    expect(theme.compile('dark').vars['--vg-chrome-accent']).toBe('#0f0');
   });
 });
 
@@ -24,12 +24,12 @@ describe('withoutPart', () => {
       .withPart({ feature: 'x', params: { accentColor: '#f00' } })
       .withoutPart('x');
 
-    expect(theme.compile('dark').vars['--cg-chrome-accent']).toBeUndefined();
+    expect(theme.compile('dark').vars['--vg-chrome-accent']).toBeUndefined();
   });
 
   it('is a no-op when the feature was never added', () => {
     const theme = createTheme().withoutPart('nope');
-    expect(theme.compile('dark').vars['--cg-chrome-accent']).toBeUndefined();
+    expect(theme.compile('dark').vars['--vg-chrome-accent']).toBeUndefined();
   });
 });
 
@@ -40,8 +40,8 @@ describe('withPart — distinct features coexist', () => {
       .withPart({ feature: 'y', params: { backgroundColor: '#123456' } });
 
     const vars = theme.compile('dark').vars;
-    expect(vars['--cg-chrome-accent']).toBe('#f00');
-    expect(vars['--cg-bg-color']).toBe('#123456');
+    expect(vars['--vg-chrome-accent']).toBe('#f00');
+    expect(vars['--vg-bg-color']).toBe('#123456');
   });
 });
 
@@ -79,15 +79,15 @@ describe('withPart — mode scoping', () => {
       mode: 'light',
     });
 
-    expect(theme.compile('light').vars['--cg-chrome-accent']).toBe('#f00');
-    expect(theme.compile('dark').vars['--cg-chrome-accent']).toBeUndefined();
+    expect(theme.compile('light').vars['--vg-chrome-accent']).toBe('#f00');
+    expect(theme.compile('dark').vars['--vg-chrome-accent']).toBeUndefined();
   });
 
   it('applies a mode-omitted part to both light and dark (base)', () => {
     const theme = createTheme().withPart({ feature: 'x', params: { accentColor: '#f00' } });
 
-    expect(theme.compile('light').vars['--cg-chrome-accent']).toBe('#f00');
-    expect(theme.compile('dark').vars['--cg-chrome-accent']).toBe('#f00');
+    expect(theme.compile('light').vars['--vg-chrome-accent']).toBe('#f00');
+    expect(theme.compile('dark').vars['--vg-chrome-accent']).toBe('#f00');
   });
 });
 
@@ -97,8 +97,8 @@ describe('withPart / withoutPart — immutability', () => {
     const b = a.withPart({ feature: 'x', params: { accentColor: '#f00' } });
 
     expect(b).not.toBe(a);
-    expect(a.compile('dark').vars['--cg-chrome-accent']).toBeUndefined();
-    expect(b.compile('dark').vars['--cg-chrome-accent']).toBe('#f00');
+    expect(a.compile('dark').vars['--vg-chrome-accent']).toBeUndefined();
+    expect(b.compile('dark').vars['--vg-chrome-accent']).toBe('#f00');
   });
 
   it('withoutPart returns a new instance and leaves the prior one untouched', () => {
@@ -106,7 +106,7 @@ describe('withPart / withoutPart — immutability', () => {
     const b = a.withoutPart('x');
 
     expect(b).not.toBe(a);
-    expect(a.compile('dark').vars['--cg-chrome-accent']).toBe('#f00');
-    expect(b.compile('dark').vars['--cg-chrome-accent']).toBeUndefined();
+    expect(a.compile('dark').vars['--vg-chrome-accent']).toBe('#f00');
+    expect(b.compile('dark').vars['--vg-chrome-accent']).toBeUndefined();
   });
 });

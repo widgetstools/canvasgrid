@@ -1,7 +1,7 @@
-// @cgrid/renderers — category 6: In-cell charts. Catalog §3.6.
+// @wellsfargo-starui/velocity-grid-renderers — category 6: In-cell charts. Catalog §3.6.
 // Four new painters + five thin adapters re-exporting kernel sparkline variants.
 
-import type { CellPaintConfig, CellPainter } from '@cgrid/kernel';
+import type { CellPaintConfig, CellPainter } from '@wellsfargo-starui/velocity-grid';
 import { coerceToNumberArray } from '../../kernel/src/renderer/cellRenderers/sparkline/coerceToNumberArray';
 import { paintLineSparkline } from '../../kernel/src/renderer/cellRenderers/sparkline/lineSparkline';
 import { paintColumnSparkline } from '../../kernel/src/renderer/cellRenderers/sparkline/columnSparkline';

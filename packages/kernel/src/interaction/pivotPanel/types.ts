@@ -10,7 +10,7 @@
  * `pivotColumns`, drag a pill OUT to remove it (or click the `×`
  * affordance inside the pill).
  *
- * The pill chrome reuses the Task 5 shared `.cg-columns-panel-pill*`
+ * The pill chrome reuses the Task 5 shared `.vg-columns-panel-pill*`
  * classes so the visual idiom across the top-of-grid panel and the
  * sidebar plz zone stays byte-identical.
  *

@@ -364,7 +364,7 @@ Every editor that mutates state needs three things:
 2. A `dirty` boolean (draft !== committed)
 3. Save / Reset actions
 
-In starui this is encapsulated as a `useModuleDraft(moduleId, itemId, selectItem, commitItem)` hook. For cgrid:
+In starui this is encapsulated as a `useModuleDraft(moduleId, itemId, selectItem, commitItem)` hook. For velocity-grid:
 
 ```ts
 // Lit Reactive Controller

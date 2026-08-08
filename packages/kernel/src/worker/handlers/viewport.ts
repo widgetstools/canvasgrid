@@ -207,7 +207,7 @@ export async function handleViewport(
       //
       // M1 (closeout review) — REVISED from "drain the whole set after
       // every slice" after the fix-wave's OWN OpenFin re-measure caught a
-      // regression: `resolveWindowDamage` (adjudication B, cgrid.ts) bails
+      // regression: `resolveWindowDamage` (adjudication B, velocityGrid.ts) bails
       // to FULL whenever `chunk.touchedRows === undefined` ("unknown stays
       // full"), and `touchedRows` is undefined exactly when
       // `pendingTouched.size === 0` at request time. Draining the WHOLE

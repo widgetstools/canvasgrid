@@ -4,7 +4,7 @@
  * design.md §1 "Layer layout" / "Fetch window coupling".
  *
  * Covers:
- *  (a) `CGrid.buildLayerViewport` lays out rows that span the requested
+ *  (a) `VelocityGrid.buildLayerViewport` lays out rows that span the requested
  *      layer coverage, and its content-space mapping agrees with the real
  *      viewport's for rows visible in both.
  *  (b) `paintCache` (default true) widens the row overscan that drives
@@ -26,10 +26,10 @@
  * only lands once the worker reports it via the initial chunk.
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
 import { computeViewport } from '../src/core/viewport';
-import type { CGridOptions } from '../src/types/options';
+import type { VelocityGridOptions } from '../src/types/options';
 
 beforeAll(() => {
   (globalThis as any).Worker = class {
@@ -77,11 +77,11 @@ beforeAll(() => {
 function buildWiredGrid<T extends { id: string }>(
   rows: T[],
   cols: any[],
-  options: Partial<CGridOptions<T>> = {},
+  options: Partial<VelocityGridOptions<T>> = {},
 ) {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
   const prevWorker = (globalThis as any).Worker;
   (globalThis as any).Worker = class {
@@ -94,7 +94,7 @@ function buildWiredGrid<T extends { id: string }>(
     addEventListener(_: string, cb: (e: { data: any }) => void) { this.listeners.push(cb); }
     terminate() {}
   };
-  const grid = new CGrid<T>(container, {
+  const grid = new VelocityGrid<T>(container, {
     columnDefs: cols,
     getRowId: (r) => r.id,
     rowData: rows,
@@ -165,8 +165,8 @@ describe('buildLayerViewport — layer row layout (Task 3)', () => {
     const g = grid as any;
 
     g.onScrollerScroll(0, 5000);
-    // `CGrid.viewport` intentionally lags a native scroll event until the
-    // async chunk round-trip re-syncs it (see the comment at cgrid.ts
+    // `VelocityGrid.viewport` intentionally lags a native scroll event until the
+    // async chunk round-trip re-syncs it (see the comment at velocityGrid.ts
     // ~1496) — `ViewportManager.onScrollerScroll` already recomputed its
     // OWN state (used for the fetch/damage paths), but `buildLayerViewport`
     // reads `this.viewport`, so force the same explicit resync the chunk
@@ -215,9 +215,9 @@ describe('fetch-window coupling (Task 3)', () => {
     (gridOn as any).onScrollerScroll(0, 5000);
     (gridOff as any).onScrollerScroll(0, 5000);
 
-    // Read `ViewportManager.state` directly rather than `CGrid.viewport`
+    // Read `ViewportManager.state` directly rather than `VelocityGrid.viewport`
     // — the latter intentionally lags a native scroll event until the
-    // async chunk round-trip re-syncs it (cgrid.ts ~1496), but the fetch
+    // async chunk round-trip re-syncs it (velocityGrid.ts ~1496), but the fetch
     // window (what this test cares about) is driven off the manager's own
     // freshly-recomputed state, synchronously within `onScrollerScroll`.
     const on = (gridOn as any).viewportManager.state;

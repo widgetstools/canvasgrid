@@ -7,7 +7,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await page.evaluate(() => localStorage.clear());
   await page.reload();
-  await expect(page.locator('.cgext-titlebar')).toBeVisible();
+  await expect(page.locator('.vgext-titlebar')).toBeVisible();
 });
 
 // The pill has no per-control `data-item-id` hook — the ribbon is a single
@@ -15,10 +15,10 @@ test.beforeEach(async ({ page }) => {
 // the ENTIRE band, not just this button (that locator would resolve to the
 // whole-band container and click its bounding-box centre, missing the pill).
 // `# Format`'s caption always starts with '# ' (see ribbon.ts's `# ${label}`
-// caption template) and it is the only `.cgext-rb-pill` with that prefix, so
+// caption template) and it is the only `.vgext-rb-pill` with that prefix, so
 // this is the one stable, unique locator.
-const pill = (page: Page) => page.locator('.cgext-rb-pill', { hasText: /# / }).first();
-const panel = (page: Page) => page.locator('.cgext-menu.cgext-fmt');
+const pill = (page: Page) => page.locator('.vgext-rb-pill', { hasText: /# / }).first();
+const panel = (page: Page) => page.locator('.vgext-menu.vgext-fmt');
 
 /** Select a single-cell range in the given column so targetCols() resolves
  *  (ranges win over focus in the toolbar's target resolution). This is what
@@ -49,24 +49,24 @@ test('preset apply → own template + CURRENT chip + caption; persists across re
   await focusColumn(page, 'notionalAmount');
   await pill(page).click();
   await expect(panel(page)).toBeVisible();
-  await expect(panel(page).locator('.cgext-fmt-tab[data-cat="number"] .cgext-fmt-count')).toHaveText('6');
+  await expect(panel(page).locator('.vgext-fmt-tab[data-cat="number"] .vgext-fmt-count')).toHaveText('6');
 
-  await panel(page).locator('.cgext-fmt-row[data-preset-id="num-2dp"]').click();
+  await panel(page).locator('.vgext-fmt-row[data-preset-id="num-2dp"]').click();
   await expect(panel(page)).not.toBeVisible(); // apply closes
   expect(await ownFormat(page, 'notionalAmount')).toBe('#,##0.00');
   await expect(pill(page)).toContainText('# 2 decimals');
 
   // Reopen: CURRENT chip previews, active row highlighted.
   await pill(page).click();
-  await expect(panel(page).locator('.cgext-fmt-current-chip')).toHaveText('1,234.57');
-  await expect(panel(page).locator('.cgext-fmt-row[data-preset-id="num-2dp"]')).toHaveClass(/is-active/);
+  await expect(panel(page).locator('.vgext-fmt-current-chip')).toHaveText('1,234.57');
+  await expect(panel(page).locator('.vgext-fmt-row[data-preset-id="num-2dp"]')).toHaveClass(/is-active/);
   await page.keyboard.press('Escape');
 
   // Persistence: wait for the debounced autosave, then reload.
   await page.waitForFunction(() =>
     Object.keys(localStorage).some((k) => (localStorage.getItem(k) ?? '').includes('#,##0.00')));
   await page.reload();
-  await expect(page.locator('.cgext-titlebar')).toBeVisible();
+  await expect(page.locator('.vgext-titlebar')).toBeVisible();
   // The own template is restored asynchronously from the profile snapshot
   // (same pattern as iconRibbon.spec.ts) — wait for it to reappear before
   // asserting, rather than racing the restore.
@@ -81,15 +81,15 @@ test('preset apply → own template + CURRENT chip + caption; persists across re
 test('tick preset renders on the price column; clear removes it', async ({ page }) => {
   await focusColumn(page, 'currentPrice');
   await pill(page).click();
-  await panel(page).locator('.cgext-fmt-tab[data-cat="tick"]').click();
-  await expect(panel(page).locator('.cgext-fmt-row[data-preset-id="tick-32"] .cgext-fmt-row-preview')).toHaveText('101-16');
-  await panel(page).locator('.cgext-fmt-row[data-preset-id="tick-32"]').click();
+  await panel(page).locator('.vgext-fmt-tab[data-cat="tick"]').click();
+  await expect(panel(page).locator('.vgext-fmt-row[data-preset-id="tick-32"] .vgext-fmt-row-preview')).toHaveText('101-16');
+  await panel(page).locator('.vgext-fmt-row[data-preset-id="tick-32"]').click();
   expect(await ownFormat(page, 'currentPrice')).toBe('TICK32');
 
   await pill(page).click();
-  await panel(page).locator('.cgext-fmt-clear').click();
+  await panel(page).locator('.vgext-fmt-clear').click();
   expect(await ownFormat(page, 'currentPrice')).toBeUndefined();
-  await expect(panel(page).locator('.cgext-fmt-current-chip')).toHaveText('—');
+  await expect(panel(page).locator('.vgext-fmt-current-chip')).toHaveText('—');
 });
 
 test('custom format via input; search; text column rail', async ({ page }) => {
@@ -97,16 +97,16 @@ test('custom format via input; search; text column rail', async ({ page }) => {
   await pill(page).click();
 
   // Search flips to flat results.
-  await panel(page).locator('.cgext-fmt-search input').fill('parens');
-  await expect(panel(page).locator('.cgext-fmt-tabs')).toHaveCount(0);
-  await expect(panel(page).locator('.cgext-fmt-row').first()).toBeVisible();
-  await panel(page).locator('.cgext-fmt-search input').fill('');
+  await panel(page).locator('.vgext-fmt-search input').fill('parens');
+  await expect(panel(page).locator('.vgext-fmt-tabs')).toHaveCount(0);
+  await expect(panel(page).locator('.vgext-fmt-row').first()).toBeVisible();
+  await panel(page).locator('.vgext-fmt-search input').fill('');
 
   // Custom tab: type + apply.
-  await panel(page).locator('.cgext-fmt-tab[data-cat="__custom__"]').click();
-  const input = panel(page).locator('.cgext-fmt-custom-input input');
+  await panel(page).locator('.vgext-fmt-tab[data-cat="__custom__"]').click();
+  const input = panel(page).locator('.vgext-fmt-custom-input input');
   await input.fill('#,##0.000');
-  await panel(page).locator('.cgext-fmt-custom-apply').click();
+  await panel(page).locator('.vgext-fmt-custom-apply').click();
   expect(await ownFormat(page, 'notionalAmount')).toBe('#,##0.000');
   await expect(pill(page)).toContainText('#,##0.000');
 
@@ -115,8 +115,8 @@ test('custom format via input; search; text column rail', async ({ page }) => {
   // assertion previously masked cellAt's text branch skipping formatters).
   await focusColumn(page, 'ticker');
   await pill(page).click();
-  await expect(panel(page).locator('.cgext-fmt-tab[data-cat="text"] .cgext-fmt-count')).toHaveText('9');
-  await panel(page).locator('.cgext-fmt-row[data-preset-id="str-lower"]').click();
+  await expect(panel(page).locator('.vgext-fmt-tab[data-cat="text"] .vgext-fmt-count')).toHaveText('9');
+  await panel(page).locator('.vgext-fmt-row[data-preset-id="str-lower"]').click();
   expect(await ownFormat(page, 'ticker')).toBe('=LOWER([value])');
   await page.waitForFunction(() => {
     const g = (window as any).__ext.grid;

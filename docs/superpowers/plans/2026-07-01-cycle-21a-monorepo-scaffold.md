@@ -4,7 +4,7 @@
 
 **Goal:** Migrate cgrid from a single-package npm workspace to a turborepo-managed monorepo with 10 `@cgrid/*` packages (kernel + 9 empty scaffolds), all consumer apps updated, one PR.
 
-**Architecture:** Root turborepo pipeline drives all packages under `packages/*`. Current `cgrid/` becomes `packages/kernel/` renamed from `cgrid` → `@cgrid/kernel`. Nine new empty packages scaffold the target dependency graph from Cycle 21 spec §3 so future feature-absorption cycles (21b–i) land in the correct package from day one. Lockstep version bumps (all packages share `"version": "0.0.0"` initially). Consumer apps (`cgrid-positions`, `cgrid-showcase`) update 23 import sites from `'cgrid'` to `'@cgrid/kernel'`.
+**Architecture:** Root turborepo pipeline drives all packages under `packages/*`. Current `cgrid/` becomes `packages/kernel/` renamed from `cgrid` → `@wellsfargo-starui/velocity-grid`. Nine new empty packages scaffold the target dependency graph from Cycle 21 spec §3 so future feature-absorption cycles (21b–i) land in the correct package from day one. Lockstep version bumps (all packages share `"version": "0.0.0"` initially). Consumer apps (`cgrid-positions`, `cgrid-showcase`) update 23 import sites from `'cgrid'` to `'@wellsfargo-starui/velocity-grid'`.
 
 **Tech Stack:** npm workspaces, turborepo, TypeScript 5.9 strict, Vite (for kernel build), Vitest (unit tests), Playwright (E2E).
 
@@ -15,9 +15,9 @@ Copied verbatim from Cycle 21 spec (`docs/superpowers/plans/2026-07-01-canvasgri
 - **L2:** Domain-oriented split across 10 packages (§3.1). No fewer, no more.
 - **L3:** Turborepo monorepo, lockstep versioning. All packages share `"version": "0.0.0"` in this scaffold cycle.
 - **L4:** Split BEFORE absorbing features. All 10 package directories exist by the end of Cycle 21a, with 9 of them empty stubs (kernel is fully populated by the move).
-- **Q10.1:** `cgrid/package.json` `"name": "cgrid"` becomes `"name": "@cgrid/kernel"`. No meta-package, no aliasing, no deprecation cycle.
+- **Q10.1:** `cgrid/package.json` `"name": "cgrid"` becomes `"name": "@wellsfargo-starui/velocity-grid"`. No meta-package, no aliasing, no deprecation cycle.
 - **Q10.2:** Turborepo remote cache is LOCAL ONLY. No `TURBO_TOKEN` / Vercel remote cache setup.
-- **Q10.6:** Icons — `@cgrid/kernel` bundles Lucide as default; Phosphor opt-in via `registerIconSet()`. (Not scaffold work — noted for context.)
+- **Q10.6:** Icons — `@wellsfargo-starui/velocity-grid` bundles Lucide as default; Phosphor opt-in via `registerIconSet()`. (Not scaffold work — noted for context.)
 - **Zero behaviour, look-and-feel, or styling change.** Cycle 21a is pure structural migration. All 2,326 unit tests + full E2E suites (97 showcase + 259 positions) stay green.
 - **One PR** for the entire scaffold (per L4 and Cycle 21 §9.3 Option C).
 
@@ -48,10 +48,10 @@ Copied verbatim from Cycle 21 spec (`docs/superpowers/plans/2026-07-01-canvasgri
 **Files modified:**
 - `package.json` (root) — add `turbo` devDep, change workspaces to `["packages/*", "apps/*"]`, rewrite `scripts` block to use `turbo run`
 - `eslint.config.mjs` — replace `cgrid/src/**/*.ts` + `cgrid/tests/**/*.ts` with `packages/*/src/**/*.ts` + `packages/*/tests/**/*.ts`
-- `apps/cgrid-positions/package.json` — `"cgrid": "*"` → `"@cgrid/kernel": "*"`
+- `apps/cgrid-positions/package.json` — `"cgrid": "*"` → `"@wellsfargo-starui/velocity-grid": "*"`
 - `apps/cgrid-showcase/package.json` — same
-- 23 files under `apps/**/src/` — `from 'cgrid'` → `from '@cgrid/kernel'`
-- `packages/kernel/package.json` — `"name": "cgrid"` → `"name": "@cgrid/kernel"`
+- 23 files under `apps/**/src/` — `from 'cgrid'` → `from '@wellsfargo-starui/velocity-grid'`
+- `packages/kernel/package.json` — `"name": "cgrid"` → `"name": "@wellsfargo-starui/velocity-grid"`
 
 **Files deleted:**
 - `cgrid/` directory — moved, not deleted; but empty after move so `git mv` removes it
@@ -181,16 +181,16 @@ The atomic migration commit. Nothing works between step 1 and step 6 — commit 
 
 **Files:**
 - Move (git mv): `cgrid/` → `packages/kernel/` (recursive; preserves history)
-- Modify: `packages/kernel/package.json` — `"name": "cgrid"` → `"@cgrid/kernel"`
+- Modify: `packages/kernel/package.json` — `"name": "cgrid"` → `"@wellsfargo-starui/velocity-grid"`
 - Modify: `package.json` (root) — workspaces `["cgrid", "apps/*"]` → `["packages/*", "apps/*"]`; scripts rewrite
 - Modify: `eslint.config.mjs` — path patterns
 - Modify: `apps/cgrid-positions/package.json` — dep
 - Modify: `apps/cgrid-showcase/package.json` — dep
-- Modify (23 files): `apps/cgrid-positions/src/positionsGrid.ts` + 22 files under `apps/cgrid-showcase/src/` — `from 'cgrid'` → `from '@cgrid/kernel'`
+- Modify (23 files): `apps/cgrid-positions/src/positionsGrid.ts` + 22 files under `apps/cgrid-showcase/src/` — `from 'cgrid'` → `from '@wellsfargo-starui/velocity-grid'`
 
 **Interfaces:**
 - Consumes: `turbo.json` from Task 1 (pipeline definitions).
-- Produces: `@cgrid/kernel` package resolves from consumer apps; workspace typecheck / test / build all green under the new name.
+- Produces: `@wellsfargo-starui/velocity-grid` package resolves from consumer apps; workspace typecheck / test / build all green under the new name.
 
 - [ ] **Step 1: Move `cgrid/` to `packages/kernel/`**
 
@@ -210,10 +210,10 @@ Modify `packages/kernel/package.json` — change:
 ```
 to:
 ```json
-  "name": "@cgrid/kernel",
+  "name": "@wellsfargo-starui/velocity-grid",
 ```
 
-Leave `main`, `types`, `exports` pointing at `./dist/cgrid.js` etc. for now — kernel still builds to the same `dist/` filename. (Renaming the built artifact is a follow-up refinement — out of scope for the scaffold.)
+Leave `main`, `types`, `exports` pointing at `./dist/velocity-grid.js` etc. for now — kernel still builds to the same `dist/` filename. (Renaming the built artifact is a follow-up refinement — out of scope for the scaffold.)
 
 - [ ] **Step 3: Update root `package.json` workspaces + scripts**
 
@@ -251,9 +251,9 @@ to:
     "dev:showcase": "npm run dev --workspace=cgrid-showcase",
     "dev:positions": "npm run dev --workspace=cgrid-positions",
     "build": "turbo run build",
-    "build:kernel": "npm run build --workspace=@cgrid/kernel",
+    "build:kernel": "npm run build --workspace=@wellsfargo-starui/velocity-grid",
     "test": "turbo run test",
-    "test:kernel": "npm test --workspace=@cgrid/kernel",
+    "test:kernel": "npm test --workspace=@wellsfargo-starui/velocity-grid",
     "typecheck": "turbo run typecheck",
     "lint": "eslint packages/*/src packages/*/tests apps/cgrid-positions/src apps/cgrid-positions/e2e apps/cgrid-showcase/src apps/cgrid-showcase/e2e"
   },
@@ -278,7 +278,7 @@ Modify `apps/cgrid-positions/package.json` — change:
 ```
 to:
 ```json
-    "@cgrid/kernel": "*"
+    "@wellsfargo-starui/velocity-grid": "*"
 ```
 
 Modify `apps/cgrid-showcase/package.json` — same change.
@@ -289,10 +289,10 @@ Run this bulk-replace across the app tree:
 ```bash
 grep -rln "from 'cgrid'" apps/ | while read f; do
   # POSIX portable in-place sed (macOS + Linux compatible)
-  perl -pi -e "s|from 'cgrid'|from '\@cgrid/kernel'|g" "\$f"
+  perl -pi -e "s|from 'cgrid'|from '\@wellsfargo-starui/velocity-grid'|g" "\$f"
 done
 grep -rln "from \"cgrid\"" apps/ | while read f; do
-  perl -pi -e "s|from \"cgrid\"|from \"\@cgrid/kernel\"|g" "\$f"
+  perl -pi -e "s|from \"cgrid\"|from \"\@wellsfargo-starui/velocity-grid\"|g" "\$f"
 done
 ```
 
@@ -310,7 +310,7 @@ Run:
 npm install
 ```
 
-Expected: no errors. Fresh `node_modules/@cgrid/kernel` symlink established. Kernel's own build artifacts (`packages/kernel/dist/`) still present from before the move.
+Expected: no errors. Fresh `node_modules/@wellsfargo-starui/velocity-grid` symlink established. Kernel's own build artifacts (`packages/kernel/dist/`) still present from before the move.
 
 - [ ] **Step 8: Verify workspace typecheck green**
 
@@ -337,7 +337,7 @@ Run:
 npm run build:kernel 2>&1 | tail -10
 ```
 
-Expected: `packages/kernel/dist/cgrid.js` (and other build outputs) produced successfully.
+Expected: `packages/kernel/dist/velocity-grid.js` (and other build outputs) produced successfully.
 
 - [ ] **Step 11: Commit**
 
@@ -345,10 +345,10 @@ Run:
 ```bash
 git add -A
 git commit -m "$(cat <<'EOF'
-build(monorepo): cycle 21a step 2 — move cgrid → packages/kernel + rename to @cgrid/kernel
+build(monorepo): cycle 21a step 2 — move cgrid → packages/kernel + rename to @wellsfargo-starui/velocity-grid
 
 Migrates cgrid/ to packages/kernel/ via `git mv` (history
-preserved), renames the package from `cgrid` to `@cgrid/kernel`
+preserved), renames the package from `cgrid` to `@wellsfargo-starui/velocity-grid`
 (Q10.1 resolved: no existing external consumers so direct rename
 with no meta-package). Updates:
 
@@ -359,12 +359,12 @@ with no meta-package). Updates:
 - `eslint.config.mjs`: file patterns updated to
   `packages/*/src/**/*.ts` etc.
 - Both consumer apps (cgrid-positions, cgrid-showcase):
-  `"cgrid": "*"` → `"@cgrid/kernel": "*"`; 23 import sites
-  updated from `from 'cgrid'` to `from '@cgrid/kernel'` via
+  `"cgrid": "*"` → `"@wellsfargo-starui/velocity-grid": "*"`; 23 import sites
+  updated from `from 'cgrid'` to `from '@wellsfargo-starui/velocity-grid'` via
   perl bulk-replace.
 
 Verified: workspace typecheck clean, 2,326 kernel unit tests
-green, kernel build produces the same `dist/cgrid.js` artifact.
+green, kernel build produces the same `dist/velocity-grid.js` artifact.
 
 Cycle 21a / Task 2 of 5. Ref cycle 21 spec §9.3 Option C step 2.
 
@@ -392,7 +392,7 @@ Nine packages, all with the same shape. Bulk creation, one commit.
   - `packages/excel-pivot/{...}`
 
 **Interfaces:**
-- Consumes: `@cgrid/kernel` (declared as workspace dep in each package.json for packages that will depend on kernel per Cycle 21 §3.2 dep graph).
+- Consumes: `@wellsfargo-starui/velocity-grid` (declared as workspace dep in each package.json for packages that will depend on kernel per Cycle 21 §3.2 dep graph).
 - Produces: 9 workspace-resolvable `@cgrid/*` package names, each with empty `src/index.ts` (barrel exports empty for now).
 
 - [ ] **Step 1: Create scaffold script**
@@ -404,7 +404,7 @@ Create file `scripts/scaffold-empty-package.sh`:
 #
 # Usage: scripts/scaffold-empty-package.sh <name> <description> [<dep1> <dep2> ...]
 # Example: scripts/scaffold-empty-package.sh expression "DSL parser + compiler + evaluator"
-# Example: scripts/scaffold-empty-package.sh format "Unified formatting DSL parser" @cgrid/expression
+# Example: scripts/scaffold-empty-package.sh format "Unified formatting DSL parser" @wellsfargo-starui/velocity-grid-expression
 set -euo pipefail
 
 name="$1"
@@ -499,14 +499,14 @@ chmod +x scripts/scaffold-empty-package.sh
 Run (dependency declarations per Cycle 21 §3.2 dep graph):
 ```bash
 scripts/scaffold-empty-package.sh expression "DSL parser, compiler, portable AST, evaluators"
-scripts/scaffold-empty-package.sh format "Unified formatting DSL (Excel format codes + expression extensions + composite fragments)" @cgrid/expression
-scripts/scaffold-empty-package.sh rules "Rule engine, conditional-styling, alerts core" @cgrid/kernel @cgrid/expression @cgrid/format
-scripts/scaffold-empty-package.sh calc "Calculated columns, column overrides + templates, aggregate function registry + delta-aware cache" @cgrid/kernel @cgrid/expression @cgrid/format
-scripts/scaffold-empty-package.sh renderers "40 rich cell renderers for financial blotters (numeric tick-aware, indicators, badges, bars, sparklines, composite)" @cgrid/kernel @cgrid/expression @cgrid/format @cgrid/calc @cgrid/rules
-scripts/scaffold-empty-package.sh edit "EditJournal, smart-edit + bulk-update ops, CellPatch, distinct-values RPC" @cgrid/kernel
-scripts/scaffold-empty-package.sh export "Excel/CSV export with visual formatting" @cgrid/kernel @cgrid/calc @cgrid/rules @cgrid/format
-scripts/scaffold-empty-package.sh customizer "StarUI editor panels + toolbars, popout window primitive, template manager UI" @cgrid/kernel @cgrid/expression @cgrid/format @cgrid/rules @cgrid/calc @cgrid/renderers @cgrid/edit @cgrid/export
-scripts/scaffold-empty-package.sh excel-pivot "ExcelPivotGrid — Excel-native pivot data model + engine (cycle 20)" @cgrid/kernel @cgrid/expression @cgrid/format @cgrid/calc @cgrid/renderers @cgrid/edit @cgrid/export
+scripts/scaffold-empty-package.sh format "Unified formatting DSL (Excel format codes + expression extensions + composite fragments)" @wellsfargo-starui/velocity-grid-expression
+scripts/scaffold-empty-package.sh rules "Rule engine, conditional-styling, alerts core" @wellsfargo-starui/velocity-grid @wellsfargo-starui/velocity-grid-expression @wellsfargo-starui/velocity-grid-format
+scripts/scaffold-empty-package.sh calc "Calculated columns, column overrides + templates, aggregate function registry + delta-aware cache" @wellsfargo-starui/velocity-grid @wellsfargo-starui/velocity-grid-expression @wellsfargo-starui/velocity-grid-format
+scripts/scaffold-empty-package.sh renderers "40 rich cell renderers for financial blotters (numeric tick-aware, indicators, badges, bars, sparklines, composite)" @wellsfargo-starui/velocity-grid @wellsfargo-starui/velocity-grid-expression @wellsfargo-starui/velocity-grid-format @wellsfargo-starui/velocity-grid-calc @wellsfargo-starui/velocity-grid-rules
+scripts/scaffold-empty-package.sh edit "EditJournal, smart-edit + bulk-update ops, CellPatch, distinct-values RPC" @wellsfargo-starui/velocity-grid
+scripts/scaffold-empty-package.sh export "Excel/CSV export with visual formatting" @wellsfargo-starui/velocity-grid @wellsfargo-starui/velocity-grid-calc @wellsfargo-starui/velocity-grid-rules @wellsfargo-starui/velocity-grid-format
+scripts/scaffold-empty-package.sh customizer "StarUI editor panels + toolbars, popout window primitive, template manager UI" @wellsfargo-starui/velocity-grid @wellsfargo-starui/velocity-grid-expression @wellsfargo-starui/velocity-grid-format @wellsfargo-starui/velocity-grid-rules @wellsfargo-starui/velocity-grid-calc @wellsfargo-starui/velocity-grid-renderers @wellsfargo-starui/velocity-grid-edit @wellsfargo-starui/velocity-grid-export
+scripts/scaffold-empty-package.sh excel-pivot "ExcelPivotGrid — Excel-native pivot data model + engine (cycle 20)" @wellsfargo-starui/velocity-grid @wellsfargo-starui/velocity-grid-expression @wellsfargo-starui/velocity-grid-format @wellsfargo-starui/velocity-grid-calc @wellsfargo-starui/velocity-grid-renderers @wellsfargo-starui/velocity-grid-edit @wellsfargo-starui/velocity-grid-export
 ```
 
 Expected: `Scaffolded packages/expression` ... `Scaffolded packages/excel-pivot` — 9 lines.
@@ -565,9 +565,9 @@ Adds nine empty packages under packages/*, each with:
 - src/index.ts — empty barrel (`export {};`).
 - tests/.gitkeep — placeholder.
 
-Packages: @cgrid/expression, @cgrid/format, @cgrid/rules,
-@cgrid/calc, @cgrid/renderers, @cgrid/edit, @cgrid/export,
-@cgrid/customizer, @cgrid/excel-pivot.
+Packages: @wellsfargo-starui/velocity-grid-expression, @wellsfargo-starui/velocity-grid-format, @wellsfargo-starui/velocity-grid-rules,
+@wellsfargo-starui/velocity-grid-calc, @wellsfargo-starui/velocity-grid-renderers, @wellsfargo-starui/velocity-grid-edit, @wellsfargo-starui/velocity-grid-export,
+@wellsfargo-starui/velocity-grid-customizer, @wellsfargo-starui/velocity-grid-excel-pivot.
 
 Scaffold script at scripts/scaffold-empty-package.sh is retained
 in-repo — future refinement (e.g. adding a vite build per package)
@@ -630,7 +630,7 @@ Run:
 npm run build:kernel 2>&1 | tail -10
 ```
 
-Expected: build succeeds, `packages/kernel/dist/cgrid.js` and `packages/kernel/dist/cgrid.d.ts` written.
+Expected: build succeeds, `packages/kernel/dist/velocity-grid.js` and `packages/kernel/dist/velocity-grid.d.ts` written.
 
 - [ ] **Step 5: Lint clean**
 
@@ -720,13 +720,13 @@ Expected: 3 commits (task 1 turbo setup, task 2 the move, task 3 empty scaffolds
 
 Run:
 ```bash
-gh pr create --title "build(monorepo): cycle 21a — turborepo scaffold + move cgrid → @cgrid/kernel + 9 empty packages" --body "$(cat <<'EOF'
+gh pr create --title "build(monorepo): cycle 21a — turborepo scaffold + move cgrid → @wellsfargo-starui/velocity-grid + 9 empty packages" --body "$(cat <<'EOF'
 ## Summary
 
 - Migrates cgrid from single-package npm workspace to turborepo-managed monorepo (10 `@cgrid/*` packages).
-- `cgrid/` → `packages/kernel/`, renamed to `@cgrid/kernel` (Q10.1: direct rename, no meta-package).
+- `cgrid/` → `packages/kernel/`, renamed to `@wellsfargo-starui/velocity-grid` (Q10.1: direct rename, no meta-package).
 - 9 new empty package scaffolds (`expression`, `format`, `rules`, `calc`, `renderers`, `edit`, `export`, `customizer`, `excel-pivot`) with correct dep graph declared up front so cycles 21b–i land features in the right package.
-- 23 consumer import sites in `apps/cgrid-positions` + `apps/cgrid-showcase` updated from `from 'cgrid'` to `from '@cgrid/kernel'`.
+- 23 consumer import sites in `apps/cgrid-positions` + `apps/cgrid-showcase` updated from `from 'cgrid'` to `from '@wellsfargo-starui/velocity-grid'`.
 
 Spec: [docs/superpowers/plans/2026-07-01-canvasgrid-cycle-21-modular-monorepo-and-intrinsic-features.md](../blob/main/docs/superpowers/plans/2026-07-01-canvasgrid-cycle-21-modular-monorepo-and-intrinsic-features.md) §9.3 Option C.
 
@@ -736,7 +736,7 @@ Plan: [docs/superpowers/plans/2026-07-01-cycle-21a-monorepo-scaffold.md](../blob
 
 - [x] Workspace typecheck clean
 - [x] Kernel unit tests: 2,326 passed (175 files)
-- [x] Kernel build produces `packages/kernel/dist/cgrid.js`
+- [x] Kernel build produces `packages/kernel/dist/velocity-grid.js`
 - [x] ESLint clean
 - [x] E2E cgrid-showcase: 97 tests passed
 - [x] E2E cgrid-positions: 259 tests passed
@@ -766,7 +766,7 @@ Print the URL from `gh pr create` output.
 |---|---|
 | Sets up turborepo at repo root — migrates root `package.json` `workspaces`, adds `turbo.json`, task pipeline (`build`, `test`, `typecheck`, `lint`) | Task 1 (turbo.json), Task 2 step 3 (workspaces + scripts) |
 | Moves current `cgrid/src/*` → `packages/kernel/src/*`. Updates all imports across `apps/*`, tests, docs | Task 2 (steps 1, 5, 6) |
-| Renames `cgrid/package.json` `"name": "cgrid"` to `"name": "@cgrid/kernel"` | Task 2 step 2 |
+| Renames `cgrid/package.json` `"name": "cgrid"` to `"name": "@wellsfargo-starui/velocity-grid"` | Task 2 step 2 |
 | Creates `packages/{expression, format, rules, calc, renderers, edit, export, customizer, excel-pivot}` with package.json, tsconfig.json, README.md, minimal src/index.ts, test scaffold | Task 3 (all steps) |
 | Turborepo pipeline caches build/test/typecheck outputs per package | Task 1 step 3 (turbo.json inputs/outputs config) |
 
@@ -774,7 +774,7 @@ All spec items covered.
 
 **2. Placeholder scan:** none found. Every step has concrete commands, expected output, or exact code.
 
-**3. Type consistency:** every package name (`@cgrid/kernel`, `@cgrid/expression`, etc.) matches Cycle 21 spec §3.1. Import path `from '@cgrid/kernel'` matches the rename target in Task 2 step 2.
+**3. Type consistency:** every package name (`@wellsfargo-starui/velocity-grid`, `@wellsfargo-starui/velocity-grid-expression`, etc.) matches Cycle 21 spec §3.1. Import path `from '@wellsfargo-starui/velocity-grid'` matches the rename target in Task 2 step 2.
 
 **4. Preconditions verified this session:**
 - Cycle 19 complete (all task commits merged, autosize fix #91 landed).
@@ -787,4 +787,4 @@ All spec items covered.
 - **Total elapsed time estimate:** 6–10 hours across all 5 tasks. Task 4 verification (E2E suites) is the longest single step (~10 minutes of test runtime).
 - **Fallback plan if Task 2 verification fails at step 8 or 9:** revert with `git reset --hard HEAD~1` and re-attempt from step 1. Do NOT try to fix Task 2 incrementally — the move is atomic by design.
 - **The scaffold script at `scripts/scaffold-empty-package.sh` is intentionally retained** — future refinements to package scaffolding (e.g. adding a per-package Vite build) extend this script rather than being scattered across ad-hoc commits.
-- **`packages/kernel/dist/cgrid.js`** — the built artifact name is intentionally preserved from before the migration. Renaming it to `kernel.js` or similar is a follow-up refinement; not required for Cycle 21a to be a byte-equivalent migration.
+- **`packages/kernel/dist/velocity-grid.js`** — the built artifact name is intentionally preserved from before the migration. Renaming it to `kernel.js` or similar is a follow-up refinement; not required for Cycle 21a to be a byte-equivalent migration.

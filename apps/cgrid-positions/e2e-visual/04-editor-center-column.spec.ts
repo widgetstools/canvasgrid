@@ -15,7 +15,7 @@ test('editor open on center column (notionalAmount) — DOM input over cell boun
   await setupGrid(page, 50);
   await page.evaluate(() => {
     const g = (window as unknown as {
-      __cgrid: { openEditor: (rowIndex: number, colId: string) => void };
+      __velocity-grid: { openEditor: (rowIndex: number, colId: string) => void };
     }).__cgrid;
     g.openEditor(4, 'notionalAmount');
   });

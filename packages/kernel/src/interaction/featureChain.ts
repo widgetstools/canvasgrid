@@ -29,7 +29,7 @@
 // even when the pointer leaves the canvas. This matches hypergrid's
 // Canvas.js drag pattern.
 
-import { Feature, type CGridLike, type CGridEventCtx } from './feature';
+import { Feature, type VelocityGridLike, type VelocityGridEventCtx } from './feature';
 import { OnHover } from './features/onHover';
 import { ColumnResizing } from './features/columnResizing';
 import { ColumnDrag } from './features/columnDrag';
@@ -65,7 +65,7 @@ export class FeatureChain {
   private wheelAxis: 'x' | 'y' | null = null;
   private wheelIdleTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(private grid: CGridLike) {
+  constructor(private grid: VelocityGridLike) {
     // Cycle 23 / Task 4 — CellKeyboardEvents sits at the HEAD of the
     // chain so every keydown fires `cellKeyDown` BEFORE any grid-side
     // key handler runs. App listeners calling preventDefault
@@ -155,7 +155,7 @@ export class FeatureChain {
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   }
 
-  private buildCtx(e: MouseEvent | KeyboardEvent | WheelEvent): CGridEventCtx {
+  private buildCtx(e: MouseEvent | KeyboardEvent | WheelEvent): VelocityGridEventCtx {
     const point = e instanceof MouseEvent ? this.toLocal(e) : { x: 0, y: 0 };
     const hit = this.grid.hitTester.locate(point.x, point.y);
     return { grid: this.grid, hit, point, raw: e };

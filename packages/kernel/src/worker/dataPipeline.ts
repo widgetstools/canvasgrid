@@ -11,7 +11,7 @@ import { readSsrmRowMeta } from '../core/ssrmRowMeta';
  * Cycle 4 / 5 legacy entry shape AND the ag-grid-compatible v2
  * discriminated union (`{ filterType: 'text' | 'number' | 'date' |
  * 'multi', ... }`). The floating-filter overlay emits v2 directly via
- * the inline operator parser; cgrid.ts forwards v2 entries to the
+ * the inline operator parser; velocityGrid.ts forwards v2 entries to the
  * worker unchanged.
  */
 type WorkerFilterModelEntry = FilterModelEntryLegacy;
@@ -27,7 +27,7 @@ export class RowStore<TRow = any> {
   private stringToNumeric = new Map<string, number>();
   private numericToString = new Map<number, string>();
   /**
-   * Per-row heights resolved main-side via `CGridOptions.getRowHeight` and
+   * Per-row heights resolved main-side via `VelocityGridOptions.getRowHeight` and
    * shipped over the protocol. Canonical here; main thread reads them off
    * each `ViewportChunk.heights`. Rows without an entry fall back to the
    * grid-level `rowHeight`. Cycle 5 / Task 6.
@@ -213,7 +213,7 @@ export class RowStore<TRow = any> {
 
   getRowId(row: TRow): string {
     const v = (row as Record<string, unknown>)[this.rowIdField];
-    if (v == null) throw new Error(`[cgrid] row missing rowIdField '${this.rowIdField}'`);
+    if (v == null) throw new Error(`[velocity-grid] row missing rowIdField '${this.rowIdField}'`);
     return String(v);
   }
 

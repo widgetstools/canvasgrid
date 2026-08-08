@@ -1,7 +1,7 @@
-// @cgrid/renderers — wireRenderersIntoKernel bridge tests (Cycle 21f / Task 13).
+// @wellsfargo-starui/velocity-grid-renderers — wireRenderersIntoKernel bridge tests (Cycle 21f / Task 13).
 
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { compileCompositeColDef } from '@cgrid/format';
+import { compileCompositeColDef } from '@wellsfargo-starui/velocity-grid-format';
 import { RENDERER_NAMES } from '../../src/types';
 import {
   wireRenderersIntoKernel,
@@ -168,7 +168,7 @@ describe('wireRenderersIntoKernel — colDef builders', () => {
     expect(probe.rowData).toEqual({ quote: 98.12 });
   });
 
-  it('multi-field colDef compiles through @cgrid/format when typed composite', () => {
+  it('multi-field colDef compiles through @wellsfargo-starui/velocity-grid-format when typed composite', () => {
     const compiled = compileCompositeColDef({
       colId: 'summary',
       type: 'composite',
@@ -206,7 +206,7 @@ describe('wireRenderersIntoKernel — F2 modelUpdated reseeds the row mirror', (
     };
     const gcProbe = makeFakeGc();
 
-    // Real CGrid.setRowData clears + repopulates its internal row store and
+    // Real VelocityGrid.setRowData clears + repopulates its internal row store and
     // emits `modelUpdated` (never `rowsChanged`) — simulate exactly that:
     // same rowId, NEW row object with new values, no rowsChanged event.
     grid._rows.length = 0;

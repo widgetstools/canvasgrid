@@ -1,4 +1,4 @@
-// @cgrid/renderers — shared paint helpers.
+// @wellsfargo-starui/velocity-grid-renderers — shared paint helpers.
 // Authoritative reference: docs/superpowers/specs/2026-07-02-cycle-21f-renderers-design.md
 //   §2.1 (paintUtils.ts scope), §2.2 (painter discipline — no per-paint allocation).
 //
@@ -7,7 +7,7 @@
 // kernel's public export surface (only `CellPainter`/`CellPaintConfig` are).
 // Type-only; erased at compile time (peer dep, matches format/rules precedent).
 
-import type { CellPainter } from '@cgrid/kernel';
+import type { CellPainter } from '@wellsfargo-starui/velocity-grid';
 
 /** The canvas-context type every kernel `CellPainter.paint` receives. */
 export type Gc = Parameters<CellPainter['paint']>[0];

@@ -17,7 +17,7 @@ import type { TransactionResult } from '../src/types';
  *
  * Coverage:
  *   • viewport dispatch routes the chunk + stickyAncestors into the
- *     `onViewportChunk` dep (the seam Task 2 left in CGrid),
+ *     `onViewportChunk` dep (the seam Task 2 left in VelocityGrid),
  *   • sync + async transactions reach the worker as a single round-trip
  *     and the async push surfaces back via `onAsyncTransactionsFlushed`,
  *   • flushAsyncTransactions force-drains the worker queue,

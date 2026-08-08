@@ -1,11 +1,11 @@
 // Grid event union + individual editing/aggregation event shapes.
 // Depends on column.ts (SortModel, SelectionRange, CColumnState — the
 // columnState reset event has no payload, but other events carry refs),
-// filter.ts (FilterModel), and forward-references CGridApi from api.ts
+// filter.ts (FilterModel), and forward-references VelocityGridApi from api.ts
 // for the `gridReady` event. The api.ts ↔ event.ts cycle is resolved
 // via `import type` (type-only references, no runtime emission).
 
-import type { CGridApi } from './api';
+import type { VelocityGridApi } from './api';
 import type { SortModel, SelectionRange } from './column';
 import type { FilterModel } from './filter';
 import type { TransactionResult } from './api';
@@ -82,7 +82,7 @@ export type AggregationChangedSource =
 
 /** Cycle 14 / Task 6 — strongly-typed shape of the `aggregationChanged`
  *  event. Exported so apps can declare typed listeners without reaching
- *  into the `CGridEvent` union. */
+ *  into the `VelocityGridEvent` union. */
 export interface AggregationChangedEvent {
   type: 'aggregationChanged';
   totals: Record<string, unknown>;
@@ -105,8 +105,8 @@ export type TemplateChangeSource =
 export type RuleChangeSource =
   | 'add' | 'update' | 'delete' | 'enable' | 'reorder';
 
-export type CGridEvent<TRow = any> =
-  | { type: 'gridReady'; api: CGridApi<TRow> }
+export type VelocityGridEvent<TRow = any> =
+  | { type: 'gridReady'; api: VelocityGridApi<TRow> }
   | { type: 'cellClicked'; rowId: string; colId: string; value: unknown; mouse: MouseEvent }
   | { type: 'cellDoubleClicked'; rowId: string; colId: string; value: unknown; mouse: MouseEvent }
   /** Cycle 23 / Task 2 — pointer crossed a cell boundary. Fires per

@@ -1,7 +1,7 @@
 /**
  * Phase 1 validation — sparse SSRM must window, not hydrate the full book.
  */
-import type { PerspectiveBook } from '@cgrid/perspective';
+import type { PerspectiveBook } from '@wellsfargo-starui/velocity-grid-perspective';
 import type { BlotterMount } from '../ui/blotterHost';
 
 export interface Phase1ValidationResult {

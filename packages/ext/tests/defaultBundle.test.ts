@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { installGridTestEnv } from './setup';
-import { CGridExt } from '../src/cgridExt';
+import { VelocityGridExt } from '../src/velocityGridExt';
 
 beforeAll(() => installGridTestEnv());
 beforeEach(() => localStorage.clear());
@@ -9,7 +9,7 @@ describe('default bundle', () => {
   it('registers Grid Options + primary toolbar items out of the box', () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const ext = new CGridExt(host, {
+    const ext = new VelocityGridExt(host, {
       getRowId: (r: any) => r.a,
       columnDefs: [{ colId: 'a', field: 'a' }],
       rowData: [],
@@ -26,7 +26,7 @@ describe('default bundle', () => {
     // gridOptionsModule now mounts the kernel's GridOptionsToolPanel (the same
     // migration gridOptionsModule.test.ts covers) instead of a hand-built
     // panel — assert on the tool panel's root class as proof it mounted.
-    expect(host.querySelector('.cgext-sheet .cg-settings-panel')).toBeTruthy();
+    expect(host.querySelector('.vgext-sheet .vg-settings-panel')).toBeTruthy();
     ext.destroy();
   });
 });

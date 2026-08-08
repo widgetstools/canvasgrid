@@ -3,16 +3,16 @@
  *
  * The recon's Tier B gaps: `getFilterModel` / `getState` / `setState` /
  * `getSortModel` existed class-only while customizer panels code against
- * `CGridApi` (the two-tier contract). Plus the Tier A enumerations:
+ * `VelocityGridApi` (the two-tier contract). Plus the Tier A enumerations:
  * `listIcons()` (resolveIcon was lookup-only), instance-truth
  * `listCellRenderers()`, and the `forEachColumnGroup` live group-tree
  * walk (structure + depth + runtime open state in one visit).
  *
- * Worker/canvas stub setup mirrors `runtimeOptions.test.ts` so a CGrid
+ * Worker/canvas stub setup mirrors `runtimeOptions.test.ts` so a VelocityGrid
  * constructs under happy-dom without a real worker thread.
  */
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import type { CColDef, CColGroupDef, ColumnGroupWalkNode } from '../src/types';
 import { listIcons, registerIconSet, _resetIconRegistry_forTests } from '../src/icons/registry';
 
@@ -56,11 +56,11 @@ function mount(columnDefs: (CColDef | CColGroupDef)[]) {
   const el = document.createElement('div');
   el.style.cssText = 'width:800px; height:600px;';
   document.body.appendChild(el);
-  const grid = new CGrid(el, { columnDefs, rowData: [], getRowId: (r: any) => r.id });
+  const grid = new VelocityGrid(el, { columnDefs, rowData: [], getRowId: (r: any) => r.id });
   return { grid, api: (grid as any).makeApi() };
 }
 
-describe('Tier B widening — class-only methods now on CGridApi', () => {
+describe('Tier B widening — class-only methods now on VelocityGridApi', () => {
   it('getSortModel / getFilterModel / getState / setState round-trip through the api tier', () => {
     const { grid, api } = mount([
       { colId: 'a', field: 'a' }, { colId: 'b', field: 'b' },

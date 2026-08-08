@@ -43,8 +43,8 @@ only when the async API is gated by an insecure context.
   - `cgrid/src/interaction/filters/filterPopupHost.ts` — popup mount pattern to mirror for the context menu host
   - `cgrid/src/worker/dataPipeline.ts` — where the new clipboard worker pass lives
   - `cgrid/src/worker/messageProtocol.ts` (or `worker/protocol.ts`) — worker request/response shapes
-  - `cgrid/src/cgrid.ts` — `CGridApi` (where clipboard methods + `getContextMenuItems` land)
-  - `cgrid/src/types.ts` — `CGridOptions`, `CGridApi`, event union extensions
+  - `cgrid/src/velocityGrid.ts` — `VelocityGridApi` (where clipboard methods + `getContextMenuItems` land)
+  - `cgrid/src/types.ts` — `VelocityGridOptions`, `VelocityGridApi`, event union extensions
   - `cgrid/src/interaction/featureChain.ts` — input dispatcher (where `RightClick` plugs in)
 - Demo (verification target): `apps/cgrid-positions/`
 
@@ -58,8 +58,8 @@ Apply to **every task** (extend the constraints from Cycles 2–9).
   `copySelectedRangesToClipboard`, `pasteFromClipboard`,
   `cutSelectedRanges`, `suppressClipboardApi`,
   `suppressClipboardPaste`, `suppressContextMenu`).
-- **No regressions in the public API.** Any addition to `CGridOptions`,
-  `CGridApi`, the event union, or the worker protocol is purely
+- **No regressions in the public API.** Any addition to `VelocityGridOptions`,
+  `VelocityGridApi`, the event union, or the worker protocol is purely
   additive.
 - **TypeScript strict.** `npm run typecheck --workspaces` clean every task.
 - **Heavy work on the worker.** TSV encode + parse + cell coercion run
@@ -87,12 +87,12 @@ Apply to **every task** (extend the constraints from Cycles 2–9).
 
 | # | Task | Files |
 |---|---|---|
-| 1 | Context menu host + `RightClick` feature | `interaction/contextMenu/host.ts` (new), `interaction/contextMenu/types.ts` (new), `interaction/features/rightClick.ts` (new), `featureChain.ts`, `cgrid.ts`, tests |
-| 2 | Default menu items registry (Copy / Copy with Headers / Paste / Cut / Export / Autosize / Pin / Reset Columns) | `interaction/contextMenu/defaults.ts` (new), `cgrid.ts`, tests |
-| 3 | Clipboard copy — Ctrl+C + worker TSV pass + `clipboardDelimiter` | `worker/passes/clipboardPass.ts` (new), worker protocol, `cgrid.ts`, `interaction/features/keyboardShortcuts.ts` (new or extended), tests, E2E |
-| 4 | Clipboard paste — Ctrl+V + worker parse + `applyTransaction` apply | `worker/passes/clipboardPass.ts`, `cgrid.ts`, `interaction/features/keyboardShortcuts.ts`, tests, E2E |
-| 5 | Cut + `processCellForClipboard` + `processCellFromClipboard` callbacks | `worker/passes/clipboardPass.ts`, `cgrid.ts`, tests, E2E |
-| 6 | Suppress options (`suppressClipboardPaste`, `suppressClipboardApi`, `suppressContextMenu`) | `cgrid.ts`, `types.ts`, tests |
+| 1 | Context menu host + `RightClick` feature | `interaction/contextMenu/host.ts` (new), `interaction/contextMenu/types.ts` (new), `interaction/features/rightClick.ts` (new), `featureChain.ts`, `velocityGrid.ts`, tests |
+| 2 | Default menu items registry (Copy / Copy with Headers / Paste / Cut / Export / Autosize / Pin / Reset Columns) | `interaction/contextMenu/defaults.ts` (new), `velocityGrid.ts`, tests |
+| 3 | Clipboard copy — Ctrl+C + worker TSV pass + `clipboardDelimiter` | `worker/passes/clipboardPass.ts` (new), worker protocol, `velocityGrid.ts`, `interaction/features/keyboardShortcuts.ts` (new or extended), tests, E2E |
+| 4 | Clipboard paste — Ctrl+V + worker parse + `applyTransaction` apply | `worker/passes/clipboardPass.ts`, `velocityGrid.ts`, `interaction/features/keyboardShortcuts.ts`, tests, E2E |
+| 5 | Cut + `processCellForClipboard` + `processCellFromClipboard` callbacks | `worker/passes/clipboardPass.ts`, `velocityGrid.ts`, tests, E2E |
+| 6 | Suppress options (`suppressClipboardPaste`, `suppressClipboardApi`, `suppressContextMenu`) | `velocityGrid.ts`, `types.ts`, tests |
 | 7 | Cycle 10 exit ritual — FM Area 19 flips, demo polish, worklog Shipped + status | `docs/catalog/FEATURE_MATRIX.md`, worklog, demo |
 
 ---
@@ -101,7 +101,7 @@ Apply to **every task** (extend the constraints from Cycles 2–9).
 
 **Goal:** A DOM portal that mounts a menu over the canvas in response to
 a `contextmenu` event, plus the input-chain feature that dispatches it.
-The menu reads its items from `CGridOptions.getContextMenuItems(params)`
+The menu reads its items from `VelocityGridOptions.getContextMenuItems(params)`
 when provided, otherwise from the default registry seeded in Task 2.
 This task delivers the empty-but-correct surface — Task 2 fills in the
 defaults.
@@ -111,7 +111,7 @@ defaults.
   pattern + click-outside-to-close behavior to mirror.
 - `cgrid/src/interaction/featureChain.ts` — chain shape; where the
   new `RightClick` feature appends.
-- `cgrid/src/interaction/feature.ts` — `CGridLike` surface — adds the
+- `cgrid/src/interaction/feature.ts` — `VelocityGridLike` surface — adds the
   `openContextMenu` + `closeContextMenu` methods.
 
 **Files:**
@@ -124,11 +124,11 @@ defaults.
   `ctx.grid.openContextMenu(items, x, y)`.
 - Modify: `cgrid/src/interaction/featureChain.ts` — append `RightClick`
   ahead of `OnHover` (tail).
-- Modify: `cgrid/src/cgrid.ts` — `openContextMenu` / `closeContextMenu`
+- Modify: `cgrid/src/velocityGrid.ts` — `openContextMenu` / `closeContextMenu`
   wiring + the `getContextMenuItems` option read.
-- Modify: `cgrid/src/types.ts` — `CGridOptions.getContextMenuItems`,
+- Modify: `cgrid/src/types.ts` — `VelocityGridOptions.getContextMenuItems`,
   `MenuItem` exports.
-- Modify: `cgrid/src/interaction/feature.ts` — extend `CGridLike` with
+- Modify: `cgrid/src/interaction/feature.ts` — extend `VelocityGridLike` with
   `openContextMenu` + `closeContextMenu`.
 - Create: `cgrid/tests/contextMenuHost.test.ts`.
 
@@ -160,14 +160,14 @@ export interface GetContextMenuItemsParams {
   defaultItems: MenuItem[];
 }
 
-// types.ts — CGridOptions extension
+// types.ts — VelocityGridOptions extension
 getContextMenuItems?: (params: GetContextMenuItemsParams) => MenuItem[];
 ```
 
 **Steps:**
 
 - [ ] **Step 1:** Failing `contextMenuHost.test.ts`. Assertions:
-      - `open([], 10, 20)` mounts a `div.cg-context-menu` at `(10, 20)`.
+      - `open([], 10, 20)` mounts a `div.vg-context-menu` at `(10, 20)`.
       - Clicking outside closes the menu (mousedown-on-document handler).
       - Pressing Escape closes the menu.
       - `close()` removes the DOM node + `isOpen()` returns false.
@@ -181,7 +181,7 @@ getContextMenuItems?: (params: GetContextMenuItemsParams) => MenuItem[];
       `contextmenu` event point, build `GetContextMenuItemsParams`,
       call `ctx.grid.openContextMenu(items, x, y)`. `event.preventDefault()`
       so the native menu doesn't fire.
-- [ ] **Step 4:** Wire `openContextMenu` / `closeContextMenu` on `CGrid`.
+- [ ] **Step 4:** Wire `openContextMenu` / `closeContextMenu` on `VelocityGrid`.
       Resolution order: explicit `getContextMenuItems(params)` >
       empty `[]` (when no defaults registered yet — Task 2 plugs in).
 - [ ] **Step 5:** Typecheck + unit tests green. Append `RightClick` to
@@ -223,7 +223,7 @@ Tasks 3–5 implement (initially: log + no-op); the rest call existing
 Cycle 6 / 8 API methods.
 
 **Read first:**
-- `cgrid/src/cgrid.ts` — `autoSizeAllColumns`, `resetColumnState`,
+- `cgrid/src/velocityGrid.ts` — `autoSizeAllColumns`, `resetColumnState`,
   `setColumnPinned` / `resetColumnPinned` (whichever exist) — defaults
   call these directly.
 - `cgrid/src/interaction/contextMenu/types.ts` — `MenuItem` shape.
@@ -231,7 +231,7 @@ Cycle 6 / 8 API methods.
 **Files:**
 - Create: `cgrid/src/interaction/contextMenu/defaults.ts` —
   `buildDefaultMenuItems(grid, params): MenuItem[]`.
-- Modify: `cgrid/src/cgrid.ts` — pass the default list as `defaultItems`
+- Modify: `cgrid/src/velocityGrid.ts` — pass the default list as `defaultItems`
   into `getContextMenuItems(params)`; fall back to `defaultItems` when
   the option isn't set.
 - Create: `cgrid/tests/contextMenuDefaults.test.ts`.
@@ -250,7 +250,7 @@ Cycle 6 / 8 API methods.
 - [ ] **Step 2:** Implement `buildDefaultMenuItems`. Stub Copy/Paste/Cut
       with `console.debug('[clipboard]')` placeholders that Tasks 3–5
       replace.
-- [ ] **Step 3:** Wire the fallback in `cgrid.ts.openContextMenu`.
+- [ ] **Step 3:** Wire the fallback in `velocityGrid.ts.openContextMenu`.
 - [ ] **Step 4:** Typecheck + unit tests green.
 - [ ] **Step 5:** Commit + push + PR.
 
@@ -283,14 +283,14 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 `SelectionModel.ranges` to TSV (tab-separated values, RFC 4180-style
 quoting for embedded tabs / newlines / quotes) on the worker and
 write the result to `navigator.clipboard`. The default delimiter is
-`\t`; `CGridOptions.clipboardDelimiter` overrides it.
+`\t`; `VelocityGridOptions.clipboardDelimiter` overrides it.
 
 **Read first:**
 - `cgrid/src/worker/dataPipeline.ts` — pass shape (see `ViewportSlicer`,
   `DistinctValuesPass`, `FilterPass`).
 - `cgrid/src/worker/messageProtocol.ts` (or equivalent) — request /
   response shape; mirror it for `clipboardSerialize`.
-- `cgrid/src/cgrid.ts` — `applyTransaction` (used in Task 4 / 5 for the
+- `cgrid/src/velocityGrid.ts` — `applyTransaction` (used in Task 4 / 5 for the
   reverse path).
 
 **Files:**
@@ -299,10 +299,10 @@ write the result to `navigator.clipboard`. The default delimiter is
   `clipboardSerialize(ranges, delimiter)` → `{ tsv: string }`.
 - Create or modify: `cgrid/src/interaction/features/keyboardShortcuts.ts` —
   Ctrl+C handler that calls `ctx.grid.copySelectedRangesToClipboard()`.
-- Modify: `cgrid/src/cgrid.ts` — `copySelectedRangesToClipboard():
+- Modify: `cgrid/src/velocityGrid.ts` — `copySelectedRangesToClipboard():
   Promise<void>` (worker call → `navigator.clipboard.writeText`).
-- Modify: `cgrid/src/types.ts` — `CGridOptions.clipboardDelimiter`,
-  `CGridApi.copySelectedRangesToClipboard`.
+- Modify: `cgrid/src/types.ts` — `VelocityGridOptions.clipboardDelimiter`,
+  `VelocityGridApi.copySelectedRangesToClipboard`.
 - Create: `cgrid/tests/clipboardSerialize.test.ts` — pure TSV-encoding
   tests.
 - Create: `apps/cgrid-positions/e2e/cycle10-clipboardCopy.spec.ts` —
@@ -312,10 +312,10 @@ write the result to `navigator.clipboard`. The default delimiter is
 
 ```ts
 // types.ts
-interface CGridOptions {
+interface VelocityGridOptions {
   clipboardDelimiter?: string; // default '\t'
 }
-interface CGridApi {
+interface VelocityGridApi {
   /** Serializes `selection.ranges` to TSV (or `clipboardDelimiter`)
    *  on the worker, then writes via `navigator.clipboard.writeText`.
    *  Resolves once the clipboard write succeeds; rejects when no range
@@ -389,7 +389,7 @@ cell (or the top-left of the first range), and apply via
 `applyTransaction({ update: [...] })`.
 
 **Read first:**
-- `cgrid/src/cgrid.ts` — existing `applyTransaction({ update: [...] })`
+- `cgrid/src/velocityGrid.ts` — existing `applyTransaction({ update: [...] })`
   path (Cycle 9 / Task 5's fill handle uses it).
 - `cgrid/src/worker/passes/clipboardPass.ts` (Task 3 product) — extend
   with `deserializeTsv(text, delimiter): string[][]`.
@@ -399,10 +399,10 @@ cell (or the top-left of the first range), and apply via
 - Modify: worker protocol + `dataPipeline.ts` —
   `clipboardDeserialize(text, delimiter)` →
   `{ rows: string[][] }`.
-- Modify: `cgrid/src/cgrid.ts` — `pasteFromClipboard(): Promise<void>`.
+- Modify: `cgrid/src/velocityGrid.ts` — `pasteFromClipboard(): Promise<void>`.
 - Modify: `cgrid/src/interaction/features/keyboardShortcuts.ts` —
   Ctrl+V handler.
-- Modify: `cgrid/src/types.ts` — `CGridApi.pasteFromClipboard`.
+- Modify: `cgrid/src/types.ts` — `VelocityGridApi.pasteFromClipboard`.
 - Modify: `cgrid/tests/clipboardSerialize.test.ts` — add deserialize
   cases.
 - Create: `apps/cgrid-positions/e2e/cycle10-clipboardPaste.spec.ts` —
@@ -411,7 +411,7 @@ cell (or the top-left of the first range), and apply via
 **Interface produced:**
 
 ```ts
-interface CGridApi {
+interface VelocityGridApi {
   /** Reads from `navigator.clipboard.readText`, parses TSV (or
    *  `clipboardDelimiter`) on the worker, and applies as
    *  `applyTransaction({ update: [...] })` rooted at the focused cell.
@@ -485,13 +485,13 @@ transform values on serialize (e.g. `123` → `"$1.23"`) and on parse
   `valueFormatter`, `valueParser`, `valueGetter`).
 
 **Files:**
-- Modify: `cgrid/src/cgrid.ts` — `cutSelectedRanges(): Promise<void>`.
+- Modify: `cgrid/src/velocityGrid.ts` — `cutSelectedRanges(): Promise<void>`.
 - Modify: `cgrid/src/interaction/features/keyboardShortcuts.ts` —
   Ctrl+X handler.
 - Modify: `cgrid/src/worker/passes/clipboardPass.ts` — invoke the
   callbacks per cell on serialize / parse.
-- Modify: `cgrid/src/types.ts` — `CGridOptions.processCellForClipboard`,
-  `CGridOptions.processCellFromClipboard`, `CGridApi.cutSelectedRanges`.
+- Modify: `cgrid/src/types.ts` — `VelocityGridOptions.processCellForClipboard`,
+  `VelocityGridOptions.processCellFromClipboard`, `VelocityGridApi.cutSelectedRanges`.
 - Modify: `cgrid/tests/clipboardSerialize.test.ts` — add callback cases.
 - Create: `apps/cgrid-positions/e2e/cycle10-clipboardCut.spec.ts`.
 
@@ -508,12 +508,12 @@ type ProcessCellFromClipboardCallback = (params: {
   column: { colId: string };
 }) => unknown;
 
-interface CGridOptions {
+interface VelocityGridOptions {
   processCellForClipboard?: ProcessCellForClipboardCallback;
   processCellFromClipboard?: ProcessCellFromClipboardCallback;
 }
 
-interface CGridApi {
+interface VelocityGridApi {
   /** Copy ranges to clipboard, then clear the source cells via
    *  `applyTransaction({ update: [...with empty values...] })`. */
   cutSelectedRanges(): Promise<void>;
@@ -578,7 +578,7 @@ each option silently no-ops at the relevant entry point.
 | `suppressClipboardApi: true` | All three clipboard methods (copy / paste / cut) reject with a logged warning; keyboard shortcuts no-op. Used by apps that ship their own clipboard layer. |
 
 **Read first:**
-- `cgrid/src/cgrid.ts` — the three API methods land in Tasks 3 / 4 / 5;
+- `cgrid/src/velocityGrid.ts` — the three API methods land in Tasks 3 / 4 / 5;
   this task gates them at the public entry.
 - `cgrid/src/interaction/features/rightClick.ts` (Task 1 product) —
   reads `getCellSelectionOptions` / new `getContextMenuSuppressed()`.
@@ -587,7 +587,7 @@ each option silently no-ops at the relevant entry point.
   `suppressClipboardPaste`.
 
 **Files:**
-- Modify: `cgrid/src/cgrid.ts` — three short circuits at the public
+- Modify: `cgrid/src/velocityGrid.ts` — three short circuits at the public
   API entry points.
 - Modify: `cgrid/src/types.ts` — add the three options.
 - Modify: `cgrid/src/interaction/features/rightClick.ts` — early-return
@@ -727,7 +727,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 ## Shipped
 
 **Context menu host + portal.** A `ContextMenuHost` DOM portal mounts a
-positioned `div.cg-context-menu` over the canvas in response to right-
+positioned `div.vg-context-menu` over the canvas in response to right-
 click. `RightClick` feature intercepts `contextmenu` at the canvas edge,
 hit-tests the press, builds `GetContextMenuItemsParams = { rowIndex,
 colId, ranges, defaultItems }`, and routes through

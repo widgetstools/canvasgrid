@@ -87,7 +87,7 @@ export interface GridState {
   // Runtime-touched grid options (Cycle 21i / Phase 1). Only options
   // changed via `setGridOption` / `updateGridOptions` after construction,
   // and only JSON-serializable non-data keys (see
-  // NON_PERSISTABLE_RUNTIME_OPTIONS in cgrid.ts). Restored FIRST on
+  // NON_PERSISTABLE_RUNTIME_OPTIONS in velocityGrid.ts). Restored FIRST on
   // `setState` so option-driven layout (row heights, panels) settles
   // before column state applies.
   gridOptions?: Record<string, unknown>;
@@ -111,7 +111,7 @@ export interface GridState {
   scroll?: { top: number; left: number };
 
   // Last known position/size of the generic floating panel (see
-  // `CGrid.openFloatingPanel`, e.g. the Column Groups per-group Style
+  // `VelocityGrid.openFloatingPanel`, e.g. the Column Groups per-group Style
   // editor). NOT restored to an open float on load — only the rect is
   // remembered so a later open reopens where the user left it.
   toolPanelPopoutRect?: FloatingRect;
@@ -119,7 +119,7 @@ export interface GridState {
 
 /** Helpers the grid uses to build / consume a snapshot. The minimal
  *  surface lives here so the implementation can grow without leaking
- *  back into the CGrid class file. */
+ *  back into the VelocityGrid class file. */
 export interface StateSnapshotSources {
   getColumnState(): CColumnState[];
   /** Cycle 21i Phase 2 / T2 — every registered module's `{version,
@@ -203,13 +203,13 @@ export function migrateSnapshot(snapshot: GridState): GridState {
   let current = snapshot;
   if (v > STATE_SCHEMA_VERSION) {
     throw new Error(
-      `[cgrid] cannot restore state: snapshot version ${v} is newer than this build (${STATE_SCHEMA_VERSION})`,
+      `[velocity-grid] cannot restore state: snapshot version ${v} is newer than this build (${STATE_SCHEMA_VERSION})`,
     );
   }
   while (v < STATE_SCHEMA_VERSION) {
     const step = STATE_MIGRATIONS[v];
     if (!step) {
-      throw new Error(`[cgrid] missing schema migration from version ${v} → ${v + 1}`);
+      throw new Error(`[velocity-grid] missing schema migration from version ${v} → ${v + 1}`);
     }
     current = step(current);
     v++;

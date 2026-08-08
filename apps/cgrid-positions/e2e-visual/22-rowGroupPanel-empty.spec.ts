@@ -24,11 +24,11 @@ import { gridReadyWithQuery, seedGrid, waitForFrames } from './_setup';
 //     dropped the row group panel inset would overlap the strip with
 //     the column header row.
 //   - Dashed-border vocabulary drift: the placeholder shares its
-//     dashed-border style with `.cg-columns-panel-drop-zone`; a
+//     dashed-border style with `.vg-columns-panel-drop-zone`; a
 //     theme regression that changed only one of the two would break
 //     the cycle's drop-zone visual continuity.
 //   - Empty-state foreground colour drift: the placeholder text uses
-//     `--cg-row-group-panel-empty-fg` (60% fg via color-mix). A
+//     `--vg-row-group-panel-empty-fg` (60% fg via color-mix). A
 //     regression that left the text at full opacity would read it as
 //     content rather than as a placeholder.
 //

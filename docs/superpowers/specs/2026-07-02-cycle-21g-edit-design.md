@@ -1,10 +1,10 @@
-# Cycle 21g — `@cgrid/edit` (Editing Ops: Journal, Smart-Edit, Bulk-Update, Plus/Minus, Shortcuts) — Design
+# Cycle 21g — `@wellsfargo-starui/velocity-grid-edit` (Editing Ops: Journal, Smart-Edit, Bulk-Update, Plus/Minus, Shortcuts) — Design
 
 **Date:** 2026-07-02
 **Parent brief:** [Cycle 21 decision doc](../plans/2026-07-01-canvasgrid-cycle-21-modular-monorepo-and-intrinsic-features.md) §4.7
 **Recon:** [`docs/superpowers/plans/notes/2026-07-02-cycle-21g-recon.md`](../plans/notes/2026-07-02-cycle-21g-recon.md) (committed; StarUI digest + kernel seam inventory with file:line evidence)
 **StarUI sources:** `docs/starui-customizer/{01,11,12,13,14,15}` + `docs/starui-customizer-ui/{06,07,09,10,14,15,16}`
-**Depends on:** kernel (events, transactions, selection, distinct values — all landed), `@cgrid/expression` (nudge gates). **HARD DEP: kernel PR #98 must merge before bridge/E2E tasks** (real rowIds in `cellKeyDown`/`getFocusedCell`; lucide fix for demo icons).
+**Depends on:** kernel (events, transactions, selection, distinct values — all landed), `@wellsfargo-starui/velocity-grid-expression` (nudge gates). **HARD DEP: kernel PR #98 must merge before bridge/E2E tasks** (real rowIds in `cellKeyDown`/`getFocusedCell`; lucide fix for demo icons).
 **Baselines (main @ `4bfe5b9`):** kernel 2568 (→2574 post-#98) · calc 215 · rules 144 · format 171 · expression 185 · renderers 277 · showcase E2E 148 (+6 visual) · typecheck 21/21 · build 13/13.
 
 ---
@@ -18,7 +18,7 @@
 3. **Smart-edit**: target collection (ranges → focused-cell fallback; numeric + editable filter), `applyNumericOp` (× ÷ + − =, null-on-failure), `buildSmartEditPatches`, preview/confirm pipeline hooks.
 4. **K/M/B magnitude parsing**: `parseMagnitudeSuffix` (K/k 1e3, M/m 1e6, B/b 1e9, invalid → null) + `applyMagnitudeColDefTransforms` wrapping numeric columns' `valueParser` (layers onto existing editors; no custom editor).
 5. **Bulk-update**: text/number/date targets, `parseBulkUpdateValue` (type-aware, ISO date normalize, null-on-failure), `Object.is` no-op guard, distinct-values feed via kernel `getDistinctValues(colId, limit)` (stringified → parsed back type-aware).
-6. **Plus/minus nudges**: `PlusMinusNudge` rules (column scope by colId OR field, empty = all numeric; optional expression gate via `@cgrid/expression`; asymmetric ± steps), first-enabled-match, `buildNudgePatches` on shared `applyNumericOp`.
+6. **Plus/minus nudges**: `PlusMinusNudge` rules (column scope by colId OR field, empty = all numeric; optional expression gate via `@wellsfargo-starui/velocity-grid-expression`; asymmetric ± steps), first-enabled-match, `buildNudgePatches` on shared `applyNumericOp`.
 7. **Shortcuts**: single-letter a–z (stored lowercase, matched case-insensitively), add/subtract/multiply/divide only (no `set`), first-enabled-match, `Set`-based key lookup built at config time, `detectShortcutConflicts()` helper (engine-side; warning UI is 21i).
 8. **Settings models**: `SmartEditSettings`, `BulkUpdateSettings`, `DataChangeHistorySettings` (the trio), plus `PlusMinusSettings`/`ShortcutsSettings` (`{enabled, recordHistory}`); JSON-clean, partials merged over defaults, unknown record-sources skipped.
 9. **Bridge** `wireEditIntoKernel(grid, opts): EditBridgeHandle` (renderers-bridge pattern; §4).
@@ -55,7 +55,7 @@ packages/edit/src/
   index.ts
 ```
 
-Deps: `@cgrid/kernel` peer (type-only imports + bridge attachment — renderers precedent; engine modules import NOTHING from kernel at runtime). `@cgrid/expression` dependency (nudge gates; engine functions take an injectable `evaluate` so tests run without it — the bridge binds the real engine). No format/rules/calc dependency.
+Deps: `@wellsfargo-starui/velocity-grid` peer (type-only imports + bridge attachment — renderers precedent; engine modules import NOTHING from kernel at runtime). `@wellsfargo-starui/velocity-grid-expression` dependency (nudge gates; engine functions take an injectable `evaluate` so tests run without it — the bridge binds the real engine). No format/rules/calc dependency.
 
 ### 2.2 Core models (locked; worklog-confirmed)
 
@@ -186,7 +186,7 @@ Everything EXCEPT range→row expansion rides on landed public API: `cellKeyDown
 
 #### 3.6a Approved kernel seam: public `getRowsByIndex` (range→row expansion)
 
-**Discovered at plan time (2026-07-02, S2).** `SelectionRange` is `{rowStart, rowEnd, colIds}` in **visible-order indices**, and visible order (post-filter/sort) is worker-owned state. There is NO public visible-index→row surface: `getCellValue(rowIndex, colId)` is viewport-chunk-only (`api.ts:711-713`, null outside the chunk — a header-click column range spans all rows), and the kernel's OWN range-writing features resolve rows via the private `workerCoord.getRowByIndex` batch pattern (fill handle `cgrid.ts:2387-2425` `commitFill`; clipboard `cgrid.ts:4424-4438` `serializeRangesMainSide`). An addon cannot reconstruct visible order without reimplementing worker filter/sort main-side — wrong by design. Smart-edit and bulk-update target collection over ranges is core 21g scope, so this is a genuine intrinsic need, not a convenience: per the no-retroactive-layering rule, **the kernel gets the real feature**:
+**Discovered at plan time (2026-07-02, S2).** `SelectionRange` is `{rowStart, rowEnd, colIds}` in **visible-order indices**, and visible order (post-filter/sort) is worker-owned state. There is NO public visible-index→row surface: `getCellValue(rowIndex, colId)` is viewport-chunk-only (`api.ts:711-713`, null outside the chunk — a header-click column range spans all rows), and the kernel's OWN range-writing features resolve rows via the private `workerCoord.getRowByIndex` batch pattern (fill handle `velocityGrid.ts:2387-2425` `commitFill`; clipboard `velocityGrid.ts:4424-4438` `serializeRangesMainSide`). An addon cannot reconstruct visible order without reimplementing worker filter/sort main-side — wrong by design. Smart-edit and bulk-update target collection over ranges is core 21g scope, so this is a genuine intrinsic need, not a convenience: per the no-retroactive-layering rule, **the kernel gets the real feature**:
 
 ```ts
 /** Fetch full rows by current visible-order index (batched worker
@@ -205,7 +205,7 @@ Thin public promotion of the existing internal mechanism (Promise.all over `work
 
 - Structural `KernelGridSurface` interface over public API only: `on/addEventListener`, `applyTransaction`, `forEachRow`, `getRowsByIndex` (§3.6a), `getCellRanges`/`addCellRange`/`clearCellRanges`, `getFocusedCell`/`setFocusedCell`, `getSelectedRowIds`/`setSelectedRowIds`, `getDistinctValues`, colDef resolution for `valueParser`/`valueSetter`/`editable`/`cellDataType` (via `getGridOption('columnDefs')`, renderers leaf-walk precedent). Plan-time corrections (code-verified): `isCellEditable` and `isEditing` are NOT public — the bridge replicates editability addon-side from resolved colDefs (static bool / callback with `{data, colId, rowIndex, value}` from the mirror; throw/unknown-col → false) and derives its editing flag from the public `cellEditingStarted`/`cellEditingStopped` events; focused-cell rowIndex is synthesized from the focus-collapsed 1×1 range in `getCellRanges()`.
 - Idempotency guard (`grid.__editBridgeWired` handle, return on re-call); `subscribe()` with `on` → `addEventListener` fallback; `destroy()` tears down listeners + journal subscription.
-- `opts`: settings trio + `nudges[]` + `shortcuts[]` + `validators?` + `now?` + `evaluate?` (expression engine override; defaults to `@cgrid/expression`).
+- `opts`: settings trio + `nudges[]` + `shortcuts[]` + `validators?` + `now?` + `evaluate?` (expression engine override; defaults to `@wellsfargo-starui/velocity-grid-expression`).
 
 ### 4.2 Responsibilities
 

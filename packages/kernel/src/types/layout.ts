@@ -12,12 +12,12 @@
  * These types build ON the existing state stack — a layout's `state` is a
  * `GridState` restricted to the LAYOUT tier (see `LayoutState`); the tier
  * split itself lands in Unit A2. The shared template library reuses
- * `@cgrid/calc`'s `ColumnTemplate` rather than defining a parallel model.
+ * `@wellsfargo-starui/velocity-grid-calc`'s `ColumnTemplate` rather than defining a parallel model.
  *
  * Authoritative reference: docs/superpowers/specs/2026-07-05-grid-layouts-design.md §5.
  */
 
-import type { ColumnTemplate } from '@cgrid/calc';
+import type { ColumnTemplate } from '@wellsfargo-starui/velocity-grid-calc';
 import type { GridState } from '../core/stateSnapshot';
 import type { ModuleStateEnvelope } from '../core/moduleState';
 
@@ -36,7 +36,7 @@ export const DEFAULT_LAYOUT_ID = 'default';
  * option, §10) stable as templates lights up. Everything NOT in this set
  * (`columnGroups`, `calc`, `rules`, …) is layout-tier.
  */
-export const DEFAULT_GRID_LEVEL_MODULES: readonly string[] = ['editSettings', 'templates'];
+export const DEFAULT_GRID_LEVEL_MODULES: readonly string[] = ['editSettings', 'templates', 'alerts'];
 
 /**
  * Schema version of an exported {@link GridLayoutsBundle} envelope. Bumped
@@ -53,7 +53,7 @@ export const LAYOUTS_BUNDLE_VERSION = 1;
  * Structurally a `GridState` — column geometry, filter/sort/group/pivot,
  * side-bar, scroll, `themeParams`, and the LAYOUT-tier module slices
  * (`columnGroups`, `calc`, `rules`, …) under `modules`. The grid-TIER
- * slices (`editSettings`, `templates`) do NOT belong here; the tier
+ * slices (`editSettings`, `templates`, `alerts`) do NOT belong here; the tier
  * filtering that decides what a capture includes is Unit A2's concern —
  * the TYPE is the full snapshot, the RUNTIME restricts it to the layout
  * tier. Per-column `templateIds` ride inside `columnState`.
@@ -117,7 +117,7 @@ export interface GridBaselineConfig {
 }
 
 /**
- * Host-facing input to `CGridApi.saveTemplate` (Grid Layouts / Phase B, §8) —
+ * Host-facing input to `VelocityGridApi.saveTemplate` (Grid Layouts / Phase B, §8) —
  * a {@link ColumnTemplate} without the engine-managed timestamps (the kernel
  * stamps `createdAt`/`updatedAt` on the caller's behalf, since the calc engine
  * is Date-free). Re-saving an existing `id` replaces it (preserving its

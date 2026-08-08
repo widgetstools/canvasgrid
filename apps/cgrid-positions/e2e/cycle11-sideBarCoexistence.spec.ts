@@ -25,7 +25,7 @@
  *     the side bar does NOT advance the grid's scrollLeft/scrollTop (the
  *     side bar is on a different DOM subtree, so its wheel events never
  *     reach the canvas listener).
- *  5. Context menu → right-click on a cell mounts `.cg-context-menu` at
+ *  5. Context menu → right-click on a cell mounts `.vg-context-menu` at
  *     the cursor in viewport coords; the menu doesn't end up sliced or
  *     hidden under the side bar.
  *  6. Filter popup → clicking the floating-filter expand button on a
@@ -42,11 +42,11 @@ import { test, expect, Page } from '@playwright/test';
 import type { SelectionRange } from '../../../cgrid/src/types';
 
 const GRID_SELECTOR = '#grid canvas';
-const SIDE_BAR_SELECTOR = '.cg-side-bar';
-const TAB_SELECTOR = '.cg-side-bar-tab';
-const PANEL_SELECTOR = '.cg-side-bar-panel';
-const HANDLE_SELECTOR = '.cg-side-bar-resize';
-const MENU_SELECTOR = '.cg-context-menu';
+const SIDE_BAR_SELECTOR = '.vg-side-bar';
+const TAB_SELECTOR = '.vg-side-bar-tab';
+const PANEL_SELECTOR = '.vg-side-bar-panel';
+const HANDLE_SELECTOR = '.vg-side-bar-resize';
+const MENU_SELECTOR = '.vg-context-menu';
 
 interface ViewportSurface {
   scrollLeft: number;
@@ -111,7 +111,7 @@ async function canvasWidth(page: Page): Promise<number> {
 
 async function cellBounds(page: Page, rowIndex: number, colId: string): Promise<{ x: number; y: number; w: number; h: number }> {
   const b = await page.evaluate(
-    ({ r, c }) => (window as unknown as { __cgrid: GridSurface }).__cgrid.getCellBoundsAt(r, c),
+    ({ r, c }) => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.getCellBoundsAt(r, c),
     { r: rowIndex, c: colId },
   );
   if (!b) throw new Error(`no cell bounds for (${rowIndex}, ${colId})`);
@@ -120,21 +120,21 @@ async function cellBounds(page: Page, rowIndex: number, colId: string): Promise<
 
 async function rangesNow(page: Page): Promise<SelectionRange[]> {
   return page.evaluate(
-    () => (window as unknown as { __cgrid: GridSurface }).__cgrid.selection.state.ranges
+    () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.selection.state.ranges
       .map((r) => ({ rowStart: r.rowStart, rowEnd: r.rowEnd, colIds: [...r.colIds] })),
   );
 }
 
 async function focusNow(page: Page): Promise<{ rowIndex: number | null; colId: string | null }> {
   return page.evaluate(() => {
-    const s = (window as unknown as { __cgrid: GridSurface }).__cgrid.selection.state;
+    const s = (window as unknown as { __velocity-grid: GridSurface }).__cgrid.selection.state;
     return { rowIndex: s.focusedRowIndex, colId: s.focusedColId };
   });
 }
 
 async function snapshotViewport(page: Page): Promise<ViewportSurface> {
   return page.evaluate(() => {
-    const v = (window as unknown as { __cgrid: GridSurface }).__cgrid.viewport;
+    const v = (window as unknown as { __velocity-grid: GridSurface }).__cgrid.viewport;
     return {
       scrollLeft: v.scrollLeft,
       scrollTop: v.scrollTop,
@@ -154,7 +154,7 @@ async function snapshotViewport(page: Page): Promise<ViewportSurface> {
 
 async function openColumnsPanel(page: Page): Promise<void> {
   await page.evaluate(() => {
-    (window as unknown as { __cgrid: GridSurface }).__cgrid.openToolPanel('agColumnsToolPanel');
+    (window as unknown as { __velocity-grid: GridSurface }).__cgrid.openToolPanel('agColumnsToolPanel');
   });
   // Wait for the resize → setHostBounds → resize() chain to settle, plus
   // give the viewport recompute a couple of rAFs.
@@ -260,7 +260,7 @@ test.describe('Cycle 11 / Task 8 — DOM-canvas coexistence audit', () => {
       }
       const lastVisible = centerCols[centerCols.length - 1]!;
       const allColIds = await page.evaluate(() => {
-        const g = (window as unknown as { __cgrid: GridSurface }).__cgrid;
+        const g = (window as unknown as { __velocity-grid: GridSurface }).__cgrid;
         return g.getColumnState().filter((s) => s.hide !== true).map((s) => s.colId);
       });
       const lastVisibleIdx = allColIds.indexOf(lastVisible.colId);
@@ -390,14 +390,14 @@ test.describe('Cycle 11 / Task 8 — DOM-canvas coexistence audit', () => {
       await scenario.setUp(page);
 
       // `cusip` is pinned-left so the expand button stays visible in both
-      // scenarios. Filter is `'text'`, so the popup is `.cg-filter-popup-text`.
-      const expand = page.locator('button[data-cg-floating-filter-expand][data-cg-col-id="cusip"]');
+      // scenarios. Filter is `'text'`, so the popup is `.vg-filter-popup-text`.
+      const expand = page.locator('button[data-vg-floating-filter-expand][data-vg-col-id="cusip"]');
       await expect(expand).toHaveCount(1);
       const expandBox = await expand.boundingBox();
       if (!expandBox) throw new Error('expand button has no bounding box');
 
       await expand.click();
-      const popup = page.locator('.cg-filter-popup-text');
+      const popup = page.locator('.vg-filter-popup-text');
       await expect(popup).toHaveCount(1);
       const popupBox = await popup.boundingBox();
       expect(popupBox).not.toBeNull();

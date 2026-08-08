@@ -1,6 +1,6 @@
 /**
- * Grid Layouts — Phase B / B3: the Template API on CGridApi, exercised
- * end-to-end on a real CGrid wired to @cgrid/calc.
+ * Grid Layouts — Phase B / B3: the Template API on VelocityGridApi, exercised
+ * end-to-end on a real VelocityGrid wired to @wellsfargo-starui/velocity-grid-calc.
  *
  * Proves the worklog's B3 gate — "Template API live": getTemplates /
  * saveTemplate / renameTemplate (unique) / deleteTemplate / applyTemplate /
@@ -9,8 +9,8 @@
  * degradation path: a grid with NO calc wired returns `[]` and no-ops.
  */
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { CGrid } from '../src/cgrid';
-import { wireIntoKernel } from '@cgrid/calc';
+import { VelocityGrid } from '../src/velocityGrid';
+import { wireIntoKernel } from '@wellsfargo-starui/velocity-grid-calc';
 import { _resetCalcProvider_forTests } from '../src/core/calcSlot';
 
 // The calc provider is a MODULE-GLOBAL slot (core/calcSlot.ts) — a prior
@@ -47,12 +47,12 @@ beforeAll(() => {
 async function mount(opts: { wire?: boolean } = { wire: true }) {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
-  const grid = new CGrid<{ id: string; qty: number; price: number }>(container, {
+  const grid = new VelocityGrid<{ id: string; qty: number; price: number }>(container, {
     columnDefs: [{ field: 'id' }, { field: 'qty' }, { field: 'price' }],
     getRowId: (r) => r.id,
-    theme: 'cg-theme-quartz',
+    theme: 'vg-theme-quartz',
   });
   const calc = opts.wire === false ? null : wireIntoKernel(grid).calc;
   const w = (grid as any).workerClient.worker;
@@ -61,7 +61,7 @@ async function mount(opts: { wire?: boolean } = { wire: true }) {
   return { grid, calc };
 }
 
-describe('B3 — Template API on CGridApi (calc wired)', () => {
+describe('B3 — Template API on VelocityGridApi (calc wired)', () => {
   it('save → getTemplates → rename → delete round-trips, firing templatesChanged', async () => {
     const { grid } = await mount();
     const events: any[] = [];
@@ -116,7 +116,7 @@ describe('B3 — Template API on CGridApi (calc wired)', () => {
   });
 });
 
-describe('B5 — editColumn (auto-template-on-edit) via CGridApi', () => {
+describe('B5 — editColumn (auto-template-on-edit) via VelocityGridApi', () => {
   it('writes the edit into the column’s OWN template + assigns it, firing templatesChanged', async () => {
     const { grid, calc } = await mount();
     const events: any[] = [];

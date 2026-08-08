@@ -50,7 +50,7 @@ describe('Excel evaluator — Section routing', () => {
   it('negative value uses second section + applies [Red] style', () => {
     const r = fmt('0.00;[Red]-0.00', -5);
     expect(r.text).toBe('-5.00');
-    expect(r.style?.color).toBe('var(--cg-neg-color, #E53935)');
+    expect(r.style?.color).toBe('var(--vg-neg-color, #E53935)');
   });
 
   it('negative section without a literal minus suppresses the auto sign (Excel)', () => {
@@ -58,7 +58,7 @@ describe('Excel evaluator — Section routing', () => {
     const r = fmt('[Green]#,##0.00;[Red]#,##0.00', -1234.57);
     expect(r.text).toBe('1,234.57');
     expect(r.text).not.toMatch(/-/);
-    expect(r.style?.color).toBe('var(--cg-neg-color, #E53935)');
+    expect(r.style?.color).toBe('var(--vg-neg-color, #E53935)');
   });
 
   it('negative section with $ prefix and no literal minus suppresses the auto sign', () => {
@@ -76,7 +76,7 @@ describe('Excel evaluator — Section routing', () => {
   it('red paren negative section keeps color without an inner minus', () => {
     const r = fmt('#,##0.00;[Red](#,##0.00)', -1234.57);
     expect(r.text).toBe('(1,234.57)');
-    expect(r.style?.color).toBe('var(--cg-neg-color, #E53935)');
+    expect(r.style?.color).toBe('var(--vg-neg-color, #E53935)');
   });
 
   it('zero value uses third section when present', () => {
@@ -105,7 +105,7 @@ describe('Excel evaluator — Conditional sections', () => {
 describe('Excel evaluator — Named colors emit StyleObj', () => {
   it('[Green]0.00 emits StyleObj with color', () => {
     const r = fmt('[Green]0.00', 5);
-    expect(r.style?.color).toBe('var(--cg-pos-color, #43A047)');
+    expect(r.style?.color).toBe('var(--vg-pos-color, #43A047)');
   });
 
   it('[Blue]0.00 emits StyleObj with color', () => {

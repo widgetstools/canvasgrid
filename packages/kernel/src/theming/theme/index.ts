@@ -1,7 +1,7 @@
 /**
- * Barrel for the programmatic theme object module. `cgrid.ts` (the public
+ * Barrel for the programmatic theme object module. `velocityGrid.ts` (the public
  * package entry) re-exports the public subset of this barrel; internal
- * modules (`cgrid.ts`'s DOM integration) import directly from here rather
+ * modules (`velocityGrid.ts`'s DOM integration) import directly from here rather
  * than reaching into `./themeObject` / `./params` / `./values` individually.
  */
 

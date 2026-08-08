@@ -61,17 +61,17 @@ test.describe('Cycle 15 / Task 6 — drag column to row group panel', () => {
     // Empty-state placeholder is visible before the drag — no chips,
     // dashed strip reading the canonical sidebar phrase.
     const beforeText = await page.evaluate(() => {
-      const empty = document.querySelector('.cg-row-group-panel-empty');
+      const empty = document.querySelector('.vg-row-group-panel-empty');
       return empty?.textContent ?? null;
     });
     expect(beforeText).toBe('Drag here to set row groups');
     const chipCountBefore = await page.evaluate(
-      () => document.querySelectorAll('.cg-row-group-panel-chip').length,
+      () => document.querySelectorAll('.vg-row-group-panel-chip').length,
     );
     expect(chipCountBefore).toBe(0);
 
     const ticker = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return grid.getHeaderBoundsAt('ticker');
     });
     expect(ticker).not.toBeNull();
@@ -80,7 +80,7 @@ test.describe('Cycle 15 / Task 6 — drag column to row group panel', () => {
     // inside this rect; we aim for the middle horizontally and the
     // vertical center.
     const panelRect = await page.evaluate(() => {
-      const panel = document.querySelector('.cg-row-group-panel') as HTMLElement | null;
+      const panel = document.querySelector('.vg-row-group-panel') as HTMLElement | null;
       if (!panel) return null;
       const r = panel.getBoundingClientRect();
       return { x: r.left, y: r.top, w: r.width, h: r.height };
@@ -117,11 +117,11 @@ test.describe('Cycle 15 / Task 6 — drag column to row group panel', () => {
     // After the drop: one chip carrying the ticker header name.
     const afterChips = await page.evaluate(() => {
       const chips = Array.from(
-        document.querySelectorAll('.cg-row-group-panel-chip'),
+        document.querySelectorAll('.vg-row-group-panel-chip'),
       ) as HTMLElement[];
       return chips.map((c) => ({
         colId: c.dataset.colId,
-        label: c.querySelector('.cg-row-group-panel-chip-label')?.textContent ?? null,
+        label: c.querySelector('.vg-row-group-panel-chip-label')?.textContent ?? null,
       }));
     });
     expect(afterChips).toHaveLength(1);
@@ -130,7 +130,7 @@ test.describe('Cycle 15 / Task 6 — drag column to row group panel', () => {
 
     // Empty-state placeholder is gone — its slot is taken by the chip.
     const afterEmpty = await page.evaluate(
-      () => document.querySelector('.cg-row-group-panel-empty'),
+      () => document.querySelector('.vg-row-group-panel-empty'),
     );
     expect(afterEmpty).toBeNull();
   });

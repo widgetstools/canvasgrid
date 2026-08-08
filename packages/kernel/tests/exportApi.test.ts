@@ -1,4 +1,4 @@
-// Cycle 20 / Task 3 — public export API on CGrid.
+// Cycle 20 / Task 3 — public export API on VelocityGrid.
 //
 // Two pairs of methods:
 //   - `exportDataAsCsv(params)` / `getDataAsCsv(params)`
@@ -12,7 +12,7 @@
 // download trigger is mocked via Anchor#click spy.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
 
 beforeEach(() => {
@@ -61,7 +61,7 @@ const ROWS: Row[] = [
 function buildGrid() {
   const container = document.createElement('div');
   container.style.cssText = 'width:600px; height:400px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
   const prevWorker = (globalThis as { Worker?: unknown }).Worker;
   (globalThis as { Worker?: unknown }).Worker = class {
@@ -74,7 +74,7 @@ function buildGrid() {
     addEventListener(_: string, cb: (e: { data: unknown }) => void) { this.listeners.push(cb); }
     terminate() {}
   };
-  const grid = new CGrid<Row>(container, {
+  const grid = new VelocityGrid<Row>(container, {
     columnDefs: [
       { field: 'desk', headerName: 'Desk', cellDataType: 'text' },
       { field: 'region', headerName: 'Region', cellDataType: 'text' },

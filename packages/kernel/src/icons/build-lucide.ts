@@ -31,7 +31,7 @@ function findLucideIconsDir(): string {
     }
   }
   throw new Error(
-    '[build-lucide] Cannot find lucide-static/icons. Run: npm install --save-dev --workspace=@cgrid/kernel lucide-static',
+    '[build-lucide] Cannot find lucide-static/icons. Run: npm install --save-dev --workspace=@wellsfargo-starui/velocity-grid lucide-static',
   );
 }
 
@@ -51,7 +51,7 @@ const sorted = Object.fromEntries(Object.entries(bundle).sort(([a], [b]) => a.lo
 
 writeFileSync(
   outputPath,
-  `// AUTO-GENERATED — do not edit. Regenerate via \`npm --workspace @cgrid/kernel run prebuild-icons\`.
+  `// AUTO-GENERATED — do not edit. Regenerate via \`npm --workspace @wellsfargo-starui/velocity-grid run prebuild-icons\`.
 // Source: node_modules/lucide-static/icons/*.svg (Lucide MIT license).
 export const lucideBundle: Readonly<Record<string, string>> = Object.freeze(${JSON.stringify(sorted, null, 2)});
 `,

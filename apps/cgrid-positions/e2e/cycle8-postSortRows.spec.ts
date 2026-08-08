@@ -11,7 +11,7 @@
  *    sort.
  * 3. Toggling the box OFF restores the sort-only order.
  *
- * The hook is wired in `positionsGrid.ts` via the new `CGridOptions.postSortRows`
+ * The hook is wired in `positionsGrid.ts` via the new `VelocityGridOptions.postSortRows`
  * field; the toolbar checkbox in `index.html#pin-selected-top` flips the
  * demo's pin set.
  */
@@ -62,14 +62,14 @@ async function canvasOffset(page: Page): Promise<{ x: number; y: number }> {
 
 async function sortModel(page: Page): Promise<SortEntry[]> {
   return page.evaluate(
-    () => (window as unknown as { __cgrid: { sortModel: SortEntry[] } }).__cgrid.sortModel,
+    () => (window as unknown as { __velocity-grid: { sortModel: SortEntry[] } }).__cgrid.sortModel,
   );
 }
 
 async function headerBounds(page: Page, colId: string): Promise<HeaderBounds> {
   const b = await page.evaluate(
     (id) =>
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getHeaderBoundsAt(id),
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getHeaderBoundsAt(id),
     colId,
   );
   if (!b) throw new Error(`no header bounds for ${colId}`);
@@ -79,7 +79,7 @@ async function headerBounds(page: Page, colId: string): Promise<HeaderBounds> {
 async function rowIdAtIndex(page: Page, index: number): Promise<string | null> {
   // Demo uses `positionId` as the row id (see positionsGrid.ts getRowId).
   return page.evaluate((i) => {
-    const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+    const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
     const v = api.getCellValue(i, 'positionId');
     return typeof v === 'string' ? v : null;
   }, index);
@@ -106,7 +106,7 @@ test.describe('Cycle 8 / Task 4 — postSortRows toolbar wiring', () => {
     expect(targetRowId).not.toBe(firstSortedRowId);
 
     await page.evaluate((id) => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       api.setSelectedRowIds([id!]);
     }, targetRowId);
     await waitForFrames(page, 4);

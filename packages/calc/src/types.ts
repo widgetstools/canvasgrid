@@ -1,7 +1,7 @@
-// @cgrid/calc — public types.
+// @wellsfargo-starui/velocity-grid-calc — public types.
 // Authoritative reference: docs/superpowers/specs/2026-07-02-cycle-21d-calc-design.md §3.
 
-import type { Loc, Schema, Ast } from '@cgrid/expression';
+import type { Loc, Schema, Ast } from '@wellsfargo-starui/velocity-grid-expression';
 
 export type CellDataType = 'number' | 'currency' | 'percent' | 'date' | 'datetime' | 'string' | 'boolean';
 
@@ -53,7 +53,7 @@ export interface Aggregate<S = unknown> {
 }
 
 /** Static icon reference for cellIcon/headerIcon overrides — structural
- *  twin of @cgrid/format's IconRef (calc holds data, never draws). */
+ *  twin of @wellsfargo-starui/velocity-grid-format's IconRef (calc holds data, never draws). */
 export interface IconOverride {
   name?: string;
   emoji?: string;

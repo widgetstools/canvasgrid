@@ -9,7 +9,7 @@
  */
 import { test, expect } from '@playwright/test';
 
-type CGridGlobal = {
+type VelocityGridGlobal = {
   getCellBoundsAt: (r: number, c: string) => { x: number; y: number; w: number; h: number } | null;
   getCellValue: (r: number, c: string) => unknown;
   getFocusedCell: () => { rowId: string; colId: string } | null;
@@ -17,7 +17,7 @@ type CGridGlobal = {
 
 async function bounds(page: import('@playwright/test').Page, row: number, colId: string) {
   return page.evaluate(([r, c]) => {
-    const grid = (window as unknown as { __cgrid: CGridGlobal }).__cgrid;
+    const grid = (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid;
     return grid.getCellBoundsAt(r as number, c as string);
   }, [row, colId]);
 }
@@ -45,11 +45,11 @@ test.describe('Editing — click another cell cancels the edit', () => {
 
   test('clicking another body cell mid-edit closes the editor and discards typed value', async ({ page }) => {
     const originalA = await page.evaluate(
-      () => (window as unknown as { __cgrid: CGridGlobal }).__cgrid.getCellValue(0, 'cusip'),
+      () => (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid.getCellValue(0, 'cusip'),
     );
     // Open editor on cell A (row 0, cusip) via singleClickEdit.
     await clickCell(page, 0, 'cusip');
-    const editor = page.locator('input.cg-cell-editor--text');
+    const editor = page.locator('input.vg-cell-editor--text');
     await expect(editor).toBeVisible();
     await editor.fill('SHOULD-NOT-PERSIST');
     // Click another body cell (row 2, cusip) — should cancel A's edit
@@ -59,39 +59,39 @@ test.describe('Editing — click another cell cancels the edit', () => {
     // editor on row 2, but that's a fresh DOM input; the value typed
     // into the row-0 editor must NOT have committed.
     const afterA = await page.evaluate(
-      () => (window as unknown as { __cgrid: CGridGlobal }).__cgrid.getCellValue(0, 'cusip'),
+      () => (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid.getCellValue(0, 'cusip'),
     );
     expect(afterA).toBe(originalA);
     // Focus moved to row 2.
     const focused = await page.evaluate(
-      () => (window as unknown as { __cgrid: CGridGlobal }).__cgrid.getFocusedCell(),
+      () => (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid.getFocusedCell(),
     );
     expect(focused?.colId).toBe('cusip');
     // New editor open on row 2 — its value matches row 2's underlying
     // value, not the discarded 'SHOULD-NOT-PERSIST' from row 0.
     const newEditorValue = await editor.inputValue();
     const row2Value = await page.evaluate(
-      () => (window as unknown as { __cgrid: CGridGlobal }).__cgrid.getCellValue(2, 'cusip'),
+      () => (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid.getCellValue(2, 'cusip'),
     );
     expect(newEditorValue).toBe(String(row2Value));
   });
 
   test('clicking a different column mid-edit cancels and opens an editor on the new cell', async ({ page }) => {
     const originalCusip = await page.evaluate(
-      () => (window as unknown as { __cgrid: CGridGlobal }).__cgrid.getCellValue(0, 'cusip'),
+      () => (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid.getCellValue(0, 'cusip'),
     );
     await clickCell(page, 0, 'cusip');
-    const cusipEditor = page.locator('input.cg-cell-editor--text');
+    const cusipEditor = page.locator('input.vg-cell-editor--text');
     await expect(cusipEditor).toBeVisible();
     await cusipEditor.fill('NOPE');
     // Click a different column on the same row — ticker (a 'select' editor).
     await clickCell(page, 0, 'ticker');
     const afterCusip = await page.evaluate(
-      () => (window as unknown as { __cgrid: CGridGlobal }).__cgrid.getCellValue(0, 'cusip'),
+      () => (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid.getCellValue(0, 'cusip'),
     );
     expect(afterCusip).toBe(originalCusip);
     // The text editor should be gone; ticker's select editor should be open.
-    await expect(page.locator('input.cg-cell-editor--text')).toHaveCount(0);
-    await expect(page.locator('select.cg-cell-editor--select')).toBeVisible();
+    await expect(page.locator('input.vg-cell-editor--text')).toHaveCount(0);
+    await expect(page.locator('select.vg-cell-editor--select')).toBeVisible();
   });
 });

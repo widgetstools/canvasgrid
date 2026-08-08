@@ -12,7 +12,7 @@ test('context menu open on a body cell — default registry + custom entry', asy
   await setupGrid(page, 50);
   const bounds = await page.evaluate(() => {
     const g = (window as unknown as {
-      __cgrid: {
+      __velocity-grid: {
         getCellBoundsAt: (r: number, c: string) => { x: number; y: number; w: number; h: number } | null;
       };
     }).__cgrid;
@@ -26,7 +26,7 @@ test('context menu open on a body cell — default registry + custom entry', asy
     canvasBox.y + bounds.y + bounds.h / 2,
     { button: 'right' },
   );
-  await page.waitForSelector('.cg-context-menu', { state: 'visible' });
+  await page.waitForSelector('.vg-context-menu', { state: 'visible' });
   await waitForFrames(page, 6);
   await expect(page).toHaveScreenshot('12-context-menu-open.png');
 });

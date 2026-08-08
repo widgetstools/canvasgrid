@@ -1,5 +1,5 @@
 {
-  "name": "@cgrid/export",
+  "name": "@wellsfargo-starui/velocity-grid-export",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -12,15 +12,15 @@
     }
   },
   "scripts": {
-    "build": "echo '@cgrid/export is a scaffold — no build yet' && exit 0",
+    "build": "echo '@wellsfargo-starui/velocity-grid-export is a scaffold — no build yet' && exit 0",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@cgrid/kernel": "*",
-    "@cgrid/calc": "*",
-    "@cgrid/rules": "*",
-    "@cgrid/format": "*"
+    "@wellsfargo-starui/velocity-grid": "*",
+    "@wellsfargo-starui/velocity-grid-calc": "*",
+    "@wellsfargo-starui/velocity-grid-rules": "*",
+    "@wellsfargo-starui/velocity-grid-format": "*"
   },
   "devDependencies": {
     "typescript": "~5.9.3",

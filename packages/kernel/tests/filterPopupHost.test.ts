@@ -14,7 +14,7 @@ import { PopupHost } from '../src/interaction/editors/popupHost';
 
 function makeFactory(testId: string): FilterPopupFactory {
   const gui = document.createElement('div');
-  gui.setAttribute('data-cg-filter-popup', testId);
+  gui.setAttribute('data-vg-filter-popup', testId);
   Object.defineProperty(gui, 'offsetWidth', { value: 120, configurable: true });
   Object.defineProperty(gui, 'offsetHeight', { value: 80, configurable: true });
   return {
@@ -42,7 +42,7 @@ describe('FilterPopupHost', () => {
     const fph = new FilterPopupHost(host, popupHost);
     const f = makeFactory('one');
     fph.open('colA', ANCHOR, f);
-    expect(host.querySelector('[data-cg-filter-popup="one"]')).not.toBeNull();
+    expect(host.querySelector('[data-vg-filter-popup="one"]')).not.toBeNull();
     expect(fph.isOpen()).toBe(true);
     expect(fph.openColId()).toBe('colA');
   });
@@ -52,7 +52,7 @@ describe('FilterPopupHost', () => {
     const f = makeFactory('two');
     fph.open('colA', ANCHOR, f);
     fph.close();
-    expect(host.querySelector('[data-cg-filter-popup="two"]')).toBeNull();
+    expect(host.querySelector('[data-vg-filter-popup="two"]')).toBeNull();
     expect(f.destroy).toHaveBeenCalledTimes(1);
     expect(fph.isOpen()).toBe(false);
     expect(fph.openColId()).toBeNull();
@@ -64,8 +64,8 @@ describe('FilterPopupHost', () => {
     const f2 = makeFactory('second');
     fph.open('colA', ANCHOR, f1);
     fph.open('colB', ANCHOR, f2);
-    expect(host.querySelector('[data-cg-filter-popup="first"]')).toBeNull();
-    expect(host.querySelector('[data-cg-filter-popup="second"]')).not.toBeNull();
+    expect(host.querySelector('[data-vg-filter-popup="first"]')).toBeNull();
+    expect(host.querySelector('[data-vg-filter-popup="second"]')).not.toBeNull();
     expect(f1.destroy).toHaveBeenCalledTimes(1);
     expect(fph.openColId()).toBe('colB');
   });
@@ -91,7 +91,7 @@ describe('FilterPopupHost', () => {
     const fph = new FilterPopupHost(host, popupHost);
     const f = makeFactory('inside-test');
     fph.open('colA', ANCHOR, f);
-    const gui = host.querySelector('[data-cg-filter-popup="inside-test"]') as HTMLElement;
+    const gui = host.querySelector('[data-vg-filter-popup="inside-test"]') as HTMLElement;
     gui.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
     expect(fph.isOpen()).toBe(true);
     expect(f.destroy).not.toHaveBeenCalled();

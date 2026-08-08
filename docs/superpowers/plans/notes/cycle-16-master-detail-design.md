@@ -26,7 +26,7 @@ flag the existing slicer reads.
 ```
 ┌─ Master row (rowKind = 0) ───────────────────────┐
 ├─ Detail row (rowKind = 3, height = 240px) ───────┤
-│   ┌─ Nested CGrid (orderbook) ──────────────┐    │
+│   ┌─ Nested VelocityGrid (orderbook) ──────────────┐    │
 │   │ ...                                     │    │
 │   └─────────────────────────────────────────┘    │
 ├─ Master row (rowKind = 0) ───────────────────────┤
@@ -74,7 +74,7 @@ host arbitrary nested grids / app DOM. Position via
 **Constraint:** Pointer events on the detail portal MUST capture
 before the canvas hit-tester sees them. The portal is mounted ABOVE
 the canvas in z-order; canvas hit-tester checks `event.target` and
-short-circuits when the event originated inside a `.cg-detail-row`.
+short-circuits when the event originated inside a `.vg-detail-row`.
 
 **Lifecycle:**
 - Mount: row becomes visible AND is expanded.
@@ -83,11 +83,11 @@ short-circuits when the event originated inside a `.cg-detail-row`.
 
 ---
 
-## Task 3 — Nested CGrid wiring (`detailCellRenderer`)
+## Task 3 — Nested VelocityGrid wiring (`detailCellRenderer`)
 
 **Goal:** Apps provide `detailCellRendererParams.detailGridOptions` (a
-`CGridOptions` for the nested grid); cgrid auto-creates the nested
-`CGrid` inside the portal. Alternatively `detailCellRenderer` is a
+`VelocityGridOptions` for the nested grid); cgrid auto-creates the nested
+`VelocityGrid` inside the portal. Alternatively `detailCellRenderer` is a
 custom callback returning arbitrary DOM.
 
 **API surface:**
@@ -105,15 +105,15 @@ interface MasterDetailParams<TRow, TDetail> {
 }
 
 interface DetailGridParams<TDetail> {
-  detailGridOptions: CGridOptions<TDetail>;
+  detailGridOptions: VelocityGridOptions<TDetail>;
   getDetailRowData: (params: GetDetailRowDataParams<TDetail>) => void;
 }
 ```
 
 **Auto-create flow:** When `detailCellRenderer` is not provided,
 cgrid synthesizes one that:
-1. Creates a `<div class="cg-detail-host">` inside the portal.
-2. Instantiates `new CGrid(host, detailGridOptions)`.
+1. Creates a `<div class="vg-detail-host">` inside the portal.
+2. Instantiates `new VelocityGrid(host, detailGridOptions)`.
 3. Calls `params.getDetailRowData({ successCallback: rows => { … } })`
    — same pattern as ag-grid.
 4. Pipes the nested grid's `firstDataRendered` event up as
@@ -129,16 +129,16 @@ detail row. Programmatic: `api.setRowExpanded(rowId, true)`.
 **UI chrome:** The expand button is a 16×16 chevron painted in the
 auto-detail column (first leaf when `masterDetail: true`), same
 indent vocabulary as Cycle 15's group chevron — they SHARE the
-indent unit `--cg-group-indent` and chevron color tokens. Reuse,
+indent unit `--vg-group-indent` and chevron color tokens. Reuse,
 don't reinvent.
 
 **Visual signature (light theme):**
 
 | Token | Value | Why |
 |---|---|---|
-| `--cg-detail-chevron-color` | `var(--cg-group-chevron-color)` | Same family as group chevron — one tree vocabulary across hierarchy features |
-| `--cg-detail-bg` | `var(--cg-totals-bg)` | 3% slate tint — visually "lifted" from data rows like the totals row (Cycle 14) |
-| `--cg-detail-border-top` | `var(--cg-totals-border-top)` | Hairline rule above the detail band so it reads as a distinct lift |
+| `--vg-detail-chevron-color` | `var(--vg-group-chevron-color)` | Same family as group chevron — one tree vocabulary across hierarchy features |
+| `--vg-detail-bg` | `var(--vg-totals-bg)` | 3% slate tint — visually "lifted" from data rows like the totals row (Cycle 14) |
+| `--vg-detail-border-top` | `var(--vg-totals-border-top)` | Hairline rule above the detail band so it reads as a distinct lift |
 
 **Rationale for inheriting Cycle 14/15 tokens:** A grouped grid with
 master-detail reads with ONE structural vocabulary — chevron + indent

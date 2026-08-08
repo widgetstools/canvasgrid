@@ -1,10 +1,10 @@
-# Cycle 21b — `@cgrid/expression` (Greenfield DSL) — Design
+# Cycle 21b — `@wellsfargo-starui/velocity-grid-expression` (Greenfield DSL) — Design
 
 **Status:** Draft — pending user review before writing implementation plan.
 **Date:** 2026-07-01
 **Predecessor:** [Cycle 21a monorepo scaffold plan](../plans/2026-07-01-cycle-21a-monorepo-scaffold.md) (merged as PR #92)
 **Parent brief:** [Cycle 21 modular monorepo + intrinsic features](../plans/2026-07-01-canvasgrid-cycle-21-modular-monorepo-and-intrinsic-features.md) §3.2, §4.2, §7
-**Successor cycles unblocked:** 21c (`@cgrid/format`), 21d (`@cgrid/calc`), 21e (`@cgrid/rules`), 21f (`@cgrid/renderers`), 21g (`@cgrid/edit`), 21h (`@cgrid/export`), 21i (`@cgrid/customizer`)
+**Successor cycles unblocked:** 21c (`@wellsfargo-starui/velocity-grid-format`), 21d (`@wellsfargo-starui/velocity-grid-calc`), 21e (`@wellsfargo-starui/velocity-grid-rules`), 21f (`@wellsfargo-starui/velocity-grid-renderers`), 21g (`@wellsfargo-starui/velocity-grid-edit`), 21h (`@wellsfargo-starui/velocity-grid-export`), 21i (`@wellsfargo-starui/velocity-grid-customizer`)
 
 ---
 
@@ -12,7 +12,7 @@
 
 ### In scope
 
-- **Greenfield build** of `@cgrid/expression`. Kernel is *not* touched this cycle — no migration, no bridge, no consumer wiring. Grep of `packages/kernel/src` confirms there is no in-kernel expression engine to move; the nearest cousin is the floating-filter parser (235 LOC, filter-chip composition only) which stays where it is.
+- **Greenfield build** of `@wellsfargo-starui/velocity-grid-expression`. Kernel is *not* touched this cycle — no migration, no bridge, no consumer wiring. Grep of `packages/kernel/src` confirms there is no in-kernel expression engine to move; the nearest cousin is the floating-filter parser (235 LOC, filter-chip composition only) which stays where it is.
 - **Row-local DSL only.** Field access (`[field.subfield]`), literals (number / string / boolean / null), arithmetic / comparison / logical / ternary operators, string concat, ~14 built-in functions:
     - Control: `IF`, `COALESCE`
     - Logical: `NOT`, `AND`, `OR`
@@ -24,7 +24,7 @@
 
 ### Out of scope (deferred to later cycles)
 
-- Aggregate evaluation — `SUM`, `AVG`, `COUNT`, `MIN`, `MAX` (aggregate forms), `RUNNING_SUM`, `RUNNING_AVG`, `MOVING_AVG(n)`, `FIRST`, `LAST`, `DELTA_FROM_PREV`, `DELTA_FROM_FIRST`, `DELTA_FROM_LAST` → **Cycle 21d** (`@cgrid/calc`).
+- Aggregate evaluation — `SUM`, `AVG`, `COUNT`, `MIN`, `MAX` (aggregate forms), `RUNNING_SUM`, `RUNNING_AVG`, `MOVING_AVG(n)`, `FIRST`, `LAST`, `DELTA_FROM_PREV`, `DELTA_FROM_FIRST`, `DELTA_FROM_LAST` → **Cycle 21d** (`@wellsfargo-starui/velocity-grid-calc`).
 - Tick-scoped `prev()` snapshot semantics → **Cycle 21d** (needs the tick / transaction infrastructure calc will land).
 - Any consumer wiring in kernel, format, rules, or calc → **their own cycles**.
 - Performance benchmark harness / closure specialization → **deferred** until a real consumer (format or calc) exercises the hot path and we can measure against 8ms/frame at 50k rows.
@@ -41,9 +41,9 @@
 
 ### 2.1 Package boundary
 
-`@cgrid/expression` is a **leaf** in the Cycle 21 §3.2 dependency graph (`expression (no cgrid deps)`). It has:
+`@wellsfargo-starui/velocity-grid-expression` is a **leaf** in the Cycle 21 §3.2 dependency graph (`expression (no cgrid deps)`). It has:
 
-- **Zero cgrid dependencies.** No import from `@cgrid/kernel` or any other `@cgrid/*` package.
+- **Zero cgrid dependencies.** No import from `@wellsfargo-starui/velocity-grid` or any other `@cgrid/*` package.
 - **Zero runtime dependencies.** Pure TypeScript standard library.
 - **Dev deps only:** `typescript ~5.9.3`, `vitest ^2.1.0` (already in scaffold).
 
@@ -405,11 +405,11 @@ Vitest, per package (already in the scaffold's `package.json`). No new tooling.
 
 ### 7.4 Verification gates (Task 5)
 
-- `pnpm --filter @cgrid/expression typecheck` — clean
-- `pnpm --filter @cgrid/expression test` — 100% pass, ≥90% line coverage on parse/compile/evaluate, ≥85% on validate
-- `pnpm --filter @cgrid/expression build` — succeeds (Task 1 may keep the scaffold's `echo` no-op if types-only export is sufficient; Task 5 upgrades to a real build only if a bundled dist is needed by consumers this cycle — nobody consumes 21b yet, so no-op is acceptable)
+- `pnpm --filter @wellsfargo-starui/velocity-grid-expression typecheck` — clean
+- `pnpm --filter @wellsfargo-starui/velocity-grid-expression test` — 100% pass, ≥90% line coverage on parse/compile/evaluate, ≥85% on validate
+- `pnpm --filter @wellsfargo-starui/velocity-grid-expression build` — succeeds (Task 1 may keep the scaffold's `echo` no-op if types-only export is sufficient; Task 5 upgrades to a real build only if a bundled dist is needed by consumers this cycle — nobody consumes 21b yet, so no-op is acceptable)
 - Root-level `pnpm lint` — clean (repo-wide ESLint flat config applies to `packages/expression/**`; no per-package lint script needed)
-- **Kernel tests unaffected:** `pnpm --filter @cgrid/kernel test` still `2326/2326`
+- **Kernel tests unaffected:** `pnpm --filter @wellsfargo-starui/velocity-grid test` still `2326/2326`
 - **E2E unaffected:** showcase + positions E2E baselines unchanged (since kernel is untouched)
 - **Turbo graph clean:** `pnpm typecheck` at repo root cleanly walks `expression → kernel` (both leaves), no cycles.
 
@@ -481,9 +481,9 @@ Single feature branch `cycle21b/expression`, one PR, 5 sequential tasks. Each ta
 
 - `packages/expression/src/` has all files from §2.2 with real (non-throwing) implementations.
 - All 6 test files exist with the coverage from §7.2 met.
-- `pnpm --filter @cgrid/expression test` — 100% pass, no `.only` / `.skip` leaks.
+- `pnpm --filter @wellsfargo-starui/velocity-grid-expression test` — 100% pass, no `.only` / `.skip` leaks.
 - Kernel tests + E2E suites unchanged from `main` baseline (`2326/2326` unit + `98/98` showcase + `262/262` positions).
-- Public API from §5 is exported from `index.ts`; a downstream test consumer (added in a follow-up cycle) can `import { parse, compile, evaluate, validate } from '@cgrid/expression'` and get the exact shapes documented here.
+- Public API from §5 is exported from `index.ts`; a downstream test consumer (added in a follow-up cycle) can `import { parse, compile, evaluate, validate } from '@wellsfargo-starui/velocity-grid-expression'` and get the exact shapes documented here.
 - PR body links to this spec + to the Cycle 21 parent brief §3.2 + §4.2.
 - `.superpowers/sdd/progress.md` ends with `Cycle 21b status: COMPLETE.`
 

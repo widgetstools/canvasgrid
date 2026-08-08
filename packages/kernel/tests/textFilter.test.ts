@@ -45,7 +45,7 @@ describe('TextFilterPopup', () => {
     host.appendChild(gui);
     const selects = gui.querySelectorAll('select');
     expect(selects.length).toBe(1);
-    const primary = gui.querySelector('input[type="text"][data-cg-filter-input="primary"]');
+    const primary = gui.querySelector('input[type="text"][data-vg-filter-input="primary"]');
     expect(primary).not.toBeNull();
   });
 
@@ -106,7 +106,7 @@ describe('TextFilterPopup', () => {
     });
     const gui = popup.buildGui();
     host.appendChild(gui);
-    const cb = gui.querySelector('input[type="checkbox"][data-cg-filter-case-sensitive]');
+    const cb = gui.querySelector('input[type="checkbox"][data-vg-filter-case-sensitive]');
     expect(cb).not.toBeNull();
   });
 
@@ -119,7 +119,7 @@ describe('TextFilterPopup', () => {
     });
     const gui = popup.buildGui();
     host.appendChild(gui);
-    const cb = gui.querySelector('input[type="checkbox"][data-cg-filter-case-sensitive]');
+    const cb = gui.querySelector('input[type="checkbox"][data-vg-filter-case-sensitive]');
     expect(cb).toBeNull();
   });
 
@@ -134,7 +134,7 @@ describe('TextFilterPopup', () => {
     host.appendChild(gui);
     const primary = gui.querySelector('input[type="text"]') as HTMLInputElement;
     primary.value = 'POS-1';
-    const applyBtn = gui.querySelector('button[data-cg-filter-action="apply"]') as HTMLButtonElement;
+    const applyBtn = gui.querySelector('button[data-vg-filter-action="apply"]') as HTMLButtonElement;
     applyBtn.click();
     expect(onApply).toHaveBeenCalledWith({
       filterType: 'text', type: 'contains', filter: 'POS-1',
@@ -155,7 +155,7 @@ describe('TextFilterPopup', () => {
     select.dispatchEvent(new Event('change', { bubbles: true }));
     const primary = gui.querySelector('input[type="text"]') as HTMLInputElement;
     primary.value = 'POS';
-    const applyBtn = gui.querySelector('button[data-cg-filter-action="apply"]') as HTMLButtonElement;
+    const applyBtn = gui.querySelector('button[data-vg-filter-action="apply"]') as HTMLButtonElement;
     applyBtn.click();
     expect(onApply).toHaveBeenCalledWith({
       filterType: 'text', type: 'startsWith', filter: 'POS',
@@ -173,10 +173,10 @@ describe('TextFilterPopup', () => {
     host.appendChild(gui);
     const primary = gui.querySelector('input[type="text"]') as HTMLInputElement;
     primary.value = 'POS';
-    const cb = gui.querySelector('input[type="checkbox"][data-cg-filter-case-sensitive]') as HTMLInputElement;
+    const cb = gui.querySelector('input[type="checkbox"][data-vg-filter-case-sensitive]') as HTMLInputElement;
     cb.checked = true;
     cb.dispatchEvent(new Event('change', { bubbles: true }));
-    const applyBtn = gui.querySelector('button[data-cg-filter-action="apply"]') as HTMLButtonElement;
+    const applyBtn = gui.querySelector('button[data-vg-filter-action="apply"]') as HTMLButtonElement;
     applyBtn.click();
     expect(onApply).toHaveBeenCalledWith({
       filterType: 'text', type: 'contains', filter: 'POS', caseSensitive: true,
@@ -195,7 +195,7 @@ describe('TextFilterPopup', () => {
     const select = gui.querySelector('select') as HTMLSelectElement;
     select.value = 'blank';
     select.dispatchEvent(new Event('change', { bubbles: true }));
-    const applyBtn = gui.querySelector('button[data-cg-filter-action="apply"]') as HTMLButtonElement;
+    const applyBtn = gui.querySelector('button[data-vg-filter-action="apply"]') as HTMLButtonElement;
     applyBtn.click();
     expect(onApply).toHaveBeenCalledWith({
       filterType: 'text', type: 'blank',
@@ -211,7 +211,7 @@ describe('TextFilterPopup', () => {
     });
     const gui = popup.buildGui();
     host.appendChild(gui);
-    const applyBtn = gui.querySelector('button[data-cg-filter-action="apply"]') as HTMLButtonElement;
+    const applyBtn = gui.querySelector('button[data-vg-filter-action="apply"]') as HTMLButtonElement;
     applyBtn.click();
     expect(onApply).toHaveBeenCalledWith(null);
   });
@@ -227,7 +227,7 @@ describe('TextFilterPopup', () => {
     host.appendChild(gui);
     const primary = gui.querySelector('input[type="text"]') as HTMLInputElement;
     expect(primary.value).toBe('POS');
-    const clearBtn = gui.querySelector('button[data-cg-filter-action="clear"]') as HTMLButtonElement;
+    const clearBtn = gui.querySelector('button[data-vg-filter-action="clear"]') as HTMLButtonElement;
     clearBtn.click();
     expect(primary.value).toBe('');
     expect(onApply).not.toHaveBeenCalled();
@@ -242,10 +242,10 @@ describe('TextFilterPopup', () => {
     });
     const gui = popup.buildGui();
     host.appendChild(gui);
-    const resetBtn = gui.querySelector('button[data-cg-filter-action="reset"]') as HTMLButtonElement;
+    const resetBtn = gui.querySelector('button[data-vg-filter-action="reset"]') as HTMLButtonElement;
     resetBtn.click();
     const primary = gui.querySelector('input[type="text"]') as HTMLInputElement;
-    const cb = gui.querySelector('input[type="checkbox"][data-cg-filter-case-sensitive]') as HTMLInputElement;
+    const cb = gui.querySelector('input[type="checkbox"][data-vg-filter-case-sensitive]') as HTMLInputElement;
     expect(primary.value).toBe('');
     expect(cb.checked).toBe(false);
     expect(onApply).toHaveBeenCalledWith(null);
@@ -261,7 +261,7 @@ describe('TextFilterPopup', () => {
     host.appendChild(gui);
     const select = gui.querySelector('select') as HTMLSelectElement;
     const primary = gui.querySelector('input[type="text"]') as HTMLInputElement;
-    const cb = gui.querySelector('input[type="checkbox"][data-cg-filter-case-sensitive]') as HTMLInputElement;
+    const cb = gui.querySelector('input[type="checkbox"][data-vg-filter-case-sensitive]') as HTMLInputElement;
     expect(select.value).toBe('startsWith');
     expect(primary.value).toBe('POS');
     expect(cb.checked).toBe(true);
@@ -276,9 +276,9 @@ describe('TextFilterPopup', () => {
     });
     const gui = popup.buildGui();
     host.appendChild(gui);
-    expect(gui.querySelector('button[data-cg-filter-action="apply"]')).not.toBeNull();
-    expect(gui.querySelector('button[data-cg-filter-action="clear"]')).toBeNull();
-    expect(gui.querySelector('button[data-cg-filter-action="reset"]')).toBeNull();
+    expect(gui.querySelector('button[data-vg-filter-action="apply"]')).not.toBeNull();
+    expect(gui.querySelector('button[data-vg-filter-action="clear"]')).toBeNull();
+    expect(gui.querySelector('button[data-vg-filter-action="reset"]')).toBeNull();
   });
 
   it('closeOnApply: true triggers onClose after Apply', () => {
@@ -293,7 +293,7 @@ describe('TextFilterPopup', () => {
     host.appendChild(gui);
     const primary = gui.querySelector('input[type="text"]') as HTMLInputElement;
     primary.value = 'POS';
-    const applyBtn = gui.querySelector('button[data-cg-filter-action="apply"]') as HTMLButtonElement;
+    const applyBtn = gui.querySelector('button[data-vg-filter-action="apply"]') as HTMLButtonElement;
     applyBtn.click();
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -309,7 +309,7 @@ describe('TextFilterPopup', () => {
     host.appendChild(gui);
     const primary = gui.querySelector('input[type="text"]') as HTMLInputElement;
     primary.value = 'POS';
-    const applyBtn = gui.querySelector('button[data-cg-filter-action="apply"]') as HTMLButtonElement;
+    const applyBtn = gui.querySelector('button[data-vg-filter-action="apply"]') as HTMLButtonElement;
     applyBtn.click();
     expect(onClose).not.toHaveBeenCalled();
   });
@@ -325,7 +325,7 @@ describe('TextFilterPopup', () => {
     });
     const gui = popup.buildGui();
     host.appendChild(gui);
-    const cancelBtn = gui.querySelector('button[data-cg-filter-action="cancel"]') as HTMLButtonElement;
+    const cancelBtn = gui.querySelector('button[data-vg-filter-action="cancel"]') as HTMLButtonElement;
     cancelBtn.click();
     expect(onApply).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledTimes(1);

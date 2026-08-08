@@ -1,6 +1,6 @@
 # cgrid vs AG Grid Pivot — full gap analysis (2026-07-03)
 
-Scope: cgrid's Cycle 18 AG-parity pivot (`@cgrid/kernel`, `pivotMode: true`)
+Scope: cgrid's Cycle 18 AG-parity pivot (`@wellsfargo-starui/velocity-grid`, `pivotMode: true`)
 versus AG Grid Enterprise v35 `PivotModule`, across **features, function,
 behavior, look & feel, and UX**. Sources:
 
@@ -13,7 +13,7 @@ behavior, look & feel, and UX**. Sources:
 - Live side-by-side run today at `/?feature=pivotAgComparison`
   (AG Enterprise v35.3.1, 180-row Desk × Region × Sector dataset).
 
-`@cgrid/excel-pivot` is an **empty scaffold** (Cycle 21a); Excel-native
+`@wellsfargo-starui/velocity-grid-excel-pivot` is an **empty scaffold** (Cycle 21a); Excel-native
 capabilities (Show Values As, calculated fields, date hierarchies, item
 filters, drill-through) are Cycle 20 scope and are *not* AG-parity gaps —
 AG lacks them too. They are out of scope here.
@@ -153,7 +153,7 @@ larger-than-client datasets.
 - **Integrated charts** from pivoted data: AG yes; cgrid has renderer-level
   charts but no chart-from-pivot-selection.
 - **Excel/CSV export of the pivoted view**: AG exports the pivot result
-  structure. `@cgrid/export` exists but pivot-mode export has no demo/test
+  structure. `@wellsfargo-starui/velocity-grid-export` exists but pivot-mode export has no demo/test
   coverage — *needs verification* before claiming either way.
 - Aligned grids + pivot: unsupported in **both** (AG documents the
   restriction). Non-gap.
@@ -187,7 +187,7 @@ cosmetic-but-visible).
 ### 3.3 Row-group ordering, runtime `pivotDefaultExpanded`, batch value
 columns, result-column getter, filter-model shape
 All five closed on `feature/pivoting` (2026-06-29 audit) — re-confirmed
-present in current source (`getPivotResultColumns` at `cgrid.ts:3191`,
+present in current source (`getPivotResultColumns` at `velocityGrid.ts:3191`,
 insertion-order GroupPass, runtime whitelist entry, `setValueColumns`).
 
 ---
@@ -203,7 +203,7 @@ insertion-order GroupPass, runtime whitelist entry, `setValueColumns`).
 | Number rendering | proportional font, ellipsis-truncates cell values at narrow widths (`£1,655,0…`) | tabular/monospace numerals, columns sized to content | cgrid materially more readable for financial data at identical pane sizes. |
 | Header menu affordance | hover ⋮ on every result column + group | none (right-click context menu) | See UX §5.2. |
 | Watermark | AG Enterprise watermark (unlicensed dev) | none | n/a |
-| Theming | Theming API `themeQuartz.withParams` | `--cg-pivot-panel-*` tokens, pills reuse row-group chip tokens | Both fully themeable; cgrid pivot strip has dedicated tokens incl. drop accept/reject states. |
+| Theming | Theming API `themeQuartz.withParams` | `--vg-pivot-panel-*` tokens, pills reuse row-group chip tokens | Both fully themeable; cgrid pivot strip has dedicated tokens incl. drop accept/reject states. |
 
 Visual-regression coverage: **zero pivot snapshots** in `e2e-visual`
 (only renderer pages). Given three pivot demos exist, this is the cheapest

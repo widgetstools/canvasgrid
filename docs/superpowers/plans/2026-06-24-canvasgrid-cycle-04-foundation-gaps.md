@@ -48,10 +48,10 @@ Apply to **every task** (extend the constraints from Cycles 2/3).
 - **API parity, not API mimicry.** Field names mirror ag-grid verbatim
   (`columnDefs`, `defaultColDef`, `valueSetter`, `valueParser`, `cellRendererParams`,
   `openByDefault`, `marryChildren`, `groupId`, `headerName`). Top-level type
-  names keep the `C` prefix (`CColDef`, `CColGroupDef`, `CGridOptions`,
-  `CGridApi`). String identifiers drop the `ag` prefix.
-- **No regressions in the public API.** Any change to `CGridOptions`,
-  `CGridApi`, `CColDef`, the event union, or the worker protocol is purely
+  names keep the `C` prefix (`CColDef`, `CColGroupDef`, `VelocityGridOptions`,
+  `VelocityGridApi`). String identifiers drop the `ag` prefix.
+- **No regressions in the public API.** Any change to `VelocityGridOptions`,
+  `VelocityGridApi`, `CColDef`, the event union, or the worker protocol is purely
   additive in Cycle 4. Demo wiring updates land in the same commit as the
   feature, not in a follow-up.
 - **TypeScript strict mode.** Every `cgrid/src/**/*.ts` compiles clean under
@@ -82,23 +82,23 @@ Apply to **every task** (extend the constraints from Cycles 2/3).
 
 | # | Task | Primary user-visible win | Files touched |
 |---|---|---|---|
-| 1 | Column group model + ColGroupDef types | Heterogeneous `columnDefs` accepted; ungrouped users unaffected | `types.ts`, `core/propertyChain.ts`, `core/columnTree.ts` (new), `cgrid.ts` |
-| 2 | HeaderGroupSubgrid (multi-row header) | Visible nested column-group headers with spans | `core/subgrid.ts`, `core/viewport.ts`, `renderer/painters/byRows.ts`, `interaction/hitTester.ts`, `cgrid.ts`, demo |
-| 3 | Column group open/close + marryChildren | Click group header to collapse; `columnGroupShow` honored; locked groups | `core/columnGroupState.ts` (new), `interaction/features/headerClick.ts`, `core/columnTree.ts`, `cgrid.ts` |
-| 4 | `setGridOption` + `updateGridOptions` + initial-only gating | App can flip theme/rowHeight/headerHeight/etc. at runtime | `cgrid.ts`, `types.ts`, `core/runtimeOptions.ts` (new) |
-| 5 | `rowBuffer` + virtualization toggles | Configurable overscan + full-column / full-row paint modes | `core/viewport.ts`, `cgrid.ts`, `types.ts` |
-| 6 | `ensureRowVisible(rowId)` + ensureColumnVisible + ensureColumnGroupVisible | Scroll-to-row-by-ID works; no more stub | `worker/protocol.ts`, `worker/worker.ts`, `worker/dataPipeline.ts`, `worker/client.ts`, `cgrid.ts` |
-| 7 | `setFocusedCell(rowId, colId)` + `setSelectedRowIds(ids)` | Focus + selection by ID, persists across updates | `worker/client.ts`, `cgrid.ts`, `interaction/selectionModel.ts` |
-| 8 | Custom cell renderer + `cellRendererParams` + `cellRendererSelector` | Apps can register painters; per-column params | `renderer/cellRenderers/registry.ts`, `cgrid.ts`, `types.ts`, `core/propertyChain.ts` |
-| 9 | `valueSetter` + `valueParser` + commit-back | Editor commit writes through worker pipeline | `interaction/editorOverlay.ts`, `cgrid.ts`, `worker/worker.ts` |
-| 10 | Lifecycle events (`gridPreDestroyed`, `gridSizeChanged`, `firstDataRendered`) | Apps can observe destroy/resize/first-paint | `cgrid.ts`, `types.ts`, `core/canvas.ts` |
+| 1 | Column group model + ColGroupDef types | Heterogeneous `columnDefs` accepted; ungrouped users unaffected | `types.ts`, `core/propertyChain.ts`, `core/columnTree.ts` (new), `velocityGrid.ts` |
+| 2 | HeaderGroupSubgrid (multi-row header) | Visible nested column-group headers with spans | `core/subgrid.ts`, `core/viewport.ts`, `renderer/painters/byRows.ts`, `interaction/hitTester.ts`, `velocityGrid.ts`, demo |
+| 3 | Column group open/close + marryChildren | Click group header to collapse; `columnGroupShow` honored; locked groups | `core/columnGroupState.ts` (new), `interaction/features/headerClick.ts`, `core/columnTree.ts`, `velocityGrid.ts` |
+| 4 | `setGridOption` + `updateGridOptions` + initial-only gating | App can flip theme/rowHeight/headerHeight/etc. at runtime | `velocityGrid.ts`, `types.ts`, `core/runtimeOptions.ts` (new) |
+| 5 | `rowBuffer` + virtualization toggles | Configurable overscan + full-column / full-row paint modes | `core/viewport.ts`, `velocityGrid.ts`, `types.ts` |
+| 6 | `ensureRowVisible(rowId)` + ensureColumnVisible + ensureColumnGroupVisible | Scroll-to-row-by-ID works; no more stub | `worker/protocol.ts`, `worker/worker.ts`, `worker/dataPipeline.ts`, `worker/client.ts`, `velocityGrid.ts` |
+| 7 | `setFocusedCell(rowId, colId)` + `setSelectedRowIds(ids)` | Focus + selection by ID, persists across updates | `worker/client.ts`, `velocityGrid.ts`, `interaction/selectionModel.ts` |
+| 8 | Custom cell renderer + `cellRendererParams` + `cellRendererSelector` | Apps can register painters; per-column params | `renderer/cellRenderers/registry.ts`, `velocityGrid.ts`, `types.ts`, `core/propertyChain.ts` |
+| 9 | `valueSetter` + `valueParser` + commit-back | Editor commit writes through worker pipeline | `interaction/editorOverlay.ts`, `velocityGrid.ts`, `worker/worker.ts` |
+| 10 | Lifecycle events (`gridPreDestroyed`, `gridSizeChanged`, `firstDataRendered`) | Apps can observe destroy/resize/first-paint | `velocityGrid.ts`, `types.ts`, `core/canvas.ts` |
 
 ---
 
 ## Task 1 — Column group model + ColGroupDef types
 
 **Goal:** Accept heterogeneous `columnDefs: (CColDef | CColGroupDef)[]`. Build a
-`ColumnTree` (groups + leaves) at construction time. Replace cgrid.ts's flat
+`ColumnTree` (groups + leaves) at construction time. Replace velocityGrid.ts's flat
 `for (def of options.columnDefs)` loop with `resolveColumnTree(...)`. After
 this task, ungrouped users are byte-for-byte identical; grouped users have a
 parsed tree available but no header rendering yet (that's Task 2).
@@ -114,15 +114,15 @@ touches the leaf-resolution code again.
   (lines 99-108), "API methods" (esp. `getColumnGroupState`), "Behaviors —
   Column group open/close" (lines 181-183)
 - Master plan Cycle 4 task 1 line (`docs/superpowers/plans/2026-06-24-canvasgrid-feature-parity.md:157`)
-- `cgrid/src/types.ts` — current `CGridOptions.columnDefs` field
+- `cgrid/src/types.ts` — current `VelocityGridOptions.columnDefs` field
 - `cgrid/src/core/propertyChain.ts` — `resolveColDef` (leaf-only today)
-- `cgrid/src/cgrid.ts` lines 123-128 — the loop being replaced
+- `cgrid/src/velocityGrid.ts` lines 123-128 — the loop being replaced
 
 **Files:**
-- Modify: `cgrid/src/types.ts` (add `CColGroupDef`, retype `CGridOptions.columnDefs`, add `CColDef.columnGroupShow`)
+- Modify: `cgrid/src/types.ts` (add `CColGroupDef`, retype `VelocityGridOptions.columnDefs`, add `CColDef.columnGroupShow`)
 - Modify: `cgrid/src/core/propertyChain.ts` (re-export `ResolvedColDef`; no change to `resolveColDef`)
 - Create: `cgrid/src/core/columnTree.ts` (the new tree resolver)
-- Modify: `cgrid/src/cgrid.ts` (call `resolveColumnTree` instead of inlined loop; nothing else changes)
+- Modify: `cgrid/src/velocityGrid.ts` (call `resolveColumnTree` instead of inlined loop; nothing else changes)
 - Create: `cgrid/tests/columnTree.test.ts`
 - Update: `cgrid/tests/types.test.ts` (assert the new public type shape compiles)
 - Modify: `cgrid/tests/cgrid.integration.test.ts` (add one passing test that grouped columnDefs construct without throwing — header row 1 still single)
@@ -132,7 +132,7 @@ touches the leaf-resolution code again.
 ```ts
 // cgrid/src/types.ts — additions only; nothing renamed or removed
 export interface CColGroupDef<TRow = any> {
-  /** Stable identifier. Auto-generated as `cg-grp-${n}` when omitted. */
+  /** Stable identifier. Auto-generated as `vg-grp-${n}` when omitted. */
   groupId?: string;
   /** Text shown in the group header cell. Empty string OK; renderer prints ''. */
   headerName?: string;
@@ -153,7 +153,7 @@ export interface CColDef<TRow = any, TValue = any> {
   columnGroupShow?: 'open' | 'closed' | null;
 }
 
-export interface CGridOptions<TRow = any> {
+export interface VelocityGridOptions<TRow = any> {
   // … existing fields …
   columnDefs: (CColDef<TRow> | CColGroupDef<TRow>)[];  // was CColDef<TRow>[]
 }
@@ -235,13 +235,13 @@ In the existing `CColDef` interface, add the `columnGroupShow` field:
 columnGroupShow?: 'open' | 'closed' | null;
 ```
 
-In `CGridOptions`, retype `columnDefs`:
+In `VelocityGridOptions`, retype `columnDefs`:
 
 ```ts
 columnDefs: (CColDef<TRow> | CColGroupDef<TRow>)[];
 ```
 
-Re-export `CColGroupDef` from `cgrid/src/cgrid.ts` next to `CColDef`.
+Re-export `CColGroupDef` from `cgrid/src/velocityGrid.ts` next to `CColDef`.
 
 - [ ] **Step 2: Write the failing test file `cgrid/tests/columnTree.test.ts`**
 
@@ -318,8 +318,8 @@ describe('resolveColumnTree — single-level groups', () => {
     const tree = resolveColumnTree(defs);
     const ids = Array.from(tree.groupById.keys());
     expect(ids.length).toBe(2);
-    expect(ids[0]).toMatch(/^cg-grp-/);
-    expect(ids[1]).toMatch(/^cg-grp-/);
+    expect(ids[0]).toMatch(/^vg-grp-/);
+    expect(ids[1]).toMatch(/^vg-grp-/);
     expect(ids[0]).not.toBe(ids[1]);
   });
 
@@ -441,7 +441,7 @@ export function resolveColumnTree<TRow>(
       if (node.children.length === 0) {
         throw new Error('[cgrid] ColGroupDef has empty children array');
       }
-      const groupId = node.groupId ?? `cg-grp-${++autoGroupSeq}`;
+      const groupId = node.groupId ?? `vg-grp-${++autoGroupSeq}`;
       if (groupById.has(groupId)) {
         throw new Error(`[cgrid] duplicate groupId '${groupId}'`);
       }
@@ -495,21 +495,21 @@ npm test --workspace=cgrid -- columnTree
 
 Expected: all `columnTree` tests pass.
 
-- [ ] **Step 6: Re-export `CColGroupDef` from cgrid.ts**
+- [ ] **Step 6: Re-export `CColGroupDef` from velocityGrid.ts**
 
-In `cgrid/src/cgrid.ts`, extend the type re-export block:
+In `cgrid/src/velocityGrid.ts`, extend the type re-export block:
 
 ```ts
 export type {
-  CGridOptions, CColDef, CColGroupDef, CGridEvent, CGridApi, Tx, TransactionResult,
+  VelocityGridOptions, CColDef, CColGroupDef, VelocityGridEvent, VelocityGridApi, Tx, TransactionResult,
   SortModel, SortModelEntry, FilterModel, FilterModelEntry, GroupModel,
   CValueGetterParams, CValueFormatterParams,
 } from './types';
 ```
 
-- [ ] **Step 7: Replace the inlined leaf-resolution loop in cgrid.ts with `resolveColumnTree`**
+- [ ] **Step 7: Replace the inlined leaf-resolution loop in velocityGrid.ts with `resolveColumnTree`**
 
-In `cgrid/src/cgrid.ts`, locate the block (currently lines 123-128):
+In `cgrid/src/velocityGrid.ts`, locate the block (currently lines 123-128):
 
 ```ts
 // 3. Column model
@@ -557,7 +557,7 @@ it('accepts ColGroupDef in columnDefs and exposes leaves in render order', async
   host.style.width = '600px';
   host.style.height = '400px';
   document.body.appendChild(host);
-  const grid = new CGrid<{ id: string; a: number; b: number; c: number }>(host, {
+  const grid = new VelocityGrid<{ id: string; a: number; b: number; c: number }>(host, {
     columnDefs: [
       { field: 'id', width: 80 },
       {
@@ -580,9 +580,9 @@ it('accepts ColGroupDef in columnDefs and exposes leaves in render order', async
 In `cgrid/tests/types.test.ts`, append:
 
 ```ts
-it('CGridOptions.columnDefs accepts CColGroupDef entries', () => {
+it('VelocityGridOptions.columnDefs accepts CColGroupDef entries', () => {
   // Compile-time assertion only — the test passes if tsc accepts the literal.
-  const opts: import('../src/types').CGridOptions<{ a: number; b: number }> = {
+  const opts: import('../src/types').VelocityGridOptions<{ a: number; b: number }> = {
     columnDefs: [
       { field: 'a' },
       { children: [{ field: 'b' }] },
@@ -601,7 +601,7 @@ npm --workspace=cgrid run typecheck
 npm --workspace=cgrid run build
 ```
 
-Expected: every test green, typecheck clean, `dist/cgrid.js` + `dist/worker.js`
+Expected: every test green, typecheck clean, `dist/velocity-grid.js` + `dist/worker.js`
 emitted. Demo is unchanged at this task — Task 2 adds the visible group row.
 
 - [ ] **Step 11: Manual smoke (optional but recommended)**
@@ -618,7 +618,7 @@ demo's `columnDefs` is still flat). No console errors. Close.
 ```bash
 git add cgrid/src/types.ts \
         cgrid/src/core/columnTree.ts \
-        cgrid/src/cgrid.ts \
+        cgrid/src/velocityGrid.ts \
         cgrid/tests/columnTree.test.ts \
         cgrid/tests/cgrid.integration.test.ts \
         cgrid/tests/types.test.ts
@@ -641,14 +641,14 @@ EOF
       `isColGroupDef`, `ColumnTree`, `ResolvedColGroupDef`, `ResolvedColLeaf`,
       `ColumnTreeNode`.
 - [ ] `CColGroupDef` exported from `cgrid/src/types.ts` and re-exported by
-      `cgrid/src/cgrid.ts`.
+      `cgrid/src/velocityGrid.ts`.
 - [ ] `CColDef.columnGroupShow` typed as `'open' | 'closed' | null`.
-- [ ] `CGridOptions.columnDefs` typed as `(CColDef | CColGroupDef)[]`.
+- [ ] `VelocityGridOptions.columnDefs` typed as `(CColDef | CColGroupDef)[]`.
 - [ ] `npm test --workspace=cgrid -- columnTree` runs ≥10 assertions, all
       green. Full `npm test --workspace=cgrid` green.
 - [ ] `npm --workspace=cgrid run typecheck` clean.
 - [ ] `npm --workspace=cgrid run build` produces both bundles.
-- [ ] cgrid.ts no longer iterates `options.columnDefs` directly; tree is the
+- [ ] velocityGrid.ts no longer iterates `options.columnDefs` directly; tree is the
       single source of truth.
 - [ ] Demo still renders unchanged (flat columnDefs path unaffected).
 
@@ -689,7 +689,7 @@ that mirror the group tree; the subgrid is the canonical visual model.
 - Modify: `cgrid/src/core/viewport.ts` (`ViewportColumn.cellSpan?: number` + group-header column spans)
 - Modify: `cgrid/src/renderer/painters/byRows.ts` (paint a single spanning rect for group cells; suppress per-leaf paints inside the span)
 - Modify: `cgrid/src/interaction/hitTester.ts` (add `Hit = { kind: 'headerGroup'; groupId; }` and resolve it for y in group rows)
-- Modify: `cgrid/src/cgrid.ts` (push N `HeaderGroupSubgrid`s — one per depth level)
+- Modify: `cgrid/src/velocityGrid.ts` (push N `HeaderGroupSubgrid`s — one per depth level)
 - Modify: `apps/cgrid-positions/src/positionsGrid.ts` (wrap a few columns in a `metrics` group so demo proves multi-row header)
 - Create: `cgrid/tests/headerGroupSubgrid.test.ts`
 - Update: `cgrid/tests/viewport.test.ts` (assert visibleRows includes group rows)
@@ -869,7 +869,7 @@ npm test --workspace=cgrid -- headerGroupSubgrid
 
 - [ ] **Step 5: Wire `HeaderGroupSubgrid` into the cgrid subgrid stack**
 
-In `cgrid/src/cgrid.ts`, replace the existing subgrid array build (currently
+In `cgrid/src/velocityGrid.ts`, replace the existing subgrid array build (currently
 the `this.subgrids = [...]` block around lines 132-142):
 
 ```ts
@@ -1077,7 +1077,7 @@ leaf — group header re-spans correctly.
 ```bash
 git add cgrid/src/core/subgrid.ts cgrid/src/core/viewport.ts \
         cgrid/src/renderer/painters/byRows.ts \
-        cgrid/src/interaction/hitTester.ts cgrid/src/cgrid.ts \
+        cgrid/src/interaction/hitTester.ts cgrid/src/velocityGrid.ts \
         apps/cgrid-positions/src/positionsGrid.ts \
         cgrid/tests/headerGroupSubgrid.test.ts cgrid/tests/viewport.test.ts \
         cgrid/tests/byRows.test.ts
@@ -1135,7 +1135,7 @@ manage column density via group toggles, and Tasks 11 (tool panels) /
 **Files:**
 - Create: `cgrid/src/core/columnGroupState.ts` (state store + visibility resolver)
 - Modify: `cgrid/src/interaction/features/headerClick.ts` (handle `headerGroup` hits)
-- Modify: `cgrid/src/cgrid.ts` (wire state, derive `columnOrder` from `tree.leaves ∩ visibility`)
+- Modify: `cgrid/src/velocityGrid.ts` (wire state, derive `columnOrder` from `tree.leaves ∩ visibility`)
 - Modify: `cgrid/src/types.ts` (add `columnGroupOpened` event)
 - Create: `cgrid/tests/columnGroupState.test.ts`
 
@@ -1184,7 +1184,7 @@ export function resolveVisibleLeaves(
 ): string[];
 
 // cgrid/src/types.ts — additions
-export type CGridEvent =
+export type VelocityGridEvent =
   // … existing …
   | { type: 'columnGroupOpened'; groupId: string; open: boolean }
   | { type: 'displayedColumnsChanged'; source: 'columnGroupOpened' | 'columnDefsChanged' };
@@ -1411,9 +1411,9 @@ columnGroupShow: merged.columnGroupShow ?? null,
 npm test --workspace=cgrid -- columnGroupState
 ```
 
-- [ ] **Step 6: Wire `ColumnGroupState` into `cgrid.ts`**
+- [ ] **Step 6: Wire `ColumnGroupState` into `velocityGrid.ts`**
 
-In `cgrid.ts`:
+In `velocityGrid.ts`:
 - Add field: `private groupState: ColumnGroupState;`
 - After `resolveColumnTree`, construct: `this.groupState = new ColumnGroupState(this.columnTree);`
 - Replace `this.columnOrder = this.columnTree.leaves;` with a derived getter:
@@ -1432,10 +1432,10 @@ In `cgrid.ts`:
 - [ ] **Step 7: Wire group click in `headerClick.ts`**
 
 ```ts
-import { Feature, type CGridEventCtx } from '../feature';
+import { Feature, type VelocityGridEventCtx } from '../feature';
 
 export class HeaderClick extends Feature {
-  override handleClick(ctx: CGridEventCtx): void {
+  override handleClick(ctx: VelocityGridEventCtx): void {
     if (ctx.hit.kind === 'header') {
       ctx.grid.cycleSort(ctx.hit.colId);
       return;
@@ -1449,14 +1449,14 @@ export class HeaderClick extends Feature {
 }
 ```
 
-Add `toggleColumnGroup(groupId: string): void` to `CGridLike` in
-`interaction/feature.ts` and implement it on `CGrid` as
-`this.groupState.toggle(groupId)`. Expose API: `CGridApi.setColumnGroupState`,
+Add `toggleColumnGroup(groupId: string): void` to `VelocityGridLike` in
+`interaction/feature.ts` and implement it on `VelocityGrid` as
+`this.groupState.toggle(groupId)`. Expose API: `VelocityGridApi.setColumnGroupState`,
 `getColumnGroupState`, `resetColumnGroupState`.
 
 - [ ] **Step 8: Add the `columnGroupOpened` + `displayedColumnsChanged` events to the union in `types.ts`**
 
-(Already shown above in the Interfaces block — add to `CGridEvent`.)
+(Already shown above in the Interfaces block — add to `VelocityGridEvent`.)
 
 - [ ] **Step 9: Run unit + typecheck + build + E2E + commit**
 
@@ -1508,12 +1508,12 @@ later cycle.
 **Read first:**
 - `docs/catalog/01-grid-options.md` — option taxonomy + the explicit
   initial-only callouts
-- `cgrid/src/cgrid.ts` — current option fields + how `setTheme` mutates today (template for runtime-safe handlers)
+- `cgrid/src/velocityGrid.ts` — current option fields + how `setTheme` mutates today (template for runtime-safe handlers)
 
 **Files:**
 - Create: `cgrid/src/core/runtimeOptions.ts` (declares `INITIAL_ONLY_OPTIONS` + per-option apply fns)
-- Modify: `cgrid/src/cgrid.ts` (add `setGridOption` + `updateGridOptions` to api; wire to the new module)
-- Modify: `cgrid/src/types.ts` (CGridApi additions + new options: `rowBuffer`, `animateRows`, `context`, `loading`, `debug`)
+- Modify: `cgrid/src/velocityGrid.ts` (add `setGridOption` + `updateGridOptions` to api; wire to the new module)
+- Modify: `cgrid/src/types.ts` (VelocityGridApi additions + new options: `rowBuffer`, `animateRows`, `context`, `loading`, `debug`)
 - Create: `cgrid/tests/runtimeOptions.test.ts`
 
 **Steps (condensed — same TDD shape as Tasks 1-3):**
@@ -1523,8 +1523,8 @@ later cycle.
 `cgrid/src/core/runtimeOptions.ts`:
 
 ```ts
-export const INITIAL_ONLY_OPTIONS: ReadonlySet<keyof CGridOptions> = new Set<
-  keyof CGridOptions
+export const INITIAL_ONLY_OPTIONS: ReadonlySet<keyof VelocityGridOptions> = new Set<
+  keyof VelocityGridOptions
 >([
   'columnDefs',        // use updateGridOptions({columnDefs}) — that route handles tree rebuild
   'getRowId',
@@ -1545,10 +1545,10 @@ Examples: `theme` → `setTheme`; `rowHeight` / `headerHeight` →
 `recomputeViewport + requestRepaint`; `rowBuffer` → updates `overscanRows`
 (Task 5 lands the read-site).
 
-- [ ] **Step 3: Wire `setGridOption(key, value)` in cgrid.ts**
+- [ ] **Step 3: Wire `setGridOption(key, value)` in velocityGrid.ts**
 
 ```ts
-setGridOption<K extends keyof CGridOptions<TRow>>(key: K, value: CGridOptions<TRow>[K]): void {
+setGridOption<K extends keyof VelocityGridOptions<TRow>>(key: K, value: VelocityGridOptions<TRow>[K]): void {
   if (INITIAL_ONLY_OPTIONS.has(key)) {
     throw new Error(`[cgrid] '${String(key)}' is initial-only; use updateGridOptions({columnDefs}) for column changes`);
   }
@@ -1556,7 +1556,7 @@ setGridOption<K extends keyof CGridOptions<TRow>>(key: K, value: CGridOptions<TR
   applyRuntimeOption(this, key as RuntimeOption, value);
 }
 
-updateGridOptions(partial: Partial<CGridOptions<TRow>>): void {
+updateGridOptions(partial: Partial<VelocityGridOptions<TRow>>): void {
   // Special-case columnDefs — rebuilds the tree.
   if ('columnDefs' in partial) {
     this.columnTree = resolveColumnTree(partial.columnDefs!, partial.defaultColDef ?? this.options.defaultColDef);
@@ -1576,7 +1576,7 @@ updateGridOptions(partial: Partial<CGridOptions<TRow>>): void {
 (Tests cover: each runtime option applies; initial-only throws; columnDefs
 swap preserves matching colIds + group state.)
 
-- [ ] **Step 4: Add the new option fields to `CGridOptions`**
+- [ ] **Step 4: Add the new option fields to `VelocityGridOptions`**
 
 ```ts
 animateRows?: boolean;
@@ -1627,7 +1627,7 @@ apps doing screenshot-style tests want the suppressed-virtualisation modes.
 
 **Files:**
 - Modify: `cgrid/src/core/viewport.ts` (accept `suppressColumnVirtualisation` / `suppressRowVirtualisation` flags)
-- Modify: `cgrid/src/cgrid.ts` (pass `rowBuffer` + suppress flags through; reactivity via Task 4's runtimeOptions)
+- Modify: `cgrid/src/velocityGrid.ts` (pass `rowBuffer` + suppress flags through; reactivity via Task 4's runtimeOptions)
 - Modify: `cgrid/tests/viewport.test.ts` (add 3 tests covering each flag + buffer)
 
 **Steps (condensed):**
@@ -1635,7 +1635,7 @@ apps doing screenshot-style tests want the suppressed-virtualisation modes.
 - [ ] Step 1: Test "rowBuffer of 10 expands overscan; suppressRowVirtualisation paints all rows"
 - [ ] Step 2: Run; fail
 - [ ] Step 3: Extend `ViewportInput` with the new fields; thread them into the row-pass loop
-- [ ] Step 4: Update cgrid.ts call to `computeViewport`
+- [ ] Step 4: Update velocityGrid.ts call to `computeViewport`
 - [ ] Step 5: Tests + typecheck + build + E2E + commit
 
 ```
@@ -1677,8 +1677,8 @@ Tasks 7-9 all assume `setFocusedCell(rowId)` works.
 - Modify: `cgrid/src/worker/protocol.ts` (add `getRowIndexForId` request + response)
 - Modify: `cgrid/src/worker/worker.ts` (handler delegates to `state.visible().indexOf(id)`)
 - Modify: `cgrid/src/worker/client.ts` (`getRowIndexForId(rowId): Promise<number>`)
-- Modify: `cgrid/src/cgrid.ts` (real `ensureRowVisible`; `ensureColumnVisible` + `ensureColumnGroupVisible`)
-- Modify: `cgrid/src/types.ts` (`CGridApi` signature changes — back-compat: new optional `position` defaults to `'auto'`)
+- Modify: `cgrid/src/velocityGrid.ts` (real `ensureRowVisible`; `ensureColumnVisible` + `ensureColumnGroupVisible`)
+- Modify: `cgrid/src/types.ts` (`VelocityGridApi` signature changes — back-compat: new optional `position` defaults to `'auto'`)
 - Modify: `cgrid/tests/workerClient.test.ts` + add `cgrid.integration.test.ts` E2E (scroll-to-row by ID).
 
 **Steps (condensed):**
@@ -1696,7 +1696,7 @@ case 'getRowIndexForId': {
 ```
 
 - [ ] Step 3: Client wrapper returns the index (or -1 if not found).
-- [ ] Step 4: cgrid.ts `ensureRowVisible(rowId, position='auto')` — calls client, then `ensureRowIndexVisible(idx, position)` (extend the helper to honor position).
+- [ ] Step 4: velocityGrid.ts `ensureRowVisible(rowId, position='auto')` — calls client, then `ensureRowIndexVisible(idx, position)` (extend the helper to honor position).
 - [ ] Step 5: `ensureColumnVisible(colId, position='auto')` — derive `left/width` from `columnLayout`; clamp like the row helper. `ensureColumnGroupVisible(groupId)` → set ancestor groups open + `ensureColumnVisible(group.leafColIds[0])`.
 - [ ] Step 6: Tests, typecheck, build, E2E, commit.
 
@@ -1735,7 +1735,7 @@ phantom selection jumps; this fixes it.
 
 **Files:**
 - Modify: `cgrid/src/interaction/selectionModel.ts` (store selection by rowId; map to indices via a callback per refresh)
-- Modify: `cgrid/src/cgrid.ts` (implement `setFocusedCell` / `setSelectedRowIds`; on `modelUpdated` rebuild the index Set from the persistent ID Set)
+- Modify: `cgrid/src/velocityGrid.ts` (implement `setFocusedCell` / `setSelectedRowIds`; on `modelUpdated` rebuild the index Set from the persistent ID Set)
 - Modify: `cgrid/src/worker/protocol.ts` (`getRowIndicesForIds(ids[]): { indices: Int32Array }` — batched variant)
 - Modify: `cgrid/tests/selectionModel.test.ts` + integration test.
 
@@ -1770,7 +1770,7 @@ group renderer (Cycle 14), status cells (Cycle 13) all depend on this hook.
 **Files:**
 - Modify: `cgrid/src/renderer/cellRenderers/registry.ts` (`CellPaintConfig.params?: unknown`)
 - Modify: `cgrid/src/core/propertyChain.ts` (`ResolvedColDef.cellRendererParams: unknown; cellRendererSelector?: (params) => { component: string; params?: unknown } | undefined`)
-- Modify: `cgrid/src/cgrid.ts` (public `registerCellRenderer(name, painter)`)
+- Modify: `cgrid/src/velocityGrid.ts` (public `registerCellRenderer(name, painter)`)
 - Modify: `cgrid/src/renderer/painters/byRows.ts` (per-cell: invoke selector if defined; route to selector.component instead of static name; pass params)
 - Modify: `cgrid/src/types.ts` (add fields)
 - Create: `cgrid/tests/customCellRenderer.test.ts`
@@ -1808,7 +1808,7 @@ completeness) assumes this works.
 - Modify: `cgrid/src/types.ts` (add `CColDef.valueParser`, `valueSetter` typed fns)
 - Modify: `cgrid/src/core/propertyChain.ts` (carry both through `ResolvedColDef`)
 - Modify: `cgrid/src/interaction/editorOverlay.ts` (no change — `onCommit` already passes the parsed value)
-- Modify: `cgrid/src/cgrid.ts` (in `openEditor`'s onCommit: parse → set → transaction)
+- Modify: `cgrid/src/velocityGrid.ts` (in `openEditor`'s onCommit: parse → set → transaction)
 - Modify: `cgrid/src/worker/worker.ts` (already supports `applyTransaction({ update })` — verify path)
 - Create: `cgrid/tests/commitBack.test.ts`
 
@@ -1840,7 +1840,7 @@ the per-task workflow.
 
 **Goal:** Wire three remaining lifecycle events:
 - `gridPreDestroyed { state }` — fires inside `destroy()` before teardown, carries a state snapshot (stub for Cycle 22; for now: `{}`)
-- `gridSizeChanged { width, height }` — fires from `CGridCanvas.setBounds` when the bounds actually change
+- `gridSizeChanged { width, height }` — fires from `VelocityGridCanvas.setBounds` when the bounds actually change
 - `firstDataRendered` — fires exactly once on the first non-empty viewport paint
 
 **Why:** Apps need these to integrate (analytics, autosize-on-mount, cleanup).
@@ -1848,9 +1848,9 @@ Cycle 22's state work expands `gridPreDestroyed.state`; the event surface
 needs to exist now.
 
 **Files:**
-- Modify: `cgrid/src/types.ts` (add the three events to `CGridEvent`)
-- Modify: `cgrid/src/cgrid.ts` (fire `gridPreDestroyed` in `destroy()`; wrap the setBounds callback to fire `gridSizeChanged` on change; gate first-data event behind a `firstDataFired: boolean` flag)
-- Modify: `cgrid/src/core/canvas.ts` (no change — bounds-change detection lives in the cgrid.ts wrapper)
+- Modify: `cgrid/src/types.ts` (add the three events to `VelocityGridEvent`)
+- Modify: `cgrid/src/velocityGrid.ts` (fire `gridPreDestroyed` in `destroy()`; wrap the setBounds callback to fire `gridSizeChanged` on change; gate first-data event behind a `firstDataFired: boolean` flag)
+- Modify: `cgrid/src/core/canvas.ts` (no change — bounds-change detection lives in the velocityGrid.ts wrapper)
 - Create: `cgrid/tests/lifecycleEvents.test.ts`
 
 **Steps:**
@@ -1956,7 +1956,7 @@ Surface that landed in Cycle 4 (Tasks 1–10, commits `8e1ce73` … `e01aa3d`):
 **Carry-over (not flipped this cycle):**
 
 - Area 01 `addEventListener` — ritual line called it "(already present)",
-  but `CGridApi` does not yet expose a public `on(type, handler)` /
+  but `VelocityGridApi` does not yet expose a public `on(type, handler)` /
   `addEventListener` method (internal `TypedEventEmitter.on` exists at
   [cgrid/src/core/eventEmitter.ts:6](../../cgrid/src/core/eventEmitter.ts#L6)).
   Tracking as a thin follow-up for Cycle 5.
@@ -1972,7 +1972,7 @@ live updates), using a Chromium devtools session at 120 Hz display refresh.
 
 | Metric | Budget | Measured (Cycle 4 exit) | Notes |
 |---|---|---|---|
-| Cold start — full-page first paint (FCP) | < 50 ms (1k×10 internal-init target) | **60 ms** total page load; **~7.5 ms** for `new CGrid()` → `gridReady` (DCL→gridReady delta = 65.1 − 57.6 ms) | Page FCP includes JS bundle parse; the cgrid construction itself sits well under the 50 ms internal-init budget. |
+| Cold start — full-page first paint (FCP) | < 50 ms (1k×10 internal-init target) | **60 ms** total page load; **~7.5 ms** for `new VelocityGrid()` → `gridReady` (DCL→gridReady delta = 65.1 − 57.6 ms) | Page FCP includes JS bundle parse; the cgrid construction itself sits well under the 50 ms internal-init budget. |
 | Cold start — `gridReady` → first non-empty paint | — (Cycle 24 will formalise) | **915 ms** from `navStart` to 3000-row `modelUpdated` | Dominated by STOMP connect + snapshot serialization, not cgrid; subsequent reconnects landed cleanly. Acceptable since 1M×50 budget (< 200 ms) excludes network. |
 | Scroll FPS | ≥ 120 fps (1M × 50 cols target) | **119.9 fps** sustained over a 1.5 s programmatic full-range rAF scroll; median frame gap **8.30 ms**, p95 **9.20 ms** | Effectively pinned at the 120 Hz display ceiling on the 3000-row × 13-col demo. No dropped frames in the p95. |
 

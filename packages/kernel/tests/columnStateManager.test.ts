@@ -6,7 +6,7 @@ import {
 } from '../src/core/columnStateManager';
 import { TypedEventEmitter } from '../src/core/eventEmitter';
 import { resolveColumnTree, type ColumnTree } from '../src/core/columnTree';
-import type { CGridEvent, SortModel } from '../src/types';
+import type { VelocityGridEvent, SortModel } from '../src/types';
 import type { CColumnState } from '../src/types';
 import type { CColDef, CColGroupDef } from '../src/types';
 import type { ResolvedColDef } from '../src/core/propertyChain';
@@ -53,8 +53,8 @@ function makePrimaryTree(): ColumnTree {
 
 interface Harness {
   mgr: ColumnStateManager;
-  events: TypedEventEmitter<CGridEvent>;
-  seen: CGridEvent[];
+  events: TypedEventEmitter<VelocityGridEvent>;
+  seen: VelocityGridEvent[];
   destroyed: { value: boolean };
   columnTree: { value: ColumnTree };
   columnOrder: { value: ResolvedColDef[] };
@@ -88,8 +88,8 @@ function makeHarness(opts: {
   pivotColumns?: string[];
   valueColumns?: ColumnStateValueColumn[];
 } = {}): Harness {
-  const events = new TypedEventEmitter<CGridEvent>();
-  const seen: CGridEvent[] = [];
+  const events = new TypedEventEmitter<VelocityGridEvent>();
+  const seen: VelocityGridEvent[] = [];
   events.on('columnsReset', (e) => seen.push(e));
   events.on('columnMoved', (e) => seen.push(e));
   events.on('columnVisible', (e) => seen.push(e));
@@ -287,7 +287,7 @@ describe('ColumnStateManager — applyColumnState slot mutations', () => {
       ],
     });
     const visibleEvents = h.seen.filter(
-      (e): e is Extract<CGridEvent, { type: 'columnVisible' }> => e.type === 'columnVisible',
+      (e): e is Extract<VelocityGridEvent, { type: 'columnVisible' }> => e.type === 'columnVisible',
     );
     // Two cols hide → ONE event with visible:false + both colIds.
     expect(visibleEvents).toHaveLength(1);
@@ -306,7 +306,7 @@ describe('ColumnStateManager — applyColumnState slot mutations', () => {
       ],
     });
     const pinEvents = h.seen.filter(
-      (e): e is Extract<CGridEvent, { type: 'columnPinned' }> => e.type === 'columnPinned',
+      (e): e is Extract<VelocityGridEvent, { type: 'columnPinned' }> => e.type === 'columnPinned',
     );
     // One event per pin bucket.
     const buckets = new Map(pinEvents.map((e) => [e.pinned, new Set(e.colIds)]));
@@ -325,7 +325,7 @@ describe('ColumnStateManager — applyColumnState slot mutations', () => {
       ],
     });
     const resizeEvents = h.seen.filter(
-      (e): e is Extract<CGridEvent, { type: 'columnResized' }> => e.type === 'columnResized',
+      (e): e is Extract<VelocityGridEvent, { type: 'columnResized' }> => e.type === 'columnResized',
     );
     const widths = new Map(resizeEvents.map((e) => [e.colId, e.width]));
     expect(widths.get('sector')).toBe(200);
@@ -455,7 +455,7 @@ describe('ColumnStateManager — applyOrder leaf-order change', () => {
     expect(h.rebuildColumns).toHaveBeenCalled();
     // columnMoved events cover the reordered leaves.
     const movedEvents = h.seen.filter(
-      (e): e is Extract<CGridEvent, { type: 'columnMoved' }> => e.type === 'columnMoved',
+      (e): e is Extract<VelocityGridEvent, { type: 'columnMoved' }> => e.type === 'columnMoved',
     );
     expect(movedEvents.length).toBeGreaterThan(0);
     // Every moved event carries `source: 'columnState'`.
@@ -478,7 +478,7 @@ describe('ColumnStateManager — worker round-trip', () => {
     await flush();
     expect(h.rowCount.value).toBe(42);
     const displayedEvt = h.seen.find(
-      (e): e is Extract<CGridEvent, { type: 'displayedColumnsChanged' }> =>
+      (e): e is Extract<VelocityGridEvent, { type: 'displayedColumnsChanged' }> =>
         e.type === 'displayedColumnsChanged',
     );
     expect(displayedEvt?.source).toBe('columnDefsChanged');
@@ -495,7 +495,7 @@ describe('ColumnStateManager — worker round-trip', () => {
     h.mgr.resetColumnState();
     await flush();
     const displayedEvt = h.seen.find(
-      (e): e is Extract<CGridEvent, { type: 'displayedColumnsChanged' }> =>
+      (e): e is Extract<VelocityGridEvent, { type: 'displayedColumnsChanged' }> =>
         e.type === 'displayedColumnsChanged',
     );
     expect(displayedEvt?.source).toBe('columnsReset');

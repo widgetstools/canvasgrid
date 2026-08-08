@@ -1,5 +1,5 @@
-import { CGrid } from '@cgrid/kernel';
-import type { CColDef } from '@cgrid/kernel';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
+import type { CColDef } from '@wellsfargo-starui/velocity-grid';
 import type { Feature } from './index';
 
 /**
@@ -127,7 +127,7 @@ export const sparkline: Feature = {
       sparkColumn(v),
     ];
 
-    const grid = new CGrid<SparklineRow>(gridHost, {
+    const grid = new VelocityGrid<SparklineRow>(gridHost, {
       getRowId: (r) => r.id,
       columnDefs: columnDefsFor(variant),
       theme,
@@ -163,6 +163,6 @@ export const sparkline: Feature = {
       buttons[v] = btn;
     }
 
-    return grid as unknown as CGrid<any>;
+    return grid as unknown as VelocityGrid<any>;
   },
 };

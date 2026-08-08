@@ -43,7 +43,7 @@ references via the protocol).
   `pinnedTopRowData: TRow[]` and `pinnedBottomRowData: TRow[]` mount
   one row per array entry. Static data — the main thread owns it;
   no worker round-trip.
-- **Custom aggFunc registry**: `CGridOptions.aggFuncs: Record<string,
+- **Custom aggFunc registry**: `VelocityGridOptions.aggFuncs: Record<string,
   AggFunc>` lives on the main thread; the keys ship to the worker
   on init + on `setGridOption('aggFuncs', …)`. Function bodies
   serialise via the same `Function.toString()` channel
@@ -106,8 +106,8 @@ module — pull that into the worker side as a shared module).
     source of truth.
   - `cgrid/src/renderer/cellRenderers/registry.ts` — built-in
     renderers. `'totals'` registers here.
-  - `cgrid/src/theming/tokens.css` — `.cg-totals-row`,
-    `.cg-totals-cell`, header-suffix rules. Designed per the
+  - `cgrid/src/theming/tokens.css` — `.vg-totals-row`,
+    `.vg-totals-cell`, header-suffix rules. Designed per the
     `/frontend-design` pass, not freehand.
 
 **Global Constraints:**
@@ -146,12 +146,12 @@ module — pull that into the worker side as a shared module).
 
 | # | Title | UI? | Files touched | New tests |
 |---|-------|-----|---------------|-----------|
-| 1 | `TotalsSubgrid` + chunk.totals plumbing | yes | `cgrid/src/core/subgrid.ts`, `cgrid/src/worker/dataPipeline.ts`, `cgrid/src/cgrid.ts`, `cgrid/src/types.ts`, `tokens.css` | `totalsSubgrid.test.ts` (14 cases) + visual cell `17-totals-row-bottom.png` |
-| 2 | `pinnedTopRowData` + `pinnedBottomRowData` | partial UI (renders rows but reuses cell renderers) | `cgrid/src/core/subgrid.ts`, `cgrid/src/cgrid.ts`, `cgrid/src/types.ts` | `pinnedRows.test.ts` (10 cases) + visual cell `18-pinned-top-row.png` |
-| 3 | Custom aggFunc registry (main + worker) | no | `cgrid/src/worker/aggFuncRegistry.ts` (new), `cgrid/src/worker/passes/aggPass.ts`, `cgrid/src/worker/client.ts`, `cgrid/src/cgrid.ts`, `cgrid/src/types.ts` | `aggFuncRegistry.test.ts` (16 cases) |
-| 4 | `suppressAggFuncInHeader` toggle | yes (header text changes) | `cgrid/src/renderer/painters/byRows.ts` (header cell text path), `cgrid/src/cgrid.ts`, `cgrid/src/types.ts` | `suppressAggFuncInHeader.test.ts` (6 cases) + visual cell `19-aggfunc-in-header.png` |
+| 1 | `TotalsSubgrid` + chunk.totals plumbing | yes | `cgrid/src/core/subgrid.ts`, `cgrid/src/worker/dataPipeline.ts`, `cgrid/src/velocityGrid.ts`, `cgrid/src/types.ts`, `tokens.css` | `totalsSubgrid.test.ts` (14 cases) + visual cell `17-totals-row-bottom.png` |
+| 2 | `pinnedTopRowData` + `pinnedBottomRowData` | partial UI (renders rows but reuses cell renderers) | `cgrid/src/core/subgrid.ts`, `cgrid/src/velocityGrid.ts`, `cgrid/src/types.ts` | `pinnedRows.test.ts` (10 cases) + visual cell `18-pinned-top-row.png` |
+| 3 | Custom aggFunc registry (main + worker) | no | `cgrid/src/worker/aggFuncRegistry.ts` (new), `cgrid/src/worker/passes/aggPass.ts`, `cgrid/src/worker/client.ts`, `cgrid/src/velocityGrid.ts`, `cgrid/src/types.ts` | `aggFuncRegistry.test.ts` (16 cases) |
+| 4 | `suppressAggFuncInHeader` toggle | yes (header text changes) | `cgrid/src/renderer/painters/byRows.ts` (header cell text path), `cgrid/src/velocityGrid.ts`, `cgrid/src/types.ts` | `suppressAggFuncInHeader.test.ts` (6 cases) + visual cell `19-aggfunc-in-header.png` |
 | 5 | `'totals'` cell renderer + visual polish | yes | `cgrid/src/renderer/cellRenderers/totals.ts` (new), `cgrid/src/renderer/cellRenderers/registry.ts`, `tokens.css` | `totalsRenderer.test.ts` (8 cases); visual cells 17 + 18 re-baseline against the polished renderer |
-| 6 | `aggregationChanged` event polish | no | `cgrid/src/cgrid.ts`, `cgrid/src/types.ts` | `aggregationEvent.test.ts` (5 cases) |
+| 6 | `aggregationChanged` event polish | no | `cgrid/src/velocityGrid.ts`, `cgrid/src/types.ts` | `aggregationEvent.test.ts` (5 cases) |
 | 7 | Cycle 14 exit ritual | yes (demo wires totals row by default) | worklog Shipped block, FM Area 10 flips, demo update | full suite green; FM 24/26 rows ✅ |
 
 ---
@@ -191,13 +191,13 @@ module — pull that into the worker side as a shared module).
   `aggMath.aggregate` (the Cycle 13 / Task 3 module). For columns
   without an `aggFunc` declared on the colDef, the totals entry
   is `undefined`.
-- `cgrid/src/cgrid.ts` — option resolution: when
+- `cgrid/src/velocityGrid.ts` — option resolution: when
   `options.totalsRowPosition: 'top' | 'bottom' | null` is set,
   push a `TotalsSubgrid` into `this.subgrids` at the matching slot.
-- `cgrid/src/types.ts` — `CGridOptions.totalsRowPosition` type
+- `cgrid/src/types.ts` — `VelocityGridOptions.totalsRowPosition` type
   + `chunk.totals` field on the public ViewportChunk type.
-- `cgrid/src/theming/tokens.css` — placeholder `.cg-totals-row`
-  + `.cg-totals-cell` selectors so the visual cell can baseline
+- `cgrid/src/theming/tokens.css` — placeholder `.vg-totals-row`
+  + `.vg-totals-cell` selectors so the visual cell can baseline
   the subgrid chrome separately from the cell-renderer polish in
   Task 5.
 - `cgrid/tests/totalsSubgrid.test.ts` (new) — 14 cases: mount
@@ -233,7 +233,7 @@ module — pull that into the worker side as a shared module).
    (new) and cite that file in the commit message.
 2. Implement `TotalsSubgrid` in `core/subgrid.ts`.
 3. Audit + extend the worker pipeline to emit `chunk.totals`.
-4. Wire the subgrid into `cgrid.ts` based on `options.totalsRowPosition`.
+4. Wire the subgrid into `velocityGrid.ts` based on `options.totalsRowPosition`.
 5. Build the 14-case test suite.
 6. Build the visual cell (17). The baseline at this point shows
    the subgrid CHROME from `tokens.css` (border-top + reserved
@@ -275,7 +275,7 @@ module — pull that into the worker side as a shared module).
   Subgrid` with `getRowCount(): rows.length`. Reuses the chrome
   rules from Task 1 unless the column def specifies a per-pinned
   renderer.
-- `cgrid/src/cgrid.ts` — option resolution: mount a
+- `cgrid/src/velocityGrid.ts` — option resolution: mount a
   `PinnedRowsSubgrid` per-array when `pinnedTopRowData` /
   `pinnedBottomRowData` is non-empty. Updates on
   `setGridOption('pinnedTopRowData', …)` re-mount the subgrid.
@@ -338,7 +338,7 @@ module — pull that into the worker side as a shared module).
   string → registry function → apply to values.
 - `cgrid/src/worker/client.ts` — `setAggFuncs(funcs)` method that
   serialises function bodies and dispatches the message.
-- `cgrid/src/cgrid.ts` — on `options.aggFuncs` change (init +
+- `cgrid/src/velocityGrid.ts` — on `options.aggFuncs` change (init +
   setGridOption), call `workerClient.setAggFuncs`.
 - `cgrid/src/types.ts` — `AggFunc` type signature.
 - `cgrid/src/interaction/statusBar/aggMath.ts` — promote to a shared
@@ -359,7 +359,7 @@ module — pull that into the worker side as a shared module).
    document in the commit body.
 2. Implement `aggFuncRegistry.ts`.
 3. Wire the `setAggFuncs` protocol message.
-4. Wire option resolution in `cgrid.ts`.
+4. Wire option resolution in `velocityGrid.ts`.
 5. Build the 16-case test suite. The closure-capture case is the
    sharp edge: assert that a custom aggFunc that references an
    outer variable produces a clear error (not silent wrong values).
@@ -393,8 +393,8 @@ module — pull that into the worker side as a shared module).
 - `cgrid/src/renderer/painters/byRows.ts` — header text path
   consults the new `suppressAggFuncInHeader` flag (per-column
   default → per-grid). If false, render `${aggFuncName}(${header})`.
-- `cgrid/src/cgrid.ts` — option resolution + per-column override.
-- `cgrid/src/types.ts` — `CGridOptions.suppressAggFuncInHeader` +
+- `cgrid/src/velocityGrid.ts` — option resolution + per-column override.
+- `cgrid/src/types.ts` — `VelocityGridOptions.suppressAggFuncInHeader` +
   `CColDef.suppressAggFuncInHeader`.
 - `cgrid/tests/suppressAggFuncInHeader.test.ts` (new) — 6 cases:
   default off (header shows agg) / global on / per-column override
@@ -450,8 +450,8 @@ module — pull that into the worker side as a shared module).
   "—" for empty totals.
 - `cgrid/src/renderer/cellRenderers/registry.ts` — register
   `'totals'` under that key.
-- `cgrid/src/theming/tokens.css` — `.cg-totals-cell`,
-  `.cg-totals-row` polish per the design plan.
+- `cgrid/src/theming/tokens.css` — `.vg-totals-cell`,
+  `.vg-totals-row` polish per the design plan.
 - `cgrid/src/core/subgrid.ts` — `TotalsSubgrid` cells default
   `cellRenderer: 'totals'` unless the column overrides.
 - `cgrid/tests/totalsRenderer.test.ts` (new) — 8 cases: paint
@@ -498,12 +498,12 @@ module — pull that into the worker side as a shared module).
 - This worklog's Architecture.
 - `docs/catalog/10-aggregation.md` — `aggregationChanged` event
   spec.
-- `cgrid/src/cgrid.ts` — search for `aggregationChanged` — the
+- `cgrid/src/velocityGrid.ts` — search for `aggregationChanged` — the
   event already fires (from earlier cycles); this task expands
   the payload.
 
 **Files:**
-- `cgrid/src/cgrid.ts` — event emission point now includes
+- `cgrid/src/velocityGrid.ts` — event emission point now includes
   `{ totals: chunk.totals, source: 'rowDataChanged' | 'aggFuncChanged' | 'filterChanged' | 'columnAggFuncChanged' | 'api' }`.
 - `cgrid/src/types.ts` — `AggregationChangedEvent` type.
 - `cgrid/tests/aggregationEvent.test.ts` (new) — 5 cases: payload
@@ -615,13 +615,13 @@ review is 10× the cost of catching it now.
 `Subgrid` impl (`cgrid/src/core/subgrid.ts`) reads `chunk.totals[colId]`
 from the already-emitted worker viewport reply — zero extra worker
 round-trips per scroll. Mounts at the top or bottom of the body via
-`CGridOptions.totalsRowPosition: 'top' | 'bottom' | null`. The worker
+`VelocityGridOptions.totalsRowPosition: 'top' | 'bottom' | null`. The worker
 `dataPipeline.ts` carries a `totals: Record<colId, unknown>` map on every
 chunk; columns without an `aggFunc` emit no entry and the renderer
 paints the cell blank. The viewport math (`core/viewport.ts`) was
 refactored to stack subgrids relative to data so a future footer / group
 subgrid drops in without re-deriving body geometry. The
-`--cg-totals-*` CSS tokens (light + dark, design-passed for "lift" via
+`--vg-totals-*` CSS tokens (light + dark, design-passed for "lift" via
 3% tint + 1px hairline + +1 weight stop) thread through `cssReader.ts`
 into the paint path. `byRows.ts` row-bg pass paints the slate tint for
 `isTotals` rows; `propertyChain.applyCellProps` bumps the font weight
@@ -641,13 +641,13 @@ tint (deliberately opposite the totals row's slate) with body weight
 pinned rows are reference rows (anchored data, not synthesis). The
 body↔pinned↔totals stack reads coherently: pinned rows hug the data,
 the totals row sits outermost, both share the same 1px structural
-border colour (`--cg-totals-border-top`) so the boundary between
+border colour (`--vg-totals-border-top`) so the boundary between
 scrolling data and everything else is one shape. Visual cell 18
 (`18-pinned-top-row.png`) baselines the pinned-top variant. Design
 notes § Task 2.
 
 **Custom `aggFunc` registry (main → worker via `setAggFuncs`).** Apps
-declare custom column aggregations on `CGridOptions.aggFuncs:
+declare custom column aggregations on `VelocityGridOptions.aggFuncs:
 Record<string, IAggFunc>`. Built-ins (`sum / avg / min / max / count /
 first / last`) are pre-registered on the worker; custom functions
 serialise via `Function.prototype.toString()` and reconstruct through
@@ -684,7 +684,7 @@ baseline both states. Design notes § Task 4.
 `TotalsSubgrid` cells: column-halign always (right for numerics, left
 for text, center where the column declares it), 6px padding (identical
 to `numberCell` / `textCell`), em-dash `—` in the muted fg
-(`--cg-totals-fg-muted`) for empty / null / NaN totals, no hover, no
+(`--vg-totals-fg-muted`) for empty / null / NaN totals, no hover, no
 focus, cell-clip on overflow. Default for cells in the totals subgrid
 unless the column overrides `cellRenderer`. The +1 weight stop and
 slate tint and 1px top border are STILL upstream (Task 1's

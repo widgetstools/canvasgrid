@@ -10,7 +10,7 @@
 //
 // Both exports are SELF-CONTAINED (zero free variables) and shipped as
 // sources for the worker-side cache (Task 10) — the kernel has zero
-// runtime @cgrid/calc imports. DataVersionMap uses a TS `private` field
+// runtime @wellsfargo-starui/velocity-grid-calc imports. DataVersionMap uses a TS `private` field
 // (not #private) so its compiled source survives the new Function
 // round-trip untransformed.
 

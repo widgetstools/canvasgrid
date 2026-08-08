@@ -149,9 +149,9 @@ describe('commitPanelMove — rejection cases', () => {
 });
 
 describe('resolveDragTargetRole', () => {
-  it('reads data-cg-pill-role from the closest ancestor of elementFromPoint', () => {
+  it('reads data-vg-pill-role from the closest ancestor of elementFromPoint', () => {
     const container = document.createElement('div');
-    container.setAttribute('data-cg-pill-role', 'pivot');
+    container.setAttribute('data-vg-pill-role', 'pivot');
     const inner = document.createElement('span');
     container.appendChild(inner);
     document.body.appendChild(container);
@@ -174,7 +174,7 @@ describe('resolveDragTargetRole', () => {
 
   it('returns null for an unknown role value (defensive)', () => {
     const container = document.createElement('div');
-    container.setAttribute('data-cg-pill-role', 'garbage');
+    container.setAttribute('data-vg-pill-role', 'garbage');
     document.body.appendChild(container);
     const fakeDoc = { elementFromPoint: vi.fn().mockReturnValue(container) } as any;
     expect(resolveDragTargetRole(0, 0, fakeDoc)).toBeNull();

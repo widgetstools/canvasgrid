@@ -20,7 +20,7 @@ describe('compileFormat — Tier 0', () => {
     expect(r.program.formatText({ value: 1234.5, row: {}, colId: 'x' })).toBe('$1,234.50');
     expect(r.program.formatText({ value: -1234.5, row: {}, colId: 'x' })).toBe('-$1,234.50');
     const negStyle = r.program.resolveStyle({ value: -1234.5, row: {}, colId: 'x' });
-    expect(negStyle?.color).toBe('var(--cg-neg-color, #E53935)');
+    expect(negStyle?.color).toBe('var(--vg-neg-color, #E53935)');
   });
 });
 
@@ -82,7 +82,7 @@ describe('compileFormat — Tier 1', () => {
     expect(r.ok).toBe(true);
     if (!r.ok) throw new Error(r.error.message);
     const big = r.program.resolveStyle({ value: 220, row: { qty: 220 }, colId: 'x' });
-    expect(big?.color?.toLowerCase()).toBe('var(--cg-neg-color, #e53935)');
+    expect(big?.color?.toLowerCase()).toBe('var(--vg-neg-color, #e53935)');
     const small = r.program.resolveStyle({ value: 8, row: { qty: 8 }, colId: 'x' });
     expect(small?.color).toBeUndefined();
   });

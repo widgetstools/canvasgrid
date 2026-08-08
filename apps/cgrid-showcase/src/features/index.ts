@@ -1,4 +1,4 @@
-import type { CGrid } from '@cgrid/kernel';
+import type { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
 import type { ShowcaseRow } from '../seedData';
 import { hideOpenParents } from './hideOpenParents';
 import { groupTotalRow } from './groupTotalRow';
@@ -34,10 +34,10 @@ export interface Feature {
   id: string;
   label: string;
   description: string;
-  // Most features mount a `CGrid<ShowcaseRow>`; a few (e.g.
-  // realtime feeds with a foreign schema) widen to `CGrid<any>` so
+  // Most features mount a `VelocityGrid<ShowcaseRow>`; a few (e.g.
+  // realtime feeds with a foreign schema) widen to `VelocityGrid<any>` so
   // the showcase shell can still destroy them uniformly.
-  mount(gridHost: HTMLElement, controls: HTMLElement, theme: string): CGrid<ShowcaseRow> | CGrid<any>;
+  mount(gridHost: HTMLElement, controls: HTMLElement, theme: string): VelocityGrid<ShowcaseRow> | VelocityGrid<any>;
 }
 
 export const FEATURES: Feature[] = [

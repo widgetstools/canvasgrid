@@ -1,4 +1,4 @@
-import { CGrid } from '@cgrid/kernel';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
 import type { ShowcaseRow } from '../seedData';
 import type { Feature } from './index';
 import { makeRows } from '../seedData';
@@ -43,7 +43,7 @@ export const pivot: Feature = {
     // alongside the expanded children. See construction options below.
     let activeColGroupTotals: 'before' | 'after' | null = 'after';
 
-    const grid = new CGrid<ShowcaseRow>(gridHost, {
+    const grid = new VelocityGrid<ShowcaseRow>(gridHost, {
       getRowId: (r) => r.id,
       columnDefs: [
         { colId: 'ticker',   field: 'ticker',   headerName: 'Ticker',   cellDataType: 'text',   enableRowGroup: true, enablePivot: true, flex: 1 },

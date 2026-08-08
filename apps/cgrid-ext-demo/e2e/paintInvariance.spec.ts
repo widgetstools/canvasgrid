@@ -24,8 +24,8 @@ const boot = async (page: Page, query: string) => {
   await page.goto(`/?${query}`);
   await page.evaluate(() => localStorage.clear());
   await page.reload();
-  await expect(page.locator('.cgext-titlebar')).toBeVisible();
-  await expect(page.locator('.cgext-grid canvas')).toBeVisible();
+  await expect(page.locator('.vgext-titlebar')).toBeVisible();
+  await expect(page.locator('.vgext-grid canvas')).toBeVisible();
   // Wait for the harness hook + seeded rows to actually be live before the
   // scripted steps start touching them.
   await page.waitForFunction(() => {
@@ -95,14 +95,14 @@ const cellCenter = (page: Page, rowIndex: number, colId: string) =>
   page.evaluate(([ri, c]) => {
     const g = (window as any).__ext.grid;
     const b = g.getCellBoundsAt(ri as number, c as string);
-    const canvas = document.querySelector('.cg-canvas') as HTMLElement;
+    const canvas = document.querySelector('.vg-canvas') as HTMLElement;
     const r = canvas.getBoundingClientRect();
     return { x: r.left + b.x + b.w / 2, y: r.top + b.y + b.h / 2 };
   }, [rowIndex, colId] as [number, string]);
 
 // Rows read back from `window.__paintHarness.rows` and merged with the
 // update fields — the worker's `RowStore.apply` REPLACES the row wholesale
-// on an `update` transaction (kernel/src/cgrid.ts, `applyTransaction`
+// on an `update` transaction (kernel/src/velocityGrid.ts, `applyTransaction`
 // doc comment), so a bare `{ positionId, pnl }` patch would blank every
 // other column; the demo's own STOMP path merges client-side for the same
 // reason (stomp.ts's `rowStore.set(id, merged)`).
@@ -113,7 +113,7 @@ const cellCenter = (page: Page, rowIndex: number, colId: string) =>
 // harness reuses them verbatim, not a bespoke test schema), so mutating
 // them changes the grand-total footer's aggregate. Footer/group cells
 // carry no rowId and aren't yet migrated to cell-level damage (see
-// cgrid.ts's `groupFlashMap`/`groupFlashChanged` handling — explicitly
+// velocityGrid.ts's `groupFlashMap`/`groupFlashChanged` handling — explicitly
 // documented as "full is the correct conservative damage while any
 // group/footer fade is still live"), so every frame of THAT fade forces a
 // full repaint on both pages equally. That's expected, pre-existing,
@@ -165,7 +165,7 @@ const STEPS: Array<{ name: string; run: (page: Page) => Promise<void> }> = [
   },
   {
     // No public `setScrollTop` API exists; the real DOM scroller
-    // (`CGrid.getScroller()`, `.cg-scroller`, `overflow:auto`) is the
+    // (`VelocityGrid.getScroller()`, `.vg-scroller`, `overflow:auto`) is the
     // established E2E scroll idiom (see cgrid-positions'
     // cycle12-rangeOverlayScrolled.spec.ts). Row height is read back
     // (rather than hardcoded) so this holds under any density setting.
@@ -185,7 +185,7 @@ const STEPS: Array<{ name: string; run: (page: Page) => Promise<void> }> = [
   // M-5 (closeout review) — Plan Task 5 named "a resize step via viewport
   // resize" in the shared STEPS; the shipped script had only the 4 scroll
   // steps above (T5 flagged the omission). A viewport resize cascades into
-  // the grid container's CSS bounds, which `CGridCanvas`'s resize-poll loop
+  // the grid container's CSS bounds, which `VelocityGridCanvas`'s resize-poll loop
   // picks up -> `ensureSize` reallocates BOTH the display canvas's and (cache
   // arms) the paint-cache layer's backing store -> `anchored = false` ->
   // `planLayer` resets — a path no other step exercises under the pixel bar.
@@ -812,7 +812,7 @@ test('mid-script theme + density swap — raster-cache on vs off produce identic
       await p.evaluate(() => (window as any).__paintHarness.waitSettled());
       // Phase 2 — theme swap, then density change: two epoch bumps; the
       // second re-renders at new cell heights → pool RESIZE reuse.
-      await p.evaluate(() => { (window as any).__ext.grid.setTheme('cg-theme-quartz-dark'); });
+      await p.evaluate(() => { (window as any).__ext.grid.setTheme('vg-theme-quartz-dark'); });
       await p.evaluate(() => (window as any).__paintHarness.waitSettled());
       await p.evaluate(() => { (window as any).__ext.grid.setDensity('compact'); });
       await p.evaluate(() => (window as any).__paintHarness.waitSettled());
@@ -857,7 +857,7 @@ test('live ticking mostly takes the partial-repaint path with small damage regio
   await page.goto('/');
   await page.evaluate(() => localStorage.clear());
   await page.reload();
-  await expect(page.locator('.cgext-titlebar')).toBeVisible();
+  await expect(page.locator('.vgext-titlebar')).toBeVisible();
 
   let connected = false;
   try {
@@ -880,7 +880,7 @@ test('live ticking mostly takes the partial-repaint path with small damage regio
   // Two correctness details this loop has to account for that a naive
   // fixed-interval poll would get wrong:
   //  1. `getPaintStats()`/`resetPaintStats()` seed `lastAreaPct: 100` as
-  //     the "nothing measured YET since reset" sentinel (cgrid.ts) — a
+  //     the "nothing measured YET since reset" sentinel (velocityGrid.ts) — a
   //     sample taken before the first post-reset paint lands would
   //     misread the sentinel as an actual full repaint.
   //  2. The real STOMP feed ticks in BURSTS, not continuously — a
@@ -998,7 +998,7 @@ test('paint-cache: pure vertical scroll grows presents with zero layer resets (n
   await page.goto('/');
   await page.evaluate(() => localStorage.clear());
   await page.reload();
-  await expect(page.locator('.cgext-titlebar')).toBeVisible();
+  await expect(page.locator('.vgext-titlebar')).toBeVisible();
 
   let connected = false;
   try {

@@ -1,4 +1,4 @@
-// @cgrid/rules — public re-exports.
+// @wellsfargo-starui/velocity-grid-rules — public re-exports.
 // See docs/superpowers/specs/2026-07-01-cycle-21e-rules-design.md §4.1.
 
 export { RuleEngine } from './ruleEngine';

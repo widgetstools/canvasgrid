@@ -5,8 +5,8 @@ export { LocalStorageProfileStore } from './profiles/localStorageStore';
 export { ProfilesController, type ProfilesOptions } from './profiles/controller';
 export { createExtContext, createExtEventBus } from './extension/context';
 export { ShellLayout } from './shell/shell';
-export { CGridExt, type CGridExtOptions } from './cgridExt';
-export { CgridExtElement, defineCgridExt } from './element';
+export { VelocityGridExt, type VelocityGridExtOptions } from './velocityGridExt';
+export { VelocityGridExtElement, defineVelocityGridExt } from './element';
 export { gridOptionsModule } from './modules/gridOptions';
 export { columnGroupsModule } from './modules/columnGroups';
 export { columnSettingsModule } from './modules/columnSettings';
@@ -22,6 +22,16 @@ export {
 } from './ui/expressionEditor';
 export { buildDefaultBundle } from './defaultBundle';
 export { titleBarExtensions, injectTitleBarStyles, type TitleBarOptions } from './toolbar/titleBar';
+export { savedFiltersItem, type SavedFilter } from './toolbar/savedFiltersToolbar';
+export {
+  makeId as makeSavedFilterId,
+  generateLabel as generateSavedFilterLabel,
+  mergeFilterModels,
+  subtractFilterModel,
+  isNewFilter,
+  filterModelsEqual,
+  doesRowMatchFilterModel,
+} from './toolbar/savedFiltersLogic';
 export { ribbonExtensions, injectRibbonStyles } from './toolbar/ribbon';
 export {
   mountFormatterStyleChrome,

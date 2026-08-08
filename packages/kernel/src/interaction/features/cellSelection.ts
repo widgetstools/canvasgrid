@@ -2,10 +2,10 @@
 // emits cellClicked/cellDoubleClicked, and owns arrow / Tab / Space / F2 /
 // Enter / Escape keyboard navigation.
 
-import { Feature, type CGridEventCtx } from '../feature';
+import { Feature, type VelocityGridEventCtx } from '../feature';
 
 export class CellSelection extends Feature {
-  override handleMouseDown(ctx: CGridEventCtx): void {
+  override handleMouseDown(ctx: VelocityGridEventCtx): void {
     if (ctx.hit.kind !== 'cell') {
       super.handleMouseDown(ctx);
       return;
@@ -56,7 +56,7 @@ export class CellSelection extends Feature {
     // Consume — fully handled.
   }
 
-  override handleClick(ctx: CGridEventCtx): void {
+  override handleClick(ctx: VelocityGridEventCtx): void {
     if (ctx.hit.kind === 'cell') {
       ctx.grid.emitCellClicked(ctx.hit.rowIndex, ctx.hit.colId, ctx.raw as MouseEvent);
       return;
@@ -64,7 +64,7 @@ export class CellSelection extends Feature {
     super.handleClick(ctx);
   }
 
-  override handleDoubleClick(ctx: CGridEventCtx): void {
+  override handleDoubleClick(ctx: VelocityGridEventCtx): void {
     if (ctx.hit.kind === 'cell') {
       ctx.grid.emitCellDoubleClicked(ctx.hit.rowIndex, ctx.hit.colId, ctx.raw as MouseEvent);
       return;
@@ -72,7 +72,7 @@ export class CellSelection extends Feature {
     super.handleDoubleClick(ctx);
   }
 
-  override handleKeyDown(ctx: CGridEventCtx): void {
+  override handleKeyDown(ctx: VelocityGridEventCtx): void {
     const sel = ctx.grid.selection;
     const cols = ctx.grid.allColIds();
     const rowCount = ctx.grid.totalRowCount();

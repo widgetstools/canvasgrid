@@ -13,7 +13,7 @@
 ## Mental model: tokens are the API surface
 
 cgrid's theming is CSS-variable-driven from day one (the existing
-`cssReader.ts` reads every paint-relevant value from `--cg-*` tokens).
+`cssReader.ts` reads every paint-relevant value from `--vg-*` tokens).
 Cycle 22 closes the parity gap between cgrid's existing tokens and
 ag-grid's full Quartz/Material variable set, then adds three
 ergonomic layers on top:
@@ -36,23 +36,23 @@ documented variable set. Add the missing ~30 tokens. Examples:
 
 | Token | Default (light) | Purpose |
 |---|---|---|
-| `--cg-row-hover-bg` | `#f8fafc` | Hover-state row tint |
-| `--cg-header-cell-text-color` | `#111827` | Distinct from body fg |
-| `--cg-cell-horizontal-border-color` | `transparent` | Optional inter-column rule |
-| `--cg-range-selection-border-color` | `#2563eb` | Range outline |
-| `--cg-input-bg` | `#ffffff` | Filter inputs, editors |
-| `--cg-input-disabled-bg` | `#f3f4f6` | Disabled state |
-| `--cg-checkbox-checked-bg` | `#2563eb` | Filled checkbox accent |
-| `--cg-toggle-bg` | `#e5e7eb` | Toggle switch off |
-| `--cg-toggle-bg-active` | `#2563eb` | Toggle switch on |
-| `--cg-tooltip-bg` | `rgba(15,23,42,0.95)` | Floating tooltip |
-| `--cg-tooltip-fg` | `#ffffff` | Tooltip text |
+| `--vg-row-hover-bg` | `#f8fafc` | Hover-state row tint |
+| `--vg-header-cell-text-color` | `#111827` | Distinct from body fg |
+| `--vg-cell-horizontal-border-color` | `transparent` | Optional inter-column rule |
+| `--vg-range-selection-border-color` | `#2563eb` | Range outline |
+| `--vg-input-bg` | `#ffffff` | Filter inputs, editors |
+| `--vg-input-disabled-bg` | `#f3f4f6` | Disabled state |
+| `--vg-checkbox-checked-bg` | `#2563eb` | Filled checkbox accent |
+| `--vg-toggle-bg` | `#e5e7eb` | Toggle switch off |
+| `--vg-toggle-bg-active` | `#2563eb` | Toggle switch on |
+| `--vg-tooltip-bg` | `rgba(15,23,42,0.95)` | Floating tooltip |
+| `--vg-tooltip-fg` | `#ffffff` | Tooltip text |
 
 (Full list in `docs/catalog/21-themes-and-styling.md`.)
 
 **Implementation:** Every new token gets:
 1. Declaration in `theming/tokens.css` for `:root` (light) and
-   `.cg-theme-dark` (dark).
+   `.vg-theme-dark` (dark).
 2. Reader entry in `theming/cssReader.ts` (or grouped reader if the
    token is paint-hot enough to warrant pre-resolution).
 3. Consumer hook-up at the relevant painter / overlay site.
@@ -65,26 +65,26 @@ documented variable set. Add the missing ~30 tokens. Examples:
 header-height variable changes.
 
 ```css
-.cg-density-compact {
-  --cg-row-height: 24px;
-  --cg-header-height: 28px;
-  --cg-cell-padding-x: 4px;
-  --cg-font-size: 12px;
+.vg-density-compact {
+  --vg-row-height: 24px;
+  --vg-header-height: 28px;
+  --vg-cell-padding-x: 4px;
+  --vg-font-size: 12px;
 }
 
-.cg-density-normal { /* defaults — unchanged */ }
+.vg-density-normal { /* defaults — unchanged */ }
 
-.cg-density-comfortable {
-  --cg-row-height: 40px;
-  --cg-header-height: 44px;
-  --cg-cell-padding-x: 12px;
-  --cg-font-size: 14px;
+.vg-density-comfortable {
+  --vg-row-height: 40px;
+  --vg-header-height: 44px;
+  --vg-cell-padding-x: 12px;
+  --vg-font-size: 14px;
 }
 ```
 
 **Runtime toggle:** `setGridOption('density', 'compact')` flips the
 class on the host. Existing `RowHeightIndex` (Cycle 5) re-reads the
-new `--cg-row-height` and triggers a viewport recompute.
+new `--vg-row-height` and triggers a viewport recompute.
 
 ---
 
@@ -94,9 +94,9 @@ new `--cg-row-height` and triggers a viewport recompute.
 
 ```typescript
 api.setThemeParams({
-  '--cg-row-height': '36px',
-  '--cg-header-bg': '#0f172a',
-  '--cg-header-fg': '#ffffff',
+  '--vg-row-height': '36px',
+  '--vg-header-bg': '#0f172a',
+  '--vg-header-fg': '#ffffff',
 });
 ```
 
@@ -115,18 +115,18 @@ the resolved values — `getComputedStyle` exists for that).
 
 ## Task 4 — `prefers-color-scheme` auto-detect
 
-**Goal:** A `cg-theme-auto` class that listens to the media query
-and toggles between `cg-theme-quartz` and `cg-theme-quartz-dark`.
+**Goal:** A `vg-theme-auto` class that listens to the media query
+and toggles between `vg-theme-quartz` and `vg-theme-quartz-dark`.
 
 **Implementation in CSS only:**
 
 ```css
-.cg-theme-auto {
+.vg-theme-auto {
   /* default to light */
 }
 
 @media (prefers-color-scheme: dark) {
-  .cg-theme-auto {
+  .vg-theme-auto {
     /* dark variable values */
   }
 }
@@ -142,7 +142,7 @@ revalidation that already runs on focus / visibility change.
 
 ## Task 5 — Shadow root option
 
-**Goal:** `CGridOptions.shadowRoot: true` mounts the grid inside a
+**Goal:** `VelocityGridOptions.shadowRoot: true` mounts the grid inside a
 shadow root for full CSS encapsulation.
 
 **Use case:** Embedding cgrid in app shells that have aggressive
@@ -155,7 +155,7 @@ isolates cgrid's styles.
 if (options.shadowRoot) {
   const root = container.attachShadow({ mode: 'open' });
   this.host = document.createElement('div');
-  this.host.className = 'cg-shadow-host';
+  this.host.className = 'vg-shadow-host';
   root.appendChild(this.host);
   // Inject tokens.css inline so the shadow root sees it
   const style = document.createElement('style');

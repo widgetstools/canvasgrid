@@ -2,15 +2,15 @@
 // parse → diff-aware AST rewrite ([col.old]/[col.new] → __cgridDiff
 // injection) → compile → strict-boolean matcher.
 //
-// CSP-safe: closure composition via @cgrid/expression only — no new
+// CSP-safe: closure composition via @wellsfargo-starui/velocity-grid-expression only — no new
 // Function / eval anywhere in this package. Date-free: zero clock access.
 //
 // Authoritative reference:
 // docs/superpowers/specs/2026-07-01-cycle-21e-rules-design.md §3.3 + §3.4.
 
-import { compile, evaluate, parse, EvalError } from '@cgrid/expression';
-import type { AstNode, FieldNode, Schema } from '@cgrid/expression';
-import { compileFormat } from '@cgrid/format';
+import { compile, evaluate, parse, EvalError } from '@wellsfargo-starui/velocity-grid-expression';
+import type { AstNode, FieldNode, Schema } from '@wellsfargo-starui/velocity-grid-expression';
+import { compileFormat } from '@wellsfargo-starui/velocity-grid-format';
 import type { RuleValidationError, StyleRule } from './types';
 
 export interface CompiledCondition {

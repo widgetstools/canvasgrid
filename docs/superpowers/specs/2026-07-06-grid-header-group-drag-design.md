@@ -3,7 +3,7 @@
 **Date:** 2026-07-06
 **Status:** Approved design; ready for implementation planning
 **Reference behavior:** `apps/colgroups` (ag-grid Enterprise — drag a group header to move/re-nest it)
-**Builds on:** the columns-panel-hierarchy feature (merged `d694fbe`) — reuses its `CGridApi.moveColumnGroup`.
+**Builds on:** the columns-panel-hierarchy feature (merged `d694fbe`) — reuses its `VelocityGridApi.moveColumnGroup`.
 
 ## 1. Summary
 

@@ -1,4 +1,4 @@
-import { CGrid, type CColDef } from '@cgrid/kernel';
+import { VelocityGrid, type CColDef } from '@wellsfargo-starui/velocity-grid';
 import type { Feature } from './index';
 import {
   StompSsrmDataProvider,
@@ -7,7 +7,7 @@ import {
 
 /**
  * Multi-blotter SSRM demo — one StompSsrmDataProvider hydrates from
- * stomp-view-server; three CGrid instances use `rowModelType: 'serverSide'`
+ * stomp-view-server; three VelocityGrid instances use `rowModelType: 'serverSide'`
  * with shared-book datasources (different projections). Scroll is tuned
  * for the lean path: qualityMode performance + defer live txs while scrolling.
  */
@@ -52,8 +52,8 @@ function qualityFromUrl(): 'auto' | 'quality' | 'performance' {
   return 'performance';
 }
 
-function makeGrid(host: HTMLElement, theme: string, datasource: ReturnType<StompSsrmDataProvider['createDatasource']>): CGrid<StompRow> {
-  return new CGrid<StompRow>(host, {
+function makeGrid(host: HTMLElement, theme: string, datasource: ReturnType<StompSsrmDataProvider['createDatasource']>): VelocityGrid<StompRow> {
+  return new VelocityGrid<StompRow>(host, {
     getRowId: (r: StompRow) => r.positionId,
     columnDefs: COLUMNS,
     theme,
@@ -132,7 +132,7 @@ export const multiBlotterSsrm: Feature = {
       },
     });
 
-    const grids: CGrid<StompRow>[] = [];
+    const grids: VelocityGrid<StompRow>[] = [];
     const unsubs: Array<() => void> = [];
     const ready: Array<Promise<void>> = [];
 

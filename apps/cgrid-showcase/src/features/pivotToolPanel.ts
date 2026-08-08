@@ -1,4 +1,4 @@
-import { CGrid } from '@cgrid/kernel';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
 import type { ShowcaseRow } from '../seedData';
 import type { Feature } from './index';
 import { makeRows } from '../seedData';
@@ -30,7 +30,7 @@ export const pivotToolPanel: Feature = {
     'Pivot Mode toggle + Column Labels + Values drop zones in the columns side panel. Open the Columns tab to drag columns between roles; checking a column in pivot mode adds it as a row group / value (per AG parity).',
 
   mount(gridHost, controls, theme) {
-    const grid = new CGrid<ShowcaseRow>(gridHost, {
+    const grid = new VelocityGrid<ShowcaseRow>(gridHost, {
       getRowId: (r) => r.id,
       columnDefs: [
         { colId: 'ticker',   field: 'ticker',   headerName: 'Ticker',   cellDataType: 'text',   enableRowGroup: true, enablePivot: true, flex: 1 },

@@ -3,7 +3,7 @@
  *
  * `CgTheme` wraps a stack of param "layers" (each produced by `withParams`,
  * or — in Task 4 — by `withPart`) and folds them, mode-aware, into a flat
- * `--cg-*` CSS variable map via `compileParams` (Task 2, `./params`). It is
+ * `--vg-*` CSS variable map via `compileParams` (Task 2, `./params`). It is
  * pure data: no DOM access, no side effects, every method returns a new
  * `CgTheme` rather than mutating `this`.
  *
@@ -43,7 +43,7 @@ interface ThemeLayer {
 
 /**
  * A labelled, pluggable bundle of theme customization: optional params (fold
- * into the compiled `--cg-*` vars like any other layer), an optional `mode`
+ * into the compiled `--vg-*` vars like any other layer), an optional `mode`
  * restricting when those params apply (omitted = applies in every mode), and
  * optional raw `css` for customization beyond what tokens can express (e.g.
  * an icon set) — surfaced on `CompiledTheme.css` for the DOM layer to inject,
@@ -59,7 +59,7 @@ export interface Part {
   readonly css?: string;
 }
 
-/** The result of `CgTheme.compile(mode)`: a flat `--cg-*` map plus the
+/** The result of `CgTheme.compile(mode)`: a flat `--vg-*` map plus the
  *  structural base class pair to apply alongside it, and any raw CSS
  *  contributed by active parts (`undefined` when no active part has css). */
 export interface CompiledTheme {
@@ -69,8 +69,8 @@ export interface CompiledTheme {
 }
 
 const DEFAULT_BASE_CLASS: BaseClassPair = {
-  light: 'cg-theme-quartz',
-  dark: 'cg-theme-quartz-dark',
+  light: 'vg-theme-quartz',
+  dark: 'vg-theme-quartz-dark',
 };
 
 /** Keys of `CgThemeParams` whose value is a `Record<string, X>` that should
@@ -162,7 +162,7 @@ export class CgTheme {
   /**
    * Folds all layers applicable to `mode` (i.e. `mode === 'base'` or
    * `mode === layer.mode`) left-to-right into one merged `CgThemeParams`,
-   * then compiles that into a flat `--cg-*` map via `compileParams`. Also
+   * then compiles that into a flat `--vg-*` map via `compileParams`. Also
    * collects `css` from every active part-layer (in insertion order) into
    * a single string, surfaced as `css` — `undefined` when no active layer
    * contributes any.

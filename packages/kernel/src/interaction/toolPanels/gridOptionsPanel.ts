@@ -28,7 +28,7 @@ export class GridOptionsToolPanel implements ToolPanel {
       setSideBarVisible?(show: boolean): void;
     };
     this.root = document.createElement('div');
-    this.root.className = 'cg-settings-panel';
+    this.root.className = 'vg-settings-panel';
 
     // Theme-colour surface for the Colours band: resolve effective values
     // from the panel's own computed style (tokens inherit down the theme
@@ -48,7 +48,7 @@ export class GridOptionsToolPanel implements ToolPanel {
     }
 
     // Side-panel visibility surface — enables the Appearance band's
-    // "Side panel" switch. Present on the CGrid api whenever a side bar
+    // "Side panel" switch. Present on the VelocityGrid api whenever a side bar
     // is configured.
     if (typeof rawApi.isSideBarVisible === 'function' && typeof rawApi.setSideBarVisible === 'function') {
       api.isSideBarVisible = rawApi.isSideBarVisible.bind(rawApi);
@@ -65,7 +65,7 @@ export class GridOptionsToolPanel implements ToolPanel {
 
     this.root.appendChild(this.buildHeader());
     const scroller = document.createElement('div');
-    scroller.className = 'cg-settings-panel-scroller cg-scrollbar';
+    scroller.className = 'vg-settings-panel-scroller vg-scrollbar';
     scroller.appendChild(this.form.root);
     this.root.appendChild(scroller);
     this.syncModifiedPill();
@@ -90,18 +90,18 @@ export class GridOptionsToolPanel implements ToolPanel {
 
   private buildHeader(): HTMLElement {
     const header = document.createElement('div');
-    header.className = 'cg-settings-panel-header';
+    header.className = 'vg-settings-panel-header';
 
     const search = document.createElement('input');
     search.type = 'search';
-    search.className = 'cg-settings-search';
+    search.className = 'vg-settings-search';
     search.placeholder = 'Search settings…';
     search.setAttribute('aria-label', 'Search settings');
     search.addEventListener('input', () => this.form?.setFilter(search.value));
 
     const modified = document.createElement('button');
     modified.type = 'button';
-    modified.className = 'cg-settings-modified-pill';
+    modified.className = 'vg-settings-modified-pill';
     modified.setAttribute('aria-pressed', 'false');
     modified.title = 'Show only settings changed from their defaults';
     modified.addEventListener('click', () => {

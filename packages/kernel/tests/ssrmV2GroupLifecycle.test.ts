@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
 import type { WorkerRequest } from '../src/worker/protocol';
 import type { IServerSideDatasourceV2 } from '../src/types/ssrm';
@@ -139,7 +139,7 @@ describe('SSRM v2 grouping lifecycle over a populated flat book', () => {
       },
     };
 
-    const grid = new CGrid<Row>(el, {
+    const grid = new VelocityGrid<Row>(el, {
       columnDefs: [
         { field: 'desk', enableRowGroup: true },
         { field: 'region', enableRowGroup: true },

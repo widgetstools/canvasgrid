@@ -12,7 +12,7 @@ test('range overlay across visible + non-visible rows — body clip + band clip'
   await setupGrid(page, 50);
   await page.evaluate(() => {
     const g = (window as unknown as {
-      __cgrid: {
+      __velocity-grid: {
         addCellRange: (range: { rowStart: number; rowEnd: number; colIds: string[] }) => void;
       };
     }).__cgrid;

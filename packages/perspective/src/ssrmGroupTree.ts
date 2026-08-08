@@ -2,7 +2,7 @@
  * Sparse SSRM grouping helpers — materialize a visible flat row list from
  * Perspective `__ROW_PATH__` output and attach cgrid `__ssrm` metadata.
  */
-import { attachSsrmRowMeta } from '@cgrid/kernel';
+import { attachSsrmRowMeta } from '@wellsfargo-starui/velocity-grid';
 
 import type { PositionRow } from './bootstrap';
 

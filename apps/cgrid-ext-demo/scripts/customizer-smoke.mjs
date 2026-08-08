@@ -39,7 +39,7 @@ await page.keyboard.press('Escape'); // dismiss autocomplete if open
 await page.fill('.ckp .ckp-title', 'Positive PnL');
 // Pick a background color: set via the draft is UI-only — use the color input.
 await page.evaluate(() => {
-  const color = document.querySelector('.ckp .ckp-stylechrome .cgext-rb-colorinput');
+  const color = document.querySelector('.ckp .ckp-stylechrome .vgext-rb-colorinput');
   color.value = '#164a2e';
   color.dispatchEvent(new Event('input', { bubbles: true })); color.dispatchEvent(new Event('change', { bubbles: true }));
 });

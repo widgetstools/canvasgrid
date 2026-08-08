@@ -14,7 +14,7 @@ import { gridReadyWithQuery, seedGrid, waitForFrames } from './_setup';
 //
 // What regression this catches:
 //   - Insertion-line paint drift: if the line's color drifted away
-//     from `--cg-row-group-panel-drop-border` (focus-ring), or its
+//     from `--vg-row-group-panel-drop-border` (focus-ring), or its
 //     width changed, the baseline would catch the chrome change.
 //   - Insertion-line snap-algorithm regression: the line MUST land at
 //     the gap nearest the pointer. A regression that snapped to the

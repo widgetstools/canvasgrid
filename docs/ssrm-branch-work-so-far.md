@@ -8,7 +8,7 @@
 
 ## Goal
 
-Sparse SSRM for cgrid: host/Perspective owns filter/sort/group/agg; kernel owns block cache, hydrate, and paint — same read paths as CSRM (`getRows` → hydrate → `cellAt` / `totalsCellLookup`). No client-side pipeline on this path (`serverSideEnableClientSidePipeline: false`).
+Sparse SSRM for velocity-grid: host/Perspective owns filter/sort/group/agg; kernel owns block cache, hydrate, and paint — same read paths as CSRM (`getRows` → hydrate → `cellAt` / `totalsCellLookup`). No client-side pipeline on this path (`serverSideEnableClientSidePipeline: false`).
 
 ---
 
@@ -19,7 +19,7 @@ Sparse SSRM for cgrid: host/Perspective owns filter/sort/group/agg; kernel owns 
 | SSRM controller | `src/core/serverSideRowModel.ts` | Block cache, `getRows` fan-in, soft refresh, hydrate |
 | Types | `src/types/ssrm.ts` | `IServerSideDatasource`, request/result shapes |
 | Row meta | `src/core/ssrmRowMeta.ts` | `__ssrm` metadata, `materializeSsrmGroupTotals`, sticky ancestors |
-| Grid wiring | `src/cgrid.ts` | SSRM mount, expand keys, scroll clamp, defer refresh while scrolling |
+| Grid wiring | `src/velocityGrid.ts` | SSRM mount, expand keys, scroll clamp, defer refresh while scrolling |
 | Viewport | `src/worker/handlers/viewport.ts` | Sparse path: group totals + sticky band |
 
 ### Fixes worth noting
@@ -45,7 +45,7 @@ Phases 1–3 of `docs/ssrm-group-skeleton-design.md` implemented:
 | Flatten index + display-order normalize | `src/core/ssrmFlattenIndex.ts` |
 | v2 controller (per-group leaf blocks, LRU, local reflow) | `src/core/serverSideRowModelV2.ts` |
 | v2 datasource contract + duck-typed detection | `src/types/ssrm.ts` (`IServerSideDatasourceV2`, `isServerSideDatasourceV2`) |
-| cgrid mount/kind-switch + sparse gates | `src/cgrid.ts` (`mountSsrmController`, `isSparseSsrm`) |
+| cgrid mount/kind-switch + sparse gates | `src/velocityGrid.ts` (`mountSsrmController`, `isSparseSsrm`) |
 | Demo port (skeleton + leaf + flat queries) | `apps/cgrid-ssrm-demo/src/perspective/book.ts`, `ssrmDatasource.ts` |
 
 Expansion toggles now reflow locally (rowCount updates before any datasource
@@ -85,7 +85,7 @@ the grouped column's field + filter type). Tests:
 - `packages/kernel/tests/ssrmStickyWorker.test.ts` — worker-level sticky band with no group model shipped
 - `packages/kernel/tests/ssrmFlattenIndex.test.ts` — display-order normalize, visibility, leaf runs, ancestors
 - `packages/kernel/tests/ssrmV2Controller.test.ts` — local reflow ordering, cache survival across toggles, soft-refresh cache diffing, sticky hydration, flat fallback
-- `packages/kernel/tests/ssrmV2Reorder.test.ts` — full-CGrid integration (working fake worker): group-column reorder refetches the skeleton in the new order, and a live-tick flood cannot grow the refresh queue unbounded (conflation drain bound)
+- `packages/kernel/tests/ssrmV2Reorder.test.ts` — full-VelocityGrid integration (working fake worker): group-column reorder refetches the skeleton in the new order, and a live-tick flood cannot grow the refresh queue unbounded (conflation drain bound)
 
 ---
 
@@ -98,7 +98,7 @@ Perspective WASM book + windowed grouped `getRows`:
 - `src/perspective/book.ts` — table/views, seed/STOMP feed
 - `src/perspective/ssrmDatasource.ts` — `IServerSideDatasource`
 - `src/perspective/ssrmGroupTree.ts` — grouped window materialization
-- `src/ui/blotterHost.ts` — mounts SSRM `CGrid`
+- `src/ui/blotterHost.ts` — mounts SSRM `VelocityGrid`
 - `src/main.ts` — multi-blotter UI
 
 **Run:** `npm run build:kernel` then `npm run dev:ssrm-demo` → http://localhost:5191  

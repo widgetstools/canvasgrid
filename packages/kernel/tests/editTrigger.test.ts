@@ -9,7 +9,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EditTrigger } from '../src/interaction/features/editTrigger';
-import type { CGridLike, CGridEventCtx, EditingFlags, SuppressKeyboardEventFn } from '../src/interaction/feature';
+import type { VelocityGridLike, VelocityGridEventCtx, EditingFlags, SuppressKeyboardEventFn } from '../src/interaction/feature';
 import type { Hit } from '../src/interaction/hitTester';
 
 interface FakeGridOverrides {
@@ -22,7 +22,7 @@ interface FakeGridOverrides {
 }
 
 function fakeGrid(o: FakeGridOverrides = {}): {
-  grid: CGridLike;
+  grid: VelocityGridLike;
   openEditor: ReturnType<typeof vi.fn>;
   stopEditing: ReturnType<typeof vi.fn>;
 } {
@@ -59,7 +59,7 @@ function fakeGrid(o: FakeGridOverrides = {}): {
     openEditor,
     stopEditing,
     nextEditableCell: () => null,
-  } as unknown as CGridLike;
+  } as unknown as VelocityGridLike;
   return { grid, openEditor, stopEditing };
 }
 
@@ -67,15 +67,15 @@ function cellHit(rowIndex: number, colId: string): Hit {
   return { kind: 'cell', rowIndex, colId } as Hit;
 }
 
-function clickCtx(grid: CGridLike, hit: Hit): CGridEventCtx {
+function clickCtx(grid: VelocityGridLike, hit: Hit): VelocityGridEventCtx {
   return { grid, hit, point: { x: 0, y: 0 }, raw: new MouseEvent('click') };
 }
 
-function dblClickCtx(grid: CGridLike, hit: Hit): CGridEventCtx {
+function dblClickCtx(grid: VelocityGridLike, hit: Hit): VelocityGridEventCtx {
   return { grid, hit, point: { x: 0, y: 0 }, raw: new MouseEvent('dblclick') };
 }
 
-function keyCtx(grid: CGridLike, key: string): CGridEventCtx {
+function keyCtx(grid: VelocityGridLike, key: string): VelocityGridEventCtx {
   const hit: Hit = { kind: 'none' } as Hit;
   return { grid, hit, point: { x: 0, y: 0 }, raw: new KeyboardEvent('keydown', { key }) };
 }

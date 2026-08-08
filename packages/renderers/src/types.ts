@@ -1,4 +1,4 @@
-// @cgrid/renderers — canonical renderer name table + public param types.
+// @wellsfargo-starui/velocity-grid-renderers — canonical renderer name table + public param types.
 // Authoritative references:
 //   docs/superpowers/specs/2026-07-02-cycle-21f-renderers-design.md §2.5 (name table),
 //     §2.6 locked decisions (§2.6.6 structure glyph map, §2.6.7 palette defaults)
@@ -15,7 +15,7 @@ import type { ColumnStatSnapshot } from './columnStats';
 // ─── Name table ─────────────────────────────────────────────────────────────
 
 /**
- * Every canonical `cellRenderer` name `@cgrid/renderers` registers. 46 new
+ * Every canonical `cellRenderer` name `@wellsfargo-starui/velocity-grid-renderers` registers. 46 new
  * implementations (catalog §3.1-3.8) + 5 re-exports of kernel's existing
  * sparkline family (line/column/area/bar/pie — catalog §3.6; already shipped,
  * re-exported here for discoverability, zero duplication — §2.6.5). The actual
@@ -42,7 +42,7 @@ export const RENDERER_NAMES = [
   'stacked-value', 'price-quote', 'nbbo', 'benchmark-spread', 'price-change-composite',
   // 8. Action — 2 — catalog §3.8
   'icon-action-cluster', 'row-menu',
-  // Kernel re-exports — 5 — catalog §3.6 (already shipped in @cgrid/kernel)
+  // Kernel re-exports — 5 — catalog §3.6 (already shipped in @wellsfargo-starui/velocity-grid)
   'line-sparkline', 'column-sparkline', 'area-sparkline', 'bar-sparkline', 'pie-sparkline',
 ] as const;
 

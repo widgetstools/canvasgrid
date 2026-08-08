@@ -1,7 +1,7 @@
 /**
  * Cycle 10 / Task 6 — suppress flags E2E.
  *
- *   - `suppressContextMenu`  → right-click does NOT mount `.cg-context-menu`
+ *   - `suppressContextMenu`  → right-click does NOT mount `.vg-context-menu`
  *     (and the native browser menu doesn't fire either — `preventDefault`
  *     still runs).
  *   - `suppressClipboardPaste` → Ctrl+V / `pasteFromClipboard` silently
@@ -17,7 +17,7 @@
 import { test, expect, Page } from '@playwright/test';
 
 const GRID_SELECTOR = '#grid canvas';
-const MENU_SELECTOR = '.cg-context-menu';
+const MENU_SELECTOR = '.vg-context-menu';
 
 interface GridSurface {
   getCellBoundsAt: (rowIndex: number, colId: string) => { x: number; y: number; w: number; h: number } | null;
@@ -72,7 +72,7 @@ async function canvasOffset(page: Page): Promise<{ x: number; y: number }> {
 
 async function cellBounds(page: Page, rowIndex: number, colId: string): Promise<{ x: number; y: number; w: number; h: number }> {
   const b = await page.evaluate(
-    ({ r, c }) => (window as unknown as { __cgrid: GridSurface }).__cgrid.getCellBoundsAt(r, c),
+    ({ r, c }) => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.getCellBoundsAt(r, c),
     { r: rowIndex, c: colId },
   );
   if (!b) throw new Error(`no cell bounds for (${rowIndex}, ${colId})`);
@@ -81,7 +81,7 @@ async function cellBounds(page: Page, rowIndex: number, colId: string): Promise<
 
 async function seedRange(page: Page, range: { rowStart: number; rowEnd: number; colIds: string[] }): Promise<void> {
   await page.evaluate((r) => {
-    const w = window as unknown as { __cgrid: GridSurface };
+    const w = window as unknown as { __velocity-grid: GridSurface };
     w.__cgrid.clearCellRanges();
     w.__cgrid.addCellRange(r);
   }, range);
@@ -93,7 +93,7 @@ async function seedRange(page: Page, range: { rowStart: number; rowEnd: number; 
  *  use for clipboardDelimiter / processCell callbacks. */
 async function restoreFlags(page: Page): Promise<void> {
   await page.evaluate(() => {
-    const g = (window as unknown as { __cgrid: GridSurface }).__cgrid;
+    const g = (window as unknown as { __velocity-grid: GridSurface }).__cgrid;
     g.setGridOption('suppressContextMenu', undefined);
     g.setGridOption('suppressClipboardPaste', undefined);
     g.setGridOption('suppressClipboardApi', undefined);
@@ -108,7 +108,7 @@ test.describe('Cycle 10 / Task 6 — suppressContextMenu', () => {
     await gridReady(page);
     // Install a callback so we'd see a menu in the un-suppressed case.
     await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: GridSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridSurface }).__cgrid;
       g.setGridOption('getContextMenuItems', () => [{ name: 'X', action: () => {} }]);
       g.setGridOption('suppressContextMenu', true);
     });
@@ -138,7 +138,7 @@ test.describe('Cycle 10 / Task 6 — suppressContextMenu', () => {
   test('runtime flip: setGridOption("suppressContextMenu", false) restores the menu', async ({ page }) => {
     await gridReady(page);
     await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: GridSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridSurface }).__cgrid;
       g.setGridOption('getContextMenuItems', () => [{ name: 'X', action: () => {} }]);
       g.setGridOption('suppressContextMenu', true);
     });
@@ -150,7 +150,7 @@ test.describe('Cycle 10 / Task 6 — suppressContextMenu', () => {
 
     // Flip the gate OFF — the next right-click mounts the menu again.
     await page.evaluate(() => {
-      (window as unknown as { __cgrid: GridSurface }).__cgrid.setGridOption('suppressContextMenu', false);
+      (window as unknown as { __velocity-grid: GridSurface }).__cgrid.setGridOption('suppressContextMenu', false);
     });
     await page.mouse.click(off.x + b.x + b.w / 2, off.y + b.y + b.h / 2, { button: 'right' });
     await page.waitForSelector(MENU_SELECTOR, { state: 'visible' });
@@ -172,24 +172,24 @@ test.describe('Cycle 10 / Task 6 — suppressClipboardPaste', () => {
     // Anchor focus on (0, notes) directly via the API so the cell wouldn't
     // be a no-op-by-default-anchor scenario.
     await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: GridSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridSurface }).__cgrid;
       g.setFocusedCell('p-0', 'notes');
     });
 
     const before = await page.evaluate(
-      () => (window as unknown as { __cgrid: GridSurface }).__cgrid.getCellValue(0, 'notes'),
+      () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.getCellValue(0, 'notes'),
     );
 
     await page.evaluate(() => {
-      (window as unknown as { __cgrid: GridSurface }).__cgrid.setGridOption('suppressClipboardPaste', true);
+      (window as unknown as { __velocity-grid: GridSurface }).__cgrid.setGridOption('suppressClipboardPaste', true);
     });
     // Resolves silently — no rejection, no clipboard read effect.
     await page.evaluate(
-      () => (window as unknown as { __cgrid: GridSurface }).__cgrid.pasteFromClipboard(),
+      () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.pasteFromClipboard(),
     );
 
     const after = await page.evaluate(
-      () => (window as unknown as { __cgrid: GridSurface }).__cgrid.getCellValue(0, 'notes'),
+      () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.getCellValue(0, 'notes'),
     );
     expect(after).toBe(before);
   });
@@ -197,7 +197,7 @@ test.describe('Cycle 10 / Task 6 — suppressClipboardPaste', () => {
   test('Paste default-menu item renders disabled when suppressClipboardPaste is true', async ({ page }) => {
     await gridReady(page);
     await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: GridSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridSurface }).__cgrid;
       g.setGridOption('suppressClipboardPaste', true);
       // Use the default registry — it already wires `disabled` from
       // `isClipboardPasteSuppressed()`. We pass through `defaultItems`.
@@ -209,7 +209,7 @@ test.describe('Cycle 10 / Task 6 — suppressClipboardPaste', () => {
     await page.mouse.click(off.x + b.x + b.w / 2, off.y + b.y + b.h / 2, { button: 'right' });
     await page.waitForSelector(MENU_SELECTOR, { state: 'visible' });
 
-    const pasteItem = page.locator(`${MENU_SELECTOR} .cg-menu-item`).filter({ hasText: 'Paste' }).first();
+    const pasteItem = page.locator(`${MENU_SELECTOR} .vg-menu-item`).filter({ hasText: 'Paste' }).first();
     await expect(pasteItem).toHaveAttribute('aria-disabled', 'true');
   });
 
@@ -217,7 +217,7 @@ test.describe('Cycle 10 / Task 6 — suppressClipboardPaste', () => {
     await gridReady(page);
     await focusCanvas(page);
     await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: GridSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridSurface }).__cgrid;
       g.setFocusedCell('p-0', 'notes');
       g.setGridOption('suppressClipboardPaste', true);
     });
@@ -250,11 +250,11 @@ test.describe('Cycle 10 / Task 6 — suppressClipboardApi', () => {
     // the suppressed reject wins over `no-ranges`.
     await seedRange(page, { rowStart: 0, rowEnd: 0, colIds: ['notes'] });
     await page.evaluate(() => {
-      (window as unknown as { __cgrid: GridSurface }).__cgrid.setGridOption('suppressClipboardApi', true);
+      (window as unknown as { __velocity-grid: GridSurface }).__cgrid.setGridOption('suppressClipboardApi', true);
     });
 
     const errors = await page.evaluate(async () => {
-      const g = (window as unknown as { __cgrid: GridSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridSurface }).__cgrid;
       const copyErr = await g.copySelectedRangesToClipboard().then(() => null, (e: Error) => e.message);
       const pasteErr = await g.pasteFromClipboard().then(() => null, (e: Error) => e.message);
       const cutErr = await g.cutSelectedRanges().then(() => null, (e: Error) => e.message);
@@ -269,7 +269,7 @@ test.describe('Cycle 10 / Task 6 — suppressClipboardApi', () => {
     await gridReady(page);
     await focusCanvas(page);
     await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: GridSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridSurface }).__cgrid;
       g.setFocusedCell('p-0', 'notes');
       g.setGridOption('suppressClipboardApi', true);
     });
@@ -302,10 +302,10 @@ test.describe('Cycle 10 / Task 6 — suppressClipboardApi', () => {
 
     // Suppress; assert reject.
     await page.evaluate(() => {
-      (window as unknown as { __cgrid: GridSurface }).__cgrid.setGridOption('suppressClipboardApi', true);
+      (window as unknown as { __velocity-grid: GridSurface }).__cgrid.setGridOption('suppressClipboardApi', true);
     });
     const errFirst = await page.evaluate(
-      () => (window as unknown as { __cgrid: GridSurface }).__cgrid.copySelectedRangesToClipboard()
+      () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.copySelectedRangesToClipboard()
         .then(() => null, (e: Error) => e.message),
     );
     expect(errFirst).toBe('clipboard-suppressed');
@@ -313,13 +313,13 @@ test.describe('Cycle 10 / Task 6 — suppressClipboardApi', () => {
     // Un-suppress; same call should now succeed and the clipboard should
     // contain the cell value.
     await page.evaluate(() => {
-      (window as unknown as { __cgrid: GridSurface }).__cgrid.setGridOption('suppressClipboardApi', false);
+      (window as unknown as { __velocity-grid: GridSurface }).__cgrid.setGridOption('suppressClipboardApi', false);
     });
     await page.evaluate(
-      () => (window as unknown as { __cgrid: GridSurface }).__cgrid.copySelectedRangesToClipboard(),
+      () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.copySelectedRangesToClipboard(),
     );
     const expected = await page.evaluate(
-      () => String((window as unknown as { __cgrid: GridSurface }).__cgrid.getCellValue(0, 'notes') ?? ''),
+      () => String((window as unknown as { __velocity-grid: GridSurface }).__cgrid.getCellValue(0, 'notes') ?? ''),
     );
     await expect.poll(
       async () => page.evaluate(() => navigator.clipboard.readText()),

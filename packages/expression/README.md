@@ -1,4 +1,4 @@
-# `@cgrid/expression`
+# `@wellsfargo-starui/velocity-grid-expression`
 
 Row-local DSL parser, compiler, evaluator, and validator for the cgrid
 monorepo. Zero cgrid dependencies. Thread-agnostic evaluator (spec §7's
@@ -13,7 +13,7 @@ code + Cycle 21d pointer. Full spec: `docs/superpowers/specs/2026-07-01-cycle-21
 ## Quickstart
 
 ```ts
-import { parse, compile, evaluate, validate } from '@cgrid/expression';
+import { parse, compile, evaluate, validate } from '@wellsfargo-starui/velocity-grid-expression';
 
 // 1. Parse source → portable AST.
 const parsed = parse('[price] > 100 && [symbol] == "AAPL"');
@@ -91,7 +91,7 @@ Every error carries `loc: { start, end }` for editor error underlines.
 
 ## Not shipped in this cycle
 
-- Aggregate evaluation (SUM/AVG/COUNT/… → Cycle 21d, `@cgrid/calc`).
+- Aggregate evaluation (SUM/AVG/COUNT/… → Cycle 21d, `@wellsfargo-starui/velocity-grid-calc`).
 - Tick-scoped `prev()` snapshot semantics (→ Cycle 21d).
 - Consumer wiring in kernel / format / rules (→ own cycles).
 - Performance benchmarks against 8ms/frame at 50k rows (→ deferred).

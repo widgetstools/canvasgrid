@@ -11,7 +11,7 @@ has the detection), full canvas WIDTH (pinned column bands scroll vertically
 with data, so they belong in it), covering the DATA-row region only, extended
 vertically by `overscan = paintCacheOverscan (default 0.5) × bodyHeight` each
 side, anchored at `layerTop` in CONTENT px (scroll space), device-px backing
-with the same dpr transform discipline as `CGridCanvas`.
+with the same dpr transform discipline as `VelocityGridCanvas`.
 
 **Vertical-only.** Horizontal scroll, resize, DPR change, theme change, and
 `suppressPartialRepaint` all RESET the layer (anchor to current scroll, full

@@ -1,4 +1,4 @@
-// @cgrid/edit — numericOps.test.ts
+// @wellsfargo-starui/velocity-grid-edit — numericOps.test.ts
 // Covers applyNumericOp, isNumericCellDataType.
 // Spec: docs/superpowers/specs/2026-07-02-cycle-21g-edit-design.md §1.1.3, §2.3.
 // Recon: docs/superpowers/plans/notes/2026-07-02-cycle-21g-recon.md A.3.

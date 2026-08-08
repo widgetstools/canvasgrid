@@ -1,4 +1,4 @@
-import { CGrid } from '@cgrid/kernel';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
 import type { ShowcaseRow } from '../seedData';
 import type { Feature } from './index';
 import {
@@ -67,7 +67,7 @@ export const pivotAgComparison: Feature = {
       wrap.style.cssText = 'flex:1 1 0; min-height:420px; display:flex; flex-direction:column;';
       const head = document.createElement('div');
       head.textContent = label;
-      head.style.cssText = 'padding:4px 8px; font-size:12px; font-weight:600; color:var(--cg-color-text, #ccc); border-bottom:1px solid rgba(127,127,127,0.2);';
+      head.style.cssText = 'padding:4px 8px; font-size:12px; font-weight:600; color:var(--vg-color-text, #ccc); border-bottom:1px solid rgba(127,127,127,0.2);';
       const body = document.createElement('div');
       body.style.cssText = 'flex:1 1 auto; min-height:0; min-width:0;';
       wrap.appendChild(head);
@@ -87,7 +87,7 @@ export const pivotAgComparison: Feature = {
       return Number.isFinite(n) ? `£${n.toLocaleString()}` : String(v);
     };
 
-    const grid = new CGrid<ShowcaseRow>(top.body, {
+    const grid = new VelocityGrid<ShowcaseRow>(top.body, {
       getRowId: (r) => r.id,
       columnDefs: [
         { colId: 'ticker',   field: 'ticker',   headerName: 'Ticker',   cellDataType: 'text',   enableRowGroup: true, enablePivot: true, flex: 1 },

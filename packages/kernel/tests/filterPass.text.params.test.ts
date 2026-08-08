@@ -13,7 +13,7 @@
  *
  * 3. Main-side `trimInput` honored at setColumnFilterModel time — does
  *    NOT need worker changes; tested via the exported helper
- *    `applyTrimInputToModel(model, trim)` that cgrid.ts calls before
+ *    `applyTrimInputToModel(model, trim)` that velocityGrid.ts calls before
  *    storing the model.
  */
 import { describe, it, expect } from 'vitest';

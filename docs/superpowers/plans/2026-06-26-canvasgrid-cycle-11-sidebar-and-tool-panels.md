@@ -25,7 +25,7 @@ Task 9's Shipped section).
 **Architecture:**
 
 - The side bar is a **DOM panel** — not canvas-painted. It mounts as a
-  sibling of the canvas inside `CGrid.root`, with a vertical tab strip
+  sibling of the canvas inside `VelocityGrid.root`, with a vertical tab strip
   pinned to the rightmost (or leftmost) edge and a content region
   whose width shrinks the canvas region. Opening / closing the side
   bar triggers exactly **one** `cgridCanvas.resize()` so the canvas
@@ -34,8 +34,8 @@ Task 9's Shipped section).
 - A **ToolPanel** is a minimal interface mirroring ag-grid's
   `IToolPanelComp`: `init(params)` / `getGui(): HTMLElement` /
   `refresh()` / `destroy()`. Built-in panels register themselves at
-  CGrid construction; apps register custom panels via
-  `CGridOptions.components: { [id]: ToolPanelComponent }`.
+  VelocityGrid construction; apps register custom panels via
+  `VelocityGridOptions.components: { [id]: ToolPanelComponent }`.
 - The **Columns** panel reads from `getColumnState()` (Cycle 6) and
   writes via `applyColumnState()`, so visibility / pin / order changes
   flow through the existing column-state surface. Row-groups / values /
@@ -86,9 +86,9 @@ the tab strip uses inline SVG icons (no icon-font dependency).
 - `docs/catalog/FEATURE_MATRIX.md` — Area 17 rows to flip at cycle
   exit.
 - Current source:
-  - `cgrid/src/cgrid.ts` — CGrid class; mount point for the side bar
+  - `cgrid/src/velocityGrid.ts` — VelocityGrid class; mount point for the side bar
     DOM + the new tool-panel registry.
-  - `cgrid/src/core/canvas.ts` — `CGridCanvas` owns the canvas
+  - `cgrid/src/core/canvas.ts` — `VelocityGridCanvas` owns the canvas
     `<canvas>` element + resize handling.
   - `cgrid/src/interaction/filters/filterPopupHost.ts` — popup-mount
     pattern + click-outside-to-close behavior; mirror for the side
@@ -96,9 +96,9 @@ the tab strip uses inline SVG icons (no icon-font dependency).
   - `cgrid/src/interaction/contextMenu/host.ts` — DOM portal pattern
     (`pointer-events: auto`, `position: fixed/absolute`, click-outside
     listener) — same mechanics for the side bar shell.
-  - `cgrid/src/theming/tokens.css` — every `.cg-*` selector lives
+  - `cgrid/src/theming/tokens.css` — every `.vg-*` selector lives
     here; side-bar / tool-panel CSS lands here too.
-  - `cgrid/src/cgrid.ts:applyColumnState` / `getColumnState` (Cycle 6)
+  - `cgrid/src/velocityGrid.ts:applyColumnState` / `getColumnState` (Cycle 6)
     — the Columns panel reads + writes through these.
 - Demo (verification target): `apps/cgrid-positions/` — wire the
   side bar with both built-in panels in `positionsGrid.ts`.
@@ -142,8 +142,8 @@ Apply to **every task** (extend the constraints from Cycles 2–10).
   spawning the next session.
 - **Demo never breaks.** `apps/cgrid-positions` runs green at every
   commit. E2E specs use `?stress=light` opt-in for the heavy stream.
-- **CSS rules MUST ship with class names.** Any `.cg-side-bar-*` /
-  `.cg-tool-panel-*` selector added by a task MUST have matching
+- **CSS rules MUST ship with class names.** Any `.vg-side-bar-*` /
+  `.vg-tool-panel-*` selector added by a task MUST have matching
   rules in `cgrid/src/theming/tokens.css`. A worklog that ships
   classes without rules is the exact bug pattern from Cycle 10 / PR #29.
 - **Visual verification step REQUIRED.** Every task that mounts DOM
@@ -155,13 +155,13 @@ Apply to **every task** (extend the constraints from Cycles 2–10).
 
 | # | Task | Files | Reference |
 |---|---|---|---|
-| 1 | `ToolPanel` interface + registry (built-ins + custom) | `interaction/toolPanels/types.ts` (new), `interaction/toolPanels/registry.ts` (new), `cgrid.ts`, `types.ts`, tests | Catalog `ToolPanelDef`, ag-grid `/component-tool-panel/` |
-| 2 | Side bar shell — DOM mount, tab strip, resize handle, position toggle | `interaction/sideBar/host.ts` (new), `cgrid.ts`, `core/canvas.ts` (resize hook), `theming/tokens.css`, tests, E2E | Both 17-* screenshots; ag-grid `/side-bar/` |
+| 1 | `ToolPanel` interface + registry (built-ins + custom) | `interaction/toolPanels/types.ts` (new), `interaction/toolPanels/registry.ts` (new), `velocityGrid.ts`, `types.ts`, tests | Catalog `ToolPanelDef`, ag-grid `/component-tool-panel/` |
+| 2 | Side bar shell — DOM mount, tab strip, resize handle, position toggle | `interaction/sideBar/host.ts` (new), `velocityGrid.ts`, `core/canvas.ts` (resize hook), `theming/tokens.css`, tests, E2E | Both 17-* screenshots; ag-grid `/side-bar/` |
 | 3 | Columns tool panel | `interaction/toolPanels/columnsPanel.ts` (new), `theming/tokens.css`, tests, E2E | `17-sidebar-columns-panel-open.png`; ag-grid `/tool-panel-columns/` |
 | 4 | Filters tool panel | `interaction/toolPanels/filtersPanel.ts` (new), `theming/tokens.css`, tests, E2E | `17-sidebar-filters-panel-open.png`; ag-grid `/tool-panel-filters/` |
-| 5 | Custom panel API (`refreshToolPanel`, `getToolPanelInstance`) | `cgrid.ts`, `types.ts`, tests, E2E | Catalog API table |
-| 6 | Side bar state API (`isSideBarVisible`, `setSideBarVisible`, `setSideBarPosition`, `openToolPanel`, `closeToolPanel`, `getOpenedToolPanel`, `getSideBar`) | `cgrid.ts`, `types.ts`, tests | Catalog API table |
-| 7 | Side bar events (`toolPanelVisibleChanged`, `sideBarVisibleChanged`) | `cgrid.ts`, `types.ts`, tests, E2E | Catalog events table |
+| 5 | Custom panel API (`refreshToolPanel`, `getToolPanelInstance`) | `velocityGrid.ts`, `types.ts`, tests, E2E | Catalog API table |
+| 6 | Side bar state API (`isSideBarVisible`, `setSideBarVisible`, `setSideBarPosition`, `openToolPanel`, `closeToolPanel`, `getOpenedToolPanel`, `getSideBar`) | `velocityGrid.ts`, `types.ts`, tests | Catalog API table |
+| 7 | Side bar events (`toolPanelVisibleChanged`, `sideBarVisibleChanged`) | `velocityGrid.ts`, `types.ts`, tests, E2E | Catalog events table |
 | 8 | DOM-canvas coexistence audit — pointer routing, canvas resize, edge-zone auto-scroll (Cycle 9 patch) interplay | `interaction/featureChain.ts`, `interaction/features/rangeSelection.ts`, `core/canvas.ts`, tests, E2E | None — pure interaction audit |
 | 9 | Cycle 11 exit ritual — FM Area 17 flips, demo polish, worklog `## Shipped` + status | `docs/catalog/FEATURE_MATRIX.md`, worklog, `apps/cgrid-positions/src/positionsGrid.ts` | None |
 
@@ -171,8 +171,8 @@ Apply to **every task** (extend the constraints from Cycles 2–10).
 
 **Goal:** A minimal, ag-grid-shaped `ToolPanel` interface and a registry
 that maps `id → ToolPanelComponent`. Built-in IDs `agColumnsToolPanel`
-and `agFiltersToolPanel` get registered at CGrid construction; apps
-register custom panels via `CGridOptions.components`.
+and `agFiltersToolPanel` get registered at VelocityGrid construction; apps
+register custom panels via `VelocityGridOptions.components`.
 
 **Read first:**
 - `docs/catalog/17-side-bar-and-tool-panels.md` — `ToolPanelDef`,
@@ -190,7 +190,7 @@ register custom panels via `CGridOptions.components`.
 - Create: `cgrid/src/interaction/toolPanels/registry.ts` —
   `ToolPanelRegistry` class with `register(id, ctor)`, `resolve(id)`,
   `instantiate(id, params)`.
-- Modify: `cgrid/src/cgrid.ts` — instantiate the registry at
+- Modify: `cgrid/src/velocityGrid.ts` — instantiate the registry at
   construction, seed with `'agColumnsToolPanel'` /
   `'agFiltersToolPanel'` placeholders (real implementations land in
   Tasks 3 + 4 — Task 1 ships an empty `getGui()` stub so the API
@@ -204,9 +204,9 @@ register custom panels via `CGridOptions.components`.
 ```ts
 // interaction/toolPanels/types.ts
 export interface ToolPanelParams<TGrid = unknown> {
-  /** The CGrid API surface available to the panel — column state,
+  /** The VelocityGrid API surface available to the panel — column state,
    *  filter model, selection, event emitter. Typed as `unknown` here
-   *  to avoid a circular dep; panels cast to `CGridApi`. */
+   *  to avoid a circular dep; panels cast to `VelocityGridApi`. */
   api: TGrid;
   /** App-supplied `toolPanelParams` from `ToolPanelDef`. */
   toolPanelParams?: Record<string, unknown>;
@@ -229,8 +229,8 @@ export interface ToolPanel {
 
 export type ToolPanelComponent = new () => ToolPanel;
 
-// types.ts — CGridOptions extension
-interface CGridOptions<TRow = unknown> {
+// types.ts — VelocityGridOptions extension
+interface VelocityGridOptions<TRow = unknown> {
   /** Registry of custom tool-panel components, keyed by panel ID.
    *  Built-ins `'agColumnsToolPanel'` + `'agFiltersToolPanel'` are
    *  pre-registered; apps override or add new IDs here. */
@@ -273,7 +273,7 @@ export interface SideBarDef {
         it (apps override defaults).
 - [ ] **Step 2:** Implement `ToolPanelRegistry` (one Map<string, ctor>,
       three methods).
-- [ ] **Step 3:** Wire registry into CGrid constructor. Read
+- [ ] **Step 3:** Wire registry into VelocityGrid constructor. Read
       `options.components` (default: `{}`) and call `registry.register`
       for each entry.
 - [ ] **Step 4:** Typecheck + unit tests green.
@@ -283,7 +283,7 @@ export interface SideBarDef {
 - [ ] `ToolPanel` interface exported from cgrid's root index.
 - [ ] `ToolPanelComponent`, `ToolPanelDef`, `SideBarDef` types exported.
 - [ ] Built-in IDs registered at construction (with stub impls).
-- [ ] `CGridOptions.components` accepted; entries override built-ins.
+- [ ] `VelocityGridOptions.components` accepted; entries override built-ins.
 - [ ] All unit tests green.
 
 **Commit message:**
@@ -332,17 +332,17 @@ one `cgridCanvas.resize()` so the canvas reflows.
 **Files:**
 - Create: `cgrid/src/interaction/sideBar/host.ts` — `SideBarHost`
   class:
-  - `constructor(root: HTMLElement, grid: CGridLike, def: SideBarDef)`.
-  - Builds three DOM regions: tab strip (`.cg-side-bar-tabs`),
-    panel content host (`.cg-side-bar-panel`), resize handle
-    (`.cg-side-bar-resize`).
+  - `constructor(root: HTMLElement, grid: VelocityGridLike, def: SideBarDef)`.
+  - Builds three DOM regions: tab strip (`.vg-side-bar-tabs`),
+    panel content host (`.vg-side-bar-panel`), resize handle
+    (`.vg-side-bar-resize`).
   - `openPanel(id: string)`, `closePanel()`,
     `getOpenedToolPanelId(): string | null`.
   - `setVisible(show: boolean)` — toggles the whole side bar.
   - `setPosition(pos: 'left' | 'right')` — re-mounts on the other
     edge.
   - `destroy()`.
-- Modify: `cgrid/src/cgrid.ts` — instantiate `SideBarHost` at
+- Modify: `cgrid/src/velocityGrid.ts` — instantiate `SideBarHost` at
   construction when `options.sideBar` resolves to a truthy
   `SideBarDef`. Honor `hiddenByDefault`, `defaultToolPanel`,
   `position`.
@@ -383,40 +383,40 @@ collapsed state too):**
 ```
 
 When a tab is ACTIVE (its panel is open), the tab gets:
-- A **3 px blue left border** (`border-left: 3px solid var(--cg-focus-ring-color)`)
+- A **3 px blue left border** (`border-left: 3px solid var(--vg-focus-ring-color)`)
   flush against the panel content — this is the most distinctive
   visual cue and MUST be present.
-- A slightly lifted background (`var(--cg-bg-color)` vs the strip's
-  `var(--cg-header-bg)`) so the active tab visually merges into the
+- A slightly lifted background (`var(--vg-bg-color)` vs the strip's
+  `var(--vg-header-bg)`) so the active tab visually merges into the
   open panel.
 
 Tab hover (non-active): background lifts to
-`color-mix(in srgb, var(--cg-header-bg) 80%, var(--cg-bg-color) 20%)`.
+`color-mix(in srgb, var(--vg-header-bg) 80%, var(--vg-bg-color) 20%)`.
 
 **CSS required (matches the reference screenshots + the user's
 2026-06-26 tab-strip layout):**
 
 ```css
-.cg-side-bar {
+.vg-side-bar {
   display: flex;
   flex-direction: row-reverse; /* tabs on the OUTER edge */
-  background: var(--cg-bg-color);
-  border-left: 1px solid var(--cg-border-color);
+  background: var(--vg-bg-color);
+  border-left: 1px solid var(--vg-border-color);
   height: 100%;
 }
-.cg-side-bar[data-position="left"] {
+.vg-side-bar[data-position="left"] {
   flex-direction: row;
   border-left: none;
-  border-right: 1px solid var(--cg-border-color);
+  border-right: 1px solid var(--vg-border-color);
 }
-.cg-side-bar-tabs {
+.vg-side-bar-tabs {
   display: flex;
   flex-direction: column;
   width: 28px;
-  background: var(--cg-header-bg);
-  border-left: 1px solid var(--cg-border-color);
+  background: var(--vg-header-bg);
+  border-left: 1px solid var(--vg-border-color);
 }
-.cg-side-bar-tab {
+.vg-side-bar-tab {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -425,37 +425,37 @@ Tab hover (non-active): background lifts to
   writing-mode: vertical-rl;
   /* icon above label (separate spans) */
 }
-.cg-side-bar-tab[aria-pressed="true"] {
-  background: var(--cg-bg-color);
+.vg-side-bar-tab[aria-pressed="true"] {
+  background: var(--vg-bg-color);
   /* User reference 2026-06-26 — active tab gets a blue left-border
    * indicator (3 px), the most distinctive cue that "this panel is
    * open". Placed on the left because the tab strip sits at the
    * RIGHT edge of the grid; the border faces the open panel. */
-  border-left: 3px solid var(--cg-focus-ring-color);
+  border-left: 3px solid var(--vg-focus-ring-color);
 }
-.cg-side-bar[data-position="left"] .cg-side-bar-tab[aria-pressed="true"] {
+.vg-side-bar[data-position="left"] .vg-side-bar-tab[aria-pressed="true"] {
   /* Mirror the border to the right edge when the side bar is on
    * the LEFT side of the grid. */
   border-left: none;
-  border-right: 3px solid var(--cg-focus-ring-color);
+  border-right: 3px solid var(--vg-focus-ring-color);
 }
-.cg-side-bar-tab:hover {
-  background: color-mix(in srgb, var(--cg-header-bg) 80%, var(--cg-bg-color) 20%);
+.vg-side-bar-tab:hover {
+  background: color-mix(in srgb, var(--vg-header-bg) 80%, var(--vg-bg-color) 20%);
 }
-.cg-side-bar-panel {
+.vg-side-bar-panel {
   flex: 1 1 auto;
-  min-width: var(--cg-side-bar-min-width, 100px);
+  min-width: var(--vg-side-bar-min-width, 100px);
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
-.cg-side-bar-resize {
+.vg-side-bar-resize {
   width: 3px;
   cursor: col-resize;
   background: transparent;
 }
-.cg-side-bar-resize:hover {
-  background: var(--cg-focus-ring-color);
+.vg-side-bar-resize:hover {
+  background: var(--vg-focus-ring-color);
 }
 ```
 
@@ -463,11 +463,11 @@ Tab hover (non-active): background lifts to
 
 - [ ] **Step 1:** Failing `sideBarHost.test.ts`. Assertions:
       - `new SideBarHost(root, grid, { toolPanels: ['columns',
-        'filters'], position: 'right' })` mounts a `.cg-side-bar`
+        'filters'], position: 'right' })` mounts a `.vg-side-bar`
         element inside `root` with two tab buttons.
       - `openPanel('agColumnsToolPanel')` adds
         `aria-pressed="true"` to the matching tab + mounts the
-        panel's `getGui()` inside `.cg-side-bar-panel`.
+        panel's `getGui()` inside `.vg-side-bar-panel`.
       - `closePanel()` removes the panel + clears `aria-pressed`.
       - `setPosition('left')` re-mounts on the opposite edge
         (`data-position` attribute flips).
@@ -552,7 +552,7 @@ column name. Honors the suppress flags from `IToolPanelColumnCompParams`.
   `https://www.ag-grid.com/javascript-data-grid/tool-panel-columns/`
   for the drop-zone hover state and any sub-surface the screenshot
   doesn't capture.
-- `cgrid/src/cgrid.ts` — `getColumnState()`, `applyColumnState()`,
+- `cgrid/src/velocityGrid.ts` — `getColumnState()`, `applyColumnState()`,
   `setColumnVisible()`, `moveColumns()` from Cycle 6.
 
 **Target layout (user reference, 2026-06-26 — dark theme, the
@@ -610,7 +610,7 @@ canonical UI for this task):**
 4. **Row Groups section:** Section header `≡ Row Groups` (the icon
    is the "horizontal lines" glyph U+2630 or an inline SVG). Below
    the header, a drop zone container with `border: 1px dashed
-   var(--cg-border-color)`, `border-radius: 4px`, padding ~12 px,
+   var(--vg-border-color)`, `border-radius: 4px`, padding ~12 px,
    centred placeholder text "Drag here to set row groups" in
    muted colour. Cycle 11 ships the drop zone INERT — drop is a
    no-op stub that logs `console.debug('[groups] drop (stub —
@@ -622,18 +622,18 @@ canonical UI for this task):**
    lists it but pivot lands in Cycle 16; ship Row Groups + Values
    only to match the target screenshot.
 
-**Theme:** Dark — background `var(--cg-bg-color)` (which the demo
-resolves to the slate-navy), text `var(--cg-fg-color)` (off-white),
-border `var(--cg-border-color)`, drop-zone dashed border same colour
+**Theme:** Dark — background `var(--vg-bg-color)` (which the demo
+resolves to the slate-navy), text `var(--vg-fg-color)` (off-white),
+border `var(--vg-border-color)`, drop-zone dashed border same colour
 at 60% opacity. The checkbox uses the existing
-`var(--cg-focus-ring-color)` blue when checked, hollow square when
-unchecked (system checkbox `accent-color: var(--cg-focus-ring-color)`
+`var(--vg-focus-ring-color)` blue when checked, hollow square when
+unchecked (system checkbox `accent-color: var(--vg-focus-ring-color)`
 is acceptable — no custom checkbox component).
 
 **Files:**
 - Create: `cgrid/src/interaction/toolPanels/columnsPanel.ts` —
   `ColumnsToolPanel` class implementing `ToolPanel`.
-- Modify: `cgrid/src/cgrid.ts` — register `ColumnsToolPanel` for
+- Modify: `cgrid/src/velocityGrid.ts` — register `ColumnsToolPanel` for
   `'agColumnsToolPanel'` (replaces the Task 1 stub).
 - Modify: `cgrid/src/theming/tokens.css` — add the panel CSS.
 - Create: `cgrid/tests/columnsToolPanel.test.ts`.
@@ -814,16 +814,16 @@ One row expanded (e.g. Country, a set-filter column):
    same helper so a bug fixed in one path is fixed in both.
 
 **Theme:** Dark — same tokens as Task 3 (Columns panel). The chevron
-uses `var(--cg-fg-color)` at 70% opacity (muted but legible). The
+uses `var(--vg-fg-color)` at 70% opacity (muted but legible). The
 expanded-editor container has `background:
-color-mix(in srgb, var(--cg-bg-color) 90%, white 10%)` (slightly
-lifted from the panel background) and a thin `var(--cg-border-color)`
+color-mix(in srgb, var(--vg-bg-color) 90%, white 10%)` (slightly
+lifted from the panel background) and a thin `var(--vg-border-color)`
 border.
 
 **Files:**
 - Create: `cgrid/src/interaction/toolPanels/filtersPanel.ts` —
   `FiltersToolPanel` class implementing `ToolPanel`.
-- Modify: `cgrid/src/cgrid.ts` — register `FiltersToolPanel` for
+- Modify: `cgrid/src/velocityGrid.ts` — register `FiltersToolPanel` for
   `'agFiltersToolPanel'`.
 - Modify: `cgrid/src/theming/tokens.css` — add the panel CSS.
 - Create: `cgrid/tests/filtersToolPanel.test.ts`.
@@ -841,7 +841,7 @@ border.
       - `suppressExpandAll: true` hides the expand/collapse-all
         button at the top.
 - [ ] **Step 2:** Implement `FiltersToolPanel`. Each row is a `<div
-      class="cg-filters-panel-row">`. Clicking toggles a per-row
+      class="vg-filters-panel-row">`. Clicking toggles a per-row
       `data-expanded="true"` attribute + mounts the filter editor.
 - [ ] **Step 3:** Filter editor reuse: factor out the
       filter-component-construction logic from `FilterPopupHost` if
@@ -901,11 +901,11 @@ expose `expandAll()`).
 - Cycle 11 Task 1 product (`ToolPanel` interface).
 
 **Files:**
-- Modify: `cgrid/src/cgrid.ts` — `refreshToolPanel(id)` calls
+- Modify: `cgrid/src/velocityGrid.ts` — `refreshToolPanel(id)` calls
   `instance.refresh()` if the panel is currently mounted; no-op
   otherwise. `getToolPanelInstance(id)` returns the live instance
   or `null`.
-- Modify: `cgrid/src/types.ts` — add to `CGridApi`.
+- Modify: `cgrid/src/types.ts` — add to `VelocityGridApi`.
 - Modify: `cgrid/tests/cgrid.integration.test.ts` — add cases for
   both methods.
 - Create: `apps/cgrid-positions/e2e/cycle11-customPanelApi.spec.ts`
@@ -943,7 +943,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 ## Task 6 — Side bar state API
 
 **Goal:** Programmatic control of the side bar's visibility, position,
-and which panel is open. Seven methods on `CGridApi`:
+and which panel is open. Seven methods on `VelocityGridApi`:
 `isSideBarVisible`, `setSideBarVisible`, `setSideBarPosition`,
 `openToolPanel`, `closeToolPanel`, `getOpenedToolPanel`, `getSideBar`.
 
@@ -951,16 +951,16 @@ and which panel is open. Seven methods on `CGridApi`:
 - `docs/catalog/17-side-bar-and-tool-panels.md` — API methods table.
 
 **Files:**
-- Modify: `cgrid/src/cgrid.ts` — implement the seven methods
+- Modify: `cgrid/src/velocityGrid.ts` — implement the seven methods
   forwarding to `SideBarHost`.
-- Modify: `cgrid/src/types.ts` — add to `CGridApi`.
+- Modify: `cgrid/src/types.ts` — add to `VelocityGridApi`.
 - Modify: `cgrid/tests/cgrid.integration.test.ts` — cases for all
   seven methods.
 
 **Steps:**
 
 - [ ] **Step 1:** Failing tests covering each method.
-- [ ] **Step 2:** Implement each method on CGrid:
+- [ ] **Step 2:** Implement each method on VelocityGrid:
       - `isSideBarVisible()` returns the SideBarHost's visibility
         state.
       - `setSideBarVisible(show)` calls
@@ -980,7 +980,7 @@ and which panel is open. Seven methods on `CGridApi`:
 - [ ] **Step 5:** Commit + push + PR.
 
 **Acceptance criteria:**
-- [ ] All seven methods exist on `CGridApi` with the signatures
+- [ ] All seven methods exist on `VelocityGridApi` with the signatures
       from the catalog.
 - [ ] Methods are no-ops when no side bar is configured.
 - [ ] Each method matches the SideBarHost behavior 1:1.
@@ -1014,9 +1014,9 @@ fires when the whole side bar shows or hides
 - `docs/catalog/17-side-bar-and-tool-panels.md` — events table.
 
 **Files:**
-- Modify: `cgrid/src/types.ts` — extend `CGridEvent` union with
+- Modify: `cgrid/src/types.ts` — extend `VelocityGridEvent` union with
   the two new events.
-- Modify: `cgrid/src/cgrid.ts` — emit from SideBarHost callbacks.
+- Modify: `cgrid/src/velocityGrid.ts` — emit from SideBarHost callbacks.
 - Modify: `cgrid/src/interaction/sideBar/host.ts` — add an emit
   callback to the constructor; fire on open / close / show / hide.
 - Create: `cgrid/tests/sideBarEvents.test.ts`.
@@ -1217,7 +1217,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 refresh / destroy }` contract mirrors ag-grid's `IToolPanelComp`
 verbatim. `ToolPanelRegistry` maps panel `id` → constructor; built-in
 ids `'agColumnsToolPanel'` and `'agFiltersToolPanel'` register at
-CGrid construction. `CGridOptions.components: Record<string,
+VelocityGrid construction. `VelocityGridOptions.components: Record<string,
 ToolPanelComponent>` lets apps register custom panels or override the
 built-ins, and the registry resolves the user-supplied entry last so
 overrides always win. `ToolPanelDef` and `SideBarDef` ship as exported
@@ -1226,15 +1226,15 @@ types with the catalog field names verbatim (`id`, `labelDefault`,
 `maxWidth`, `width` / `toolPanels`, `defaultToolPanel`,
 `hiddenByDefault`, `position`, `hideButtons`).
 
-**Side bar shell.** `SideBarHost` mounts a `.cg-side-bar` DOM panel as
-a sibling of the canvas inside `CGrid.root`. The shell is three
-regions — a 28 px-wide vertical tab strip (`.cg-side-bar-tabs`), a
-flex-grown panel host (`.cg-side-bar-panel`), and a 3 px resize handle
-(`.cg-side-bar-resize`) — laid out with CSS flex
+**Side bar shell.** `SideBarHost` mounts a `.vg-side-bar` DOM panel as
+a sibling of the canvas inside `VelocityGrid.root`. The shell is three
+regions — a 28 px-wide vertical tab strip (`.vg-side-bar-tabs`), a
+flex-grown panel host (`.vg-side-bar-panel`), and a 3 px resize handle
+(`.vg-side-bar-resize`) — laid out with CSS flex
 (`flex-direction: row-reverse` for right-edge mount, `row` for left).
 Tab buttons render an icon glyph above a rotated label
 (`writing-mode: vertical-rl`); the active tab gets the canonical 3 px
-blue left border (`border-left: 3px solid var(--cg-focus-ring-color)`,
+blue left border (`border-left: 3px solid var(--vg-focus-ring-color)`,
 mirrored to the right when `position: 'left'`). The resize handle
 hovers blue and drags the panel width between
 `minWidth` / `maxWidth`. Opening, closing, switching, or
@@ -1283,11 +1283,11 @@ close to keep the DOM tree small). `getToolPanelInstance(id)` returns
 the live `ToolPanel` instance — same object the host mounted into
 the panel region — or `null` when no panel for `id` is open. Both
 methods work for built-in and app-registered ids uniformly; the
-`SideBarHost` owns the `id → instance` map and the CGrid API forwards
+`SideBarHost` owns the `id → instance` map and the VelocityGrid API forwards
 through it. Calling either method on a grid with no side bar
 configured is also a silent no-op.
 
-**Side bar state API.** Seven methods on `CGridApi` for programmatic
+**Side bar state API.** Seven methods on `VelocityGridApi` for programmatic
 control: `isSideBarVisible()`, `setSideBarVisible(show)`,
 `setSideBarPosition(pos: 'left' | 'right')`, `openToolPanel(id)`,
 `closeToolPanel()`, `getOpenedToolPanel()` (returns the id of the
@@ -1301,7 +1301,7 @@ returned object), and `getOpenedToolPanel()` reflects the actual
 mounted-panel state including auto-opens triggered by
 `defaultToolPanel`.
 
-**Side bar events.** Two new union members on `CGridEvent`:
+**Side bar events.** Two new union members on `VelocityGridEvent`:
 `toolPanelVisibleChanged { source, key, visible }` fires when a panel
 opens or closes; `sideBarVisibleChanged { source, visible }` fires
 when the whole bar shows or hides. The `source` tag is one of
@@ -1332,7 +1332,7 @@ captured DOM-side).
 surfaces without breaking the existing E2E suite: `?customPanel=1`
 registers a `DemoCustomPanel` (lifecycle-counter side channel for the
 `refreshToolPanel` / `getToolPanelInstance` E2Es) via
-`CGridOptions.components` and appends a third "Demo" tab;
+`VelocityGridOptions.components` and appends a third "Demo" tab;
 `?openColumns=1` adds `defaultToolPanel: 'agColumnsToolPanel'` so the
 Columns panel opens at mount. Default URL preserves the "no tab
 pressed at mount" surface every prior Cycle 11 spec asserts against.

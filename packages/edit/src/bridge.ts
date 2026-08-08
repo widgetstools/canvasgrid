@@ -1,18 +1,18 @@
-// @cgrid/edit — the kernel bridge. Spec §4 (`wireEditIntoKernel`).
+// @wellsfargo-starui/velocity-grid-edit — the kernel bridge. Spec §4 (`wireEditIntoKernel`).
 //
 // `wireEditIntoKernel(grid, opts?)` wires the whole editing-ops feature set
 // (journal, smart-edit, bulk-update, plus/minus nudges, letter shortcuts)
-// onto a CGrid instance via the kernel's PUBLIC API, mirroring
+// onto a VelocityGrid instance via the kernel's PUBLIC API, mirroring
 // packages/renderers/src/bridge.ts / packages/format/src/bridge.ts /
 // packages/rules/src/bridge.ts / packages/calc/src/bridge.ts.
 //
 // Engine-discipline note (spec §2.3, pinned): this is the ONE module allowed
-// a real `@cgrid/expression` runtime import (`makeExpressionEvaluate`
+// a real `@wellsfargo-starui/velocity-grid-expression` runtime import (`makeExpressionEvaluate`
 // default) and the ONE place a `Date.now()` default lives — the bridge IS
-// the host boundary. Every other `@cgrid/edit` module stays pure/engine-side.
+// the host boundary. Every other `@wellsfargo-starui/velocity-grid-edit` module stays pure/engine-side.
 // Kernel imports here are STRUCTURAL/type-only (renderers `bridge.ts:8`
-// precedent: `import type { CellPainter } from '@cgrid/kernel'`) — this file
-// imports NOTHING at runtime from `@cgrid/kernel`.
+// precedent: `import type { CellPainter } from '@wellsfargo-starui/velocity-grid'`) — this file
+// imports NOTHING at runtime from `@wellsfargo-starui/velocity-grid`.
 
 import type {
   CellPatch,
@@ -39,10 +39,10 @@ import { collectShortcutKeys, matchShortcutForCell, buildShortcutPatches } from 
 // ─── Structural KernelGridSurface — public API only (spec §4.1) ────────────
 //
 // Verified against the real API (plan-time recon, two corrections flagged):
-//   - `isEditing()` is NOT public (`isAnyEditOpen` is private, `cgrid.ts:7672`)
+//   - `isEditing()` is NOT public (`isAnyEditOpen` is private, `velocityGrid.ts:7672`)
 //     → editing guard derives from the public `cellEditingStarted` /
 //     `cellEditingStopped` events instead.
-//   - `isCellEditable(rowIndex, colId)` is NOT public either (`cgrid.ts:7649`
+//   - `isCellEditable(rowIndex, colId)` is NOT public either (`velocityGrid.ts:7649`
 //     is `private`) → replicated addon-side below from `getGridOption`'s
 //     resolved colDefs (renderers `findLeafColDef` precedent), matching
 //     `EditController.isCellEditable` (`core/editController.ts:407-428`):
@@ -115,13 +115,13 @@ interface KernelGridSurface {
   setSelectedRowIds(ids: string[]): void;
   getDistinctValues(colId: string, limit?: number): Promise<string[]>;
   getGridOption?(key: string): unknown;
-  /** Kernel-native editability resolution (public on CGrid). Preferred over
+  /** Kernel-native editability resolution (public on VelocityGrid). Preferred over
    *  the bridge's own replication when present: it reads the RESOLVED colDef
    *  (defaultColDef/columnTypes already folded) and carries the pivot-mode
    *  read-only gate. Optional so bare test surfaces keep working. */
   isCellEditable?(rowIndex: number, colId: string): boolean;
   /** Cycle 21i Phase 2 / T6 — kernel module-state registry (present on
-   *  CGrid since Phase 2 T2). Structural + optional so the bridge keeps
+   *  VelocityGrid since Phase 2 T2). Structural + optional so the bridge keeps
    *  working against older kernels and bare test surfaces. */
   registerStateModule?(module: {
     id: string;
@@ -141,8 +141,18 @@ export interface WireEditOptions {
   /** Host-stamped timestamps. Default: `() => Date.now()` — the bridge IS
    *  the host boundary; this is the ONLY `Date.now()` in the package. */
   now?: () => number;
-  /** Default: `makeExpressionEvaluate()` (real `@cgrid/expression`). */
+  /** Default: `makeExpressionEvaluate()` (real `@wellsfargo-starui/velocity-grid-expression`). */
   evaluate?: NudgeEvaluate;
+  /**
+   * Replace the default `grid.applyTransaction({ update })` used by
+   * smart/bulk/±/shortcut commits and journal undo/redo. SSRM hosts should
+   * persist to the authoritative book and call `applyServerSideTransaction`
+   * so rehydrate does not resurrect undone values.
+   */
+  commitUpdates?: (
+    rows: Record<string, unknown>[],
+    meta: { patches: CellPatch[]; direction: 'forward' | 'undo' },
+  ) => void;
 }
 
 export interface EditBridgeHandle {
@@ -160,7 +170,9 @@ export interface EditBridgeHandle {
   };
   getSettings(): EditSettings;
   updateSettings(partial: Parameters<typeof mergeEditSettings>[0]): void;
+  getNudges(): PlusMinusNudge[];
   setNudges(nudges: PlusMinusNudge[]): void;
+  getShortcuts(): ShortcutDefinition[];
   setShortcuts(shortcuts: ShortcutDefinition[]): void;
   destroy(): void;
 }
@@ -404,6 +416,7 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
         }
       }
       updates.push(clone);
+      rowMirror.set(rowId, clone);
       writtenCount += rowPatches.length;
     }
     if (updates.length === 0) return 0;
@@ -415,7 +428,11 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
 
     replaying = true;
     try {
-      g.applyTransaction({ update: updates });
+      if (opts?.commitUpdates) {
+        opts.commitUpdates(updates, { patches: deduped, direction });
+      } else {
+        g.applyTransaction({ update: updates });
+      }
     } finally {
       replaying = false;
     }
@@ -640,10 +657,18 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
       // kernel's stateUpdated -> persistState autosave runs.
       g.notifyModuleStateChanged?.('editSettings');
     },
-    setNudges: (next) => { nudges = next; },
+    getNudges: () => nudges.map((n) => ({ ...n, scope: { columnIds: [...n.scope.columnIds] } })),
+    setNudges: (next) => {
+      nudges = next;
+      settingsTouched = true;
+      g.notifyModuleStateChanged?.('editSettings');
+    },
+    getShortcuts: () => shortcuts.map((s) => ({ ...s, scope: { columnIds: [...s.scope.columnIds] } })),
     setShortcuts: (next) => {
       shortcuts = next;
       shortcutKeySet = collectShortcutKeys(shortcuts);
+      settingsTouched = true;
+      g.notifyModuleStateChanged?.('editSettings');
     },
     destroy,
   };
@@ -659,13 +684,34 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
   // JSON.stringify comparison in get(): snapshots run once per coalesced
   // stateUpdated rAF flush (column-resize / range-select drags feed the
   // bus per frame), so get() must be allocation-free.
-  let settingsTouched = JSON.stringify(settings) !== JSON.stringify(mergeEditSettings());
+  //
+  // Phase 3 — nudges + shortcut defs ride the same envelope (optional
+  // `nudges` / `shortcutDefs` keys alongside EditSettings fields).
+  let settingsTouched =
+    JSON.stringify(settings) !== JSON.stringify(mergeEditSettings())
+    || nudges.length > 0
+    || shortcuts.length > 0;
   const unregisterStateModule = g.registerStateModule?.({
     id: 'editSettings',
     version: 1,
-    get: () => (settingsTouched ? settings : undefined),
+    get: () => {
+      if (!settingsTouched) return undefined;
+      return {
+        ...settings,
+        nudges,
+        shortcutDefs: shortcuts,
+      };
+    },
     set: (data) => {
-      settings = mergeEditSettings(data as Parameters<typeof mergeEditSettings>[0]);
+      const raw = (data && typeof data === 'object') ? data as Record<string, unknown> : {};
+      settings = mergeEditSettings(raw as Parameters<typeof mergeEditSettings>[0]);
+      if (Array.isArray(raw.nudges)) {
+        nudges = raw.nudges as PlusMinusNudge[];
+      }
+      if (Array.isArray(raw.shortcutDefs)) {
+        shortcuts = raw.shortcutDefs as ShortcutDefinition[];
+        shortcutKeySet = collectShortcutKeys(shortcuts);
+      }
       settingsTouched = true;
     },
   });

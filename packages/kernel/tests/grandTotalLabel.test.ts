@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 
 // The pinned grand-total row (TotalsSubgrid) resolves cells through
 // `totalsCellLookup(colId)`. The auto-group column has no aggFunc, so it
@@ -37,7 +37,7 @@ beforeAll(() => {
 function mount(extraOptions: Record<string, unknown> = {}) {
   const el = document.createElement('div');
   document.body.appendChild(el);
-  const grid = new CGrid(el, {
+  const grid = new VelocityGrid(el, {
     columnDefs: [
       { colId: 'region', field: 'region' },
       { colId: 'notional', field: 'notional', aggFunc: 'sum' },

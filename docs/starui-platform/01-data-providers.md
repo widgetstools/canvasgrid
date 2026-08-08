@@ -243,7 +243,7 @@ Dependency injection in starui happens via React Context (`<DataServicesProvider
 
 Angular has analogous services. Both adapters are thin wrappers around the same underlying client protocol.
 
-For cgrid: build a `<cgrid-data-provider-binding>` Lit element (or just a controller class) that wires `provider.onSnapshotData()` / `provider.onTick()` to `grid.applyTransaction()`. Same shape, no React.
+For velocity-grid: build a `<cgrid-data-provider-binding>` Lit element (or just a controller class) that wires `provider.onSnapshotData()` / `provider.onTick()` to `grid.applyTransaction()`. Same shape, no React.
 
 ---
 
@@ -305,7 +305,7 @@ export interface ColumnSchema {
 ### What cgrid grid instance must support
 
 ```ts
-class CGrid<T> {
+class VelocityGrid<T> {
   // Identity
   setRowKey(spec: RowKeySpec): void;
 
@@ -331,9 +331,9 @@ class CGrid<T> {
 ```ts
 // In the host app, not in cgrid library:
 import type { IDataProvider } from '@host/data';
-import type { CGrid } from '@cgrid/kernel';
+import type { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
 
-function bindProviderToGrid<T>(provider: IDataProvider<T>, grid: CGrid<T>) {
+function bindProviderToGrid<T>(provider: IDataProvider<T>, grid: VelocityGrid<T>) {
   const stops: Array<() => void> = [];
 
   stops.push(provider.onSnapshotData((rows) => {

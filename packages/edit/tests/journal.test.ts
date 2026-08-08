@@ -1,4 +1,4 @@
-// @cgrid/edit — journal.test.ts
+// @wellsfargo-starui/velocity-grid-edit — journal.test.ts
 // Covers EditJournal: dual stacks (past/future), monitor list, subscribe,
 // shouldRecord gating, and (Task 3) the undoEntry cascade.
 // Spec: docs/superpowers/specs/2026-07-02-cycle-21g-edit-design.md §1.1.1, §3.5, §3.2.

@@ -1,12 +1,12 @@
 import { Client, type IMessage } from '@stomp/stompjs';
 import type {
-  CGrid,
+  VelocityGrid,
   FilterModel,
   IServerSideDatasource,
   IServerSideGetRowsParams,
   SortModel,
-} from '@cgrid/kernel';
-import { emptyGrandTotalRow, GRAND_TOTAL_ROW_ID } from '@cgrid/perspective';
+} from '@wellsfargo-starui/velocity-grid';
+import { emptyGrandTotalRow, GRAND_TOTAL_ROW_ID } from '@wellsfargo-starui/velocity-grid-perspective';
 
 export type StompRow = Record<string, unknown> & { positionId: string };
 
@@ -154,7 +154,7 @@ function applyFilterModel(rows: StompRow[], filterModel: FilterModel): StompRow[
 
 interface BoundView {
   spec: ViewSpec;
-  grid: CGrid<StompRow> | null;
+  grid: VelocityGrid<StompRow> | null;
   getRowsCalls: number;
   rowsServed: number;
   inflight: number;
@@ -309,7 +309,7 @@ export class InstrumentedStompSsrmProvider {
     };
   }
 
-  attachGrid(viewId: string, grid: CGrid<StompRow>): () => void {
+  attachGrid(viewId: string, grid: VelocityGrid<StompRow>): () => void {
     const view = this.views.get(viewId);
     if (view) view.grid = grid;
     this.syncPinnedTotals(viewId);

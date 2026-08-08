@@ -28,7 +28,7 @@
  * report its reserved top inset back to the grid + dispatch the
  * primitive grouping API (`addRowGroupColumn`, `removeRowGroupColumn`,
  * `moveRowGroupColumn`, `setRowGroupColumnSort`) without importing
- * `CGrid` directly. The grid wires its `setHostBounds({ top })`
+ * `VelocityGrid` directly. The grid wires its `setHostBounds({ top })`
  * channel from the reservation so the scroller + editor overlay +
  * canvas all shrink to make room.
  *
@@ -48,13 +48,14 @@
 import type { GroupingSortEntry } from '../../core/groupingState';
 import type { RowGroupPanelShow, RowGroupPanelDropVerdict } from './types';
 import { copyResolvedChipStyles } from '../chipGhostStyles';
+import { iconSvg } from '../../renderer/icons';
 
 /** Verbatim from `cgrid/src/interaction/toolPanels/columnsPanel.ts`'s
  *  Row Groups section. One drop-zone vocabulary across the grid. */
 const EMPTY_PLACEHOLDER = 'Drag here to set row groups';
 
 /** Drag-handle glyph for the chip — empty string because the handle
- *  is now rendered entirely via CSS dot-grid (`.cg-row-group-panel-
+ *  is now rendered entirely via CSS dot-grid (`.vg-row-group-panel-
  *  chip-handle` background-image), matching the column-list and
  *  col-drag-ghost icon patterns. */
 const DRAG_HANDLE_GLYPH = '';
@@ -67,7 +68,7 @@ const REMOVE_GLYPH = '✕';
 /** Between-chip separator. Unicode SINGLE-RIGHT-POINTING ANGLE
  *  QUOTATION MARK (U+203A). Reads as typographic punctuation, not as
  *  a chevron control. Color reuses Task 4's
- *  `--cg-group-chevron-color`. */
+ *  `--vg-group-chevron-color`. */
 const SEPARATOR_GLYPH = '›';
 
 /** Sort indicator glyphs (Cycle 15.5 / Task 1). `↑` (U+2191) ascending,
@@ -88,9 +89,9 @@ const DRAG_THRESHOLD_PX = 4;
 const GHOST_OFFSET_X = 0;
 const GHOST_OFFSET_Y = -11;
 
-/** Context handed to RowGroupPanelHost by CGrid (or a test harness).
+/** Context handed to RowGroupPanelHost by VelocityGrid (or a test harness).
  *  Keeps the host framework-agnostic — it can mutate the grouping
- *  model + report its reserved inset back without importing CGrid
+ *  model + report its reserved inset back without importing VelocityGrid
  *  directly. */
 export interface RowGroupPanelGridContext {
   /** Called on mount / unmount / chip-count change. `height === 0`
@@ -125,16 +126,20 @@ export interface RowGroupPanelGridContext {
    *  routing committed (chip should not be re-removed on drag-out),
    *  `false` when no foreign panel was hit OR the target rejected. */
   tryCrossPanelMove?(colId: string, clientX: number, clientY: number): boolean;
+  /** Hide the panel (panel-level ✕). Host apps typically wire this to
+   *  `setGridOption('rowGroupPanelShow', 'never')`. Optional so unit
+   *  tests can omit it; the ✕ is only rendered when this is provided. */
+  hidePanel?(): void;
 }
 
 /** Render-time options governing which decorations the host paints
- *  on each chip. Read off `CGridOptions` on every chip-strip
+ *  on each chip. Read off `VelocityGridOptions` on every chip-strip
  *  re-render so `setGridOption('rowGroupPanelSuppressSort', true)`
  *  silently drops the indicator the next time the strip rebuilds. */
 export interface RowGroupPanelRenderOptions {
   /** When `true`, no sort indicator is rendered on any chip, AND
    *  clicks on the chip body never toggle a sort. Mirrors
-   *  `CGridOptions.rowGroupPanelSuppressSort`. Default `false`. */
+   *  `VelocityGridOptions.rowGroupPanelSuppressSort`. Default `false`. */
   suppressSort: boolean;
 }
 
@@ -145,7 +150,7 @@ type DragState =
 
 export class RowGroupPanelHost {
   private readonly root: HTMLElement;
-  /** The host element (`.cg-row-group-panel`) appended to the grid
+  /** The host element (`.vg-row-group-panel`) appended to the grid
    *  root. */
   private readonly panel: HTMLDivElement;
   private readonly ctx: RowGroupPanelGridContext;
@@ -208,12 +213,12 @@ export class RowGroupPanelHost {
     }
 
     this.panel = document.createElement('div');
-    this.panel.className = 'cg-row-group-panel';
+    this.panel.className = 'vg-row-group-panel';
     // Marker for cross-section pill drag routing. See
     // `core/panelDragMove.ts`. The point-to-role resolver walks up
     // from `elementFromPoint` to the nearest element carrying this
     // attribute, so dragging a pill from any panel can land here.
-    this.panel.setAttribute('data-cg-pill-role', 'rowGroup');
+    this.panel.setAttribute('data-vg-pill-role', 'rowGroup');
 
     this.onPointerMove = (e) => this.handlePointerMove(e);
     this.onPointerUp = (e) => this.handlePointerUp(e);
@@ -224,7 +229,7 @@ export class RowGroupPanelHost {
   }
 
   /** Resolved panel height in CSS px when visible. Mirrors the
-   *  `.cg-row-group-panel { height }` rule from `tokens.css`. Used
+   *  `.vg-row-group-panel { height }` rule from `tokens.css`. Used
    *  by the grid's geometry reservation. `0` when the panel is
    *  hidden. */
   getReservedHeight(): number {
@@ -397,26 +402,56 @@ export class RowGroupPanelHost {
   }
 
   /** Build the chip strip (or empty-state placeholder) and replace
-   *  the panel's children in one pass. */
+   *  the panel's children in one pass. Layout matches AG Grid's
+   *  horizontal column-drop: group icon | body | close. */
   private renderContents(): void {
     this.panel.replaceChildren();
+    // `replaceChildren` detaches any insertion line; drop the stale ref
+    // so the next drag recreates it under the new DOM.
+    this.insertionLine = null;
+
+    const icon = document.createElement('span');
+    icon.className = 'vg-row-group-panel-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.appendChild(iconSvg('group', 14));
+    this.panel.appendChild(icon);
+
+    const body = document.createElement('div');
+    body.className = 'vg-row-group-panel-body';
+
     if (this.rowGroupColumns.length === 0) {
       const empty = document.createElement('div');
-      empty.className = 'cg-row-group-panel-empty';
+      empty.className = 'vg-row-group-panel-empty';
       empty.textContent = EMPTY_PLACEHOLDER;
-      this.panel.appendChild(empty);
-      return;
-    }
-    for (let i = 0; i < this.rowGroupColumns.length; i++) {
-      const colId = this.rowGroupColumns[i]!;
-      if (i > 0) {
-        const sep = document.createElement('span');
-        sep.className = 'cg-row-group-panel-separator';
-        sep.setAttribute('aria-hidden', 'true');
-        sep.textContent = SEPARATOR_GLYPH;
-        this.panel.appendChild(sep);
+      body.appendChild(empty);
+    } else {
+      for (let i = 0; i < this.rowGroupColumns.length; i++) {
+        const colId = this.rowGroupColumns[i]!;
+        if (i > 0) {
+          const sep = document.createElement('span');
+          sep.className = 'vg-row-group-panel-separator';
+          sep.setAttribute('aria-hidden', 'true');
+          sep.textContent = SEPARATOR_GLYPH;
+          body.appendChild(sep);
+        }
+        body.appendChild(this.buildChip(colId, i));
       }
-      this.panel.appendChild(this.buildChip(colId, i));
+    }
+    this.panel.appendChild(body);
+
+    if (this.ctx.hidePanel) {
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'vg-row-group-panel-close';
+      close.setAttribute('aria-label', 'Hide row group panel');
+      close.title = 'Hide row group panel';
+      close.appendChild(iconSvg('x', 14));
+      close.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.ctx.hidePanel?.();
+      });
+      close.addEventListener('pointerdown', (e) => e.stopPropagation());
+      this.panel.appendChild(close);
     }
   }
 
@@ -429,7 +464,7 @@ export class RowGroupPanelHost {
    *  `DRAG_THRESHOLD_PX`). */
   private buildChip(colId: string, index: number): HTMLDivElement {
     const chip = document.createElement('div');
-    chip.className = 'cg-row-group-panel-chip';
+    chip.className = 'vg-row-group-panel-chip';
     chip.dataset.colId = colId;
     chip.dataset.index = String(index);
     chip.setAttribute('role', 'button');
@@ -440,13 +475,13 @@ export class RowGroupPanelHost {
     chip.tabIndex = 0;
 
     const handle = document.createElement('span');
-    handle.className = 'cg-row-group-panel-chip-handle';
+    handle.className = 'vg-row-group-panel-chip-handle';
     handle.setAttribute('aria-hidden', 'true');
     handle.textContent = DRAG_HANDLE_GLYPH;
     chip.appendChild(handle);
 
     const label = document.createElement('span');
-    label.className = 'cg-row-group-panel-chip-label';
+    label.className = 'vg-row-group-panel-chip-label';
     label.textContent = this.ctx.getHeaderName(colId) ?? colId;
     chip.appendChild(label);
 
@@ -465,7 +500,7 @@ export class RowGroupPanelHost {
       if (sortEntry !== null) {
         const sortBtn = document.createElement('button');
         sortBtn.type = 'button';
-        sortBtn.className = 'cg-row-group-panel-chip-sort';
+        sortBtn.className = 'vg-row-group-panel-chip-sort';
         sortBtn.dataset.direction = sortEntry.direction;
         const sortLabel = sortEntry.direction === 'asc'
           ? `Sort ${this.ctx.getHeaderName(colId) ?? colId} descending`
@@ -493,7 +528,7 @@ export class RowGroupPanelHost {
 
     const remove = document.createElement('button');
     remove.type = 'button';
-    remove.className = 'cg-row-group-panel-chip-remove';
+    remove.className = 'vg-row-group-panel-chip-remove';
     remove.setAttribute(
       'aria-label',
       `Remove ${this.ctx.getHeaderName(colId) ?? colId} from row groups`,
@@ -573,14 +608,14 @@ export class RowGroupPanelHost {
     if (this.destroyed) return 0;
     if (!this.insertionLine) {
       this.insertionLine = document.createElement('div');
-      this.insertionLine.className = 'cg-row-group-panel-insertion-line';
+      this.insertionLine.className = 'vg-row-group-panel-insertion-line';
       this.panel.appendChild(this.insertionLine);
     }
     this.insertionLine.style.display = '';
 
     const panelRect = this.panel.getBoundingClientRect();
     const chips = Array.from(
-      this.panel.querySelectorAll('.cg-row-group-panel-chip'),
+      this.panel.querySelectorAll('.vg-row-group-panel-chip'),
     ) as HTMLElement[];
     if (chips.length === 0) {
       const x = (panelRect.width - 2) / 2;
@@ -769,12 +804,12 @@ export class RowGroupPanelHost {
     if (this.destroyed) return;
     if (this.ghost) this.unmountGhost();
     const ghost = sourceChip.cloneNode(true) as HTMLDivElement;
-    ghost.classList.add('cg-row-group-panel-chip-ghost');
+    ghost.classList.add('vg-row-group-panel-chip-ghost');
     ghost.removeAttribute('data-col-id');
     ghost.removeAttribute('data-index');
     ghost.setAttribute('aria-hidden', 'true');
-    // The chip CSS uses panel-scoped variables (`--cg-row-group-chip-bg`,
-    // `--cg-row-group-chip-border`, etc.) which DO NOT resolve when the
+    // The chip CSS uses panel-scoped variables (`--vg-row-group-chip-bg`,
+    // `--vg-row-group-chip-border`, etc.) which DO NOT resolve when the
     // ghost lives on `document.body`. Snapshot the resolved computed
     // styles from the source chip and apply them inline so the ghost
     // renders correctly outside the panel scope.
@@ -826,7 +861,7 @@ export class RowGroupPanelHost {
   }
 }
 
-/** Resolve `CGridOptions.rowGroupPanelShow` (accepts only the
+/** Resolve `VelocityGridOptions.rowGroupPanelShow` (accepts only the
  *  canonical strings; default `'never'`) to a non-`'never'` value
  *  OR `null` when the panel should never mount. Apps can also pass
  *  `undefined` (default off). Returns `null` for `'never'` /

@@ -10,8 +10,8 @@ import { gridReadyWithQuery, seedGrid, waitForFrames } from './_setup';
 // the very end.
 //
 // Each footer row carries the totals signature ("hairline lift") —
-// `--cg-group-footer-bg` tint + `--cg-group-footer-border-top` rule +
-// `--cg-group-footer-font-weight` bump — making it visually identical
+// `--vg-group-footer-bg` tint + `--vg-group-footer-border-top` rule +
+// `--vg-group-footer-font-weight` bump — making it visually identical
 // to the grand-total row (same stripe). The label in the auto-group
 // cell says `Total ${groupValue}` at the parent group's depth indent;
 // the grand-total footer says just `Total` at depth 0. Distinguishing
@@ -35,8 +35,8 @@ import { gridReadyWithQuery, seedGrid, waitForFrames } from './_setup';
 //     instead of formatted values.
 //   - Token bind regression: `theme.groupFooterBg` /
 //     `groupFooterBorderTop` / `groupFooterFontWeight` resolve from
-//     `--cg-group-footer-*`. If the painter started reading directly
-//     from `--cg-totals-*`, an app override that scoped the per-group
+//     `--vg-group-footer-*`. If the painter started reading directly
+//     from `--vg-totals-*`, an app override that scoped the per-group
 //     family without touching the grand-total family would silently
 //     no-op — the baseline catches the un-scoped read.
 //   - Label / indent regression: per-group footers paint at parent

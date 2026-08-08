@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 
 // Regression — sticky band caret unclickable with a pinned auto-group
 // column. `paintStickyGroups` anchors the band to the auto-group
@@ -46,7 +46,7 @@ const ROW_H = 30;
 function mountWithBand(opts: { pinnedAutoGroupCol: boolean }) {
   const el = document.createElement('div');
   document.body.appendChild(el);
-  const grid = new CGrid(el, {
+  const grid = new VelocityGrid(el, {
     columnDefs: [
       { colId: 'region', field: 'region' },
       { colId: 'notional', field: 'notional' },

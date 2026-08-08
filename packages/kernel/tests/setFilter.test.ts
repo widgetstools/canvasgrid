@@ -18,7 +18,7 @@ function mountInBody(host: HTMLElement, height = 200): void {
 }
 
 function checkboxes(root: HTMLElement): HTMLInputElement[] {
-  return Array.from(root.querySelectorAll<HTMLInputElement>('input[type="checkbox"][data-cg-set-filter-value]'));
+  return Array.from(root.querySelectorAll<HTMLInputElement>('input[type="checkbox"][data-vg-set-filter-value]'));
 }
 
 describe('SetFilterPopup', () => {
@@ -32,7 +32,7 @@ describe('SetFilterPopup', () => {
     const gui = popup.buildGui();
     mountInBody(gui);
     Object.defineProperty(
-      gui.querySelector('[data-cg-set-filter-list]') as HTMLElement,
+      gui.querySelector('[data-vg-set-filter-list]') as HTMLElement,
       'clientHeight',
       { value: 200, configurable: true },
     );
@@ -57,7 +57,7 @@ describe('SetFilterPopup', () => {
     const gui = popup.buildGui();
     mountInBody(gui);
     Object.defineProperty(
-      gui.querySelector('[data-cg-set-filter-list]') as HTMLElement,
+      gui.querySelector('[data-vg-set-filter-list]') as HTMLElement,
       'clientHeight',
       { value: 240, configurable: true },
     );
@@ -79,7 +79,7 @@ describe('SetFilterPopup', () => {
     });
     const gui = popup.buildGui();
     mountInBody(gui);
-    expect(gui.querySelector('input[data-cg-set-filter-search]')).toBeNull();
+    expect(gui.querySelector('input[data-vg-set-filter-search]')).toBeNull();
     popup.destroy();
     gui.remove();
   });
@@ -94,12 +94,12 @@ describe('SetFilterPopup', () => {
     });
     const gui = popup.buildGui();
     mountInBody(gui);
-    const list = gui.querySelector('[data-cg-set-filter-list]') as HTMLElement;
+    const list = gui.querySelector('[data-vg-set-filter-list]') as HTMLElement;
     Object.defineProperty(list, 'clientHeight', { value: 240, configurable: true });
     popup.rebuildList();
     list.scrollTop = 240;
     list.dispatchEvent(new Event('scroll'));
-    const search = gui.querySelector('input[data-cg-set-filter-search]') as HTMLInputElement;
+    const search = gui.querySelector('input[data-vg-set-filter-search]') as HTMLInputElement;
     search.value = 'V12';
     search.dispatchEvent(new Event('input'));
     // The filtered list has fewer rows than the full list — fewer than 50
@@ -123,14 +123,14 @@ describe('SetFilterPopup', () => {
     });
     const gui = popup.buildGui();
     mountInBody(gui);
-    const list = gui.querySelector('[data-cg-set-filter-list]') as HTMLElement;
+    const list = gui.querySelector('[data-vg-set-filter-list]') as HTMLElement;
     Object.defineProperty(list, 'clientHeight', { value: 200, configurable: true });
     popup.rebuildList();
-    const selectAll = gui.querySelector('input[data-cg-set-filter-select-all]') as HTMLInputElement;
+    const selectAll = gui.querySelector('input[data-vg-set-filter-select-all]') as HTMLInputElement;
     expect(selectAll).not.toBeNull();
     selectAll.checked = true;
     selectAll.dispatchEvent(new Event('change'));
-    const apply = gui.querySelector('button[data-cg-filter-action="apply"]') as HTMLButtonElement;
+    const apply = gui.querySelector('button[data-vg-filter-action="apply"]') as HTMLButtonElement;
     apply.click();
     expect(captured).not.toBeNull();
     expect(captured!.filterType).toBe('set');
@@ -149,7 +149,7 @@ describe('SetFilterPopup', () => {
     const gui = popup.buildGui();
     mountInBody(gui);
     popup.rebuildList();
-    const selectAll = gui.querySelector('input[data-cg-set-filter-select-all]') as HTMLInputElement;
+    const selectAll = gui.querySelector('input[data-vg-set-filter-select-all]') as HTMLInputElement;
     // No initial model — popup defaults to "all selected".
     expect(selectAll.checked).toBe(true);
     expect(selectAll.indeterminate).toBe(false);
@@ -178,7 +178,7 @@ describe('SetFilterPopup', () => {
     });
     const gui = popup.buildGui();
     mountInBody(gui);
-    const list = gui.querySelector('[data-cg-set-filter-list]') as HTMLElement;
+    const list = gui.querySelector('[data-vg-set-filter-list]') as HTMLElement;
     Object.defineProperty(list, 'clientHeight', { value: 240, configurable: true });
     popup.rebuildList();
     // Programmatically deselect V999 (which is off-window) via the API
@@ -188,14 +188,14 @@ describe('SetFilterPopup', () => {
     // Set<string> state survived virtualisation.
     popup.scrollValueIntoView('V999');
     const cb = gui.querySelector(
-      'input[data-cg-set-filter-value][value="V999"]',
+      'input[data-vg-set-filter-value][value="V999"]',
     ) as HTMLInputElement | null;
     expect(cb).not.toBeNull();
     expect(cb!.checked).toBe(false);
     // V998 should still be checked (default selected) — proves the
     // toggle was specific to V999, not a wholesale wipe.
     const other = gui.querySelector(
-      'input[data-cg-set-filter-value][value="V998"]',
+      'input[data-vg-set-filter-value][value="V998"]',
     ) as HTMLInputElement | null;
     expect(other).not.toBeNull();
     expect(other!.checked).toBe(true);
@@ -214,11 +214,11 @@ describe('SetFilterPopup', () => {
     popup.rebuildList();
     // Uncheck MSFT.
     const msft = gui.querySelector(
-      'input[data-cg-set-filter-value][value="MSFT"]',
+      'input[data-vg-set-filter-value][value="MSFT"]',
     ) as HTMLInputElement;
     msft.checked = false;
     msft.dispatchEvent(new Event('change'));
-    const apply = gui.querySelector('button[data-cg-filter-action="apply"]') as HTMLButtonElement;
+    const apply = gui.querySelector('button[data-vg-filter-action="apply"]') as HTMLButtonElement;
     apply.click();
     expect(captured).not.toBeNull();
     expect(captured!.filterType).toBe('set');

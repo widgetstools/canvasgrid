@@ -1,11 +1,11 @@
-// @cgrid/renderers — the kernel bridge. §2.5.
+// @wellsfargo-starui/velocity-grid-renderers — the kernel bridge. §2.5.
 //
 // `wireRenderersIntoKernel(grid, opts?)` registers every painter in the
-// RENDERER_NAMES table onto a CGrid instance via kernel's PUBLIC
+// RENDERER_NAMES table onto a VelocityGrid instance via kernel's PUBLIC
 // registration API (`registerCellRenderer`), mirroring
 // packages/calc/src/bridge.ts / packages/format/src/bridge.ts / packages/rules/src/bridge.ts.
 
-import type { CellPainter } from '@cgrid/kernel';
+import type { CellPainter } from '@wellsfargo-starui/velocity-grid';
 import { RENDERER_NAMES, type RendererName } from './types';
 import {
   numberCell, priceCell, priceDirectionCell, pnlCell, deltaCell, bpsCell,
@@ -128,7 +128,7 @@ interface KernelGridSurface {
   openContextMenu?: (items: unknown[], x: number, y: number, hit: unknown) => void;
   /** Maps a DOM click to grid-canvas coordinates for hit-region resolution. */
   canvasCoordsFromEvent?: (mouse: MouseEvent) => { x: number; y: number } | undefined;
-  /** B2 — CGridApi's already-public icon lookup (populated by `@cgrid/format`'s
+  /** B2 — VelocityGridApi's already-public icon lookup (populated by `@wellsfargo-starui/velocity-grid-format`'s
    *  `wireIntoKernel` registering the Lucide bundle). Threaded into actions.ts's
    *  `setActionIconResolver` so IconActionCluster paints real Lucide glyphs
    *  without any new kernel surface. */
@@ -190,7 +190,7 @@ function subscribe(
 }
 
 /**
- * Wire `@cgrid/renderers` into a CGrid instance. Idempotent — re-calling on
+ * Wire `@wellsfargo-starui/velocity-grid-renderers` into a VelocityGrid instance. Idempotent — re-calling on
  * an already-wired grid returns the SAME handle.
  */
 export function wireRenderersIntoKernel(
@@ -341,7 +341,7 @@ export function wireRenderersIntoKernel(
   unsubscribers.push(subscribe(g, 'rowsChanged', onRowsChanged));
 
   // F2 — `setRowData` (a full row-set replace) emits `modelUpdated`, NOT
-  // `rowsChanged` (see cgrid.ts's setRowData vs applyTransaction /
+  // `rowsChanged` (see velocityGrid.ts's setRowData vs applyTransaction /
   // mirrorEditCommit). `mirrorRow` only reseeds the row mirror on a MISS,
   // so a `setRowData` call that replaces row objects for rowIds already in
   // the mirror leaves it permanently stale — painters keep seeing the old

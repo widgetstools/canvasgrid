@@ -3,7 +3,7 @@
 // The writer is a pure module: given (rows, columns, opts) it returns
 // a Uint8Array containing the CSV bytes. It does NOT touch the worker
 // state, DOM, or Blob — those wrappers belong to Task 3 (the
-// CGridApi-level glue).
+// VelocityGridApi-level glue).
 //
 // Tests cover the RFC 4180 invariants the writer must honour:
 //   - field quoting (wrap in `"..."` when value contains separator,

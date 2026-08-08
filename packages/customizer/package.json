@@ -1,5 +1,5 @@
 {
-  "name": "@cgrid/customizer",
+  "name": "@wellsfargo-starui/velocity-grid-customizer",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -12,19 +12,19 @@
     }
   },
   "scripts": {
-    "build": "echo '@cgrid/customizer is a scaffold — no build yet' && exit 0",
+    "build": "echo '@wellsfargo-starui/velocity-grid-customizer is a scaffold — no build yet' && exit 0",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@cgrid/calc": "*",
-    "@cgrid/edit": "*",
-    "@cgrid/export": "*",
-    "@cgrid/expression": "*",
-    "@cgrid/format": "*",
-    "@cgrid/kernel": "*",
-    "@cgrid/renderers": "*",
-    "@cgrid/rules": "*",
+    "@wellsfargo-starui/velocity-grid-calc": "*",
+    "@wellsfargo-starui/velocity-grid-edit": "*",
+    "@wellsfargo-starui/velocity-grid-export": "*",
+    "@wellsfargo-starui/velocity-grid-expression": "*",
+    "@wellsfargo-starui/velocity-grid-format": "*",
+    "@wellsfargo-starui/velocity-grid": "*",
+    "@wellsfargo-starui/velocity-grid-renderers": "*",
+    "@wellsfargo-starui/velocity-grid-rules": "*",
     "@lit/context": "^1.1.6",
     "lit": "^3.3.3"
   },

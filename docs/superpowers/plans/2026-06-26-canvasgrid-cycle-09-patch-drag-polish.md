@@ -62,7 +62,7 @@ already available in every browser the grid supports.
   - `cgrid/src/interaction/features/rangeSelection.ts` — touch point for both tasks
   - `cgrid/src/interaction/selectionModel.ts` — `state.ranges` source-of-truth
   - `cgrid/src/interaction/featureChain.ts` — chain dispatcher (window mousemove → handleMouseDrag wiring already in place)
-  - `cgrid/src/cgrid.ts` — `CGridApi.scrollBy` (already exists; used by the wheel handler)
+  - `cgrid/src/velocityGrid.ts` — `VelocityGridApi.scrollBy` (already exists; used by the wheel handler)
 - Demo (verification target): `apps/cgrid-positions/`
 
 ## Global Constraints
@@ -70,7 +70,7 @@ already available in every browser the grid supports.
 Apply to **every task** (extend the constraints from Cycles 2–10).
 
 - **No regressions in the public API.** Both tasks are pure behaviour
-  fixes; no `CGridOptions` / `CGridApi` additions unless a knob is
+  fixes; no `VelocityGridOptions` / `VelocityGridApi` additions unless a knob is
   truly required (note in the task if you add one).
 - **TypeScript strict.** `npm run typecheck --workspaces` clean every task.
 - **`alpha: false` canvas, DPR-aware paint, native scrollbars** — unchanged.
@@ -226,7 +226,7 @@ pointer; the range extends into the newly-revealed columns.
   canvas-local coords. The drag handler receives `ctx.point`
   (canvas-local) which is the right surface to check against the
   viewport rect.
-- `cgrid/src/cgrid.ts` — `scrollBy(dx, dy)` is the existing API
+- `cgrid/src/velocityGrid.ts` — `scrollBy(dx, dy)` is the existing API
   (used by the wheel handler at line ~184 of `featureChain.ts`).
 - `cgrid/src/core/viewport.ts` (or wherever the body rectangle is
   computed) — to read `bodyLeft / bodyRight / bodyTop / bodyBottom`.
@@ -236,10 +236,10 @@ pointer; the range extends into the newly-revealed columns.
 **Files:**
 - Modify: `cgrid/src/interaction/features/rangeSelection.ts` — add
   the rAF loop + edge-zone math.
-- Modify: `cgrid/src/interaction/feature.ts` — extend `CGridLike` with
+- Modify: `cgrid/src/interaction/feature.ts` — extend `VelocityGridLike` with
   any new surface needed (e.g. `getBodyRect(): {left, right, top, bottom}`
   if not already exposed via the viewport).
-- Modify: `cgrid/src/cgrid.ts` — implement the new surface method.
+- Modify: `cgrid/src/velocityGrid.ts` — implement the new surface method.
 - Modify: `cgrid/tests/rangeSelection.test.ts` (or split file) — unit
   tests for the edge-zone math (no DOM, just the pure helper).
 - Create: `apps/cgrid-positions/e2e/cycle9-rangeDragAutoScroll.spec.ts`

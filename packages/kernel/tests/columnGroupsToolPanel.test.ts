@@ -18,9 +18,9 @@ function makeParams(onApply: ReturnType<typeof vi.fn>) {
   } as unknown as ToolPanelParams;
 }
 
-const styleIn = (gui: HTMLElement) => gui.querySelector('[data-cg-style]') as HTMLElement | null;
+const styleIn = (gui: HTMLElement) => gui.querySelector('[data-vg-style]') as HTMLElement | null;
 const selectTrade = (gui: HTMLElement) => {
-  (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
+  (gui.querySelector('[data-vg-node="trade"] [data-vg-select]') as HTMLElement).click();
 };
 
 describe('ColumnGroupsToolPanel', () => {
@@ -28,43 +28,43 @@ describe('ColumnGroupsToolPanel', () => {
     const panel = new ColumnGroupsToolPanel();
     panel.init(makeParams(vi.fn()));
     const gui = panel.getGui();
-    const groupNodes = gui.querySelectorAll('[data-cg-node][data-kind="group"]');
+    const groupNodes = gui.querySelectorAll('[data-vg-node][data-kind="group"]');
     expect(groupNodes.length).toBe(1);
-    expect(gui.querySelector('[data-cg-node="trade"]')!.getAttribute('data-kind')).toBe('group');
-    expect(gui.querySelector('[data-cg-node="bid"]')).toBeNull();
-    expect(gui.querySelector('[data-cg-node="sym"]')).toBeNull();
+    expect(gui.querySelector('[data-vg-node="trade"]')!.getAttribute('data-kind')).toBe('group');
+    expect(gui.querySelector('[data-vg-node="bid"]')).toBeNull();
+    expect(gui.querySelector('[data-vg-node="sym"]')).toBeNull();
   });
 
   it('renders master–detail body with list and editor; auto-selects first group', () => {
     const panel = new ColumnGroupsToolPanel();
     panel.init(makeParams(vi.fn()));
     const gui = panel.getGui();
-    expect(gui.querySelector('.cg-colgroups-list')).toBeTruthy();
-    expect(gui.querySelector('.cg-colgroups-editor')).toBeTruthy();
-    expect(gui.querySelector('[data-cg-group-selected]')).toBeNull();
-    expect((gui.querySelector('[data-cg-node="trade"]') as HTMLElement).hasAttribute('data-selected')).toBe(true);
+    expect(gui.querySelector('.vg-colgroups-list')).toBeTruthy();
+    expect(gui.querySelector('.vg-colgroups-editor')).toBeTruthy();
+    expect(gui.querySelector('[data-vg-group-selected]')).toBeNull();
+    expect((gui.querySelector('[data-vg-node="trade"]') as HTMLElement).hasAttribute('data-selected')).toBe(true);
     expect(styleIn(gui)!.getAttribute('data-for')).toBe('trade');
   });
 
   it('Apply is disabled until an edit dirties the model', () => {
     const panel = new ColumnGroupsToolPanel();
     panel.init(makeParams(vi.fn()));
-    const apply = panel.getGui().querySelector('[data-cg-apply]') as HTMLButtonElement;
+    const apply = panel.getGui().querySelector('[data-vg-apply]') as HTMLButtonElement;
     expect(apply.disabled).toBe(true);
   });
 
-  it('clicking data-cg-add-group dirties the model and enables Apply', () => {
+  it('clicking data-vg-add-group dirties the model and enables Apply', () => {
     const panel = new ColumnGroupsToolPanel();
     panel.init(makeParams(vi.fn()));
-    (panel.getGui().querySelector('[data-cg-add-group]') as HTMLButtonElement).click();
-    const apply = panel.getGui().querySelector('[data-cg-apply]') as HTMLButtonElement;
+    (panel.getGui().querySelector('[data-vg-add-group]') as HTMLButtonElement).click();
+    const apply = panel.getGui().querySelector('[data-vg-apply]') as HTMLButtonElement;
     expect(apply.disabled).toBe(false);
   });
 
   it('new group gets a unique id — rename and columns stay independent of existing groups', () => {
     const defs: (CColDef | CColGroupDef)[] = [
       {
-        groupId: 'cg-grp-1',
+        groupId: 'vg-grp-1',
         headerName: 'Trade',
         children: [
           { colId: 'bid', field: 'bid', headerName: 'Bid' },
@@ -80,33 +80,33 @@ describe('ColumnGroupsToolPanel', () => {
       },
     } as unknown as ToolPanelParams);
 
-    (panel.getGui().querySelector('[data-cg-add-group]') as HTMLButtonElement).click();
+    (panel.getGui().querySelector('[data-vg-add-group]') as HTMLButtonElement).click();
     const gui = panel.getGui();
-    expect(gui.querySelector('[data-cg-node="cg-grp-1"]')).toBeTruthy();
-    expect(gui.querySelector('[data-cg-node="cg-grp-2"]')).toBeTruthy();
-    expect((gui.querySelector('[data-cg-node="cg-grp-2"]') as HTMLElement).hasAttribute('data-selected')).toBe(true);
+    expect(gui.querySelector('[data-vg-node="vg-grp-1"]')).toBeTruthy();
+    expect(gui.querySelector('[data-vg-node="vg-grp-2"]')).toBeTruthy();
+    expect((gui.querySelector('[data-vg-node="vg-grp-2"]') as HTMLElement).hasAttribute('data-selected')).toBe(true);
 
     // New group must not show Trade's columns.
-    const chips = [...gui.querySelectorAll('.cg-colgroups-chip')].map((c) => c.textContent);
+    const chips = [...gui.querySelectorAll('.vg-colgroups-chip')].map((c) => c.textContent);
     expect(chips).toEqual([]);
-    expect(gui.querySelector('.cg-colgroups-chips-empty')).toBeTruthy();
+    expect(gui.querySelector('.vg-colgroups-chips-empty')).toBeTruthy();
 
-    const nameInput = gui.querySelector('.cg-colgroups-rename') as HTMLInputElement;
+    const nameInput = gui.querySelector('.vg-colgroups-rename') as HTMLInputElement;
     nameInput.value = 'Risk';
     nameInput.dispatchEvent(new Event('change', { bubbles: true }));
 
-    expect(gui.querySelector('[data-cg-node="cg-grp-1"] .cg-colgroups-list-name')!.textContent).toBe('Trade');
-    expect(gui.querySelector('[data-cg-node="cg-grp-2"] .cg-colgroups-list-name')!.textContent).toBe('Risk');
+    expect(gui.querySelector('[data-vg-node="vg-grp-1"] .vg-colgroups-list-name')!.textContent).toBe('Trade');
+    expect(gui.querySelector('[data-vg-node="vg-grp-2"] .vg-colgroups-list-name')!.textContent).toBe('Risk');
   });
 
   it('does not expose list drag handle or visibility checkbox — Columns panel owns those', () => {
     const panel = new ColumnGroupsToolPanel();
     panel.init(makeParams(vi.fn()));
     const gui = panel.getGui();
-    expect(gui.querySelector('[data-cg-add-subgroup]')).toBeNull();
-    expect(gui.querySelector('[data-cg-drag]')).toBeNull();
-    expect(gui.querySelector('[data-cg-group-visible]')).toBeNull();
-    expect(gui.querySelector('.cg-colgroups-grip')).toBeNull();
+    expect(gui.querySelector('[data-vg-add-subgroup]')).toBeNull();
+    expect(gui.querySelector('[data-vg-drag]')).toBeNull();
+    expect(gui.querySelector('[data-vg-group-visible]')).toBeNull();
+    expect(gui.querySelector('.vg-colgroups-grip')).toBeNull();
   });
 
   it('chip remove ungroups a column even when marryChildren is set', () => {
@@ -130,31 +130,31 @@ describe('ColumnGroupsToolPanel', () => {
     } as unknown as ToolPanelParams);
 
     const gui = panel.getGui();
-    expect(gui.querySelector('[data-cg-chip="bid"]')).toBeTruthy();
-    (gui.querySelector('[data-cg-chip="bid"] [data-cg-remove-col]') as HTMLButtonElement).click();
+    expect(gui.querySelector('[data-vg-chip="bid"]')).toBeTruthy();
+    (gui.querySelector('[data-vg-chip="bid"] [data-vg-remove-col]') as HTMLButtonElement).click();
 
-    expect(gui.querySelector('[data-cg-chip="bid"]')).toBeNull();
-    expect(gui.querySelector('[data-cg-chip="ask"]')).toBeTruthy();
-    expect((gui.querySelector('[data-cg-apply]') as HTMLButtonElement).disabled).toBe(false);
+    expect(gui.querySelector('[data-vg-chip="bid"]')).toBeNull();
+    expect(gui.querySelector('[data-vg-chip="ask"]')).toBeTruthy();
+    expect((gui.querySelector('[data-vg-apply]') as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('Apply on an empty new group is validation-blocked (no write)', () => {
     const onApply = vi.fn();
     const panel = new ColumnGroupsToolPanel();
     panel.init(makeParams(onApply));
-    (panel.getGui().querySelector('[data-cg-add-group]') as HTMLButtonElement).click();
-    (panel.getGui().querySelector('[data-cg-apply]') as HTMLButtonElement).click();
+    (panel.getGui().querySelector('[data-vg-add-group]') as HTMLButtonElement).click();
+    (panel.getGui().querySelector('[data-vg-apply]') as HTMLButtonElement).click();
     expect(onApply).toHaveBeenCalledTimes(0);
   });
 
   it('Reset re-seeds from getColumnGroupDefs and disables Apply', () => {
     const panel = new ColumnGroupsToolPanel();
     panel.init(makeParams(vi.fn()));
-    (panel.getGui().querySelector('[data-cg-add-group]') as HTMLButtonElement).click();
-    (panel.getGui().querySelector('[data-cg-reset]') as HTMLButtonElement).click();
-    const apply = panel.getGui().querySelector('[data-cg-apply]') as HTMLButtonElement;
+    (panel.getGui().querySelector('[data-vg-add-group]') as HTMLButtonElement).click();
+    (panel.getGui().querySelector('[data-vg-reset]') as HTMLButtonElement).click();
+    const apply = panel.getGui().querySelector('[data-vg-apply]') as HTMLButtonElement;
     expect(apply.disabled).toBe(true);
-    expect(panel.getGui().querySelectorAll('[data-cg-node][data-kind="group"]').length).toBe(1);
+    expect(panel.getGui().querySelectorAll('[data-vg-node][data-kind="group"]').length).toBe(1);
   });
 
   describe('columnGroupShow chip cycle', () => {
@@ -163,10 +163,10 @@ describe('ColumnGroupsToolPanel', () => {
       panel.init(makeParams(vi.fn()));
       const gui = panel.getGui();
       selectTrade(gui);
-      const chip = gui.querySelector('[data-cg-chip="bid"]') as HTMLElement;
+      const chip = gui.querySelector('[data-vg-chip="bid"]') as HTMLElement;
       expect(chip).toBeTruthy();
-      expect(chip.querySelector('[data-cg-groupshow]')).toBeTruthy();
-      expect(gui.querySelector('[data-cg-add-col]')).toBeTruthy();
+      expect(chip.querySelector('[data-vg-groupshow]')).toBeTruthy();
+      expect(gui.querySelector('[data-vg-add-col]')).toBeTruthy();
     });
 
     it('cycling the chip control dirties the model and Apply projects the value', () => {
@@ -175,12 +175,12 @@ describe('ColumnGroupsToolPanel', () => {
       panel.init(makeParams(onApply));
       const gui = panel.getGui();
       selectTrade(gui);
-      const showBtn = gui.querySelector('[data-cg-chip="bid"] [data-cg-groupshow]') as HTMLButtonElement;
+      const showBtn = gui.querySelector('[data-vg-chip="bid"] [data-vg-groupshow]') as HTMLButtonElement;
       expect(showBtn.getAttribute('data-value')).toBe('');
 
       showBtn.click(); // null → open
 
-      const apply = gui.querySelector('[data-cg-apply]') as HTMLButtonElement;
+      const apply = gui.querySelector('[data-vg-apply]') as HTMLButtonElement;
       expect(apply.disabled).toBe(false);
       apply.click();
 
@@ -195,7 +195,7 @@ describe('ColumnGroupsToolPanel', () => {
     it('list select affordance is a real, keyboard-reachable <button>', () => {
       const panel = new ColumnGroupsToolPanel();
       panel.init(makeParams(vi.fn()));
-      const select = panel.getGui().querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement;
+      const select = panel.getGui().querySelector('[data-vg-node="trade"] [data-vg-select]') as HTMLElement;
       expect(select.tagName).toBe('BUTTON');
       expect(select.getAttribute('tabindex')).toBeNull();
       expect((select as HTMLButtonElement).disabled).toBe(false);
@@ -209,12 +209,12 @@ describe('ColumnGroupsToolPanel', () => {
 
       const style = styleIn(gui)!;
       expect(style.getAttribute('data-for')).toBe('trade');
-      expect((gui.querySelector('[data-cg-node="trade"]') as HTMLElement).hasAttribute('data-selected')).toBe(true);
+      expect((gui.querySelector('[data-vg-node="trade"]') as HTMLElement).hasAttribute('data-selected')).toBe(true);
 
-      const marry = style.querySelector('[data-cg-field="marryChildren"] .cg-settings-toggle') as HTMLButtonElement;
+      const marry = style.querySelector('[data-vg-field="marryChildren"] .vg-settings-toggle') as HTMLButtonElement;
       expect(marry.getAttribute('aria-pressed')).toBe('false');
       marry.click();
-      const apply = gui.querySelector('[data-cg-apply]') as HTMLButtonElement;
+      const apply = gui.querySelector('[data-vg-apply]') as HTMLButtonElement;
       expect(apply.disabled).toBe(false);
     });
 
@@ -222,13 +222,13 @@ describe('ColumnGroupsToolPanel', () => {
       const panel = new ColumnGroupsToolPanel();
       panel.init(makeParams(vi.fn()));
       const gui = panel.getGui();
-      const select = () => gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement;
+      const select = () => gui.querySelector('[data-vg-node="trade"] [data-vg-select]') as HTMLElement;
       select().click();
       expect(styleIn(gui)!.getAttribute('data-for')).toBe('trade');
 
       select().click();
       expect(styleIn(gui)!.getAttribute('data-for')).toBe('trade');
-      expect((gui.querySelector('[data-cg-node="trade"]') as HTMLElement).hasAttribute('data-selected')).toBe(true);
+      expect((gui.querySelector('[data-vg-node="trade"]') as HTMLElement).hasAttribute('data-selected')).toBe(true);
     });
 
     it('Apply projects the styled group headerStyle/marryChildren/openByDefault into columnDefs', () => {
@@ -239,13 +239,13 @@ describe('ColumnGroupsToolPanel', () => {
       selectTrade(gui);
       let style = styleIn(gui)!;
 
-      (style.querySelector('[data-cg-field="marryChildren"] .cg-settings-toggle') as HTMLButtonElement).click();
+      (style.querySelector('[data-vg-field="marryChildren"] .vg-settings-toggle') as HTMLButtonElement).click();
       style = styleIn(gui)!;
-      (style.querySelector('[data-cg-field="openByDefault"] .cg-settings-toggle') as HTMLButtonElement).click();
+      (style.querySelector('[data-vg-field="openByDefault"] .vg-settings-toggle') as HTMLButtonElement).click();
       style = styleIn(gui)!;
-      (style.querySelector('[data-cg-field="fontWeight"]') as HTMLButtonElement).click();
+      (style.querySelector('[data-vg-field="fontWeight"]') as HTMLButtonElement).click();
 
-      (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
+      (gui.querySelector('[data-vg-apply]') as HTMLButtonElement).click();
       expect(onApply).toHaveBeenCalledTimes(1);
       const { columnDefs } = onApply.mock.calls[0][0];
       const trade = columnDefs.find((d: { groupId?: string }) => d.groupId === 'trade');
@@ -261,11 +261,11 @@ describe('ColumnGroupsToolPanel', () => {
       selectTrade(gui);
 
       const style = styleIn(gui)!;
-      expect(style.querySelector('[data-cg-child-show]')).toBeNull();
-      expect(style.querySelector('[data-cg-field="bg"]')).toBeTruthy();
-      expect(style.querySelector('[data-cg-field="borderWidth"]')).toBeTruthy();
-      expect(gui.querySelector('.cg-colgroups-membership')).toBeNull();
-      expect(gui.querySelector('[data-cg-chip="bid"] [data-cg-groupshow]')).toBeTruthy();
+      expect(style.querySelector('[data-vg-child-show]')).toBeNull();
+      expect(style.querySelector('[data-vg-field="bg"]')).toBeTruthy();
+      expect(style.querySelector('[data-vg-field="borderWidth"]')).toBeTruthy();
+      expect(gui.querySelector('.vg-colgroups-membership')).toBeNull();
+      expect(gui.querySelector('[data-vg-chip="bid"] [data-vg-groupshow]')).toBeTruthy();
     });
 
     describe('Task 9 — enriched Style band', () => {
@@ -279,7 +279,7 @@ describe('ColumnGroupsToolPanel', () => {
           'fontStyle', 'textDecoration', 'fontSize', 'halign',
           'borderWidth', 'borderStyle', 'borderColor',
         ]) {
-          expect(style.querySelector(`[data-cg-field="${key}"]`)).toBeTruthy();
+          expect(style.querySelector(`[data-vg-field="${key}"]`)).toBeTruthy();
         }
       });
 
@@ -291,19 +291,19 @@ describe('ColumnGroupsToolPanel', () => {
         selectTrade(gui);
         let style = styleIn(gui)!;
 
-        const bgSwatch = style.querySelector('[data-cg-field="bg"] .cg-colorpicker-swatch') as HTMLButtonElement;
+        const bgSwatch = style.querySelector('[data-vg-field="bg"] .vg-colorpicker-swatch') as HTMLButtonElement;
         bgSwatch.click();
-        const bgHex = document.querySelector('.cg-colorpicker-popover .cg-colorpicker-hex') as HTMLInputElement;
+        const bgHex = document.querySelector('.vg-colorpicker-popover .vg-colorpicker-hex') as HTMLInputElement;
         bgHex.value = '#112233';
         bgHex.dispatchEvent(new Event('change'));
-        document.querySelectorAll('.cg-colorpicker-popover').forEach((p) => p.remove());
+        document.querySelectorAll('.vg-colorpicker-popover').forEach((p) => p.remove());
 
         style = styleIn(gui)!;
-        (style.querySelector('[data-cg-field="fontWeight"]') as HTMLButtonElement).click();
+        (style.querySelector('[data-vg-field="fontWeight"]') as HTMLButtonElement).click();
         style = styleIn(gui)!;
-        (style.querySelector('[data-cg-field="fontStyle"]') as HTMLButtonElement).click();
+        (style.querySelector('[data-vg-field="fontStyle"]') as HTMLButtonElement).click();
 
-        (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
+        (gui.querySelector('[data-vg-apply]') as HTMLButtonElement).click();
         const { columnDefs } = onApply.mock.calls[0][0];
         const trade = columnDefs.find((d: { groupId?: string }) => d.groupId === 'trade');
         expect(trade.headerStyle.fontStyle).toBe('italic');
@@ -318,8 +318,8 @@ describe('ColumnGroupsToolPanel', () => {
         const gui = panel.getGui();
         selectTrade(gui);
         const style = styleIn(gui)!;
-        (style.querySelector('[data-cg-field="textDecoration"]') as HTMLButtonElement).click();
-        (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
+        (style.querySelector('[data-vg-field="textDecoration"]') as HTMLButtonElement).click();
+        (gui.querySelector('[data-vg-apply]') as HTMLButtonElement).click();
         const { columnDefs } = onApply.mock.calls[0][0];
         const trade = columnDefs.find((d: { groupId?: string }) => d.groupId === 'trade');
         expect(trade.headerStyle.textDecoration).toBe('underline');
@@ -333,14 +333,14 @@ describe('ColumnGroupsToolPanel', () => {
         selectTrade(gui);
         let style = styleIn(gui)!;
 
-        const sizeInput = style.querySelector('[data-cg-field="fontSize"] input') as HTMLInputElement;
+        const sizeInput = style.querySelector('[data-vg-field="fontSize"] input') as HTMLInputElement;
         sizeInput.value = '14';
         sizeInput.dispatchEvent(new Event('change'));
 
         style = styleIn(gui)!;
-        (style.querySelector('[data-cg-field="halign"] [data-align="center"]') as HTMLButtonElement).click();
+        (style.querySelector('[data-vg-field="halign"] [data-align="center"]') as HTMLButtonElement).click();
 
-        (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
+        (gui.querySelector('[data-vg-apply]') as HTMLButtonElement).click();
         const { columnDefs } = onApply.mock.calls[0][0];
         const trade = columnDefs.find((d: { groupId?: string }) => d.groupId === 'trade');
         expect(trade.headerStyle.fontSize).toBe(14);
@@ -355,24 +355,24 @@ describe('ColumnGroupsToolPanel', () => {
         selectTrade(gui);
         let style = styleIn(gui)!;
 
-        const widthInput = style.querySelector('[data-cg-field="borderWidth"] input') as HTMLInputElement;
+        const widthInput = style.querySelector('[data-vg-field="borderWidth"] input') as HTMLInputElement;
         widthInput.value = '2';
         widthInput.dispatchEvent(new Event('change'));
 
         style = styleIn(gui)!;
-        const styleSelect = style.querySelector('[data-cg-field="borderStyle"] select') as HTMLSelectElement;
+        const styleSelect = style.querySelector('[data-vg-field="borderStyle"] select') as HTMLSelectElement;
         styleSelect.value = 'dashed';
         styleSelect.dispatchEvent(new Event('change'));
 
         style = styleIn(gui)!;
-        const colorSwatch = style.querySelector('[data-cg-field="borderColor"] .cg-colorpicker-swatch') as HTMLButtonElement;
+        const colorSwatch = style.querySelector('[data-vg-field="borderColor"] .vg-colorpicker-swatch') as HTMLButtonElement;
         colorSwatch.click();
-        const colorHex = document.querySelector('.cg-colorpicker-popover .cg-colorpicker-hex') as HTMLInputElement;
+        const colorHex = document.querySelector('.vg-colorpicker-popover .vg-colorpicker-hex') as HTMLInputElement;
         colorHex.value = '#ff0000';
         colorHex.dispatchEvent(new Event('change'));
-        document.querySelectorAll('.cg-colorpicker-popover').forEach((p) => p.remove());
+        document.querySelectorAll('.vg-colorpicker-popover').forEach((p) => p.remove());
 
-        (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
+        (gui.querySelector('[data-vg-apply]') as HTMLButtonElement).click();
         const { columnDefs } = onApply.mock.calls[0][0];
         const trade = columnDefs.find((d: { groupId?: string }) => d.groupId === 'trade');
         expect(trade.headerStyle.border.all).toEqual({ width: 2, style: 'dashed', color: 'rgb(255, 0, 0)' });
@@ -388,25 +388,25 @@ describe('ColumnGroupsToolPanel', () => {
         selectTrade(gui);
         const style = styleIn(gui)!;
 
-        const bgSwatch = style.querySelector('[data-cg-field="bg"] .cg-colorpicker-swatch') as HTMLButtonElement;
+        const bgSwatch = style.querySelector('[data-vg-field="bg"] .vg-colorpicker-swatch') as HTMLButtonElement;
         bgSwatch.click();
-        const popover = document.querySelector('.cg-colorpicker-popover') as HTMLElement;
-        const bgHex = popover.querySelector('.cg-colorpicker-hex') as HTMLInputElement;
+        const popover = document.querySelector('.vg-colorpicker-popover') as HTMLElement;
+        const bgHex = popover.querySelector('.vg-colorpicker-hex') as HTMLInputElement;
         bgHex.value = '#112233';
         bgHex.dispatchEvent(new Event('change'));
 
-        expect(style.querySelector('[data-cg-field="bg"] .cg-colorpicker-swatch')).toBe(bgSwatch);
+        expect(style.querySelector('[data-vg-field="bg"] .vg-colorpicker-swatch')).toBe(bgSwatch);
         expect(document.body.contains(popover)).toBe(true);
-        expect(document.querySelector('.cg-colorpicker-popover')).toBe(popover);
+        expect(document.querySelector('.vg-colorpicker-popover')).toBe(popover);
 
-        const apply = gui.querySelector('[data-cg-apply]') as HTMLButtonElement;
+        const apply = gui.querySelector('[data-vg-apply]') as HTMLButtonElement;
         expect(apply.disabled).toBe(false);
         apply.click();
         const { columnDefs } = onApply.mock.calls[0][0];
         const trade = columnDefs.find((d: { groupId?: string }) => d.groupId === 'trade');
         expect(trade.headerStyle.bg).toBe('rgb(17, 34, 51)');
 
-        document.querySelectorAll('.cg-colorpicker-popover').forEach((p) => p.remove());
+        document.querySelectorAll('.vg-colorpicker-popover').forEach((p) => p.remove());
       });
 
       it('a Text colour commit writes headerStyle.fg without throwing', () => {
@@ -417,14 +417,14 @@ describe('ColumnGroupsToolPanel', () => {
         selectTrade(gui);
         const style = styleIn(gui)!;
 
-        const fgSwatch = style.querySelector('[data-cg-field="fg"] .cg-colorpicker-swatch') as HTMLButtonElement;
+        const fgSwatch = style.querySelector('[data-vg-field="fg"] .vg-colorpicker-swatch') as HTMLButtonElement;
         fgSwatch.click();
-        const fgHex = document.querySelector('.cg-colorpicker-popover .cg-colorpicker-hex') as HTMLInputElement;
+        const fgHex = document.querySelector('.vg-colorpicker-popover .vg-colorpicker-hex') as HTMLInputElement;
         fgHex.value = '#00ff00';
         expect(() => fgHex.dispatchEvent(new Event('change'))).not.toThrow();
-        document.querySelectorAll('.cg-colorpicker-popover').forEach((p) => p.remove());
+        document.querySelectorAll('.vg-colorpicker-popover').forEach((p) => p.remove());
 
-        (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
+        (gui.querySelector('[data-vg-apply]') as HTMLButtonElement).click();
         const { columnDefs } = onApply.mock.calls[0][0];
         const trade = columnDefs.find((d: { groupId?: string }) => d.groupId === 'trade');
         expect(trade.headerStyle.fg).toBe('rgb(0, 255, 0)');
@@ -437,23 +437,23 @@ describe('ColumnGroupsToolPanel', () => {
         const gui = panel.getGui();
         selectTrade(gui);
         let style = styleIn(gui)!;
-        const sideSel = style.querySelector('[data-cg-border-side]') as HTMLSelectElement;
+        const sideSel = style.querySelector('[data-vg-border-side]') as HTMLSelectElement;
         sideSel.value = 'top';
         sideSel.dispatchEvent(new Event('change'));
         style = styleIn(gui)!;
 
-        const borderSwatch = style.querySelector('[data-cg-field="borderColor"] .cg-colorpicker-swatch') as HTMLButtonElement;
+        const borderSwatch = style.querySelector('[data-vg-field="borderColor"] .vg-colorpicker-swatch') as HTMLButtonElement;
         borderSwatch.click();
-        const popover = document.querySelector('.cg-colorpicker-popover') as HTMLElement;
-        const hex = popover.querySelector('.cg-colorpicker-hex') as HTMLInputElement;
+        const popover = document.querySelector('.vg-colorpicker-popover') as HTMLElement;
+        const hex = popover.querySelector('.vg-colorpicker-hex') as HTMLInputElement;
         hex.value = '#abcdef';
         hex.dispatchEvent(new Event('change'));
 
-        expect(style.querySelector('[data-cg-field="borderColor"] .cg-colorpicker-swatch')).toBe(borderSwatch);
+        expect(style.querySelector('[data-vg-field="borderColor"] .vg-colorpicker-swatch')).toBe(borderSwatch);
         expect(document.body.contains(popover)).toBe(true);
 
-        document.querySelectorAll('.cg-colorpicker-popover').forEach((p) => p.remove());
-        (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
+        document.querySelectorAll('.vg-colorpicker-popover').forEach((p) => p.remove());
+        (gui.querySelector('[data-vg-apply]') as HTMLButtonElement).click();
         const { columnDefs } = onApply.mock.calls[0][0];
         const trade = columnDefs.find((d: { groupId?: string }) => d.groupId === 'trade');
         expect(trade.headerStyle.border.top.color).toBe('rgb(171, 205, 239)');
@@ -468,9 +468,9 @@ describe('ColumnGroupsToolPanel', () => {
         selectTrade(gui);
         const style = styleIn(gui)!;
 
-        const bg = style.querySelector('[data-cg-field="bg"] .cg-colorpicker-swatch')!;
-        const fg = style.querySelector('[data-cg-field="fg"] .cg-colorpicker-swatch')!;
-        const border = style.querySelector('[data-cg-field="borderColor"] .cg-colorpicker-swatch')!;
+        const bg = style.querySelector('[data-vg-field="bg"] .vg-colorpicker-swatch')!;
+        const fg = style.querySelector('[data-vg-field="fg"] .vg-colorpicker-swatch')!;
+        const border = style.querySelector('[data-vg-field="borderColor"] .vg-colorpicker-swatch')!;
 
         expect(bg.getAttribute('aria-label')).toBe('Background colour');
         expect(fg.getAttribute('aria-label')).toBe('Text colour');
@@ -489,17 +489,17 @@ describe('ColumnGroupsToolPanel', () => {
       }
       const style = (gui: HTMLElement) => styleIn(gui)!;
       const setWidth = (gui: HTMLElement, v: string) => {
-        const w = style(gui).querySelector('[data-cg-field="borderWidth"] input') as HTMLInputElement;
+        const w = style(gui).querySelector('[data-vg-field="borderWidth"] input') as HTMLInputElement;
         w.value = v;
         w.dispatchEvent(new Event('change'));
       };
       const setStyle = (gui: HTMLElement, v: string) => {
-        const s = style(gui).querySelector('[data-cg-field="borderStyle"] select') as HTMLSelectElement;
+        const s = style(gui).querySelector('[data-vg-field="borderStyle"] select') as HTMLSelectElement;
         s.value = v;
         s.dispatchEvent(new Event('change'));
       };
       const clickEdge = (gui: HTMLElement, edge: string) => {
-        const sel = style(gui).querySelector('[data-cg-border-side]') as HTMLSelectElement;
+        const sel = style(gui).querySelector('[data-vg-border-side]') as HTMLSelectElement;
         sel.value = edge;
         sel.dispatchEvent(new Event('change'));
       };
@@ -510,17 +510,17 @@ describe('ColumnGroupsToolPanel', () => {
 
       it('defaults to the "all" side (the Side selector reads All on open)', () => {
         const { gui } = selectAndStyleGroup();
-        expect(style(gui).querySelector('[data-cg-border]')).toBeTruthy();
-        expect((style(gui).querySelector('[data-cg-border-side]') as HTMLSelectElement).value).toBe('all');
+        expect(style(gui).querySelector('[data-vg-border]')).toBeTruthy();
+        expect((style(gui).querySelector('[data-vg-border-side]') as HTMLSelectElement).value).toBe('all');
       });
 
       it('selecting the top side then setting width/style writes headerStyle.border.top (not .all)', () => {
         const { gui, onApply } = selectAndStyleGroup();
         clickEdge(gui, 'top');
-        expect((style(gui).querySelector('[data-cg-border-side]') as HTMLSelectElement).value).toBe('top');
+        expect((style(gui).querySelector('[data-vg-border-side]') as HTMLSelectElement).value).toBe('top');
         setWidth(gui, '3');
         setStyle(gui, 'dotted');
-        (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
+        (gui.querySelector('[data-vg-apply]') as HTMLButtonElement).click();
         const trade = applied(onApply);
         expect(trade.headerStyle.border.top).toEqual({ width: 3, style: 'dotted' });
         expect(trade.headerStyle.border.all).toBeUndefined();
@@ -531,9 +531,9 @@ describe('ColumnGroupsToolPanel', () => {
         clickEdge(gui, 'top');
         setWidth(gui, '3');
         clickEdge(gui, 'bottom');
-        expect((style(gui).querySelector('[data-cg-field="borderWidth"] input') as HTMLInputElement).value).toBe('');
+        expect((style(gui).querySelector('[data-vg-field="borderWidth"] input') as HTMLInputElement).value).toBe('');
         setWidth(gui, '1');
-        (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
+        (gui.querySelector('[data-vg-apply]') as HTMLButtonElement).click();
         const trade = applied(onApply);
         expect(trade.headerStyle.border.top).toEqual({ width: 3 });
         expect(trade.headerStyle.border.bottom).toEqual({ width: 1 });
@@ -544,7 +544,7 @@ describe('ColumnGroupsToolPanel', () => {
         clickEdge(gui, 'left');
         setWidth(gui, '4');
         setWidth(gui, '0');
-        (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
+        (gui.querySelector('[data-vg-apply]') as HTMLButtonElement).click();
         const trade = applied(onApply);
         expect(trade.headerStyle?.border).toBeUndefined();
       });
@@ -568,17 +568,17 @@ describe('ColumnGroupsToolPanel', () => {
       const panel = new ColumnGroupsToolPanel();
       panel.init(makeParams(vi.fn()));
       const gui = panel.getGui();
-      (gui.querySelector('[data-cg-add-group]') as HTMLButtonElement).click();
-      const groupIds = Array.from(gui.querySelectorAll('[data-kind="group"]')).map((n) => n.getAttribute('data-cg-node'));
+      (gui.querySelector('[data-vg-add-group]') as HTMLButtonElement).click();
+      const groupIds = Array.from(gui.querySelectorAll('[data-kind="group"]')).map((n) => n.getAttribute('data-vg-node'));
       expect(groupIds.length).toBe(2);
       const [firstId, secondId] = groupIds as [string, string];
 
-      (gui.querySelector(`[data-cg-node="${firstId}"] [data-cg-select]`) as HTMLElement).click();
+      (gui.querySelector(`[data-vg-node="${firstId}"] [data-vg-select]`) as HTMLElement).click();
       expect(styleIn(gui)!.getAttribute('data-for')).toBe(firstId);
 
-      (gui.querySelector(`[data-cg-node="${secondId}"] [data-cg-select]`) as HTMLElement).click();
+      (gui.querySelector(`[data-vg-node="${secondId}"] [data-vg-select]`) as HTMLElement).click();
       expect(styleIn(gui)!.getAttribute('data-for')).toBe(secondId);
-      expect((gui.querySelector(`[data-cg-node="${firstId}"]`) as HTMLElement).hasAttribute('data-selected')).toBe(false);
+      expect((gui.querySelector(`[data-vg-node="${firstId}"]`) as HTMLElement).hasAttribute('data-selected')).toBe(false);
     });
   });
 });

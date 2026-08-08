@@ -1,5 +1,5 @@
 /**
- * Layout management for the CGridExt title bar — a dropdown listing the
+ * Layout management for the VelocityGridExt title bar — a dropdown listing the
  * kernel's named Grid Layouts (switch / rename / duplicate / export /
  * delete / save-new / bundle import-export) plus a dirty-aware
  * "update active layout" disk button.
@@ -10,14 +10,14 @@
  * Kernel throws (duplicate name, bad import, newer bundle version) are
  * caught at this boundary and surfaced inline.
  */
-import type { ToolbarItem, CgExtContext } from '../extension/types';
-import type { CGridEvent as CgExtGridEvent } from '@cgrid/kernel';
+import type { ToolbarItem, VelocityGridExtContext } from '../extension/types';
+import type { VelocityGridEvent as VelocityGridExtGridEvent } from '@wellsfargo-starui/velocity-grid';
 import { menu, svg, iconButton } from './ui';
 
-/** Kernel layout surface this module drives — structural subset of CGridApi
+/** Kernel layout surface this module drives — structural subset of VelocityGridApi
  *  so the module stays testable against a stub. Exported (but NOT re-exported
  *  from the package's public `index.ts`) purely so the unit test file can
- *  assert `CGridApi` structurally satisfies it — a kernel layout-API rename
+ *  assert `VelocityGridApi` structurally satisfies it — a kernel layout-API rename
  *  then fails typecheck instead of surfacing only at E2E time. */
 export interface LayoutGridSurface {
   getGridOption(key: string): unknown;
@@ -34,12 +34,12 @@ export interface LayoutGridSurface {
   exportLayouts(): unknown;
   importLayout(layout: unknown, opts?: { overwrite?: boolean; activate?: boolean }): unknown;
   importLayouts(bundle: unknown, opts?: { mode?: 'replace' | 'merge'; overwrite?: boolean }): void;
-  addEventListener<K extends CgExtGridEvent['type']>(
+  addEventListener<K extends VelocityGridExtGridEvent['type']>(
     type: K,
-    fn: (event: Extract<CgExtGridEvent, { type: K }>) => void,
+    fn: (event: Extract<VelocityGridExtGridEvent, { type: K }>) => void,
   ): () => void;
 }
-const surface = (ctx: CgExtContext): LayoutGridSurface => ctx.grid as unknown as LayoutGridSurface;
+const surface = (ctx: VelocityGridExtContext): LayoutGridSurface => ctx.grid as unknown as LayoutGridSurface;
 
 const DEFAULT_ID = 'default';
 
@@ -84,7 +84,7 @@ export function layoutSaveItem(): ToolbarItem {
     render(host, ctx) {
       const grid = surface(ctx);
       const btn = iconButton(I.save, 'Layout up to date');
-      btn.classList.add('cgext-save');
+      btn.classList.add('vgext-save');
       let dirty = false;
       const sync = () => {
         btn.classList.toggle('is-dirty', dirty);
@@ -176,14 +176,14 @@ export function layoutsItem(): ToolbarItem {
       const grid = surface(ctx);
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'cgext-pill cgext-layouts-trigger';
+      btn.className = 'vgext-pill vgext-layouts-trigger';
       btn.setAttribute('aria-haspopup', 'menu');
       btn.setAttribute('aria-expanded', 'false');
       btn.innerHTML =
-        `<span class="cgext-pill-icon">${svg(I.layout, 13)}</span>` +
-        `<span class="cgext-pill-name"></span>` +
-        `<span class="cgext-pill-caret">${svg(I.chevronDown, 13)}</span>`;
-      const nameEl = btn.querySelector('.cgext-pill-name')!;
+        `<span class="vgext-pill-icon">${svg(I.layout, 13)}</span>` +
+        `<span class="vgext-pill-name"></span>` +
+        `<span class="vgext-pill-caret">${svg(I.chevronDown, 13)}</span>`;
+      const nameEl = btn.querySelector('.vgext-pill-name')!;
       const paint = () => {
         let name = 'Default';
         try { name = grid.getActiveLayout().name; } catch { /* pre-init grid */ }
@@ -225,27 +225,27 @@ export function layoutsItem(): ToolbarItem {
  *  the rename/save-new inputs stop keydown propagation for their OWN Escape
  *  (cancel-rename) / Enter (commit) handling, so this listener only ever
  *  sees Escape bubbling from the list rows or the panel chrome. */
-function buildPanel(ctx: CgExtContext, close: () => void): { el: HTMLElement; refresh: () => void } {
+function buildPanel(ctx: VelocityGridExtContext, close: () => void): { el: HTMLElement; refresh: () => void } {
   const grid = surface(ctx);
   const el = document.createElement('div');
-  el.className = 'cgext-layouts';
+  el.className = 'vgext-layouts';
   el.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
   el.innerHTML =
-    `<div class="cgext-layouts-head"><span>LAYOUTS</span><span class="cgext-layouts-count"></span></div>` +
-    `<div class="cgext-layouts-list" role="menu"></div>` +
-    `<div class="cgext-layouts-error" hidden></div>` +
-    `<div class="cgext-layouts-new">` +
+    `<div class="vgext-layouts-head"><span>LAYOUTS</span><span class="vgext-layouts-count"></span></div>` +
+    `<div class="vgext-layouts-list" role="menu"></div>` +
+    `<div class="vgext-layouts-error" hidden></div>` +
+    `<div class="vgext-layouts-new">` +
       `<input type="text" placeholder="New layout name" aria-label="New layout name" />` +
-      `<button type="button" class="cgext-layouts-savenew" disabled>+ Save</button>` +
+      `<button type="button" class="vgext-layouts-savenew" disabled>+ Save</button>` +
     `</div>` +
-    `<div class="cgext-layouts-foot">` +
-      `<button type="button" class="cgext-layouts-export">${svg(I.download, 14)}<span>Export</span></button>` +
-      `<button type="button" class="cgext-layouts-import">${svg(I.upload, 14)}<span>Import</span></button>` +
+    `<div class="vgext-layouts-foot">` +
+      `<button type="button" class="vgext-layouts-export">${svg(I.download, 14)}<span>Export</span></button>` +
+      `<button type="button" class="vgext-layouts-import">${svg(I.upload, 14)}<span>Import</span></button>` +
       `<input type="file" accept="application/json,.json" hidden />` +
     `</div>`;
-  const listEl = el.querySelector<HTMLElement>('.cgext-layouts-list')!;
-  const countEl = el.querySelector<HTMLElement>('.cgext-layouts-count')!;
-  const errorEl = el.querySelector<HTMLElement>('.cgext-layouts-error')!;
+  const listEl = el.querySelector<HTMLElement>('.vgext-layouts-list')!;
+  const countEl = el.querySelector<HTMLElement>('.vgext-layouts-count')!;
+  const errorEl = el.querySelector<HTMLElement>('.vgext-layouts-error')!;
 
   const showError = (message: string) => { errorEl.textContent = message; errorEl.hidden = false; };
   const refresh = () => {
@@ -257,8 +257,8 @@ function buildPanel(ctx: CgExtContext, close: () => void): { el: HTMLElement; re
   };
   refresh();
 
-  const newInput = el.querySelector<HTMLInputElement>('.cgext-layouts-new input')!;
-  const saveNewBtn = el.querySelector<HTMLButtonElement>('.cgext-layouts-savenew')!;
+  const newInput = el.querySelector<HTMLInputElement>('.vgext-layouts-new input')!;
+  const saveNewBtn = el.querySelector<HTMLButtonElement>('.vgext-layouts-savenew')!;
   newInput.addEventListener('input', () => {
     newInput.classList.remove('is-error');
     newInput.title = '';
@@ -279,15 +279,15 @@ function buildPanel(ctx: CgExtContext, close: () => void): { el: HTMLElement; re
   saveNewBtn.addEventListener('click', commitNew);
   newInput.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') commitNew(); });
 
-  el.querySelector<HTMLButtonElement>('.cgext-layouts-export')!.addEventListener('click', () => {
+  el.querySelector<HTMLButtonElement>('.vgext-layouts-export')!.addEventListener('click', () => {
     try {
       let gid = 'grid';
       try { gid = String(grid.getGridOption('gridId') || 'grid'); } catch { /* keep fallback */ }
       fileIO.download(`${slug(gid)}-layouts.json`, grid.exportLayouts());
     } catch (err) { showError(errText(err)); }
   });
-  const fileInput = el.querySelector<HTMLInputElement>('.cgext-layouts-foot input[type=file]')!;
-  el.querySelector<HTMLButtonElement>('.cgext-layouts-import')!.addEventListener('click', () => fileInput.click());
+  const fileInput = el.querySelector<HTMLInputElement>('.vgext-layouts-foot input[type=file]')!;
+  el.querySelector<HTMLButtonElement>('.vgext-layouts-import')!.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', () => {
     const file = fileInput.files?.[0];
     fileInput.value = '';
@@ -310,15 +310,15 @@ function layoutRow(
   close: () => void,
 ): HTMLElement {
   const row = document.createElement('div');
-  row.className = 'cgext-layouts-row' + (active ? ' is-active' : '');
+  row.className = 'vgext-layouts-row' + (active ? ' is-active' : '');
   row.dataset.layoutId = l.id;
   row.tabIndex = 0;
   row.setAttribute('role', 'menuitem');
   row.innerHTML =
-    `<span class="cgext-layouts-mark">${active ? svg(I.check, 13) : '<i class="cgext-layouts-dot"></i>'}</span>` +
-    `<span class="cgext-layouts-name"></span>` +
-    `<span class="cgext-layouts-actions"></span>`;
-  const nameEl = row.querySelector<HTMLElement>('.cgext-layouts-name')!;
+    `<span class="vgext-layouts-mark">${active ? svg(I.check, 13) : '<i class="vgext-layouts-dot"></i>'}</span>` +
+    `<span class="vgext-layouts-name"></span>` +
+    `<span class="vgext-layouts-actions"></span>`;
+  const nameEl = row.querySelector<HTMLElement>('.vgext-layouts-name')!;
   nameEl.textContent = l.name;                 // textContent + setAttribute — names are user input
   nameEl.setAttribute('title', l.name);
 
@@ -332,7 +332,7 @@ function layoutRow(
     close();
   };
   row.addEventListener('click', (e) => {
-    if ((e.target as HTMLElement).closest('.cgext-layouts-actions, .cgext-layouts-rename')) return;
+    if ((e.target as HTMLElement).closest('.vgext-layouts-actions, .vgext-layouts-rename')) return;
     activateRow();
   });
   // Enter/Space activates the row exactly like a click (keyboard parity —
@@ -340,16 +340,16 @@ function layoutRow(
   // natively and are excluded the same way the click handler excludes them).
   row.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
-    if ((e.target as HTMLElement).closest('.cgext-layouts-actions, .cgext-layouts-rename')) return;
+    if ((e.target as HTMLElement).closest('.vgext-layouts-actions, .vgext-layouts-rename')) return;
     e.preventDefault();
     activateRow();
   });
 
-  const actions = row.querySelector<HTMLElement>('.cgext-layouts-actions')!;
+  const actions = row.querySelector<HTMLElement>('.vgext-layouts-actions')!;
   const act = (kind: string, icon: string, label: string, onClick: () => void) => {
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'cgext-layouts-act';
+    b.className = 'vgext-layouts-act';
     b.dataset.act = kind;
     b.title = label;
     b.setAttribute('aria-label', `${label} layout '${l.name}'`);
@@ -373,7 +373,7 @@ function layoutRow(
   });
   else {
     const lock = document.createElement('span');
-    lock.className = 'cgext-layouts-lock';
+    lock.className = 'vgext-layouts-lock';
     lock.title = 'Built-in layout';
     lock.innerHTML = svg(I.lock, 13);
     actions.appendChild(lock);
@@ -385,10 +385,10 @@ function layoutRow(
  *  re-renders via layoutChanged; a kernel throw marks the input and keeps it
  *  open), Escape/blur cancels back to the label. */
 function startRename(grid: LayoutGridSurface, row: HTMLElement, l: { id: string; name: string }): void {
-  const nameEl = row.querySelector<HTMLElement>('.cgext-layouts-name')!;
+  const nameEl = row.querySelector<HTMLElement>('.vgext-layouts-name')!;
   const input = document.createElement('input');
   input.type = 'text';
-  input.className = 'cgext-layouts-rename';
+  input.className = 'vgext-layouts-rename';
   input.value = l.name;
   nameEl.replaceWith(input);
   input.focus();
@@ -413,101 +413,101 @@ function startRename(grid: LayoutGridSurface, row: HTMLElement, l: { id: string;
 
 export function injectLayoutsMenuStyles(): void {
   if (typeof document === 'undefined') return;
-  let style = document.getElementById('cgext-layouts-styles') as HTMLStyleElement | null;
+  let style = document.getElementById('vgext-layouts-styles') as HTMLStyleElement | null;
   if (!style) {
     style = document.createElement('style');
-    style.id = 'cgext-layouts-styles';
+    style.id = 'vgext-layouts-styles';
     document.head.appendChild(style);
   }
   style.textContent = LAYOUTS_CSS;
 }
 
 const LAYOUTS_CSS = `
-.cgext-menu.cgext-layouts { width: 300px; padding: 0; }
-.cgext-layouts-head {
+.vgext-menu.vgext-layouts { width: 300px; padding: 0; }
+.vgext-layouts-head {
   display: flex; justify-content: space-between; align-items: center;
   padding: 10px 12px 8px;
   font-size: 11px; font-weight: 650; letter-spacing: 0.08em;
-  color: var(--cg-muted-fg-color, #9aa4b6);
-  border-bottom: 1px solid var(--cg-border-color, #2a3140);
+  color: var(--vg-muted-fg-color, #9aa4b6);
+  border-bottom: 1px solid var(--vg-border-color, #2a3140);
 }
-.cgext-layouts-count { font-weight: 500; font-variant-numeric: tabular-nums; }
-.cgext-layouts-list {
+.vgext-layouts-count { font-weight: 500; font-variant-numeric: tabular-nums; }
+.vgext-layouts-list {
   max-height: 320px; overflow-y: auto;
   padding: 6px; display: flex; flex-direction: column; gap: 2px;
 }
-.cgext-layouts-row {
+.vgext-layouts-row {
   position: relative; display: flex; align-items: center; gap: 8px;
-  padding: 7px 8px; border-radius: var(--cg-radius, 7px); cursor: pointer;
-  color: var(--cg-fg-color, #e5e9f0); font-size: 12.5px;
+  padding: 7px 8px; border-radius: var(--vg-radius, 7px); cursor: pointer;
+  color: var(--vg-fg-color, #e5e9f0); font-size: 12.5px;
 }
-.cgext-layouts-row:hover { background: var(--cg-row-alt-bg, rgba(255,255,255,0.06)); }
-.cgext-layouts-row.is-active { background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 14%, transparent); }
-.cgext-layouts-row.is-active::before {
+.vgext-layouts-row:hover { background: var(--vg-row-alt-bg, rgba(255,255,255,0.06)); }
+.vgext-layouts-row.is-active { background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 14%, transparent); }
+.vgext-layouts-row.is-active::before {
   content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; width: 2px;
-  border-radius: var(--cg-radius, 2px); background: var(--cg-accent-color, #4f9cf9);
+  border-radius: var(--vg-radius, 2px); background: var(--vg-accent-color, #4f9cf9);
 }
-.cgext-layouts-mark { width: 16px; display: inline-flex; justify-content: center; color: var(--cg-accent-color, #4f9cf9); }
-.cgext-layouts-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--cg-muted-fg-color, #9aa4b6); opacity: 0.6; }
-.cgext-layouts-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; }
-.cgext-layouts-row:focus-visible { outline: 2px solid var(--cg-accent-color, #4f9cf9); outline-offset: -2px; }
+.vgext-layouts-mark { width: 16px; display: inline-flex; justify-content: center; color: var(--vg-accent-color, #4f9cf9); }
+.vgext-layouts-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--vg-muted-fg-color, #9aa4b6); opacity: 0.6; }
+.vgext-layouts-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; }
+.vgext-layouts-row:focus-visible { outline: 2px solid var(--vg-accent-color, #4f9cf9); outline-offset: -2px; }
 /* visibility+opacity (not display:none) — the buttons must stay in the DOM
    flow and tabbable-when-visible so Tab can reach them once :focus-within
    reveals them (a display:none button can never receive focus at all). */
-.cgext-layouts-actions {
+.vgext-layouts-actions {
   display: inline-flex; align-items: center; gap: 2px;
   visibility: hidden; opacity: 0; transition: opacity 120ms ease;
 }
-.cgext-layouts-row:hover .cgext-layouts-actions,
-.cgext-layouts-row.is-active .cgext-layouts-actions,
-.cgext-layouts-row:focus-within .cgext-layouts-actions { visibility: visible; opacity: 1; }
-.cgext-layouts-act {
+.vgext-layouts-row:hover .vgext-layouts-actions,
+.vgext-layouts-row.is-active .vgext-layouts-actions,
+.vgext-layouts-row:focus-within .vgext-layouts-actions { visibility: visible; opacity: 1; }
+.vgext-layouts-act {
   appearance: none; border: none; background: transparent;
-  width: 24px; height: 24px; border-radius: var(--cg-radius, 6px);
+  width: 24px; height: 24px; border-radius: var(--vg-radius, 6px);
   display: inline-flex; align-items: center; justify-content: center;
-  color: var(--cg-muted-fg-color, #9aa4b6); cursor: pointer;
+  color: var(--vg-muted-fg-color, #9aa4b6); cursor: pointer;
 }
-.cgext-layouts-act:hover { background: var(--cg-row-alt-bg, rgba(255,255,255,0.08)); color: var(--cg-fg-color, #e5e9f0); }
-.cgext-layouts-act:focus-visible { outline: 2px solid var(--cg-accent-color, #4f9cf9); outline-offset: 1px; }
-.cgext-layouts-lock { width: 24px; display: inline-flex; justify-content: center; color: var(--cg-muted-fg-color, #9aa4b6); opacity: 0.7; }
-.cgext-layouts-rename {
+.vgext-layouts-act:hover { background: var(--vg-row-alt-bg, rgba(255,255,255,0.08)); color: var(--vg-fg-color, #e5e9f0); }
+.vgext-layouts-act:focus-visible { outline: 2px solid var(--vg-accent-color, #4f9cf9); outline-offset: 1px; }
+.vgext-layouts-lock { width: 24px; display: inline-flex; justify-content: center; color: var(--vg-muted-fg-color, #9aa4b6); opacity: 0.7; }
+.vgext-layouts-rename {
   flex: 1 1 auto; min-width: 0; height: 26px; padding: 0 8px;
-  border: 1px solid var(--cg-accent-color, #4f9cf9); border-radius: var(--cg-radius, 2px);
-  background: var(--cg-control-bg, rgba(0,0,0,0.25));
-  color: var(--cg-fg-color, #e5e9f0); font: inherit; font-size: 12px;
+  border: 1px solid var(--vg-accent-color, #4f9cf9); border-radius: var(--vg-radius, 2px);
+  background: var(--vg-control-bg, rgba(0,0,0,0.25));
+  color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: 12px;
 }
-.cgext-layouts-rename:focus { outline: none; }
-.cgext-layouts-rename.is-error, .cgext-layouts-new input.is-error { border-color: var(--cg-neg-color, #e2606c); }
-.cgext-layouts-error { margin: 6px 12px 0; font-size: 12px; color: var(--cg-neg-color, #e2606c); }
-.cgext-layouts-new {
+.vgext-layouts-rename:focus { outline: none; }
+.vgext-layouts-rename.is-error, .vgext-layouts-new input.is-error { border-color: var(--vg-neg-color, #e2606c); }
+.vgext-layouts-error { margin: 6px 12px 0; font-size: 12px; color: var(--vg-neg-color, #e2606c); }
+.vgext-layouts-new {
   display: flex; gap: 6px; padding: 10px 12px;
-  border-top: 1px solid var(--cg-border-color, #2a3140); margin-top: 6px;
+  border-top: 1px solid var(--vg-border-color, #2a3140); margin-top: 6px;
 }
-.cgext-layouts-new input {
+.vgext-layouts-new input {
   flex: 1 1 auto; min-width: 0; height: 28px; padding: 0 9px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 2px);
-  background: var(--cg-control-bg, rgba(0,0,0,0.25));
-  color: var(--cg-fg-color, #e5e9f0); font: inherit; font-size: 12px;
+  border: 1px solid var(--vg-border-color, #2a3140); border-radius: var(--vg-radius, 2px);
+  background: var(--vg-control-bg, rgba(0,0,0,0.25));
+  color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: 12px;
 }
-.cgext-layouts-new input:focus { outline: none; border-color: var(--cg-accent-color, #4f9cf9); }
-.cgext-layouts-savenew {
+.vgext-layouts-new input:focus { outline: none; border-color: var(--vg-accent-color, #4f9cf9); }
+.vgext-layouts-savenew {
   height: 28px; padding: 0 12px; white-space: nowrap;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 7px);
-  background: var(--cg-control-bg, rgba(255,255,255,0.04));
-  color: var(--cg-fg-color, #e5e9f0); font: inherit; font-size: 12px; font-weight: 550;
+  border: 1px solid var(--vg-border-color, #2a3140); border-radius: var(--vg-radius, 7px);
+  background: var(--vg-control-bg, rgba(255,255,255,0.04));
+  color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: 12px; font-weight: 550;
   cursor: pointer; transition: border-color 120ms ease;
 }
-.cgext-layouts-savenew:hover:not(:disabled) { border-color: var(--cg-accent-color, #4f9cf9); }
-.cgext-layouts-savenew:disabled { opacity: 0.45; cursor: default; }
-.cgext-layouts-foot { display: flex; gap: 8px; padding: 0 12px 12px; }
-.cgext-layouts-foot button {
+.vgext-layouts-savenew:hover:not(:disabled) { border-color: var(--vg-accent-color, #4f9cf9); }
+.vgext-layouts-savenew:disabled { opacity: 0.45; cursor: default; }
+.vgext-layouts-foot { display: flex; gap: 8px; padding: 0 12px 12px; }
+.vgext-layouts-foot button {
   flex: 1; height: 28px;
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 7px);
-  background: var(--cg-control-bg, rgba(255,255,255,0.04));
-  color: var(--cg-fg-color, #e5e9f0); font: inherit; font-size: 12px; font-weight: 550;
+  border: 1px solid var(--vg-border-color, #2a3140); border-radius: var(--vg-radius, 7px);
+  background: var(--vg-control-bg, rgba(255,255,255,0.04));
+  color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: 12px; font-weight: 550;
   cursor: pointer; transition: border-color 120ms ease;
 }
-.cgext-layouts-foot button:hover { border-color: var(--cg-accent-color, #4f9cf9); }
-.cgext-layouts-foot button svg { color: var(--cg-muted-fg-color, #9aa4b6); }
+.vgext-layouts-foot button:hover { border-color: var(--vg-accent-color, #4f9cf9); }
+.vgext-layouts-foot button svg { color: var(--vg-muted-fg-color, #9aa4b6); }
 `;

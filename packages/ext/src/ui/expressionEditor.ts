@@ -6,7 +6,7 @@
  * customizer editor, on CM6 instead of Monaco): DSL syntax highlighting,
  * context-aware completions (columns inside `[`, functions / keywords /
  * snippets elsewhere), debounced lint diagnostics from a caller-supplied
- * validator, `--cg-*` token theming, single- or multi-line chrome.
+ * validator, `--vg-*` token theming, single- or multi-line chrome.
  *
  * Vanilla TS, no Lit/shadow DOM — mounts into any host element.
  */
@@ -114,7 +114,7 @@ export interface ExpressionFunction {
   apply?: string;
 }
 
-/** @cgrid/expression builtins (its BUILTINS table is not exported — this
+/** @wellsfargo-starui/velocity-grid-expression builtins (its BUILTINS table is not exported — this
  *  catalog mirrors packages/expression/src/builtins.ts). */
 export const EXPRESSION_BUILTINS: ExpressionFunction[] = [
   { name: 'IF', signature: 'IF(cond, then, else)', description: 'Conditional value', category: 'Logical' },
@@ -278,32 +278,32 @@ export class ExpressionEditor {
               fontSize: '12px',
               fontFamily: "'JetBrains Mono', Menlo, Consolas, monospace",
               backgroundColor: 'var(--cgx-expr-bg, rgba(0,0,0,0.25))',
-              border: '1px solid var(--cg-border-color, #2c3540)',
+              border: '1px solid var(--vg-border-color, #2c3540)',
               borderRadius: '4px',
               minHeight: multiline ? `${lines * 20 + 12}px` : '26px',
               maxHeight: multiline ? '220px' : '26px',
             },
-            '&.cm-focused': { outline: 'none', borderColor: 'var(--cg-accent-color, #2d6cdf)' },
-            '.cm-content': { padding: '4px 6px', caretColor: 'var(--cg-fg, #dfe6ee)' },
+            '&.cm-focused': { outline: 'none', borderColor: 'var(--vg-accent-color, #2d6cdf)' },
+            '.cm-content': { padding: '4px 6px', caretColor: 'var(--vg-fg, #dfe6ee)' },
             '.cm-line': { padding: '0' },
             '.cm-scroller': { overflow: 'auto', lineHeight: '20px' },
             '.cm-gutters': {
               ...(opts.validate || multiline ? {} : { display: 'none' }),
               background: 'transparent',
               border: 'none',
-              color: 'var(--cg-fg-muted, #5f6a78)',
+              color: 'var(--vg-fg-muted, #5f6a78)',
             },
             '.cm-lineNumbers .cm-gutterElement': { minWidth: '22px', paddingRight: '6px' },
-            '.cm-placeholder': { color: 'var(--cg-fg-muted, #6b7684)', fontStyle: 'italic' },
+            '.cm-placeholder': { color: 'var(--vg-fg-muted, #6b7684)', fontStyle: 'italic' },
             '.cm-tooltip': {
-              background: 'var(--cg-bg, #171c23)',
-              color: 'var(--cg-fg, #dfe6ee)',
-              border: '1px solid var(--cg-border-color, #2c3540)',
+              background: 'var(--vg-bg, #171c23)',
+              color: 'var(--vg-fg, #dfe6ee)',
+              border: '1px solid var(--vg-border-color, #2c3540)',
               fontSize: '11px',
               zIndex: '10300',
             },
             '.cm-tooltip-autocomplete ul li[aria-selected]': {
-              background: 'var(--cg-accent-color, #2d6cdf)',
+              background: 'var(--vg-accent-color, #2d6cdf)',
               color: '#fff',
             },
           }),

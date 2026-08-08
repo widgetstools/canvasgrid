@@ -38,7 +38,7 @@ describe('NumberFilterPopup', () => {
     host.appendChild(gui);
     const selects = gui.querySelectorAll('select');
     expect(selects.length).toBe(1);
-    const primary = gui.querySelector('input[type="number"][data-cg-filter-input="primary"]');
+    const primary = gui.querySelector('input[type="number"][data-vg-filter-input="primary"]');
     expect(primary).not.toBeNull();
   });
 
@@ -109,7 +109,7 @@ describe('NumberFilterPopup', () => {
     host.appendChild(gui);
     const primary = gui.querySelector('input[type="number"]') as HTMLInputElement;
     primary.value = '50';
-    const applyBtn = gui.querySelector('button[data-cg-filter-action="apply"]') as HTMLButtonElement;
+    const applyBtn = gui.querySelector('button[data-vg-filter-action="apply"]') as HTMLButtonElement;
     applyBtn.click();
     expect(onApply).toHaveBeenCalledWith({
       filterType: 'number', type: 'equals', filter: 50,
@@ -131,7 +131,7 @@ describe('NumberFilterPopup', () => {
     const inputs = gui.querySelectorAll('input[type="number"]');
     (inputs[0] as HTMLInputElement).value = '50';
     (inputs[1] as HTMLInputElement).value = '100';
-    const applyBtn = gui.querySelector('button[data-cg-filter-action="apply"]') as HTMLButtonElement;
+    const applyBtn = gui.querySelector('button[data-vg-filter-action="apply"]') as HTMLButtonElement;
     applyBtn.click();
     expect(onApply).toHaveBeenCalledWith({
       filterType: 'number', type: 'inRange', filter: 50, filterTo: 100,
@@ -150,7 +150,7 @@ describe('NumberFilterPopup', () => {
     const select = gui.querySelector('select') as HTMLSelectElement;
     select.value = 'blank';
     select.dispatchEvent(new Event('change', { bubbles: true }));
-    const applyBtn = gui.querySelector('button[data-cg-filter-action="apply"]') as HTMLButtonElement;
+    const applyBtn = gui.querySelector('button[data-vg-filter-action="apply"]') as HTMLButtonElement;
     applyBtn.click();
     expect(onApply).toHaveBeenCalledWith({
       filterType: 'number', type: 'blank',
@@ -167,7 +167,7 @@ describe('NumberFilterPopup', () => {
     const gui = popup.buildGui();
     host.appendChild(gui);
     // Operator stays at the default ('equals') with no number typed.
-    const applyBtn = gui.querySelector('button[data-cg-filter-action="apply"]') as HTMLButtonElement;
+    const applyBtn = gui.querySelector('button[data-vg-filter-action="apply"]') as HTMLButtonElement;
     applyBtn.click();
     expect(onApply).toHaveBeenCalledWith(null);
   });
@@ -184,7 +184,7 @@ describe('NumberFilterPopup', () => {
     const inputs = gui.querySelectorAll('input[type="number"]');
     expect((inputs[0] as HTMLInputElement).value).toBe('1');
     expect((inputs[1] as HTMLInputElement).value).toBe('100');
-    const clearBtn = gui.querySelector('button[data-cg-filter-action="clear"]') as HTMLButtonElement;
+    const clearBtn = gui.querySelector('button[data-vg-filter-action="clear"]') as HTMLButtonElement;
     clearBtn.click();
     expect((inputs[0] as HTMLInputElement).value).toBe('');
     expect((inputs[1] as HTMLInputElement).value).toBe('');
@@ -200,7 +200,7 @@ describe('NumberFilterPopup', () => {
     });
     const gui = popup.buildGui();
     host.appendChild(gui);
-    const resetBtn = gui.querySelector('button[data-cg-filter-action="reset"]') as HTMLButtonElement;
+    const resetBtn = gui.querySelector('button[data-vg-filter-action="reset"]') as HTMLButtonElement;
     resetBtn.click();
     const inputs = gui.querySelectorAll('input[type="number"]');
     expect((inputs[0] as HTMLInputElement).value).toBe('');
@@ -233,9 +233,9 @@ describe('NumberFilterPopup', () => {
     });
     const gui = popup.buildGui();
     host.appendChild(gui);
-    expect(gui.querySelector('button[data-cg-filter-action="apply"]')).not.toBeNull();
-    expect(gui.querySelector('button[data-cg-filter-action="clear"]')).toBeNull();
-    expect(gui.querySelector('button[data-cg-filter-action="reset"]')).toBeNull();
+    expect(gui.querySelector('button[data-vg-filter-action="apply"]')).not.toBeNull();
+    expect(gui.querySelector('button[data-vg-filter-action="clear"]')).toBeNull();
+    expect(gui.querySelector('button[data-vg-filter-action="reset"]')).toBeNull();
   });
 
   it('closeOnApply: true triggers onClose after Apply', () => {
@@ -250,7 +250,7 @@ describe('NumberFilterPopup', () => {
     host.appendChild(gui);
     const primary = gui.querySelector('input[type="number"]') as HTMLInputElement;
     primary.value = '42';
-    const applyBtn = gui.querySelector('button[data-cg-filter-action="apply"]') as HTMLButtonElement;
+    const applyBtn = gui.querySelector('button[data-vg-filter-action="apply"]') as HTMLButtonElement;
     applyBtn.click();
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -266,7 +266,7 @@ describe('NumberFilterPopup', () => {
     host.appendChild(gui);
     const primary = gui.querySelector('input[type="number"]') as HTMLInputElement;
     primary.value = '42';
-    const applyBtn = gui.querySelector('button[data-cg-filter-action="apply"]') as HTMLButtonElement;
+    const applyBtn = gui.querySelector('button[data-vg-filter-action="apply"]') as HTMLButtonElement;
     applyBtn.click();
     expect(onClose).not.toHaveBeenCalled();
   });
@@ -282,7 +282,7 @@ describe('NumberFilterPopup', () => {
     });
     const gui = popup.buildGui();
     host.appendChild(gui);
-    const cancelBtn = gui.querySelector('button[data-cg-filter-action="cancel"]') as HTMLButtonElement;
+    const cancelBtn = gui.querySelector('button[data-vg-filter-action="cancel"]') as HTMLButtonElement;
     cancelBtn.click();
     expect(onApply).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledTimes(1);

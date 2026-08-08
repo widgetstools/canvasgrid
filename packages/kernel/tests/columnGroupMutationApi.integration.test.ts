@@ -1,14 +1,14 @@
 /**
- * Task 1 (Columns tool panel hierarchy) — integration gate: `CGridApi`'s
+ * Task 1 (Columns tool panel hierarchy) — integration gate: `VelocityGridApi`'s
  * `moveColumnToGroup` / `moveColumnGroup` route through the pure
  * `columnGroupMutation` core AND preserve runtime column state (width /
  * hide) across the `columnDefs` rebuild the re-parent triggers. Mounts a
- * real `CGrid` against the fake Worker + canvas harness (mirrors
+ * real `VelocityGrid` against the fake Worker + canvas harness (mirrors
  * `tests/rulesApiKernel.integration.test.ts`'s `beforeAll` stub + `mount()`
  * shape).
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { resolveColumnTree } from '../src/core/columnTree';
 
 beforeAll(() => {
@@ -40,15 +40,15 @@ beforeAll(() => {
 async function mount() {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
-  const grid = new CGrid<{ a: string; b: string; c: string }>(container, {
+  const grid = new VelocityGrid<{ a: string; b: string; c: string }>(container, {
     columnDefs: [
       { field: 'a' },
       { groupId: 'G', headerName: 'G', children: [{ field: 'b' }, { field: 'c' }] },
     ],
     getRowId: (r) => r.a,
-    theme: 'cg-theme-quartz',
+    theme: 'vg-theme-quartz',
   });
   const w = (grid as any).workerClient.worker;
   w.listeners.forEach((cb: any) => cb({ data: { id: 1, type: 'ready' } }));
@@ -56,7 +56,7 @@ async function mount() {
   return grid;
 }
 
-describe('CGridApi.moveColumnToGroup — state preservation + events', () => {
+describe('VelocityGridApi.moveColumnToGroup — state preservation + events', () => {
   it('re-parents a leaf INTO a group and preserves its runtime width + hidden state', async () => {
     const grid = await mount();
     grid.setColumnWidths([{ key: 'a', newWidth: 222 }]);
@@ -85,7 +85,7 @@ describe('CGridApi.moveColumnToGroup — state preservation + events', () => {
   });
 });
 
-describe('CGridApi.moveColumnGroup', () => {
+describe('VelocityGridApi.moveColumnGroup', () => {
   it('moves a whole group to top level', async () => {
     const grid = await mount();
     grid.moveColumnGroup('G', null, 'a');
@@ -100,7 +100,7 @@ describe('CGridApi.moveColumnGroup', () => {
  * must be invalidated on EVERY `this.columnTree = …` reassignment, not just
  * the two the cache's doc comment used to cite (constructor +
  * `rebuildColumns`). The pivot engine's `setColumnTree` callback (wired via
- * `makePivotEngineDeps`, ~cgrid.ts:3496) is a THIRD site that was missing
+ * `makePivotEngineDeps`, ~velocityGrid.ts:3496) is a THIRD site that was missing
  * the invalidation — reproduced here by driving that exact callback
  * directly (bypassing the full async worker/pivot activation round-trip,
  * which this callback doesn't depend on) and asserting `getColGroupPath`

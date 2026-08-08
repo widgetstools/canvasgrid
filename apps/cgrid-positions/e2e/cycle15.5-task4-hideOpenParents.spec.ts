@@ -47,7 +47,7 @@ async function gridReady(page: Page): Promise<void> {
 
 async function seedTwoGroupRows(page: Page): Promise<void> {
   await page.evaluate(() => {
-    const g = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+    const g = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
     const rows: Array<Record<string, unknown>> = [];
     // 10 AAPL rows then 10 MSFT rows
     const TICKERS = ['AAPL', 'MSFT'];
@@ -80,19 +80,19 @@ test.describe('Cycle 15.5 / Task 4 — groupHideOpenParents', () => {
     // With all groups expanded and groupHideOpenParents=true:
     // only 20 leaf rows should be visible (both group parent rows are hidden).
     const expandedCount = await page.evaluate(() => {
-      return (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getDisplayedRowCount();
+      return (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getDisplayedRowCount();
     });
     expect(expandedCount).toBe(20);
 
     // Collapse all groups so both parent rows become visible.
     await page.evaluate(() => {
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.collapseAll();
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.collapseAll();
     });
     await waitForFrames(page, 12);
 
     // After collapseAll: 2 group rows, 0 leaf rows visible.
     const collapsedCount = await page.evaluate(() => {
-      return (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getDisplayedRowCount();
+      return (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getDisplayedRowCount();
     });
     expect(collapsedCount).toBe(2);
   });

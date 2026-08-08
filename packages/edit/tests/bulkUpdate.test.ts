@@ -1,4 +1,4 @@
-// @cgrid/edit — bulkUpdate.test.ts
+// @wellsfargo-starui/velocity-grid-edit — bulkUpdate.test.ts
 // Covers collectBulkUpdateTargets (shared walk with smart-edit, different
 // type filter), bulkUpdateValueKind, parseBulkUpdateValue (number/date/
 // dateTime/text), buildBulkUpdatePatches, makeDistinctValuesFeed.

@@ -65,10 +65,10 @@ Three units + a delivery sequence (§9).
 ### 5.1 Group-membership mutation core (T1)
 
 New pure module `packages/kernel/src/core/columnGroupMutation.ts` operating on
-the `columnDefs` tree (`(CColDef | CColGroupDef)[]`), plus two `CGridApi`
+the `columnDefs` tree (`(CColDef | CColGroupDef)[]`), plus two `VelocityGridApi`
 methods that call it and apply the result.
 
-**API (on `CGridApi`):**
+**API (on `VelocityGridApi`):**
 ```ts
 /** Move leaf `colId` into group `targetGroupId` (or to top level when null),
  *  positioned before `beforeColId` (or at the group's end / list end when
@@ -202,7 +202,7 @@ routers):
 ## 9. Delivery (one spec, sequenced tasks — like Grid Layouts)
 
 - **T1** — `columnGroupMutation.ts` (pure) + `moveColumnToGroup` /
-  `moveColumnGroup` on `CGridApi` + `makeApi` wiring + unit tests. No UI.
+  `moveColumnGroup` on `VelocityGridApi` + `makeApi` wiring + unit tests. No UI.
 - **T2** — hierarchical rendering in `visibilityPanel` (recursive tree walk,
   indentation, carets + panel-local expand, tri-state group checkboxes,
   `columnDefsChanged` refresh) + kernel integration tests. No new drag.

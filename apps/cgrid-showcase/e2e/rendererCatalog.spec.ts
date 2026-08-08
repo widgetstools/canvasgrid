@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { gotoFeature } from './helpers';
-import { RENDERER_NAMES } from '@cgrid/renderers';
+import { RENDERER_NAMES } from '@wellsfargo-starui/velocity-grid-renderers';
 
 test.describe('renderer catalog feature', () => {
   test('loads with canvas grid and Cycle 21f description', async ({ page }) => {

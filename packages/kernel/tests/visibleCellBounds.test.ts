@@ -11,7 +11,7 @@
 // across Cycles 10–11 (commit refs in the worklog).
 
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import type { ViewportState, ViewportColumn, ViewportRow } from '../src/core/viewport';
 import type { Subgrid } from '../src/core/subgrid';
 
@@ -52,12 +52,12 @@ const dataSubgrid: Subgrid = {
   getCell: () => null,
 };
 
-function buildGrid(): CGrid<{ id: string }> {
+function buildGrid(): VelocityGrid<{ id: string }> {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:400px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
-  const grid = new CGrid<{ id: string }>(container, {
+  const grid = new VelocityGrid<{ id: string }>(container, {
     columnDefs: [{ field: 'id' }],
     getRowId: (r) => r.id,
   });
@@ -77,7 +77,7 @@ interface ViewportFixture {
 
 /** Replace `grid.viewport` with a hand-crafted state so each case
  *  exercises one precise band-leak shape independent of layout math. */
-function setViewport(grid: CGrid<any>, fx: ViewportFixture): void {
+function setViewport(grid: VelocityGrid<any>, fx: ViewportFixture): void {
   const vs: ViewportState = {
     visibleColumns: fx.columns,
     visibleRows: fx.rows,
@@ -112,7 +112,7 @@ function row(localRowIndex: number, top: number, height = 30): ViewportRow {
   return { rowIndex: 0, subgrid: dataSubgrid, localRowIndex, top, bottom: top + height, height };
 }
 
-describe('CGrid.getVisibleCellBounds', () => {
+describe('VelocityGrid.getVisibleCellBounds', () => {
   // ---------------------------------------------------------------------------
   // center column
   // ---------------------------------------------------------------------------

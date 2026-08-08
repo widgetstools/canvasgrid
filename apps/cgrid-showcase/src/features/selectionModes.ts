@@ -1,5 +1,5 @@
-import { CGrid } from '@cgrid/kernel';
-import type { CColDef, SelectionConfig } from '@cgrid/kernel';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
+import type { CColDef, SelectionConfig } from '@wellsfargo-starui/velocity-grid';
 import type { Feature } from './index';
 import type { ShowcaseRow } from '../seedData';
 import { makeRows } from '../seedData';
@@ -74,11 +74,11 @@ export const selectionModes: Feature = {
 
   mount(gridHost, controls, theme) {
     let activeMode: ModeKey = 'multiRow';
-    let grid: CGrid<ShowcaseRow>;
+    let grid: VelocityGrid<ShowcaseRow>;
 
     const construct = () => {
       gridHost.innerHTML = '';
-      const g = new CGrid<ShowcaseRow>(gridHost, {
+      const g = new VelocityGrid<ShowcaseRow>(gridHost, {
         getRowId: (r) => r.id,
         columnDefs: COLUMNS,
         theme,

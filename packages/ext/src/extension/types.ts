@@ -1,4 +1,4 @@
-import type { CGrid, StateModule, GridState } from '@cgrid/kernel';
+import type { VelocityGrid, StateModule, GridState } from '@wellsfargo-starui/velocity-grid';
 
 export type Unsub = () => void;
 
@@ -60,8 +60,8 @@ export interface ProfileController {
 
 /** Handed to every extension's `init` and `mount`/`render`. Kernel is
  *  reached through its PUBLIC api only. */
-export interface CgExtContext {
-  grid: CGrid;
+export interface VelocityGridExtContext {
+  grid: VelocityGrid;
   getState(): GridState;
   setState(state: Partial<GridState>): void;
   registerStateModule(module: StateModule): Unsub;
@@ -72,10 +72,10 @@ export interface CgExtContext {
 
 export type ExtensionKind = 'settings-module' | 'toolbar-item' | 'service';
 
-export interface CgExtension {
+export interface VelocityGridExtension {
   id: string;
   kind: ExtensionKind;
-  init(ctx: CgExtContext): void;
+  init(ctx: VelocityGridExtContext): void;
   dispose?(): void;
 }
 
@@ -84,12 +84,12 @@ export type ModuleCategory =
 
 export interface ModuleInstance { destroy(): void; refresh?(): void }
 
-export interface SettingsModule extends CgExtension {
+export interface SettingsModule extends VelocityGridExtension {
   kind: 'settings-module';
   title: string;
   icon: string;
   category: ModuleCategory;
-  mount(host: HTMLElement, ctx: CgExtContext): ModuleInstance;
+  mount(host: HTMLElement, ctx: VelocityGridExtContext): ModuleInstance;
 }
 
 export type ToolbarSlot =
@@ -97,16 +97,16 @@ export type ToolbarSlot =
 
 export interface ToolbarItemInstance { destroy(): void; refresh?(): void }
 
-export interface ToolbarItem extends CgExtension {
+export interface ToolbarItem extends VelocityGridExtension {
   kind: 'toolbar-item';
   slot: ToolbarSlot;
   toggleable?: boolean;
-  render(host: HTMLElement, ctx: CgExtContext): ToolbarItemInstance;
+  render(host: HTMLElement, ctx: VelocityGridExtContext): ToolbarItemInstance;
 }
 
-export function isSettingsModule(e: CgExtension): e is SettingsModule {
+export function isSettingsModule(e: VelocityGridExtension): e is SettingsModule {
   return e.kind === 'settings-module';
 }
-export function isToolbarItem(e: CgExtension): e is ToolbarItem {
+export function isToolbarItem(e: VelocityGridExtension): e is ToolbarItem {
   return e.kind === 'toolbar-item';
 }

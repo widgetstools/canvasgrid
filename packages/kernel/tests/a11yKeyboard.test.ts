@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 /**
  * Cycle 24 / Tasks 1-7 — accessibility + keyboard tests.
  *
- * Stubs Worker + 2D canvas so a CGrid can construct under happy-dom.
+ * Stubs Worker + 2D canvas so a VelocityGrid can construct under happy-dom.
  */
 beforeAll(() => {
   (globalThis as any).Worker = class {
@@ -117,10 +117,10 @@ describe('Cycle 24 / Task 1 — keyboard matrix completion', () => {
   });
 
   it('Ctrl+A on the grid selects all rows', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
       rowSelection: 'multiple',
@@ -253,11 +253,11 @@ describe('Cycle 24 / Task 1 — Shift+Arrow extends the cell range', () => {
 
 describe('Cycle 24 / Task 2 — suppressKeyboardEvent per column', () => {
   it('returning true from suppressKeyboardEvent short-circuits the grid handler', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
     const suppress = vi.fn(() => true);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [
         { colId: 'a', field: 'a', cellDataType: 'text', suppressKeyboardEvent: suppress },
@@ -306,11 +306,11 @@ describe('Cycle 24 / Task 2 — suppressKeyboardEvent per column', () => {
 });
 
 describe('Cycle 24 / Task 3 — A11y overlay attributes', () => {
-  it('sets aria-label on the grid root when CGridOptions.ariaLabel is supplied', async () => {
-    const { CGrid } = await import('../src/cgrid');
+  it('sets aria-label on the grid root when VelocityGridOptions.ariaLabel is supplied', async () => {
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
       ariaLabel: 'My data grid',
@@ -322,10 +322,10 @@ describe('Cycle 24 / Task 3 — A11y overlay attributes', () => {
   });
 
   it('sets aria-busy on the grid root when the loading flag is true', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
       loading: true,
@@ -340,10 +340,10 @@ describe('Cycle 24 / Task 3 — A11y overlay attributes', () => {
 
 describe('Cycle 24 / Task 4 — screen-reader announcements', () => {
   it('mounts a role="status" aria-live region in the a11y overlay', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
     } as any);
@@ -354,10 +354,10 @@ describe('Cycle 24 / Task 4 — screen-reader announcements', () => {
 
   it('announces "Sorted by X ascending" after a sort change', async () => {
     vi.useFakeTimers();
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'price', field: 'price', headerName: 'Price', cellDataType: 'number' }],
     } as any);
@@ -377,17 +377,17 @@ describe('Cycle 24 / Task 4 — screen-reader announcements', () => {
 });
 
 describe('Cycle 24 / Task 5 — high-contrast theme', () => {
-  it('declares cg-theme-high-contrast in tokens.css with WCAG AAA tokens', async () => {
+  it('declares vg-theme-high-contrast in tokens.css with WCAG AAA tokens', async () => {
     const fs = await import('node:fs');
     const path = await import('node:path');
     const file = path.join(process.cwd(), 'src/theming/tokens.css');
     const src = fs.readFileSync(file, 'utf-8');
-    expect(src).toMatch(/\.cg-theme-high-contrast\b/);
+    expect(src).toMatch(/\.vg-theme-high-contrast\b/);
     // Black on white at 7:1+ — the canonical WCAG AAA pairing.
-    expect(src).toMatch(/--cg-fg-color\s*:\s*#000000/);
+    expect(src).toMatch(/--vg-fg-color\s*:\s*#000000/);
     // Thicker focus ring (≥ 3px) for high-contrast.
-    const match = src.match(/\.cg-theme-high-contrast[^}]*\}/);
-    expect(match![0]).toMatch(/--cg-focus-ring-width\s*:\s*3px/);
+    const match = src.match(/\.vg-theme-high-contrast[^}]*\}/);
+    expect(match![0]).toMatch(/--vg-focus-ring-width\s*:\s*3px/);
   });
 
   it('pairs the high-contrast theme with a dark variant', async () => {
@@ -395,7 +395,7 @@ describe('Cycle 24 / Task 5 — high-contrast theme', () => {
     const path = await import('node:path');
     const file = path.join(process.cwd(), 'src/theming/tokens.css');
     const src = fs.readFileSync(file, 'utf-8');
-    expect(src).toMatch(/\.cg-theme-high-contrast-dark\b/);
+    expect(src).toMatch(/\.vg-theme-high-contrast-dark\b/);
   });
 });
 
@@ -450,7 +450,7 @@ describe('Cycle 24 / Task 7 — prefers-reduced-motion', () => {
     expect(src).toMatch(/@media\s*\(\s*prefers-reduced-motion:\s*reduce\s*\)/);
     const motionBlock = src.match(/@media\s*\(\s*prefers-reduced-motion:\s*reduce\s*\)\s*\{[\s\S]*?\n\}/);
     expect(motionBlock).not.toBeNull();
-    expect(motionBlock![0]).toMatch(/--cg-flash-from-color\s*:\s*transparent/);
+    expect(motionBlock![0]).toMatch(/--vg-flash-from-color\s*:\s*transparent/);
   });
 });
 

@@ -76,7 +76,7 @@ async function canvasOffset(page: Page): Promise<{ x: number; y: number }> {
 
 async function cellBounds(page: Page, rowIndex: number, colId: string): Promise<{ x: number; y: number; w: number; h: number }> {
   const b = await page.evaluate(
-    ({ r, c }) => (window as unknown as { __cgrid: GridSurface }).__cgrid.getCellBoundsAt(r, c),
+    ({ r, c }) => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.getCellBoundsAt(r, c),
     { r: rowIndex, c: colId },
   );
   if (!b) throw new Error(`no cell bounds for (${rowIndex}, ${colId})`);
@@ -85,14 +85,14 @@ async function cellBounds(page: Page, rowIndex: number, colId: string): Promise<
 
 async function rangesNow(page: Page): Promise<SelectionRange[]> {
   return page.evaluate(
-    () => (window as unknown as { __cgrid: GridSurface }).__cgrid.selection.state.ranges
+    () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.selection.state.ranges
       .map((r) => ({ rowStart: r.rowStart, rowEnd: r.rowEnd, colIds: [...r.colIds] })),
   );
 }
 
 async function snapshotViewport(page: Page): Promise<ViewportSurface> {
   return page.evaluate(() => {
-    const v = (window as unknown as { __cgrid: GridSurface }).__cgrid.viewport;
+    const v = (window as unknown as { __velocity-grid: GridSurface }).__cgrid.viewport;
     return {
       scrollLeft: v.scrollLeft,
       bodyLeft: v.bodyLeft,
@@ -126,11 +126,11 @@ test.describe('Cycle 9 patch / Task 2 — auto-scroll during range drag near the
     expect(centerCols.length).toBeGreaterThan(0);
     const lastVisible = centerCols[centerCols.length - 1]!;
 
-    // Get the FULL render order from `getColumnState()` (public CGridApi).
+    // Get the FULL render order from `getColumnState()` (public VelocityGridApi).
     // Hidden leaves stay in the state too — filter them out so we only
     // consider columns the layout actually paints.
     const allColIds = await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: GridSurface & { getColumnState: () => { colId: string; hide?: boolean }[] } }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridSurface & { getColumnState: () => { colId: string; hide?: boolean }[] } }).__cgrid;
       return g.getColumnState().filter((s) => s.hide !== true).map((s) => s.colId);
     });
     // Find a column past the lastVisible — that's the one we want to scroll to.

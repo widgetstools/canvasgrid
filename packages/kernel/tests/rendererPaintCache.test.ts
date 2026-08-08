@@ -18,10 +18,10 @@
  *      chrome bands instead of one interleaved pass) but the two passes'
  *      regions never overlap, so a multiset comparison is the correct
  *      pixel-equivalence proof, not a strict sequence comparison.
- *  (d) CGrid-level: reset triggers (first paint, a scroll jump beyond the
+ *  (d) VelocityGrid-level: reset triggers (first paint, a scroll jump beyond the
  *      layer's coverage, a horizontal scroll) reallocate/re-anchor the
  *      layer rather than presenting stale pixels.
- *  (e) CGrid-level: `PaintStats.presents` / `layerShifts` / `layerResets` /
+ *  (e) VelocityGrid-level: `PaintStats.presents` / `layerShifts` / `layerResets` /
  *      `layerRasterMs` behave sensibly across a paint sequence.
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
@@ -32,9 +32,9 @@ import type { ResolvedColDef } from '../src/core/propertyChain';
 import type { ResolvedTheme } from '../src/theming/cssReader';
 import type { CachedContext2D } from '../src/renderer/gc';
 import type { Subgrid } from '../src/core/subgrid';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
-import type { CGridOptions } from '../src/types/options';
+import type { VelocityGridOptions } from '../src/types/options';
 
 // ─── fakeGc ──────────────────────────────────────────────────────────────────
 // Same recording idiom as tests/rendererDamage.test.ts.
@@ -327,7 +327,7 @@ describe('Renderer — paint-cache layer split (Task 4)', () => {
   });
 });
 
-// ─── CGrid-level integration (d)/(e) ─────────────────────────────────────────
+// ─── VelocityGrid-level integration (d)/(e) ─────────────────────────────────────────
 // `buildWiredGrid` idiom copied from tests/paintStats.integration.test.ts /
 // tests/paintCacheViewport.test.ts (local helper, not cross-imported).
 
@@ -373,11 +373,11 @@ beforeAll(() => {
 function buildWiredGrid<T extends { id: string }>(
   rows: T[],
   cols: any[],
-  options: Partial<CGridOptions<T>> = {},
+  options: Partial<VelocityGridOptions<T>> = {},
 ) {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
   const prevWorker = (globalThis as any).Worker;
   (globalThis as any).Worker = class {
@@ -390,7 +390,7 @@ function buildWiredGrid<T extends { id: string }>(
     addEventListener(_: string, cb: (e: { data: any }) => void) { this.listeners.push(cb); }
     terminate() {}
   };
-  const grid = new CGrid<T>(container, {
+  const grid = new VelocityGrid<T>(container, {
     columnDefs: cols,
     getRowId: (r) => r.id,
     rowData: rows,
@@ -412,7 +412,7 @@ function rows(n: number): Array<{ id: string; v: number }> {
 
 const cols = [{ field: 'id' }, { field: 'v', type: 'number' }];
 
-describe('CGrid + paint-cache layer — stats + reset triggers (Task 4)', () => {
+describe('VelocityGrid + paint-cache layer — stats + reset triggers (Task 4)', () => {
   it('(e) the very first paint reports a layer reset, a present, and a positive layerRasterMs', async () => {
     const { grid, restore } = buildWiredGrid(rows(200), cols);
     const canvas = (grid as any).cgridCanvas;
@@ -450,7 +450,7 @@ describe('CGrid + paint-cache layer — stats + reset triggers (Task 4)', () => 
     // 'keep' (present-only), never a reset.
     const rowHeight = g.theme.rowHeight as number;
     g.onScrollerScroll(0, rowHeight);
-    g.recomputeViewport(); // Task 3 gotcha: CGrid.viewport lags until this runs.
+    g.recomputeViewport(); // Task 3 gotcha: VelocityGrid.viewport lags until this runs.
     canvas.tickPaint(now + 1000);
 
     const stats = grid.getPaintStats();
@@ -636,7 +636,7 @@ describe('CGrid + paint-cache layer — stats + reset triggers (Task 4)', () => 
     // nothing else damaged -> the present-only fast path (spec §4).
     const rowHeight = g.theme.rowHeight as number;
     g.onScrollerScroll(0, rowHeight);
-    g.recomputeViewport(); // Task 3 gotcha: CGrid.viewport lags until this runs.
+    g.recomputeViewport(); // Task 3 gotcha: VelocityGrid.viewport lags until this runs.
     canvas.tickPaint(now + 1000);
 
     const stats = grid.getPaintStats();

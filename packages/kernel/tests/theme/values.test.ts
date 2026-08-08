@@ -8,9 +8,9 @@ import {
 } from '../../src/theming/theme/values';
 
 const tokenMap: Record<string, string> = {
-  accentColor: '--cg-chrome-accent',
-  backgroundColor: '--cg-bg-color',
-  spacing: '--cg-cell-padding-x',
+  accentColor: '--vg-chrome-accent',
+  backgroundColor: '--vg-bg-color',
+  spacing: '--vg-cell-padding-x',
 };
 const resolveTokenName = (p: string): string => tokenMap[p] ?? '';
 
@@ -31,20 +31,20 @@ describe('compileColor', () => {
     expect(compileColor('var(--x)', resolveTokenName)).toBe('var(--x)');
   });
 
-  it('compiles a { ref } to var(--cg-*)', () => {
-    expect(compileColor({ ref: 'accentColor' }, resolveTokenName)).toBe('var(--cg-chrome-accent)');
+  it('compiles a { ref } to var(--vg-*)', () => {
+    expect(compileColor({ ref: 'accentColor' }, resolveTokenName)).toBe('var(--vg-chrome-accent)');
   });
 
   it('compiles { ref, mix, onto } to an exact color-mix() string', () => {
     expect(
       compileColor({ ref: 'accentColor', mix: 0.25, onto: 'backgroundColor' }, resolveTokenName)
-    ).toBe('color-mix(in srgb, var(--cg-chrome-accent) 25%, var(--cg-bg-color))');
+    ).toBe('color-mix(in srgb, var(--vg-chrome-accent) 25%, var(--vg-bg-color))');
   });
 
   it('drops trailing .0 for fractional percents (0.075 -> 7.5%)', () => {
     expect(
       compileColor({ ref: 'accentColor', mix: 0.075, onto: 'backgroundColor' }, resolveTokenName)
-    ).toBe('color-mix(in srgb, var(--cg-chrome-accent) 7.5%, var(--cg-bg-color))');
+    ).toBe('color-mix(in srgb, var(--vg-chrome-accent) 7.5%, var(--vg-bg-color))');
   });
 
   it('drops trailing .0 for whole percents (0.25 -> 25%, not 25.0%)', () => {
@@ -59,19 +59,19 @@ describe('compileColor', () => {
   it('clamps mix above 1 to 100%', () => {
     expect(
       compileColor({ ref: 'accentColor', mix: 1.5, onto: 'backgroundColor' }, resolveTokenName)
-    ).toBe('color-mix(in srgb, var(--cg-chrome-accent) 100%, var(--cg-bg-color))');
+    ).toBe('color-mix(in srgb, var(--vg-chrome-accent) 100%, var(--vg-bg-color))');
   });
 
   it('clamps mix below 0 to 0%', () => {
     expect(
       compileColor({ ref: 'accentColor', mix: -0.5, onto: 'backgroundColor' }, resolveTokenName)
-    ).toBe('color-mix(in srgb, var(--cg-chrome-accent) 0%, var(--cg-bg-color))');
+    ).toBe('color-mix(in srgb, var(--vg-chrome-accent) 0%, var(--vg-bg-color))');
   });
 
   it('emits literal "transparent" when onto is "transparent"', () => {
     expect(
       compileColor({ ref: 'accentColor', mix: 0.5, onto: 'transparent' }, resolveTokenName)
-    ).toBe('color-mix(in srgb, var(--cg-chrome-accent) 50%, transparent)');
+    ).toBe('color-mix(in srgb, var(--vg-chrome-accent) 50%, transparent)');
   });
 
   it('falls back to the raw ref name when resolveTokenName returns empty', () => {
@@ -100,19 +100,19 @@ describe('compileLength', () => {
     expect(compileLength('100%', resolveTokenName)).toBe('100%');
   });
 
-  it('compiles { ref } to var(--cg-*)', () => {
-    expect(compileLength({ ref: 'spacing' }, resolveTokenName)).toBe('var(--cg-cell-padding-x)');
+  it('compiles { ref } to var(--vg-*)', () => {
+    expect(compileLength({ ref: 'spacing' }, resolveTokenName)).toBe('var(--vg-cell-padding-x)');
   });
 
   it('wraps { calc } in calc(...)', () => {
-    expect(compileLength({ calc: 'var(--cg-row-height) - 2px' }, resolveTokenName)).toBe(
-      'calc(var(--cg-row-height) - 2px)'
+    expect(compileLength({ calc: 'var(--vg-row-height) - 2px' }, resolveTokenName)).toBe(
+      'calc(var(--vg-row-height) - 2px)'
     );
   });
 
   it('does not double-wrap a calc string that already starts with calc(', () => {
-    expect(compileLength({ calc: 'calc(var(--cg-row-height) - 2px)' }, resolveTokenName)).toBe(
-      'calc(var(--cg-row-height) - 2px)'
+    expect(compileLength({ calc: 'calc(var(--vg-row-height) - 2px)' }, resolveTokenName)).toBe(
+      'calc(var(--vg-row-height) - 2px)'
     );
   });
 });
@@ -123,11 +123,11 @@ describe('compileBorder', () => {
   });
 
   it('compiles true to the default 1px solid border using the default token', () => {
-    expect(compileBorder(true)).toBe('1px solid var(--cg-border-color)');
+    expect(compileBorder(true)).toBe('1px solid var(--vg-border-color)');
   });
 
   it('compiles true using a custom borderColorToken', () => {
-    expect(compileBorder(true, '--cg-my-border')).toBe('1px solid var(--cg-my-border)');
+    expect(compileBorder(true, '--vg-my-border')).toBe('1px solid var(--vg-my-border)');
   });
 
   it('compiles false to none', () => {

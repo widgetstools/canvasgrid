@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Schema } from '@cgrid/expression';
+import type { Schema } from '@wellsfargo-starui/velocity-grid-expression';
 import { compileCondition, validateRule } from '../src/conditionCompiler';
 import type { ConditionalStyleRule, IndicatorRule } from '../src/types';
 

@@ -205,7 +205,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
    *  enable the client pipeline over the sparse store. */
   async ensureFullyHydrated(): Promise<boolean> {
     if (this.host.getRowGroupCols().length > 0) {
-      console.warn('[cgrid] SSRM v2: ensureFullyHydrated is unsupported while grouped — the skeleton path serves grouping natively');
+      console.warn('[velocity-grid] SSRM v2: ensureFullyHydrated is unsupported while grouped — the skeleton path serves grouping natively');
       return false;
     }
     await this.enqueue(async () => {
@@ -253,7 +253,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
   applyServerSideTransaction(tx: ServerSideTransaction<TRow>): void {
     if ((tx.add?.length || tx.remove?.length || tx.rowCount !== undefined) && !this.warnedUnsupportedTx) {
       this.warnedUnsupportedTx = true;
-      console.warn('[cgrid] SSRM v2: transaction add/remove/rowCount are structural — use refreshServerSide({ purge: false }) so the skeleton re-syncs; only `update` patches in place');
+      console.warn('[velocity-grid] SSRM v2: transaction add/remove/rowCount are structural — use refreshServerSide({ purge: false }) so the skeleton re-syncs; only `update` patches in place');
     }
     if (tx.update?.length) {
       const updatesById = new Map<string, TRow>();

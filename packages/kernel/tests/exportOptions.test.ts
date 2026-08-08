@@ -10,7 +10,7 @@
 // worker's RowStore, so the plumbing is a separate exercise.
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
 
 beforeEach(() => {
@@ -59,7 +59,7 @@ const ROWS: Row[] = [
 function buildGrid(opts: Record<string, unknown> = {}) {
   const container = document.createElement('div');
   container.style.cssText = 'width:600px; height:400px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
   const prevWorker = (globalThis as { Worker?: unknown }).Worker;
   (globalThis as { Worker?: unknown }).Worker = class {
@@ -72,7 +72,7 @@ function buildGrid(opts: Record<string, unknown> = {}) {
     addEventListener(_: string, cb: (e: { data: unknown }) => void) { this.listeners.push(cb); }
     terminate() {}
   };
-  const grid = new CGrid<Row>(container, {
+  const grid = new VelocityGrid<Row>(container, {
     columnDefs: [
       { field: 'desk',   headerName: 'Desk',   cellDataType: 'text' },
       { field: 'region', headerName: 'Region', cellDataType: 'text' },

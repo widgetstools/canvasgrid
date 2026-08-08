@@ -1,5 +1,5 @@
 // Header caption styling — halign + textDecoration on leaf headers, and the
-// fold's header-alignment default. Companion to the CGridExt formatting
+// fold's header-alignment default. Companion to the VelocityGridExt formatting
 // toolbar's Header target: all font styles must paint on column headers.
 
 import { describe, it, expect, vi, beforeAll } from 'vitest';

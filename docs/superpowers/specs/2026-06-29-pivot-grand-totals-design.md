@@ -34,7 +34,7 @@ careful, diligent implementation.
 ## API
 
 ```typescript
-interface CGridOptions {
+interface VelocityGridOptions {
   // ...existing options
 
   /**
@@ -148,9 +148,9 @@ setGridOption('pivotGrandTotals', true)
   `isRowTotal: true`; no new spec flag needed for the column. Only
   the ROW path needs new reads.
 
-### Cell reader (CGrid)
+### Cell reader (VelocityGrid)
 
-- [`cgrid/src/cgrid.ts`](../../cgrid/src/cgrid.ts) —
+- [`cgrid/src/velocityGrid.ts`](../../cgrid/src/velocityGrid.ts) —
   extend the `TotalsSubgrid` cell lookup (around line 4658):
   - When pivot is active AND colId is a pivot result colId
     → read `chunk.pivotTotals[encodedKey]`.

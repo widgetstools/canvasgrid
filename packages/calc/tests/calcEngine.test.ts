@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CalcEngine } from '../src/calcEngine';
 import { buildWorkerCalcProgram } from '../src/workerProgram';
 import type { CalculatedColumnDef, CellDataType } from '../src/types';
-import type { Schema } from '@cgrid/expression';
+import type { Schema } from '@wellsfargo-starui/velocity-grid-expression';
 
 const SCHEMA: Schema = { fields: { price: 'number', qty: 'number', status: 'string' } };
 

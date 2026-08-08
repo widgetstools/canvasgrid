@@ -50,7 +50,7 @@ export interface SetFilterPopupDeps {
   caseSensitive?: boolean;
   /** Cycle 7 / Task 9 — invoked on every popup-internal mutation
    *  (checkbox toggle, Select All flip, mini-search update). Wires to
-   *  the `filterModified` event on `CGridApi`. Optional. */
+   *  the `filterModified` event on `VelocityGridApi`. Optional. */
   onModified?: () => void;
 }
 
@@ -88,16 +88,16 @@ export class SetFilterPopup implements FilterPopupFactory {
 
   buildGui(): HTMLElement {
     const root = document.createElement('div');
-    root.className = 'cg-filter-popup cg-filter-popup-set';
+    root.className = 'vg-filter-popup vg-filter-popup-set';
 
     if (this.deps.suppressMiniFilter !== true) {
       const searchRow = document.createElement('div');
-      searchRow.className = 'cg-filter-popup-row cg-filter-popup-set-search';
+      searchRow.className = 'vg-filter-popup-row vg-filter-popup-set-search';
       const input = document.createElement('input');
       input.type = 'text';
       input.placeholder = 'Search…';
-      input.className = 'cg-set-filter-search';
-      input.setAttribute('data-cg-set-filter-search', '');
+      input.className = 'vg-set-filter-search';
+      input.setAttribute('data-vg-set-filter-search', '');
       input.addEventListener('input', () => this.applyMiniSearch(input.value));
       searchRow.appendChild(input);
       root.appendChild(searchRow);
@@ -106,12 +106,12 @@ export class SetFilterPopup implements FilterPopupFactory {
 
     if (this.deps.suppressSelectAll !== true) {
       const allRow = document.createElement('div');
-      allRow.className = 'cg-filter-popup-row cg-filter-popup-set-select-all';
+      allRow.className = 'vg-filter-popup-row vg-filter-popup-set-select-all';
       const label = document.createElement('label');
       const cb = document.createElement('input');
       cb.type = 'checkbox';
-      cb.className = 'cg-set-filter-select-all';
-      cb.setAttribute('data-cg-set-filter-select-all', '');
+      cb.className = 'vg-checkbox vg-set-filter-select-all';
+      cb.setAttribute('data-vg-set-filter-select-all', '');
       cb.addEventListener('change', () => this.handleSelectAllToggle(cb.checked));
       const text = document.createElement('span');
       text.textContent = '(Select All)';
@@ -123,9 +123,9 @@ export class SetFilterPopup implements FilterPopupFactory {
     }
 
     const listHost = document.createElement('div');
-    listHost.className = 'cg-set-filter-list';
-    listHost.setAttribute('data-cg-set-filter-list', '');
-    // Caller (cgrid.ts) sizes the popup; the list takes a fixed inner
+    listHost.className = 'vg-set-filter-list';
+    listHost.setAttribute('data-vg-set-filter-list', '');
+    // Caller (velocityGrid.ts) sizes the popup; the list takes a fixed inner
     // height by default so VirtualList has a viewport size even before
     // the popup is in a fully-styled host (covered by tokens.css).
     listHost.style.height = '200px';
@@ -134,13 +134,13 @@ export class SetFilterPopup implements FilterPopupFactory {
     this.list = listHost;
 
     const buttonsRow = document.createElement('div');
-    buttonsRow.className = 'cg-filter-popup-row cg-filter-popup-buttons';
+    buttonsRow.className = 'vg-filter-popup-row vg-filter-popup-buttons';
     const buttons = this.deps.buttons ?? ['apply', 'clear', 'reset'];
     for (const kind of buttons) {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = `cg-filter-popup-button cg-filter-popup-button-${kind}`;
-      btn.setAttribute('data-cg-filter-action', kind);
+      btn.className = `vg-filter-popup-button vg-filter-popup-button-${kind}`;
+      btn.setAttribute('data-vg-filter-action', kind);
       btn.textContent = labelFor(kind);
       btn.addEventListener('click', () => this.handleAction(kind));
       buttonsRow.appendChild(btn);
@@ -202,15 +202,16 @@ export class SetFilterPopup implements FilterPopupFactory {
    *  off-window toggle paints correctly when the row is re-mounted. */
   private renderValue(value: string): HTMLElement {
     const row = document.createElement('label');
-    row.className = 'cg-set-filter-row';
+    row.className = 'vg-set-filter-row';
     row.style.display = 'flex';
     row.style.alignItems = 'center';
     row.style.gap = '6px';
     row.style.padding = '0 8px';
     const cb = document.createElement('input');
     cb.type = 'checkbox';
+    cb.className = 'vg-checkbox';
     cb.value = value;
-    cb.setAttribute('data-cg-set-filter-value', '');
+    cb.setAttribute('data-vg-set-filter-value', '');
     cb.checked = this.selected.has(value);
     cb.addEventListener('change', () => this.handleValueToggle(value, cb.checked));
     const text = document.createElement('span');

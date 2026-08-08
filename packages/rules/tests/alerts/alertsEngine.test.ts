@@ -401,6 +401,18 @@ describe('AlertsEngine — history ring + unread', () => {
     engine.applyChanges(added(['c']));
     expect(engine.unreadCount()).toBe(1);
   });
+
+  it('clearHistory empties the ring and unread counter without touching rules', () => {
+    const { engine } = makeEngine();
+    engine.setRules([rule({})]);
+    engine.applyChanges(added(['a']));
+    expect(engine.getHistory()).toHaveLength(1);
+    expect(engine.unreadCount()).toBe(1);
+    engine.clearHistory();
+    expect(engine.getHistory()).toEqual([]);
+    expect(engine.unreadCount()).toBe(0);
+    expect(engine.getRules()).toHaveLength(1);
+  });
 });
 
 // ── events: message + seq ───────────────────────────────────────────────

@@ -1,4 +1,4 @@
-// @cgrid/format — public type surface.
+// @wellsfargo-starui/velocity-grid-format — public type surface.
 //
 // All types are plain TypeScript: discriminated unions for the format
 // program's internal AST, plain interfaces for public results and errors.
@@ -7,9 +7,9 @@
 // See docs/superpowers/specs/2026-07-01-cycle-21c-format-design.md §4 for
 // the authoritative reference.
 
-import type { Loc } from '@cgrid/expression';
+import type { Loc } from '@wellsfargo-starui/velocity-grid-expression';
 
-// Re-export Loc so consumers importing from @cgrid/format only need one dep.
+// Re-export Loc so consumers importing from @wellsfargo-starui/velocity-grid-format only need one dep.
 export type { Loc };
 
 // ─── Public results ────────────────────────────────────────────────────
@@ -160,7 +160,7 @@ export interface RuleRefNode {
 }
 
 // Re-forward the expression-side builtin def shape so consumers of
-// CompileFormatOptions don't need to import from @cgrid/expression.
+// CompileFormatOptions don't need to import from @wellsfargo-starui/velocity-grid-expression.
 export interface BuiltinDef {
   arity: number | [min: number, max: number];
   impl: (args: unknown[]) => unknown;

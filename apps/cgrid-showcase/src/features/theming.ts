@@ -1,5 +1,5 @@
-import { CGrid, ColorPickerControl } from '@cgrid/kernel';
-import type { CColDef } from '@cgrid/kernel';
+import { VelocityGrid, ColorPickerControl } from '@wellsfargo-starui/velocity-grid';
+import type { CColDef } from '@wellsfargo-starui/velocity-grid';
 import type { Feature } from './index';
 import type { ShowcaseRow } from '../seedData';
 import { makeRows } from '../seedData';
@@ -19,11 +19,11 @@ import { makeRows } from '../seedData';
  */
 type Density = 'compact' | 'normal' | 'comfortable';
 type ThemeChoice =
-  | 'cg-theme-starui'
-  | 'cg-theme-starui-dark'
-  | 'cg-theme-quartz'
-  | 'cg-theme-quartz-dark'
-  | 'cg-theme-auto';
+  | 'vg-theme-starui'
+  | 'vg-theme-starui-dark'
+  | 'vg-theme-quartz'
+  | 'vg-theme-quartz-dark'
+  | 'vg-theme-auto';
 
 const COLUMNS: CColDef<ShowcaseRow>[] = [
   { colId: 'ticker', field: 'ticker', headerName: 'Ticker', cellDataType: 'text', width: 120 },
@@ -55,13 +55,13 @@ export const theming: Feature = {
     'entire grid inside an encapsulated DOM tree.',
 
   mount(gridHost, controls, theme) {
-    let activeTheme: ThemeChoice = (theme as ThemeChoice) ?? 'cg-theme-quartz';
+    let activeTheme: ThemeChoice = (theme as ThemeChoice) ?? 'vg-theme-quartz';
     let activeDensity: Density = 'normal';
     let shadowMode = false;
     let liveOverrides: Record<string, string> = {};
-    let grid: CGrid<ShowcaseRow>;
+    let grid: VelocityGrid<ShowcaseRow>;
 
-    const construct = (): CGrid<ShowcaseRow> => {
+    const construct = (): VelocityGrid<ShowcaseRow> => {
       // Wipe + rebuild the host so the shadow-root toggle doesn't pile
       // up multiple grids on the same node.
       gridHost.innerHTML = '';
@@ -69,7 +69,7 @@ export const theming: Feature = {
         // happy path — destroy() already detached the previous tree
         // when shadow mode was on. No-op otherwise.
       }
-      const g = new CGrid<ShowcaseRow>(gridHost, {
+      const g = new VelocityGrid<ShowcaseRow>(gridHost, {
         getRowId: (r) => r.id,
         columnDefs: COLUMNS,
         theme: activeTheme,
@@ -144,11 +144,11 @@ export const theming: Feature = {
 
     const themeButtons: Record<ThemeChoice, HTMLButtonElement> = {} as any;
     const themeLabels: Record<ThemeChoice, string> = {
-      'cg-theme-starui': 'StarUI Light',
-      'cg-theme-starui-dark': 'StarUI Dark',
-      'cg-theme-quartz': 'Quartz Light',
-      'cg-theme-quartz-dark': 'Quartz Dark',
-      'cg-theme-auto': 'Auto',
+      'vg-theme-starui': 'StarUI Light',
+      'vg-theme-starui-dark': 'StarUI Dark',
+      'vg-theme-quartz': 'Quartz Light',
+      'vg-theme-quartz-dark': 'Quartz Dark',
+      'vg-theme-auto': 'Auto',
     };
     const refreshTheme = () => {
       for (const t of Object.keys(themeLabels) as ThemeChoice[]) {
@@ -163,7 +163,7 @@ export const theming: Feature = {
 
     controls.appendChild(section('Theme'));
     for (const t of Object.keys(themeLabels) as ThemeChoice[]) {
-      themeButtons[t] = pill(themeLabels[t], `btn-theme-${t.replace('cg-theme-', '')}`, t === activeTheme, () => setTheme(t));
+      themeButtons[t] = pill(themeLabels[t], `btn-theme-${t.replace('vg-theme-', '')}`, t === activeTheme, () => setTheme(t));
       controls.appendChild(themeButtons[t]);
     }
     controls.appendChild(divider());
@@ -193,10 +193,10 @@ export const theming: Feature = {
       return wrap;
     };
 
-    controls.appendChild(colorPicker('bg', '--cg-bg-color', '#ffffff', 'token-bg'));
-    controls.appendChild(colorPicker('fg', '--cg-fg-color', '#1a1f24', 'token-fg'));
-    controls.appendChild(colorPicker('header', '--cg-header-bg', '#f4f6f8', 'token-header'));
-    controls.appendChild(colorPicker('focus', '--cg-focus-ring-color', '#3b82f6', 'token-focus'));
+    controls.appendChild(colorPicker('bg', '--vg-bg-color', '#ffffff', 'token-bg'));
+    controls.appendChild(colorPicker('fg', '--vg-fg-color', '#1a1f24', 'token-fg'));
+    controls.appendChild(colorPicker('header', '--vg-header-bg', '#f4f6f8', 'token-header'));
+    controls.appendChild(colorPicker('focus', '--vg-focus-ring-color', '#3b82f6', 'token-focus'));
 
     const rowHeightSlider = document.createElement('label');
     rowHeightSlider.style.cssText = 'display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--ctrl-label-color, #8b949e);';
@@ -216,7 +216,7 @@ export const theming: Feature = {
     rowHeightInput.addEventListener('input', () => {
       const v = `${rowHeightInput.value}px`;
       rowHeightValue.textContent = v;
-      applyOverride('--cg-row-height', v);
+      applyOverride('--vg-row-height', v);
     });
     rowHeightSlider.appendChild(rowHeightLabel);
     rowHeightSlider.appendChild(rowHeightInput);

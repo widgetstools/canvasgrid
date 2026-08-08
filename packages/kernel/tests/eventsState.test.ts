@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeAll } from 'vitest';
 /**
  * Cycle 23 / Tasks 1-7 — events + state-snapshot tests.
  *
- * Stubs Worker + 2D canvas so a CGrid can construct under happy-dom,
+ * Stubs Worker + 2D canvas so a VelocityGrid can construct under happy-dom,
  * mirroring the pattern in cgrid.integration.test.ts.
  */
 beforeAll(() => {
@@ -155,11 +155,11 @@ describe('Cycle 23 / Task 2 — mouse hover events (cellMouseOver/Out + rowMouse
 
 describe('Cycle 23 / Task 3 — body-scroll events', () => {
   it('fires bodyScroll on every scroll tick with { top, left, direction }', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     host.style.cssText = 'width:400px; height:300px;';
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
     } as any);
@@ -183,11 +183,11 @@ describe('Cycle 23 / Task 3 — body-scroll events', () => {
 
   it('debounces bodyScrollEnd — fires once 200ms after the last scroll', async () => {
     vi.useFakeTimers();
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     host.style.cssText = 'width:400px; height:300px;';
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
     } as any);
@@ -329,11 +329,11 @@ describe('Cycle 23 / Task 4 — cell keyboard events', () => {
 
 describe('Cycle 23 / Task 5 — getState()', () => {
   it('returns the schema version + populated columnState on a fresh grid', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const { STATE_SCHEMA_VERSION } = await import('../src/core/stateSnapshot');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [
         { colId: 'a', field: 'a', cellDataType: 'text' },
@@ -349,10 +349,10 @@ describe('Cycle 23 / Task 5 — getState()', () => {
   });
 
   it('omits empty fields so JSON snapshots stay compact', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
     } as any);
@@ -370,10 +370,10 @@ describe('Cycle 23 / Task 5 — getState()', () => {
   });
 
   it('captures the sort model after sortChanged', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
     } as any);
@@ -384,10 +384,10 @@ describe('Cycle 23 / Task 5 — getState()', () => {
   });
 
   it('captures filterModel via setColumnFilterModel', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text', filter: 'text' }],
     } as any);
@@ -403,10 +403,10 @@ describe('Cycle 23 / Task 5 — getState()', () => {
   });
 
   it('snapshot is JSON-serializable end-to-end (no functions, no circular refs)', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [
         { colId: 'a', field: 'a', cellDataType: 'text' },
@@ -424,10 +424,10 @@ describe('Cycle 23 / Task 5 — getState()', () => {
 
 describe('Cycle 23 / Task 6 — setState round-trip', () => {
   it('setState(getState()) leaves state observably unchanged', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [
         { colId: 'a', field: 'a', cellDataType: 'text' },
@@ -443,10 +443,10 @@ describe('Cycle 23 / Task 6 — setState round-trip', () => {
   });
 
   it('restores sortModel from a snapshot', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
     } as any);
@@ -459,10 +459,10 @@ describe('Cycle 23 / Task 6 — setState round-trip', () => {
   });
 
   it('resetState wipes filters, sort, groups, selection back to initial', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
     } as any);
@@ -473,11 +473,11 @@ describe('Cycle 23 / Task 6 — setState round-trip', () => {
     grid.destroy();
   });
 
-  it('CGridOptions.initialState applies before any user interaction', async () => {
-    const { CGrid } = await import('../src/cgrid');
+  it('VelocityGridOptions.initialState applies before any user interaction', async () => {
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
       initialState: {
@@ -495,10 +495,10 @@ describe('Cycle 23 / Task 6 — setState round-trip', () => {
   });
 
   it('throws a clear error when a snapshot version is newer than the build', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
     } as any);
@@ -516,10 +516,10 @@ describe('Cycle 23 / Task 7 — stateUpdated event (coalesced per rAF)', () => {
   // depending on the worker round-trip.
 
   it('coalesces multiple state changes within one frame into a single event', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [
         { colId: 'a', field: 'a', cellDataType: 'text' },
@@ -540,10 +540,10 @@ describe('Cycle 23 / Task 7 — stateUpdated event (coalesced per rAF)', () => {
   });
 
   it('merges changedKeys across distinct event types', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text', filter: 'text' }],
     } as any);
@@ -560,10 +560,10 @@ describe('Cycle 23 / Task 7 — stateUpdated event (coalesced per rAF)', () => {
   });
 
   it('tags source: "api" when setNextSource("api") fires before the cascade', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
     } as any);
@@ -585,10 +585,10 @@ describe('Cycle 23 / Task 7 — stateUpdated event (coalesced per rAF)', () => {
   });
 
   it('does not fire stateUpdated when no state-affecting event landed', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
     } as any);
@@ -601,12 +601,12 @@ describe('Cycle 23 / Task 7 — stateUpdated event (coalesced per rAF)', () => {
   });
 });
 
-describe('Cycle 23 / Task 2 — integration with CGrid', () => {
+describe('Cycle 23 / Task 2 — integration with VelocityGrid', () => {
   it('grid.on("cellMouseOver") fires with rowId + colId + value when the pointer crosses a cell boundary', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [
         { colId: 'name', field: 'name', cellDataType: 'text' },
@@ -618,7 +618,7 @@ describe('Cycle 23 / Task 2 — integration with CGrid', () => {
     grid.on('cellMouseOut', (e: any) => events.push({ type: 'cellMouseOut', ...e }));
 
     // Drive the hit-test path by faking a hover transition through
-    // the grid's CGridLike emit hooks directly. The full DOM
+    // the grid's VelocityGridLike emit hooks directly. The full DOM
     // canvas-mousemove flow is covered in E2E; this proves the
     // grid-side wiring fans out to subscribers.
     (grid as any).emitCellMouseOverFromHover(0, 'name', new MouseEvent('mousemove'));

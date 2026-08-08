@@ -1,7 +1,7 @@
-// @cgrid/renderers — composite category tests (Cycle 21f / Task 11).
+// @wellsfargo-starui/velocity-grid-renderers — composite category tests (Cycle 21f / Task 11).
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { CellPaintConfig } from '@cgrid/kernel';
+import type { CellPaintConfig } from '@wellsfargo-starui/velocity-grid';
 import { makeFakeGc } from './helpers/fakeGc';
 import type { FakeGc } from './helpers/fakeGc';
 import { SEMANTIC_COLORS } from '../src/palette';

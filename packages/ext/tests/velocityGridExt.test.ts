@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { installGridTestEnv } from './setup';
-import { CGridExt } from '../src/cgridExt';
+import { VelocityGridExt } from '../src/velocityGridExt';
 import type { SettingsModule } from '../src/extension/types';
 
 beforeAll(() => installGridTestEnv());
@@ -12,17 +12,17 @@ const opts = () => ({
   rowData: [{ a: 1 }],
 } as any);
 
-describe('CGridExt', () => {
+describe('VelocityGridExt', () => {
   it('constructs a grid inside the shell and exposes .grid', () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const ext = new CGridExt(host, opts());
-    // ShellLayout marks its own container with `cgext-root` (see shell.ts);
-    // since CGridExt hands ShellLayout the `host` container directly, the
+    const ext = new VelocityGridExt(host, opts());
+    // ShellLayout marks its own container with `vgext-root` (see shell.ts);
+    // since VelocityGridExt hands ShellLayout the `host` container directly, the
     // class lands on `host` itself, not a descendant — querySelector can't
     // match the element it's called on, so assert via classList instead.
-    expect(host.classList.contains('cgext-root')).toBe(true);
-    expect(host.querySelector('.cgext-grid')).toBeTruthy();
+    expect(host.classList.contains('vgext-root')).toBe(true);
+    expect(host.querySelector('.vgext-grid')).toBeTruthy();
     expect(ext.grid).toBeTruthy();
     expect(typeof ext.getState).toBe('function');
     ext.destroy();
@@ -37,10 +37,10 @@ describe('CGridExt', () => {
       init: vi.fn(),
       mount: (el) => { mounted(); el.textContent = 'demo-panel'; return { destroy() {} }; },
     };
-    const ext = new CGridExt(host, { ...opts(), ext: { extensions: [mod] } });
+    const ext = new VelocityGridExt(host, { ...opts(), ext: { extensions: [mod] } });
     ext.openSettings('demo');
     expect(mounted).toHaveBeenCalled();
-    expect(host.querySelector('.cgext-sheet')!.textContent).toContain('demo-panel');
+    expect(host.querySelector('.vgext-sheet')!.textContent).toContain('demo-panel');
     ext.destroy();
   });
 });

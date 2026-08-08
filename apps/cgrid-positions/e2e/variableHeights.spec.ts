@@ -37,7 +37,7 @@ test.describe('Variable row heights (Cycle 5 / Task 6)', () => {
     // The demo rule produces ≥ 2 distinct heights within any window of 20+
     // rows because it picks ~1 in 4 rows for the 56-px override.
     const heights = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       const out: number[] = [];
       for (let i = 0; i < 25; i++) {
         const b = grid.getRowBoundsAt(i);
@@ -57,7 +57,7 @@ test.describe('Variable row heights (Cycle 5 / Task 6)', () => {
     // using the same rule the demo wires into `getRowHeight`. The painted
     // height must match.
     const rows = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       const out: { rowIndex: number; positionId: string; height: number }[] = [];
       for (let i = 0; i < 25; i++) {
         const b = grid.getRowBoundsAt(i);
@@ -85,7 +85,7 @@ test.describe('Variable row heights (Cycle 5 / Task 6)', () => {
     // accumulator in computeViewport positions variable-height rows without
     // gaps or overlap within the visible window.
     const bounds = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       const out: { y: number; h: number }[] = [];
       for (let i = 0; i < 15; i++) {
         const b = grid.getRowBoundsAt(i);

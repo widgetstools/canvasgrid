@@ -52,7 +52,7 @@ async function gridReady(page: Page): Promise<void> {
 
 async function seedRows(page: Page, count = 20): Promise<void> {
   await page.evaluate((n) => {
-    const g = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+    const g = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
     const TICKERS = ['AAPL', 'MSFT'];
     const rows: Array<Record<string, unknown>> = [];
     for (let i = 0; i < n; i++) {
@@ -83,48 +83,48 @@ test.describe('Cycle 15.5 / Task 10 — grouping state round-trip', () => {
 
     // Initial state: grouped by ticker.
     const initial = await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return api.getRowGroupColumns();
     });
     expect(initial).toEqual(['ticker']);
 
     // Row 0 is a group row in the initial state.
     const row0IsGroupBefore = await page.evaluate(() => {
-      return (window as unknown as { __cgrid: GridApiSurface }).__cgrid.isGroupRow(0);
+      return (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.isGroupRow(0);
     });
     expect(row0IsGroupBefore).toBe(true);
 
     // Remove all grouping.
     await page.evaluate(() => {
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.setRowGroupColumns([]);
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.setRowGroupColumns([]);
     });
     await waitForFrames(page, 12);
 
     const cleared = await page.evaluate(() => {
-      return (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getRowGroupColumns();
+      return (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getRowGroupColumns();
     });
     expect(cleared).toEqual([]);
 
     // Row 0 is no longer a group row after clearing.
     const row0IsGroupCleared = await page.evaluate(() => {
-      return (window as unknown as { __cgrid: GridApiSurface }).__cgrid.isGroupRow(0);
+      return (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.isGroupRow(0);
     });
     expect(row0IsGroupCleared).toBe(false);
 
     // Restore grouping from the saved snapshot.
     await page.evaluate((saved) => {
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.setRowGroupColumns(saved);
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.setRowGroupColumns(saved);
     }, initial);
     await waitForFrames(page, 12);
 
     const restored = await page.evaluate(() => {
-      return (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getRowGroupColumns();
+      return (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getRowGroupColumns();
     });
     expect(restored).toEqual(['ticker']);
 
     // Row 0 is a group row again after restore.
     const row0IsGroupRestored = await page.evaluate(() => {
-      return (window as unknown as { __cgrid: GridApiSurface }).__cgrid.isGroupRow(0);
+      return (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.isGroupRow(0);
     });
     expect(row0IsGroupRestored).toBe(true);
   });

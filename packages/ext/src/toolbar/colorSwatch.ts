@@ -4,7 +4,7 @@
  * Grid Options uses. Keeps the icon + underline swatch chrome; opens the
  * popover from the button via `attachTrigger`.
  */
-import { ColorPickerControl, parseColor } from '@cgrid/kernel';
+import { ColorPickerControl, parseColor } from '@wellsfargo-starui/velocity-grid';
 
 export type RibbonColorSwatch = {
   button: HTMLButtonElement;
@@ -20,7 +20,7 @@ export type RibbonColorSwatch = {
 function iconBtn(icon: string, title: string): HTMLButtonElement {
   const b = document.createElement('button');
   b.type = 'button';
-  b.className = 'cgext-rb-btn';
+  b.className = 'vgext-rb-btn';
   b.title = title;
   b.setAttribute('aria-label', title);
   b.innerHTML =
@@ -47,15 +47,15 @@ export function ribbonColorSwatch(
   const initial = isCssColor(defaultColor) ? defaultColor : '#888888';
   const input = document.createElement('input');
   input.type = 'hidden';
-  input.className = 'cgext-rb-colorinput';
+  input.className = 'vgext-rb-colorinput';
   input.value = initial;
 
   const button = iconBtn(icon, title);
-  button.classList.add('cgext-rb-swatch');
+  button.classList.add('vgext-rb-swatch');
   const bar = document.createElement('span');
-  bar.className = 'cgext-rb-swatchbar';
+  bar.className = 'vgext-rb-swatchbar';
   const paintBar = (): void => {
-    bar.style.setProperty('--cgext-swatch', input.value);
+    bar.style.setProperty('--vgext-swatch', input.value);
   };
   paintBar();
   button.append(bar);
@@ -73,7 +73,7 @@ export function ribbonColorSwatch(
     input.dispatchEvent(new Event('change', { bubbles: true }));
   });
   picker.attachTrigger(button);
-  picker.el.classList.add('cgext-rb-colorpicker-host');
+  picker.el.classList.add('vgext-rb-colorpicker-host');
   picker.el.appendChild(input);
 
   const setValue = (css: string): void => {

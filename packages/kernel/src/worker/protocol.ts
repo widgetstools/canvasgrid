@@ -392,8 +392,8 @@ export interface AutosizeGroupContextRequest {
   groupColumnDepth?: number;
 }
 
-/** Cycle 21d / Task 10 — serialized calc program shipped by @cgrid/calc's
- *  bridge (via CGrid.registerCalcProvider → setCalcProgram). `ast` is the
+/** Cycle 21d / Task 10 — serialized calc program shipped by @wellsfargo-starui/velocity-grid-calc's
+ *  bridge (via VelocityGrid.registerCalcProvider → setCalcProgram). `ast` is the
  *  portable expression AST (plain JSON — 21b guarantee); `interpreterSource`
  *  and each `aggregateSources[].source` are `Function.prototype.toString()`
  *  forms reconstructed worker-side via `new Function` (the setAggFuncs /

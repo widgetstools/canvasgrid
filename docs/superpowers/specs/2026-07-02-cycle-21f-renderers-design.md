@@ -1,10 +1,10 @@
-# Cycle 21f — `@cgrid/renderers` (40 Rich Blotter Cell Renderers) — Design
+# Cycle 21f — `@wellsfargo-starui/velocity-grid-renderers` (40 Rich Blotter Cell Renderers) — Design
 
 **Date:** 2026-07-02
 **Parent brief:** [Cycle 21 decision doc](../plans/2026-07-01-canvasgrid-cycle-21-modular-monorepo-and-intrinsic-features.md) §4 renderers rows
 **Authoritative catalog:** `docs/superpowers/plans/2026-07-01-canvasgrid-cell-renderer-catalog.md` (the 40-renderer spec — every renderer's visual contract lives THERE; this spec governs architecture only)
 **Recon:** `scratchpad/recon-21f-renderers.md` (session artifact; catalog tables extracted + kernel surface inventory)
-**Depends on:** kernel (registry, icons, flash, rule indicators — all landed), `@cgrid/format` (Tier-2 composite), `@cgrid/expression` + `@cgrid/calc` (peers; see §2.3 — NOT runtime deps this cycle)
+**Depends on:** kernel (registry, icons, flash, rule indicators — all landed), `@wellsfargo-starui/velocity-grid-format` (Tier-2 composite), `@wellsfargo-starui/velocity-grid-expression` + `@wellsfargo-starui/velocity-grid-calc` (peers; see §2.3 — NOT runtime deps this cycle)
 **Baselines (main @ `b055115`):** kernel `2568`, calc `215`, rules `144`, format `171`, expression `185`; showcase E2E `131`; typecheck 21/21; build 13/13.
 
 ---
@@ -57,7 +57,7 @@ packages/renderers/src/
   index.ts
 ```
 
-Deps: `@cgrid/format` (composite builders emit CompositeColDef shapes; type + compile validation). `@cgrid/kernel` peerDep (bridge registration only; painters import NOTHING from kernel at runtime — they receive gc + config; the CellPainter/CellPaintConfig types come via kernel type-only imports, erased at compile time, matching the format/rules precedent). `@cgrid/expression`/`@cgrid/calc`: NOT dependencies this cycle (windows/stats are main-side helpers); the catalog's "consumes calc's aggregate cache" upgrade is a follow-up once worker windowed aggregates land.
+Deps: `@wellsfargo-starui/velocity-grid-format` (composite builders emit CompositeColDef shapes; type + compile validation). `@wellsfargo-starui/velocity-grid` peerDep (bridge registration only; painters import NOTHING from kernel at runtime — they receive gc + config; the CellPainter/CellPaintConfig types come via kernel type-only imports, erased at compile time, matching the format/rules precedent). `@wellsfargo-starui/velocity-grid-expression`/`@wellsfargo-starui/velocity-grid-calc`: NOT dependencies this cycle (windows/stats are main-side helpers); the catalog's "consumes calc's aggregate cache" upgrade is a follow-up once worker windowed aggregates land.
 
 ### 2.2 Painter discipline (binds every renderer task)
 

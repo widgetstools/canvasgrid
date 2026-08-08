@@ -25,7 +25,7 @@
  * cgridCanvas.requestRepaint" holds because the only mutation is
  * `textContent` on a few spans + a `hidden` flag toggle on the root).
  */
-import type { CGridEvent, SelectionRange } from '../../../types';
+import type { VelocityGridEvent, SelectionRange } from '../../../types';
 import { aggregate, CANONICAL_AGG_ORDER, type AggFunc, type AggregateResult } from '../aggMath';
 import type { IStatusPanelComp, StatusPanelParams } from '../types';
 
@@ -77,9 +77,9 @@ export interface IAggregationStatusPanelParams {
   valueFormatter?: (params: { value: number; func: AggFunc }) => string;
 }
 
-/** The subset of `CGridApi` this panel touches. Typed inline (same
+/** The subset of `VelocityGridApi` this panel touches. Typed inline (same
  *  pattern as `panels/counts.ts`) to avoid a circular dep through
- *  `cgrid.ts` and to make the test-side fake api narrower. */
+ *  `velocityGrid.ts` and to make the test-side fake api narrower. */
 interface AggPanelApi {
   getCellRanges(): SelectionRange[];
   getSelectedRowIds(): string[];
@@ -87,9 +87,9 @@ interface AggPanelApi {
    *  `null` for rows outside the chunk; the panel treats that as a
    *  non-numeric value (skipped from aggregates, still counted). */
   getCellValue(rowIndex: number, colId: string): unknown;
-  addEventListener<K extends CGridEvent['type']>(
+  addEventListener<K extends VelocityGridEvent['type']>(
     type: K,
-    handler: (event: Extract<CGridEvent, { type: K }>) => void,
+    handler: (event: Extract<VelocityGridEvent, { type: K }>) => void,
   ): () => void;
 }
 
@@ -157,7 +157,7 @@ function resolveFormatter(
   };
 }
 
-/** Build the DOM scaffold for one stat: `<span class="cg-status-panel-
+/** Build the DOM scaffold for one stat: `<span class="vg-status-panel-
  *  agg-stat"><span class="…-label">Label:</span><span class="…-value">
  *  </span></span>`. Returns the root + the value setter so refresh()
  *  can update without re-querying. */
@@ -166,12 +166,12 @@ function buildStat(label: string): {
   setValue: (text: string) => void;
 } {
   const root = document.createElement('span');
-  root.className = 'cg-status-panel-agg-stat';
+  root.className = 'vg-status-panel-agg-stat';
   const labelEl = document.createElement('span');
-  labelEl.className = 'cg-status-panel-agg-label';
+  labelEl.className = 'vg-status-panel-agg-label';
   labelEl.textContent = label;
   const valueEl = document.createElement('span');
-  valueEl.className = 'cg-status-panel-agg-value';
+  valueEl.className = 'vg-status-panel-agg-value';
   root.append(labelEl, valueEl);
   return { root, setValue: (text) => { valueEl.textContent = text; } };
 }
@@ -181,7 +181,7 @@ function buildStat(label: string): {
  *  dot Sum: 1,234`. */
 function buildSeparator(): HTMLElement {
   const span = document.createElement('span');
-  span.className = 'cg-status-panel-agg-separator';
+  span.className = 'vg-status-panel-agg-separator';
   span.setAttribute('aria-hidden', 'true');
   span.textContent = MIDDLE_DOT;
   return span;
@@ -205,7 +205,7 @@ export class AgAggregationPanel implements IStatusPanelComp {
 
   constructor() {
     this.gui = document.createElement('span');
-    this.gui.className = 'cg-status-panel-agg';
+    this.gui.className = 'vg-status-panel-agg';
     // Start hidden — decision 4. The first `refresh()` in `init()`
     // will un-hide it iff there's a selection.
     this.gui.hidden = true;

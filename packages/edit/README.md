@@ -1,12 +1,12 @@
-# `@cgrid/edit`
+# `@wellsfargo-starui/velocity-grid-edit`
 
 Editing-ops feature set for financial blotters — an undo/redo journal,
 smart-edit (×÷+−= over a selected range), bulk-update (free text or a
 distinct-values pick), expression-gated plus/minus nudges, and letter-key
-shortcuts, all wired onto a `CGrid` via one bridge call.
+shortcuts, all wired onto a `VelocityGrid` via one bridge call.
 
 **Status:** Cycle 21g — full feature set landed. Zero kernel changes except
-the one approved seam (spec §3.6a): a public `CGrid.getRowsByIndex(indexes)`
+the one approved seam (spec §3.6a): a public `VelocityGrid.getRowsByIndex(indexes)`
 batched row fetch, needed because `SelectionRange` is visible-order-index
 based and there was no public index→row surface for range→row expansion.
 Everything else rides on landed public API (`cellKeyDown` /
@@ -19,8 +19,8 @@ Design spec: `docs/superpowers/specs/2026-07-02-cycle-21g-edit-design.md`
 ## Quickstart
 
 ```ts
-import { CGrid } from '@cgrid/kernel';
-import { wireEditIntoKernel, applyMagnitudeColDefTransforms } from '@cgrid/edit';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
+import { wireEditIntoKernel, applyMagnitudeColDefTransforms } from '@wellsfargo-starui/velocity-grid-edit';
 
 // Wrap numeric colDefs' valueParser BEFORE construction so a typed "1.5M"
 // commits as 1500000 (K/M/B magnitude suffixes) — no-op on non-numeric
@@ -31,7 +31,7 @@ const columnDefs = applyMagnitudeColDefTransforms([
   { colId: 'trader', field: 'trader', cellDataType: 'text', editable: true },
 ]);
 
-const grid = new CGrid(host, { columnDefs, getRowId: (r) => r.id });
+const grid = new VelocityGrid(host, { columnDefs, getRowId: (r) => r.id });
 grid.setRowData(rows);
 
 const handle = wireEditIntoKernel(grid, {
@@ -51,7 +51,7 @@ const handle = wireEditIntoKernel(grid, {
 
 `wireEditIntoKernel` is idempotent — re-calling on the same grid returns the
 same handle (`grid.__editBridgeWired` marker). Nudge/shortcut `expression`
-strings use the real `@cgrid/expression` grammar — bracket field access
+strings use the real `@wellsfargo-starui/velocity-grid-expression` grammar — bracket field access
 (`[status]`, not bare `status`) — because the bridge's default `evaluate`
 is the real expression engine, not a test fake.
 
@@ -184,7 +184,7 @@ This is the ONLY `packages/kernel` diff in this cycle;
 Plus/minus nudges and letter shortcuts route through the kernel's
 `cellKeyDown` event. That event's `rowId` is stamped by the kernel's
 private `rowIdAt(rowIndex)` — a documented "Foundation" stub that always
-returns a synthetic `row-${rowIndex}` (see `packages/kernel/src/cgrid.ts`;
+returns a synthetic `row-${rowIndex}` (see `packages/kernel/src/velocityGrid.ts`;
 `stringRowIdAt`, a few lines below it, holds the real per-chunk string id
 but isn't yet threaded into pointer/keyboard event payloads). This
 package's bridge looks the event's `rowId` up in its own row mirror, keyed
@@ -192,7 +192,7 @@ by REAL string ids (`forEachRow`/`rowsChanged`) — the synthetic id never
 matches, so nudges and shortcuts silently never intercept a keypress
 against a **real** kernel today; the key always falls through to
 type-to-edit. This is the SAME defect already documented against
-`@cgrid/renderers`' row-menu click routing (`cellClicked`, a sibling
+`@wellsfargo-starui/velocity-grid-renderers`' row-menu click routing (`cellClicked`, a sibling
 event) — `apps/cgrid-showcase/e2e/rendererBlotter.spec.ts`'s F5 test.
 `cell-editor` (editController's own worker-fetched rowId) and
 `smart-edit`/`bulk-update` (this cycle's `getRowsByIndex` seam, also
@@ -213,12 +213,12 @@ tests are authored as `test.fail()` documented-red-kept-CI-green tripwires
 
 E2E probes: `window.__cgridEdit` (the bridge handle) + `window.__cgrid`
 for geometry/values. Canvas cells are painted, not DOM — edits round-trip
-through the kernel's real `.cg-editor-overlay input` overlay.
+through the kernel's real `.vg-editor-overlay input` overlay.
 
 ## Dependencies
 
-- **peer:** `@cgrid/kernel`
-- **runtime:** `@cgrid/expression` (the bridge's default nudge-gate evaluator)
+- **peer:** `@wellsfargo-starui/velocity-grid`
+- **runtime:** `@wellsfargo-starui/velocity-grid-expression` (the bridge's default nudge-gate evaluator)
 
 ## Verification gates (cycle 21g)
 

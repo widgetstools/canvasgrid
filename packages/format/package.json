@@ -1,5 +1,5 @@
 {
-  "name": "@cgrid/format",
+  "name": "@wellsfargo-starui/velocity-grid-format",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -12,16 +12,16 @@
     }
   },
   "scripts": {
-    "build": "echo '@cgrid/format is a scaffold — no build yet' && exit 0",
+    "build": "echo '@wellsfargo-starui/velocity-grid-format is a scaffold — no build yet' && exit 0",
     "test": "vitest run --passWithNoTests",
     "test:coverage": "vitest run --coverage --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@cgrid/expression": "*"
+    "@wellsfargo-starui/velocity-grid-expression": "*"
   },
   "peerDependencies": {
-    "@cgrid/kernel": "*"
+    "@wellsfargo-starui/velocity-grid": "*"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^2.1.0",

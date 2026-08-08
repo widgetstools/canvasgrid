@@ -1,4 +1,4 @@
-// @cgrid/edit — settings defaults, defensive merge, shouldRecord.
+// @wellsfargo-starui/velocity-grid-edit — settings defaults, defensive merge, shouldRecord.
 // Authoritative reference: docs/superpowers/specs/2026-07-02-cycle-21g-edit-design.md
 // §1.1.8 (merge discipline) + docs/superpowers/plans/notes/2026-07-02-cycle-21g-recon.md A.2 (shouldRecord).
 
@@ -24,6 +24,7 @@ export const DEFAULT_EDIT_SETTINGS: EditSettings = {
     enabled: true,
     maxEntries: 50,
     suspended: false,
+    unifyUndo: true,
     recordSources: {
       smartEdit: true,
       bulkUpdate: true,
@@ -70,6 +71,7 @@ export function mergeEditSettings(partial?: DeepPartial<EditSettings>): EditSett
     enabled: historyPartial?.enabled ?? defaults.history.enabled,
     maxEntries: historyPartial?.maxEntries ?? defaults.history.maxEntries,
     suspended: historyPartial?.suspended ?? defaults.history.suspended,
+    unifyUndo: historyPartial?.unifyUndo ?? defaults.history.unifyUndo,
     recordSources: {
       smartEdit: recordSourcesPartial?.smartEdit ?? defaults.history.recordSources.smartEdit,
       bulkUpdate: recordSourcesPartial?.bulkUpdate ?? defaults.history.recordSources.bulkUpdate,

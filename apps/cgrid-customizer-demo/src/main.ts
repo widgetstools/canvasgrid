@@ -2,18 +2,18 @@
  * cgrid Customizer Demo — Cycle 21i interactive testbed.
  *
  * ZERO feature code lives here: this app is a plain consumer that
- * instantiates CGrid with the features under test enabled and pipes in the
+ * instantiates VelocityGrid with the features under test enabled and pipes in the
  * stomp-view-server feed (ws://localhost:8081 — run it from
  * /Users/develop/wfh/starui/apps/stomp-view-server). If something can't be
  * done through the public API, that's a kernel gap to fix in the kernel,
  * never worked around here.
  */
-import { CGrid, formatPrice32, DEFAULT_LAYOUT_ID, themeStarui, type CColDef, type CColGroupDef, type GridLayoutsBundle, type CgThemeParams } from '@cgrid/kernel';
-import '@cgrid/kernel/style.css';
-import { wireIntoKernel as wireFormat } from '@cgrid/format';
-import { wireEditIntoKernel } from '@cgrid/edit';
-import { wireIntoKernel as wireCalc } from '@cgrid/calc';
-import { wireIntoKernel as wireRules, type ConditionalStyleRule } from '@cgrid/rules';
+import { VelocityGrid, formatPrice32, DEFAULT_LAYOUT_ID, themeStarui, type CColDef, type CColGroupDef, type GridLayoutsBundle, type CgThemeParams } from '@wellsfargo-starui/velocity-grid';
+import '@wellsfargo-starui/velocity-grid/style.css';
+import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid-format';
+import { wireEditIntoKernel } from '@wellsfargo-starui/velocity-grid-edit';
+import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid-calc';
+import { wireIntoKernel as wireRules, type ConditionalStyleRule } from '@wellsfargo-starui/velocity-grid-rules';
 import { connectStomp, STOMP_PUBLISH_RATE_PER_SEC, type Position } from './stomp';
 
 const DESKS = ['RATES', 'CREDIT', 'FX', 'EQD'];
@@ -92,12 +92,12 @@ const columnDefs: (CColDef<Position> | CColGroupDef<Position>)[] = [
         cellStyle: (p: { value: unknown }) => {
           const n = Number(p.value);
           return Number.isFinite(n) && n !== 0
-            ? { fg: n > 0 ? 'var(--cg-pos-color)' : 'var(--cg-neg-color)' }
+            ? { fg: n > 0 ? 'var(--vg-pos-color)' : 'var(--vg-neg-color)' }
             : {};
         },
       }),
       // Rich, MODE-ADAPTIVE sign styling — fg + left border + corner decorator,
-      // every colour a var(--cg-pos/neg-color) reference resolved per active
+      // every colour a var(--vg-pos/neg-color) reference resolved per active
       // theme (light vs dark) by the kernel's cellStyle var resolver. Gains get
       // a teal ▲; losses a rose ▼ + rose left border.
       num('Daily P&L', 'dailyPnl', {
@@ -107,14 +107,14 @@ const columnDefs: (CColDef<Position> | CColGroupDef<Position>)[] = [
           if (!Number.isFinite(n) || n === 0) return {};
           if (n > 0) {
             return {
-              fg: 'var(--cg-pos-color)', fontWeight: 700,
-              decorators: [{ position: 'tr', kind: 'emoji', value: '▲', color: 'var(--cg-pos-color)', size: 9 }],
+              fg: 'var(--vg-pos-color)', fontWeight: 700,
+              decorators: [{ position: 'tr', kind: 'emoji', value: '▲', color: 'var(--vg-pos-color)', size: 9 }],
             };
           }
           return {
-            fg: 'var(--cg-neg-color)', fontWeight: 700,
-            border: { left: { width: 3, style: 'solid', color: 'var(--cg-neg-color)' } },
-            decorators: [{ position: 'tr', kind: 'emoji', value: '▼', color: 'var(--cg-neg-color)', size: 9 }],
+            fg: 'var(--vg-neg-color)', fontWeight: 700,
+            border: { left: { width: 3, style: 'solid', color: 'var(--vg-neg-color)' } },
+            decorators: [{ position: 'tr', kind: 'emoji', value: '▼', color: 'var(--vg-neg-color)', size: 9 }],
           };
         },
       }),
@@ -133,7 +133,7 @@ const columnDefs: (CColDef<Position> | CColGroupDef<Position>)[] = [
     cellStyle: (p: { value: unknown }) => {
       const n = Number(p.value);
       return Number.isFinite(n) && n !== 0
-        ? { fg: n > 0 ? 'var(--cg-pos-color)' : 'var(--cg-neg-color)' }
+        ? { fg: n > 0 ? 'var(--vg-pos-color)' : 'var(--vg-neg-color)' }
         : {};
     },
   }),
@@ -146,8 +146,8 @@ const columnDefs: (CColDef<Position> | CColGroupDef<Position>)[] = [
       num('Yield', 'yield', { valueFormatter: '0.000' }),
       // Token-referenceable cellStyle demo (WS-C) — the fg colour is authored
       // as a theme-token reference, resolved through the active theme's CSS
-      // (starui/quartz both declare --cg-info-color) instead of a hardcoded hex.
-      num('Spread', 'spread', { cellStyle: { fg: 'var(--cg-info-color)' } }),
+      // (starui/quartz both declare --vg-info-color) instead of a hardcoded hex.
+      num('Spread', 'spread', { cellStyle: { fg: 'var(--vg-info-color)' } }),
     ],
   },
 ];
@@ -163,12 +163,12 @@ const statusUps = document.querySelector<HTMLElement>('[data-testid="status-ups"
 const savedTheme = localStorage.getItem('custdemo:theme');
 let dark = savedTheme !== 'light';
 
-const grid = new CGrid<Position>(gridHost, {
+const grid = new VelocityGrid<Position>(gridHost, {
   gridId: 'customizer-demo',
   persistState: true,
   getRowId: (r) => r.positionId,
   columnDefs,
-  theme: dark ? 'cg-theme-starui-dark' : 'cg-theme-starui',
+  theme: dark ? 'vg-theme-starui-dark' : 'vg-theme-starui',
   // editable: true so the testbed can exercise the edit trigger (single /
   // double click) out of the box; group / totals / pivot cells stay
   // read-only via the editable predicate.
@@ -204,21 +204,21 @@ wireEditIntoKernel(grid);
 // TEMPLATE library + calculated columns (both persist through the module
 // registry and ride in layouts). The returned engine is used below only to
 // register a calculated column; everything else goes through the public
-// CGridApi template methods (getTemplates / saveTemplate / applyTemplate /
+// VelocityGridApi template methods (getTemplates / saveTemplate / applyTemplate /
 // editColumn).
 const { calc } = wireCalc(grid);
 
 // Grid Layouts / Phase C — wire the conditional-rules engine. Rules ride the
 // layout-tier `rules` module (so they save/switch/import/export with layouts)
 // and paint through the kernel's render-time rule fold. Everything below goes
-// through the PUBLIC CGridApi rule methods (addRule / deleteRule / getRules).
+// through the PUBLIC VelocityGridApi rule methods (addRule / deleteRule / getRules).
 const { rules } = wireRules(grid);
 
 
 function applyTheme() {
   appEl.dataset.theme = dark ? 'dark' : 'light';
   themeBtn.textContent = dark ? 'Light theme' : 'Dark theme';
-  grid.setGridOption('theme', dark ? 'cg-theme-starui-dark' : 'cg-theme-starui');
+  grid.setGridOption('theme', dark ? 'vg-theme-starui-dark' : 'vg-theme-starui');
   localStorage.setItem('custdemo:theme', dark ? 'dark' : 'light');
 }
 applyTheme();
@@ -314,7 +314,7 @@ layoutFileInput.addEventListener('change', async () => {
 grid.on('layoutChanged', refreshLayoutControl);
 
 // ─── Styling templates control ───────────────────────────────────────────
-// Exercises the Grid Layouts Phase-B template API through the PUBLIC CGridApi
+// Exercises the Grid Layouts Phase-B template API through the PUBLIC VelocityGridApi
 // (no reach into the engine except registerCalculatedColumn). Demonstrates the
 // four spec behaviours: apply a template, reuse ONE template across columns,
 // edit a column → auto-template, and a calculated column styled by a template
@@ -375,7 +375,7 @@ grid.on('templatesChanged', refreshTemplateCount);
 grid.on('layoutChanged', refreshTemplateCount);
 
 // ─── Conditional rules control ───────────────────────────────────────────
-// Exercises the Grid Layouts Phase-C rules API through the PUBLIC CGridApi.
+// Exercises the Grid Layouts Phase-C rules API through the PUBLIC VelocityGridApi.
 // Two rules demonstrate BOTH targets (spec §3.2): a CELL rule flags negative
 // P&L red, a ROW rule tints large positions. Because rules ride the layout-tier
 // `rules` module, saving a layout captures them and switching layouts swaps the
@@ -443,8 +443,8 @@ connectStomp({
 // Console access for poking at the public API while testing, and hooks the
 // hermetic E2E suite drives (see apps/cgrid-customizer-demo/e2e/). `__cgapi`
 // is the object handed to `gridReady` (has `getColumnGroupDefs()` etc.) —
-// distinct from `__cgrid`, which is the CGrid instance itself.
-(window as unknown as { __cgrid: unknown }).__cgrid = grid;
+// distinct from `__cgrid`, which is the VelocityGrid instance itself.
+(window as unknown as { __velocity-grid: unknown }).__cgrid = grid;
 // Calc engine test hook (same role as __cgrid/__cgapi) — lets the templates
 // E2E assert override assignments + calc-column non-editability through the
 // engine's read accessors.

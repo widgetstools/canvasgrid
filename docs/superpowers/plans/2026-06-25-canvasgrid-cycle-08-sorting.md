@@ -34,8 +34,8 @@ dependencies.
 - `docs/catalog/07-sorting.md` — `sortingOrder`, `multiSortKey`, `accentedSort`, `comparator`, `postSortRows`, `agSortChanged` event
 - `docs/catalog/FEATURE_MATRIX.md` — Area 07 rows to flip at cycle exit
 - Source files (current state):
-  - `cgrid/src/types.ts` — `CGridOptions`, `CColDef`, `SortModel`, `CGridEvent` (sortChanged)
-  - `cgrid/src/cgrid.ts` — `setSortModel`, private `cycleSort`
+  - `cgrid/src/types.ts` — `VelocityGridOptions`, `CColDef`, `SortModel`, `VelocityGridEvent` (sortChanged)
+  - `cgrid/src/velocityGrid.ts` — `setSortModel`, private `cycleSort`
   - `cgrid/src/core/propertyChain.ts` — `ResolvedColDef.sortable`, `comparator`
   - `cgrid/src/core/columnState.ts` — `sortIndex` round-trip via `applyColumnState`
   - `cgrid/src/worker/dataPipeline.ts` — `SortPass.apply`
@@ -50,9 +50,9 @@ Apply to **every task** (extend the constraints from Cycles 2–7).
 - **API parity, not API mimicry.** Field names mirror ag-grid verbatim
   (`comparator`, `initialSort`, `initialSortIndex`, `sortable`,
   `sortingOrder`, `accentedSort`, `postSortRows`, `multiSortKey`).
-  Top-level type names keep the `C` prefix (`CGridOptions`, `CColDef`).
-- **No regressions in the public API.** Any addition to `CGridOptions`,
-  `CGridApi`, `CColDef`, `SortModel`, or the worker protocol is purely
+  Top-level type names keep the `C` prefix (`VelocityGridOptions`, `CColDef`).
+- **No regressions in the public API.** Any addition to `VelocityGridOptions`,
+  `VelocityGridApi`, `CColDef`, `SortModel`, or the worker protocol is purely
   additive. Existing field signatures only widen, never narrow.
 - **TypeScript strict.** `cgrid/src/**/*.ts` compiles clean under
   `npm run typecheck --workspaces`. cgrid-positions also typechecks.
@@ -81,10 +81,10 @@ Apply to **every task** (extend the constraints from Cycles 2–7).
 
 | # | Task | Files |
 |---|---|---|
-| 1 | Multi-column sort (Shift+click) + sort-order badge in header | `cgrid.ts`, `interaction/features/headerClick.ts`, `renderer/cellRenderers/registry.ts`, demo, tests, E2E |
-| 2 | `initialSort` / `initialSortIndex` + `sortingOrder` configurable cycle | `types.ts`, `core/propertyChain.ts`, `cgrid.ts`, tests |
-| 3 | `comparator` per column via worker-side `ComparatorRegistry` | `types.ts`, `worker/comparatorRegistry.ts` (new), `worker/dataPipeline.ts`, `worker/protocol.ts`, `worker/client.ts`, `cgrid.ts`, tests |
-| 4 | `postSortRows` callback (main-side re-order hook after worker sort) | `types.ts`, `cgrid.ts`, `worker/worker.ts`, `worker/client.ts`, `worker/protocol.ts`, tests |
+| 1 | Multi-column sort (Shift+click) + sort-order badge in header | `velocityGrid.ts`, `interaction/features/headerClick.ts`, `renderer/cellRenderers/registry.ts`, demo, tests, E2E |
+| 2 | `initialSort` / `initialSortIndex` + `sortingOrder` configurable cycle | `types.ts`, `core/propertyChain.ts`, `velocityGrid.ts`, tests |
+| 3 | `comparator` per column via worker-side `ComparatorRegistry` | `types.ts`, `worker/comparatorRegistry.ts` (new), `worker/dataPipeline.ts`, `worker/protocol.ts`, `worker/client.ts`, `velocityGrid.ts`, tests |
+| 4 | `postSortRows` callback (main-side re-order hook after worker sort) | `types.ts`, `velocityGrid.ts`, `worker/worker.ts`, `worker/client.ts`, `worker/protocol.ts`, tests |
 | 5 | `accentedSort` + `unSortIcon` + Cycle 8 exit ritual | `types.ts`, `worker/dataPipeline.ts`, `renderer/cellRenderers/registry.ts`, `theming/tokens.css`, FM flips, worklog Shipped + status |
 
 ---
@@ -100,18 +100,18 @@ precedence at a glance.
 **Read first:**
 - `docs/catalog/07-sorting.md` — `multiSortKey` (defaults to `Shift`,
   configurable to `Ctrl` / `Alt`)
-- `cgrid/src/cgrid.ts:1052` — current `cycleSort` (always-replace)
+- `cgrid/src/velocityGrid.ts:1052` — current `cycleSort` (always-replace)
 - `cgrid/src/interaction/features/headerClick.ts` — entry point;
   receives the raw `MouseEvent`
 - `cgrid/src/renderer/cellRenderers/registry.ts` — `headerCell` painter
   (draws the chevron via `drawIcon`)
 
 **Files:**
-- Modify: `cgrid/src/cgrid.ts` — extend `cycleSort(colId, opts)` with
+- Modify: `cgrid/src/velocityGrid.ts` — extend `cycleSort(colId, opts)` with
   `{ append?: boolean }`; implement multi-sort semantics. Add
-  `multiSortKey?: 'Shift' | 'Ctrl' | 'Alt'` to `CGridOptions`.
+  `multiSortKey?: 'Shift' | 'Ctrl' | 'Alt'` to `VelocityGridOptions`.
 - Modify: `cgrid/src/types.ts` — add `multiSortKey` option, widen
-  `CGridApi.cycleSort` signature (kept private).
+  `VelocityGridApi.cycleSort` signature (kept private).
 - Modify: `cgrid/src/interaction/feature.ts` + `headerClick.ts` —
   thread `event.shiftKey` (resolved via `multiSortKey`) into the
   `cycleSort` call.
@@ -132,8 +132,8 @@ precedence at a glance.
 **Interfaces produced:**
 
 ```ts
-// CGridOptions
-export interface CGridOptions<TRow = any> {
+// VelocityGridOptions
+export interface VelocityGridOptions<TRow = any> {
   // … existing …
   /** Modifier key that turns a header click into a multi-column sort
    *  append. Defaults to `'Shift'`. Set to `null` to disable
@@ -158,7 +158,7 @@ export interface CellPaintConfig {
 **Steps:**
 
 - [ ] **Step 1:** Write failing `cycleSort.test.ts` — direct unit tests
-      against `CGrid.cycleSort` via a wired worker. Assertions:
+      against `VelocityGrid.cycleSort` via a wired worker. Assertions:
       - Plain click on unsorted column → `[{colId:'a', direction:'asc'}]`
       - Plain click on asc column → `[{colId:'a', direction:'desc'}]`
       - Plain click on desc column → `[]`
@@ -167,8 +167,8 @@ export interface CellPaintConfig {
       - Shift-click on already-sorted column cycles its direction
         in place (doesn't reorder).
       - Shift-click on desc column removes it from the model.
-- [ ] **Step 2:** Implement `cycleSort(colId, { append? })` in cgrid.ts.
-- [ ] **Step 3:** Add `multiSortKey` to CGridOptions; resolve in
+- [ ] **Step 2:** Implement `cycleSort(colId, { append? })` in velocityGrid.ts.
+- [ ] **Step 3:** Add `multiSortKey` to VelocityGridOptions; resolve in
       `headerClick.ts` via `event.shiftKey` / `event.ctrlKey` /
       `event.altKey`. Default `'Shift'`.
 - [ ] **Step 4:** Header badge — extend `CellPaintConfig` +
@@ -233,10 +233,10 @@ between asc and desc forever).
 
 **Files:**
 - Modify: `cgrid/src/types.ts` — `CColDef.initialSort`,
-  `CColDef.initialSortIndex`, `CGridOptions.sortingOrder`.
+  `CColDef.initialSortIndex`, `VelocityGridOptions.sortingOrder`.
 - Modify: `cgrid/src/core/propertyChain.ts` — thread `initialSort` +
   `initialSortIndex` from the col def.
-- Modify: `cgrid/src/cgrid.ts` — at construction time, build the
+- Modify: `cgrid/src/velocityGrid.ts` — at construction time, build the
   initial `sortModel` from any column with `initialSort` set,
   ordered by `initialSortIndex` (rows without index sort to the
   end). Read `sortingOrder` in `cycleSort` to compute the next
@@ -261,8 +261,8 @@ export interface CColDef<TRow = any, TValue = any> {
   initialSortIndex?: number;
 }
 
-// CGridOptions
-export interface CGridOptions<TRow = any> {
+// VelocityGridOptions
+export interface VelocityGridOptions<TRow = any> {
   // … existing …
   /** Cycle order for `cycleSort`. Defaults to `['asc', 'desc', null]`.
    *  Setting `['asc', 'desc']` keeps the column always sorted (no
@@ -317,7 +317,7 @@ batch/cycle-8-task-3-<YYYY-MM-DD>. Open PR to main when done.
 ## Task 3 — `comparator` per column via worker-side `ComparatorRegistry`
 
 **Goal:** Apps register custom comparators by name (`'currency'`,
-`'naturalOrder'`, …) via `CGridApi.registerComparator(name, fn)`.
+`'naturalOrder'`, …) via `VelocityGridApi.registerComparator(name, fn)`.
 Column defs reference them via `comparator: 'name'` (string).
 Comparators run on the worker. Inline closures throw a clear error
 directing apps to register a named comparator first (closures don't
@@ -326,7 +326,7 @@ cross `postMessage`).
 **Read first:**
 - `cgrid/src/worker/dataPipeline.ts` — `SortPass.apply` (current
   `compare` helper handles `text` / `number` only)
-- `cgrid/src/cgrid.ts` — `registerCellRenderer` / `registerCellEditor`
+- `cgrid/src/velocityGrid.ts` — `registerCellRenderer` / `registerCellEditor`
   (same pattern)
 
 **Files:**
@@ -341,12 +341,12 @@ cross `postMessage`).
 - Modify: `cgrid/src/worker/worker.ts` — handle the new request.
 - Modify: `cgrid/src/worker/client.ts` — `registerComparator(name,
   fn)` method.
-- Modify: `cgrid/src/cgrid.ts` — surface `registerComparator` on
-  `CGridApi`; convert inline closures on col def to a clear
+- Modify: `cgrid/src/velocityGrid.ts` — surface `registerComparator` on
+  `VelocityGridApi`; convert inline closures on col def to a clear
   Error.
 - Modify: `cgrid/src/types.ts` — `CColDef.comparator` widens to
   `string | ((a, b) => number)`. Add
-  `CGridApi.registerComparator`.
+  `VelocityGridApi.registerComparator`.
 - Create: `cgrid/tests/comparatorRegistry.test.ts`.
 - Update: demo (one column gets a named comparator for visual proof).
 
@@ -363,8 +363,8 @@ export interface CColDef<TRow = any, TValue = any> {
   comparator?: string | ((a: TValue, b: TValue, ar: TRow, br: TRow) => number);
 }
 
-// CGridApi
-export interface CGridApi<TRow = any> {
+// VelocityGridApi
+export interface VelocityGridApi<TRow = any> {
   // … existing …
   /** Register a custom comparator under `name`. Column defs reference
    *  it via `comparator: name`. The function string-serialises +
@@ -445,7 +445,7 @@ array.
   shape for postSortRows.
 
 **Files:**
-- Modify: `cgrid/src/types.ts` — `CGridOptions.postSortRows`.
+- Modify: `cgrid/src/types.ts` — `VelocityGridOptions.postSortRows`.
 - Modify: `cgrid/src/worker/worker.ts` — after `sort.apply`, if
   `state.postSortRowsPresent`, push the sorted rowIds to main via
   a new `postSortRowsRequest`; await `postSortRowsResult` with
@@ -453,7 +453,7 @@ array.
   `externalFilterCandidates`/`externalFilterResult` shape.
 - Modify: `cgrid/src/worker/protocol.ts` + `worker/client.ts` —
   envelopes for the round-trip + `setPostSortRowsPresent`.
-- Modify: `cgrid/src/cgrid.ts` — `onPostSortRowsCandidates` handler
+- Modify: `cgrid/src/velocityGrid.ts` — `onPostSortRowsCandidates` handler
   that runs the app callback against the cached row-data map +
   posts back.
 - Create: `cgrid/tests/postSortRows.test.ts`.
@@ -463,8 +463,8 @@ array.
 **Interfaces produced:**
 
 ```ts
-// CGridOptions
-export interface CGridOptions<TRow = any> {
+// VelocityGridOptions
+export interface VelocityGridOptions<TRow = any> {
   // … existing …
   /** Post-sort re-order hook. Runs after the worker's chained
    *  comparator and before the viewport slice. Receives the sorted
@@ -546,7 +546,7 @@ opening the PR.
   uses `Intl.Collator` when `col.accentedSort === true`.
 - Modify: `cgrid/src/renderer/cellRenderers/registry.ts` —
   `headerCell` paints the faint icon when `unSortIcon && !sortDirection`.
-- Modify: `cgrid/src/theming/tokens.css` — `--cg-unsort-icon-color`.
+- Modify: `cgrid/src/theming/tokens.css` — `--vg-unsort-icon-color`.
 - Update: `docs/catalog/FEATURE_MATRIX.md` — Area 07 flips
   (~25 of 28 rows per master plan).
 - Update: this worklog — append `## Shipped` list + `## Cycle 8 status: COMPLETE`.
@@ -602,7 +602,7 @@ tasks yet; just write the worklog.
 - **Multi-column sort UX (Task 1)** — Shift-click on a header appends
   the column to the sort model instead of replacing it. Plain click
   still replaces. `multiSortKey?: 'Shift' | 'Ctrl' | 'Alt' | null` on
-  `CGridOptions` configures the modifier (`null` disables append
+  `VelocityGridOptions` configures the modifier (`null` disables append
   entirely). Header cells paint a small 1-indexed superscript badge to
   the left of the chevron when `sortTotal > 1` so multi-sort precedence
   is visible at a glance.
@@ -612,7 +612,7 @@ tasks yet; just write the worklog.
   `initialSortIndex` with declaration order as the tiebreaker. Honored
   exactly once — subsequent `applyColumnState` calls read the `sort`
   field instead.
-- **Grid-level `sortingOrder` cycle (Task 2)** — `CGridOptions.sortingOrder:
+- **Grid-level `sortingOrder` cycle (Task 2)** — `VelocityGridOptions.sortingOrder:
   Array<'asc' | 'desc' | null>` reshapes the `cycleSort` cycle. Default
   is `['asc', 'desc', null]`; setting `['asc', 'desc']` keeps the column
   always sorted (no unsorted stage).
@@ -624,7 +624,7 @@ tasks yet; just write the worklog.
   at sort time with a clear error pointing apps at `registerComparator`.
   Demo's `ticker` column wires a `naturalOrder` comparator so `TICK2 <
   TICK10` instead of the lexicographic `TICK10 < TICK2`.
-- **`postSortRows` callback (Task 4)** — `CGridOptions.postSortRows`
+- **`postSortRows` callback (Task 4)** — `VelocityGridOptions.postSortRows`
   runs after the worker's `SortPass` and before `ViewportSlicer`,
   receiving the sorted rowId array + a row-data getter and returning the
   re-ordered array. Reuses Cycle 7 / Task 8's candidate-rowIds round-trip
@@ -643,7 +643,7 @@ tasks yet; just write the worklog.
   can see at a glance that the column accepts clicks. Slotted in the
   same x position the active chevron occupies, so the icon doesn't
   reflow when a sort lands. New theme token
-  `--cg-unsort-icon-color` (light + dark defaults) controls the color.
+  `--vg-unsort-icon-color` (light + dark defaults) controls the color.
 
 ---
 

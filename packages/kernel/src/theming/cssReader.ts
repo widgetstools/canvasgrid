@@ -7,13 +7,13 @@ import type {
  * Workstream A (2026-07-06 CSS styling model) — compact renderer-palette
  * bundle resolved once per theme swap and threaded onto every
  * `CellPaintConfig` (`applyCellProps` sets `target.palette =
- * theme.rendererPalette`). `@cgrid/renderers` painters resolve colors as
+ * theme.rendererPalette`). `@wellsfargo-starui/velocity-grid-renderers` painters resolve colors as
  * `overrides ?? p.palette?.<field> ?? SEMANTIC_COLORS.<field>` — the same
  * shape as the pre-existing per-column `overrides` pattern, just with a
  * theme-driven middle tier — and geometry as `p.palette?.<field> ?? <literal>`.
  *
  * Every field's literal fallback below (used when a theme declares none of
- * the backing tokens) matches `@cgrid/renderers/palette.ts`'s
+ * the backing tokens) matches `@wellsfargo-starui/velocity-grid-renderers/palette.ts`'s
  * `SEMANTIC_COLORS` map and the bars/badges painter constants (`BAR_H`,
  * `CHIP_H`, chip corner radius) exactly, so a theme that doesn't opt into
  * any of these tokens renders byte-identical to before this bundle existed.
@@ -28,43 +28,43 @@ import type {
  * tables below `read()`.
  */
 export interface RendererPalette {
-  /** `--cg-pos-color`. */
+  /** `--vg-pos-color`. */
   positive: string;
-  /** `--cg-neg-color`. */
+  /** `--vg-neg-color`. */
   negative: string;
-  /** `--cg-warning-color`. */
+  /** `--vg-warning-color`. */
   warning: string;
-  /** `--cg-info-color`. */
+  /** `--vg-info-color`. */
   info: string;
-  /** `--cg-muted-color`. */
+  /** `--vg-muted-color`. */
   muted: string;
-  /** `--cg-bar-height` (px). Bars category painters' fixed bar thickness. */
+  /** `--vg-bar-height` (px). Bars category painters' fixed bar thickness. */
   barHeight: number;
-  /** `--cg-chip-height` (px). Badges category painters' pill/chip height. */
+  /** `--vg-chip-height` (px). Badges category painters' pill/chip height. */
   chipHeight: number;
-  /** `--cg-chip-radius` (px). Badges category painters' pill/chip corner radius. */
+  /** `--vg-chip-radius` (px). Badges category painters' pill/chip corner radius. */
   chipRadius: number;
   /**
    * Workstream A, part 2 — StatusPill's 6 order/fill states. Colors resolve
-   * from `--cg-status-<state>-bg` / `-fg` / `-border` (state kebab-cased:
+   * from `--vg-status-<state>-bg` / `-fg` / `-border` (state kebab-cased:
    * `PART_FILL` → `part-fill`). `dashed` is a structural style flag (only
    * `PENDING` is dashed) — it is never sourced from a token, always the
-   * exact `@cgrid/renderers/palette.ts` `STATUS_PILL_MAP` literal.
+   * exact `@wellsfargo-starui/velocity-grid-renderers/palette.ts` `STATUS_PILL_MAP` literal.
    */
   status: Record<StatusPillState, StatusPillPaletteEntry>;
   /**
    * Workstream A, part 2 — RatingBadge's 24-grade S&P-style ladder
    * (AAA green → D red, NR/WD muted). Resolves from
-   * `--cg-rating-<grade>-color` (grade lowercased; `+`/`-` suffixes
+   * `--vg-rating-<grade>-color` (grade lowercased; `+`/`-` suffixes
    * transliterate to `-plus`/`-minus` so every name is a valid CSS custom
    * property, e.g. `AA+` → `aa-plus`, `BBB-` → `bbb-minus`, `AAA` → `aaa`).
    */
   rating: Record<RatingGrade, string>;
   /**
    * Workstream A, part 2 — VenueChip/NBBOCell's default MIC → color map.
-   * Resolves from `--cg-venue-<mic>-color` (mic lowercased, e.g. `XNAS` →
+   * Resolves from `--vg-venue-<mic>-color` (mic lowercased, e.g. `XNAS` →
    * `xnas`). Open-ended key set (unlike `status`/`rating`) — mirrors
-   * `@cgrid/renderers/palette.ts`'s `DEFAULT_VENUE_PALETTE`'s
+   * `@wellsfargo-starui/velocity-grid-renderers/palette.ts`'s `DEFAULT_VENUE_PALETTE`'s
    * `Record<string, string>` shape; only the 4 shipped MICs are resolved
    * here (apps that want more venues declare their own `venueColors`
    * param override, which still wins over this palette tier).
@@ -73,12 +73,12 @@ export interface RendererPalette {
 }
 
 /** StatusPill's 6 canonical order/fill states — mirrors
- *  `@cgrid/renderers/palette.ts`'s `STATUS_PILL_MAP` key set exactly. */
+ *  `@wellsfargo-starui/velocity-grid-renderers/palette.ts`'s `STATUS_PILL_MAP` key set exactly. */
 export type StatusPillState = 'WORKING' | 'PART_FILL' | 'FILLED' | 'CANCELLED' | 'REJECTED' | 'PENDING';
 
 /** A single resolved StatusPill visual. Structurally identical to
- *  `@cgrid/renderers/palette.ts`'s `StatusPillStyle` (duplicated here, not
- *  imported, so `@cgrid/kernel` never depends on `@cgrid/renderers`). */
+ *  `@wellsfargo-starui/velocity-grid-renderers/palette.ts`'s `StatusPillStyle` (duplicated here, not
+ *  imported, so `@wellsfargo-starui/velocity-grid` never depends on `@wellsfargo-starui/velocity-grid-renderers`). */
 export interface StatusPillPaletteEntry {
   bg: string;
   fg: string;
@@ -87,7 +87,7 @@ export interface StatusPillPaletteEntry {
 }
 
 /** RatingBadge's 24-grade S&P-style ladder — mirrors
- *  `@cgrid/renderers/palette.ts`'s `RATING_SCALE_BANDS` key set exactly. */
+ *  `@wellsfargo-starui/velocity-grid-renderers/palette.ts`'s `RATING_SCALE_BANDS` key set exactly. */
 export type RatingGrade =
   | 'AAA' | 'AA+' | 'AA' | 'AA-' | 'A+' | 'A' | 'A-'
   | 'BBB+' | 'BBB' | 'BBB-' | 'BB+' | 'BB' | 'BB-'
@@ -97,11 +97,11 @@ export type RatingGrade =
 export interface ResolvedTheme {
   /** Chrome font (canvas-painted headers, group cells, totals labels,
    *  side panel / strip / menu chrome via CSS). Resolved from
-   *  `--cg-font-family` + `--cg-font-size`. */
+   *  `--vg-font-family` + `--vg-font-size`. */
   font: string;
   /** Cell font (data cells in the body). Resolved from
-   *  `--cg-cell-font-family` + `--cg-font-size`. Defaults to the
-   *  chrome font when `--cg-cell-font-family` isn't declared so
+   *  `--vg-cell-font-family` + `--vg-font-size`. Defaults to the
+   *  chrome font when `--vg-cell-font-family` isn't declared so
    *  themes that haven't migrated keep their current look. */
   cellFont: string;
   fg: string;
@@ -119,80 +119,80 @@ export interface ResolvedTheme {
   flashToColor: string;
   /** Cycle 7 / Task 7 — background fill applied behind any cell whose
    *  value contains an active quick-filter term. Resolved from
-   *  `--cg-quick-filter-match-bg`. */
+   *  `--vg-quick-filter-match-bg`. */
   quickFilterMatchBg: string;
   /** Cycle 8 / Task 5 — color for the faint chevron pair that the
    *  header painter draws on sortable columns whose `unSortIcon` is set
    *  but which aren't currently sorted. Resolved from
-   *  `--cg-unsort-icon-color`. Falls back to a 40%-alpha headerFg when
+   *  `--vg-unsort-icon-color`. Falls back to a 40%-alpha headerFg when
    *  the variable isn't declared. */
   unsortIconColor: string;
   /** Cycle 9 / Task 3 — translucent wash painted behind each active
-   *  cell-range selection. Resolved from `--cg-range-fill-color`. */
+   *  cell-range selection. Resolved from `--vg-range-fill-color`. */
   rangeFillColor: string;
   /** Cycle 9 / Task 3 — opaque border drawn around each active
-   *  cell-range selection rect. Resolved from `--cg-range-border-color`. */
+   *  cell-range selection rect. Resolved from `--vg-range-border-color`. */
   rangeBorderColor: string;
   /** Cycle 14 / Task 1 — totals (grand-total) row background. The 3%
    *  slate tint over body bg that gives the row its "lift". Painted by
    *  the row-bg pass for any `isTotals` row. Resolved from
-   *  `--cg-totals-bg`. Design plan: cycle-14-aggregation-design.md. */
+   *  `--vg-totals-bg`. Design plan: cycle-14-aggregation-design.md. */
   totalsBg: string;
   /** Cycle 14 / Task 1 — totals row foreground. One stop darker than
    *  body fg (light) / one stop brighter (dark) so the +1 weight stop
-   *  carries the lift. Resolved from `--cg-totals-fg`. */
+   *  carries the lift. Resolved from `--vg-totals-fg`. */
   totalsFg: string;
   /** Cycle 14 / Task 1 — totals row top border colour. A hairline
    *  weighted between `gridLineColor` and `borderColor` so it reads as
    *  the row's only visual lift. Painted as a 1px `fillRect` at
    *  `Math.round(row.top) - 1` by `gridLinesPainter`. Resolved from
-   *  `--cg-totals-border-top`. */
+   *  `--vg-totals-border-top`. */
   totalsBorderTop: string;
   /** Cycle 14 / Task 1 — muted foreground used by the Task 5 polished
    *  `'totals'` renderer for the empty-cell em-dash and the label
-   *  column (when present). Resolved from `--cg-totals-fg-muted`. */
+   *  column (when present). Resolved from `--vg-totals-fg-muted`. */
   totalsFgMuted: string;
   /** Cycle 14 / Task 1 — font-weight for totals cells. Body is `400`;
    *  totals is `500` (+1 stop only — the row's lift comes from the
    *  rule above + tint, NOT from typography inflation). Substituted
    *  into the cell's `font` string when the row is `isTotals`.
-   *  Resolved from `--cg-totals-font-weight`. */
+   *  Resolved from `--vg-totals-font-weight`. */
   totalsFontWeight: number;
   /** Cycle 14 / Task 2 — pinned-row background. Warm 3-5% tint over
    *  body bg that gives static pinned rows their "anchored" reading
    *  (vs the cool slate `totalsBg` which reads "computed"). Painted by
    *  the row-bg pass for any `isPinned` row. Resolved from
-   *  `--cg-pinned-row-bg`. Design plan:
+   *  `--vg-pinned-row-bg`. Design plan:
    *  `docs/superpowers/plans/notes/cycle-14-aggregation-design.md`
    *  § Task 2. */
   pinnedRowBg: string;
   /** Cycle 14 / Task 2 — pinned-row foreground. Inherits body fg (no
    *  +1 stop) — the +1 weight is reserved for synthesis (totals).
-   *  Resolved from `--cg-pinned-row-fg`. */
+   *  Resolved from `--vg-pinned-row-fg`. */
   pinnedRowFg: string;
   /** Cycle 14 / Task 2 — pinned-row structural border at the body-side
-   *  edge of the pinned stack. CSS-aliased to `--cg-totals-border-top`
+   *  edge of the pinned stack. CSS-aliased to `--vg-totals-border-top`
    *  so the boundary between "scrolling body" and "everything else" is
    *  a SINGLE color source — pinned and totals share the same body-edge
-   *  hairline. Resolved from `--cg-pinned-row-border`. */
+   *  hairline. Resolved from `--vg-pinned-row-border`. */
   pinnedRowBorder: string;
   /** Cycle 15 / Task 4 — chevron color for the auto-group column's
-   *  group rows. Aliased to `--cg-totals-fg-muted` in the shipped
+   *  group rows. Aliased to `--vg-totals-fg-muted` in the shipped
    *  themes — the muted slate the totals renderer uses for empty
    *  placeholders. The painter additionally honours the column's
    *  resolved `fg` if this token isn't declared (defensive). Resolved
-   *  from `--cg-group-chevron-color`. Design plan:
+   *  from `--vg-group-chevron-color`. Design plan:
    *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md`
    *  § Task 4. */
   groupChevronColor: string;
   /** Cycle 15 / Task 4 — `(count)` suffix color for the auto-group
    *  column's group rows. Same muted slate family as `groupChevronColor`
    *  by default; the count is metadata, visually subordinate to the
-   *  value. Resolved from `--cg-group-count-color`. */
+   *  value. Resolved from `--vg-group-count-color`. */
   groupCountColor: string;
   /** Cycle 15 / Task 4 — indent unit in CSS px. One chevron-width per
    *  depth level so the chevron "stacks" cleanly under nested groups.
-   *  Resolved from `--cg-group-indent`. Defaults to `14` (the design
+   *  Resolved from `--vg-group-indent`. Defaults to `14` (the design
    *  plan's canonical chevron width) when the variable isn't declared. */
   groupIndent: number;
   /** Cycle 15 / Task 4 — row-bg shift applied to group rows ONLY in
@@ -200,14 +200,14 @@ export interface ResolvedTheme {
    *  cast — far lighter than the totals "hairline lift" (which is
    *  reserved for synthesis rows in Task 12) so the strip reads as a
    *  navigational marker, not as a computed summary. Resolved from
-   *  `--cg-group-row-bg`. Falls back to `--cg-row-alt-bg` when the
+   *  `--vg-group-row-bg`. Falls back to `--vg-row-alt-bg` when the
    *  variable isn't declared (defensive — the strip still needs SOME
    *  contrast against data rows). Design plan:
    *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md`
    *  § Task 5. */
   groupRowBg: string;
   /** Cycle 15 / Task 8 — tri-state checkbox tokens for the auto-group
-   *  column's group rows. All four default to `var(--cg-fg-color)` so
+   *  column's group rows. All four default to `var(--vg-fg-color)` so
    *  the box reads exactly like the existing `checkboxCell` painter
    *  (one checkbox vocabulary across the grid). Design plan:
    *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md`
@@ -218,22 +218,22 @@ export interface ResolvedTheme {
   /** `'transparent'` (default) renders the outlined-only box; any
    *  other valid CSS color fills the box before the border + interior
    *  glyph paint. Apps that want a filled brand-accent checkbox
-   *  override `--cg-group-checkbox-fill` + `--cg-group-checkbox-check-color`
+   *  override `--vg-group-checkbox-fill` + `--vg-group-checkbox-check-color`
    *  together. */
   groupCheckboxFill: string;
   /** Cycle 15 / Task 12 — per-group footer row background. Inherits the
-   *  totals tint (`--cg-totals-bg`) by default so a grouped grid reads
+   *  totals tint (`--vg-totals-bg`) by default so a grouped grid reads
    *  with one synthesis vocabulary across per-group footers and the
    *  grand-total row. Apps that want to dial the footer down to a
-   *  lighter tint override `--cg-group-footer-bg` independently of
-   *  `--cg-totals-bg`. Resolved from `--cg-group-footer-bg`. */
+   *  lighter tint override `--vg-group-footer-bg` independently of
+   *  `--vg-totals-bg`. Resolved from `--vg-group-footer-bg`. */
   groupFooterBg: string;
   /** Cycle 15 / Task 12 — per-group footer row foreground. Defaults to
-   *  `--cg-totals-fg`. Used by `applyCellProps` when `isGroupFooter ===
+   *  `--vg-totals-fg`. Used by `applyCellProps` when `isGroupFooter ===
    *  true`. */
   groupFooterFg: string;
   /** Cycle 15 / Task 12 — per-group footer row top hairline rule color.
-   *  Defaults to `--cg-totals-border-top`. Painted by `gridLinesPainter`
+   *  Defaults to `--vg-totals-border-top`. Painted by `gridLinesPainter`
    *  above any row whose `chunk.rowKinds[i] === 3`. */
   groupFooterBorderTop: string;
   /** Cycle 15 / Task 12 — per-group footer row font weight. Defaults
@@ -266,7 +266,7 @@ export interface ResolvedTheme {
    *  renderer + group tri-state checkbox when the box is checked.
    *  Default `'transparent'` preserves the existing outlined-only
    *  look; apps that want a filled brand-accent checkbox set both
-   *  `--cg-checkbox-checked-bg` AND `--cg-checkbox-checked-fg` so
+   *  `--vg-checkbox-checked-bg` AND `--vg-checkbox-checked-fg` so
    *  the interior glyph stays legible against the fill. */
   checkboxCheckedBg: string;
   checkboxCheckedFg: string;
@@ -291,21 +291,21 @@ export interface ResolvedTheme {
   rendererPalette: RendererPalette;
   /**
    * Map of class-name → ColCellOverrides patch. Populated from CSS custom
-   * properties matching `--cg-cell-class-<name>-(bg|fg|font|halign)`.
+   * properties matching `--vg-cell-class-<name>-(bg|fg|font|halign)`.
    * Cycle 6 / Task 7.
    */
   cellClassVariants: Map<string, ColCellOverrides>;
   /**
-   * Same as `cellClassVariants` but for `--cg-header-class-<name>-*` variables.
+   * Same as `cellClassVariants` but for `--vg-header-class-<name>-*` variables.
    * Cycle 6 / Task 7.
    */
   headerClassVariants: Map<string, ColCellOverrides>;
   /**
-   * Workstream C (2026-07-06 CSS styling model) — resolves a `var(--cg-…)`
-   * / `var(--cg-…, fallback)` / bare `--cg-…` reference embedded in a typed
+   * Workstream C (2026-07-06 CSS styling model) — resolves a `var(--vg-…)`
+   * / `var(--vg-…, fallback)` / bare `--vg-…` reference embedded in a typed
    * `cellStyle` / `headerStyle` object VALUE through this theme's resolved
    * custom properties, so a consumer can write
-   * `cellStyle: { fg: 'var(--cg-pos-color)' }` and get the theme's token
+   * `cellStyle: { fg: 'var(--vg-pos-color)' }` and get the theme's token
    * value. Any string that doesn't match the token-reference shape
    * (literal colors, plain keywords) is returned unchanged.
    *
@@ -332,10 +332,10 @@ export interface ResolvedTheme {
 // cellStyle/headerStyle values.
 // ─────────────────────────────────────────────────────────────────────────
 
-const CG_VAR_REF_RE = /^var\(\s*(--cg-[a-zA-Z0-9-]+)\s*(?:,\s*([\s\S]*))?\)$/;
-const CG_BARE_TOKEN_RE = /^--cg-[a-zA-Z0-9-]+$/;
+const CG_VAR_REF_RE = /^var\(\s*(--vg-[a-zA-Z0-9-]+)\s*(?:,\s*([\s\S]*))?\)$/;
+const CG_BARE_TOKEN_RE = /^--vg-[a-zA-Z0-9-]+$/;
 
-/** Parse a `var(--cg-x)` / `var(--cg-x, fallback)` / bare `--cg-x` token
+/** Parse a `var(--vg-x)` / `var(--vg-x, fallback)` / bare `--vg-x` token
  *  reference out of a `cellStyle`/`headerStyle` string value. Returns
  *  `null` for anything else (literal colors, plain keywords) — the
  *  resolver then passes the value through unchanged. Pure + exported for
@@ -355,7 +355,7 @@ export function parseCgVarRef(value: string): { name: string; fallback?: string 
 // ─────────────────────────────────────────────────────────────────────────
 // Workstream B (2026-07-06 CSS styling model) — full-vocabulary parser.
 //
-// `--cg-cell-class-<name>-<suffix>` / `--cg-header-class-<name>-<suffix>`
+// `--vg-cell-class-<name>-<suffix>` / `--vg-header-class-<name>-<suffix>`
 // variables are collected into a raw `name -> { suffix: rawValue }` slot
 // table during the single stylesheet walk (below), then each name's slots
 // are assembled into a full `ColCellOverrides` object by
@@ -415,10 +415,10 @@ const KNOWN_SUFFIXES: readonly string[] = [
   ...CONTENT_SUFFIXES, ...DECORATOR_SUFFIXES,
 ].sort((a, b) => b.length - a.length);
 
-const CELL_PREFIX = '--cg-cell-class-';
-const HEADER_PREFIX = '--cg-header-class-';
+const CELL_PREFIX = '--vg-cell-class-';
+const HEADER_PREFIX = '--vg-header-class-';
 
-/** Split a `--cg-{cell,header}-class-<name>-<suffix>` property name into its
+/** Split a `--vg-{cell,header}-class-<name>-<suffix>` property name into its
  *  variant kind, class name, and matched suffix. Returns `null` for
  *  properties outside the two prefixes, or whose tail doesn't end in any
  *  known suffix (forward-compatible: unknown suffixes are ignored). */
@@ -731,7 +731,7 @@ function buildOverridesFromSlots(slots: RawSlots): ColCellOverrides {
 
 /**
  * Scan `document.styleSheets` for CSS custom properties matching
- * `--cg-cell-class-<name>-<suffix>` and `--cg-header-class-<name>-<suffix>`
+ * `--vg-cell-class-<name>-<suffix>` and `--vg-header-class-<name>-<suffix>`
  * across the full `ColCellOverrides` vocabulary (colors, alignment, font
  * breakouts, text-*, padding, borders, content, decorators).
  *
@@ -787,10 +787,10 @@ function scanVariantVariables(): {
 // ─────────────────────────────────────────────────────────────────────────
 // Workstream A, part 2 (2026-07-06 CSS styling model) — status-pill /
 // rating-scale / venue resolution tables. Each literal fallback below is
-// byte-identical to its `@cgrid/renderers/palette.ts` counterpart
+// byte-identical to its `@wellsfargo-starui/velocity-grid-renderers/palette.ts` counterpart
 // (`STATUS_PILL_MAP`, `RATING_SCALE_BANDS`, `DEFAULT_VENUE_PALETTE`), kept
-// as a local duplicate (not imported) so `@cgrid/kernel` never depends on
-// `@cgrid/renderers`.
+// as a local duplicate (not imported) so `@wellsfargo-starui/velocity-grid` never depends on
+// `@wellsfargo-starui/velocity-grid-renderers`.
 // ─────────────────────────────────────────────────────────────────────────
 
 const STATUS_STATES: readonly StatusPillState[] = [
@@ -798,7 +798,7 @@ const STATUS_STATES: readonly StatusPillState[] = [
 ];
 
 /** `<state>` → CSS-token slug: underscores become hyphens, lowercased
- *  (`PART_FILL` → `part-fill`), per `--cg-status-<state>-bg/-fg/-border`. */
+ *  (`PART_FILL` → `part-fill`), per `--vg-status-<state>-bg/-fg/-border`. */
 function statusSlug(state: StatusPillState): string {
   return state.toLowerCase().replace(/_/g, '-');
 }
@@ -822,7 +822,7 @@ const RATING_GRADES: readonly RatingGrade[] = [
 /** `<grade>` → CSS-token slug: lowercased, trailing `+`/`-` transliterated
  *  to `-plus`/`-minus` (a bare `+` isn't a valid CSS ident code point;
  *  `-minus` keeps the naming symmetric even though a trailing `-` is
- *  itself already ident-valid), per `--cg-rating-<grade>-color`. */
+ *  itself already ident-valid), per `--vg-rating-<grade>-color`. */
 function ratingSlug(grade: RatingGrade): string {
   return grade.toLowerCase().replace(/\+$/, '-plus').replace(/-$/, '-minus');
 }
@@ -844,7 +844,7 @@ const VENUE_DEFAULTS: Readonly<Record<string, string>> = {
   XNAS: '#3b82f6', ARCX: '#8b5cf6', BATS: '#14b8a6', EDGX: '#f0b429',
 };
 
-/** Resolve the 6-state StatusPill map from `--cg-status-<state>-bg/-fg/
+/** Resolve the 6-state StatusPill map from `--vg-status-<state>-bg/-fg/
  *  -border`, falling back per-field to the byte-identical literal. `get`
  *  is the same `getComputedStyle`-backed reader `read()` builds per call —
  *  passed in so this stays a pure, directly testable helper. */
@@ -854,10 +854,10 @@ function resolveStatusPalette(get: (name: string) => string): Record<StatusPillS
     const slug = statusSlug(state);
     const def = STATUS_DEFAULTS[state];
     const entry: StatusPillPaletteEntry = {
-      bg: get(`--cg-status-${slug}-bg`) || def.bg,
-      fg: get(`--cg-status-${slug}-fg`) || def.fg,
+      bg: get(`--vg-status-${slug}-bg`) || def.bg,
+      fg: get(`--vg-status-${slug}-fg`) || def.fg,
     };
-    const border = get(`--cg-status-${slug}-border`) || def.border;
+    const border = get(`--vg-status-${slug}-border`) || def.border;
     if (border !== undefined) entry.border = border;
     // Structural, never token-sourced — see the `RendererPalette.status` doc.
     if (def.dashed !== undefined) entry.dashed = def.dashed;
@@ -866,21 +866,21 @@ function resolveStatusPalette(get: (name: string) => string): Record<StatusPillS
   return result;
 }
 
-/** Resolve the 24-grade RatingBadge ladder from `--cg-rating-<grade>-color`. */
+/** Resolve the 24-grade RatingBadge ladder from `--vg-rating-<grade>-color`. */
 function resolveRatingPalette(get: (name: string) => string): Record<RatingGrade, string> {
   const result = {} as Record<RatingGrade, string>;
   for (const grade of RATING_GRADES) {
-    result[grade] = get(`--cg-rating-${ratingSlug(grade)}-color`) || RATING_DEFAULTS[grade];
+    result[grade] = get(`--vg-rating-${ratingSlug(grade)}-color`) || RATING_DEFAULTS[grade];
   }
   return result;
 }
 
 /** Resolve the default VenueChip/NBBOCell MIC palette from
- *  `--cg-venue-<mic>-color` (mic lowercased). */
+ *  `--vg-venue-<mic>-color` (mic lowercased). */
 function resolveVenuePalette(get: (name: string) => string): Record<string, string> {
   const result: Record<string, string> = {};
   for (const mic of VENUE_MICS) {
-    result[mic] = get(`--cg-venue-${mic.toLowerCase()}-color`) || VENUE_DEFAULTS[mic]!;
+    result[mic] = get(`--vg-venue-${mic.toLowerCase()}-color`) || VENUE_DEFAULTS[mic]!;
   }
   return result;
 }
@@ -896,12 +896,12 @@ export class CssReader {
       return Number.isFinite(v) ? v : fallback;
     };
 
-    const fontSize = get('--cg-font-size') || '13px';
-    const fontFamily = get('--cg-font-family') || 'system-ui';
-    // Fall back to the chrome font when --cg-cell-font-family is
+    const fontSize = get('--vg-font-size') || '13px';
+    const fontFamily = get('--vg-font-family') || 'system-ui';
+    // Fall back to the chrome font when --vg-cell-font-family is
     // absent so legacy themes that haven't migrated still paint cells
     // with the same family they always did.
-    const cellFontFamily = get('--cg-cell-font-family') || fontFamily;
+    const cellFontFamily = get('--vg-cell-font-family') || fontFamily;
 
     const { cellClassVariants, headerClassVariants } = scanVariantVariables();
 
@@ -909,7 +909,7 @@ export class CssReader {
     // values. `varMemo` is local to this `read()` call, so every theme
     // swap (new `read()`) starts with a fresh, empty memo — no explicit
     // "clear" step needed. Within one theme's lifetime, `getPropertyValue`
-    // is called at most once per unique `--cg-*` token name, regardless of
+    // is called at most once per unique `--vg-*` token name, regardless of
     // how many cellStyle patches reference it across the paint pass.
     const varMemo = new Map<string, string>();
     const resolveVarRef = (value: string): string => {
@@ -927,88 +927,88 @@ export class CssReader {
     return {
       font: `${fontSize} ${fontFamily}`,
       cellFont: `${fontSize} ${cellFontFamily}`,
-      fg: get('--cg-fg-color') || '#1a1f24',
-      bg: get('--cg-bg-color') || '#ffffff',
-      headerBg: get('--cg-header-bg') || '#e8ecef',
-      headerFg: get('--cg-header-fg') || '#1a1f24',
-      borderColor: get('--cg-border-color') || '#d5dbe0',
-      gridLineColor: get('--cg-grid-line-color') || '#e8ecef',
-      rowAltBg: get('--cg-row-alt-bg') || '#f4f6f8',
-      rowHoverBg: get('--cg-row-hover-bg') || '#eef1f3',
-      rowSelectedBg: get('--cg-row-selected-bg') || 'rgba(13,148,136,0.12)',
-      focusRingColor: get('--cg-focus-ring-color') || '#0d9488',
-      focusRingWidth: px('--cg-focus-ring-width', 2),
-      flashFromColor: get('--cg-flash-from-color') || '#fef3c7',
-      flashToColor: get('--cg-flash-to-color') || 'rgba(254,243,199,0)',
-      quickFilterMatchBg: get('--cg-quick-filter-match-bg') || '#fff3b8',
-      unsortIconColor: get('--cg-unsort-icon-color') || 'rgba(0, 0, 0, 0.4)',
-      rangeFillColor: get('--cg-range-fill-color') || 'rgba(59, 130, 246, 0.22)',
-      rangeBorderColor: get('--cg-range-border-color') || '#3b82f6',
-      totalsBg: get('--cg-totals-bg') || '#f7f9fb',
-      totalsFg: get('--cg-totals-fg') || '#0f172a',
-      totalsBorderTop: get('--cg-totals-border-top') || '#cbd5e1',
-      totalsFgMuted: get('--cg-totals-fg-muted') || '#475569',
-      totalsFontWeight: px('--cg-totals-font-weight', 500),
-      pinnedRowBg: get('--cg-pinned-row-bg') || '#fbf8f3',
-      pinnedRowFg: get('--cg-pinned-row-fg') || get('--cg-fg-color') || '#1a1f24',
-      pinnedRowBorder: get('--cg-pinned-row-border') || get('--cg-totals-border-top') || '#cbd5e1',
-      groupChevronColor: get('--cg-group-chevron-color') || get('--cg-totals-fg-muted') || '#475569',
-      groupCountColor: get('--cg-group-count-color') || get('--cg-totals-fg-muted') || '#475569',
-      groupIndent: px('--cg-group-indent', 14),
-      groupRowBg: get('--cg-group-row-bg') || get('--cg-row-alt-bg') || '#f1f5f9',
-      groupCheckboxBorderColor: get('--cg-group-checkbox-border-color') || get('--cg-fg-color') || '#1a1f24',
-      groupCheckboxCheckColor: get('--cg-group-checkbox-check-color') || get('--cg-fg-color') || '#1a1f24',
+      fg: get('--vg-fg-color') || '#1a1f24',
+      bg: get('--vg-bg-color') || '#ffffff',
+      headerBg: get('--vg-header-bg') || '#e8ecef',
+      headerFg: get('--vg-header-fg') || '#1a1f24',
+      borderColor: get('--vg-border-color') || '#d5dbe0',
+      gridLineColor: get('--vg-grid-line-color') || '#e8ecef',
+      rowAltBg: get('--vg-row-alt-bg') || '#f4f6f8',
+      rowHoverBg: get('--vg-row-hover-bg') || '#eef1f3',
+      rowSelectedBg: get('--vg-row-selected-bg') || 'rgba(13,148,136,0.12)',
+      focusRingColor: get('--vg-focus-ring-color') || '#0d9488',
+      focusRingWidth: px('--vg-focus-ring-width', 2),
+      flashFromColor: get('--vg-flash-from-color') || '#fef3c7',
+      flashToColor: get('--vg-flash-to-color') || 'rgba(254,243,199,0)',
+      quickFilterMatchBg: get('--vg-quick-filter-match-bg') || '#fff3b8',
+      unsortIconColor: get('--vg-unsort-icon-color') || 'rgba(0, 0, 0, 0.4)',
+      rangeFillColor: get('--vg-range-fill-color') || 'rgba(59, 130, 246, 0.22)',
+      rangeBorderColor: get('--vg-range-border-color') || '#3b82f6',
+      totalsBg: get('--vg-totals-bg') || '#f7f9fb',
+      totalsFg: get('--vg-totals-fg') || '#0f172a',
+      totalsBorderTop: get('--vg-totals-border-top') || '#cbd5e1',
+      totalsFgMuted: get('--vg-totals-fg-muted') || '#475569',
+      totalsFontWeight: px('--vg-totals-font-weight', 500),
+      pinnedRowBg: get('--vg-pinned-row-bg') || '#fbf8f3',
+      pinnedRowFg: get('--vg-pinned-row-fg') || get('--vg-fg-color') || '#1a1f24',
+      pinnedRowBorder: get('--vg-pinned-row-border') || get('--vg-totals-border-top') || '#cbd5e1',
+      groupChevronColor: get('--vg-group-chevron-color') || get('--vg-totals-fg-muted') || '#475569',
+      groupCountColor: get('--vg-group-count-color') || get('--vg-totals-fg-muted') || '#475569',
+      groupIndent: px('--vg-group-indent', 14),
+      groupRowBg: get('--vg-group-row-bg') || get('--vg-row-alt-bg') || '#f1f5f9',
+      groupCheckboxBorderColor: get('--vg-group-checkbox-border-color') || get('--vg-fg-color') || '#1a1f24',
+      groupCheckboxCheckColor: get('--vg-group-checkbox-check-color') || get('--vg-fg-color') || '#1a1f24',
       groupCheckboxIndeterminateColor:
-        get('--cg-group-checkbox-indeterminate-color') || get('--cg-fg-color') || '#1a1f24',
-      groupCheckboxFill: get('--cg-group-checkbox-fill') || 'transparent',
-      groupFooterBg: get('--cg-group-footer-bg') || get('--cg-totals-bg') || '#f7f9fb',
-      groupFooterFg: get('--cg-group-footer-fg') || get('--cg-totals-fg') || '#0f172a',
-      groupFooterBorderTop: get('--cg-group-footer-border-top') || get('--cg-totals-border-top') || '#cbd5e1',
-      groupFooterFontWeight: px('--cg-group-footer-font-weight', px('--cg-totals-font-weight', 500)),
-      rowHeight: px('--cg-row-height', 30),
-      headerHeight: px('--cg-header-height', 32),
-      resizerHotZone: px('--cg-resizer-hot-zone', 4),
-      scrollbarThickness: px('--cg-scrollbar-thickness', 10),
+        get('--vg-group-checkbox-indeterminate-color') || get('--vg-fg-color') || '#1a1f24',
+      groupCheckboxFill: get('--vg-group-checkbox-fill') || 'transparent',
+      groupFooterBg: get('--vg-group-footer-bg') || get('--vg-totals-bg') || '#f7f9fb',
+      groupFooterFg: get('--vg-group-footer-fg') || get('--vg-totals-fg') || '#0f172a',
+      groupFooterBorderTop: get('--vg-group-footer-border-top') || get('--vg-totals-border-top') || '#cbd5e1',
+      groupFooterFontWeight: px('--vg-group-footer-font-weight', px('--vg-totals-font-weight', 500)),
+      rowHeight: px('--vg-row-height', 30),
+      headerHeight: px('--vg-header-height', 32),
+      resizerHotZone: px('--vg-resizer-hot-zone', 4),
+      scrollbarThickness: px('--vg-scrollbar-thickness', 10),
       // Cycle 22 / Task 1 — input chrome. Defaults alias body bg/fg
       // and the focus ring color so an undeclared theme still reads.
-      inputBg: get('--cg-input-bg') || get('--cg-bg-color') || '#ffffff',
-      inputFg: get('--cg-input-fg') || get('--cg-fg-color') || '#1a1f24',
-      inputBorder: get('--cg-input-border') || get('--cg-border-color') || '#d5dbe0',
-      inputFocusBorder: get('--cg-input-focus-border') || get('--cg-focus-ring-color') || '#3b82f6',
-      inputDisabledBg: get('--cg-input-disabled-bg') || get('--cg-row-alt-bg') || '#f3f4f6',
+      inputBg: get('--vg-input-bg') || get('--vg-bg-color') || '#ffffff',
+      inputFg: get('--vg-input-fg') || get('--vg-fg-color') || '#1a1f24',
+      inputBorder: get('--vg-input-border') || get('--vg-border-color') || '#d5dbe0',
+      inputFocusBorder: get('--vg-input-focus-border') || get('--vg-focus-ring-color') || '#3b82f6',
+      inputDisabledBg: get('--vg-input-disabled-bg') || get('--vg-row-alt-bg') || '#f3f4f6',
       // Cycle 22 / Task 1 — tooltip overlay chrome. Slate fallback
       // matches the existing inline default in `sparklineTooltip.ts`.
-      tooltipBg: get('--cg-tooltip-bg') || 'rgba(17,24,39,0.92)',
-      tooltipFg: get('--cg-tooltip-fg') || '#ffffff',
-      tooltipBorder: get('--cg-tooltip-border') || 'transparent',
+      tooltipBg: get('--vg-tooltip-bg') || 'rgba(17,24,39,0.92)',
+      tooltipFg: get('--vg-tooltip-fg') || '#ffffff',
+      tooltipBorder: get('--vg-tooltip-border') || 'transparent',
       // Cycle 22 / Task 1 — filled-checkbox accent. `'transparent'`
       // default keeps the outlined-only look the existing renderer
       // ships with.
-      checkboxCheckedBg: get('--cg-checkbox-checked-bg') || 'transparent',
-      checkboxCheckedFg: get('--cg-checkbox-checked-fg') || get('--cg-fg-color') || '#1a1f24',
+      checkboxCheckedBg: get('--vg-checkbox-checked-bg') || 'transparent',
+      checkboxCheckedFg: get('--vg-checkbox-checked-fg') || get('--vg-fg-color') || '#1a1f24',
       // Cycle 22 / Task 1 — optional inter-column rule. Painter only
       // strokes when the value is a non-transparent color.
-      cellHorizontalBorderColor: get('--cg-cell-horizontal-border-color') || 'transparent',
+      cellHorizontalBorderColor: get('--vg-cell-horizontal-border-color') || 'transparent',
       // Cycle 22 / Task 1 — popup / menu surfaces. Default to body bg
       // + border so the popup looks like "a piece of the grid"
       // floating above when the token isn't declared.
-      popupBg: get('--cg-popup-bg') || get('--cg-bg-color') || '#ffffff',
-      popupBorder: get('--cg-popup-border') || get('--cg-border-color') || '#d5dbe0',
-      menuHoverBg: get('--cg-menu-hover-bg') || get('--cg-row-hover-bg') || '#eef1f3',
+      popupBg: get('--vg-popup-bg') || get('--vg-bg-color') || '#ffffff',
+      popupBorder: get('--vg-popup-border') || get('--vg-border-color') || '#d5dbe0',
+      menuHoverBg: get('--vg-menu-hover-bg') || get('--vg-row-hover-bg') || '#eef1f3',
       // Workstream A (2026-07-06 CSS styling model) — renderer-palette
-      // bundle. Literal fallbacks mirror @cgrid/renderers/palette.ts's
+      // bundle. Literal fallbacks mirror @wellsfargo-starui/velocity-grid-renderers/palette.ts's
       // SEMANTIC_COLORS + the bars/badges painter geometry constants
       // exactly (defensive `get(...) || <literal>` / `px(...)` pattern,
       // same as every other token above).
       rendererPalette: {
-        positive: get('--cg-pos-color') || '#2dd4bf',
-        negative: get('--cg-neg-color') || '#fb7185',
-        warning: get('--cg-warning-color') || '#f0b429',
-        info: get('--cg-info-color') || '#3b82f6',
-        muted: get('--cg-muted-color') || '#8a8f98',
-        barHeight: px('--cg-bar-height', 8),
-        chipHeight: px('--cg-chip-height', 16),
-        chipRadius: px('--cg-chip-radius', 3),
+        positive: get('--vg-pos-color') || '#2dd4bf',
+        negative: get('--vg-neg-color') || '#fb7185',
+        warning: get('--vg-warning-color') || '#f0b429',
+        info: get('--vg-info-color') || '#3b82f6',
+        muted: get('--vg-muted-color') || '#8a8f98',
+        barHeight: px('--vg-bar-height', 8),
+        chipHeight: px('--vg-chip-height', 16),
+        chipRadius: px('--vg-chip-radius', 3),
         // Workstream A, part 2 — status-pill / rating-scale / venue
         // structured maps, same defensive `get(...) || <literal>` pattern.
         status: resolveStatusPalette(get),

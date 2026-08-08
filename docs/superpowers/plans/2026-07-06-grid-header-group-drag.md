@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Reuse the merged `CGridApi.moveColumnGroup(groupId, targetParentGroupId, beforeId?)` (from `d694fbe`) as the ONLY commit path — it already rejects marryChildren re-nest / into-self / into-descendant / no-op moves, preserves runtime column state across the rebuild, and fires `columnDefsChanged`. Do NOT add new mutation logic.
+- Reuse the merged `VelocityGridApi.moveColumnGroup(groupId, targetParentGroupId, beforeId?)` (from `d694fbe`) as the ONLY commit path — it already rejects marryChildren re-nest / into-self / into-descendant / no-op moves, preserves runtime column state across the rebuild, and fires `columnDefsChanged`. Do NOT add new mutation logic.
 - `computeGroupDropTarget` is a PURE function over a plain header-layout description — no DOM, no `Date.now()`/`Math.random()`.
 - Leaf-header drag (`dragKind:'leaf'`) MUST remain byte-for-byte the current behavior — only ADD branches, never alter the leaf path.
 - Group drags do NOT route to the pivot / row-group panels (groups aren't role columns) — skip `dispatchPanelHover` and the panel-commit branches for `dragKind:'group'`.
@@ -22,8 +22,8 @@
 **Key existing symbols (verified):**
 - `hitTester.ts`: hit `{ kind:'headerGroup'; groupId: string; colId: string }` is produced for group-header cells; leaf = `{ kind:'header'; colId }`.
 - `columnDrag.ts` (472 lines): `handleMouseDown` (only `kind==='header'` today, line 160), `handleMouseDrag` (threshold → `DraggingState` w/ `createGhostHeader`/`createInsertionLine`/`createPillGhost`), `handleMouseUp` (`computeDropTargetIndex` → `grid.reorderColumn(colId, target, 'uiColumnDragged')`; pivot/row-group panel commit branches first), `dispatchPanelHover`, `updateHeaderGhostPosition`, `updateInsertionLinePosition`. `DraggingState`/`PressedState` carry `colId`.
-- `feature.ts` `CGridLike` surface (what `ctx.grid` exposes to the feature): `allColIds()`, `columnLeftOf(colId)`, `columnWidthOf(colId)`, `getColDef(colId)`, `getHeaderName(colId)`, `getLeafHeaderHeight()`, `getLeafHeaderTop()`, `getOverlayHost()`, `reorderColumn(...)`. NO group accessors yet.
-- `CGridApi` (on the real `CGrid`): `moveColumnGroup(groupId, targetParentGroupId, beforeId?)`, `getColumnGroupDefs()`.
+- `feature.ts` `VelocityGridLike` surface (what `ctx.grid` exposes to the feature): `allColIds()`, `columnLeftOf(colId)`, `columnWidthOf(colId)`, `getColDef(colId)`, `getHeaderName(colId)`, `getLeafHeaderHeight()`, `getLeafHeaderTop()`, `getOverlayHost()`, `reorderColumn(...)`. NO group accessors yet.
+- `VelocityGridApi` (on the real `VelocityGrid`): `moveColumnGroup(groupId, targetParentGroupId, beforeId?)`, `getColumnGroupDefs()`.
 - `core/columnTree.ts`: `resolveColumnTree(defs)` → `ColumnTree { roots, leafById, groupById }`; `ResolvedColGroupDef { groupId, marryChildren, depth, children, leafColIds }`; `ResolvedColLeaf { colDef, groupPath: string[] }` (`groupPath` = ancestor groupIds root→parent). `ensureGroupIds(defs)`.
 
 ---
@@ -34,8 +34,8 @@
 - Create: `packages/kernel/src/interaction/features/groupDropTarget.ts`
 - Create: `packages/kernel/tests/groupDropTarget.test.ts`
 - Modify: `packages/kernel/src/interaction/features/columnDrag.ts` (state discriminant; `headerGroup` mousedown branch; group ghost; group commit)
-- Modify: `packages/kernel/src/interaction/feature.ts` (`CGridLike`: add group accessors)
-- Modify: `packages/kernel/src/cgrid.ts` (implement the new `CGridLike` accessors)
+- Modify: `packages/kernel/src/interaction/feature.ts` (`VelocityGridLike`: add group accessors)
+- Modify: `packages/kernel/src/velocityGrid.ts` (implement the new `VelocityGridLike` accessors)
 - Create: `packages/kernel/tests/columnGroupHeaderDrag.integration.test.ts`
 
 **Interfaces:**
@@ -52,7 +52,7 @@
     movingDescendantGroupIds: ReadonlySet<string>, pointerX: number,
   ): GroupDropTarget | null;
   ```
-- Produces (`CGridLike` additions, implemented on `CGrid`):
+- Produces (`VelocityGridLike` additions, implemented on `VelocityGrid`):
   ```ts
   getGroupLeafColIds(groupId: string): string[];        // ALL leaves under groupId, render order
   getGroupHeaderName(groupId: string): string | undefined;
@@ -169,14 +169,14 @@ Note the Step-1 test `beforeId: 'A'` for the "front" case: when `right` is `a0` 
 
 - [ ] **Step 4: Run the tests, verify they pass** — Run: `cd packages/kernel && npx vitest run tests/groupDropTarget.test.ts` — Expected: PASS. If a case is off, adjust the gap/beforeId logic (not the test expectations, which encode the spec's resolution rule).
 
-- [ ] **Step 5: Add the `CGridLike` group accessors + implement on `CGrid`**
+- [ ] **Step 5: Add the `VelocityGridLike` group accessors + implement on `VelocityGrid`**
 
-In `feature.ts` add to `CGridLike` (with JSDoc) the five signatures from the Interfaces block. In `cgrid.ts`, implement them where the other `CGridLike` methods are realized (search the object literal / class methods that back `allColIds`/`columnLeftOf`):
+In `feature.ts` add to `VelocityGridLike` (with JSDoc) the five signatures from the Interfaces block. In `velocityGrid.ts`, implement them where the other `VelocityGridLike` methods are realized (search the object literal / class methods that back `allColIds`/`columnLeftOf`):
 - `getGroupLeafColIds(groupId)` → `this.columnTree.groupById.get(groupId)?.leafColIds.slice() ?? []`.
 - `getGroupHeaderName(groupId)` → `this.columnTree.groupById.get(groupId)?.headerName`.
 - `getColGroupPath(colId)` → the resolved leaf's `groupPath` (walk `this.columnTree` roots, or read a `leafById`-adjacent structure; if the tree exposes `ResolvedColLeaf.groupPath` only via `roots`, add a `leafGroupPath` map at tree-build or walk once). Return `[]` for unknown/ungrouped.
 - `getGroupDescendantIds(groupId)` → BFS/DFS over `groupById.get(groupId)` collecting its groupId + every descendant group's id.
-- `moveColumnGroup(groupId, targetParentGroupId, beforeId?)` → delegate to `this.moveColumnGroup` API method (the CGrid class already has it — if the class method and the `CGridLike` member collide by name, the class method already satisfies the interface; just ensure `CGridLike` declares it).
+- `moveColumnGroup(groupId, targetParentGroupId, beforeId?)` → delegate to `this.moveColumnGroup` API method (the VelocityGrid class already has it — if the class method and the `VelocityGridLike` member collide by name, the class method already satisfies the interface; just ensure `VelocityGridLike` declares it).
 
 - [ ] **Step 6: Wire group-drag into `columnDrag.ts` (start + ghost + reorder commit)**
 
@@ -205,7 +205,7 @@ In `feature.ts` add to `CGridLike` (with JSDoc) the five signatures from the Int
 
 - [ ] **Step 7: Write a failing kernel integration test**
 
-Create `packages/kernel/tests/columnGroupHeaderDrag.integration.test.ts` (mount a real `CGrid` with the fake-worker+canvas harness — copy the `beforeAll` block from `tests/rulesApiKernel.integration.test.ts`). Columns: `[ grp('A',[a0,a1]), grp('B',[b0,b1]), c ]`. Drive the feature by dispatching synthetic header pointer events (find how existing header-drag tests simulate mousedown/drag/up — grep `columnDrag`/`reorderColumn` under `packages/kernel/tests` for the harness; reuse it). Assert:
+Create `packages/kernel/tests/columnGroupHeaderDrag.integration.test.ts` (mount a real `VelocityGrid` with the fake-worker+canvas harness — copy the `beforeAll` block from `tests/rulesApiKernel.integration.test.ts`). Columns: `[ grp('A',[a0,a1]), grp('B',[b0,b1]), c ]`. Drive the feature by dispatching synthetic header pointer events (find how existing header-drag tests simulate mousedown/drag/up — grep `columnDrag`/`reorderColumn` under `packages/kernel/tests` for the harness; reuse it). Assert:
 ```ts
 it('dragging group A past group B reorders A after B', async () => {
   const grid = await mount();
@@ -217,13 +217,13 @@ it('dragging group A past group B reorders A after B', async () => {
 });
 it('a marryChildren group re-nest is a no-op', async () => { /* moveColumnGroup rejects → defs unchanged */ });
 ```
-(If a header-drag simulation helper doesn't exist, build a minimal one that calls the feature's `handleMouseDown/Drag/Up` with synthetic `CGridEventCtx`, mirroring an existing `columnDrag` unit/integration test.)
+(If a header-drag simulation helper doesn't exist, build a minimal one that calls the feature's `handleMouseDown/Drag/Up` with synthetic `VelocityGridEventCtx`, mirroring an existing `columnDrag` unit/integration test.)
 
 - [ ] **Step 8: Run the integration test + full suite, verify green** — Run: `cd packages/kernel && npx vitest run tests/columnGroupHeaderDrag.integration.test.ts && npx tsc --noEmit && npm run build && npx vitest run` — Expected: PASS; suite green.
 
 - [ ] **Step 9: Commit**
 ```bash
-git add packages/kernel/src/interaction packages/kernel/src/cgrid.ts packages/kernel/tests/groupDropTarget.test.ts packages/kernel/tests/columnGroupHeaderDrag.integration.test.ts
+git add packages/kernel/src/interaction packages/kernel/src/velocityGrid.ts packages/kernel/tests/groupDropTarget.test.ts packages/kernel/tests/columnGroupHeaderDrag.integration.test.ts
 git commit -m "feat(kernel): drag a column-group header to move/re-nest the group (T1)"
 ```
 

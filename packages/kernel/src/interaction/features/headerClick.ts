@@ -14,7 +14,7 @@
 // click so existing keyboard-paged sort UX keeps working while range
 // users get the column band they expect.
 
-import { Feature, type CGridEventCtx } from '../feature';
+import { Feature, type VelocityGridEventCtx } from '../feature';
 
 function isAppendClick(
   raw: MouseEvent | KeyboardEvent | WheelEvent,
@@ -28,7 +28,7 @@ function isAppendClick(
 }
 
 export class HeaderClick extends Feature {
-  override handleClick(ctx: CGridEventCtx): void {
+  override handleClick(ctx: VelocityGridEventCtx): void {
     if (ctx.hit.kind === 'header') {
       // Row-select header checkbox — when the column declares
       // `headerCheckboxSelection: true`, the entire header rect is

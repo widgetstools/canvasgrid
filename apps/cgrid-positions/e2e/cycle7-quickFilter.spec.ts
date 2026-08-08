@@ -31,7 +31,7 @@ async function gridReady(page: import('@playwright/test').Page): Promise<void> {
 
 async function rowCount(page: import('@playwright/test').Page): Promise<number> {
   return page.evaluate(
-    () => (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
+    () => (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
   );
 }
 

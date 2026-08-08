@@ -29,16 +29,16 @@ The generic AI defaults for this kind of brief, and why I avoided them:
 
 ## Signature (the one memorable choice)
 
-**The "sandwich" — the status bar reuses `--cg-header-bg` as its background.**
+**The "sandwich" — the status bar reuses `--vg-header-bg` as its background.**
 
-The grid header already uses `--cg-header-bg` (light: `#f4f6f8`, dark: `#0d1a33`)
+The grid header already uses `--vg-header-bg` (light: `#f4f6f8`, dark: `#0d1a33`)
 as a faint tonal tint above the body. By reusing that exact token on the bottom
 strip, the body is visually sandwiched between two identical scaffolding
 surfaces, header on top, status bar on bottom, sharing the same border colour.
 It reads as a deliberate composition (data is bracketed by chrome) rather
 than as three unrelated horizontal bands.
 
-Both the header and the status bar use `--cg-border-color` for their
+Both the header and the status bar use `--vg-border-color` for their
 body-facing edge (header has `border-bottom`, status bar has `border-top`),
 so the symmetry is mechanical and survives any future palette tweak.
 
@@ -53,14 +53,14 @@ automatically without a parallel override block. Override targets are
 documented for downstream theming.
 
 ```css
---cg-status-bar-height:       28px;
---cg-status-bar-padding-x:    12px;
---cg-status-bar-gap:          16px;          /* between panels in one zone */
---cg-status-bar-font-size:    var(--cg-font-size);    /* 13px, matches body */
---cg-status-bar-bg:           var(--cg-header-bg);    /* sandwich */
---cg-status-bar-fg:           var(--cg-fg-color);     /* value text */
---cg-status-bar-fg-muted:     color-mix(in srgb, var(--cg-fg-color) 60%, transparent);
---cg-status-bar-border:       var(--cg-border-color);
+--vg-status-bar-height:       28px;
+--vg-status-bar-padding-x:    12px;
+--vg-status-bar-gap:          16px;          /* between panels in one zone */
+--vg-status-bar-font-size:    var(--vg-font-size);    /* 13px, matches body */
+--vg-status-bar-bg:           var(--vg-header-bg);    /* sandwich */
+--vg-status-bar-fg:           var(--vg-fg-color);     /* value text */
+--vg-status-bar-fg-muted:     color-mix(in srgb, var(--vg-fg-color) 60%, transparent);
+--vg-status-bar-border:       var(--vg-border-color);
 ```
 
 Rationale per token:
@@ -73,18 +73,18 @@ Rationale per token:
 - **`16px` gap** — visually distinct from the `·` middle-dots Tasks 2/3
   will use inside a panel.
 - **`color-mix(... 60% ... transparent)`** — mirrors the same alpha pattern
-  used by `--cg-range-fill-color` (line 56 of tokens.css). Labels recede
+  used by `--vg-range-fill-color` (line 56 of tokens.css). Labels recede
   to ~60% perceived weight without ever swapping to a new colour.
 
 ## Type vocabulary
 
-- **Family:** `var(--cg-font-family)` (mono). Inherit; do NOT introduce a
+- **Family:** `var(--vg-font-family)` (mono). Inherit; do NOT introduce a
   second family for the strip.
-- **Size:** 13px (`var(--cg-font-size)`). Matches the side-bar tab labels
+- **Size:** 13px (`var(--vg-font-size)`). Matches the side-bar tab labels
   shipped in Cycle 11 (`tokens.css` line 537).
 - **Weight contrast:** **none.** Mono renders weight changes poorly at
   13px. Label/value hierarchy is carried by **colour**: label uses
-  `--cg-status-bar-fg-muted`, value uses `--cg-status-bar-fg`.
+  `--vg-status-bar-fg-muted`, value uses `--vg-status-bar-fg`.
 - **Case:** sentence case. No uppercase, no letter-spacing tracking.
   (Lesson from Cycle 11 sidebar v1 — uppercase reads as industrial /
   ag-grid-clone, which is exactly what the user flagged.)
@@ -96,8 +96,8 @@ Rationale per token:
 ```
 ┌────────────────────────────────────────────────────────────┐
 │ [body canvas] ……………………………………………………………………………………………………… │
-├────────────────────────────────────────────────────────────┤  ← 1px --cg-border-color
-│ ⟨ left zone ──── ⟩    ⟨ center zone ⟩    ⟨ ──── right ⟩    │  ← 28px, --cg-header-bg
+├────────────────────────────────────────────────────────────┤  ← 1px --vg-border-color
+│ ⟨ left zone ──── ⟩    ⟨ center zone ⟩    ⟨ ──── right ⟩    │  ← 28px, --vg-header-bg
 └────────────────────────────────────────────────────────────┘
 ```
 
@@ -114,9 +114,9 @@ Rationale per token:
 ## Theming — both themes work without parallel overrides
 
 Because every status-bar token defaults off an existing token that already
-has a dark-theme override (`--cg-header-bg`, `--cg-border-color`,
-`--cg-fg-color`), dark theme is free. The `--cg-status-bar-fg-muted`
-mix likewise re-derives from whatever `--cg-fg-color` resolves to on
+has a dark-theme override (`--vg-header-bg`, `--vg-border-color`,
+`--vg-fg-color`), dark theme is free. The `--vg-status-bar-fg-muted`
+mix likewise re-derives from whatever `--vg-fg-color` resolves to on
 the active theme.
 
 Hand-checked against the screenshot:
@@ -145,10 +145,10 @@ The shell DOESN'T ship panel-level CSS. The vocabulary Tasks 2/3 will use
 (and which is intentionally NOT created in Task 1):
 
 ```css
-.cg-status-panel             /* base for any panel: display: inline-flex; gap: 1ch; align-items: baseline; */
-.cg-status-panel-label       /* color: var(--cg-status-bar-fg-muted); */
-.cg-status-panel-value       /* color: var(--cg-status-bar-fg); */
-.cg-status-panel-separator   /* the · between two stats inside one panel: color: var(--cg-status-bar-fg-muted); padding: 0 0.5ch; */
+.vg-status-panel             /* base for any panel: display: inline-flex; gap: 1ch; align-items: baseline; */
+.vg-status-panel-label       /* color: var(--vg-status-bar-fg-muted); */
+.vg-status-panel-value       /* color: var(--vg-status-bar-fg); */
+.vg-status-panel-separator   /* the · between two stats inside one panel: color: var(--vg-status-bar-fg-muted); padding: 0 0.5ch; */
 ```
 
 Tasks 2/3 should:
@@ -178,8 +178,8 @@ Tasks 2/3 should:
 ### Decisions
 
 1. **Hierarchy via colour, never weight.** Mono at 13px can't carry
-   weight (rejected in Task 1). Label = `--cg-status-bar-fg-muted`
-   (60% alpha), value = `--cg-status-bar-fg` (full strength). The
+   weight (rejected in Task 1). Label = `--vg-status-bar-fg-muted`
+   (60% alpha), value = `--vg-status-bar-fg` (full strength). The
    trader's eye lands on the value because it's the only saturated
    mark on the strip. Tabular-nums come free from the mono family —
    no `font-variant-numeric` declaration needed (Task 1 anti-default).
@@ -257,37 +257,37 @@ being separated. Across cycles, this rule is self-policing.
 
 | Concern | Token | Source |
 |---|---|---|
-| Label colour | `--cg-status-bar-fg-muted` | Task 1 |
-| Value colour | `--cg-status-bar-fg` | Task 1 |
-| Font | `--cg-font-family` (inherited from `.cg-status-bar`) | Task 1 |
-| Size | `--cg-status-bar-font-size` (inherited) | Task 1 |
-| Inter-panel gap | `--cg-status-bar-gap` (16px, on `.cg-status-bar-zone`) | Task 1 |
+| Label colour | `--vg-status-bar-fg-muted` | Task 1 |
+| Value colour | `--vg-status-bar-fg` | Task 1 |
+| Font | `--vg-font-family` (inherited from `.vg-status-bar`) | Task 1 |
+| Size | `--vg-status-bar-font-size` (inherited) | Task 1 |
+| Inter-panel gap | `--vg-status-bar-gap` (16px, on `.vg-status-bar-zone`) | Task 1 |
 
 Zero new design tokens. Five new class rules (one is a modifier).
 
 ### Class vocabulary (Task 2)
 
 ```css
-.cg-status-panel-count {
+.vg-status-panel-count {
   display: inline-flex;
   align-items: baseline;
   gap: 1ch;                /* between label and value */
   white-space: nowrap;     /* never wrap "Total Rows: 3,000" mid-value */
 }
-.cg-status-panel-count--combined {
+.vg-status-panel-count--combined {
   gap: 2ch;                /* between the two label-value pairs in
                               agTotalAndFilteredRowCountComponent.
                               Wider than the intra-pair 1ch so the
                               eye reads pair-pair, not pair-label. */
 }
-.cg-status-panel-count-pair {
+.vg-status-panel-count-pair {
   display: inline-flex;
   align-items: baseline;
   gap: 1ch;                /* mirrors the single-fact panel gap so
                               both renderings share kerning. */
 }
-.cg-status-panel-count-label { color: var(--cg-status-bar-fg-muted); }
-.cg-status-panel-count-value { color: var(--cg-status-bar-fg); }
+.vg-status-panel-count-label { color: var(--vg-status-bar-fg-muted); }
+.vg-status-panel-count-value { color: var(--vg-status-bar-fg); }
 ```
 
 ### Empty-bar acceptance criterion (Task 2 cell)
@@ -297,7 +297,7 @@ Zero new design tokens. Five new class rules (one is a modifier).
 1. All four count panels mounted into the right zone, stacking
    horizontally in declaration order with 16px gaps between them.
 2. Label colour visibly muted relative to the value colour (the
-   60%-alpha mix in `--cg-status-bar-fg-muted` reads as a clear
+   60%-alpha mix in `--vg-status-bar-fg-muted` reads as a clear
    tonal step down, not a "slightly off" near-black).
 3. In `agTotalAndFilteredRowCountComponent`, the inter-pair gap
    reads as wider than the intra-pair gap — the two facts read as
@@ -333,13 +333,13 @@ separated by spaces" and the design pass needs another iteration.
 1. **Inherit Task 2's stat shape verbatim.** Each stat is a
    `Label: value` pair using `display: inline-flex; gap: 1ch;
    align-items: baseline;` — identical kerning to the count
-   panels. Label colour `--cg-status-bar-fg-muted`, value colour
-   `--cg-status-bar-fg`. The user already learned this hierarchy
+   panels. Label colour `--vg-status-bar-fg-muted`, value colour
+   `--vg-status-bar-fg`. The user already learned this hierarchy
    in the count family two zones away; reusing it means the agg
    panel doesn't ask for a second pattern-load.
 
 2. **The middle-dot lands here.** `·` U+00B7 between stats, in a
-   `<span class="cg-status-panel-agg-separator">` carrying
+   `<span class="vg-status-panel-agg-separator">` carrying
    `padding: 0 0.5ch` (1ch total around the dot) and the muted
    colour (it's chrome, not data). Flex container gap stays at
    `0` — the separator's own padding owns all inter-stat spacing.
@@ -480,11 +480,11 @@ on what fires its refresh.
 
 | Concern | Token | Source |
 |---|---|---|
-| Label colour | `--cg-status-bar-fg-muted` | Task 1 |
-| Value colour | `--cg-status-bar-fg` | Task 1 |
-| Separator colour | `--cg-status-bar-fg-muted` | Task 1 (chrome, not data) |
-| Font | `--cg-font-family` (inherited from `.cg-status-bar`) | Task 1 |
-| Size | `--cg-status-bar-font-size` (inherited) | Task 1 |
+| Label colour | `--vg-status-bar-fg-muted` | Task 1 |
+| Value colour | `--vg-status-bar-fg` | Task 1 |
+| Separator colour | `--vg-status-bar-fg-muted` | Task 1 (chrome, not data) |
+| Font | `--vg-font-family` (inherited from `.vg-status-bar`) | Task 1 |
+| Size | `--vg-status-bar-font-size` (inherited) | Task 1 |
 | Inter-stat spacing | `0.5ch` padding on the `·` separator | Task 1 (per the Class vocabulary block at line 151) |
 | Intra-stat (label → value) spacing | `1ch` flex gap | Task 2 |
 
@@ -493,7 +493,7 @@ Zero new design tokens. Six new class rules (one is a modifier).
 ### Class vocabulary (Task 3)
 
 ```css
-.cg-status-panel-agg {
+.vg-status-panel-agg {
   display: inline-flex;
   align-items: baseline;
   gap: 0;                  /* the separator owns all inter-stat
@@ -505,18 +505,18 @@ Zero new design tokens. Six new class rules (one is a modifier).
                               zone's flex basis, ellipsis truncates
                               the trailing stat. */
 }
-.cg-status-panel-agg[hidden] { display: none; }  /* empty-selection contract */
-.cg-status-panel-agg-stat {
+.vg-status-panel-agg[hidden] { display: none; }  /* empty-selection contract */
+.vg-status-panel-agg-stat {
   display: inline-flex;
   align-items: baseline;
   gap: 1ch;                /* mirrors Task 2's intra-pair gap so
                               the agg + count families share
                               kerning when read across the bar. */
 }
-.cg-status-panel-agg-label { color: var(--cg-status-bar-fg-muted); }
-.cg-status-panel-agg-value { color: var(--cg-status-bar-fg); }
-.cg-status-panel-agg-separator {
-  color: var(--cg-status-bar-fg-muted);
+.vg-status-panel-agg-label { color: var(--vg-status-bar-fg-muted); }
+.vg-status-panel-agg-value { color: var(--vg-status-bar-fg); }
+.vg-status-panel-agg-separator {
+  color: var(--vg-status-bar-fg-muted);
   padding: 0 0.5ch;        /* 1ch total around the · */
   /* aria-hidden in markup — the separator is presentational; a
      screen reader should hear "Count: 5, Sum: 1,234" not "Count:

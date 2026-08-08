@@ -1,7 +1,7 @@
-// @cgrid/renderers — category 8: Action. Catalog §3.8.
+// @wellsfargo-starui/velocity-grid-renderers — category 8: Action. Catalog §3.8.
 // Hit-region registry for bridge Task 13 click routing (cellClicked event).
 
-import type { CellPaintConfig, CellPainter } from '@cgrid/kernel';
+import type { CellPaintConfig, CellPainter } from '@wellsfargo-starui/velocity-grid';
 import { withAlpha } from './paintUtils';
 import type { IconActionClusterParams, RowMenuCellParams } from './types';
 
@@ -104,8 +104,8 @@ function paintKebab(gc: Gc, cx: number, cy: number, color: string): void {
 /**
  * B2 — module-level Lucide icon resolver, set by the kernel bridge
  * (`bridge.ts`'s `wireRenderersIntoKernel`) using the grid's ALREADY-PUBLIC
- * `resolveIcon(name, setHint)` method (`CGridApi.resolveIcon`, populated by
- * `@cgrid/format`'s `wireIntoKernel` registering the Lucide bundle under the
+ * `resolveIcon(name, setHint)` method (`VelocityGridApi.resolveIcon`, populated by
+ * `@wellsfargo-starui/velocity-grid-format`'s `wireIntoKernel` registering the Lucide bundle under the
  * `'lucide'` set — see `packages/format/src/bridge.ts`). This is a ZERO
  * kernel-diff path: renderers imports kernel TYPE-only, so resolution can't
  * go through a new `CellPaintConfig` channel; instead the bridge (which

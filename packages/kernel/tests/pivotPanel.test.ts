@@ -106,15 +106,15 @@ describe('PivotPanelHost', () => {
     root.parentElement?.removeChild(root);
   });
 
-  it('mounts a .cg-pivot-panel inside root with a pill for each pivotColumns entry', () => {
+  it('mounts a .vg-pivot-panel inside root with a pill for each pivotColumns entry', () => {
     // Regression: the constructor must add the panel DOM and one pill
     // per `pivotColumns[i]`. The order must match the array order — that
     // order IS the pivot-group nesting order the user sees.
     const ctx = makeContext();
     const host = new PivotPanelHost(root, ctx, 'always', ['sector', 'region']);
-    const panel = root.querySelector('.cg-pivot-panel') as HTMLElement | null;
+    const panel = root.querySelector('.vg-pivot-panel') as HTMLElement | null;
     expect(panel).not.toBeNull();
-    const pills = panel!.querySelectorAll('.cg-pivot-panel-pill');
+    const pills = panel!.querySelectorAll('.vg-pivot-panel-pill');
     expect(pills).toHaveLength(2);
     expect((pills[0] as HTMLElement).dataset.colId).toBe('sector');
     expect((pills[1] as HTMLElement).dataset.colId).toBe('region');
@@ -138,7 +138,7 @@ describe('PivotPanelHost', () => {
     const ctx = makeContext();
     const host = new PivotPanelHost(root, ctx, 'always', []);
     expect(host.isVisible()).toBe(true);
-    const empty = root.querySelector('.cg-pivot-panel-empty') as HTMLElement | null;
+    const empty = root.querySelector('.vg-pivot-panel-empty') as HTMLElement | null;
     expect(empty).not.toBeNull();
     expect(empty!.textContent).toBe('Drag here to set column labels');
     host.destroy();
@@ -156,7 +156,7 @@ describe('PivotPanelHost', () => {
     const host = new PivotPanelHost(root, ctx, 'onlyWhenPivoting', []);
     expect(host.isVisible()).toBe(false);
     expect(host.getReservedHeight()).toBe(0);
-    const panel = root.querySelector('.cg-pivot-panel') as HTMLElement;
+    const panel = root.querySelector('.vg-pivot-panel') as HTMLElement;
     expect(getComputedStyle(panel).display).toBe('none');
     host.destroy();
   });
@@ -168,13 +168,13 @@ describe('PivotPanelHost', () => {
     const ctx = makeContext();
     ctx.pivotActive = false;
     const host = new PivotPanelHost(root, ctx, 'onlyWhenPivoting', []);
-    expect(root.querySelector('.cg-pivot-panel-empty')).toBeNull();
+    expect(root.querySelector('.vg-pivot-panel-empty')).toBeNull();
     ctx.pivotActive = true;
     host.setPivotActive(true);
-    const empty = root.querySelector('.cg-pivot-panel-empty') as HTMLElement | null;
+    const empty = root.querySelector('.vg-pivot-panel-empty') as HTMLElement | null;
     expect(empty).not.toBeNull();
     expect(empty!.textContent).toBe('Drag here to set column labels');
-    const panel = root.querySelector('.cg-pivot-panel') as HTMLElement;
+    const panel = root.querySelector('.vg-pivot-panel') as HTMLElement;
     expect(panel.dataset.active).toBe('true');
     host.destroy();
   });
@@ -188,11 +188,11 @@ describe('PivotPanelHost', () => {
     ctx.pivotActive = false;
     const host = new PivotPanelHost(root, ctx, 'onlyWhenPivoting', ['sector']);
     expect(host.isVisible()).toBe(false);
-    expect(root.querySelector('.cg-pivot-panel-pill')).toBeNull();
+    expect(root.querySelector('.vg-pivot-panel-pill')).toBeNull();
     // Flipping pivot active paints the pills.
     ctx.pivotActive = true;
     host.setPivotActive(true);
-    const pill = root.querySelector('.cg-pivot-panel-pill') as HTMLElement | null;
+    const pill = root.querySelector('.vg-pivot-panel-pill') as HTMLElement | null;
     expect(pill).not.toBeNull();
     expect(pill!.dataset.colId).toBe('sector');
     host.destroy();
@@ -204,9 +204,9 @@ describe('PivotPanelHost', () => {
     // PivotState.
     const ctx = makeContext();
     const host = new PivotPanelHost(root, ctx, 'always', ['sector', 'region']);
-    const pills = root.querySelectorAll('.cg-pivot-panel-pill');
+    const pills = root.querySelectorAll('.vg-pivot-panel-pill');
     const removeBtn = (pills[0] as HTMLElement).querySelector(
-      '.cg-pivot-panel-pill-remove',
+      '.vg-pivot-panel-pill-remove',
     ) as HTMLButtonElement;
     removeBtn.click();
     expect(ctx.removeCalls).toEqual(['sector']);
@@ -254,7 +254,7 @@ describe('PivotPanelHost', () => {
     const ctx = makeContext();
     const host = new PivotPanelHost(root, ctx, 'always', ['sector']);
     host.setPivotColumns(['region', 'sector', 'desk']);
-    const pills = root.querySelectorAll('.cg-pivot-panel-pill');
+    const pills = root.querySelectorAll('.vg-pivot-panel-pill');
     const ids = Array.from(pills).map((p) => (p as HTMLElement).dataset.colId);
     expect(ids).toEqual(['region', 'sector', 'desk']);
     host.destroy();
@@ -268,7 +268,7 @@ describe('PivotPanelHost', () => {
     ctx.headerNames.delete('sector'); // force fallback
     const host = new PivotPanelHost(root, ctx, 'always', ['region', 'sector']);
     const labels = Array.from(
-      root.querySelectorAll('.cg-pivot-panel-pill-label'),
+      root.querySelectorAll('.vg-pivot-panel-pill-label'),
     ).map((el) => el.textContent);
     expect(labels).toEqual(['Region', 'sector']);
     host.destroy();
@@ -281,7 +281,7 @@ describe('PivotPanelHost', () => {
     const ctx = makeContext();
     const host = new PivotPanelHost(root, ctx, 'always', ['sector']);
     host.destroy();
-    expect(root.querySelector('.cg-pivot-panel')).toBeNull();
+    expect(root.querySelector('.vg-pivot-panel')).toBeNull();
     const lastCall = ctx.reserveCalls[ctx.reserveCalls.length - 1];
     expect(lastCall.height).toBe(0);
     // Second destroy is a no-op (no exception, no extra reserve call).
@@ -299,17 +299,17 @@ describe('PivotPanelHost', () => {
     const host = new PivotPanelHost(root, ctx, 'always', []);
     expect(host.isVisible()).toBe(true);
     // Empty placeholder paints under 'always'.
-    expect(root.querySelector('.cg-pivot-panel-empty')).not.toBeNull();
+    expect(root.querySelector('.vg-pivot-panel-empty')).not.toBeNull();
     ctx.pivotActive = false;
     host.setShowMode('onlyWhenPivoting');
     // Strip is still mounted but content is paint-suppressed.
-    const panel = root.querySelector('.cg-pivot-panel') as HTMLElement;
+    const panel = root.querySelector('.vg-pivot-panel') as HTMLElement;
     expect(panel).not.toBeNull();
     expect(panel.dataset.active).toBe('false');
-    expect(panel.querySelector('.cg-pivot-panel-empty')).toBeNull();
+    expect(panel.querySelector('.vg-pivot-panel-empty')).toBeNull();
     // Swap back to `'always'` — the empty-state placeholder must re-render.
     host.setShowMode('always');
-    expect(root.querySelector('.cg-pivot-panel-empty')).not.toBeNull();
+    expect(root.querySelector('.vg-pivot-panel-empty')).not.toBeNull();
     host.destroy();
   });
 
@@ -319,8 +319,8 @@ describe('PivotPanelHost', () => {
     // stays '✕' for vocabulary continuity with the row group panel chip.
     const ctx = makeContext();
     const host = new PivotPanelHost(root, ctx, 'always', ['sector']);
-    const handle = root.querySelector('.cg-pivot-panel-pill-handle') as HTMLElement;
-    const remove = root.querySelector('.cg-pivot-panel-pill-remove') as HTMLElement;
+    const handle = root.querySelector('.vg-pivot-panel-pill-handle') as HTMLElement;
+    const remove = root.querySelector('.vg-pivot-panel-pill-remove') as HTMLElement;
     expect(handle.textContent).toBe('');
     expect(remove.textContent).toBe('✕');
     host.destroy();
@@ -333,7 +333,7 @@ describe('PivotPanelHost', () => {
     // are the punctuation. Matches the row group panel chip-strip idiom.
     const ctx = makeContext();
     const host = new PivotPanelHost(root, ctx, 'always', ['sector', 'region', 'desk']);
-    const seps = root.querySelectorAll('.cg-pivot-panel-separator');
+    const seps = root.querySelectorAll('.vg-pivot-panel-separator');
     expect(seps).toHaveLength(2);
     seps.forEach((sep) => expect(sep.textContent).toBe('›'));
     host.destroy();
@@ -343,19 +343,19 @@ describe('PivotPanelHost', () => {
     // Regression: the top-of-grid pivot panel and row-group panel
     // ride the same vertical strip and need to look identical — same
     // 22px height, fully-rounded ends, same drag ghost. The pivot
-    // pill carries `.cg-row-group-panel-chip*` classes so the shared
-    // CSS hits both. Per-panel `.cg-pivot-panel-pill*` classes stay
+    // pill carries `.vg-row-group-panel-chip*` classes so the shared
+    // CSS hits both. Per-panel `.vg-pivot-panel-pill*` classes stay
     // for JS targeting + per-panel hooks.
     const ctx = makeContext();
     const host = new PivotPanelHost(root, ctx, 'always', ['sector']);
-    const pill = root.querySelector('.cg-pivot-panel-pill') as HTMLElement;
-    expect(pill.classList.contains('cg-row-group-panel-chip')).toBe(true);
-    const handle = pill.querySelector('.cg-pivot-panel-pill-handle') as HTMLElement;
-    expect(handle.classList.contains('cg-row-group-panel-chip-handle')).toBe(true);
-    const label = pill.querySelector('.cg-pivot-panel-pill-label') as HTMLElement;
-    expect(label.classList.contains('cg-row-group-panel-chip-label')).toBe(true);
-    const remove = pill.querySelector('.cg-pivot-panel-pill-remove') as HTMLElement;
-    expect(remove.classList.contains('cg-row-group-panel-chip-remove')).toBe(true);
+    const pill = root.querySelector('.vg-pivot-panel-pill') as HTMLElement;
+    expect(pill.classList.contains('vg-row-group-panel-chip')).toBe(true);
+    const handle = pill.querySelector('.vg-pivot-panel-pill-handle') as HTMLElement;
+    expect(handle.classList.contains('vg-row-group-panel-chip-handle')).toBe(true);
+    const label = pill.querySelector('.vg-pivot-panel-pill-label') as HTMLElement;
+    expect(label.classList.contains('vg-row-group-panel-chip-label')).toBe(true);
+    const remove = pill.querySelector('.vg-pivot-panel-pill-remove') as HTMLElement;
+    expect(remove.classList.contains('vg-row-group-panel-chip-remove')).toBe(true);
     host.destroy();
   });
 

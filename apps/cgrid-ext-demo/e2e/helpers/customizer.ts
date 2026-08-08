@@ -8,8 +8,8 @@ export async function bootCustomizer(page: Page): Promise<void> {
   await page.waitForFunction(() => !!(window as unknown as { __ext?: { grid?: unknown } }).__ext?.grid, null, {
     timeout: 30_000,
   });
-  await expect(page.locator('.cgext-titlebar')).toBeVisible();
-  await expect(page.locator('.cgext-grid canvas')).toBeVisible();
+  await expect(page.locator('.vgext-titlebar')).toBeVisible();
+  await expect(page.locator('.vgext-grid canvas')).toBeVisible();
 }
 
 export async function openCustomizer(page: Page, moduleId?: string): Promise<void> {
@@ -20,28 +20,28 @@ export async function openCustomizer(page: Page, moduleId?: string): Promise<voi
   } else {
     await page.locator('[data-item-id="overflow"] button').click();
   }
-  await expect(page.locator('.cgext-sheet.is-open, .cgext-sheet:not([hidden])')).toBeVisible({ timeout: 10_000 });
-  await expect(page.locator('.cgext-sheet-body')).toBeVisible();
+  await expect(page.locator('.vgext-sheet.is-open, .vgext-sheet:not([hidden])')).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('.vgext-sheet-body')).toBeVisible();
 }
 
 export async function closeViaDone(page: Page): Promise<void> {
-  await page.locator('[data-testid="cgext-sheet-done"]').click();
-  await expect(page.locator('.cgext-sheet')).toBeHidden({ timeout: 5_000 });
+  await page.locator('[data-testid="vgext-sheet-done"]').click();
+  await expect(page.locator('.vgext-sheet')).toBeHidden({ timeout: 5_000 });
 }
 
 export async function switchTab(page: Page, title: string): Promise<void> {
-  const tab = page.locator('.cgext-sheet-nav-item', { hasText: title });
+  const tab = page.locator('.vgext-sheet-nav-item', { hasText: title });
   await expect(tab).toBeVisible();
   await tab.click();
-  await expect(page.locator('.cgext-sheet-title')).toHaveText(title);
+  await expect(page.locator('.vgext-sheet-title')).toHaveText(title);
 }
 
 export function sheet(page: Page): Locator {
-  return page.locator('.cgext-sheet');
+  return page.locator('.vgext-sheet');
 }
 
 export function cockpit(page: Page): Locator {
-  return page.locator('.cgext-sheet .ckp');
+  return page.locator('.vgext-sheet .ckp');
 }
 
 /** Type into the focused CodeMirror contenteditable.

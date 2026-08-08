@@ -49,7 +49,7 @@ export interface DateFilterPopupDeps {
   defaultJoinOperator?: MultiConditionJoin;
   /** Cycle 7 / Task 9 — fires on every popup-internal mutation
    *  (operator change, date typed, multi-condition row added). Wires
-   *  to the `filterModified` event on `CGridApi`. Optional. */
+   *  to the `filterModified` event on `VelocityGridApi`. Optional. */
   onModified?: () => void;
 }
 
@@ -85,7 +85,7 @@ export class DateFilterPopup implements FilterPopupFactory {
 
   buildGui(): HTMLElement {
     const root = document.createElement('div');
-    root.className = 'cg-filter-popup cg-filter-popup-date';
+    root.className = 'vg-filter-popup vg-filter-popup-date';
 
     const maxConditions = this.deps.maxNumConditions ?? 1;
     if (maxConditions > 1) {
@@ -114,13 +114,13 @@ export class DateFilterPopup implements FilterPopupFactory {
     }
 
     const buttonsRow = document.createElement('div');
-    buttonsRow.className = 'cg-filter-popup-row cg-filter-popup-buttons';
+    buttonsRow.className = 'vg-filter-popup-row vg-filter-popup-buttons';
     const buttons = this.deps.buttons ?? ['apply', 'clear', 'reset'];
     for (const kind of buttons) {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = `cg-filter-popup-button cg-filter-popup-button-${kind}`;
-      btn.setAttribute('data-cg-filter-action', kind);
+      btn.className = `vg-filter-popup-button vg-filter-popup-button-${kind}`;
+      btn.setAttribute('data-vg-filter-action', kind);
       btn.textContent = labelFor(kind);
       btn.addEventListener('click', () => this.handleAction(kind));
       buttonsRow.appendChild(btn);
@@ -146,12 +146,12 @@ export class DateFilterPopup implements FilterPopupFactory {
     onChange: (next: CDateFilterModel | null) => void,
   ): RowController {
     const row = document.createElement('div');
-    row.className = 'cg-filter-popup-condition';
+    row.className = 'vg-filter-popup-condition';
 
     const opRow = document.createElement('div');
-    opRow.className = 'cg-filter-popup-row';
+    opRow.className = 'vg-filter-popup-row';
     const select = document.createElement('select');
-    select.className = 'cg-filter-popup-operator';
+    select.className = 'vg-filter-popup-operator';
     for (const { value, label } of OPERATOR_OPTIONS) {
       const opt = document.createElement('option');
       opt.value = value;
@@ -163,18 +163,18 @@ export class DateFilterPopup implements FilterPopupFactory {
     row.appendChild(opRow);
 
     const inputsRow = document.createElement('div');
-    inputsRow.className = 'cg-filter-popup-row cg-filter-popup-inputs';
+    inputsRow.className = 'vg-filter-popup-row vg-filter-popup-inputs';
     const primary = document.createElement('input');
     primary.type = 'date';
-    primary.className = 'cg-filter-popup-input';
-    primary.setAttribute('data-cg-filter-input', 'primary');
+    primary.className = 'vg-filter-popup-input';
+    primary.setAttribute('data-vg-filter-input', 'primary');
     if (initial?.filter != null) primary.value = initial.filter;
     inputsRow.appendChild(primary);
 
     const secondary = document.createElement('input');
     secondary.type = 'date';
-    secondary.className = 'cg-filter-popup-input';
-    secondary.setAttribute('data-cg-filter-input', 'secondary');
+    secondary.className = 'vg-filter-popup-input';
+    secondary.setAttribute('data-vg-filter-input', 'secondary');
     if (initial?.filterTo != null) secondary.value = initial.filterTo;
     inputsRow.appendChild(secondary);
     row.appendChild(inputsRow);

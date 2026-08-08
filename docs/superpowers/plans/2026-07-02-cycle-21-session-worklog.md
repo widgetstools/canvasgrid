@@ -22,7 +22,7 @@ kernel 2581 · calc 215 · rules 144 · format 171 · expression 185 · renderer
 
 ---
 
-## CYCLE 21f — @cgrid/renderers (15-task plan; spec + plan header EXIST on disk, commit in S1)
+## CYCLE 21f — @wellsfargo-starui/velocity-grid-renderers (15-task plan; spec + plan header EXIST on disk, commit in S1)
 
 Spec: `docs/superpowers/specs/2026-07-02-cycle-21f-renderers-design.md` (LOCKED: zero kernel changes; main-side ColumnStats/TickHistory; minimal-composite threading; LAB heat; 5 kernel sparklines re-exported). Plan: `docs/superpowers/plans/2026-07-02-cycle-21f-renderers.md` (header + Task 1 done; phase markers `<!-- PHASE-B -->` etc. await sections). Branch: `cycle21f/renderers`.
 
@@ -45,9 +45,9 @@ Spec: `docs/superpowers/specs/2026-07-02-cycle-21f-renderers-design.md` (LOCKED:
 | **21f-S7** | Draft Tasks 13-15 (bridge; showcase 2 pages + ≥10 E2E; README+gates) into plan, commit. Execute Task 13 (bridge). | Bridge green |
 | **21f-S8** | Execute Task 14 (showcase demos + E2E; dev server :5185; baseline 131 preserved). | E2E 131+new green |
 | **21f-S9** | Execute Task 15 (gates incl. the ZERO-KERNEL-DIFF proof: `git diff main...HEAD -- packages/kernel packages/{expression,format,rules,calc}` empty). Final whole-branch review (fable) + fix wave + re-review. | needs-fixes resolved; all gates green |
-| **21f-S10** | Push, PR, squash-merge (`cycle 21f — @cgrid/renderers ... (#NN)`), ff-only sync, ledger close-out. Update baselines table above. | 21f MERGED |
+| **21f-S10** | Push, PR, squash-merge (`cycle 21f — @wellsfargo-starui/velocity-grid-renderers ... (#NN)`), ff-only sync, ledger close-out. Update baselines table above. | 21f MERGED |
 
-## CYCLE 21g — @cgrid/edit (est. 10-12 tasks)
+## CYCLE 21g — @wellsfargo-starui/velocity-grid-edit (est. 10-12 tasks)
 
 Preserved recon conclusions (redo recon in S1; docs: `starui-customizer/{01-editing-core,11-data-change-history,12-smart-edit,13-bulk-update,14-plus-minus,15-shortcuts}.md` + ui docs 06/07/09/10/14/15/16): models = CellPatch {rowId,colId,field,oldValue,newValue}, EditJournalEntry {id,timestamp(host-stamped),source,label,patches[]}, settings trio, PlusMinusNudge, Shortcut. Open questions to settle in spec: plus/minus interception vs `suppressKeyboardEvent` (hook EXISTS per 21e recon); cascade-undo atomicity (one Tx per entry recommended); selection preservation across preview/commit; `getRowById` accessor need (kernel has `rowDataById` + `forEachRow`; distinct-values limit landed in 21d).
 
@@ -60,9 +60,9 @@ Preserved recon conclusions (redo recon in S1; docs: `starui-customizer/{01-edit
 | **21g-S5** | Kernel seam Task 10 (getRowsByIndex — APPROVED spec §3.6a, the cycle's only kernel diff; re-check PR #98 first) + bridge Task 11 |
 | **21g-S6** | Showcase demo + E2E (Task 12); README + gates; SINGLE closeout review of Tasks 2-12 + fix wave; PR + merge |
 
-## CYCLE 21h — @cgrid/export (est. 6-8 tasks — SMALLER than master doc implies)
+## CYCLE 21h — @wellsfargo-starui/velocity-grid-export (est. 6-8 tasks — SMALLER than master doc implies)
 
-Preserved recon conclusion: kernel ALREADY ships `exportDataAsCsv/getDataAsCsv/exportDataAsExcel/getDataAsExcel` with a vendored zero-dep XLSX writer (ZIP+XML; styles.xml is a stub). External XLSX libs were explicitly rejected previously — STAY VENDORED. 21h = visual formatting (resolved format programs + rule colors + theme mode into a real styles table with per-cell xf refs) + the `@cgrid/export` package split/facade. Spec must decide: writer refactor location (recommend: writer stays kernel, @cgrid/export orchestrates via public APIs + a style-build slot) and how rule colors resolve at export time (main-side via evaluateCell over rowDataById — no worker round-trip).
+Preserved recon conclusion: kernel ALREADY ships `exportDataAsCsv/getDataAsCsv/exportDataAsExcel/getDataAsExcel` with a vendored zero-dep XLSX writer (ZIP+XML; styles.xml is a stub). External XLSX libs were explicitly rejected previously — STAY VENDORED. 21h = visual formatting (resolved format programs + rule colors + theme mode into a real styles table with per-cell xf refs) + the `@wellsfargo-starui/velocity-grid-export` package split/facade. Spec must decide: writer refactor location (recommend: writer stays kernel, @wellsfargo-starui/velocity-grid-export orchestrates via public APIs + a style-build slot) and how rule colors resolve at export time (main-side via evaluateCell over rowDataById — no worker round-trip).
 
 | Unit | Scope |
 |---|---|
@@ -71,7 +71,7 @@ Preserved recon conclusion: kernel ALREADY ships `exportDataAsCsv/getDataAsCsv/e
 | **21h-S3** | Visual styles into the XLSX writer path + CSV parity + rule/format resolution tasks |
 | **21h-S4** | Bridge/facade + demo + E2E; gates; final review; PR + merge |
 
-## CYCLE 21i — @cgrid/customizer (DISCUSSION FIRST — user directive)
+## CYCLE 21i — @wellsfargo-starui/velocity-grid-customizer (DISCUSSION FIRST — user directive)
 
 **21i-S0 (BLOCKING): present the decision set to the user before any spec.** Preserved from lost recon: 20 panels (7 master-detail, 8 flat, 5 inline/toolbar) over 6 engine packages; 18-primitive foundation library (Cockpit, Band, SettingsRow, Poppable, shared editors); StarUI docs assume Lit + Web Awesome + Monaco + SortableJS while the repo is framework-free; 5 engine-API gaps (column visibility, filter-model host contract, group-tree traversal, indicator-icon registry access, +1); 3 blocking questions (panel attachment: sidebar tool-panel vs settings-sheet vs popout; reducer wiring contract; host hooks for notifications/providers/persistence). Redo recon into committed notes BEFORE the discussion; bring options+tradeoffs, not an action plan (user's plan-mode preference). Session plan for implementation: TBD after S0.
 

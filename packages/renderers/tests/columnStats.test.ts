@@ -2,17 +2,17 @@
  * ColumnStats — incremental min/max/maxAbs/sum/count per watched column.
  * Spec §2.4a. Cycle 21f / Task 3.
  *
- * Uses a fake CGridApi stub (plain object — no real CGrid instantiation).
+ * Uses a fake VelocityGridApi stub (plain object — no real VelocityGrid instantiation).
  * rowsChanged event shape per packages/kernel/src/types/event.ts lines ~133-138:
  *   { type: 'rowsChanged'; added: {rowId,row}[]; updated: {rowId,row,oldRow}[]; removed: {rowId,row}[] }
  */
 import { describe, it, expect } from 'vitest';
-import type { CGridApi } from '../../kernel/src/types/api';
+import type { VelocityGridApi } from '../../kernel/src/types/api';
 import { ColumnStats } from '../src/columnStats';
 import { makeLcg } from './helpers/lcg';
 
 // ---------------------------------------------------------------------------
-// Minimal fake CGridApi stub
+// Minimal fake VelocityGridApi stub
 // ---------------------------------------------------------------------------
 
 type RowsChangedEvent<TRow> = {
@@ -26,7 +26,7 @@ type RowsChangedEvent<TRow> = {
 interface FakeGrid<TRow> {
   rows: Map<string, TRow>;
   _handler: ((e: RowsChangedEvent<TRow>) => void) | null;
-  api: CGridApi<TRow>;
+  api: VelocityGridApi<TRow>;
   emit(event: RowsChangedEvent<TRow>): void;
 }
 
@@ -45,7 +45,7 @@ function makeFakeGrid<TRow>(initRows: Map<string, TRow>): FakeGrid<TRow> {
     removeEventListener(_type: string, _h: unknown) {
       handler = null;
     },
-  } as unknown as CGridApi<TRow>;
+  } as unknown as VelocityGridApi<TRow>;
 
   const grid: FakeGrid<TRow> = {
     rows: initRows,
@@ -183,7 +183,7 @@ describe('ColumnStats — non-number values skipped', () => {
       ['r5', { pnl: 5 }],
     ]);
     const grid = makeFakeGrid(rows);
-    const stats = new ColumnStats<MixedRow>(grid.api as unknown as CGridApi<MixedRow>, ['pnl']);
+    const stats = new ColumnStats<MixedRow>(grid.api as unknown as VelocityGridApi<MixedRow>, ['pnl']);
 
     const snap = stats.for('pnl');
     expect(snap.count).toBe(2);
@@ -246,7 +246,7 @@ describe('ColumnStats — incremental parity vs brute-force recompute', () => {
       }
 
       const grid = makeFakeGrid(new Map(liveRows));
-      const stats = new ColumnStats<Row>(grid.api as unknown as CGridApi<Row>, ['pnl']);
+      const stats = new ColumnStats<Row>(grid.api as unknown as VelocityGridApi<Row>, ['pnl']);
 
       const rand = makeLcg(seed);
 

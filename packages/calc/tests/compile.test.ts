@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { compile as compileExpression, evaluate, parse } from '@cgrid/expression';
-import type { Schema } from '@cgrid/expression';
+import { compile as compileExpression, evaluate, parse } from '@wellsfargo-starui/velocity-grid-expression';
+import type { Schema } from '@wellsfargo-starui/velocity-grid-expression';
 import { compileCalc, evaluatePerRow } from '../src/compile';
 
 const schema: Schema = {

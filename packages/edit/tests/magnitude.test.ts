@@ -1,4 +1,4 @@
-// @cgrid/edit — magnitude.test.ts
+// @wellsfargo-starui/velocity-grid-edit — magnitude.test.ts
 // Covers parseMagnitudeSuffix, applyMagnitudeColDefTransforms.
 // Spec: docs/superpowers/specs/2026-07-02-cycle-21g-edit-design.md §2.3, §4.2.5.
 // Recon: docs/superpowers/plans/notes/2026-07-02-cycle-21g-recon.md A.3, C.9.

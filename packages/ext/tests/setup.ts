@@ -1,6 +1,6 @@
 import { vi } from 'vitest';
 
-/** Install the Worker + canvas 2D stubs a `CGrid` needs under happy-dom.
+/** Install the Worker + canvas 2D stubs a `VelocityGrid` needs under happy-dom.
  *  Idempotent — safe to call from every test file's `beforeAll`. */
 export function installGridTestEnv(): void {
   const g = globalThis as any;

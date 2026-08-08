@@ -17,7 +17,7 @@ for (const c of contexts) {
 }
 if (!page) throw new Error('demo page not found among CDP targets');
 
-await page.waitForFunction(() => window.__ext && document.querySelector('.cgext-ribbon-band'), null, { timeout: 30000 });
+await page.waitForFunction(() => window.__ext && document.querySelector('.vgext-ribbon-band'), null, { timeout: 30000 });
 
 const metrics = await page.evaluate(async () => {
   const out = {};
@@ -43,7 +43,7 @@ const metrics = await page.evaluate(async () => {
   out.steady = await measureFps(6000);
 
   // 2. continuous scroll: drive the grid's scroll surface with wheel events
-  const canvas = document.querySelector('.cg-canvas');
+  const canvas = document.querySelector('.vg-canvas');
   const r = canvas.getBoundingClientRect();
   const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
   let dir = 1, sent = 0;

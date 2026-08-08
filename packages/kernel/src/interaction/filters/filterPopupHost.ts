@@ -61,7 +61,7 @@ export class FilterPopupHost {
     const gui = factory.buildGui();
     // Mark the GUI so outside-click detection can ignore mousedowns that
     // bubble from inside the popup body.
-    gui.setAttribute('data-cg-filter-popup-root', '');
+    gui.setAttribute('data-vg-filter-popup-root', '');
     this.popupHost.mount(gui, {
       cellBounds: anchor.cellBounds,
       position: 'under',
@@ -78,7 +78,7 @@ export class FilterPopupHost {
   isOpen(): boolean { return this.current !== null; }
 
   /** Currently-open column id, or `null` when nothing is mounted. Used
-   *  by `CGridApi.showColumnFilter` to skip a redundant re-mount when
+   *  by `VelocityGridApi.showColumnFilter` to skip a redundant re-mount when
    *  the user clicks the expand button on the already-open column. */
   openColId(): string | null { return this.current?.colId ?? null; }
 
@@ -114,14 +114,14 @@ export class FilterPopupHost {
 
   /** True when `target` is inside the currently-mounted popup body. The
    *  popup is mounted under `host`, so a `host.contains(target)` check
-   *  combined with the `data-cg-filter-popup-root` marker on the popup
+   *  combined with the `data-vg-filter-popup-root` marker on the popup
    *  body covers both direct children and any portal-mounted overlays
    *  the popup might add later (e.g. a date-picker calendar). */
   private isInsidePopup(target: Node): boolean {
     if (!this.host.contains(target)) return false;
     let el: Node | null = target;
     while (el) {
-      if (el instanceof HTMLElement && el.hasAttribute('data-cg-filter-popup-root')) {
+      if (el instanceof HTMLElement && el.hasAttribute('data-vg-filter-popup-root')) {
         return true;
       }
       el = el.parentNode;

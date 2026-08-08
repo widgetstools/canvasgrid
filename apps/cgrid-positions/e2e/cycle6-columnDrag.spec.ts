@@ -44,7 +44,7 @@ async function gridReady(page: import('@playwright/test').Page): Promise<void> {
 async function colIdsByDeclarationOrder(page: import('@playwright/test').Page): Promise<string[]> {
   return page.evaluate(() => {
     const grid = (window as unknown as {
-      __cgrid: { getGridOption: (k: 'columnDefs') => unknown };
+      __velocity-grid: { getGridOption: (k: 'columnDefs') => unknown };
     }).__cgrid;
     const defs = grid.getGridOption('columnDefs') as unknown[];
     const flat: string[] = [];
@@ -77,11 +77,11 @@ test.describe('Cycle 6 / Task 1 — column drag-reorder', () => {
     expect(before.indexOf('cusip')).toBeLessThan(before.indexOf('ticker'));
 
     const cusip = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return grid.getHeaderBoundsAt('cusip');
     });
     const ticker = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return grid.getHeaderBoundsAt('ticker');
     });
     expect(cusip).not.toBeNull();
@@ -120,11 +120,11 @@ test.describe('Cycle 6 / Task 1 — column drag-reorder', () => {
     expect(before[0]).toBe('positionId');
 
     const pos = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return grid.getHeaderBoundsAt('positionId');
     });
     const cusip = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return grid.getHeaderBoundsAt('cusip');
     });
     expect(pos).not.toBeNull();
@@ -152,7 +152,7 @@ test.describe('Cycle 6 / Task 1 — column drag-reorder', () => {
     await gridReady(page);
 
     const cusip = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return grid.getHeaderBoundsAt('cusip');
     });
     expect(cusip).not.toBeNull();
@@ -167,8 +167,8 @@ test.describe('Cycle 6 / Task 1 — column drag-reorder', () => {
     await page.mouse.move(srcX + 80, srcY, { steps: 6 });
 
     const overlay = await page.evaluate(() => {
-      const ghost = document.querySelector('.cg-column-drag-ghost');
-      const line = document.querySelector('.cg-column-drag-insertion-line');
+      const ghost = document.querySelector('.vg-column-drag-ghost');
+      const line = document.querySelector('.vg-column-drag-insertion-line');
       return {
         ghostText: ghost ? (ghost.textContent ?? '') : null,
         ghostHasTransform: ghost ? !!(ghost as HTMLElement).style.transform : false,
@@ -182,8 +182,8 @@ test.describe('Cycle 6 / Task 1 — column drag-reorder', () => {
     await page.mouse.up();
 
     const afterDrop = await page.evaluate(() => ({
-      ghost: document.querySelector('.cg-column-drag-ghost'),
-      line: document.querySelector('.cg-column-drag-insertion-line'),
+      ghost: document.querySelector('.vg-column-drag-ghost'),
+      line: document.querySelector('.vg-column-drag-insertion-line'),
     }));
     expect(afterDrop.ghost).toBeNull();
     expect(afterDrop.line).toBeNull();
@@ -192,11 +192,11 @@ test.describe('Cycle 6 / Task 1 — column drag-reorder', () => {
   test('a drag does NOT fire sortChanged on the dragged column (click after drag is swallowed)', async ({ page }) => {
     await gridReady(page);
     const cusip = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return grid.getHeaderBoundsAt('cusip');
     });
     const ticker = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return grid.getHeaderBoundsAt('ticker');
     });
     expect(cusip).not.toBeNull();
@@ -205,7 +205,7 @@ test.describe('Cycle 6 / Task 1 — column drag-reorder', () => {
     // Subscribe BEFORE the drag so we catch any sortChanged the drag may fire.
     await page.evaluate(() => {
       const grid = (window as unknown as {
-        __cgrid: GridApiSurface & {
+        __velocity-grid: GridApiSurface & {
           on: (
             type: 'sortChanged',
             handler: (e: { type: 'sortChanged'; sortModel: unknown }) => void,
@@ -248,7 +248,7 @@ test.describe('Cycle 6 / Task 1 — column drag-reorder', () => {
 
     // Subscribe BEFORE invoking; the listener receives the synchronous emit.
     const result = await page.evaluate((args) => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       const events: { toIndex: number; colIds: string[]; source: string }[] = [];
       const off = grid.on('columnMoved', (e) => {
         events.push({ toIndex: e.toIndex, colIds: e.colIds, source: e.source });

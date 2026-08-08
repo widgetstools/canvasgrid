@@ -44,7 +44,7 @@ async function mountAndSeed(page: Page, url: string): Promise<void> {
   );
   await waitForFrames(page, 6);
   await page.evaluate(() => {
-    const g = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+    const g = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
     const rows: Array<Record<string, unknown>> = [];
     const TICKERS = ['AAPL', 'MSFT'];
     for (let i = 0; i < 10; i++) {
@@ -70,7 +70,7 @@ async function mountAndSeed(page: Page, url: string): Promise<void> {
 
 async function displayedCount(page: Page): Promise<number> {
   return page.evaluate(() =>
-    (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getDisplayedRowCount());
+    (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getDisplayedRowCount());
 }
 
 test('groupAggFiltering: a passing group keeps its whole subtree', async ({ page }) => {
@@ -80,7 +80,7 @@ test('groupAggFiltering: a passing group keeps its whole subtree', async ({ page
   // sum(notional) > 20,000 → only MSFT (40,000) passes → its group row +
   // ALL 5 leaves. Leaf filtering would find ZERO rows (max leaf = 10,000).
   await page.evaluate(() => {
-    (window as unknown as { __cgrid: GridApiSurface }).__cgrid
+    (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid
       .setFilterModel({ notionalAmount: { type: 'number', op: 'gt', value: 20000 } });
   });
   await expect.poll(() => displayedCount(page)).toBe(6);
@@ -91,7 +91,7 @@ test('agGroupColumnFilter: filtering the auto column filters by the grouped fiel
   await expect.poll(() => displayedCount(page)).toBe(12);
 
   await page.evaluate(() => {
-    (window as unknown as { __cgrid: GridApiSurface }).__cgrid
+    (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid
       .setFilterModel({ 'ag-Grid-AutoColumn': { type: 'text', op: 'contains', value: 'AAPL' } });
   });
   // AAPL group + its 5 leaves.
@@ -101,7 +101,7 @@ test('agGroupColumnFilter: filtering the auto column filters by the grouped fiel
 test('keyCreator: grouping by notional produces derived BIG/SMALL buckets', async ({ page }) => {
   await mountAndSeed(page, '/?keyCreatorDemo=1&groupDefaultExpanded=-1');
   await page.evaluate(() => {
-    (window as unknown as { __cgrid: GridApiSurface }).__cgrid
+    (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid
       .setRowGroupColumns(['notionalAmount']);
   });
   // 2 derived buckets (SMALL: 1000-5000, BIG: 6000-10000) + 10 leaves.
@@ -109,7 +109,7 @@ test('keyCreator: grouping by notional produces derived BIG/SMALL buckets', asyn
 
   // Collapse-all sanity: exactly the 2 derived buckets remain.
   await page.evaluate(() => {
-    (window as unknown as { __cgrid: { collapseAll: () => void } }).__cgrid.collapseAll();
+    (window as unknown as { __velocity-grid: { collapseAll: () => void } }).__cgrid.collapseAll();
   });
   await expect.poll(() => displayedCount(page)).toBe(2);
 });

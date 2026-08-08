@@ -37,15 +37,15 @@ describe('ModalHost', () => {
 
   it('opens a titled dialog with backdrop, aria wiring, and body content', () => {
     host.open(makeContent(), { title: 'Column Selector', width: 560 });
-    const backdrop = root.querySelector('.cg-modal-backdrop')!;
-    const dialog = backdrop.querySelector('.cg-modal') as HTMLElement;
+    const backdrop = root.querySelector('.vg-modal-backdrop')!;
+    const dialog = backdrop.querySelector('.vg-modal') as HTMLElement;
     expect(host.isOpen()).toBe(true);
     expect(dialog.getAttribute('role')).toBe('dialog');
     expect(dialog.getAttribute('aria-modal')).toBe('true');
     expect(dialog.getAttribute('aria-label')).toBe('Column Selector');
     expect(dialog.style.width).toBe('560px');
-    expect(dialog.querySelector('.cg-modal-title')!.textContent).toBe('Column Selector');
-    expect(dialog.querySelector('.cg-modal-body .first-input')).not.toBeNull();
+    expect(dialog.querySelector('.vg-modal-title')!.textContent).toBe('Column Selector');
+    expect(dialog.querySelector('.vg-modal-body .first-input')).not.toBeNull();
   });
 
   it('focuses the first focusable on open and restores prior focus on close', () => {
@@ -90,7 +90,7 @@ describe('ModalHost', () => {
     const dialog = host.getDialogElement()!;
     dialog.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
     expect(host.isOpen()).toBe(true);
-    const backdrop = root.querySelector('.cg-modal-backdrop')!;
+    const backdrop = root.querySelector('.vg-modal-backdrop')!;
     backdrop.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
     expect(host.isOpen()).toBe(false);
     expect(reasons).toEqual(['backdrop']);
@@ -99,7 +99,7 @@ describe('ModalHost', () => {
   it('the title-row close button closes with reason "closeButton"', () => {
     const reasons: ModalCloseReason[] = [];
     host.open(makeContent(), { title: 'T', onClose: (r) => reasons.push(r) });
-    (root.querySelector('.cg-modal-close') as HTMLButtonElement).click();
+    (root.querySelector('.vg-modal-close') as HTMLButtonElement).click();
     expect(reasons).toEqual(['closeButton']);
   });
 
@@ -108,7 +108,7 @@ describe('ModalHost', () => {
     host.open(makeContent(), { title: 'First', onClose: (r) => reasons.push(r) });
     host.open(makeContent(), { title: 'Second' });
     expect(reasons).toEqual(['api']);
-    expect(root.querySelectorAll('.cg-modal-backdrop').length).toBe(1);
+    expect(root.querySelectorAll('.vg-modal-backdrop').length).toBe(1);
     expect(host.getDialogElement()!.getAttribute('aria-label')).toBe('Second');
   });
 
@@ -119,6 +119,6 @@ describe('ModalHost', () => {
     expect(reasons).toEqual(['destroy']);
     host.open(makeContent());
     expect(host.isOpen()).toBe(false);
-    expect(root.querySelector('.cg-modal-backdrop')).toBeNull();
+    expect(root.querySelector('.vg-modal-backdrop')).toBeNull();
   });
 });

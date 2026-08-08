@@ -1,4 +1,4 @@
-// @cgrid/edit — letter-key shortcuts: key matching, patches, conflict detection.
+// @wellsfargo-starui/velocity-grid-edit — letter-key shortcuts: key matching, patches, conflict detection.
 // Authoritative reference: docs/superpowers/specs/2026-07-02-cycle-21g-edit-design.md
 // section 1.1.7 (letter-key shortcuts).
 // Recon: docs/superpowers/plans/notes/2026-07-02-cycle-21g-recon.md A.6.

@@ -1,7 +1,7 @@
 // Cycle 6 / Task 5 — Imperative column API unit tests.
 //
 // `setColumnsVisible`, `setColumnsPinned`, `setColumnWidths`, `moveColumns`
-// are batch-mutation entrypoints on CGridApi. Each call:
+// are batch-mutation entrypoints on VelocityGridApi. Each call:
 //   - resolves every key against `columnDefsMap` (unknowns silently dropped)
 //   - applies the Cycle 6 / Task 2 locks (`lockVisible` / `lockPinned`) and
 //     the Cycle 6 / Task 1 lock (`lockPosition`)
@@ -14,7 +14,7 @@
 // width mutation AND on mouseup of a drag-resize (Cycle 6 / Task 5).
 
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 
 beforeAll(() => {
   (globalThis as any).Worker = class {
@@ -45,12 +45,12 @@ beforeAll(() => {
 function build<TRow extends { id: string }>(
   cols: any[],
   rows: TRow[] = [],
-): { grid: CGrid<TRow>; container: HTMLDivElement } {
+): { grid: VelocityGrid<TRow>; container: HTMLDivElement } {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
-  const grid = new CGrid<TRow>(container, {
+  const grid = new VelocityGrid<TRow>(container, {
     columnDefs: cols,
     getRowId: (r) => r.id,
     rowData: rows,

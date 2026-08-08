@@ -1,15 +1,15 @@
-import { CGrid } from '@cgrid/kernel';
-import type { CColDef } from '@cgrid/kernel';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
+import type { CColDef } from '@wellsfargo-starui/velocity-grid';
 import {
   wireEditIntoKernel,
   applyMagnitudeColDefTransforms,
-} from '@cgrid/edit';
+} from '@wellsfargo-starui/velocity-grid-edit';
 import type {
   EditBridgeHandle,
   PlusMinusNudge,
   ShortcutDefinition,
   SmartEditOp,
-} from '@cgrid/edit';
+} from '@wellsfargo-starui/velocity-grid-edit';
 import type { Feature } from './index';
 
 /**
@@ -55,7 +55,7 @@ const ROWS: EditRow[] = [
 ];
 
 // Real `[field]`-bracket grammar (docs/superpowers/specs §…-cycle-21b) — the
-// showcase uses the bridge's DEFAULT `evaluate` (real `@cgrid/expression`),
+// showcase uses the bridge's DEFAULT `evaluate` (real `@wellsfargo-starui/velocity-grid-expression`),
 // not a test fake, so the gate must parse for real.
 const NUDGES: PlusMinusNudge[] = [
   {
@@ -90,7 +90,7 @@ const RAW_COLUMNS: CColDef<EditRow>[] = [
   },
   // NOTE: no `cellEditor` override — the kernel's default fallback for an
   // unset `cellEditor` is the TEXT editor regardless of `cellDataType`
-  // (`EditController.resolveEditorName`, cgrid.ts), which is exactly what
+  // (`EditController.resolveEditorName`, velocityGrid.ts), which is exactly what
   // the K/M/B magnitude demo needs: `NumberCellEditor.getValue()` returns
   // an already-parsed `number`, so a wrapped `valueParser`'s
   // `typeof params.newValue === 'string'` magnitude branch (magnitude.ts)
@@ -108,7 +108,7 @@ const RAW_COLUMNS: CColDef<EditRow>[] = [
 //
 // The generic's structural constraint (`{ cellDataType?: string; valueParser?:
 // (p: unknown) => unknown }`) is intentionally engine-generic (magnitude.ts
-// never imports `@cgrid/kernel`) — the real `CColDef.valueParser` takes a
+// never imports `@wellsfargo-starui/velocity-grid`) — the real `CColDef.valueParser` takes a
 // concrete `CValueParserParams`, which strict function-parameter variance
 // won't fold into `(p: unknown) => unknown` automatically. Round-trip through
 // `unknown` at both ends; the runtime shapes are identical (magnitude.ts's
@@ -135,14 +135,14 @@ export const editBlotter: Feature = {
   id: 'edit-blotter',
   label: 'Edit Blotter',
   description:
-    'Cycle 21g — @cgrid/edit journal (undo/redo + live entry count), ' +
+    'Cycle 21g — @wellsfargo-starui/velocity-grid-edit journal (undo/redo + live entry count), ' +
     'smart-edit (×÷+−= over a selected range), bulk-update (free text or ' +
     'a distinct-values pick), an expression-gated plus/minus nudge ' +
     '([status] == "active"), and letter-key shortcuts (q/h) — all wired ' +
     'via wireEditIntoKernel onto a real editable blotter.',
 
   mount(gridHost, controls, theme) {
-    const grid = new CGrid<EditRow>(gridHost, {
+    const grid = new VelocityGrid<EditRow>(gridHost, {
       getRowId: (r) => r.id,
       columnDefs: COLUMNS,
       theme,
