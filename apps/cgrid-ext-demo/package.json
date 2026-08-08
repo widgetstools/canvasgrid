@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test",
-    "test:e2e:customizer": "playwright test e2e/customizer.spec.ts e2e/spine.spec.ts",
+    "test:e2e:customizer": "playwright test e2e/customizer.spec.ts e2e/spine.spec.ts e2e/customizer-*.spec.ts --project=chromium",
+    "test:e2e:parity": "playwright test e2e/customizer.spec.ts e2e/customizer-*.spec.ts e2e/savedFilters.spec.ts e2e/formattingToolbar.spec.ts e2e/formatPicker.spec.ts e2e/iconRibbon.spec.ts e2e/columnConfig.spec.ts e2e/layoutsToolbar.spec.ts --project=chromium",
     "smoke:customizer": "node scripts/customizer-smoke.mjs"
   },
   "dependencies": {

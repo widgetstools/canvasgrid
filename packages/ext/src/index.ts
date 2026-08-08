@@ -22,6 +22,16 @@ export {
 } from './ui/expressionEditor';
 export { buildDefaultBundle } from './defaultBundle';
 export { titleBarExtensions, injectTitleBarStyles, type TitleBarOptions } from './toolbar/titleBar';
+export { savedFiltersItem, type SavedFilter } from './toolbar/savedFiltersToolbar';
+export {
+  makeId as makeSavedFilterId,
+  generateLabel as generateSavedFilterLabel,
+  mergeFilterModels,
+  subtractFilterModel,
+  isNewFilter,
+  filterModelsEqual,
+  doesRowMatchFilterModel,
+} from './toolbar/savedFiltersLogic';
 export { ribbonExtensions, injectRibbonStyles } from './toolbar/ribbon';
 export {
   mountFormatterStyleChrome,

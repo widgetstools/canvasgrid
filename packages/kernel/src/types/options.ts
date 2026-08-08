@@ -429,6 +429,9 @@ export interface CGridOptions<TRow = any> {
    *  spinner over the viewport and sets `aria-busy`. Flip via
    *  `setGridOption('loading', …)` during async loads. */
   loading?: boolean;
+  /** Primary label on the busy overlay (under the spinner). Defaults to
+   *  “Loading…”. Update live via `setGridOption('loadingMessage', …)`. */
+  loadingMessage?: string;
   /** Enables verbose console logging from the engine. Storage-only. */
   debug?: boolean;
 

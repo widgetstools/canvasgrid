@@ -61,6 +61,7 @@ export type RuntimeOption =
   | 'rowBuffer'
   | 'context'
   | 'loading'
+  | 'loadingMessage'
   | 'debug'
   | 'rowData'
   | 'quickFilterText'
@@ -120,6 +121,8 @@ export interface RuntimeOptionTarget<TRow = any> {
   refreshA11y?(): void;
   /** Show / hide the visual busy overlay from `options.loading`. */
   syncLoadingOverlay?(): void;
+  /** Push `options.loadingMessage` onto the busy overlay label. */
+  syncLoadingMessage?(): void;
   /** Re-resolve the column tree using the current `options.columnDefs` +
    *  the supplied (or current) `defaultColDef`. Triggers viewport + worker
    *  refresh. Used by both the `defaultColDef` runtime apply and the
@@ -300,6 +303,9 @@ export function applyRuntimeOption<TRow>(
       // aria-busy + visual busy overlay track this flag together.
       target.refreshA11y?.();
       target.syncLoadingOverlay?.();
+      return;
+    case 'loadingMessage':
+      target.syncLoadingMessage?.();
       return;
     case 'suppressRowClickSelection':
     case 'rowMultiSelectWithClick':
@@ -513,7 +519,7 @@ export const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOpt
   'enableCellChangeFlash', 'cellFlashDuration', 'cellFadeDuration',
   'asyncTransactionWaitMillis', 'asyncTransactionConflate',
   'asyncTransactionThrottleMillis', 'rowBuffer',
-  'context', 'loading', 'debug', 'rowData',
+  'context', 'loading', 'loadingMessage', 'debug', 'rowData',
   'quickFilterText', 'cacheQuickFilter', 'includeHiddenColumnsInQuickFilter',
   'enableFillHandle', 'fillHandleDirection', 'fillOperation',
   'cellSelection',

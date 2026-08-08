@@ -4621,6 +4621,16 @@
   letter-spacing: 0.02em;
   color: color-mix(in srgb, var(--cg-fg-color, #e5e9f0) 78%, transparent);
 }
+.cg-loading-overlay-detail {
+  font-family: var(--cg-font-family, inherit);
+  font-size: var(--cg-font-size-xs, 11px);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  color: color-mix(in srgb, var(--cg-fg-color, #e5e9f0) 55%, transparent);
+}
+.cg-loading-overlay-detail[hidden] {
+  display: none !important;
+}
 .cg-loading-spinner {
   width: 28px;
   height: 28px;

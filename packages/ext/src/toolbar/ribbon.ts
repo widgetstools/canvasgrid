@@ -42,6 +42,7 @@ import {
   syncRibbonColor,
   type RibbonColorSwatch,
 } from './colorSwatch';
+import { wireRibbonOverflow } from './ribbonOverflow';
 
 /** Floating-filter type choices — same vocabulary as the Column popover's
  *  Filter type segment (`auto` clears to kernel default via `filter: null`). */
@@ -92,6 +93,7 @@ const I = {
   templates: 'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z',
   eraser: 'M7 21h13M5 13l6 6M20 8l-9 9-6-6 9-9a2.8 2.8 0 0 1 4 0l2 2a2.8 2.8 0 0 1 0 4z',
   trash: 'M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6',
+  more: 'M5 12h.01M12 12h.01M19 12h.01',
 };
 
 function svg(path: string, size = 14): string {
@@ -425,34 +427,39 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
         s.append(l, ...controls);
         return s;
       };
+      const histSeg = seg('History', undo, redo, histCount);
+      const smartSeg = seg('Smart edit', operand, opMul, opDiv, opAdd, opSub, setBtn, smartCount);
+      const bulkSeg = seg('Bulk', bulkValue, bulkApply, bulkCount);
+      const editBody = h('cgext-es-body');
+      editBody.append(histSeg, smartSeg, bulkSeg);
+      const editOverflow = iconBtn(I.more, 'More editing tools');
+      editOverflow.dataset.tb = 'edit-overflow';
+      editOverflow.hidden = true;
       const editClose = iconBtn(I.close, 'Hide editing toolbar');
       editClose.dataset.tb = 'close-edit';
       editClose.classList.add('cgext-es-close');
       editClose.addEventListener('click', () => {
         if (!editStrip.hidden) ctx.events.emit({ type: 'toggle-ribbon', section: 'edit' });
       });
-      editStrip.append(
-        seg('History', undo, redo, histCount),
-        seg('Smart edit', operand, opMul, opDiv, opAdd, opSub, setBtn, smartCount),
-        seg('Bulk', bulkValue, bulkApply, bulkCount),
-        editClose,
-      );
+      editStrip.append(editBody, editOverflow, editClose);
 
       const formatting = h('cgext-rb-cluster'); formatting.dataset.toolbar = 'formatting';
-      formatting.append(
-        grp('Target', mini(selPill), mini(targetToggle, scopeToggle)),
-        grp('Font', mini(bold, italic, underline, strike, sizeWrap), mini(textColorBtn, textColor.host, fillColorBtn, fillColor.host, headerCase)),
-        grp('Alignment', mini(alignL, alignC, alignR)),
-        grp('Borders',
-          mini(borderSideBtns.all, borderSideBtns.top, borderSideBtns.bottom, borderSideBtns.left, borderSideBtns.right, borderPreview),
-          mini(borderColorBtn, borderColor.host, borderStylePill, borderWidthPill, borderClear)),
-        grp('Format', mini(fmtCode), mini(fmtDollar, fmtPercent, fmtThousands, decDown, decUp)),
-        grp('Icons', mini(picker.button, iconPlacePill), mini(iconColorBtn, iconColor.host, iconClear)),
-        grp('Column', mini(colOpen, aggPill), mini(colFF, filterTypePill, colGrp, colAggH)),
-        grp('Templates', mini(tplOpen, tplPill)),
-        grp('Clear', mini(fmtUndo, fmtRedo), mini(eraser, clearAll)),
-      );
+      const gTarget = grp('Target', mini(selPill), mini(targetToggle, scopeToggle));
+      const gFont = grp('Font', mini(bold, italic, underline, strike, sizeWrap), mini(textColorBtn, textColor.host, fillColorBtn, fillColor.host, headerCase));
+      const gAlign = grp('Alignment', mini(alignL, alignC, alignR));
+      const gBorders = grp('Borders',
+        mini(borderSideBtns.all, borderSideBtns.top, borderSideBtns.bottom, borderSideBtns.left, borderSideBtns.right, borderPreview),
+        mini(borderColorBtn, borderColor.host, borderStylePill, borderWidthPill, borderClear));
+      const gFormat = grp('Format', mini(fmtCode), mini(fmtDollar, fmtPercent, fmtThousands, decDown, decUp));
+      const gIcons = grp('Icons', mini(picker.button, iconPlacePill), mini(iconColorBtn, iconColor.host, iconClear));
+      const gColumn = grp('Column', mini(colOpen, aggPill), mini(colFF, filterTypePill, colGrp, colAggH));
+      const gTemplates = grp('Templates', mini(tplOpen, tplPill));
+      const gClear = grp('Clear', mini(fmtUndo, fmtRedo), mini(eraser, clearAll));
+      formatting.append(gTarget, gFont, gAlign, gBorders, gFormat, gIcons, gColumn, gTemplates, gClear);
 
+      const fmtOverflow = iconBtn(I.more, 'More formatting tools');
+      fmtOverflow.dataset.tb = 'format-overflow';
+      fmtOverflow.hidden = true;
       const fmtClose = iconBtn(I.close, 'Hide formatting toolbar');
       fmtClose.dataset.tb = 'close-format';
       fmtClose.addEventListener('click', () => {
@@ -460,8 +467,35 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       });
 
       const spacer = h('cgext-rb-spacer');
-      root.append(formatting, spacer, fmtClose);
+      root.append(formatting, fmtOverflow, spacer, fmtClose);
       host.append(editStrip, root);
+
+      const editOverflowHandle = wireRibbonOverflow({
+        track: editBody,
+        button: editOverflow,
+        maxRows: 1,
+        items: [
+          { el: histSeg, priority: 0 },
+          { el: smartSeg, priority: 1 },
+          { el: bulkSeg, priority: 2 },
+        ],
+      });
+      const fmtOverflowHandle = wireRibbonOverflow({
+        track: formatting,
+        button: fmtOverflow,
+        maxRows: 2,
+        items: [
+          { el: gTarget, priority: 0 },
+          { el: gFont, priority: 0 },
+          { el: gAlign, priority: 0 },
+          { el: gBorders, priority: 0 },
+          { el: gFormat, priority: 0 },
+          { el: gIcons, priority: 1 },
+          { el: gColumn, priority: 2 },
+          { el: gClear, priority: 3 },
+          { el: gTemplates, priority: 4 },
+        ],
+      });
 
       // Collapse leftover ribbon chrome when strips are toggled off. The
       // band still hosts a flex spacer + close button after the
@@ -474,6 +508,16 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
         spacer.hidden = formatOff;
         fmtClose.hidden = formatOff;
         root.hidden = formatOff;
+        if (formatOff) {
+          fmtOverflow.hidden = true;
+        } else {
+          fmtOverflowHandle.reflow();
+        }
+        if (editOff) {
+          editOverflow.hidden = true;
+        } else {
+          editOverflowHandle.reflow();
+        }
         const ribbonHost = host.closest('.cgext-ribbon');
         if (ribbonHost instanceof HTMLElement) {
           ribbonHost.hidden = formatOff && editOff;
@@ -515,6 +559,8 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
 
       return {
         destroy() {
+          editOverflowHandle.destroy();
+          fmtOverflowHandle.destroy();
           disposeEditing?.();
           disposeFormatting();
           textColor.destroy();
@@ -1469,68 +1515,142 @@ export function injectRibbonStyles(): void {
 }
 
 const RIBBON_CSS = `
-.cgext-ribbon { flex: 0 0 auto; background: var(--cg-header-bg, var(--cg-popup-bg, #141922)); border-bottom: 1px solid var(--cg-border-color, #2a3140); }
+.cgext-ribbon {
+  flex: 0 0 auto;
+  min-width: 0;
+  width: 100%;
+  background: var(--cg-header-bg, var(--cg-popup-bg, #141922));
+  border-bottom: 1px solid var(--cg-border-color, #2a3140);
+}
 .cgext-ribbon:empty,
 .cgext-ribbon[hidden] { display: none; }
 /* ONE font size for every element in the bar (user request): controls,
    labels, stats, and captions all read at 12px. */
 .cgext-ribbon-band, .cgext-edit-strip { font-size: 12px; }
-.cgext-ribbon-band { display: flex; align-items: stretch; padding: 6px 12px 4px; box-sizing: border-box; gap: 0; }
+.cgext-ribbon-band {
+  display: flex;
+  align-items: flex-start;
+  padding: 4px 8px 2px;
+  box-sizing: border-box;
+  gap: 2px;
+  min-width: 0;
+}
 .cgext-ribbon-band[hidden] { display: none; }
-.cgext-rb-cluster { display: flex; align-items: stretch; }
+.cgext-rb-cluster {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  align-content: flex-start;
+  flex: 1 1 auto;
+  min-width: 0;
+  row-gap: 2px;
+  column-gap: 0;
+}
 .cgext-rb-cluster[hidden] { display: none; }
 
 /* The ribbon item renders TWO stacked strips (edit strip above the band);
    the shell's generic toolbar-item host is inline-flex ROW, so re-scope it
    to a column inside the ribbon slot. */
-.cgext-ribbon .cgext-toolbar-item { display: flex; flex-direction: column; align-items: stretch; }
+.cgext-ribbon .cgext-toolbar-item { display: flex; flex-direction: column; align-items: stretch; min-width: 0; }
 
-/* Editing strip — standalone single-row toolbar ABOVE the ribbon band. */
+/* Editing strip — standalone toolbar ABOVE the ribbon band; wraps + overflow. */
 .cgext-edit-strip {
-  display: flex; align-items: center; gap: 0;
-  min-height: 36px;
-  padding: 6px 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 32px;
+  padding: 4px 8px;
   border-bottom: 1px solid color-mix(in srgb, var(--cg-border-color, #2a3140) 70%, transparent);
+  min-width: 0;
 }
 .cgext-edit-strip[hidden] { display: none; }
-.cgext-es-seg { display: inline-flex; align-items: center; gap: 4px; }
+.cgext-es-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  row-gap: 4px;
+  column-gap: 0;
+}
+.cgext-es-seg { display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto; }
 .cgext-es-seg + .cgext-es-seg {
-  margin-left: 16px; padding-left: 16px;
+  margin-left: 10px; padding-left: 10px;
   border-left: 1px solid color-mix(in srgb, var(--cg-border-color, #2a3140) 70%, transparent);
 }
 .cgext-es-label {
   font-size: 10.5px; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase;
-  color: var(--cg-muted-fg-color, #7f8ba0); margin-right: 8px; white-space: nowrap;
+  color: var(--cg-muted-fg-color, #7f8ba0); margin-right: 6px; white-space: nowrap;
 }
-.cgext-es-seg > .cgext-rb-stat { margin-left: 6px; }
-.cgext-es-close {
-  margin-left: auto;
-  flex: 0 0 auto;
-  color: var(--cg-muted-fg-color, #7f8ba0);
-}
-.cgext-es-close:hover { color: var(--cg-fg-color, #e5e9f0); }
+.cgext-es-seg > .cgext-rb-stat { margin-left: 4px; }
+.cgext-es-close,
+.cgext-rb-btn[data-tb="edit-overflow"],
+.cgext-rb-btn[data-tb="format-overflow"],
 .cgext-rb-btn[data-tb="close-format"] {
-  align-self: center;
-  margin-left: 4px;
+  flex: 0 0 auto;
+  align-self: flex-start;
+  margin-top: 2px;
   color: var(--cg-muted-fg-color, #7f8ba0);
 }
+.cgext-es-close { margin-left: 0; }
+.cgext-es-close:hover,
+.cgext-rb-btn[data-tb="edit-overflow"]:hover,
+.cgext-rb-btn[data-tb="format-overflow"]:hover,
 .cgext-rb-btn[data-tb="close-format"]:hover { color: var(--cg-fg-color, #e5e9f0); }
+.cgext-rb-btn[data-tb="edit-overflow"].is-open,
+.cgext-rb-btn[data-tb="format-overflow"].is-open,
+.cgext-rb-btn[data-tb="edit-overflow"].has-items,
+.cgext-rb-btn[data-tb="format-overflow"].has-items {
+  color: var(--cg-accent-color, #4f9cf9);
+}
 .cgext-rb-grp {
-  display: flex; flex-direction: column; padding: 0 10px;
+  display: flex; flex-direction: column; padding: 0 6px;
   border-right: 1px solid color-mix(in srgb, var(--cg-border-color, #2a3140) 70%, transparent);
+  flex: 0 0 auto;
+  max-width: 100%;
 }
 .cgext-rb-cluster > .cgext-rb-grp:first-child { padding-left: 2px; }
 .cgext-rb-cluster[data-toolbar="formatting"] > .cgext-rb-grp:last-child { border-right: none; }
-.cgext-rb-deck { display: flex; flex-direction: column; gap: 4px; justify-content: center; flex: 1 1 auto; }
-.cgext-rb-mini { display: flex; align-items: center; gap: 3px; }
-.cgext-rb-mini > .cgext-rb-pill:first-child:last-child { flex: 1 1 auto; }
+.cgext-rb-deck { display: flex; flex-direction: column; gap: 3px; justify-content: center; flex: 1 1 auto; }
+.cgext-rb-mini { display: flex; align-items: center; gap: 2px; flex-wrap: nowrap; }
+.cgext-rb-mini > .cgext-rb-pill:first-child:last-child { flex: 1 1 auto; min-width: 0; }
 .cgext-rb-grp-name {
-  padding: 4px 0 0; text-align: center;
-  font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 2px 0 0; text-align: center;
+  font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
   color: var(--cg-muted-fg-color, #7f8ba0);
   white-space: nowrap;
 }
-.cgext-rb-spacer { flex: 1 1 auto; min-width: 8px; }
+.cgext-rb-spacer { flex: 1 1 auto; min-width: 4px; }
+.cgext-rb-overflow-stash { display: none !important; }
+.cgext-menu.cgext-rb-overflow-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 8px;
+  max-height: min(70vh, 480px);
+  overflow: auto;
+  scrollbar-width: thin;
+}
+.cgext-rb-overflow-panel > .cgext-rb-grp,
+.cgext-rb-overflow-panel > .cgext-es-seg {
+  border-right: none;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--cg-border-color, #2a3140) 80%, transparent);
+  border-radius: var(--cg-radius, 2px);
+  background: color-mix(in srgb, var(--cg-fg-color, #e5e9f0) 3%, transparent);
+}
+.cgext-rb-overflow-panel > .cgext-es-seg + .cgext-es-seg {
+  margin-left: 0;
+  padding-left: 8px;
+  border-left: 1px solid color-mix(in srgb, var(--cg-border-color, #2a3140) 80%, transparent);
+}
+.cgext-rb-overflow-panel > .cgext-rb-grp .cgext-rb-grp-name { text-align: left; padding-top: 4px; }
+.cgext-rb-overflow-empty {
+  padding: 8px 10px;
+  color: var(--cg-muted-fg-color, #7f8ba0);
+  font-size: 12px;
+}
 
 /* Borders group — side segments with a "has border" dot, live preview chip,
    line-sample dropdown rows. */

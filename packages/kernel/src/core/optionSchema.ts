@@ -70,6 +70,7 @@ export const GRID_OPTIONS_SCHEMA_EXCLUDED: ReadonlyMap<RuntimeOption, string> = 
   ['theme', 'theme class swap is app chrome (demo/host owns the toggle)'],
   ['context', 'opaque app object, not a setting'],
   ['loading', 'transient UI state, not configuration'],
+  ['loadingMessage', 'transient busy-overlay label, not configuration'],
   ['debug', 'developer flag, not end-user configuration'],
   ['rowData', 'data input, not a setting'],
   ['quickFilterText', 'live filter content, belongs to a search box'],

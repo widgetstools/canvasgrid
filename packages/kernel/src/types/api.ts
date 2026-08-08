@@ -618,6 +618,12 @@ export interface CGridApi<TRow = any> {
   /** Update a single runtime-mutable option. Throws on initial-only keys
    *  (see `INITIAL_ONLY_OPTIONS` in `core/runtimeOptions.ts`). */
   setGridOption<K extends keyof CGridOptions<TRow>>(key: K, value: CGridOptions<TRow>[K]): void;
+  /**
+   * Update the busy-overlay progress line while `loading` is true.
+   * Pass `loaded` (and optional `total`) for “12,450 / 20,000 rows”,
+   * or `null` to clear the detail line.
+   */
+  setLoadingProgress(loaded: number | null, total?: number | null): void;
   /** Batch-update multiple runtime-mutable options. The `columnDefs` key is
    *  honored only via this batched entrypoint (not via `setGridOption`)
    *  because it rebuilds the column tree + worker column metadata. */

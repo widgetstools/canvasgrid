@@ -257,7 +257,7 @@ const ext = new CGridExt<FlatRow>(app, {
   rowGroupPanelShow: 'always',
   // Busy overlay until the first STOMP snapshot lands (paint harness seeds
   // sync data, so leave loading off there).
-  ...(!PAINT_HARNESS ? { loading: true } : {}),
+  ...(!PAINT_HARNESS ? { loading: true, loadingMessage: 'Loading snapshot…' } : {}),
   sideBar: { toolPanels: ['columns', 'filters'] },
   // `&noFlash` (closeout fix wave, I5/C3) boots with flash OFF — the real
   // default for a plain grid, and the exact configuration C3's bug needed
@@ -533,10 +533,21 @@ if (PAINT_HARNESS) {
     onPhase: (phase) => {
       console.info(`[cgrid-ext-demo] stomp phase: ${phase}`);
       if (phase === 'error' || phase === 'disconnected') {
-        try { ext.grid.setGridOption('loading', false); } catch { /* ignore */ }
+        try {
+          ext.grid.setGridOption('loading', false);
+          ext.grid.setLoadingProgress(null);
+        } catch { /* ignore */ }
       } else if (phase === 'connecting' || phase === 'snapshot') {
-        try { ext.grid.setGridOption('loading', true); } catch { /* ignore */ }
+        try {
+          ext.grid.setGridOption('loading', true);
+          ext.grid.setGridOption('loadingMessage', phase === 'connecting'
+            ? 'Connecting…'
+            : 'Loading snapshot…');
+        } catch { /* ignore */ }
       }
+    },
+    onSnapshotProgress: (loaded, total) => {
+      try { ext.grid.setLoadingProgress(loaded, total); } catch { /* ignore */ }
     },
     onSnapshot: (rows) => {
       rows.forEach(decorateWithCategoricals);
@@ -553,7 +564,10 @@ if (PAINT_HARNESS) {
           : ''),
       );
       ext.setRowData(flat);
-      try { ext.grid.setGridOption('loading', false); } catch { /* ignore */ }
+      try {
+        ext.grid.setLoadingProgress(null);
+        ext.grid.setGridOption('loading', false);
+      } catch { /* ignore */ }
       // Persist/profile restore often paints row-group chips against
       // placeholder columns (worker rejects unknown ids). After real
       // columnDefs + data land, force-ship the group model. Also covers

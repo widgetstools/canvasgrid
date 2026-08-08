@@ -322,6 +322,7 @@ const NON_PERSISTABLE_RUNTIME_OPTIONS: ReadonlySet<string> = new Set([
   'pinnedBottomRowData',
   'context',
   'loading',
+  'loadingMessage',
   'debug',
   'quickFilterText',
   'aggFuncs',
@@ -3088,6 +3089,7 @@ export class CGrid<TRow = any> {
     });
     this.loadingOverlay = new LoadingOverlay(this.root);
     this.loadingOverlay.setLoading(options.loading === true);
+    this.loadingOverlay.setMessage(options.loadingMessage);
     // Cycle 24 / Task 4 — wire screen-reader announcements. The a11y
     // overlay holds the role="status" aria-live region; we subscribe
     // here to state-affecting events and turn each into human-
@@ -8379,6 +8381,18 @@ export class CGrid<TRow = any> {
     return this.options[key];
   }
 
+  /**
+   * Push a row-load counter onto the busy overlay detail line.
+   * Cleared automatically when `loading` flips to false.
+   */
+  setLoadingProgress(loaded: number | null, total?: number | null): void {
+    if (loaded == null) {
+      this.loadingOverlay.setDetail(null);
+      return;
+    }
+    this.loadingOverlay.setProgress(loaded, total);
+  }
+
   /** Set a single runtime-mutable option. Throws when `key` is in
    *  `INITIAL_ONLY_OPTIONS` (e.g. `columnDefs`, `getRowId`, `worker`). The
    *  `columnDefs` mutation surface lives on `updateGridOptions` because it
@@ -8522,6 +8536,7 @@ export class CGrid<TRow = any> {
       setDensity: (d) => this.setDensity(d),
       refreshA11y: () => this.updateA11y(),
       syncLoadingOverlay: () => this.loadingOverlay.setLoading(this.options.loading === true),
+      syncLoadingMessage: () => this.loadingOverlay.setMessage(this.options.loadingMessage),
       rebuildColumns: ({ defaultColDef }) => this.rebuildColumns({ defaultColDef }),
       refreshLayout: () => {
         this.recomputeViewport();
@@ -9262,6 +9277,7 @@ export class CGrid<TRow = any> {
         this.getStatusPanel<T>(key),
       getGridOption: (k) => this.getGridOption(k),
       setGridOption: (k, v) => this.setGridOption(k, v),
+      setLoadingProgress: (loaded, total) => this.setLoadingProgress(loaded, total),
       updateGridOptions: (p) => this.updateGridOptions(p),
       registerCellRenderer: (n, p, o) => this.registerCellRenderer(n, p, o),
       registerFormatCompiler: (fn) => this.registerFormatCompiler(fn),

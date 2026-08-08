@@ -18,6 +18,7 @@ import type { CgExtension, CgExtContext, ToolbarItem, ToolbarItemInstance } from
 import { menu, mirrorThemeClass, svg, iconButton } from './ui';
 import { layoutsItem, layoutSaveItem } from './layoutsMenu';
 import { alertsBadgeItem } from './alertsChrome';
+import { savedFiltersItem } from './savedFiltersToolbar';
 
 export interface TitleBarOptions {
   /** Brand label shown at the far left (e.g. the grid's name). */
@@ -43,6 +44,7 @@ export function titleBarExtensions(opts: TitleBarOptions = {}): CgExtension[] {
   injectTitleBarStyles();
   return [
     brandItem(opts.name ?? 'cgrid'),
+    savedFiltersItem(),
     searchItem(),
     alertsBadgeItem(),
     layoutsItem(),
@@ -523,19 +525,18 @@ const TITLEBAR_CSS = `
 }
 .cgext-search-input:focus { outline: none; border-color: var(--cg-accent-color, #4f9cf9); }
 
-/* Shared named-picker chrome: profiles (user) vs layouts (grid).
- * Pills keep an explicit rounder radius — excluded from the 2px chrome rule. */
+/* Shared named-picker chrome: profiles (user) vs layouts (grid). */
 .cgext-pill {
   display: inline-flex; align-items: center; gap: 7px;
   height: 32px; padding: 0 10px 0 6px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 8px;
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 2px);
   background: var(--cg-control-bg, rgba(255,255,255,0.04));
   color: var(--cg-fg-color, #e5e9f0); font: inherit; cursor: pointer;
   transition: border-color 120ms ease, background 120ms ease;
 }
 .cgext-pill:hover { border-color: var(--cg-accent-color, #4f9cf9); }
 .cgext-pill-icon {
-  width: 20px; height: 20px; border-radius: 5px;
+  width: 20px; height: 20px; border-radius: var(--cg-radius, 2px);
   display: inline-flex; align-items: center; justify-content: center;
   background: color-mix(in srgb, var(--cg-muted-fg-color, #9aa4b6) 18%, transparent);
   color: var(--cg-muted-fg-color, #9aa4b6);
