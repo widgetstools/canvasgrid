@@ -42,11 +42,11 @@ await page.waitForFunction(
 );
 console.log('after expand:', await page.evaluate(() => window.__demo.grid.getDisplayedRowCount()));
 
-// Live ticks keep the server busy (soft refresh + leaf refetch).
-const reqA = await page.evaluate(() => window.__demo.server.requestCount);
+// Live ticks keep the provider busy (soft refresh + leaf refetch).
+const reqA = await page.evaluate(() => window.__demo.provider.requestCount);
 await wait(2500);
-const reqB = await page.evaluate(() => window.__demo.server.requestCount);
-console.log('server requests over 2.5s:', reqA, '->', reqB);
+const reqB = await page.evaluate(() => window.__demo.provider.requestCount);
+console.log('provider requests over 2.5s:', reqA, '->', reqB);
 
 // Ungroup → flat SSRM windowing over the whole book.
 await page.evaluate(() => window.__demo.grid.setRowGroupColumns([]));

@@ -17,6 +17,17 @@ export {
 } from './provider';
 
 export {
+  MockSSRMDataProvider,
+  type MockSSRMDataProviderConfig,
+  type MockPositionRow,
+} from './mockSsrmDataProvider';
+
+export {
+  MOCK_POSITION_COLUMNS,
+  MOCK_GRAND_TOTAL_ROW_ID,
+} from './mockPositionColumns';
+
+export {
   AppDataStore,
   resolveTemplate,
   resolveCfg,

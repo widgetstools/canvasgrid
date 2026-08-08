@@ -90,7 +90,8 @@ export interface StompPerspectiveProviderConfig {
 /** The slice of VelocityGrid the provider needs for `attach` — structural, so the
  *  provider has no hard dependency on the VelocityGrid class. */
 export interface AttachableGrid {
-  applyServerSideTransaction(tx: { update?: PositionRow[] }): void;
+  /** Row shape varies by provider (Perspective `PositionRow` vs mock blotter). */
+  applyServerSideTransaction(tx: { update?: unknown[] }): void;
   refreshServerSide(params?: { purge?: boolean }): void;
   getRowGroupColumns(): string[];
   on(type: string, handler: (event: unknown) => void): () => void;
