@@ -248,5 +248,22 @@ describe('FlashRegistry', () => {
       expect(registry.getAlpha(10, 'a', 5000)).toBe(1);
       expect(registry.getColor(10, 'a')).toBeUndefined();
     });
+
+    it('ingestMask shouldFlash skips bits that return false', () => {
+      const { registry } = buildDeps();
+      const rowIds = new Uint32Array([10, 20]);
+      const colIds = ['a', 'b'];
+      // Bits: (10,a) and (20,b) set → bit 0 and bit 3.
+      const mask = new Uint8Array([0b00001001]);
+      const stringRowIds = ['r10', 'r20'];
+      registry.ingestMask({
+        rowIds, colIds, mask, now: 5000, stringRowIds,
+        // Admit only (10,a) — suppress default on owned col 'b'.
+        shouldFlash: (sid, colId) => !(sid === 'r20' && colId === 'b'),
+      });
+      expect(registry.size()).toBe(1);
+      expect(registry.getAlpha(10, 'a', 5000)).toBe(1);
+      expect(registry.getAlpha(20, 'b', 5000)).toBe(0);
+    });
   });
 });

@@ -5,7 +5,19 @@ export { LocalStorageProfileStore } from './profiles/localStorageStore';
 export { ProfilesController, type ProfilesOptions } from './profiles/controller';
 export { createExtContext, createExtEventBus } from './extension/context';
 export { ShellLayout } from './shell/shell';
-export { VelocityGridExt, type VelocityGridExtOptions } from './velocityGridExt';
+export {
+  VelocityGridExt,
+  type VelocityGridExtOptions,
+  type VelocityGridExtConfig,
+} from './velocityGridExt';
+export {
+  CONFIG_STORAGE_PREFIX,
+  configStorageKey,
+  saveConfigToLocalStorage,
+  loadConfigFromLocalStorage,
+  hasConfigInLocalStorage,
+  clearConfigFromLocalStorage,
+} from './configStorage';
 export { VelocityGridExtElement, defineVelocityGridExt } from './element';
 export { gridOptionsModule } from './modules/gridOptions';
 export { columnGroupsModule } from './modules/columnGroups';
@@ -22,6 +34,7 @@ export {
 } from './ui/expressionEditor';
 export { buildDefaultBundle } from './defaultBundle';
 export { titleBarExtensions, injectTitleBarStyles, type TitleBarOptions } from './toolbar/titleBar';
+export { profilesItem, profileSaveItem } from './toolbar/profilesMenu';
 export { savedFiltersItem, type SavedFilter } from './toolbar/savedFiltersToolbar';
 export {
   makeId as makeSavedFilterId,

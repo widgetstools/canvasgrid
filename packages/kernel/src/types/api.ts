@@ -665,7 +665,10 @@ export interface VelocityGridApi<TRow = any> {
   /** Cycle 23 / Task 6, widened to the API in Cycle 21i Phase 2 / T3 —
    *  restore a state snapshot (ordered, partial-tolerant, forward-
    *  migrated). */
-  setState(snapshot: import('../core/stateSnapshot').GridState): void;
+  setState(
+    snapshot: import('../core/stateSnapshot').GridState,
+    opts?: { exhaustive?: boolean },
+  ): void;
 
   /** The grid's COMPLETE configuration in one object: the full live options
    *  (columnDefs, defaultColDef, callbacks, every runtime-updated option)

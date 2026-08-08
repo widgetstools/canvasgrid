@@ -1,5 +1,9 @@
 import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
-import type { VelocityGridOptions, GridState } from '@wellsfargo-starui/velocity-grid';
+import type {
+  VelocityGridOptions,
+  GridState,
+  GridLayoutsBundle,
+} from '@wellsfargo-starui/velocity-grid';
 import { ExtensionRegistry, type ExtensionSpec } from './extension/registry';
 import { ShellLayout } from './shell/shell';
 import { createExtContext } from './extension/context';
@@ -7,6 +11,12 @@ import { ProfilesController } from './profiles/controller';
 import { LocalStorageProfileStore } from './profiles/localStorageStore';
 import { isSettingsModule, isToolbarItem, type VelocityGridExtContext, type ProfileStore } from './extension/types';
 import { buildDefaultBundle } from './defaultBundle';
+import {
+  clearConfigFromLocalStorage,
+  hasConfigInLocalStorage,
+  loadConfigFromLocalStorage,
+  saveConfigToLocalStorage,
+} from './configStorage';
 
 export interface VelocityGridExtOptions<TRow = any> extends VelocityGridOptions<TRow> {
   ext?: {
@@ -15,6 +25,18 @@ export interface VelocityGridExtOptions<TRow = any> extends VelocityGridOptions<
     modules?: Record<string, unknown>;
   };
 }
+
+/**
+ * Serializable workspace blob: live view state + the layouts registry.
+ * Same shape kernel `persistState` writes under `velocity-grid:state:<gridId>`.
+ *
+ * Distinct from `grid.getConfig()` / `grid.setConfig()`, which round-trip
+ * runtime `VelocityGridOptions` (callbacks, columnDefs, etc.) and are not
+ * pure JSON.
+ */
+export type VelocityGridExtConfig = GridState & {
+  layouts?: GridLayoutsBundle;
+};
 
 /** Batteries-included wrapper: owns a VelocityGrid + an ExtensionRegistry, wires
  *  every extension to the kernel through a shared context, and lays the
@@ -83,6 +105,68 @@ export class VelocityGridExt<TRow = any> {
   // boundary; `VelocityGridExt.setState`'s own signature stays the accurate
   // `Partial<GridState>` contract for callers.
   setState(state: Partial<GridState>): void { this._grid.setState(state as GridState); }
+
+  /**
+   * Capture a JSON-serialisable config: current view state + all named
+   * layouts (active id, per-layout view, shared grid baseline). Persist
+   * the result anywhere (localStorage, REST, file) and restore with
+   * {@link loadConfig}.
+   */
+  getConfig(): VelocityGridExtConfig {
+    return {
+      ...this._grid.getState(),
+      layouts: this._grid.exportLayouts(),
+    };
+  }
+
+  /**
+   * Restore a blob from {@link getConfig}: reseeds the layouts registry
+   * (replace) then applies the saved view state. Safe to call with an
+   * older blob that omits `layouts` (view-only restore).
+   */
+  loadConfig(config: VelocityGridExtConfig): void {
+    const { layouts, ...viewState } = config;
+    if (layouts) {
+      this._grid.importLayouts(layouts, { mode: 'replace', overwrite: true });
+    }
+    // Exhaustive so omitted slices clear — matches kernel persist restore.
+    this._grid.setState(viewState as GridState, { exhaustive: true });
+  }
+
+  /** Persist {@link getConfig} to `localStorage` under
+   *  `velocity-grid:config:<gridId>`. No-op (warns) without a `gridId`. */
+  persistConfig(): void {
+    const gid = this._grid.getGridOption('gridId');
+    if (typeof gid !== 'string' || !gid) {
+      console.warn('[velocity-grid-ext] persistConfig requires options.gridId');
+      return;
+    }
+    saveConfigToLocalStorage(gid, this.getConfig());
+  }
+
+  /** Restore a blob previously written by {@link persistConfig} / the
+   *  title-bar save disk. Returns `true` when a config was applied. */
+  restorePersistedConfig(): boolean {
+    const gid = this._grid.getGridOption('gridId');
+    if (typeof gid !== 'string' || !gid) return false;
+    const raw = loadConfigFromLocalStorage(gid);
+    if (!raw || typeof raw !== 'object') return false;
+    this.loadConfig(raw as VelocityGridExtConfig);
+    return true;
+  }
+
+  /** Whether `localStorage` has a saved config for this grid's `gridId`. */
+  hasPersistedConfig(): boolean {
+    const gid = this._grid.getGridOption('gridId');
+    return typeof gid === 'string' && gid.length > 0 && hasConfigInLocalStorage(gid);
+  }
+
+  /** Delete the persisted config for this grid's `gridId`. */
+  clearPersistedConfig(): void {
+    const gid = this._grid.getGridOption('gridId');
+    if (typeof gid === 'string' && gid) clearConfigFromLocalStorage(gid);
+  }
+
   on(type: string, fn: (e: unknown) => void): () => void {
     return this._grid.addEventListener(type as any, fn as any);
   }

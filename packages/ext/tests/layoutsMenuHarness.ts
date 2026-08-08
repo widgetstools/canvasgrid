@@ -24,6 +24,11 @@ export class FakeGrid {
   }
 
   getGridOption = vi.fn((_key: string) => 'fake-grid');
+  viewState: Record<string, unknown> = { version: 4, filterModel: {} };
+  getState = vi.fn(() => ({ ...this.viewState }));
+  setState = vi.fn((state: Record<string, unknown>, _opts?: { exhaustive?: boolean }) => {
+    this.viewState = { ...state };
+  });
   getLayouts() { return this.layouts.map((l) => ({ ...l })); }
   getActiveLayoutId() { return this.activeId; }
   getActiveLayout() { return { ...this.layouts.find((l) => l.id === this.activeId)! }; }

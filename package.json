@@ -19,6 +19,8 @@
     "dev:ext-demo": "npm run dev --workspace=cgrid-ext-demo",
     "dev:ssrm-demo": "npm run dev --workspace=cgrid-ssrm-demo",
     "dev:ext-ssrm-demo": "npm run dev --workspace=cgrid-ext-ssrm-demo",
+    "dev:vg-lab": "npm run dev --workspace=cgrid-vg-lab",
+    "dev:ssrm-lab": "npm run dev --workspace=cgrid-ssrm-lab",
     "dev:stomp": "node scripts/run-stomp.mjs",
     "ext-demo:openfin": "node scripts/run-ext-openfin.mjs",
     "verify:demos": "node scripts/verify-demos.mjs",

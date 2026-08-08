@@ -20,6 +20,8 @@ const ALL = [
   { name: 'cgrid-ext-demo', workspace: 'cgrid-ext-demo', port: 5188, needsKernelDist: true },
   { name: 'cgrid-ssrm-demo', workspace: 'cgrid-ssrm-demo', port: 5191, needsKernelDist: true },
   { name: 'cgrid-ext-ssrm-demo', workspace: 'cgrid-ext-ssrm-demo', port: 5195, needsKernelDist: true },
+  { name: 'cgrid-vg-lab', workspace: 'cgrid-vg-lab', port: 5196, needsKernelDist: true },
+  { name: 'cgrid-ssrm-lab', workspace: 'cgrid-ssrm-lab', port: 5197, needsKernelDist: true },
   { name: 'colgroups', workspace: 'colgroups', port: 5176, needsKernelDist: false },
   { name: 'showcase', workspace: 'showcase', port: 5174, needsKernelDist: false },
 ];

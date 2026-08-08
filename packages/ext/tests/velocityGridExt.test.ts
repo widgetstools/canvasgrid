@@ -43,4 +43,30 @@ describe('VelocityGridExt', () => {
     expect(host.querySelector('.vgext-sheet')!.textContent).toContain('demo-panel');
     ext.destroy();
   });
+
+  it('getConfig / loadConfig round-trips view state with the layouts registry', () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const ext = new VelocityGridExt(host, opts());
+
+    const saved = ext.grid.saveLayout('Trader');
+    expect(ext.grid.getActiveLayoutId()).toBe(saved.id);
+
+    const config = ext.getConfig();
+    expect(config.layouts).toBeTruthy();
+    expect(config.layouts!.layouts.some((l) => l.id === saved.id)).toBe(true);
+    expect(config.layouts!.activeLayoutId).toBe(saved.id);
+
+    // JSON round-trip (external config service path).
+    const remote = JSON.parse(JSON.stringify(config));
+
+    ext.grid.loadLayout('default');
+    expect(ext.grid.getActiveLayoutId()).toBe('default');
+
+    ext.loadConfig(remote);
+    expect(ext.grid.getActiveLayoutId()).toBe(saved.id);
+    expect(ext.grid.getLayouts().some((l) => l.id === saved.id)).toBe(true);
+
+    ext.destroy();
+  });
 });

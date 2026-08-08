@@ -143,11 +143,17 @@ export class FlashRegistry {
     mask: Uint8Array;
     now?: number;
     /** Cycle 21e / Task 13 — string rowIds parallel to `rowIds` (from
-     *  chunk.stringRowIds). Only needed when `getOverride` is set. */
+     *  chunk.stringRowIds). Needed when `getOverride` or `shouldFlash`
+     *  is set. */
     stringRowIds?: readonly string[];
     /** Cycle 21e / Task 13 — per-cell override lookup, keyed by string
      *  rowId + colId. Return undefined for "no override". */
     getOverride?: (stringRowId: string, colId: string) => FlashOverride | undefined;
+    /** When set, bits whose callback returns false are skipped (no
+     *  `flash()`). Used to suppress default cell-change flash on columns
+     *  owned by style-rule flash — those cells only flash when a
+     *  `flashCells` override was staged for this tick. */
+    shouldFlash?: (stringRowId: string, colId: string) => boolean;
   }): void {
     if (this.destroyed) return;
     const { rowIds, colIds, mask } = input;
@@ -155,14 +161,16 @@ export class FlashRegistry {
     const rowCount = rowIds.length;
     const colCount = colIds.length;
     if (rowCount === 0 || colCount === 0) return;
-    const { stringRowIds, getOverride } = input;
+    const { stringRowIds, getOverride, shouldFlash } = input;
+    const needSid = (getOverride != null || shouldFlash != null) && stringRowIds != null;
     for (let r = 0; r < rowCount; r++) {
-      const sid = getOverride && stringRowIds ? stringRowIds[r] ?? '' : '';
+      const sid = needSid ? stringRowIds![r] ?? '' : '';
       for (let c = 0; c < colCount; c++) {
         const bitIdx = r * colCount + c;
         const byte = mask[bitIdx >>> 3] ?? 0;
         if ((byte & (1 << (bitIdx & 7))) === 0) continue;
         const colId = colIds[c]!;
+        if (shouldFlash != null && (sid === '' || !shouldFlash(sid, colId))) continue;
         const override = getOverride && sid !== '' ? getOverride(sid, colId) : undefined;
         this.flash(rowIds[r]!, colId, now, override);
       }
