@@ -59,6 +59,11 @@ export interface ConditionalRuleShape {
   id: string;
   enabled?: boolean;
   priority?: number;
+  /** Present on style rules from @velocity-grid-rules; kernel uses
+   *  `flash.enabled` + scope to suppress default cell-change flash. */
+  kind?: string;
+  flash?: { enabled?: boolean; target?: string };
+  scope?: { kind?: string; columnIds?: readonly string[] };
 }
 
 export interface RuleEngineShape {

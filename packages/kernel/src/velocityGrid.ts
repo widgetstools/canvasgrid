@@ -207,6 +207,7 @@ import {
   type FormatCompiler,
 } from './core/formatCompilerSlot';
 import { registerRuleEngine as slotRegisterRuleEngine, getRuleEngine, type RuleEngineShape, type ConditionalRuleShape } from './core/ruleEngineSlot';
+import { isRuleFlashOwned, ruleFlashOwnership } from './core/ruleFlashOwnership';
 import {
   registerCalcProvider as slotRegisterCalcProvider,
   getCalcProvider,
@@ -10945,16 +10946,32 @@ export class VelocityGrid<TRow = any> {
       // Cycle 21e / Task 13 — join per-call flashCells overrides by the
       // chunk's string rowIds. Zero-cost when the override map is empty
       // (the common case): no lookup closure is even passed.
+      //
+      // Style-rule flash ownership — when an enabled style rule has
+      // `flash.enabled` for a column (or whole row), default worker
+      // cell-change flash is suppressed for that cell. Rule / API flash
+      // still paints: `flashCells` stages an override marker that
+      // `shouldFlash` admits.
       const hasOverrides = this.flashOverrides.size > 0;
+      const owned = ruleFlashOwnership(getRuleEngine()?.getRules?.());
+      const suppressDefault = owned.allColumns || owned.colIds.size > 0;
+      const needSid = hasOverrides || suppressDefault;
       this.flashRegistry.ingestMask({
         rowIds: chunk.rowIds,
         colIds: cols,
         mask: chunk.flashMask,
-        stringRowIds: hasOverrides ? chunk.stringRowIds : undefined,
+        stringRowIds: needSid ? chunk.stringRowIds : undefined,
         getOverride: hasOverrides
           ? (sid, colId) =>
               this.flashOverrides.get(`${sid}\0${colId}`)
                 ?? this.flashOverrides.get(`${sid}\0*`)
+          : undefined,
+        shouldFlash: suppressDefault
+          ? (sid, colId) => {
+              if (!isRuleFlashOwned(owned, colId)) return true;
+              return this.flashOverrides.has(`${sid}\0${colId}`)
+                || this.flashOverrides.has(`${sid}\0*`);
+            }
           : undefined,
       });
       this.startFlashTickLoop();
@@ -11260,9 +11277,10 @@ export class VelocityGrid<TRow = any> {
     if (!params.rowIds || params.rowIds.length === 0) return;
     const colIds = params.colIds ?? [];
     // Cycle 21e / Task 13 — stage per-call overrides for the mask-ingest
-    // join. Zero entries (and zero cost) when no override field is set.
-    if (params.color !== undefined || params.mode !== undefined
-      || params.flashDuration !== undefined || params.fadeDuration !== undefined) {
+    // join. Always stage a marker (even with no color/mode) so rule-flash
+    // ownership can admit `flashCells` bits while suppressing default
+    // value-change flash on the same columns.
+    {
       const now = performance.now();
       // Lazy sweep so abandoned overrides can't accumulate.
       for (const [k, v] of this.flashOverrides) {

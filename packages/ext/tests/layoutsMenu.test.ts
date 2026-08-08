@@ -266,18 +266,29 @@ describe('save-new + import/export', () => {
     expect(newInput(panel).value).toBe('layout 1'); // kept for correction
   });
 
-  it('footer export downloads the full bundle named after the gridId', () => {
+  it('footer export downloads the full config (view + layouts) named after the gridId', () => {
     const dl = vi.spyOn(fileIO, 'download').mockImplementation(() => {});
     const grid = new FakeGrid();
     const { host } = mountItem(layoutsItem(), grid);
     const panel = openPanel(host);
     panel.querySelector<HTMLButtonElement>('.vgext-layouts-export')!.click();
+    expect(grid.getState).toHaveBeenCalled();
     expect(grid.exportLayouts).toHaveBeenCalled();
-    expect(dl).toHaveBeenCalledWith('fake-grid-layouts.json', expect.objectContaining({ version: 1 }));
+    expect(dl).toHaveBeenCalledWith(
+      'fake-grid-config.json',
+      expect.objectContaining({
+        version: 4,
+        layouts: expect.objectContaining({ version: 1, layouts: expect.any(Array) }),
+      }),
+    );
     dl.mockRestore();
   });
 
-  it('sniffImport classifies bundle / single layout / garbage', () => {
+  it('sniffImport classifies config / bundle / single layout / garbage', () => {
+    expect(sniffImport({
+      version: 4,
+      layouts: { version: 1, activeLayoutId: 'default', layouts: [], grid: {} },
+    })).toBe('config');
     expect(sniffImport({ version: 1, layouts: [], activeLayoutId: 'default', grid: {} })).toBe('bundle');
     expect(sniffImport({ id: 'x', name: 'X', state: {} })).toBe('layout');
     expect(sniffImport({ hello: 'world' })).toBeNull();
@@ -285,10 +296,24 @@ describe('save-new + import/export', () => {
     expect(sniffImport(null)).toBeNull();
   });
 
-  it('handleImportText routes bundle→importLayouts(merge), layout→importLayout, and reports errors inline', () => {
+  it('handleImportText routes config / bundle / layout and reports errors inline', () => {
     const grid = new FakeGrid();
     const errors: string[] = [];
     const showError = (m: string) => errors.push(m);
+
+    handleImportText(grid as never, JSON.stringify({
+      version: 4,
+      filterModel: { a: 1 },
+      layouts: { version: 1, activeLayoutId: 'default', layouts: [{ id: 'c1', name: 'C1', state: {} }], grid: {} },
+    }), showError);
+    expect(grid.importLayouts).toHaveBeenCalledWith(
+      expect.objectContaining({ version: 1 }),
+      { mode: 'replace', overwrite: true },
+    );
+    expect(grid.setState).toHaveBeenCalledWith(
+      expect.objectContaining({ version: 4, filterModel: { a: 1 } }),
+      { exhaustive: true },
+    );
 
     handleImportText(grid as never, JSON.stringify({ version: 1, activeLayoutId: 'default', layouts: [{ id: 'b1', name: 'B1', state: {} }], grid: {} }), showError);
     expect(grid.importLayouts).toHaveBeenCalledWith(expect.objectContaining({ version: 1 }), { mode: 'merge' });
@@ -324,7 +349,7 @@ describe('layout-save disk', () => {
   const stateUpdated = (source: string, changedKeys: string[]) =>
     ({ type: 'stateUpdated', state: {}, changedKeys, source });
 
-  it('starts clean/disabled; a ui state change dirties it; click updates the active layout and cleans', () => {
+  it('starts clean/disabled; a ui state change dirties it; click updates layout + persists config', () => {
     const grid = new FakeGrid();
     const { host } = mountItem(layoutSaveItem(), grid);
     const btn = host.querySelector<HTMLButtonElement>('button.vgext-save')!;
@@ -339,6 +364,9 @@ describe('layout-save disk', () => {
     btn.click();
     expect(grid.updateLayout).toHaveBeenCalled();
     expect(btn.disabled).toBe(true); // updateLayout emitted layoutChanged → clean
+    const raw = localStorage.getItem('velocity-grid:config:fake-grid');
+    expect(raw).toBeTruthy();
+    expect(JSON.parse(raw!).layouts).toBeTruthy();
   });
 
   it("ignores non-'ui' sources and layouts-only echoes; loading a layout never re-dirties", () => {

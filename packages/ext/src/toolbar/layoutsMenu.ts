@@ -1,8 +1,9 @@
 /**
  * Layout management for the VelocityGridExt title bar — a dropdown listing the
- * kernel's named Grid Layouts (switch / rename / duplicate / export /
- * delete / save-new / bundle import-export) plus a dirty-aware
- * "update active layout" disk button.
+ * kernel's named Grid Layouts (switch / rename / duplicate / per-layout export /
+ * delete / save-new) plus footer full-config Export/Import (same shape as
+ * `VelocityGridExt.getConfig` / `loadConfig`; Import also accepts a layouts
+ * bundle or a single layout) and a dirty-aware "update active layout" disk.
  *
  * All state lives in the kernel: every mutation goes through the public
  * layout API and the UI re-syncs from the `layoutChanged` event — the
@@ -11,8 +12,12 @@
  * caught at this boundary and surfaced inline.
  */
 import type { ToolbarItem, VelocityGridExtContext } from '../extension/types';
-import type { VelocityGridEvent as VelocityGridExtGridEvent } from '@wellsfargo-starui/velocity-grid';
+import type {
+  VelocityGridEvent as VelocityGridExtGridEvent,
+  GridState,
+} from '@wellsfargo-starui/velocity-grid';
 import { menu, svg, iconButton } from './ui';
+import { saveConfigToLocalStorage } from '../configStorage';
 
 /** Kernel layout surface this module drives — structural subset of VelocityGridApi
  *  so the module stays testable against a stub. Exported (but NOT re-exported
@@ -21,6 +26,8 @@ import { menu, svg, iconButton } from './ui';
  *  then fails typecheck instead of surfacing only at E2E time. */
 export interface LayoutGridSurface {
   getGridOption(key: string): unknown;
+  getState(): GridState;
+  setState(state: GridState, opts?: { exhaustive?: boolean }): void;
   getLayouts(): { id: string; name: string }[];
   getActiveLayoutId(): string;
   getActiveLayout(): { id: string; name: string };
@@ -69,21 +76,16 @@ export function uniqueCopyName(base: string, existing: string[]): string {
   return candidate;
 }
 
-/** Dirty-aware "fold my current view into the active layout" disk. Dirty is
- *  a UI-local flag: the kernel has no per-layout dirty signal, but its
- *  `stateUpdated.source` discriminator separates user-driven view changes
- *  ('ui') from programmatic applies ('api'/'init' — loadLayout, persistence
- *  restore), and layout-mutation echoes report `changedKeys: ['layouts']`.
- *  Any `layoutChanged` (save/update/load/restore/…) means view === layout
- *  again, so it clears. Note kernel `persistState` autosaves continuously
- *  regardless — this button is about the layout, not storage. */
+/** Dirty-aware save disk: fold the view into the active layout, then
+ *  persist the full grid config (view + layouts) to localStorage under
+ *  `velocity-grid:config:<gridId>`. Requires a construction `gridId`. */
 export function layoutSaveItem(): ToolbarItem {
   return {
     id: 'layout-save', kind: 'toolbar-item', slot: 'primary-right',
     init() {},
     render(host, ctx) {
       const grid = surface(ctx);
-      const btn = iconButton(I.save, 'Layout up to date');
+      const btn = iconButton(I.save, 'Config up to date');
       btn.classList.add('vgext-save');
       let dirty = false;
       const sync = () => {
@@ -91,7 +93,9 @@ export function layoutSaveItem(): ToolbarItem {
         btn.disabled = !dirty;
         let name = 'Default';
         try { name = grid.getActiveLayout().name; } catch { /* pre-init grid */ }
-        btn.title = dirty ? `Update layout '${name}' (unsaved view changes)` : 'Layout up to date';
+        btn.title = dirty
+          ? `Save layout '${name}' + grid config to localStorage`
+          : 'Config up to date';
       };
       sync();
       const offState = grid.addEventListener('stateUpdated', (e) => {
@@ -110,8 +114,19 @@ export function layoutSaveItem(): ToolbarItem {
       });
       const offLayout = grid.addEventListener('layoutChanged', () => { dirty = false; sync(); });
       btn.addEventListener('click', () => {
-        try { grid.updateLayout(); }
-        catch (err) { console.warn('[cgext] updateLayout failed:', err); /* nothing user-fixable; stays dirty */ }
+        try {
+          grid.updateLayout();
+          const gid = String(grid.getGridOption('gridId') ?? '');
+          if (!gid) {
+            console.warn('[cgext] layout-save: set options.gridId to persist config to localStorage');
+          } else {
+            saveConfigToLocalStorage(gid, captureGridConfig(grid));
+          }
+        } catch (err) {
+          console.warn('[cgext] save failed:', err);
+          /* stays dirty so the user can retry */
+          return;
+        }
       });
       host.appendChild(btn);
       return { destroy() { offState(); offLayout(); host.replaceChildren(); } };
@@ -137,11 +152,37 @@ function downloadJson(filename: string, data: unknown): void {
 /** Indirection so unit tests can intercept file downloads. */
 export const fileIO = { download: downloadJson };
 
-/** Shape-sniff parsed import JSON: a GridLayoutsBundle has a `layouts`
- *  array; a single GridLayout has string `id` + object `state`. */
-export function sniffImport(json: unknown): 'bundle' | 'layout' | null {
+/** Full workspace blob — same shape as `VelocityGridExt.getConfig()`. */
+export function captureGridConfig(grid: LayoutGridSurface): GridState & { layouts: unknown } {
+  return {
+    ...grid.getState(),
+    layouts: grid.exportLayouts(),
+  };
+}
+
+/** Restore a `captureGridConfig` / `getConfig` blob (layouts replace + view). */
+export function applyGridConfig(
+  grid: LayoutGridSurface,
+  config: GridState & { layouts?: unknown },
+): void {
+  const { layouts, ...viewState } = config;
+  if (layouts && typeof layouts === 'object' && !Array.isArray(layouts)) {
+    grid.importLayouts(layouts, { mode: 'replace', overwrite: true });
+  }
+  grid.setState(viewState as GridState, { exhaustive: true });
+}
+
+/** Shape-sniff parsed import JSON:
+ *  - `config` — full workspace (`getConfig` / footer Export): nested layouts bundle
+ *  - `bundle` — layouts-only (`exportLayouts`): top-level `layouts` array
+ *  - `layout` — single layout (`exportLayout`): `id` + `state` */
+export function sniffImport(json: unknown): 'config' | 'bundle' | 'layout' | null {
   if (!json || typeof json !== 'object') return null;
   const o = json as Record<string, unknown>;
+  if (o.layouts && typeof o.layouts === 'object' && !Array.isArray(o.layouts)) {
+    const nested = o.layouts as Record<string, unknown>;
+    if (Array.isArray(nested.layouts)) return 'config';
+  }
   if (Array.isArray(o.layouts)) return 'bundle';
   if (typeof o.id === 'string' && !!o.state && typeof o.state === 'object') return 'layout';
   return null;
@@ -159,9 +200,10 @@ export function handleImportText(
   catch { showError('Import failed: the file is not valid JSON.'); return; }
   try {
     const kind = sniffImport(parsed);
-    if (kind === 'bundle') grid.importLayouts(parsed, { mode: 'merge' });
+    if (kind === 'config') applyGridConfig(grid, parsed as GridState & { layouts?: unknown });
+    else if (kind === 'bundle') grid.importLayouts(parsed, { mode: 'merge' });
     else if (kind === 'layout') grid.importLayout(parsed);
-    else showError('Import failed: not a cgrid layout or layouts bundle.');
+    else showError('Import failed: not a grid config, layouts bundle, or layout.');
   } catch (err) { showError(`Import failed: ${errText(err)}`); }
 }
 
@@ -239,8 +281,8 @@ function buildPanel(ctx: VelocityGridExtContext, close: () => void): { el: HTMLE
       `<button type="button" class="vgext-layouts-savenew" disabled>+ Save</button>` +
     `</div>` +
     `<div class="vgext-layouts-foot">` +
-      `<button type="button" class="vgext-layouts-export">${svg(I.download, 14)}<span>Export</span></button>` +
-      `<button type="button" class="vgext-layouts-import">${svg(I.upload, 14)}<span>Import</span></button>` +
+      `<button type="button" class="vgext-layouts-export" title="Export full grid config (view + all layouts)">${svg(I.download, 14)}<span>Export</span></button>` +
+      `<button type="button" class="vgext-layouts-import" title="Import full config, layouts bundle, or a single layout">${svg(I.upload, 14)}<span>Import</span></button>` +
       `<input type="file" accept="application/json,.json" hidden />` +
     `</div>`;
   const listEl = el.querySelector<HTMLElement>('.vgext-layouts-list')!;
@@ -283,7 +325,7 @@ function buildPanel(ctx: VelocityGridExtContext, close: () => void): { el: HTMLE
     try {
       let gid = 'grid';
       try { gid = String(grid.getGridOption('gridId') || 'grid'); } catch { /* keep fallback */ }
-      fileIO.download(`${slug(gid)}-layouts.json`, grid.exportLayouts());
+      fileIO.download(`${slug(gid)}-config.json`, captureGridConfig(grid));
     } catch (err) { showError(errText(err)); }
   });
   const fileInput = el.querySelector<HTMLInputElement>('.vgext-layouts-foot input[type=file]')!;
