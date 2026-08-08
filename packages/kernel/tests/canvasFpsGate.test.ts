@@ -1,5 +1,5 @@
 /**
- * Paint-cadence regression lock for `CGridCanvas.tickPaint`.
+ * Paint-cadence regression lock for `VelocityGridCanvas.tickPaint`.
  *
  * The gate used to be `elapsed > interval`, which on the dominant
  * 60Hz-display + 60fps-cap combination failed on every rAF tick that landed
@@ -14,7 +14,7 @@
  *      evenly (the grid-advance property).
  */
 import { describe, it, expect, beforeAll, vi } from 'vitest';
-import { CGridCanvas } from '../src/core/canvas';
+import { VelocityGridCanvas } from '../src/core/canvas';
 import type { PaintComponent } from '../src/core/canvas';
 
 beforeAll(() => {
@@ -55,7 +55,7 @@ function makeCanvas(fpsCap?: number) {
     setBounds: () => {},
     paint: () => { paints += 1; },
   };
-  const cv = new CGridCanvas(host, component, {
+  const cv = new VelocityGridCanvas(host, component, {
     fpsCap,
     useHiDPI: false,
     measureSize: () => ({ width: 400, height: 300 }),
@@ -78,7 +78,7 @@ function makeCanvas(fpsCap?: number) {
   };
 }
 
-describe('CGridCanvas.tickPaint — fps gate cadence', () => {
+describe('VelocityGridCanvas.tickPaint — fps gate cadence', () => {
   it('does not drop ready frames when the cap matches a 60Hz display', () => {
     // A true 60Hz display delivers exactly the interval a 60fps cap computes.
     // The old `elapsed > interval` test is false at equality, so this is the

@@ -28,7 +28,7 @@ test.describe('Plus / Minus (Markets parity)', () => {
   test('settings sheet opens; Save enables plusMinus', async ({ page }) => {
     // Markets: v2-plus-minus — settings sheet opens Plus / Minus panel
     await openCustomizer(page, 'plus-minus');
-    await expect(page.locator('.cgext-sheet-title')).toHaveText('Plus / Minus');
+    await expect(page.locator('.vgext-sheet-title')).toHaveText('Plus / Minus');
     await expect(cockpit(page)).toContainText(/Enabled|Nudges/i);
 
     // Ensure Enabled is on via the first global switch, then Save.

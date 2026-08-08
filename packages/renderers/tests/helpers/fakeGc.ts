@@ -1,4 +1,4 @@
-// Shared fake CanvasRenderingContext2D harness for @cgrid/renderers tests.
+// Shared fake CanvasRenderingContext2D harness for @wellsfargo-starui/velocity-grid-renderers tests.
 //
 // Modeled on `packages/kernel/tests/compositeRenderer.test.ts`'s inline
 // `makeGc()` (cache Proxy precedent, measureText at 7px/char), extended with

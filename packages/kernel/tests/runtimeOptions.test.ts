@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { INITIAL_ONLY_OPTIONS } from '../src/core/runtimeOptions';
 
 // ---------------------------------------------------------------------------
@@ -39,18 +39,18 @@ beforeAll(() => {
 });
 
 function mountGrid(extra: Record<string, unknown> = {}): {
-  grid: CGrid<any>;
+  grid: VelocityGrid<any>;
   host: HTMLDivElement;
   worker: any;
 } {
   const host = document.createElement('div');
   host.style.cssText = 'width:800px; height:600px;';
-  host.className = 'cg-theme-quartz';
+  host.className = 'vg-theme-quartz';
   document.body.appendChild(host);
-  const grid = new CGrid<{ id: string; a: number; b: number }>(host, {
+  const grid = new VelocityGrid<{ id: string; a: number; b: number }>(host, {
     columnDefs: [{ field: 'id' }, { field: 'a' }, { field: 'b' }],
     getRowId: (r) => r.id,
-    theme: 'cg-theme-quartz',
+    theme: 'vg-theme-quartz',
     ...extra,
   });
   const worker = (grid as any).workerClient.worker;
@@ -59,7 +59,7 @@ function mountGrid(extra: Record<string, unknown> = {}): {
   return { grid, host, worker };
 }
 
-function teardown(grid: CGrid<any>, host: HTMLDivElement): void {
+function teardown(grid: VelocityGrid<any>, host: HTMLDivElement): void {
   try { grid.destroy(); } catch { /* swallow */ }
   host.remove();
 }
@@ -83,7 +83,7 @@ describe('INITIAL_ONLY_OPTIONS', () => {
   });
 });
 
-describe('CGrid.setGridOption — initial-only gating', () => {
+describe('VelocityGrid.setGridOption — initial-only gating', () => {
   it('throws when setting `getRowId` at runtime', () => {
     const { grid, host } = mountGrid();
     const api = (grid as any).makeApi();
@@ -109,7 +109,7 @@ describe('CGrid.setGridOption — initial-only gating', () => {
   });
 });
 
-describe('CGrid.setGridOption — runtime options apply', () => {
+describe('VelocityGrid.setGridOption — runtime options apply', () => {
   it('rowHeight propagates to the data subgrid and triggers viewport recompute', () => {
     const { grid, host } = mountGrid();
     const api = (grid as any).makeApi();
@@ -134,10 +134,10 @@ describe('CGrid.setGridOption — runtime options apply', () => {
   it('theme delegates to setTheme (CSS class swap)', () => {
     const { grid, host } = mountGrid();
     const api = (grid as any).makeApi();
-    api.setGridOption('theme', 'cg-theme-balham');
+    api.setGridOption('theme', 'vg-theme-balham');
     const root = (grid as any).root as HTMLDivElement;
-    expect(root.classList.contains('cg-theme-balham')).toBe(true);
-    expect(root.classList.contains('cg-theme-quartz')).toBe(false);
+    expect(root.classList.contains('vg-theme-balham')).toBe(true);
+    expect(root.classList.contains('vg-theme-quartz')).toBe(false);
     teardown(grid, host);
   });
 
@@ -202,11 +202,11 @@ describe('CGrid.setGridOption — runtime options apply', () => {
   it('statusBar is intrinsic (mounted by default) and runtime-toggleable (Cycle 21i Phase 2)', () => {
     const { grid, host } = mountGrid();
     // Intrinsic: no statusBar option → the default bar mounts.
-    expect(host.querySelector('.cg-status-bar')).not.toBeNull();
+    expect(host.querySelector('.vg-status-bar')).not.toBeNull();
     grid.setGridOption('statusBar', false);
-    expect(host.querySelector('.cg-status-bar')).toBeNull();
+    expect(host.querySelector('.vg-status-bar')).toBeNull();
     grid.setGridOption('statusBar', undefined as never);
-    expect(host.querySelector('.cg-status-bar')).not.toBeNull();
+    expect(host.querySelector('.vg-status-bar')).not.toBeNull();
     teardown(grid, host);
   });
 
@@ -237,7 +237,7 @@ describe('CGrid.setGridOption — runtime options apply', () => {
   });
 });
 
-describe('CGrid.updateGridOptions — batched updates', () => {
+describe('VelocityGrid.updateGridOptions — batched updates', () => {
   it('applies every runtime key in one call', () => {
     const { grid, host } = mountGrid();
     const api = (grid as any).makeApi();
@@ -297,7 +297,7 @@ describe('CGrid.updateGridOptions — batched updates', () => {
   });
 });
 
-describe('CGrid.getGridOption — readback', () => {
+describe('VelocityGrid.getGridOption — readback', () => {
   it('returns the current value, falling back through setGridOption', () => {
     const { grid, host } = mountGrid({ rowHeight: 28 });
     const api = (grid as any).makeApi();

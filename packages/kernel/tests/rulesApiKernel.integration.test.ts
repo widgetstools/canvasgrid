@@ -1,19 +1,19 @@
 /**
- * Grid Layouts — Phase C / C3: the conditional-rules API on CGridApi,
- * exercised end-to-end on a real CGrid wired to @cgrid/rules.
+ * Grid Layouts — Phase C / C3: the conditional-rules API on VelocityGridApi,
+ * exercised end-to-end on a real VelocityGrid wired to @wellsfargo-starui/velocity-grid-rules.
  *
  * Proves the worklog's C3 gate — "Rules API live + round-trip": getRules /
  * addRule / updateRule / deleteRule / setRuleEnabled / reorderRules route to
- * the @cgrid/rules RuleEngine via the rule-engine provider, every mutation
+ * the @wellsfargo-starui/velocity-grid-rules RuleEngine via the rule-engine provider, every mutation
  * fires a `rulesChanged` event, and the rules ride in the layout-tier `rules`
  * state module (C1) so they round-trip through getState. Also proves the
  * graceful degradation path: a grid with NO rules engine wired returns `[]`
  * and the mutators no-op.
  */
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { CGrid } from '../src/cgrid';
-import { wireIntoKernel } from '@cgrid/rules';
-import type { ConditionalStyleRule } from '@cgrid/rules';
+import { VelocityGrid } from '../src/velocityGrid';
+import { wireIntoKernel } from '@wellsfargo-starui/velocity-grid-rules';
+import type { ConditionalStyleRule } from '@wellsfargo-starui/velocity-grid-rules';
 import { _resetRuleEngine_forTests } from '../src/core/ruleEngineSlot';
 
 // The rule engine lives in a MODULE-GLOBAL slot — reset between tests so the
@@ -58,12 +58,12 @@ function rule(id: string, over: Partial<ConditionalStyleRule> = {}): Conditional
 async function mount(opts: { wire?: boolean } = { wire: true }) {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
-  const grid = new CGrid<{ id: string; pnl: number }>(container, {
+  const grid = new VelocityGrid<{ id: string; pnl: number }>(container, {
     columnDefs: [{ field: 'id' }, { field: 'pnl' }],
     getRowId: (r) => r.id,
-    theme: 'cg-theme-quartz',
+    theme: 'vg-theme-quartz',
   });
   if (opts.wire !== false) wireIntoKernel(grid, { now: () => 0 });
   const w = (grid as any).workerClient.worker;
@@ -72,7 +72,7 @@ async function mount(opts: { wire?: boolean } = { wire: true }) {
   return grid;
 }
 
-describe('C3 — Rules API on CGridApi (rules wired)', () => {
+describe('C3 — Rules API on VelocityGridApi (rules wired)', () => {
   it('addRule → getRules reflects it, firing rulesChanged', async () => {
     const grid = await mount();
     const events: any[] = [];

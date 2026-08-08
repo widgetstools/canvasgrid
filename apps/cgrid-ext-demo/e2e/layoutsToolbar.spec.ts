@@ -8,17 +8,17 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await page.evaluate(() => localStorage.clear());
   await page.reload();
-  await expect(page.locator('.cgext-titlebar')).toBeVisible();
+  await expect(page.locator('.vgext-titlebar')).toBeVisible();
 });
 
-const trigger = (page: Page) => page.locator('[data-item-id="layouts"] button.cgext-layouts-trigger');
-const panel = (page: Page) => page.locator('.cgext-menu.cgext-layouts');
-const row = (page: Page, id: string) => panel(page).locator(`.cgext-layouts-row[data-layout-id="${id}"]`);
+const trigger = (page: Page) => page.locator('[data-item-id="layouts"] button.vgext-layouts-trigger');
+const panel = (page: Page) => page.locator('.vgext-menu.vgext-layouts');
+const row = (page: Page, id: string) => panel(page).locator(`.vgext-layouts-row[data-layout-id="${id}"]`);
 const disk = (page: Page) => page.locator('[data-item-id="layout-save"] button');
 
 async function saveNewLayout(page: Page, name: string): Promise<void> {
-  await panel(page).locator('.cgext-layouts-new input').fill(name);
-  await panel(page).locator('.cgext-layouts-savenew').click();
+  await panel(page).locator('.vgext-layouts-new input').fill(name);
+  await panel(page).locator('.vgext-layouts-savenew').click();
   await expect(trigger(page)).toContainText(name);
 }
 
@@ -32,9 +32,9 @@ test('save new layout; ui change dirties the disk; update + switch round-trips t
 
   await trigger(page).click();
   await expect(panel(page)).toBeVisible();
-  await expect(panel(page).locator('.cgext-layouts-count')).toHaveText('1');
+  await expect(panel(page).locator('.vgext-layouts-count')).toHaveText('1');
   await saveNewLayout(page, 'Layout 1');
-  await expect(panel(page).locator('.cgext-layouts-count')).toHaveText('2');
+  await expect(panel(page).locator('.vgext-layouts-count')).toHaveText('2');
   const l1 = await activeLayoutId(page);
   await expect(row(page, l1)).toHaveClass(/is-active/);
 
@@ -66,16 +66,16 @@ test('rename, duplicate, delete; Default is locked', async ({ page }) => {
 
   // Rename the active row (actions are always visible on it).
   await row(page, alpha).locator('[data-act="rename"]').click();
-  const rename = panel(page).locator('input.cgext-layouts-rename');
+  const rename = panel(page).locator('input.vgext-layouts-rename');
   await rename.fill('Beta');
   await rename.press('Enter');
-  await expect(row(page, alpha).locator('.cgext-layouts-name')).toHaveText('Beta');
+  await expect(row(page, alpha).locator('.vgext-layouts-name')).toHaveText('Beta');
   await expect(trigger(page)).toContainText('Beta');
 
   // Duplicate → "Beta copy" appears, NOT active (kernel duplicate doesn't activate).
   await row(page, alpha).locator('[data-act="duplicate"]').click();
-  await expect(panel(page).locator('.cgext-layouts-count')).toHaveText('3');
-  const copyRow = panel(page).locator('.cgext-layouts-row', { hasText: 'Beta copy' });
+  await expect(panel(page).locator('.vgext-layouts-count')).toHaveText('3');
+  const copyRow = panel(page).locator('.vgext-layouts-row', { hasText: 'Beta copy' });
   await expect(copyRow).toBeVisible();
   await expect(copyRow).not.toHaveClass(/is-active/);
   await expect(trigger(page)).toContainText('Beta');
@@ -83,11 +83,11 @@ test('rename, duplicate, delete; Default is locked', async ({ page }) => {
   // Delete the copy (hover reveals its actions).
   await copyRow.hover();
   await copyRow.locator('[data-act="delete"]').click();
-  await expect(panel(page).locator('.cgext-layouts-count')).toHaveText('2');
+  await expect(panel(page).locator('.vgext-layouts-count')).toHaveText('2');
 
   // Default: locked — no rename/delete, lock badge present.
   await row(page, 'default').hover();
-  await expect(row(page, 'default').locator('.cgext-layouts-lock')).toBeVisible();
+  await expect(row(page, 'default').locator('.vgext-layouts-lock')).toBeVisible();
   await expect(row(page, 'default').locator('[data-act="rename"]')).toHaveCount(0);
   await expect(row(page, 'default').locator('[data-act="delete"]')).toHaveCount(0);
 });
@@ -98,7 +98,7 @@ test('bundle export → delete → import restores the layout', async ({ page })
 
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    panel(page).locator('.cgext-layouts-export').click(),
+    panel(page).locator('.vgext-layouts-export').click(),
   ]);
   // 'ext-demo-layouts.json' when getGridOption('gridId') resolves; the
   // 'grid-layouts.json' fallback is also acceptable — assert the stable suffix.
@@ -107,11 +107,11 @@ test('bundle export → delete → import restores the layout', async ({ page })
 
   const keeper = await activeLayoutId(page);
   await row(page, keeper).locator('[data-act="delete"]').click();
-  await expect(panel(page).locator('.cgext-layouts-count')).toHaveText('1');
+  await expect(panel(page).locator('.vgext-layouts-count')).toHaveText('1');
 
-  await panel(page).locator('.cgext-layouts-foot input[type=file]').setInputFiles(bundlePath!);
-  await expect(panel(page).locator('.cgext-layouts-count')).toHaveText('2');
-  await expect(panel(page).locator('.cgext-layouts-row', { hasText: 'Keeper' })).toBeVisible();
+  await panel(page).locator('.vgext-layouts-foot input[type=file]').setInputFiles(bundlePath!);
+  await expect(panel(page).locator('.vgext-layouts-count')).toHaveText('2');
+  await expect(panel(page).locator('.vgext-layouts-row', { hasText: 'Keeper' })).toBeVisible();
 });
 
 test('layouts persist across reload', async ({ page }) => {
@@ -121,8 +121,8 @@ test('layouts persist across reload', async ({ page }) => {
   await page.waitForFunction(() =>
     Object.keys(localStorage).some((k) => (localStorage.getItem(k) ?? '').includes('Persist')));
   await page.reload();
-  await expect(page.locator('.cgext-titlebar')).toBeVisible();
+  await expect(page.locator('.vgext-titlebar')).toBeVisible();
   await expect(trigger(page)).toContainText('Persist'); // layoutChanged 'restore' repainted the trigger
   await trigger(page).click();
-  await expect(panel(page).locator('.cgext-layouts-count')).toHaveText('2');
+  await expect(panel(page).locator('.vgext-layouts-count')).toHaveText('2');
 });

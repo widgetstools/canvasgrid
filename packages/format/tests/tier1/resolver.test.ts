@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parse as parseExpression } from '@cgrid/expression';
+import { parse as parseExpression } from '@wellsfargo-starui/velocity-grid-expression';
 import { resolveStyle, resolveIcon, evaluateIfSelector } from '../../src/tier1/resolver';
 import type { Tier1Node } from '../../src/tier1/parser';
 

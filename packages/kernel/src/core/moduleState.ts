@@ -81,7 +81,7 @@ export class ModuleStateRegistry {
    *  an unregister function. */
   register(module: StateModule): () => void {
     if (this.modules.has(module.id)) {
-      console.warn(`[cgrid] state module '${module.id}' re-registered — replacing the previous registration`);
+      console.warn(`[velocity-grid] state module '${module.id}' re-registered — replacing the previous registration`);
     }
     this.modules.set(module.id, module);
     // Deliver state that was restored before this module existed —
@@ -92,7 +92,7 @@ export class ModuleStateRegistry {
       try {
         module.set(orphan.data, orphan.version ?? 1);
       } catch (err) {
-        console.warn(`[cgrid] state module '${module.id}': buffered restore failed — slice dropped`, err);
+        console.warn(`[velocity-grid] state module '${module.id}': buffered restore failed — slice dropped`, err);
       }
     }
     return () => {
@@ -125,7 +125,7 @@ export class ModuleStateRegistry {
         if (data === undefined || data === null) continue;
         (out ??= {})[id] = { version: module.version, data };
       } catch (err) {
-        console.warn(`[cgrid] getState: state module '${id}' get() failed — slice omitted`, err);
+        console.warn(`[velocity-grid] getState: state module '${id}' get() failed — slice omitted`, err);
       }
     }
     return out;
@@ -147,7 +147,7 @@ export class ModuleStateRegistry {
       try {
         module.set(undefined, module.version);
       } catch (err) {
-        console.warn(`[cgrid] exhaustive restore: clearing module '${id}' failed — slice left as-is`, err);
+        console.warn(`[velocity-grid] exhaustive restore: clearing module '${id}' failed — slice left as-is`, err);
       }
     }
     // Drop buffered orphan slices too (a slice restored before its module
@@ -173,7 +173,7 @@ export class ModuleStateRegistry {
       try {
         module.set(envelope.data, envelope.version ?? 1);
       } catch (err) {
-        console.warn(`[cgrid] setState: state module '${id}' restore failed — slice skipped`, err);
+        console.warn(`[velocity-grid] setState: state module '${id}' restore failed — slice skipped`, err);
       }
     }
   }

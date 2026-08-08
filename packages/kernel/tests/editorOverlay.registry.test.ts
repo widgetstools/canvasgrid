@@ -17,13 +17,13 @@ describe('EditorOverlay (registry-driven)', () => {
       params: {}, charPress: null,
       onCommit, onCancel: vi.fn(),
     });
-    expect(host.querySelector('input.cg-cell-editor--text')).not.toBeNull();
+    expect(host.querySelector('input.vg-cell-editor--text')).not.toBeNull();
     const input = host.querySelector('input') as HTMLInputElement;
     input.value = 'new';
     overlay.commit();
     expect(onCommit).toHaveBeenCalledWith('new');
     overlay.close();
-    expect(host.querySelector('input.cg-cell-editor--text')).toBeNull();
+    expect(host.querySelector('input.vg-cell-editor--text')).toBeNull();
   });
 
   it('opens with charPress as the initial value (type-to-edit)', () => {
@@ -94,11 +94,11 @@ describe('EditorOverlay (registry-driven)', () => {
       onCommit: vi.fn(), onCancel: vi.fn(),
     });
     // PopupHost mounts the textarea directly on the host (not inside a
-    // cg-editor-overlay wrapper). Inline mode would put a wrapper between
+    // vg-editor-overlay wrapper). Inline mode would put a wrapper between
     // the host and the gui; popup mode does not.
-    const wrapper = host.querySelector('.cg-editor-overlay');
+    const wrapper = host.querySelector('.vg-editor-overlay');
     expect(wrapper).toBeNull();
-    const ta = host.querySelector('textarea.cg-cell-editor--large-text') as HTMLTextAreaElement;
+    const ta = host.querySelector('textarea.vg-cell-editor--large-text') as HTMLTextAreaElement;
     expect(ta).not.toBeNull();
     expect(ta.parentElement).toBe(host);
     expect(ta.style.position).toBe('absolute');
@@ -119,9 +119,9 @@ describe('EditorOverlay (registry-driven)', () => {
       viewportBounds: { width: 800, height: 600 },
       onCommit: vi.fn(), onCancel: vi.fn(),
     });
-    const wrapper = host.querySelector('.cg-editor-overlay');
+    const wrapper = host.querySelector('.vg-editor-overlay');
     expect(wrapper).toBeNull();
-    const input = host.querySelector('input.cg-cell-editor--text') as HTMLInputElement;
+    const input = host.querySelector('input.vg-cell-editor--text') as HTMLInputElement;
     expect(input).not.toBeNull();
     expect(input.parentElement).toBe(host);
   });
@@ -138,9 +138,9 @@ describe('EditorOverlay (registry-driven)', () => {
       viewportBounds: { width: 800, height: 600 },
       onCommit: vi.fn(), onCancel: vi.fn(),
     });
-    expect(host.querySelector('textarea.cg-cell-editor--large-text')).not.toBeNull();
+    expect(host.querySelector('textarea.vg-cell-editor--large-text')).not.toBeNull();
     overlay.close();
-    expect(host.querySelector('textarea.cg-cell-editor--large-text')).toBeNull();
+    expect(host.querySelector('textarea.vg-cell-editor--large-text')).toBeNull();
   });
 
   it('Escape keystroke inside the editor cancels via stopEditing', () => {
@@ -175,12 +175,12 @@ describe('EditorOverlay (registry-driven)', () => {
       cellBounds: { x: 0, y: 0, w: 50, h: 20 }, params: {}, charPress: 'v',
       modeClass: 'enter', onCommit: vi.fn(), onCancel: vi.fn(),
     });
-    const wrapper = host.querySelector('.cg-editor-overlay') as HTMLElement;
-    expect(wrapper.classList.contains('cg-editor--enter')).toBe(true);
+    const wrapper = host.querySelector('.vg-editor-overlay') as HTMLElement;
+    expect(wrapper.classList.contains('vg-editor--enter')).toBe(true);
     // One-way promotion enter → edit.
     overlay.setMode('edit');
-    expect(wrapper.classList.contains('cg-editor--enter')).toBe(false);
-    expect(wrapper.classList.contains('cg-editor--edit')).toBe(true);
+    expect(wrapper.classList.contains('vg-editor--enter')).toBe(false);
+    expect(wrapper.classList.contains('vg-editor--edit')).toBe(true);
     overlay.close();
   });
 
@@ -202,8 +202,8 @@ describe('EditorOverlay (registry-driven)', () => {
     overlay.commit();
     expect(onCommit).not.toHaveBeenCalled();
     expect(overlay.isOpen()).toBe(true);
-    const wrapper = host.querySelector('.cg-editor-overlay') as HTMLElement;
-    expect(wrapper.classList.contains('cg-editor--invalid')).toBe(true);
+    const wrapper = host.querySelector('.vg-editor-overlay') as HTMLElement;
+    expect(wrapper.classList.contains('vg-editor--invalid')).toBe(true);
     // Correcting the value lets the commit through, clearing the flag.
     input.value = '101-16';
     overlay.commit();

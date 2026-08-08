@@ -145,7 +145,7 @@ export interface GroupCellValue {
   readonly selectionState?: 'none' | 'partial' | 'all';
   /** Cycle 15.5 / Task 7 — when `true`, the `(N)` child-count suffix is
    *  suppressed regardless of `childCount`. Threaded from
-   *  `CGridOptions.suppressCount` by `cgrid.ts`'s `groupCellContextAt`. */
+   *  `VelocityGridOptions.suppressCount` by `velocityGrid.ts`'s `groupCellContextAt`. */
   readonly suppressCount?: boolean;
   /** Cycle 15.5 / Task 7 — custom inner renderer name. When set, the
    *  renderer looks up the named cell renderer for the value portion
@@ -275,7 +275,7 @@ export const groupCell: CellPainter = {
     // Cycle 15 / Task 8 — tri-state checkbox slot. Paints when
     // `groupSelectsChildren` is on (cgrid.cellAt threads
     // `selectionState`); omitted entirely otherwise. The chevron
-    // geometry above is load-bearing — cgrid.ts mirrors it for the
+    // geometry above is load-bearing — velocityGrid.ts mirrors it for the
     // chevron click hit-test (`computeChevronHit`). Drift the chevron
     // x and the hit-test breaks; the checkbox slot sits AFTER the
     // chevron so adding it doesn't disturb chevron geometry.
@@ -335,7 +335,7 @@ export const groupCell: CellPainter = {
  *   - `'all'`      → border + check polyline (same √ as `checkboxCell`).
  *
  * Color comes from the per-cell `groupCheckboxColor` token (resolved
- * from `--cg-group-checkbox-*-color` by `cssReader.ts`). Falls back to
+ * from `--vg-group-checkbox-*-color` by `cssReader.ts`). Falls back to
  * the body `fg` when the token isn't wired so an ad-hoc paint call
  * (unit tests, custom themes that haven't declared the token) still
  * produces a legible box.

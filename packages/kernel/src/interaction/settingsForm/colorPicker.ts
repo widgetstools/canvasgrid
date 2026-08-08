@@ -115,11 +115,11 @@ export class ColorPickerControl {
   constructor(initial: string, private readonly onChange: (rgba: string) => void) {
     this.hsva = rgbToHsv(parseColor(initial) ?? { r: 128, g: 128, b: 128, a: 1 });
     this.el = document.createElement('div');
-    this.el.className = 'cg-colorpicker';
+    this.el.className = 'vg-colorpicker';
 
     this.swatch = document.createElement('button');
     this.swatch.type = 'button';
-    this.swatch.className = 'cg-colorpicker-swatch';
+    this.swatch.className = 'vg-colorpicker-swatch';
     this.swatch.setAttribute('aria-label', 'Choose colour');
     this.el.appendChild(this.swatch);
     this.paintSwatch();
@@ -179,7 +179,7 @@ export class ColorPickerControl {
 
   private paintSwatch(): void {
     // Checkerboard shows through the alpha.
-    this.swatch.style.setProperty('--cg-cp-color', this.current());
+    this.swatch.style.setProperty('--vg-cp-color', this.current());
   }
 
   private reposition = () => {
@@ -204,10 +204,10 @@ export class ColorPickerControl {
 
   private open(): void {
     this.popover = document.createElement('div');
-    this.popover.className = 'cg-colorpicker-popover';
+    this.popover.className = 'vg-colorpicker-popover';
     // Portaled to <body> — carry the grid's theme class so the class-based
-    // --cg-* tokens still resolve outside the theme root.
-    const themeClass = this.el.closest('[class*="cg-theme-"]')?.className.match(/cg-theme-[\w-]+/)?.[0];
+    // --vg-* tokens still resolve outside the theme root.
+    const themeClass = this.el.closest('[class*="vg-theme-"]')?.className.match(/vg-theme-[\w-]+/)?.[0];
     if (themeClass) this.popover.classList.add(themeClass);
     this.buildPopover(this.popover);
     // Mount at document.body so the panel's `overflow` never clips it.
@@ -238,9 +238,9 @@ export class ColorPickerControl {
 
   private buildPopover(root: HTMLElement): void {
     this.svPad = document.createElement('div');
-    this.svPad.className = 'cg-colorpicker-sv';
+    this.svPad.className = 'vg-colorpicker-sv';
     this.svThumb = document.createElement('div');
-    this.svThumb.className = 'cg-colorpicker-sv-thumb';
+    this.svThumb.className = 'vg-colorpicker-sv-thumb';
     this.svPad.appendChild(this.svThumb);
     this.bindPad(this.svPad, (x, y) => {
       this.hsva.s = clamp(x, 0, 1);
@@ -250,14 +250,14 @@ export class ColorPickerControl {
     });
     root.appendChild(this.svPad);
 
-    this.hueSlider = this.buildSlider('cg-colorpicker-hue', 0, 360, () => {
+    this.hueSlider = this.buildSlider('vg-colorpicker-hue', 0, 360, () => {
       this.hsva.h = Number(this.hueSlider.value);
       this.emit();
       this.paintPopover();
     });
     root.appendChild(this.hueSlider);
 
-    this.alphaSlider = this.buildSlider('cg-colorpicker-alpha', 0, 100, () => {
+    this.alphaSlider = this.buildSlider('vg-colorpicker-alpha', 0, 100, () => {
       this.hsva.a = Number(this.alphaSlider.value) / 100;
       this.emit();
       this.paintPopover();
@@ -266,7 +266,7 @@ export class ColorPickerControl {
 
     this.hexInput = document.createElement('input');
     this.hexInput.type = 'text';
-    this.hexInput.className = 'cg-colorpicker-hex';
+    this.hexInput.className = 'vg-colorpicker-hex';
     this.hexInput.spellcheck = false;
     this.hexInput.addEventListener('change', () => {
       const parsed = parseColor(this.hexInput.value);
@@ -281,12 +281,12 @@ export class ColorPickerControl {
     root.appendChild(this.hexInput);
 
     const presets = document.createElement('div');
-    presets.className = 'cg-colorpicker-presets';
+    presets.className = 'vg-colorpicker-presets';
     for (const p of PRESETS) {
       const sw = document.createElement('button');
       sw.type = 'button';
-      sw.className = 'cg-colorpicker-preset';
-      sw.style.setProperty('--cg-cp-color', p);
+      sw.className = 'vg-colorpicker-preset';
+      sw.style.setProperty('--vg-cp-color', p);
       sw.setAttribute('aria-label', p);
       sw.addEventListener('click', () => {
         this.hsva = rgbToHsv(parseColor(p)!);
@@ -310,13 +310,13 @@ export class ColorPickerControl {
 
   private paintPopover(): void {
     const pure = rgbaToString({ ...hsvToRgb({ h: this.hsva.h, s: 1, v: 1, a: 1 }) });
-    this.svPad.style.setProperty('--cg-cp-hue', pure);
+    this.svPad.style.setProperty('--vg-cp-hue', pure);
     this.svThumb.style.left = `${this.hsva.s * 100}%`;
     this.svThumb.style.top = `${(1 - this.hsva.v) * 100}%`;
     this.hueSlider.value = String(Math.round(this.hsva.h));
     this.alphaSlider.value = String(Math.round(this.hsva.a * 100));
     const solid = rgbaToString({ ...hsvToRgb({ ...this.hsva, a: 1 }) });
-    this.alphaSlider.style.setProperty('--cg-cp-solid', solid);
+    this.alphaSlider.style.setProperty('--vg-cp-solid', solid);
     this.hexInput.value = this.current();
   }
 

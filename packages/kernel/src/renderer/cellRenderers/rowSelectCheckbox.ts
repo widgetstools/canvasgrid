@@ -30,7 +30,7 @@ export const rowSelectCheckboxCell: CellPainter = {
     const cy = p.bounds.y + p.bounds.h / 2 - SIZE / 2;
 
     // Optional accent fill when the row is selected AND the theme
-    // declared a non-transparent `--cg-checkbox-checked-bg`. Mirrors
+    // declared a non-transparent `--vg-checkbox-checked-bg`. Mirrors
     // the boolean `checkboxCell` painter so the two surfaces stay
     // visually unified.
     const accent = p.isSelected

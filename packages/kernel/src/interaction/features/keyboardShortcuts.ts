@@ -19,10 +19,10 @@
  * promise here without forcing it onto the gesture stack to avoid
  * blocking on the typecheck.
  */
-import { Feature, type CGridEventCtx } from '../feature';
+import { Feature, type VelocityGridEventCtx } from '../feature';
 
 export class KeyboardShortcuts extends Feature {
-  override handleKeyDown(ctx: CGridEventCtx): void {
+  override handleKeyDown(ctx: VelocityGridEventCtx): void {
     const e = ctx.raw as KeyboardEvent;
 
     // Defer to the editor when one is open — its textarea / input owns
@@ -97,7 +97,7 @@ export class KeyboardShortcuts extends Feature {
       // (e.g. transient permission denials).
       void ctx.grid.copySelectedRangesToClipboard().catch((err) => {
         if (err instanceof Error && err.message === 'no-ranges') return;
-        console.warn('[cgrid] copySelectedRangesToClipboard:', err);
+        console.warn('[velocity-grid] copySelectedRangesToClipboard:', err);
       });
       return;
     }
@@ -127,7 +127,7 @@ export class KeyboardShortcuts extends Feature {
       // is the gesture-gated call here, and it fires synchronously off the
       // first turn of `pasteFromClipboard`.
       void ctx.grid.pasteFromClipboard().catch((err) => {
-        console.warn('[cgrid] pasteFromClipboard:', err);
+        console.warn('[velocity-grid] pasteFromClipboard:', err);
       });
       return;
     }
@@ -140,7 +140,7 @@ export class KeyboardShortcuts extends Feature {
     // resolves, so the user-gesture stack must be active here — the
     // keydown handler runs inside it.
     // Cycle 24 / Task 1 — Ctrl+A / Cmd+A → select every visible row.
-    // Gated on `selectAllRows` actually existing on CGridLike (the
+    // Gated on `selectAllRows` actually existing on VelocityGridLike (the
     // hook is optional). The grid implementation no-ops when the
     // selection mode isn't `'multiple'` so single / none modes get
     // their browser default (no select-all on a canvas — fine).
@@ -161,7 +161,7 @@ export class KeyboardShortcuts extends Feature {
       e.preventDefault();
       void ctx.grid.cutSelectedRanges().catch((err) => {
         if (err instanceof Error && err.message === 'no-ranges') return;
-        console.warn('[cgrid] cutSelectedRanges:', err);
+        console.warn('[velocity-grid] cutSelectedRanges:', err);
       });
       return;
     }

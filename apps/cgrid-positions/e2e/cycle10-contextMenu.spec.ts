@@ -7,7 +7,7 @@
  * imperatively via `setGridOption('getContextMenuItems', …)` from the
  * test, then exercises the surface:
  *
- *  - right-click on a body cell mounts `div.cg-context-menu` at the
+ *  - right-click on a body cell mounts `div.vg-context-menu` at the
  *    cursor, with the callback receiving the hit-test row + col;
  *  - clicking a menu item fires its `action` and closes the menu;
  *  - Escape closes the menu;
@@ -25,7 +25,7 @@
 import { test, expect, Page } from '@playwright/test';
 
 const GRID_SELECTOR = '#grid canvas';
-const MENU_SELECTOR = '.cg-context-menu';
+const MENU_SELECTOR = '.vg-context-menu';
 
 interface MenuItemSeed {
   name: string;
@@ -72,7 +72,7 @@ async function canvasOffset(page: Page): Promise<{ x: number; y: number }> {
 
 async function cellBounds(page: Page, rowIndex: number, colId: string): Promise<{ x: number; y: number; w: number; h: number }> {
   const b = await page.evaluate(
-    ({ r, c }) => (window as unknown as { __cgrid: GridSurface }).__cgrid.getCellBoundsAt(r, c),
+    ({ r, c }) => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.getCellBoundsAt(r, c),
     { r: rowIndex, c: colId },
   );
   if (!b) throw new Error(`no cell bounds for (${rowIndex}, ${colId})`);
@@ -88,7 +88,7 @@ async function cellBounds(page: Page, rowIndex: number, colId: string): Promise<
 async function installMenu(page: Page): Promise<void> {
   await page.evaluate(() => {
     const w = window as unknown as {
-      __cgrid: GridSurface;
+      __velocity-grid: GridSurface;
       __cmParams?: unknown;
       __cmAction?: unknown;
     };
@@ -134,7 +134,7 @@ test.describe('Cycle 10 / Task 1 — context menu host + RightClick feature', ()
     expect(params).toEqual({ rowIndex: 2, colId: 'currentPrice' });
 
     // 2 buttons (custom + disabled) and 1 <hr> separator.
-    const buttons = await page.locator(`${MENU_SELECTOR} .cg-menu-item`).count();
+    const buttons = await page.locator(`${MENU_SELECTOR} .vg-menu-item`).count();
     expect(buttons).toBe(2);
     const hrs = await page.locator(`${MENU_SELECTOR} hr`).count();
     expect(hrs).toBe(1);
@@ -149,7 +149,7 @@ test.describe('Cycle 10 / Task 1 — context menu host + RightClick feature', ()
     await page.mouse.click(off.x + b.x + b.w / 2, off.y + b.y + b.h / 2, { button: 'right' });
     await page.waitForSelector(MENU_SELECTOR, { state: 'visible' });
 
-    await page.locator(`${MENU_SELECTOR} .cg-menu-item`).filter({ hasText: 'Custom Action' }).click();
+    await page.locator(`${MENU_SELECTOR} .vg-menu-item`).filter({ hasText: 'Custom Action' }).click();
     await page.waitForSelector(MENU_SELECTOR, { state: 'detached' });
 
     const action = await page.evaluate(() => (window as unknown as { __cmAction: unknown }).__cmAction);
@@ -169,7 +169,7 @@ test.describe('Cycle 10 / Task 1 — context menu host + RightClick feature', ()
     // not-enabled and refuses to click otherwise — but the whole point of
     // the test is that the host's own click handler short-circuits on
     // `disabled: true`, regardless of how the click arrives.
-    await page.locator(`${MENU_SELECTOR} .cg-menu-item[aria-disabled="true"]`).click({ force: true });
+    await page.locator(`${MENU_SELECTOR} .vg-menu-item[aria-disabled="true"]`).click({ force: true });
 
     // Menu still mounted; action never fired.
     expect(await page.locator(MENU_SELECTOR).count()).toBe(1);
@@ -207,7 +207,7 @@ test.describe('Cycle 10 / Task 1 — context menu host + RightClick feature', ()
   test('when getContextMenuItems returns [], no menu mounts but the native browser menu is also suppressed', async ({ page }) => {
     await gridReady(page);
     await page.evaluate(() => {
-      const w = window as unknown as { __cgrid: GridSurface };
+      const w = window as unknown as { __velocity-grid: GridSurface };
       w.__cgrid.setGridOption('getContextMenuItems', () => []);
     });
 

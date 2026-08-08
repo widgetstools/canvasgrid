@@ -131,8 +131,8 @@ padding. Pattern: ag-grid loading state for SSRM blocks.
 **Tokens:**
 | Token | Light | Dark | Why |
 |---|---|---|---|
-| `--cg-loading-shimmer-bg` | `#e5e7eb` | `#1a2742` | Inert gray that disappears once data lands |
-| `--cg-loading-shimmer-highlight` | `#f3f4f6` | `#26314f` | Animated sweep highlight |
+| `--vg-loading-shimmer-bg` | `#e5e7eb` | `#1a2742` | Inert gray that disappears once data lands |
+| `--vg-loading-shimmer-highlight` | `#f3f4f6` | `#26314f` | Animated sweep highlight |
 
 No animation by default (static shimmer rect); reduced-motion users
 already covered.
@@ -195,7 +195,7 @@ invalidated at the appropriate level.
 ## Task 8 — Cache control API
 
 ```typescript
-interface CGridApi {
+interface VelocityGridApi {
   // SSRM-specific
   refreshServerSide(params?: {
     route?: string[];        // groupKeys path; default = root

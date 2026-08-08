@@ -18,7 +18,7 @@ const metrics = await page.evaluate(async () => {
   });
   const out = {};
   out.steady = await measureFps(6000);
-  const canvas = document.querySelector('.cg-canvas');
+  const canvas = document.querySelector('.vg-canvas');
   const r = canvas.getBoundingClientRect();
   let dir = 1, sent = 0;
   const w = setInterval(() => { canvas.dispatchEvent(new WheelEvent('wheel', { clientX: r.left+r.width/2, clientY: r.top+r.height/2, deltaY: 120*dir, bubbles: true, cancelable: true })); if (++sent % 40 === 0) dir = -dir; }, 16);

@@ -26,13 +26,13 @@ Cycle 12 (`getVisibleCellBounds` helper + visual regression matrix
 **Architecture:**
 
 - The status bar is a **DOM panel**, NOT canvas-painted. It mounts as a
-  sibling of the canvas inside `CGrid.root`, pinned to the bottom edge.
+  sibling of the canvas inside `VelocityGrid.root`, pinned to the bottom edge.
   Opening the status bar triggers exactly **one** `cgridCanvas.resize()`
   so the canvas reflows + repaints; the worker is untouched.
 - A **status panel** mirrors ag-grid's `IStatusPanelComp`:
   `init(params)` / `getGui(): HTMLElement` / `refresh()` / `destroy()`.
-  Built-in panels register themselves at CGrid construction; apps
-  register custom panels via `CGridOptions.components` (same registry
+  Built-in panels register themselves at VelocityGrid construction; apps
+  register custom panels via `VelocityGridOptions.components` (same registry
   shape as side-bar tool panels).
 - Layout: three flex containers (left / center / right) inside the
   bar root. Panel `align` sorts each panel into one zone; multiple
@@ -76,9 +76,9 @@ CSS Grid for layout. Built-in panels are pure HTML / no icon-font.
 - `docs/catalog/FEATURE_MATRIX.md` — Area 18 rows to flip at cycle
   exit.
 - Current source:
-  - `cgrid/src/cgrid.ts` — CGrid class; the mount point for the
+  - `cgrid/src/velocityGrid.ts` — VelocityGrid class; the mount point for the
     status-bar host + the new panel registry hook.
-  - `cgrid/src/core/canvas.ts` — `CGridCanvas` owns the canvas
+  - `cgrid/src/core/canvas.ts` — `VelocityGridCanvas` owns the canvas
     `<canvas>` element + resize handling. The bottom-edge inset
     flows through the same `setHostBounds` channel as side-bar
     insets.
@@ -87,7 +87,7 @@ CSS Grid for layout. Built-in panels are pure HTML / no icon-font.
     just on the bottom edge instead of the right.
   - `cgrid/src/interaction/toolPanels/registry.ts` — panel-registry
     pattern; status panels reuse the same registry shape.
-  - `cgrid/src/theming/tokens.css` — every `.cg-*` selector lives
+  - `cgrid/src/theming/tokens.css` — every `.vg-*` selector lives
     here; status-bar / status-panel CSS lands here too.
 
 **Global Constraints:**
@@ -125,11 +125,11 @@ CSS Grid for layout. Built-in panels are pure HTML / no icon-font.
 
 | # | Title | UI? | Files touched | New tests |
 |---|-------|-----|---------------|-----------|
-| 1 | Status-bar host (DOM scaffold + canvas resize + registry) | yes | `cgrid/src/interaction/statusBar/host.ts` (new), `cgrid/src/cgrid.ts`, `cgrid/src/theming/tokens.css`, `cgrid/src/types.ts` | `statusBarHost.test.ts` (15 cases) + visual cell `14-status-bar-mounted.png` |
+| 1 | Status-bar host (DOM scaffold + canvas resize + registry) | yes | `cgrid/src/interaction/statusBar/host.ts` (new), `cgrid/src/velocityGrid.ts`, `cgrid/src/theming/tokens.css`, `cgrid/src/types.ts` | `statusBarHost.test.ts` (15 cases) + visual cell `14-status-bar-mounted.png` |
 | 2 | Built-in count panels (Total / Filtered / Selected / TotalAndFiltered) | yes | `cgrid/src/interaction/statusBar/panels/counts.ts` (new), `tokens.css` | `countPanels.test.ts` (12 cases) + visual cell `15-status-bar-count-panels.png` |
 | 3 | `agAggregationComponent` | yes | `cgrid/src/interaction/statusBar/panels/aggregation.ts` (new), `tokens.css`, `cgrid/src/interaction/statusBar/aggMath.ts` (new pure-fn module) | `aggregationPanel.test.ts` (18 cases incl. perf assertion `≤ 1 ms over 500 cells`) + visual cell `16-status-bar-aggregation.png` |
-| 4 | Custom panel API + `getStatusPanel(key)` | no | `cgrid/src/cgrid.ts`, `cgrid/src/interaction/statusBar/host.ts` | `customStatusPanel.test.ts` (8 cases) |
-| 5 | Frame-batched refresh + perf gate | no | `cgrid/src/interaction/statusBar/host.ts`, `cgrid/src/cgrid.ts` | `statusBarPerf.test.ts` (4 cases asserting paint counter stays at 0 under selection bursts) |
+| 4 | Custom panel API + `getStatusPanel(key)` | no | `cgrid/src/velocityGrid.ts`, `cgrid/src/interaction/statusBar/host.ts` | `customStatusPanel.test.ts` (8 cases) |
+| 5 | Frame-batched refresh + perf gate | no | `cgrid/src/interaction/statusBar/host.ts`, `cgrid/src/velocityGrid.ts` | `statusBarPerf.test.ts` (4 cases asserting paint counter stays at 0 under selection bursts) |
 | 6 | Cycle 13 exit ritual | yes (touches existing visual matrix cells) | worklog Shipped block, FM Area 18 flips, demo wires status bar via `?statusBar=1` | full suite green; FM 8 rows ✅ |
 
 ---
@@ -146,7 +146,7 @@ CSS Grid for layout. Built-in panels are pure HTML / no icon-font.
   + reservedSpace mount pattern from Cycle 11 / Task 2. The
   status bar IS this pattern, rotated 90° and pinned to the bottom
   edge.
-- `cgrid/src/cgrid.ts` `reserveSideBarSpace` (around line 2670) —
+- `cgrid/src/velocityGrid.ts` `reserveSideBarSpace` (around line 2670) —
   the existing edge-inset reservation flow. Add a new
   `reserveStatusBarSpace(height)` that subtracts from the canvas's
   bottom.
@@ -161,15 +161,15 @@ CSS Grid for layout. Built-in panels are pure HTML / no icon-font.
 - `cgrid/src/interaction/statusBar/types.ts` (new) — `StatusPanel`
   interface (`init/getGui/refresh/destroy`), `StatusPanelDef`,
   `StatusBarDef`, `StatusPanelRegistry` types.
-- `cgrid/src/cgrid.ts` — new `private statusBar: StatusBarHost | null`,
+- `cgrid/src/velocityGrid.ts` — new `private statusBar: StatusBarHost | null`,
   mounted when `options.statusBar` resolves to a `StatusBarDef`. Add
   `reserveStatusBarSpace(height)` that calls
   `cgridCanvas.setHostBounds({ left, top, bottom })` — the canvas
   inset surface needs a new `bottom` field.
 - `cgrid/src/core/canvas.ts` — extend `setHostBounds` to accept
   `bottom` and subtract from the drawable height.
-- `cgrid/src/theming/tokens.css` — `.cg-status-bar`,
-  `.cg-status-bar-zone`, `.cg-status-bar-zone--left/center/right`
+- `cgrid/src/theming/tokens.css` — `.vg-status-bar`,
+  `.vg-status-bar-zone`, `.vg-status-bar-zone--left/center/right`
   rules. Designed per the design-skill plan from step 1, not
   freehand.
 - `cgrid/src/types.ts` — public `StatusBarDef`, `StatusPanelDef`,
@@ -207,9 +207,9 @@ CSS Grid for layout. Built-in panels are pure HTML / no icon-font.
    takes `(root, ctx, def)`; appends DOM; calls
    `ctx.setReservedSpace('bottom', height)` on mount + visibility
    change + destroy.
-3. Extend `CGridCanvas.setHostBounds` to accept and respect
+3. Extend `VelocityGridCanvas.setHostBounds` to accept and respect
    `bottom`. Drawable height = clientHeight - top - bottom.
-4. Add `reserveStatusBarSpace(height)` to `cgrid.ts` next to
+4. Add `reserveStatusBarSpace(height)` to `velocityGrid.ts` next to
    `reserveSideBarSpace`. Wire the bar's `setReservedSpace`
    callback to it.
 5. Build the 15-case unit test suite. Mirror
@@ -261,8 +261,8 @@ CSS Grid for layout. Built-in panels are pure HTML / no icon-font.
   plan.
 - `cgrid/src/interaction/statusBar/host.ts` — register the four
   built-ins by string key.
-- `cgrid/src/theming/tokens.css` — `.cg-status-panel-count`,
-  `.cg-status-panel-count-label`, `.cg-status-panel-count-value`
+- `cgrid/src/theming/tokens.css` — `.vg-status-panel-count`,
+  `.vg-status-panel-count-label`, `.vg-status-panel-count-value`
   rules. Designed per Task 1's design plan, not freehand.
 - `cgrid/tests/countPanels.test.ts` (new) — 12 cases (each panel
   init + refresh after rowDataUpdated / selectionChanged /
@@ -327,7 +327,7 @@ CSS Grid for layout. Built-in panels are pure HTML / no icon-font.
   `AgAggregationPanel` class implementing `IStatusPanelComp`.
   Reads selected cell values, calls `aggregate()`, renders.
 - `cgrid/src/types.ts` — `IAggregationStatusPanelParams` export.
-- `cgrid/src/theming/tokens.css` — `.cg-status-panel-agg` rules.
+- `cgrid/src/theming/tokens.css` — `.vg-status-panel-agg` rules.
 - `cgrid/tests/aggregationPanel.test.ts` (new) — 18 cases:
   - aggMath: empty / one-value / count / sum / min / max / avg /
     NaN handling / mixed types
@@ -384,10 +384,10 @@ CSS Grid for layout. Built-in panels are pure HTML / no icon-font.
 - `cgrid/src/interaction/toolPanels/registry.ts` — registry shape.
 
 **Files:**
-- `cgrid/src/cgrid.ts` — add `getStatusPanel<T>(key: string): T | undefined`
+- `cgrid/src/velocityGrid.ts` — add `getStatusPanel<T>(key: string): T | undefined`
   to the public API surface.
 - `cgrid/src/interaction/statusBar/host.ts` — extend the registry
-  to accept custom components via `CGridOptions.components` (same
+  to accept custom components via `VelocityGridOptions.components` (same
   channel side-bar tool panels use).
 - `cgrid/src/types.ts` — `IStatusPanel` + `IStatusPanelComp` exports.
 - `cgrid/tests/customStatusPanel.test.ts` (new) — 8 cases (register
@@ -401,7 +401,7 @@ CSS Grid for layout. Built-in panels are pure HTML / no icon-font.
 
 **Steps:**
 
-1. Implement `getStatusPanel<T>(key)` on `CGridApi`. Returns the
+1. Implement `getStatusPanel<T>(key)` on `VelocityGridApi`. Returns the
    live instance or `undefined`.
 2. Extend `StatusBarHost.registry` to consult `options.components`
    for unknown string keys.
@@ -429,7 +429,7 @@ CSS Grid for layout. Built-in panels are pure HTML / no icon-font.
 **Read first:**
 - This worklog's Architecture (perf gate: status bar updates must
   NOT trigger body-canvas repaints).
-- `cgrid/src/cgrid.ts` `cgridCanvas.requestRepaint` — the body
+- `cgrid/src/velocityGrid.ts` `cgridCanvas.requestRepaint` — the body
   repaint trigger to spy on.
 - Cycle 4 / Cell flash (`docs/superpowers/plans/2026-06-25-canvasgrid-cycle-04-cell-flash-patch.md`)
   — uses a similar rAF-batched refresh pattern; mirror its shape.
@@ -439,7 +439,7 @@ CSS Grid for layout. Built-in panels are pure HTML / no icon-font.
   per-panel `refresh()` invocation in an rAF-batched dispatcher.
   Multiple events in the same frame collapse to one refresh call
   per panel.
-- `cgrid/src/cgrid.ts` — ensure the status bar's event
+- `cgrid/src/velocityGrid.ts` — ensure the status bar's event
   subscriptions DO NOT call `cgridCanvas.requestRepaint`. The
   status bar is a DOM panel; its state lives outside the canvas
   paint cycle.
@@ -567,12 +567,12 @@ horizontal DOM strip mounts under the body when
 flex zones (`left` / `center` / `right`) inside a single root and a
 panel registry keyed by `panelDef.key`. Mount / visibility-change /
 destroy each route through `setReservedSpace('bottom', height)` which
-funnels into a new `bottom` field on `CGridCanvas.setHostBounds`; the
+funnels into a new `bottom` field on `VelocityGridCanvas.setHostBounds`; the
 drawable canvas region shrinks (or grows back) by exactly the bar's
 height in one synchronous resize, no worker round-trip. The DOM
 scaffold mirrors `interaction/sideBar/host.ts` rotated 90° — same
 reservedSpace plumbing, same lifecycle shape, no new abstractions.
-The shell's design (sandwich tone via `--cg-header-bg`, ≈28 px height,
+The shell's design (sandwich tone via `--vg-header-bg`, ≈28 px height,
 type vocabulary matching the side-bar tab labels) is documented in
 `docs/superpowers/plans/notes/cycle-13-statusbar-design.md` § Task 1.
 Visual cell 14 (`14-status-bar-mounted.png`) baselines the empty bar
@@ -582,7 +582,7 @@ fails CI before merge.
 **Built-in count panels (Total / Filtered / Selected /
 TotalAndFiltered).** Four `IStatusPanelComp` implementations live in
 `cgrid/src/interaction/statusBar/panels/counts.ts`. Each renders
-`<span class="cg-status-panel-count"><span class="…-label">Label:
+`<span class="vg-status-panel-count"><span class="…-label">Label:
 </span> <strong class="…-value">N</strong></span>` per the design
 vocabulary; the combined panel doubles up via the `--combined`
 modifier (Total Rows + Rows with a `2ch` gap between pairs). All four
@@ -614,7 +614,7 @@ stats over a 10-row × 2-column range so a separator / canonical-
 order / formatter regression diffs at merge.
 
 **Custom status-panel API + `getStatusPanel(key)`.** Apps register
-custom `IStatusPanelComp` components through `CGridOptions.components`
+custom `IStatusPanelComp` components through `VelocityGridOptions.components`
 (same channel as side-bar tool panels) keyed by panel key; the host's
 registry consults `options.components` for any string key it doesn't
 recognise as a built-in. `api.getStatusPanel<T>(key)` returns the live

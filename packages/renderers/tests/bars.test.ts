@@ -1,7 +1,7 @@
-// @cgrid/renderers — bars category tests (Cycle 21f / Task 9).
+// @wellsfargo-starui/velocity-grid-renderers — bars category tests (Cycle 21f / Task 9).
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { CellPaintConfig } from '@cgrid/kernel';
+import type { CellPaintConfig } from '@wellsfargo-starui/velocity-grid';
 import { makeFakeGc } from './helpers/fakeGc';
 import type { FakeGc } from './helpers/fakeGc';
 import { SEMANTIC_COLORS } from '../src/palette';
@@ -247,7 +247,7 @@ describe('volumeBar', () => {
 
 // ───────────────────────────────────────────────────────────────────────
 // Workstream A (2026-07-06 CSS styling model) — renderer-palette threading.
-// Geometry-as-style: `--cg-bar-height` → `RendererPalette.barHeight`,
+// Geometry-as-style: `--vg-bar-height` → `RendererPalette.barHeight`,
 // read by `innerBarRect()`. Colors: direct single-field SEMANTIC_COLORS
 // reads (outside `colorsFromParams`) now resolve `p.palette?.<x>` first.
 // ───────────────────────────────────────────────────────────────────────

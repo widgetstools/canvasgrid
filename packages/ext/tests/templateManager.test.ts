@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { ownTemplateId, type ColumnTemplate } from '@cgrid/calc';
+import { ownTemplateId, type ColumnTemplate } from '@wellsfargo-starui/velocity-grid-calc';
 import {
   activeLibraryTemplateId,
   applyLibraryTemplate,
@@ -138,16 +138,16 @@ describe('applyLibraryTemplate', () => {
 describe('template manager panel', () => {
   it('empty library shows a hint; save disabled without selection', () => {
     const { panel } = mountPanel({ targetCols: () => [] });
-    expect(panel.querySelector('.cgext-tpl-empty')!.textContent).toContain('Select a cell');
-    expect(panel.querySelector<HTMLInputElement>('.cgext-tpl-save-input')!.disabled).toBe(true);
+    expect(panel.querySelector('.vgext-tpl-empty')!.textContent).toContain('Select a cell');
+    expect(panel.querySelector<HTMLInputElement>('.vgext-tpl-save-input')!.disabled).toBe(true);
   });
 
   it('lists templates and apply closes + notifies', () => {
     const grid = new FakeTplGrid();
     grid.templates = [tpl({ id: 't1', name: 'Bold Price', overrides: { cellStyle: { fontWeight: 'bold' } } })];
     const { panel, close, onApplied } = mountPanel({ grid });
-    expect(panel.querySelector('.cgext-tpl-name')!.textContent).toBe('Bold Price');
-    panel.querySelector<HTMLElement>('.cgext-tpl-row')!.click();
+    expect(panel.querySelector('.vgext-tpl-name')!.textContent).toBe('Bold Price');
+    panel.querySelector<HTMLElement>('.vgext-tpl-row')!.click();
     expect(grid.assignments.get('px')).toEqual(['t1']);
     expect(onApplied).toHaveBeenCalled();
     expect(close).toHaveBeenCalled();
@@ -163,11 +163,11 @@ describe('template manager panel', () => {
       }),
     ];
     const { panel, onApplied } = mountPanel({ grid });
-    expect(panel.querySelector('.cgext-tpl-hint')!.textContent).toContain('Will save:');
-    const input = panel.querySelector<HTMLInputElement>('.cgext-tpl-save-input')!;
+    expect(panel.querySelector('.vgext-tpl-hint')!.textContent).toContain('Will save:');
+    const input = panel.querySelector<HTMLInputElement>('.vgext-tpl-save-input')!;
     input.value = 'Money';
     input.dispatchEvent(new Event('input'));
-    panel.querySelector<HTMLButtonElement>('.cgext-tpl-save .cgext-tpl-iconbtn')!.click();
+    panel.querySelector<HTMLButtonElement>('.vgext-tpl-save .vgext-tpl-iconbtn')!.click();
     expect(onApplied).toHaveBeenCalled();
     const saved = grid.templates.find((t) => t.name === 'Money');
     expect(saved?.overrides.format).toBe('$#,##0.00');
@@ -178,17 +178,17 @@ describe('template manager panel', () => {
     const grid = new FakeTplGrid();
     grid.templates = [tpl({ id: 't1', name: 'Doomed' })];
     const { panel, onApplied } = mountPanel({ grid });
-    const row = panel.querySelector<HTMLElement>('.cgext-tpl-row')!;
-    const trash = row.querySelectorAll<HTMLButtonElement>('.cgext-tpl-iconbtn.is-danger')[0]!;
+    const row = panel.querySelector<HTMLElement>('.vgext-tpl-row')!;
+    const trash = row.querySelectorAll<HTMLButtonElement>('.vgext-tpl-iconbtn.is-danger')[0]!;
     trash.click();
     // Confirm button appears after pending delete.
-    const confirm = panel.querySelectorAll<HTMLButtonElement>('.cgext-tpl-iconbtn.is-danger')[0]!;
+    const confirm = panel.querySelectorAll<HTMLButtonElement>('.vgext-tpl-iconbtn.is-danger')[0]!;
     confirm.click();
     expect(grid.templates.find((t) => t.id === 't1')).toBeUndefined();
     expect(onApplied).toHaveBeenCalled();
   });
 
-  it('templateManagerMenu mounts under .cgext-menu.cgext-tpl-menu', () => {
+  it('templateManagerMenu mounts under .vgext-menu.vgext-tpl-menu', () => {
     const grid = new FakeTplGrid();
     grid.templates = [tpl({ id: 't1', name: 'X' })];
     const anchor = document.createElement('button');
@@ -200,7 +200,7 @@ describe('template manager panel', () => {
       onApplied: () => {},
     });
     m.toggle();
-    expect(document.querySelector('.cgext-menu.cgext-tpl-menu')).not.toBeNull();
+    expect(document.querySelector('.vgext-menu.vgext-tpl-menu')).not.toBeNull();
     m.destroy();
   });
 });

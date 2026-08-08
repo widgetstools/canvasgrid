@@ -54,7 +54,7 @@ cannot host IME / autocomplete / keyboard accessibility).
 - `docs/catalog/22-events.md` — `filterChanged` / `filterModified` / `filterOpened` payloads
 - `docs/catalog/23-api.md` — `getFilterModel` / `setFilterModel` / `getColumnFilterModel` / `setColumnFilterModel` / `onFilterChanged` / `isAnyFilterPresent` / `isColumnFilterPresent`
 - `docs/catalog/FEATURE_MATRIX.md` — Area 08 rows to flip to ✅ at cycle exit (~60 of 63 rows)
-- Cgrid source: `cgrid/src/cgrid.ts`, `worker/{dataPipeline,protocol,worker,client}.ts`, `core/subgrid.ts`, `interaction/editors/popupHost.ts`, `interaction/editorOverlay.ts`, `types.ts`
+- Cgrid source: `cgrid/src/velocityGrid.ts`, `worker/{dataPipeline,protocol,worker,client}.ts`, `core/subgrid.ts`, `interaction/editors/popupHost.ts`, `interaction/editorOverlay.ts`, `types.ts`
 - Demo (verification target): `apps/cgrid-positions/`
 
 ## Global Constraints
@@ -193,22 +193,22 @@ New ones marked **NEW** for this cycle.
 
 | # | Task | Primary user-visible win | Files touched |
 |---|---|---|---|
-| 1 | `FloatingFilterSubgrid` + `FloatingFilterOverlay` + `floatingFilter` opt-in | A second header row with per-column text inputs that filter as you type | `core/subgrid.ts`, `interaction/floatingFilterOverlay.ts` (new), `cgrid.ts`, `types.ts`, demo, tests |
+| 1 | `FloatingFilterSubgrid` + `FloatingFilterOverlay` + `floatingFilter` opt-in | A second header row with per-column text inputs that filter as you type | `core/subgrid.ts`, `interaction/floatingFilterOverlay.ts` (new), `velocityGrid.ts`, `types.ts`, demo, tests |
 | 2 | `CFilterModelEntry` v2 shape + extended `FilterPass` operators (`contains` / `equals` / `notContains` / `notEqual` / `startsWith` / `endsWith` / `blank` / `notBlank` for text; `eq` / `ne` / `gt` / `gte` / `lt` / `lte` / `between` / `blank` / `notBlank` for number) + back-compat shim for the Cycle 4 / 5 shape | Floating-filter typing produces accurate matches across every operator | `worker/dataPipeline.ts`, `types.ts`, tests |
-| 3 | Number-filter popup + `agNumberColumnFilter` parity (range + operator dropdown + Apply / Clear / Reset buttons) | Click the floating-filter expand button on a number column to open a full operator UI | `interaction/filters/numberFilter.ts` (new), `interaction/filters/filterPopupHost.ts` (new), `cgrid.ts`, `types.ts`, demo, tests |
+| 3 | Number-filter popup + `agNumberColumnFilter` parity (range + operator dropdown + Apply / Clear / Reset buttons) | Click the floating-filter expand button on a number column to open a full operator UI | `interaction/filters/numberFilter.ts` (new), `interaction/filters/filterPopupHost.ts` (new), `velocityGrid.ts`, `types.ts`, demo, tests |
 | 4 | Date-filter popup + `inRange` operator + ISO-string storage on the worker | Date columns get the same operator UI as numbers, plus an `inRange` two-date selector | `interaction/filters/dateFilter.ts` (new), `worker/dataPipeline.ts`, `types.ts`, demo, tests |
 | 5 | Text-filter popup (full operator set + `caseSensitive` + `textMatcher` / `textFormatter` / `trimInput` params) | Text columns get the full ag-grid operator surface in a popup | `interaction/filters/textFilter.ts` (new), `worker/dataPipeline.ts`, `types.ts`, demo, tests |
 | 6 | Multi-condition filter UI (up to 2 conditions, `AND` / `OR` join, `maxNumConditions` / `numAlwaysVisibleConditions` / `defaultJoinOperator` params, `closeOnApply`) | One column can now express `contains "POS" AND startsWith "POS-1"` in a single popup | `interaction/filters/multiCondition.ts` (new), `worker/dataPipeline.ts`, `types.ts`, demo, tests |
-| 7 | `quickFilterText` + `QuickFilterPass` + `cacheQuickFilter` + `includeHiddenColumnsInQuickFilter` + `quickFilterParser` + `quickFilterMatcher` + `getQuickFilterText` per-column override | Single text input above the grid filters every row across every column | `worker/dataPipeline.ts` (`QuickFilterPass`), `worker/worker.ts`, `worker/client.ts`, `worker/protocol.ts`, `cgrid.ts`, `types.ts`, demo, tests |
-| 8 | External filter (`isExternalFilterPresent` + `doesExternalFilterPass` + `alwaysPassFilter`) + the rowIds round-trip protocol | App provides a predicate; grid runs it on main and stitches the survivors back | `worker/protocol.ts`, `worker/worker.ts`, `worker/client.ts`, `cgrid.ts`, `types.ts`, demo, tests |
-| 9 | `VirtualList<T>` primitive + virtualised Set Filter + `DistinctValuesPass` + per-column filter API (`getColumnFilterModel` / `setColumnFilterModel` / `isAnyFilterPresent` / `isColumnFilterPresent` / `destroyFilter`) + `filterChanged` / `filterModified` / `filterOpened` events + Cycle 7 exit ritual | Per-column distinct-value checkboxes scaling to 50k+ entries via a reusable VirtualList primitive; full state round-trip; FM reflects every Area-08 row Cycle 7 ships | `interaction/ui/virtualList.ts` (new), `interaction/filters/setFilter.ts` (new), `worker/dataPipeline.ts` (`DistinctValuesPass`), `worker/worker.ts`, `worker/client.ts`, `worker/protocol.ts`, `cgrid.ts`, `types.ts`, `docs/catalog/FEATURE_MATRIX.md`, this worklog |
+| 7 | `quickFilterText` + `QuickFilterPass` + `cacheQuickFilter` + `includeHiddenColumnsInQuickFilter` + `quickFilterParser` + `quickFilterMatcher` + `getQuickFilterText` per-column override | Single text input above the grid filters every row across every column | `worker/dataPipeline.ts` (`QuickFilterPass`), `worker/worker.ts`, `worker/client.ts`, `worker/protocol.ts`, `velocityGrid.ts`, `types.ts`, demo, tests |
+| 8 | External filter (`isExternalFilterPresent` + `doesExternalFilterPass` + `alwaysPassFilter`) + the rowIds round-trip protocol | App provides a predicate; grid runs it on main and stitches the survivors back | `worker/protocol.ts`, `worker/worker.ts`, `worker/client.ts`, `velocityGrid.ts`, `types.ts`, demo, tests |
+| 9 | `VirtualList<T>` primitive + virtualised Set Filter + `DistinctValuesPass` + per-column filter API (`getColumnFilterModel` / `setColumnFilterModel` / `isAnyFilterPresent` / `isColumnFilterPresent` / `destroyFilter`) + `filterChanged` / `filterModified` / `filterOpened` events + Cycle 7 exit ritual | Per-column distinct-value checkboxes scaling to 50k+ entries via a reusable VirtualList primitive; full state round-trip; FM reflects every Area-08 row Cycle 7 ships | `interaction/ui/virtualList.ts` (new), `interaction/filters/setFilter.ts` (new), `worker/dataPipeline.ts` (`DistinctValuesPass`), `worker/worker.ts`, `worker/client.ts`, `worker/protocol.ts`, `velocityGrid.ts`, `types.ts`, `docs/catalog/FEATURE_MATRIX.md`, this worklog |
 
 ---
 
 ## Task 1 — `FloatingFilterSubgrid` + `FloatingFilterOverlay` + `floatingFilter` opt-in
 
 **Goal:** Stand up the floating-filter row. When `floatingFilter: true` on
-`CGridOptions` (grid-wide default) or per-column `CColDef.floatingFilter:
+`VelocityGridOptions` (grid-wide default) or per-column `CColDef.floatingFilter:
 true` is set, a second header row appears between the leaf header and the
 data subgrid. Each column in that row contains a DOM `<input>` (text /
 number) that the user can type into; typing fires
@@ -234,7 +234,7 @@ without scaffolding it themselves.
 - `cgrid/src/core/subgrid.ts` — `Subgrid` interface; `HeaderSubgrid`
   (lines 40-59) is the closest precedent; the new subgrid mirrors it
   but reports its own `type: 'floatingFilter'`
-- `cgrid/src/cgrid.ts:989-1013` — `rebuildSubgridStack`; the new subgrid
+- `cgrid/src/velocityGrid.ts:989-1013` — `rebuildSubgridStack`; the new subgrid
   slots between `HeaderSubgrid` and `DataSubgrid`
 - `cgrid/src/interaction/editorOverlay.ts` — the precedent for a DOM
   overlay layer that mounts inputs over the canvas; the floating-filter
@@ -250,12 +250,12 @@ without scaffolding it themselves.
 - Create: `cgrid/src/interaction/floatingFilterOverlay.ts`
 - Modify: `cgrid/src/core/subgrid.ts` (extend `SubgridType` union to
   include `'floatingFilter'`; export the new subgrid type alias)
-- Modify: `cgrid/src/cgrid.ts` (instantiate the new subgrid in
+- Modify: `cgrid/src/velocityGrid.ts` (instantiate the new subgrid in
   `rebuildSubgridStack` when `options.floatingFilter` is true OR any
   column resolves to `floatingFilter: true`; instantiate the overlay
   alongside `editor`; hook `recomputeViewport` to call
   `overlay.repositionAll(this.viewport)`)
-- Modify: `cgrid/src/types.ts` (`CGridOptions.floatingFilter?: boolean`,
+- Modify: `cgrid/src/types.ts` (`VelocityGridOptions.floatingFilter?: boolean`,
   `CColDef.floatingFilter?: boolean`)
 - Modify: `cgrid/src/core/propertyChain.ts` (resolve `floatingFilter`
   onto `ResolvedColDef`)
@@ -337,7 +337,7 @@ export class FloatingFilterOverlay {
 
 // cgrid/src/types.ts additions
 
-export interface CGridOptions<TRow = any> {
+export interface VelocityGridOptions<TRow = any> {
   // … existing fields …
   /** When true, every column with a default-resolved filter gets a
    *  floating filter input row beneath the leaf header. Per-column
@@ -347,7 +347,7 @@ export interface CGridOptions<TRow = any> {
 
 export interface CColDef<TRow = any, TValue = any> {
   // … existing fields …
-  /** Per-column override of `CGridOptions.floatingFilter`. When set on
+  /** Per-column override of `VelocityGridOptions.floatingFilter`. When set on
    *  a column, the column joins the floating-filter row regardless of
    *  the grid-wide default. */
   floatingFilter?: boolean;
@@ -477,17 +477,17 @@ export class FloatingFilterSubgrid implements Subgrid {
       'contains', filter: input.value })` after the debounce fires.
 
       `host` is the same `editorContainer` `EditorOverlay` mounts to —
-      passed in by `cgrid.ts` (see Step 11).
+      passed in by `velocityGrid.ts` (see Step 11).
 
 - [ ] **Step 8: Verify** — `npm test --workspace=cgrid -- floatingFilterOverlay` green.
 
 - [ ] **Step 9: Add `floatingFilter` + `suppressFloatingFilterButton`
-      to `CGridOptions` / `CColDef`** in `types.ts`. Resolve
+      to `VelocityGridOptions` / `CColDef`** in `types.ts`. Resolve
       `floatingFilter` in `propertyChain.ts` — column-level wins over
       grid-level; default to `false`.
 
 - [ ] **Step 10: Wire the subgrid into `rebuildSubgridStack`** in
-      `cgrid.ts`. The order is `HeaderGroupSubgrid* → HeaderSubgrid →
+      `velocityGrid.ts`. The order is `HeaderGroupSubgrid* → HeaderSubgrid →
       FloatingFilterSubgrid → DataSubgrid`. Enable when the grid-wide
       option OR any column resolves to `floatingFilter: true`.
 
@@ -531,7 +531,7 @@ test.describe('Cycle 7 / Task 1 — floating-filter row', () => {
     await page.goto('/');
     await page.waitForFunction(() => (window as any).__cgridReady === true);
     const inputCount = await page.evaluate(() =>
-      document.querySelectorAll('input[data-cg-floating-filter]').length);
+      document.querySelectorAll('input[data-vg-floating-filter]').length);
     expect(inputCount).toBeGreaterThan(5);
   });
 
@@ -539,7 +539,7 @@ test.describe('Cycle 7 / Task 1 — floating-filter row', () => {
     await page.goto('/');
     await page.waitForFunction(() => (window as any).__cgridReady === true);
     const before = await page.evaluate(() => (window as any).__cgrid.getDisplayedRowCount());
-    const sel = 'input[data-cg-floating-filter][data-cg-col-id="positionId"]';
+    const sel = 'input[data-vg-floating-filter][data-vg-col-id="positionId"]';
     await page.fill(sel, 'POS-1');
     // Default debounce is 500ms — wait it out then assert.
     await page.waitForTimeout(700);
@@ -551,13 +551,13 @@ test.describe('Cycle 7 / Task 1 — floating-filter row', () => {
     await page.goto('/');
     await page.waitForFunction(() => (window as any).__cgridReady === true);
     const before = await page.evaluate(() => {
-      const el = document.querySelector('input[data-cg-floating-filter][data-cg-col-id="positionId"]') as HTMLElement;
+      const el = document.querySelector('input[data-vg-floating-filter][data-vg-col-id="positionId"]') as HTMLElement;
       return el?.style.transform ?? '';
     });
     await page.evaluate(() => (window as any).__cgrid.getScroller().scrollLeft = 200);
     await page.waitForTimeout(100);
     const after = await page.evaluate(() => {
-      const el = document.querySelector('input[data-cg-floating-filter][data-cg-col-id="positionId"]') as HTMLElement;
+      const el = document.querySelector('input[data-vg-floating-filter][data-vg-col-id="positionId"]') as HTMLElement;
       return el?.style.transform ?? '';
     });
     expect(after).not.toBe(before);
@@ -566,8 +566,8 @@ test.describe('Cycle 7 / Task 1 — floating-filter row', () => {
 ```
 
       For the E2E to read `__cgrid.getScroller()`, expose a debug
-      accessor on `CGridApi` (returns the scroller HTMLElement). 4-line
-      addition to `cgrid.ts`.
+      accessor on `VelocityGridApi` (returns the scroller HTMLElement). 4-line
+      addition to `velocityGrid.ts`.
 
 - [ ] **Step 14: Run the full suite**
 
@@ -585,7 +585,7 @@ git add cgrid/src/core/floatingFilterSubgrid.ts \
         cgrid/src/core/subgrid.ts \
         cgrid/src/core/propertyChain.ts \
         cgrid/src/interaction/floatingFilterOverlay.ts \
-        cgrid/src/cgrid.ts \
+        cgrid/src/velocityGrid.ts \
         cgrid/src/types.ts \
         cgrid/src/core/viewport.ts \
         cgrid/tests/floatingFilterSubgrid.test.ts \
@@ -606,7 +606,7 @@ Pooling preserves IME / autocomplete state across scroll-out /
 scroll-in cycles. Typing fires `setColumnFilterModel` after a 500ms
 debounce.
 
-Opt-in via grid-wide `CGridOptions.floatingFilter: true` or per-column
+Opt-in via grid-wide `VelocityGridOptions.floatingFilter: true` or per-column
 `CColDef.floatingFilter: true`. `suppressFloatingFilterButton` hides
 the popup-expand control on the input (popup itself lands in Tasks
 3-6 + 9).
@@ -624,7 +624,7 @@ EOF
       `repositionAll` calls (no detach/reattach churn).
 - [ ] Horizontal scroll re-pins inputs via `transform`, not `left`
       (verified by unit test reading the style).
-- [ ] `CGridOptions.floatingFilter` + `CColDef.floatingFilter` +
+- [ ] `VelocityGridOptions.floatingFilter` + `CColDef.floatingFilter` +
       `CColDef.suppressFloatingFilterButton` typed + resolved.
 - [ ] Demo's floating-filter row visible; typing in `positionId` input
       reduces the visible row count (E2E).
@@ -684,7 +684,7 @@ means every UI task can write directly into the canonical form.
 - Modify: `cgrid/src/worker/dataPipeline.ts` (extend `matches()` for
   every operator; add a `normalizeEntry()` shim that maps the legacy
   shape to v2)
-- Modify: `cgrid/src/cgrid.ts` (any internal callers of `setFilterModel`
+- Modify: `cgrid/src/velocityGrid.ts` (any internal callers of `setFilterModel`
   pass-through — no change needed if they already opaque-relay the
   model)
 - Create: `cgrid/tests/filterModelV2.test.ts`
@@ -766,8 +766,8 @@ export type FilterModelEntryLegacy =
   | { type: 'text'; op: 'contains' | 'equals' | 'startsWith'; value: string }
   | { type: 'number'; op: 'eq' | 'gt' | 'lt' | 'between'; value: number; value2?: number };
 
-/** Public type alias — the union accepted by `CGridApi.setFilterModel`
- *  and returned by `CGridApi.getFilterModel`. New code should write the
+/** Public type alias — the union accepted by `VelocityGridApi.setFilterModel`
+ *  and returned by `VelocityGridApi.getFilterModel`. New code should write the
  *  v2 shape; the legacy shape is read-only for back-compat. */
 export type FilterModelEntry = CFilterModelEntry | FilterModelEntryLegacy;
 export type FilterModel = Record<string, FilterModelEntry>;
@@ -970,12 +970,12 @@ floating-filter expand-button, completing Task 1's UI.
 **Files:**
 - Create: `cgrid/src/interaction/filters/filterPopupHost.ts`
 - Create: `cgrid/src/interaction/filters/numberFilter.ts`
-- Modify: `cgrid/src/cgrid.ts` (instantiate `FilterPopupHost`; wire
+- Modify: `cgrid/src/velocityGrid.ts` (instantiate `FilterPopupHost`; wire
   `openColumnFilter(colId)` for number columns to `openFilterPopup(colId,
   () => new NumberFilterPopup(...))`; add `showColumnFilter` /
-  `hideColumnFilter` to `CGridApi`)
+  `hideColumnFilter` to `VelocityGridApi`)
 - Modify: `cgrid/src/types.ts` (add `CColDef.filterParams?:
-  CFilterParams` with the cross-type shared shape; add `CGridApi`
+  CFilterParams` with the cross-type shared shape; add `VelocityGridApi`
   signatures for `showColumnFilter` + `hideColumnFilter`)
 - Update: `apps/cgrid-positions/src/positionsGrid.ts` (mark `price` +
   `notionalAmount` + `pnl` columns `filter: 'number'`)
@@ -1009,7 +1009,7 @@ export class FilterPopupHost {
   close(): void;
   isOpen(): boolean;
   /** Returns the colId of the currently open popup, or null. Used by
-   *  `CGridApi.showColumnFilter` to deduplicate consecutive opens. */
+   *  `VelocityGridApi.showColumnFilter` to deduplicate consecutive opens. */
   openColId(): string | null;
 }
 
@@ -1052,7 +1052,7 @@ export interface CColDef<TRow = any, TValue = any> {
   filterParams?: CFilterParams;
 }
 
-export interface CGridApi<TRow = any> {
+export interface VelocityGridApi<TRow = any> {
   // … existing methods …
   /** Open the filter popup for `colId`. No-op when the column has no
    *  resolved filter or when the popup is already open for that column.
@@ -1092,7 +1092,7 @@ export interface CGridApi<TRow = any> {
       the second-input visibility.
 
 - [ ] **Step 5: Wire `showColumnFilter` + `hideColumnFilter` in
-      `cgrid.ts`** — resolve the column's filter type (`def.filter` or
+      `velocityGrid.ts`** — resolve the column's filter type (`def.filter` or
       `def.cellDataType`-derived); for `'number'`, instantiate
       `NumberFilterPopup` and call `filterPopupHost.open(colId, anchor,
       popup)`. Anchor is the header cell's bounds (derive via the
@@ -1188,7 +1188,7 @@ column gets a real-world use case.
   handle `filterType: 'date'`; parse both sides via `Date.parse`,
   compare numerically; treat `null` / `undefined` / empty string as
   blank)
-- Modify: `cgrid/src/cgrid.ts` (route `def.filter === 'date'` to
+- Modify: `cgrid/src/velocityGrid.ts` (route `def.filter === 'date'` to
   `DateFilterPopup`)
 - Update: `apps/cgrid-positions/src/positionsGrid.ts` (mark `asOfDate`
   `filter: 'date'`)
@@ -1235,7 +1235,7 @@ export class DateFilterPopup implements FilterPopupFactory {
       / `maxDate` are supplied.
 - [ ] **Step 5: Implement `dateFilter.ts`** — clone `numberFilter.ts`,
       swap the input type, parse ISO strings on Apply.
-- [ ] **Step 6: Route in `cgrid.ts`** — `case 'date': return new
+- [ ] **Step 6: Route in `velocityGrid.ts`** — `case 'date': return new
       DateFilterPopup(...)`.
 - [ ] **Step 7: Wire the demo** — `asOfDate` column with `filter:
       'date'`.
@@ -1305,7 +1305,7 @@ it after number / date means the popup template is already validated.
   in a per-colId map on `FilterPass` and called instead of the built-in
   matcher; `textFormatter` runs on both sides before comparison;
   `trimInput` trims the `filter` value at `setModel` time)
-- Modify: `cgrid/src/cgrid.ts` (route `def.filter === 'text'` to
+- Modify: `cgrid/src/velocityGrid.ts` (route `def.filter === 'text'` to
   `TextFilterPopup`; ship `textFormatter` / `textMatcher` to the worker
   via the `CColumnFilterMeta` extension on `WorkerColumn`)
 - Modify: `cgrid/src/worker/protocol.ts` (extend `WorkerColumn` with
@@ -1373,7 +1373,7 @@ export class TextFilterPopup implements FilterPopupFactory {
       assertions including the `caseSensitive` checkbox toggle.
 - [ ] **Step 5: Implement `textFilter.ts`** — clone number popup; swap
       types.
-- [ ] **Step 6: Route in `cgrid.ts`** + extend `WorkerColumn` payload.
+- [ ] **Step 6: Route in `velocityGrid.ts`** + extend `WorkerColumn` payload.
 - [ ] **Step 7: Wire the demo** — `instrumentName` column.
 - [ ] **Step 8: E2E** — click expand on `instrumentName`, pick
       `startsWith`, type `Financial`, apply, assert row count drops to
@@ -1592,13 +1592,13 @@ filter (Task 9).
   null, parts?: string[]): Promise<{ visibleCount: number }>`)
 - Modify: `cgrid/src/worker/protocol.ts` (`'setQuickFilter'` request
   envelope)
-- Modify: `cgrid/src/cgrid.ts` (`setGridOption('quickFilterText',
+- Modify: `cgrid/src/velocityGrid.ts` (`setGridOption('quickFilterText',
   value)` route; instantiate the worker call; fire `filterChanged` with
   `source: 'quickFilter'`)
 - Modify: `cgrid/src/core/runtimeOptions.ts` (declare `quickFilterText`
   / `cacheQuickFilter` / `includeHiddenColumnsInQuickFilter` as
   runtime-mutable)
-- Modify: `cgrid/src/types.ts` (`CGridOptions.quickFilterText?: string`,
+- Modify: `cgrid/src/types.ts` (`VelocityGridOptions.quickFilterText?: string`,
   `cacheQuickFilter?: boolean`, `includeHiddenColumnsInQuickFilter?:
   boolean`, `quickFilterParser?: (text: string) => string[]`,
   `quickFilterMatcher?: (parts: string[], agg: string) => boolean`;
@@ -1614,7 +1614,7 @@ filter (Task 9).
 ```ts
 // cgrid/src/types.ts
 
-export interface CGridOptions<TRow = any> {
+export interface VelocityGridOptions<TRow = any> {
   // … existing fields …
   quickFilterText?: string;
   cacheQuickFilter?: boolean;
@@ -1665,7 +1665,7 @@ export class QuickFilterPass<TRow = any> {
 - [ ] **Step 3: Wire `setQuickFilter` protocol** + worker route + main
       client.
 - [ ] **Step 4: Route `setGridOption('quickFilterText', value)` in
-      `cgrid.ts`** — parse via `options.quickFilterParser ??
+      `velocityGrid.ts`** — parse via `options.quickFilterParser ??
       defaultParser`; ship terms to worker; on reply, fire
       `filterChanged` with `source: 'quickFilter'`.
 - [ ] **Step 5: Wire the demo toolbar** — `<input id="quick-filter">`
@@ -1746,12 +1746,12 @@ arrays); the rest is callback plumbing.
 - Modify: `cgrid/src/worker/client.ts` (`registerExternalFilter(): void`
   + `unregisterExternalFilter(): void` + the response handler
   `externalFilterResult(ids: string[]): Promise<void>`)
-- Modify: `cgrid/src/cgrid.ts` (on construction, if
+- Modify: `cgrid/src/velocityGrid.ts` (on construction, if
   `options.isExternalFilterPresent` is provided, register the callback;
   main-side handler walks `rowData`, runs the predicate, ships survivors
   back; `onFilterChanged()` re-triggers the pipeline)
-- Modify: `cgrid/src/types.ts` (`CGridOptions.isExternalFilterPresent`
-  + `doesExternalFilterPass` + `alwaysPassFilter`; `CGridApi`:
+- Modify: `cgrid/src/types.ts` (`VelocityGridOptions.isExternalFilterPresent`
+  + `doesExternalFilterPass` + `alwaysPassFilter`; `VelocityGridApi`:
   `onFilterChanged(source?: 'api' | 'quickFilter' | 'columnFilter' |
   'externalFilter')`)
 - Update: `apps/cgrid-positions/src/positionsGrid.ts` (toolbar checkbox
@@ -1765,7 +1765,7 @@ arrays); the rest is callback plumbing.
 ```ts
 // cgrid/src/types.ts
 
-export interface CGridOptions<TRow = any> {
+export interface VelocityGridOptions<TRow = any> {
   // … existing fields …
   /** App-provided predicate signalling whether external filtering is
    *  active. Called before every filter pass. Cycle 7 / Task 8. */
@@ -1778,7 +1778,7 @@ export interface CGridOptions<TRow = any> {
   alwaysPassFilter?: (params: { data: TRow; rowId: string }) => boolean;
 }
 
-export interface CGridApi<TRow = any> {
+export interface VelocityGridApi<TRow = any> {
   // … existing methods …
   /** Re-run the filter pipeline. Source labels the trigger for the
    *  `filterChanged` event. Cycle 7 / Task 8. */
@@ -1927,7 +1927,7 @@ their final shape locked.
 - Modify: `cgrid/src/worker/client.ts`
   (`getDistinctValues(colId): Promise<string[]>`)
 - Modify: `cgrid/src/worker/protocol.ts` (`'getDistinctValues'` envelope)
-- Modify: `cgrid/src/cgrid.ts` (route `def.filter === 'set'` to
+- Modify: `cgrid/src/velocityGrid.ts` (route `def.filter === 'set'` to
   `SetFilterPopup`; add `getColumnFilterModel` / `setColumnFilterModel`
   / `isAnyFilterPresent` / `isColumnFilterPresent` / `destroyFilter`;
   fire `filterOpened` on every popup open; fire `filterModified` on
@@ -2011,7 +2011,7 @@ export interface CSetFilterParams extends CFilterParams {
   suppressSelectAll?: boolean;
 }
 
-export interface CGridApi<TRow = any> {
+export interface VelocityGridApi<TRow = any> {
   // … existing methods …
   getColumnFilterModel<TModel = CFilterModelEntry>(colId: string): TModel | null;
   setColumnFilterModel(colId: string, model: CFilterModelEntry | null): Promise<void>;
@@ -2020,9 +2020,9 @@ export interface CGridApi<TRow = any> {
   destroyFilter(colId: string): void;
 }
 
-// CGridEvent additions
+// VelocityGridEvent additions
 
-export type CGridEvent =
+export type VelocityGridEvent =
   // … existing variants …
   | {
       type: 'filterChanged';
@@ -2051,7 +2051,7 @@ export type CGridEvent =
         (so the native scrollbar reflects the full list size)
       - `scrollToIndex(500)` brings index 500 into the mounted set
       - Scrolling triggers row mount/unmount, not just visibility
-        toggles (assert via `host.querySelectorAll('[data-cg-vlist-row]').length`)
+        toggles (assert via `host.querySelectorAll('[data-vg-vlist-row]').length`)
       - Pool reuse: scrolling by exactly one row reuses N-1 existing
         DOM nodes (assert via element identity tracking)
       - `setItems(newItems)` with `preserveScroll: true` keeps
@@ -2131,9 +2131,9 @@ host (overflow: auto, height: deps' to set)
       filters the distinct array inline → `vlist.setItems(filtered,
       { preserveScroll: true })`. `Select All` mutates the Set and
       calls `vlist.refresh()` so visible rows reflect the new state.
-- [ ] **Step 11: Route in `cgrid.ts`** — `case 'set': new SetFilterPopup(...)`.
+- [ ] **Step 11: Route in `velocityGrid.ts`** — `case 'set': new SetFilterPopup(...)`.
 - [ ] **Step 12: Add per-column filter API + event refinements** in
-      `cgrid.ts`. Fire `filterOpened` from every
+      `velocityGrid.ts`. Fire `filterOpened` from every
       `filterPopupHost.open` call; fire `filterModified` from every
       condition-row `onChange` (debounced wire-up).
 - [ ] **Step 13: Wire the demo** — `currency`, `desk`, `region`.
@@ -2213,7 +2213,7 @@ EOF
 
 - [ ] Append to this worklog under "Shipped":
       - FloatingFilterSubgrid + FloatingFilterOverlay +
-        `CGridOptions.floatingFilter` + `CColDef.floatingFilter` +
+        `VelocityGridOptions.floatingFilter` + `CColDef.floatingFilter` +
         `suppressFloatingFilterButton`.
       - `CFilterModelEntry` v2 discriminated union + back-compat shim
         for the Cycle 4 / 5 shape.
@@ -2319,7 +2319,7 @@ skip the verification commands, and commit at the end.
 
 ## Shipped
 
-- `FloatingFilterSubgrid` + `FloatingFilterOverlay` + `CGridOptions.floatingFilter` + `CColDef.floatingFilter` + `suppressFloatingFilterButton`.
+- `FloatingFilterSubgrid` + `FloatingFilterOverlay` + `VelocityGridOptions.floatingFilter` + `CColDef.floatingFilter` + `suppressFloatingFilterButton`.
 - `CFilterModelEntry` v2 discriminated union + back-compat shim for the Cycle 4 / 5 shape.
 - Number-filter popup + every number operator.
 - Date-filter popup + every date operator + ISO-string worker storage.

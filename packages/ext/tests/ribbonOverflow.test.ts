@@ -112,13 +112,13 @@ describe('wireRibbonOverflow', () => {
     expect(button.hidden).toBe(false);
 
     button.click();
-    const panel = document.querySelector('.cgext-rb-overflow-panel');
+    const panel = document.querySelector('.vgext-rb-overflow-panel');
     expect(panel).toBeTruthy();
     expect(panel!.childElementCount).toBeGreaterThan(0);
 
     // Click away closes and parks nodes back out of the track.
     document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-    expect(document.querySelector('.cgext-rb-overflow-panel')).toBeNull();
+    expect(document.querySelector('.vgext-rb-overflow-panel')).toBeNull();
 
     handle.destroy();
   });

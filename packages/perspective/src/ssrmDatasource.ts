@@ -10,7 +10,7 @@ import type {
   IServerSideGetLeafRowsParams,
   IServerSideGetRowsParams,
   IServerSideGetSkeletonParams,
-} from '@cgrid/kernel';
+} from '@wellsfargo-starui/velocity-grid';
 import type { PerspectiveBook } from './book';
 
 let warnedV1CompatGetRows = false;
@@ -38,7 +38,7 @@ export function createPerspectiveSsrmDatasource(
               warnedV1CompatGetRows = true;
               console.warn(
                 '[PerspectiveSsrmDatasource] grouped getRows received — a v1 SSRM kernel is '
-                + 'driving this v2 datasource (stale @cgrid/kernel bundle? rebuild + hard reload). '
+                + 'driving this v2 datasource (stale @wellsfargo-starui/velocity-grid bundle? rebuild + hard reload). '
                 + 'Serving v1 flattened-window compatibility.',
               );
             }

@@ -7,7 +7,7 @@
  *
  * ```ts
  * const provider = new StompPerspectiveProvider({ feed: 'stomp', wsUrl, clientId });
- * const grid = new CGrid(host, { theme: '...', ...provider.gridOptions() });
+ * const grid = new VelocityGrid(host, { theme: '...', ...provider.gridOptions() });
  * provider.attach(grid);   // live ticks + group/sort/filter sync
  * ```
  *
@@ -19,13 +19,20 @@
  */
 import type {
   CColDef,
-  CGridOptions,
+  VelocityGridOptions,
   IServerSideDatasourceV2,
   IServerSideGetGroupLeafIdsParams,
   IServerSideGetLeafRowsParams,
   IServerSideGetRowsParams,
   IServerSideGetSkeletonParams,
-} from '@cgrid/kernel';
+} from '@wellsfargo-starui/velocity-grid';
+import {
+  assertAppDataResolved,
+  resolveCfg,
+  toAppDataLookup,
+  type AppDataLookup,
+  type AppDataStore,
+} from '@wellsfargo-starui/velocity-grid-appdata';
 import {
   PerspectiveBook,
   type BookFeed,
@@ -42,9 +49,17 @@ export interface StompPerspectiveProviderConfig {
   /** `'stomp'` for the live STOMP feed, `'seed'` (default) for the
    *  self-contained deterministic book — no server needed. */
   feed?: BookFeed;
-  /** STOMP broker URL (feed: 'stomp'), e.g. `ws://localhost:8081`. */
+  /**
+   * Optional AppData for `{{ProviderName.key}}` tokens in string config
+   * fields (`wsUrl`, `clientId`, topics, …). Markets-compatible.
+   * When supplied, unresolved tokens throw at construction (fail closed).
+   */
+  appData?: AppDataLookup | AppDataStore;
+  /** STOMP broker URL (feed: 'stomp'), e.g. `ws://localhost:8081`.
+   *  May include AppData tokens when `appData` is set. */
   wsUrl?: string;
-  /** STOMP topic id — snapshot rides `/snapshot/positions/{clientId}`. */
+  /** STOMP topic id — snapshot rides `/snapshot/positions/{clientId}`.
+   *  May include AppData tokens when `appData` is set. */
   clientId?: string;
   /** Seed-feed knobs (also the STOMP snapshot request parameters). */
   snapshotRows?: number;
@@ -72,8 +87,8 @@ export interface StompPerspectiveProviderConfig {
   onTelemetry?: (t: BookTelemetry) => void;
 }
 
-/** The slice of CGrid the provider needs for `attach` — structural, so the
- *  provider has no hard dependency on the CGrid class. */
+/** The slice of VelocityGrid the provider needs for `attach` — structural, so the
+ *  provider has no hard dependency on the VelocityGrid class. */
 export interface AttachableGrid {
   applyServerSideTransaction(tx: { update?: PositionRow[] }): void;
   refreshServerSide(params?: { purge?: boolean }): void;
@@ -96,6 +111,37 @@ interface BookEntry {
 }
 
 const bookEntries = new Map<string, BookEntry>();
+
+/** String fields that may carry `{{name.key}}` tokens. */
+const TEMPLATED_KEYS = [
+  'wsUrl',
+  'clientId',
+  'snapshotTopic',
+  'triggerTopic',
+  'snapshotEndToken',
+  'keyColumn',
+  'label',
+] as const;
+
+/**
+ * Resolve AppData tokens on string config fields. When `appData` is
+ * omitted, config is returned unchanged (tokens left for the host).
+ * When `appData` is set, fail closed on unresolved tokens.
+ */
+export function resolveProviderConfig(
+  config: StompPerspectiveProviderConfig,
+): StompPerspectiveProviderConfig {
+  if (!config.appData) return config;
+  const lookup = toAppDataLookup(config.appData);
+  const { appData: _drop, ...rest } = config;
+  const resolved = resolveCfg(rest, lookup);
+  const err = assertAppDataResolved(
+    Object.fromEntries(TEMPLATED_KEYS.map((k) => [k, resolved[k]])),
+    'StompPerspectiveProvider',
+  );
+  if (err) throw new Error(err);
+  return resolved;
+}
 
 function entryFor(config: StompPerspectiveProviderConfig): { key: string; entry: BookEntry } {
   const key = [
@@ -158,19 +204,20 @@ export class StompPerspectiveProvider implements IServerSideDatasourceV2<Positio
   private readonly readyPromise: Promise<void>;
   private destroyed = false;
 
-  constructor(private readonly config: StompPerspectiveProviderConfig = {}) {
-    const { key, entry } = entryFor(config);
+  constructor(config: StompPerspectiveProviderConfig = {}) {
+    const resolved = resolveProviderConfig(config);
+    const { key, entry } = entryFor(resolved);
     this.bookKey = key;
     this.entry = entry;
     entry.refs++;
     this.viewId = `provider-${entry.nextViewSeq++}`;
-    if (config.onTelemetry) entry.telemetryHandlers.set(this.viewId, config.onTelemetry);
+    if (resolved.onTelemetry) entry.telemetryHandlers.set(this.viewId, resolved.onTelemetry);
     this.inner = createPerspectiveSsrmDatasource(entry.book, this.viewId);
     this.readyPromise = entry.book
       .registerView({
         id: this.viewId,
-        label: config.label ?? this.viewId,
-        ...(config.filter ? { filter: config.filter } : {}),
+        label: resolved.label ?? this.viewId,
+        ...(resolved.filter ? { filter: resolved.filter } : {}),
       })
       .then(() => {
         // Idempotent across providers — first caller starts the feed
@@ -190,12 +237,12 @@ export class StompPerspectiveProvider implements IServerSideDatasourceV2<Positio
     return this.entry.book;
   }
 
-  /** Recommended CGrid options bundle: columnDefs + the sparse-SSRM
+  /** Recommended VelocityGrid options bundle: columnDefs + the sparse-SSRM
    *  contract with this provider as the datasource. Includes every
-   *  required CGridOptions field, so `new CGrid(el, { ...p.gridOptions() })`
+   *  required VelocityGridOptions field, so `new VelocityGrid(el, { ...p.gridOptions() })`
    *  typechecks directly; spread FIRST, then override anything
    *  (theme/quality are the caller's business). */
-  gridOptions(): CGridOptions<PositionRow> {
+  gridOptions(): VelocityGridOptions<PositionRow> {
     return {
       getRowId: (r: PositionRow) => r.positionId,
       columnDefs: this.columnDefs,
@@ -218,7 +265,7 @@ export class StompPerspectiveProvider implements IServerSideDatasourceV2<Positio
             p.isGrandTotal ? 'Grand Total' : `Total ${p.value}`,
         },
       },
-    } as CGridOptions<PositionRow>;
+    } as VelocityGridOptions<PositionRow>;
   }
 
   /**

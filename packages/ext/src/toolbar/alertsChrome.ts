@@ -1,8 +1,8 @@
 /**
  * Alerts chrome — title-bar badge + lightweight DOM toasts.
- * Subscribes to `grid.onAlert` from the `@cgrid/rules` bridge.
+ * Subscribes to `grid.onAlert` from the `@wellsfargo-starui/velocity-grid-rules` bridge.
  */
-import type { AlertEvent, AlertSeverity } from '@cgrid/rules';
+import type { AlertEvent, AlertSeverity } from '@wellsfargo-starui/velocity-grid-rules';
 import type { ToolbarItem, ToolbarItemInstance } from '../extension/types';
 import { iconButton } from './ui';
 
@@ -24,7 +24,7 @@ const SEVERITY_TONE: Record<AlertSeverity, string> = {
 };
 
 function ensureToastHost(): HTMLElement {
-  const ID = 'cgext-alert-toasts';
+  const ID = 'vgext-alert-toasts';
   let host = document.getElementById(ID);
   if (!host) {
     host = document.createElement('div');
@@ -39,54 +39,54 @@ function ensureToastHost(): HTMLElement {
 }
 
 function ensureBadgeStyles(): void {
-  const ID = 'cgext-alerts-badge-styles';
+  const ID = 'vgext-alerts-badge-styles';
   if (document.getElementById(ID)) return;
   const style = document.createElement('style');
   style.id = ID;
   style.textContent = `
-.cgext-alert-badge { position: relative; }
-.cgext-alert-badge .cgext-alert-count {
+.vgext-alert-badge { position: relative; }
+.vgext-alert-badge .vgext-alert-count {
   position: absolute; top: -2px; right: -2px; min-width: 14px; height: 14px;
   padding: 0 3px; border-radius: 7px; background: #f31260; color: #fff;
   font-size: 9px; font-weight: 700; line-height: 14px; text-align: center;
   pointer-events: none;
 }
-.cgext-alert-badge .cgext-alert-count[hidden] { display: none; }
-.cgext-alert-pop {
+.vgext-alert-badge .vgext-alert-count[hidden] { display: none; }
+.vgext-alert-pop {
   position: absolute; top: calc(100% + 6px); right: 0; z-index: 40;
   width: 320px; max-height: 360px; overflow: auto;
-  background: color-mix(in srgb, var(--cg-bg-color, #1a1f2b) 96%, transparent);
-  border: 1px solid var(--cg-border-color, #2a3140);
+  background: color-mix(in srgb, var(--vg-bg-color, #1a1f2b) 96%, transparent);
+  border: 1px solid var(--vg-border-color, #2a3140);
   border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.35);
-  padding: 8px; color: var(--cg-fg-color, #e5e9f0); font-size: 12px;
+  padding: 8px; color: var(--vg-fg-color, #e5e9f0); font-size: 12px;
 }
-.cgext-alert-pop[hidden] { display: none; }
-.cgext-alert-pop-head {
+.vgext-alert-pop[hidden] { display: none; }
+.vgext-alert-pop-head {
   display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
-  padding-bottom: 6px; border-bottom: 1px solid var(--cg-border-color, #2a3140);
+  padding-bottom: 6px; border-bottom: 1px solid var(--vg-border-color, #2a3140);
 }
-.cgext-alert-pop-head strong { flex: 1; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
-.cgext-alert-pop-head button {
-  background: transparent; border: none; color: var(--cg-muted-fg-color, #8a93a6);
+.vgext-alert-pop-head strong { flex: 1; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.vgext-alert-pop-head button {
+  background: transparent; border: none; color: var(--vg-muted-fg-color, #8a93a6);
   font: inherit; font-size: 11px; cursor: pointer; padding: 2px 4px;
 }
-.cgext-alert-pop-head button:hover { color: var(--cg-fg-color, #e5e9f0); }
-.cgext-alert-item {
+.vgext-alert-pop-head button:hover { color: var(--vg-fg-color, #e5e9f0); }
+.vgext-alert-item {
   display: grid; grid-template-columns: 4px 1fr; gap: 8px;
   padding: 6px 4px; border-radius: 4px;
 }
-.cgext-alert-item:hover { background: color-mix(in srgb, var(--cg-fg-color, #fff) 5%, transparent); }
-.cgext-alert-item .bar { border-radius: 2px; }
-.cgext-alert-item .meta { opacity: .55; font-size: 10px; margin-top: 2px; }
-.cgext-alert-toast {
+.vgext-alert-item:hover { background: color-mix(in srgb, var(--vg-fg-color, #fff) 5%, transparent); }
+.vgext-alert-item .bar { border-radius: 2px; }
+.vgext-alert-item .meta { opacity: .55; font-size: 10px; margin-top: 2px; }
+.vgext-alert-toast {
   pointer-events: auto; padding: 10px 12px; border-radius: 6px;
-  background: color-mix(in srgb, var(--cg-bg-color, #1a1f2b) 94%, transparent);
-  border: 1px solid var(--cg-border-color, #2a3140);
-  border-left-width: 3px; color: var(--cg-fg-color, #e5e9f0);
+  background: color-mix(in srgb, var(--vg-bg-color, #1a1f2b) 94%, transparent);
+  border: 1px solid var(--vg-border-color, #2a3140);
+  border-left-width: 3px; color: var(--vg-fg-color, #e5e9f0);
   font-size: 12px; box-shadow: 0 6px 18px rgba(0,0,0,.3);
-  animation: cgext-toast-in 160ms ease-out;
+  animation: vgext-toast-in 160ms ease-out;
 }
-@keyframes cgext-toast-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes vgext-toast-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 `;
   document.head.appendChild(style);
 }
@@ -96,7 +96,7 @@ function showToast(alert: AlertEvent): void {
   ensureBadgeStyles();
   const host = ensureToastHost();
   const toast = document.createElement('div');
-  toast.className = 'cgext-alert-toast';
+  toast.className = 'vgext-alert-toast';
   toast.style.borderLeftColor = SEVERITY_TONE[alert.severity];
   toast.innerHTML = `<strong style="display:block;margin-bottom:2px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;opacity:.7">${alert.severity}</strong>${escapeHtml(alert.message)}`;
   host.appendChild(toast);
@@ -120,15 +120,15 @@ export function alertsBadgeItem(): ToolbarItem {
     init() { ensureBadgeStyles(); },
     render(host, ctx): ToolbarItemInstance {
       const wrap = document.createElement('div');
-      wrap.className = 'cgext-alert-badge';
+      wrap.className = 'vgext-alert-badge';
       wrap.style.position = 'relative';
       const btn = iconButton(BELL, 'Alerts');
-      btn.setAttribute('data-testid', 'cgext-alerts-badge');
+      btn.setAttribute('data-testid', 'vgext-alerts-badge');
       const count = document.createElement('span');
-      count.className = 'cgext-alert-count';
+      count.className = 'vgext-alert-count';
       count.hidden = true;
       const pop = document.createElement('div');
-      pop.className = 'cgext-alert-pop';
+      pop.className = 'vgext-alert-pop';
       pop.hidden = true;
       pop.setAttribute('role', 'dialog');
       pop.setAttribute('aria-label', 'Alert history');
@@ -145,7 +145,7 @@ export function alertsBadgeItem(): ToolbarItem {
         const history = grid.getAlertHistory?.() ?? [];
         pop.replaceChildren();
         const head = document.createElement('div');
-        head.className = 'cgext-alert-pop-head';
+        head.className = 'vgext-alert-pop-head';
         const title = document.createElement('strong');
         title.textContent = 'Alerts';
         head.appendChild(title);
@@ -182,7 +182,7 @@ export function alertsBadgeItem(): ToolbarItem {
         }
         for (const a of history.slice(0, 40)) {
           const item = document.createElement('div');
-          item.className = 'cgext-alert-item';
+          item.className = 'vgext-alert-item';
           const bar = document.createElement('div');
           bar.className = 'bar';
           bar.style.background = SEVERITY_TONE[a.severity];

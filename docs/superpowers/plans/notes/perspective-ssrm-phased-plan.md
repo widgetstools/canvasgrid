@@ -2,7 +2,7 @@
 
 **Status:** Phase 5 complete (2026-07-25) — SharedWorker multi-tab landed  
 **Contract (locked):** Perspective owns storage / filter / sort / group / agg / windows / ticks.  
-CGrid SSRM owns block cache + paint. No `serverSideEnableClientSidePipeline` on this path.
+VelocityGrid SSRM owns block cache + paint. No `serverSideEnableClientSidePipeline` on this path.
 
 ---
 
@@ -19,7 +19,7 @@ STOMP / seed ──► SharedWorker (Perspective WASM Table)
                  IServerSideDatasource.getRows
                            │
                            ▼
-                 CGrid SSRM block cache ──► canvas paint
+                 VelocityGrid SSRM block cache ──► canvas paint
 ```
 
 **Scroll rule:** only viewport (+ small overscan) blocks load. Never full-book hydrate.
@@ -30,7 +30,7 @@ STOMP / seed ──► SharedWorker (Perspective WASM Table)
 
 ### Phase 1 — Flat View windows + smooth SSRM scroll
 **Deliver**
-- `@cgrid/perspective` package (or app-local provider if package lands later)
+- `@wellsfargo-starui/velocity-grid-perspective` package (or app-local provider if package lands later)
 - Perspective worker (SharedWorker with DedicatedWorker fallback)
 - One Table + N flat Views
 - `PerspectiveSsrmDatasource` implementing `getRows` via windowed reads

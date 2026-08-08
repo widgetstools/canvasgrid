@@ -58,19 +58,19 @@ const isGroupDef = (d: CColDef | CColGroupDef): d is CColGroupDef =>
 
 let seq = 0;
 
-/** Keep the allocator ahead of any `cg-grp-N` already present (persisted
+/** Keep the allocator ahead of any `vg-grp-N` already present (persisted
  *  layouts / `ensureGroupIds` / prior Apply). Without this, a remount or
- *  seed with existing `cg-grp-1` while `seq` is still 0 reuses that id and
+ *  seed with existing `vg-grp-1` while `seq` is still 0 reuses that id and
  *  the editor treats two groups as one (shared rename + shared columns). */
 function noteExistingId(id: string): void {
-  const m = /^cg-grp-(\d+)$/.exec(id);
+  const m = /^vg-grp-(\d+)$/.exec(id);
   if (m) seq = Math.max(seq, Number(m[1]));
 }
 
 function allocateGroupId(used: Set<string>): string {
   let id: string;
   do {
-    id = `cg-grp-${++seq}`;
+    id = `vg-grp-${++seq}`;
   } while (used.has(id));
   used.add(id);
   return id;
@@ -400,7 +400,7 @@ export function toSerializedNodes(nodes: Node[]): SerializedNode[] {
       warnedAboutFunctionGroupStyle = true;
       // eslint-disable-next-line no-console
       console.warn(
-        '[cgrid] Column group headerStyle/headerClass functions are not persisted in ' +
+        '[velocity-grid] Column group headerStyle/headerClass functions are not persisted in ' +
         'getState()\'s columnGroupDefs overlay — only plain-object/string styling round-trips ' +
         'through JSON. Function-form group styling must be reapplied by the app after setState().',
       );

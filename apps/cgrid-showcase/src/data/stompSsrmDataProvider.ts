@@ -1,7 +1,7 @@
 import { Client, type IMessage } from '@stomp/stompjs';
 import type {
   CFilterModelEntry,
-  CGrid,
+  VelocityGrid,
   CDateFilterModel,
   CMultiConditionFilterModel,
   CNumberFilterModel,
@@ -13,7 +13,7 @@ import type {
   IServerSideDatasource,
   IServerSideGetRowsParams,
   SortModel,
-} from '@cgrid/kernel';
+} from '@wellsfargo-starui/velocity-grid';
 
 /** Raw row from stomp-view-server. */
 export type StompRow = Record<string, unknown> & { positionId: string };
@@ -265,7 +265,7 @@ export class StompSsrmDataProvider {
   private snapshotComplete = false;
   private received = 0;
   /** Grids bound for live fan-out, each with its projection filter. */
-  private grids = new Map<CGrid<StompRow>, GridBinding>();
+  private grids = new Map<VelocityGrid<StompRow>, GridBinding>();
 
   constructor(options: StompSsrmDataProviderOptions = {}) {
     this.opts = {
@@ -290,7 +290,7 @@ export class StompSsrmDataProvider {
   }
 
   /** Bind a grid for live `applyServerSideTransaction` fan-out. */
-  attachGrid(grid: CGrid<StompRow>, options: DatasourceOptions = {}): () => void {
+  attachGrid(grid: VelocityGrid<StompRow>, options: DatasourceOptions = {}): () => void {
     const clientPipeline = options.clientPipeline === true;
     const binding: GridBinding = {
       filter: options.filter,
@@ -417,7 +417,7 @@ export class StompSsrmDataProvider {
     return rows;
   }
 
-  private gridFilterModel(binding: GridBinding, grid: CGrid<StompRow>): FilterModel {
+  private gridFilterModel(binding: GridBinding, grid: VelocityGrid<StompRow>): FilterModel {
     return binding.clientPipeline ? {} : grid.getFilterModel();
   }
 

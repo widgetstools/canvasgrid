@@ -1,7 +1,7 @@
 // Cycle 21e / Task 10 — derive a binary light/dark "kind" for the active
 // theme. The kernel has no stored kind: shipped themes signal darkness by
-// class-name convention (`cg-theme-quartz-dark`, `cg-theme-high-contrast-dark`),
-// `cg-theme-auto` follows the OS preference, and custom themes fall back to
+// class-name convention (`vg-theme-quartz-dark`, `vg-theme-high-contrast-dark`),
+// `vg-theme-auto` follows the OS preference, and custom themes fall back to
 // the relative luminance of the resolved background color.
 
 /** Parse `#rgb` / `#rrggbb` / `rgb(...)` / `rgba(...)` into [r,g,b] 0-255.
@@ -49,9 +49,9 @@ export function resolveThemeKind(
 ): 'light' | 'dark' {
   let themeClass: string | undefined;
   for (const c of classList) {
-    if (c.startsWith('cg-theme-')) { themeClass = c; break; }
+    if (c.startsWith('vg-theme-')) { themeClass = c; break; }
   }
-  if (themeClass === 'cg-theme-auto') {
+  if (themeClass === 'vg-theme-auto') {
     return typeof matchMedia === 'function'
       && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   }

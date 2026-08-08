@@ -11,7 +11,7 @@
  * primitive.
  *
  * Each test mounts the panel against a `MockApi` that satisfies the
- * subset of `CGridApi` the panel calls. Assertions read the rendered
+ * subset of `VelocityGridApi` the panel calls. Assertions read the rendered
  * DOM (pill stack, drop-state attributes) + watch the API mock for
  * the right primitive calls.
  *
@@ -19,7 +19,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ColumnsToolPanel } from '../src/interaction/toolPanels/columnsPanel';
-import type { CColumnState, CGridEvent } from '../src/types';
+import type { CColumnState, VelocityGridEvent } from '../src/types';
 import type { ToolPanelParams } from '../src/interaction/toolPanels/types';
 
 interface MockApi {
@@ -39,8 +39,8 @@ interface MockApi {
   getGridOption: ReturnType<typeof vi.fn>;
   /** Pump a synthetic event into every subscriber registered via
    *  `addEventListener` — drives the `columnRowGroupChanged` path
-   *  without needing a real CGrid. */
-  emit: (event: CGridEvent) => void;
+   *  without needing a real VelocityGrid. */
+  emit: (event: VelocityGridEvent) => void;
 }
 
 function makeApi(initial?: Partial<{
@@ -69,7 +69,7 @@ function makeApi(initial?: Partial<{
   let rowGroupColumns: string[] = [...(initial?.rowGroupColumns ?? [])];
   const allowDrag = initial?.allowDragFromColumnsToolPanel;
 
-  const listeners = new Map<string, Set<(e: CGridEvent) => void>>();
+  const listeners = new Map<string, Set<(e: VelocityGridEvent) => void>>();
 
   const api: MockApi = {
     getColumnState: () => state.map((s) => ({ ...s })),
@@ -109,7 +109,7 @@ function makeApi(initial?: Partial<{
       ];
       api.emit({ type: 'columnRowGroupChanged', columns: [...rowGroupColumns], source: 'remove' });
     }),
-    addEventListener: vi.fn((type: string, handler: (e: CGridEvent) => void) => {
+    addEventListener: vi.fn((type: string, handler: (e: VelocityGridEvent) => void) => {
       let bucket = listeners.get(type);
       if (!bucket) {
         bucket = new Set();
@@ -123,7 +123,7 @@ function makeApi(initial?: Partial<{
       if (key === 'allowDragFromColumnsToolPanel') return allowDrag;
       return undefined;
     }),
-    emit: (event: CGridEvent) => {
+    emit: (event: VelocityGridEvent) => {
       // A `columnRowGroupChanged` event in production is paired with a
       // state mutation on the GroupingState primitive — subscribers
       // read the new state via `api.getRowGroupColumns()` after the
@@ -162,7 +162,7 @@ function mountPanel(api: MockApi, toolPanelParams: Record<string, unknown> = {})
  *  to a known viewport region. Tests then pass `clientX`/`clientY` in
  *  that region (or outside it) to drive the accept-vs-reject paths. */
 function pinDropZoneRect(root: HTMLElement, rect: { left: number; top: number; right: number; bottom: number }): void {
-  const zone = root.querySelector<HTMLElement>('.cg-columns-panel-rgz');
+  const zone = root.querySelector<HTMLElement>('.vg-columns-panel-rgz');
   if (!zone) throw new Error('drop zone not mounted');
   zone.getBoundingClientRect = () => ({
     left: rect.left,
@@ -192,23 +192,23 @@ describe('ColumnsToolPanel Row Groups drop zone (Cycle 15.5 / Task 2)', () => {
     const api = makeApi();
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    const zone = root.querySelector<HTMLElement>('.cg-columns-panel-rgz');
+    const zone = root.querySelector<HTMLElement>('.vg-columns-panel-rgz');
     expect(zone).not.toBeNull();
     expect(zone!.getAttribute('role')).toBe('list');
     expect(zone!.getAttribute('aria-label')).toBe('Row group columns');
-    const empty = zone!.querySelector<HTMLElement>('.cg-columns-panel-rgz-empty');
+    const empty = zone!.querySelector<HTMLElement>('.vg-columns-panel-rgz-empty');
     expect(empty?.textContent).toBe('Drag here to set row groups');
     // No pills.
-    expect(zone!.querySelectorAll('.cg-columns-panel-rgz-pill').length).toBe(0);
+    expect(zone!.querySelectorAll('.vg-columns-panel-rgz-pill').length).toBe(0);
   });
 
   it('renders one pill per `getRowGroupColumns()` entry in nesting order, with the headerName label', () => {
     const api = makeApi({ rowGroupColumns: ['country', 'year'] });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    const pills = Array.from(root.querySelectorAll<HTMLElement>('.cg-columns-panel-rgz-pill'));
+    const pills = Array.from(root.querySelectorAll<HTMLElement>('.vg-columns-panel-rgz-pill'));
     expect(pills.map((p) => p.dataset.colId)).toEqual(['country', 'year']);
-    const labels = pills.map((p) => p.querySelector<HTMLElement>('.cg-columns-panel-rgz-pill-label')?.textContent);
+    const labels = pills.map((p) => p.querySelector<HTMLElement>('.vg-columns-panel-rgz-pill-label')?.textContent);
     expect(labels).toEqual(['Country', 'Year']);
   });
 
@@ -216,8 +216,8 @@ describe('ColumnsToolPanel Row Groups drop zone (Cycle 15.5 / Task 2)', () => {
     const api = makeApi({ rowGroupColumns: ['country'] });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    const pill = root.querySelector<HTMLElement>('.cg-columns-panel-rgz-pill[data-col-id="country"]')!;
-    const remove = pill.querySelector<HTMLButtonElement>('.cg-columns-panel-rgz-pill-remove')!;
+    const pill = root.querySelector<HTMLElement>('.vg-columns-panel-rgz-pill[data-col-id="country"]')!;
+    const remove = pill.querySelector<HTMLButtonElement>('.vg-columns-panel-rgz-pill-remove')!;
     remove.click();
     expect(api.removeRowGroupColumn).toHaveBeenCalledWith('country');
   });
@@ -226,9 +226,9 @@ describe('ColumnsToolPanel Row Groups drop zone (Cycle 15.5 / Task 2)', () => {
     const api = makeApi();
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    expect(root.querySelectorAll('.cg-columns-panel-rgz-pill').length).toBe(0);
+    expect(root.querySelectorAll('.vg-columns-panel-rgz-pill').length).toBe(0);
     api.addRowGroupColumn('country');
-    const pills = Array.from(root.querySelectorAll<HTMLElement>('.cg-columns-panel-rgz-pill'));
+    const pills = Array.from(root.querySelectorAll<HTMLElement>('.vg-columns-panel-rgz-pill'));
     expect(pills.map((p) => p.dataset.colId)).toEqual(['country']);
   });
 
@@ -240,7 +240,7 @@ describe('ColumnsToolPanel Row Groups drop zone (Cycle 15.5 / Task 2)', () => {
     // Emit a `'move'`-source event (simulating a reorder from the row
     // group panel): country and year swapped.
     api.emit({ type: 'columnRowGroupChanged', columns: ['year', 'country'], source: 'move' });
-    const pills = Array.from(root.querySelectorAll<HTMLElement>('.cg-columns-panel-rgz-pill'));
+    const pills = Array.from(root.querySelectorAll<HTMLElement>('.vg-columns-panel-rgz-pill'));
     expect(pills.map((p) => p.dataset.colId)).toEqual(['year', 'country']);
   });
 
@@ -249,7 +249,7 @@ describe('ColumnsToolPanel Row Groups drop zone (Cycle 15.5 / Task 2)', () => {
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
     api.addRowGroupColumn('athlete');
-    expect(root.querySelector('.cg-columns-panel-rgz-pill[data-col-id="athlete"]')).not.toBeNull();
+    expect(root.querySelector('.vg-columns-panel-rgz-pill[data-col-id="athlete"]')).not.toBeNull();
   });
 
   it('mutation from the header context menu (Group by simulated via addRowGroupColumn) reflects in the drop zone live', () => {
@@ -257,7 +257,7 @@ describe('ColumnsToolPanel Row Groups drop zone (Cycle 15.5 / Task 2)', () => {
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
     api.emit({ type: 'columnRowGroupChanged', columns: ['country'], source: 'add' });
-    expect(root.querySelector('.cg-columns-panel-rgz-pill[data-col-id="country"]')).not.toBeNull();
+    expect(root.querySelector('.vg-columns-panel-rgz-pill[data-col-id="country"]')).not.toBeNull();
   });
 
   it('drag a column-list row into the zone calls api.addRowGroupColumn (for a groupable column)', () => {
@@ -265,7 +265,7 @@ describe('ColumnsToolPanel Row Groups drop zone (Cycle 15.5 / Task 2)', () => {
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
     pinDropZoneRect(root, { left: 0, top: 200, right: 240, bottom: 320 });
-    const handle = root.querySelector<HTMLElement>('.cg-columns-panel-row[data-col-id="country"] .cg-columns-panel-row-handle')!;
+    const handle = root.querySelector<HTMLElement>('.vg-columns-panel-row[data-col-id="country"] .vg-columns-panel-row-handle')!;
     handle.dispatchEvent(new MouseEvent('mousedown', { clientX: 10, clientY: 50, bubbles: true }));
     // Move into the drop zone area (cursor crosses the threshold).
     window.dispatchEvent(new MouseEvent('mousemove', { clientX: 100, clientY: 250 }));
@@ -279,10 +279,10 @@ describe('ColumnsToolPanel Row Groups drop zone (Cycle 15.5 / Task 2)', () => {
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
     pinDropZoneRect(root, { left: 0, top: 200, right: 240, bottom: 320 });
-    const handle = root.querySelector<HTMLElement>('.cg-columns-panel-row[data-col-id="gold"] .cg-columns-panel-row-handle')!;
+    const handle = root.querySelector<HTMLElement>('.vg-columns-panel-row[data-col-id="gold"] .vg-columns-panel-row-handle')!;
     handle.dispatchEvent(new MouseEvent('mousedown', { clientX: 10, clientY: 50, bubbles: true }));
     window.dispatchEvent(new MouseEvent('mousemove', { clientX: 100, clientY: 250 }));
-    const zone = root.querySelector<HTMLElement>('.cg-columns-panel-rgz')!;
+    const zone = root.querySelector<HTMLElement>('.vg-columns-panel-rgz')!;
     expect(zone.dataset.drop).toBe('reject');
     window.dispatchEvent(new MouseEvent('mouseup', { clientX: 100, clientY: 250 }));
     expect(api.addRowGroupColumn).not.toHaveBeenCalled();
@@ -294,10 +294,10 @@ describe('ColumnsToolPanel Row Groups drop zone (Cycle 15.5 / Task 2)', () => {
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
     pinDropZoneRect(root, { left: 0, top: 200, right: 240, bottom: 320 });
-    const handle = root.querySelector<HTMLElement>('.cg-columns-panel-row[data-col-id="country"] .cg-columns-panel-row-handle')!;
+    const handle = root.querySelector<HTMLElement>('.vg-columns-panel-row[data-col-id="country"] .vg-columns-panel-row-handle')!;
     handle.dispatchEvent(new MouseEvent('mousedown', { clientX: 10, clientY: 50, bubbles: true }));
     window.dispatchEvent(new MouseEvent('mousemove', { clientX: 100, clientY: 250 }));
-    const zone = root.querySelector<HTMLElement>('.cg-columns-panel-rgz')!;
+    const zone = root.querySelector<HTMLElement>('.vg-columns-panel-rgz')!;
     expect(zone.dataset.drop).toBe('reject');
     window.dispatchEvent(new MouseEvent('mouseup', { clientX: 100, clientY: 250 }));
     expect(api.addRowGroupColumn).not.toHaveBeenCalled();
@@ -308,7 +308,7 @@ describe('ColumnsToolPanel Row Groups drop zone (Cycle 15.5 / Task 2)', () => {
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
     pinDropZoneRect(root, { left: 0, top: 200, right: 240, bottom: 320 });
-    const pill = root.querySelector<HTMLElement>('.cg-columns-panel-rgz-pill[data-col-id="country"]')!;
+    const pill = root.querySelector<HTMLElement>('.vg-columns-panel-rgz-pill[data-col-id="country"]')!;
     pill.dispatchEvent(new MouseEvent('mousedown', { clientX: 100, clientY: 250, bubbles: true }));
     // Drag past the threshold.
     window.dispatchEvent(new MouseEvent('mousemove', { clientX: 110, clientY: 260 }));
@@ -322,7 +322,7 @@ describe('ColumnsToolPanel Row Groups drop zone (Cycle 15.5 / Task 2)', () => {
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
     pinDropZoneRect(root, { left: 0, top: 200, right: 240, bottom: 320 });
-    const pill = root.querySelector<HTMLElement>('.cg-columns-panel-rgz-pill[data-col-id="country"]')!;
+    const pill = root.querySelector<HTMLElement>('.vg-columns-panel-rgz-pill[data-col-id="country"]')!;
     pill.dispatchEvent(new MouseEvent('mousedown', { clientX: 100, clientY: 250, bubbles: true }));
     window.dispatchEvent(new MouseEvent('mousemove', { clientX: 100, clientY: 270 }));
     window.dispatchEvent(new MouseEvent('mouseup', { clientX: 100, clientY: 270 }));
@@ -334,7 +334,7 @@ describe('ColumnsToolPanel Row Groups drop zone (Cycle 15.5 / Task 2)', () => {
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
     pinDropZoneRect(root, { left: 0, top: 200, right: 240, bottom: 320 });
-    const pill = root.querySelector<HTMLElement>('.cg-columns-panel-rgz-pill[data-col-id="country"]')!;
+    const pill = root.querySelector<HTMLElement>('.vg-columns-panel-rgz-pill[data-col-id="country"]')!;
     pill.dispatchEvent(new MouseEvent('mousedown', { clientX: 100, clientY: 250, bubbles: true }));
     // Move ≤ 4 px — below threshold.
     window.dispatchEvent(new MouseEvent('mousemove', { clientX: 102, clientY: 251 }));
@@ -349,10 +349,10 @@ describe('ColumnsToolPanel Row Groups drop zone (Cycle 15.5 / Task 2)', () => {
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
     pinDropZoneRect(root, { left: 0, top: 200, right: 240, bottom: 320 });
-    const handle = root.querySelector<HTMLElement>('.cg-columns-panel-row[data-col-id="country"] .cg-columns-panel-row-handle')!;
+    const handle = root.querySelector<HTMLElement>('.vg-columns-panel-row[data-col-id="country"] .vg-columns-panel-row-handle')!;
     handle.dispatchEvent(new MouseEvent('mousedown', { clientX: 10, clientY: 50, bubbles: true }));
     window.dispatchEvent(new MouseEvent('mousemove', { clientX: 100, clientY: 250 }));
-    const zone = root.querySelector<HTMLElement>('.cg-columns-panel-rgz')!;
+    const zone = root.querySelector<HTMLElement>('.vg-columns-panel-rgz')!;
     // No drop-state outline lights up — the gesture is treated as a
     // pure reorder.
     expect(zone.dataset.drop).toBeUndefined();
@@ -368,7 +368,7 @@ describe('ColumnsToolPanel Row Groups drop zone (Cycle 15.5 / Task 2)', () => {
     const api = makeApi({ rowGroupColumns: ['country'] });
     const { panel, root } = mountPanel(api, { suppressRowGroups: true });
     hosts.push(panel);
-    expect(root.querySelector('.cg-columns-panel-rgz')).toBeNull();
+    expect(root.querySelector('.vg-columns-panel-rgz')).toBeNull();
     const subscribedTypes = (api.addEventListener as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
     expect(subscribedTypes).not.toContain('columnRowGroupChanged');
   });
@@ -385,14 +385,14 @@ describe('ColumnsToolPanel Row Groups drop zone (Cycle 15.5 / Task 2)', () => {
     const api = makeApi();
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    expect(root.querySelectorAll('.cg-columns-panel-rgz-pill').length).toBe(0);
+    expect(root.querySelectorAll('.vg-columns-panel-rgz-pill').length).toBe(0);
     // Mutate the state outside the event surface.
     api.addRowGroupColumn('country');
     // (the event already fired and the pill should be there)
-    expect(root.querySelectorAll('.cg-columns-panel-rgz-pill').length).toBe(1);
+    expect(root.querySelectorAll('.vg-columns-panel-rgz-pill').length).toBe(1);
     // Now call refresh() and confirm the pill survives + state is read.
     panel.refresh();
-    expect(root.querySelectorAll('.cg-columns-panel-rgz-pill').length).toBe(1);
+    expect(root.querySelectorAll('.vg-columns-panel-rgz-pill').length).toBe(1);
   });
 
   it('pill label falls back to the colId when the header name is unknown', () => {
@@ -402,8 +402,8 @@ describe('ColumnsToolPanel Row Groups drop zone (Cycle 15.5 / Task 2)', () => {
     });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    const pill = root.querySelector<HTMLElement>('.cg-columns-panel-rgz-pill[data-col-id="unlabelled"]')!;
-    const label = pill.querySelector<HTMLElement>('.cg-columns-panel-rgz-pill-label');
+    const pill = root.querySelector<HTMLElement>('.vg-columns-panel-rgz-pill[data-col-id="unlabelled"]')!;
+    const label = pill.querySelector<HTMLElement>('.vg-columns-panel-rgz-pill-label');
     expect(label?.textContent).toBe('unlabelled');
   });
 
@@ -411,20 +411,20 @@ describe('ColumnsToolPanel Row Groups drop zone (Cycle 15.5 / Task 2)', () => {
     const api = makeApi();
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    const header = root.querySelector<HTMLElement>('.cg-columns-panel-section-header--groups');
+    const header = root.querySelector<HTMLElement>('.vg-columns-panel-section-header--groups');
     expect(header).not.toBeNull();
     expect(header!.textContent?.trim()).toBe('Row Groups');
-    // Icon is now an SVG element inside a .cg-columns-panel-section-header-icon wrapper.
-    expect(header!.querySelector('.cg-columns-panel-section-header-icon svg')).not.toBeNull();
+    // Icon is now an SVG element inside a .vg-columns-panel-section-header-icon wrapper.
+    expect(header!.querySelector('.vg-columns-panel-section-header-icon svg')).not.toBeNull();
   });
 
   it('removing the last pill returns the empty-state placeholder', () => {
     const api = makeApi({ rowGroupColumns: ['country'] });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    expect(root.querySelector('.cg-columns-panel-rgz-empty')).toBeNull();
+    expect(root.querySelector('.vg-columns-panel-rgz-empty')).toBeNull();
     api.removeRowGroupColumn('country');
-    const empty = root.querySelector<HTMLElement>('.cg-columns-panel-rgz-empty');
+    const empty = root.querySelector<HTMLElement>('.vg-columns-panel-rgz-empty');
     expect(empty?.textContent).toBe('Drag here to set row groups');
   });
 
@@ -432,7 +432,7 @@ describe('ColumnsToolPanel Row Groups drop zone (Cycle 15.5 / Task 2)', () => {
   //
   // These three cases verify that when `api.isPointInRowGroupPanel`,
   // `api.setRowGroupPanelDragHover`, and `api.commitRowGroupPanelDrop`
-  // are wired on the api (CGrid's public surface), the column-list row
+  // are wired on the api (VelocityGrid's public surface), the column-list row
   // drag uses them to route through the row group panel header strip.
 
   it('column-list drag move calls setRowGroupPanelDragHover when cursor enters the header strip', () => {
@@ -449,7 +449,7 @@ describe('ColumnsToolPanel Row Groups drop zone (Cycle 15.5 / Task 2)', () => {
     hosts.push(panel);
 
     // Grab a row handle and fire mousedown → mousemove.
-    const handle = root.querySelector<HTMLElement>('.cg-columns-panel-row-handle');
+    const handle = root.querySelector<HTMLElement>('.vg-columns-panel-row-handle');
     if (!handle) { expect(handle).not.toBeNull(); return; }
     handle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 10, clientY: 10 }));
     window.dispatchEvent(new MouseEvent('mousemove', { clientX: 10, clientY: 50 }));
@@ -470,7 +470,7 @@ describe('ColumnsToolPanel Row Groups drop zone (Cycle 15.5 / Task 2)', () => {
     const { panel, root } = mountPanel(api as any);
     hosts.push(panel);
 
-    const handle = root.querySelector<HTMLElement>('.cg-columns-panel-row-handle');
+    const handle = root.querySelector<HTMLElement>('.vg-columns-panel-row-handle');
     if (!handle) { expect(handle).not.toBeNull(); return; }
     handle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 10, clientY: 10 }));
     window.dispatchEvent(new MouseEvent('mousemove', { clientX: 10, clientY: 50 }));
@@ -493,7 +493,7 @@ describe('ColumnsToolPanel Row Groups drop zone (Cycle 15.5 / Task 2)', () => {
     const { panel, root } = mountPanel(api as any);
     hosts.push(panel);
 
-    const handle = root.querySelector<HTMLElement>('.cg-columns-panel-row-handle');
+    const handle = root.querySelector<HTMLElement>('.vg-columns-panel-row-handle');
     if (!handle) { expect(handle).not.toBeNull(); return; }
     handle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 10, clientY: 10 }));
     window.dispatchEvent(new MouseEvent('mousemove', { clientX: 10, clientY: 50 }));

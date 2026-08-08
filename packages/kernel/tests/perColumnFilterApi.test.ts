@@ -1,7 +1,7 @@
 /**
  * Cycle 7 / Task 9 — per-column filter API surface.
  *
- * Pins the five new CGridApi methods:
+ * Pins the five new VelocityGridApi methods:
  *   - getColumnFilterModel(colId): TModel | null
  *   - setColumnFilterModel(colId, model): Promise<void>
  *   - isAnyFilterPresent(): boolean
@@ -12,9 +12,9 @@
  * `columns` (changed colIds) on top of the Task 7 `source`.
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
-import type { CFilterModelEntry, CGridEvent } from '../src/types';
+import type { CFilterModelEntry, VelocityGridEvent } from '../src/types';
 
 beforeAll(() => {
   HTMLCanvasElement.prototype.getContext = (() => {
@@ -40,7 +40,7 @@ interface Row { id: string; name: string; price: number }
 function buildWiredGrid(rows: Row[]) {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
   const prevWorker = (globalThis as any).Worker;
   (globalThis as any).Worker = class {
@@ -53,7 +53,7 @@ function buildWiredGrid(rows: Row[]) {
     addEventListener(_: string, cb: (e: { data: any }) => void) { this.listeners.push(cb); }
     terminate() {}
   };
-  const grid = new CGrid<Row>(container, {
+  const grid = new VelocityGrid<Row>(container, {
     columnDefs: [
       { field: 'id', filter: 'text' },
       { field: 'name', filter: 'text' },
@@ -89,7 +89,7 @@ describe('Per-column filter API (Cycle 7 / Task 9)', () => {
   it('setColumnFilterModel commits + fires filterChanged with columns + source', async () => {
     const { grid, restore } = buildWiredGrid(rows);
     await new Promise((r) => setTimeout(r, 50));
-    const events: CGridEvent[] = [];
+    const events: VelocityGridEvent[] = [];
     grid.on('filterChanged', (e) => events.push(e));
     const api = (grid as any).makeApi();
     await api.setColumnFilterModel('name', {
@@ -98,7 +98,7 @@ describe('Per-column filter API (Cycle 7 / Task 9)', () => {
     expect(api.getColumnFilterModel('name')).toEqual({
       filterType: 'text', type: 'contains', filter: 'Alpha',
     });
-    const last = events.at(-1) as Extract<CGridEvent, { type: 'filterChanged' }>;
+    const last = events.at(-1) as Extract<VelocityGridEvent, { type: 'filterChanged' }>;
     expect(last.source).toBe('columnFilter');
     expect(last.columns).toEqual(['name']);
     grid.destroy();

@@ -35,7 +35,7 @@ export async function waitForFrames(page: Page, n = 6): Promise<void> {
 }
 
 /** Click `#theme-toggle` once — the showcase starts DARK (main.ts:
- *  `currentTheme = 'cg-theme-quartz-dark'`, `app.dataset.theme = 'dark'`)
+ *  `currentTheme = 'vg-theme-quartz-dark'`, `app.dataset.theme = 'dark'`)
  *  and a single click flips to the Quartz LIGHT theme. Never call this
  *  twice in the same test (a second click flips back to dark). */
 export async function toggleToLightTheme(page: Page): Promise<void> {

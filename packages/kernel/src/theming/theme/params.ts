@@ -2,12 +2,12 @@
  * CgTheme wide semantic parameter vocabulary + derivation engine.
  *
  * `CgThemeParams` is the AG-Grid-style "params" surface: a wide set of named,
- * typed knobs (colors/lengths/fonts) that compile down to the `--cg-*` CSS
+ * typed knobs (colors/lengths/fonts) that compile down to the `--vg-*` CSS
  * custom-property vocabulary `tokens.css` already defines. `compileParams`
- * folds a param set into a flat `{ '--cg-*': cssExpression }` map — pure
+ * folds a param set into a flat `{ '--vg-*': cssExpression }` map — pure
  * data in, pure data out, zero DOM.
  *
- * Every named param maps to one or more `--cg-*` tokens verified against
+ * Every named param maps to one or more `--vg-*` tokens verified against
  * `theming/tokens.css` (grep the token literally before trusting a mapping
  * here — see `.superpowers/sdd/theme-task2-report.md` for the full audit).
  * A handful of tokens auto-derive a live `color-mix()` default when their
@@ -38,7 +38,7 @@ import {
 // Wide param vocabulary
 // ─────────────────────────────────────────────────────────────────────────
 
-/** One `--cg-status-<state>-*` entry. All three sub-keys optional — unset
+/** One `--vg-status-<state>-*` entry. All three sub-keys optional — unset
  *  sub-keys are skipped (no fallback token is emitted for them). */
 export interface StatusColorEntry {
   bg?: ColorValue;
@@ -149,7 +149,7 @@ export interface CgThemeParams {
   venueColors?: Record<string, ColorValue>;
 
   // Escape hatch — applied last, verbatim, highest precedence.
-  vars?: Record<`--cg-${string}`, string>;
+  vars?: Record<`--vg-${string}`, string>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -158,13 +158,13 @@ export interface CgThemeParams {
 // Order is canonical/deterministic: it is NOT the order keys happen to
 // appear in a caller's object literal. This is what lets a more specific
 // param (`chipRadius`) reliably win over a more general fan-out
-// (`borderRadius` -> `--cg-chip-radius`) regardless of how the caller wrote
+// (`borderRadius` -> `--vg-chip-radius`) regardless of how the caller wrote
 // their params object.
 // ─────────────────────────────────────────────────────────────────────────
 
 type ParamKind = 'color' | 'length' | 'fontFamily' | 'fontWeight';
 
-/** `tokens` lists every `--cg-*` token the param fans out to, primary
+/** `tokens` lists every `--vg-*` token the param fans out to, primary
  *  (used for `{ref}`/`{onto}` resolution) first. A non-empty tuple type
  *  (rather than `string[]`) so `tokens[0]` is provably defined under
  *  `noUncheckedIndexedAccess` without a runtime guard. */
@@ -176,142 +176,142 @@ interface ScalarParamSpec {
 
 const SCALAR_PARAMS: readonly ScalarParamSpec[] = [
   // Foundational
-  { name: 'backgroundColor', tokens: ['--cg-bg-color'], kind: 'color' },
-  { name: 'foregroundColor', tokens: ['--cg-fg-color'], kind: 'color' },
-  { name: 'accentColor', tokens: ['--cg-chrome-accent'], kind: 'color' },
+  { name: 'backgroundColor', tokens: ['--vg-bg-color'], kind: 'color' },
+  { name: 'foregroundColor', tokens: ['--vg-fg-color'], kind: 'color' },
+  { name: 'accentColor', tokens: ['--vg-chrome-accent'], kind: 'color' },
 
   // Geometry / rhythm
-  { name: 'rowHeight', tokens: ['--cg-row-height'], kind: 'length' },
-  { name: 'headerHeight', tokens: ['--cg-header-height'], kind: 'length' },
+  { name: 'rowHeight', tokens: ['--vg-row-height'], kind: 'length' },
+  { name: 'headerHeight', tokens: ['--vg-header-height'], kind: 'length' },
   {
     name: 'borderRadius',
-    tokens: ['--cg-radius', '--cg-modal-radius', '--cg-chip-radius'],
+    tokens: ['--vg-radius', '--vg-modal-radius', '--vg-chip-radius'],
     kind: 'length',
   },
-  { name: 'scrollbarThickness', tokens: ['--cg-scrollbar-thickness'], kind: 'length' },
-  { name: 'groupIndent', tokens: ['--cg-group-indent'], kind: 'length' },
-  { name: 'cellPaddingX', tokens: ['--cg-cell-padding-x'], kind: 'length' },
+  { name: 'scrollbarThickness', tokens: ['--vg-scrollbar-thickness'], kind: 'length' },
+  { name: 'groupIndent', tokens: ['--vg-group-indent'], kind: 'length' },
+  { name: 'cellPaddingX', tokens: ['--vg-cell-padding-x'], kind: 'length' },
 
   // Typography
-  { name: 'fontFamily', tokens: ['--cg-font-family'], kind: 'fontFamily' },
-  { name: 'cellFontFamily', tokens: ['--cg-cell-font-family'], kind: 'fontFamily' },
-  { name: 'fontSize', tokens: ['--cg-font-size'], kind: 'length' },
-  { name: 'fontSizeSmall', tokens: ['--cg-font-size-sm'], kind: 'length' },
+  { name: 'fontFamily', tokens: ['--vg-font-family'], kind: 'fontFamily' },
+  { name: 'cellFontFamily', tokens: ['--vg-cell-font-family'], kind: 'fontFamily' },
+  { name: 'fontSize', tokens: ['--vg-font-size'], kind: 'length' },
+  { name: 'fontSizeSmall', tokens: ['--vg-font-size-sm'], kind: 'length' },
 
   // Borders / lines
-  { name: 'borderColor', tokens: ['--cg-border-color'], kind: 'color' },
-  { name: 'gridLineColor', tokens: ['--cg-grid-line-color'], kind: 'color' },
+  { name: 'borderColor', tokens: ['--vg-border-color'], kind: 'color' },
+  { name: 'gridLineColor', tokens: ['--vg-grid-line-color'], kind: 'color' },
   {
     name: 'cellHorizontalBorderColor',
-    tokens: ['--cg-cell-horizontal-border-color'],
+    tokens: ['--vg-cell-horizontal-border-color'],
     kind: 'color',
   },
 
   // Rows
-  { name: 'oddRowBackgroundColor', tokens: ['--cg-row-alt-bg'], kind: 'color' },
-  { name: 'rowHoverColor', tokens: ['--cg-row-hover-bg'], kind: 'color' },
-  { name: 'selectedRowBackgroundColor', tokens: ['--cg-row-selected-bg'], kind: 'color' },
+  { name: 'oddRowBackgroundColor', tokens: ['--vg-row-alt-bg'], kind: 'color' },
+  { name: 'rowHoverColor', tokens: ['--vg-row-hover-bg'], kind: 'color' },
+  { name: 'selectedRowBackgroundColor', tokens: ['--vg-row-selected-bg'], kind: 'color' },
 
   // Header
-  { name: 'headerBackgroundColor', tokens: ['--cg-header-bg'], kind: 'color' },
-  { name: 'headerTextColor', tokens: ['--cg-header-fg'], kind: 'color' },
+  { name: 'headerBackgroundColor', tokens: ['--vg-header-bg'], kind: 'color' },
+  { name: 'headerTextColor', tokens: ['--vg-header-fg'], kind: 'color' },
 
   // Focus / range
-  { name: 'focusRingColor', tokens: ['--cg-focus-ring-color'], kind: 'color' },
-  { name: 'focusRingWidth', tokens: ['--cg-focus-ring-width'], kind: 'length' },
-  { name: 'rangeBorderColor', tokens: ['--cg-range-border-color'], kind: 'color' },
-  { name: 'rangeFillColor', tokens: ['--cg-range-fill-color'], kind: 'color' },
-  { name: 'quickFilterMatchColor', tokens: ['--cg-quick-filter-match-bg'], kind: 'color' },
-  { name: 'unsortIconColor', tokens: ['--cg-unsort-icon-color'], kind: 'color' },
+  { name: 'focusRingColor', tokens: ['--vg-focus-ring-color'], kind: 'color' },
+  { name: 'focusRingWidth', tokens: ['--vg-focus-ring-width'], kind: 'length' },
+  { name: 'rangeBorderColor', tokens: ['--vg-range-border-color'], kind: 'color' },
+  { name: 'rangeFillColor', tokens: ['--vg-range-fill-color'], kind: 'color' },
+  { name: 'quickFilterMatchColor', tokens: ['--vg-quick-filter-match-bg'], kind: 'color' },
+  { name: 'unsortIconColor', tokens: ['--vg-unsort-icon-color'], kind: 'color' },
 
   // Inputs / tooltip / popup / menu / checkbox
-  { name: 'inputBackgroundColor', tokens: ['--cg-input-bg'], kind: 'color' },
-  { name: 'inputBorderColor', tokens: ['--cg-input-border'], kind: 'color' },
-  { name: 'inputFocusBorderColor', tokens: ['--cg-input-focus-border'], kind: 'color' },
-  { name: 'inputDisabledBackgroundColor', tokens: ['--cg-input-disabled-bg'], kind: 'color' },
-  { name: 'tooltipBackgroundColor', tokens: ['--cg-tooltip-bg'], kind: 'color' },
-  { name: 'tooltipTextColor', tokens: ['--cg-tooltip-fg'], kind: 'color' },
-  { name: 'tooltipBorderColor', tokens: ['--cg-tooltip-border'], kind: 'color' },
+  { name: 'inputBackgroundColor', tokens: ['--vg-input-bg'], kind: 'color' },
+  { name: 'inputBorderColor', tokens: ['--vg-input-border'], kind: 'color' },
+  { name: 'inputFocusBorderColor', tokens: ['--vg-input-focus-border'], kind: 'color' },
+  { name: 'inputDisabledBackgroundColor', tokens: ['--vg-input-disabled-bg'], kind: 'color' },
+  { name: 'tooltipBackgroundColor', tokens: ['--vg-tooltip-bg'], kind: 'color' },
+  { name: 'tooltipTextColor', tokens: ['--vg-tooltip-fg'], kind: 'color' },
+  { name: 'tooltipBorderColor', tokens: ['--vg-tooltip-border'], kind: 'color' },
   {
     name: 'popupBackgroundColor',
-    tokens: ['--cg-popup-bg', '--cg-modal-bg'],
+    tokens: ['--vg-popup-bg', '--vg-modal-bg'],
     kind: 'color',
   },
   {
     name: 'popupBorderColor',
-    tokens: ['--cg-popup-border', '--cg-modal-border'],
+    tokens: ['--vg-popup-border', '--vg-modal-border'],
     kind: 'color',
   },
-  { name: 'menuHoverColor', tokens: ['--cg-menu-hover-bg'], kind: 'color' },
+  { name: 'menuHoverColor', tokens: ['--vg-menu-hover-bg'], kind: 'color' },
   {
     name: 'checkboxCheckedBackgroundColor',
-    tokens: ['--cg-checkbox-checked-bg'],
+    tokens: ['--vg-checkbox-checked-bg'],
     kind: 'color',
   },
-  { name: 'checkboxCheckedCheckColor', tokens: ['--cg-checkbox-checked-fg'], kind: 'color' },
+  { name: 'checkboxCheckedCheckColor', tokens: ['--vg-checkbox-checked-fg'], kind: 'color' },
 
   // Totals / group / pinned / footer
-  { name: 'totalsBackgroundColor', tokens: ['--cg-totals-bg'], kind: 'color' },
-  { name: 'totalsTextColor', tokens: ['--cg-totals-fg'], kind: 'color' },
-  { name: 'totalsMutedTextColor', tokens: ['--cg-totals-fg-muted'], kind: 'color' },
-  { name: 'totalsBorderColor', tokens: ['--cg-totals-border-top'], kind: 'color' },
-  { name: 'totalsFontWeight', tokens: ['--cg-totals-font-weight'], kind: 'fontWeight' },
-  { name: 'groupRowBackgroundColor', tokens: ['--cg-group-row-bg'], kind: 'color' },
-  { name: 'groupChevronColor', tokens: ['--cg-group-chevron-color'], kind: 'color' },
-  { name: 'groupCountColor', tokens: ['--cg-group-count-color'], kind: 'color' },
-  { name: 'pinnedRowBackgroundColor', tokens: ['--cg-pinned-row-bg'], kind: 'color' },
-  { name: 'pinnedRowTextColor', tokens: ['--cg-pinned-row-fg'], kind: 'color' },
-  { name: 'pinnedRowBorderColor', tokens: ['--cg-pinned-row-border'], kind: 'color' },
-  { name: 'groupFooterBackgroundColor', tokens: ['--cg-group-footer-bg'], kind: 'color' },
-  { name: 'groupFooterTextColor', tokens: ['--cg-group-footer-fg'], kind: 'color' },
-  { name: 'groupFooterBorderColor', tokens: ['--cg-group-footer-border-top'], kind: 'color' },
+  { name: 'totalsBackgroundColor', tokens: ['--vg-totals-bg'], kind: 'color' },
+  { name: 'totalsTextColor', tokens: ['--vg-totals-fg'], kind: 'color' },
+  { name: 'totalsMutedTextColor', tokens: ['--vg-totals-fg-muted'], kind: 'color' },
+  { name: 'totalsBorderColor', tokens: ['--vg-totals-border-top'], kind: 'color' },
+  { name: 'totalsFontWeight', tokens: ['--vg-totals-font-weight'], kind: 'fontWeight' },
+  { name: 'groupRowBackgroundColor', tokens: ['--vg-group-row-bg'], kind: 'color' },
+  { name: 'groupChevronColor', tokens: ['--vg-group-chevron-color'], kind: 'color' },
+  { name: 'groupCountColor', tokens: ['--vg-group-count-color'], kind: 'color' },
+  { name: 'pinnedRowBackgroundColor', tokens: ['--vg-pinned-row-bg'], kind: 'color' },
+  { name: 'pinnedRowTextColor', tokens: ['--vg-pinned-row-fg'], kind: 'color' },
+  { name: 'pinnedRowBorderColor', tokens: ['--vg-pinned-row-border'], kind: 'color' },
+  { name: 'groupFooterBackgroundColor', tokens: ['--vg-group-footer-bg'], kind: 'color' },
+  { name: 'groupFooterTextColor', tokens: ['--vg-group-footer-fg'], kind: 'color' },
+  { name: 'groupFooterBorderColor', tokens: ['--vg-group-footer-border-top'], kind: 'color' },
   {
     name: 'groupFooterFontWeight',
-    tokens: ['--cg-group-footer-font-weight'],
+    tokens: ['--vg-group-footer-font-weight'],
     kind: 'fontWeight',
   },
 
   // Status-bar chrome
-  { name: 'statusBarBackgroundColor', tokens: ['--cg-status-bar-bg'], kind: 'color' },
-  { name: 'statusBarTextColor', tokens: ['--cg-status-bar-fg'], kind: 'color' },
-  { name: 'statusBarMutedTextColor', tokens: ['--cg-status-bar-fg-muted'], kind: 'color' },
-  { name: 'statusBarHeight', tokens: ['--cg-status-bar-height'], kind: 'length' },
-  { name: 'statusBarFontSize', tokens: ['--cg-status-bar-font-size'], kind: 'length' },
-  { name: 'statusBarGap', tokens: ['--cg-status-bar-gap'], kind: 'length' },
-  { name: 'statusBarPaddingX', tokens: ['--cg-status-bar-padding-x'], kind: 'length' },
-  { name: 'statusBarBorderColor', tokens: ['--cg-status-bar-border'], kind: 'color' },
+  { name: 'statusBarBackgroundColor', tokens: ['--vg-status-bar-bg'], kind: 'color' },
+  { name: 'statusBarTextColor', tokens: ['--vg-status-bar-fg'], kind: 'color' },
+  { name: 'statusBarMutedTextColor', tokens: ['--vg-status-bar-fg-muted'], kind: 'color' },
+  { name: 'statusBarHeight', tokens: ['--vg-status-bar-height'], kind: 'length' },
+  { name: 'statusBarFontSize', tokens: ['--vg-status-bar-font-size'], kind: 'length' },
+  { name: 'statusBarGap', tokens: ['--vg-status-bar-gap'], kind: 'length' },
+  { name: 'statusBarPaddingX', tokens: ['--vg-status-bar-padding-x'], kind: 'length' },
+  { name: 'statusBarBorderColor', tokens: ['--vg-status-bar-border'], kind: 'color' },
 
   // Filter / flash
   {
     name: 'floatingFilterBackgroundColor',
-    tokens: ['--cg-floating-filter-bg'],
+    tokens: ['--vg-floating-filter-bg'],
     kind: 'color',
   },
   {
     name: 'floatingFilterBorderColor',
-    tokens: ['--cg-floating-filter-border'],
+    tokens: ['--vg-floating-filter-border'],
     kind: 'color',
   },
   {
     name: 'floatingFilterPlaceholderColor',
-    tokens: ['--cg-floating-filter-placeholder'],
+    tokens: ['--vg-floating-filter-placeholder'],
     kind: 'color',
   },
   {
     name: 'flashColor',
-    tokens: ['--cg-flash-from-color', '--cg-flash-to-color'],
+    tokens: ['--vg-flash-from-color', '--vg-flash-to-color'],
     kind: 'color',
   },
 
   // Renderer palette
-  { name: 'positiveColor', tokens: ['--cg-pos-color'], kind: 'color' },
-  { name: 'negativeColor', tokens: ['--cg-neg-color'], kind: 'color' },
-  { name: 'warningColor', tokens: ['--cg-warning-color'], kind: 'color' },
-  { name: 'infoColor', tokens: ['--cg-info-color'], kind: 'color' },
-  { name: 'mutedColor', tokens: ['--cg-muted-color'], kind: 'color' },
-  { name: 'barHeight', tokens: ['--cg-bar-height'], kind: 'length' },
-  { name: 'chipHeight', tokens: ['--cg-chip-height'], kind: 'length' },
-  { name: 'chipRadius', tokens: ['--cg-chip-radius'], kind: 'length' },
+  { name: 'positiveColor', tokens: ['--vg-pos-color'], kind: 'color' },
+  { name: 'negativeColor', tokens: ['--vg-neg-color'], kind: 'color' },
+  { name: 'warningColor', tokens: ['--vg-warning-color'], kind: 'color' },
+  { name: 'infoColor', tokens: ['--vg-info-color'], kind: 'color' },
+  { name: 'mutedColor', tokens: ['--vg-muted-color'], kind: 'color' },
+  { name: 'barHeight', tokens: ['--vg-bar-height'], kind: 'length' },
+  { name: 'chipHeight', tokens: ['--vg-chip-height'], kind: 'length' },
+  { name: 'chipRadius', tokens: ['--vg-chip-radius'], kind: 'length' },
 ];
 
 /** Primary token per param name, used by `resolveTokenName` for `{ref}`/
@@ -322,7 +322,7 @@ const TOKEN_BY_PARAM: ReadonlyMap<string, string> = new Map(
 );
 
 /**
- * Maps a param name to its primary `--cg-*` token, for `{ref}`/`{onto}`
+ * Maps a param name to its primary `--vg-*` token, for `{ref}`/`{onto}`
  * resolution inside `ColorValue`/`LengthValue`. Typed `(param: string)` —
  * not `keyof CgThemeParams` — so it satisfies the `resolveTokenName`
  * parameter type `values.ts`'s compilers expect (`(p: string) => string`);
@@ -339,7 +339,7 @@ export function resolveTokenName(param: string): string {
 
 /**
  * `PARAM_DERIVATIONS[name]` takes the already-compiled CSS-expression
- * string for a param and returns the `--cg-*` token map to merge into the
+ * string for a param and returns the `--vg-*` token map to merge into the
  * output. Built from `SCALAR_PARAMS` (most are 1:1); `flashColor` is
  * special-cased afterward since its second token's value is a
  * `color-mix(... 0%, transparent)` wrapper around the first, not a literal
@@ -358,8 +358,8 @@ export const PARAM_DERIVATIONS: Record<string, (compiledValue: string) => Record
   );
 
 PARAM_DERIVATIONS.flashColor = (compiledValue: string): Record<string, string> => ({
-  '--cg-flash-from-color': compiledValue,
-  '--cg-flash-to-color': `color-mix(in srgb, ${compiledValue} 0%, transparent)`,
+  '--vg-flash-from-color': compiledValue,
+  '--vg-flash-to-color': `color-mix(in srgb, ${compiledValue} 0%, transparent)`,
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -379,44 +379,44 @@ interface AutoDerivation {
 const AUTO_DERIVE: readonly AutoDerivation[] = [
   {
     paramName: 'borderColor',
-    token: '--cg-border-color',
-    css: 'color-mix(in srgb, var(--cg-fg-color) 15%, var(--cg-bg-color))',
+    token: '--vg-border-color',
+    css: 'color-mix(in srgb, var(--vg-fg-color) 15%, var(--vg-bg-color))',
     deps: ['backgroundColor', 'foregroundColor'],
   },
   {
     paramName: 'gridLineColor',
-    token: '--cg-grid-line-color',
-    css: 'color-mix(in srgb, var(--cg-fg-color) 9%, var(--cg-bg-color))',
+    token: '--vg-grid-line-color',
+    css: 'color-mix(in srgb, var(--vg-fg-color) 9%, var(--vg-bg-color))',
     deps: ['backgroundColor', 'foregroundColor'],
   },
   {
     paramName: 'rowHoverColor',
-    token: '--cg-row-hover-bg',
-    css: 'color-mix(in srgb, var(--cg-chrome-accent) 7%, var(--cg-bg-color))',
+    token: '--vg-row-hover-bg',
+    css: 'color-mix(in srgb, var(--vg-chrome-accent) 7%, var(--vg-bg-color))',
     deps: ['accentColor', 'backgroundColor'],
   },
   {
     paramName: 'selectedRowBackgroundColor',
-    token: '--cg-row-selected-bg',
-    css: 'color-mix(in srgb, var(--cg-chrome-accent) 12%, var(--cg-bg-color))',
+    token: '--vg-row-selected-bg',
+    css: 'color-mix(in srgb, var(--vg-chrome-accent) 12%, var(--vg-bg-color))',
     deps: ['accentColor', 'backgroundColor'],
   },
   {
     paramName: 'headerBackgroundColor',
-    token: '--cg-header-bg',
-    css: 'color-mix(in srgb, var(--cg-fg-color) 4%, var(--cg-bg-color))',
+    token: '--vg-header-bg',
+    css: 'color-mix(in srgb, var(--vg-fg-color) 4%, var(--vg-bg-color))',
     deps: ['backgroundColor', 'foregroundColor'],
   },
   {
     paramName: 'rangeBorderColor',
-    token: '--cg-range-border-color',
-    css: 'var(--cg-chrome-accent)',
+    token: '--vg-range-border-color',
+    css: 'var(--vg-chrome-accent)',
     deps: ['accentColor'],
   },
   {
     paramName: 'rangeFillColor',
-    token: '--cg-range-fill-color',
-    css: 'color-mix(in srgb, var(--cg-range-border-color) 22%, transparent)',
+    token: '--vg-range-fill-color',
+    css: 'color-mix(in srgb, var(--vg-range-border-color) 22%, transparent)',
     deps: ['accentColor'],
   },
 ];
@@ -442,29 +442,29 @@ function compileRecords(params: CgThemeParams, out: Record<string, string>): voi
   if (params.statusColors) {
     for (const [key, entry] of Object.entries(params.statusColors)) {
       const slug = key.toLowerCase();
-      if (entry.bg !== undefined) out[`--cg-status-${slug}-bg`] = compileColor(entry.bg, resolveTokenName);
-      if (entry.fg !== undefined) out[`--cg-status-${slug}-fg`] = compileColor(entry.fg, resolveTokenName);
+      if (entry.bg !== undefined) out[`--vg-status-${slug}-bg`] = compileColor(entry.bg, resolveTokenName);
+      if (entry.fg !== undefined) out[`--vg-status-${slug}-fg`] = compileColor(entry.fg, resolveTokenName);
       if (entry.border !== undefined) {
-        out[`--cg-status-${slug}-border`] = compileColor(entry.border, resolveTokenName);
+        out[`--vg-status-${slug}-border`] = compileColor(entry.border, resolveTokenName);
       }
     }
   }
 
   if (params.ratingColors) {
     for (const [key, value] of Object.entries(params.ratingColors)) {
-      out[`--cg-rating-${key.toLowerCase()}-color`] = compileColor(value, resolveTokenName);
+      out[`--vg-rating-${key.toLowerCase()}-color`] = compileColor(value, resolveTokenName);
     }
   }
 
   if (params.venueColors) {
     for (const [key, value] of Object.entries(params.venueColors)) {
-      out[`--cg-venue-${key.toLowerCase()}-color`] = compileColor(value, resolveTokenName);
+      out[`--vg-venue-${key.toLowerCase()}-color`] = compileColor(value, resolveTokenName);
     }
   }
 }
 
 /**
- * Compiles a `CgThemeParams` set into a flat `{ '--cg-*': cssExpression }`
+ * Compiles a `CgThemeParams` set into a flat `{ '--vg-*': cssExpression }`
  * map, ready to hand to `setThemeParams` (see `theming/themeParams.ts`).
  *
  * Order (later overrides earlier):

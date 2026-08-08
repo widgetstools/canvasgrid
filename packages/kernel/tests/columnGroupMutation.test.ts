@@ -74,15 +74,15 @@ describe('moveColumnToGroup (pure)', () => {
 
 describe('anonymous (auto-id) groups are draggable (ag-grid parity)', () => {
   // A group authored WITHOUT an explicit groupId is a legal ag-grid pattern
-  // (`{ headerName, children }`). `resolveColumnTree` numbers it `cg-grp-1`
+  // (`{ headerName, children }`). `resolveColumnTree` numbers it `vg-grp-1`
   // (first anonymous group, pre-order DFS) — that SAME synthesized id must
   // be usable as a move target, not just a display label.
   it('moveColumnToGroup succeeds against an anonymous group\'s synthesized id', () => {
     const defs: (CColDef | CColGroupDef)[] = [leaf('A'), { headerName: 'G', children: [leaf('B')] } as CColGroupDef];
-    const r = moveColumnToGroup(defs, 'A', 'cg-grp-1');
+    const r = moveColumnToGroup(defs, 'A', 'vg-grp-1');
     expect(r).not.toBeNull();
     expect(order(r!.defs)).toEqual(['B', 'A']);
-    expect(parentOf(r!.defs, 'A')).toBe('cg-grp-1');
+    expect(parentOf(r!.defs, 'A')).toBe('vg-grp-1');
   });
 });
 

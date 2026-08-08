@@ -41,11 +41,11 @@ async function ownCellStyle(page: Page, colId: string): Promise<Record<string, u
 }
 
 function boldBtn(page: Page) {
-  return page.locator('.cgext-ribbon button[title="Bold"]');
+  return page.locator('.vgext-ribbon button[title="Bold"]');
 }
 
 function alignRightBtn(page: Page) {
-  return page.locator('.cgext-ribbon button[title="Align right"]');
+  return page.locator('.vgext-ribbon button[title="Align right"]');
 }
 
 test.describe('Formatting toolbar (Markets parity)', () => {
@@ -67,8 +67,8 @@ test.describe('Formatting toolbar (Markets parity)', () => {
   test('Italic and Underline write fontStyle / textDecoration', async ({ page }) => {
     // Markets: v2-formatting-toolbar — Italic / Underline
     await selectColumn(page, 'ticker');
-    const italic = page.locator('.cgext-ribbon button[title="Italic"]');
-    const underline = page.locator('.cgext-ribbon button[title="Underline"]');
+    const italic = page.locator('.vgext-ribbon button[title="Italic"]');
+    const underline = page.locator('.vgext-ribbon button[title="Underline"]');
     await expect(italic).toBeEnabled();
     await italic.click();
     await expect.poll(async () => (await ownCellStyle(page, 'ticker'))?.fontStyle).toBe('italic');
@@ -86,7 +86,7 @@ test.describe('Formatting toolbar (Markets parity)', () => {
     await boldBtn(page).click();
     await expect.poll(async () => (await ownCellStyle(page, 'currency'))?.fontWeight).toBe('bold');
 
-    const clearBtn = page.locator('.cgext-ribbon button[data-fmt="clear"]');
+    const clearBtn = page.locator('.vgext-ribbon button[data-fmt="clear"]');
     await expect(clearBtn).toBeEnabled();
     await clearBtn.click();
     await expect.poll(async () => {
@@ -101,7 +101,7 @@ test.describe('Formatting toolbar (Markets parity)', () => {
     await selectColumn(page, 'pnl');
     await page.setViewportSize({ width: 720, height: 800 });
     await page.waitForTimeout(200);
-    const overflow = page.locator('.cgext-ribbon button[data-tb="format-overflow"]');
+    const overflow = page.locator('.vgext-ribbon button[data-tb="format-overflow"]');
     // Overflow button appears when groups don't fit; if not overflowed at 720, shrink further.
     if (!(await overflow.isVisible().catch(() => false))) {
       await page.setViewportSize({ width: 480, height: 800 });
@@ -109,6 +109,6 @@ test.describe('Formatting toolbar (Markets parity)', () => {
     }
     await expect(overflow).toBeVisible({ timeout: 5_000 });
     await overflow.click();
-    await expect(page.locator('.cgext-menu.cgext-rb-overflow-panel')).toBeVisible();
+    await expect(page.locator('.vgext-menu.vgext-rb-overflow-panel')).toBeVisible();
   });
 });

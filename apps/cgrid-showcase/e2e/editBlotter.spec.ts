@@ -4,7 +4,7 @@ import { gotoFeature } from './helpers';
 // Cycle 21g / Task 12 — edit-blotter feature.
 //
 // Cells are canvas-painted; edits round-trip through the kernel's REAL
-// `.cg-editor-overlay input` DOM overlay (commitBack.test.ts precedent) —
+// `.vg-editor-overlay input` DOM overlay (commitBack.test.ts precedent) —
 // so this suite drives real dblclick/keyboard input, not just probing
 // resolved colDefs. `window.__cgridEdit` (the `EditBridgeHandle`) is the
 // assertion surface for journal/smart-edit/bulk-update state; `window.__cgrid`
@@ -14,7 +14,7 @@ import { gotoFeature } from './helpers';
 // `rendererBlotter.spec.ts`'s F5 test, a DIFFERENT call site): plus/minus
 // nudges and letter shortcuts are routed through the kernel's `cellKeyDown`
 // event, whose `rowId` is stamped by the private `rowIdAt(rowIndex)` stub
-// (`packages/kernel/src/cgrid.ts` — "Foundation" stub, always returns a
+// (`packages/kernel/src/velocityGrid.ts` — "Foundation" stub, always returns a
 // synthetic `row-N`; see `stringRowIdAt` a few lines below it for the real
 // per-chunk string ids). `wireEditIntoKernel`'s `buildFocusedTarget` (Task
 // 11, `packages/edit/src/bridge.ts`) looks that `rowId` up in a bridge-owned
@@ -29,7 +29,7 @@ import { gotoFeature } from './helpers';
 // fixed `rowIdAt()` to delegate to `stringRowIdAt()`, and the tripwires
 // were flipped to genuinely-passing tests on that PR's branch.
 
-const EDITOR_INPUT = '.cg-editor-overlay input';
+const EDITOR_INPUT = '.vg-editor-overlay input';
 
 interface Bounds { x: number; y: number; w: number; h: number }
 

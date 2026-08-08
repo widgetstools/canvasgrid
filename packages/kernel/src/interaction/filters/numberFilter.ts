@@ -44,7 +44,7 @@ export interface NumberFilterPopupDeps {
   /** Cycle 7 / Task 9 — invoked on every popup-internal mutation
    *  (operator change, value typed, multi-condition row added /
    *  cleared, join radio flipped). Wires to the `filterModified`
-   *  event on `CGridApi`. Optional. */
+   *  event on `VelocityGridApi`. Optional. */
   onModified?: () => void;
   buttons?: NumberFilterButton[];
   closeOnApply?: boolean;
@@ -102,7 +102,7 @@ export class NumberFilterPopup implements FilterPopupFactory {
 
   buildGui(): HTMLElement {
     const root = document.createElement('div');
-    root.className = 'cg-filter-popup cg-filter-popup-number';
+    root.className = 'vg-filter-popup vg-filter-popup-number';
 
     const maxConditions = this.deps.maxNumConditions ?? 1;
     if (maxConditions > 1) {
@@ -131,13 +131,13 @@ export class NumberFilterPopup implements FilterPopupFactory {
     }
 
     const buttonsRow = document.createElement('div');
-    buttonsRow.className = 'cg-filter-popup-row cg-filter-popup-buttons';
+    buttonsRow.className = 'vg-filter-popup-row vg-filter-popup-buttons';
     const buttons = this.deps.buttons ?? ['apply', 'clear', 'reset'];
     for (const kind of buttons) {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = `cg-filter-popup-button cg-filter-popup-button-${kind}`;
-      btn.setAttribute('data-cg-filter-action', kind);
+      btn.className = `vg-filter-popup-button vg-filter-popup-button-${kind}`;
+      btn.setAttribute('data-vg-filter-action', kind);
       btn.textContent = labelFor(kind);
       btn.addEventListener('click', () => this.handleAction(kind));
       buttonsRow.appendChild(btn);
@@ -168,12 +168,12 @@ export class NumberFilterPopup implements FilterPopupFactory {
     onChange: (next: CNumberFilterModel | null) => void,
   ): RowController {
     const row = document.createElement('div');
-    row.className = 'cg-filter-popup-condition';
+    row.className = 'vg-filter-popup-condition';
 
     const opRow = document.createElement('div');
-    opRow.className = 'cg-filter-popup-row';
+    opRow.className = 'vg-filter-popup-row';
     const select = document.createElement('select');
-    select.className = 'cg-filter-popup-operator';
+    select.className = 'vg-filter-popup-operator';
     for (const { value, label } of OPERATOR_OPTIONS) {
       const opt = document.createElement('option');
       opt.value = value;
@@ -185,19 +185,19 @@ export class NumberFilterPopup implements FilterPopupFactory {
     row.appendChild(opRow);
 
     const inputsRow = document.createElement('div');
-    inputsRow.className = 'cg-filter-popup-row cg-filter-popup-inputs';
+    inputsRow.className = 'vg-filter-popup-row vg-filter-popup-inputs';
     const primary = document.createElement('input');
     primary.type = 'number';
-    primary.className = 'cg-filter-popup-input';
-    primary.setAttribute('data-cg-filter-input', 'primary');
+    primary.className = 'vg-filter-popup-input';
+    primary.setAttribute('data-vg-filter-input', 'primary');
     primary.placeholder = 'Filter...';
     if (initial?.filter != null) primary.value = String(initial.filter);
     inputsRow.appendChild(primary);
 
     const secondary = document.createElement('input');
     secondary.type = 'number';
-    secondary.className = 'cg-filter-popup-input';
-    secondary.setAttribute('data-cg-filter-input', 'secondary');
+    secondary.className = 'vg-filter-popup-input';
+    secondary.setAttribute('data-vg-filter-input', 'secondary');
     secondary.placeholder = 'To...';
     if (initial?.filterTo != null) secondary.value = String(initial.filterTo);
     inputsRow.appendChild(secondary);

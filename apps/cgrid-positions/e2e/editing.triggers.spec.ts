@@ -11,7 +11,7 @@
  */
 import { test, expect } from '@playwright/test';
 
-type CGridGlobal = {
+type VelocityGridGlobal = {
   getCellBoundsAt: (r: number, c: string) => { x: number; y: number; w: number; h: number } | null;
   getCellValue: (r: number, c: string) => unknown;
   setFocusedCell: (rowId: string, colId: string) => void;
@@ -20,7 +20,7 @@ type CGridGlobal = {
 
 async function bounds(page: import('@playwright/test').Page, row: number, colId: string) {
   return page.evaluate(([r, c]) => {
-    const grid = (window as unknown as { __cgrid: CGridGlobal }).__cgrid;
+    const grid = (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid;
     return grid.getCellBoundsAt(r as number, c as string);
   }, [row, colId]);
 }
@@ -48,22 +48,22 @@ test.describe('Cell editing — triggers (Cycle 5 / Task 4)', () => {
 
   test('singleClickEdit: a single click on cusip opens the text editor', async ({ page }) => {
     await clickCell(page, 0, 'cusip');
-    await expect(page.locator('input.cg-cell-editor--text')).toBeVisible();
+    await expect(page.locator('input.vg-cell-editor--text')).toBeVisible();
   });
 
   test('Esc cancels a single-click-opened editor without writing', async ({ page }) => {
     const original = await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: CGridGlobal }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid;
       return g.getCellValue(0, 'cusip');
     });
     await clickCell(page, 0, 'cusip');
-    const input = page.locator('input.cg-cell-editor--text');
+    const input = page.locator('input.vg-cell-editor--text');
     await expect(input).toBeVisible();
     await input.fill('TYPED');
     await input.press('Escape');
     await expect(input).toHaveCount(0);
     const after = await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: CGridGlobal }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid;
       return g.getCellValue(0, 'cusip');
     });
     expect(after).toBe(original);
@@ -71,7 +71,7 @@ test.describe('Cell editing — triggers (Cycle 5 / Task 4)', () => {
 
   test('Enter commits + descends one row (enterNavigatesVerticallyAfterEdit)', async ({ page }) => {
     await clickCell(page, 0, 'cusip');
-    const input = page.locator('input.cg-cell-editor--text');
+    const input = page.locator('input.vg-cell-editor--text');
     await expect(input).toBeVisible();
     await input.fill('ROW0-EDIT');
     await input.press('Enter');
@@ -79,14 +79,14 @@ test.describe('Cell editing — triggers (Cycle 5 / Task 4)', () => {
     // Value committed on row 0:
     await expect.poll(
       () => page.evaluate(() => {
-        const g = (window as unknown as { __cgrid: CGridGlobal }).__cgrid;
+        const g = (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid;
         return g.getCellValue(0, 'cusip');
       }),
       { timeout: 5_000 },
     ).toBe('ROW0-EDIT');
     // Focus advanced to row 1:
     const focused = await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: CGridGlobal }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid;
       return g.getFocusedCell();
     });
     expect(focused?.colId).toBe('cusip');
@@ -94,18 +94,18 @@ test.describe('Cell editing — triggers (Cycle 5 / Task 4)', () => {
 
   test('Tab while editing commits + jumps to the next editable cell + opens its editor', async ({ page }) => {
     await clickCell(page, 0, 'cusip');
-    const cusipInput = page.locator('input.cg-cell-editor--text');
+    const cusipInput = page.locator('input.vg-cell-editor--text');
     await expect(cusipInput).toBeVisible();
     await cusipInput.fill('TAB-COMMIT');
     await cusipInput.press('Tab');
     // The previous text editor is gone:
     await expect(cusipInput).toHaveCount(0);
     // The next editable column is `ticker` (select editor):
-    await expect(page.locator('select.cg-cell-editor--select')).toBeVisible();
+    await expect(page.locator('select.vg-cell-editor--select')).toBeVisible();
     // And the commit landed:
     await expect.poll(
       () => page.evaluate(() => {
-        const g = (window as unknown as { __cgrid: CGridGlobal }).__cgrid;
+        const g = (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid;
         return g.getCellValue(0, 'cusip');
       }),
       { timeout: 5_000 },

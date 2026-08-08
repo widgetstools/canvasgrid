@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { CGridCanvas } from '../src/core/canvas';
+import { VelocityGridCanvas } from '../src/core/canvas';
 
 beforeEach(() => {
   // happy-dom doesn't implement getContext; stub with a fake.
@@ -21,13 +21,13 @@ beforeEach(() => {
   })() as any;
 });
 
-describe('CGridCanvas', () => {
+describe('VelocityGridCanvas', () => {
   it('appends a <canvas> to the host and fires setBounds + paint synchronously on construct', () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const setBounds = vi.fn();
     const paint = vi.fn();
-    const cgc = new CGridCanvas(host, { setBounds, paint }, {
+    const cgc = new VelocityGridCanvas(host, { setBounds, paint }, {
       measureSize: () => ({ width: 400, height: 300 }),
       useHiDPI: false,
     });
@@ -45,7 +45,7 @@ describe('CGridCanvas', () => {
     document.body.appendChild(host);
     const setBounds = vi.fn();
     const paint = vi.fn();
-    const cgc = new CGridCanvas(host, { setBounds, paint }, {
+    const cgc = new VelocityGridCanvas(host, { setBounds, paint }, {
       measureSize: () => ({ width: 400, height: 300 }),
       useHiDPI: false,
     });
@@ -65,7 +65,7 @@ describe('CGridCanvas', () => {
     let measured = { width: 400, height: 300 };
     const setBounds = vi.fn();
     const paint = vi.fn();
-    const cgc = new CGridCanvas(host, { setBounds, paint }, {
+    const cgc = new VelocityGridCanvas(host, { setBounds, paint }, {
       measureSize: () => measured,
       useHiDPI: false,
     });
@@ -89,7 +89,7 @@ describe('CGridCanvas', () => {
       gc.cache.fillStyle = 'red';
       order.push('paint');
     });
-    const cgc = new CGridCanvas(host, { setBounds, paint }, {
+    const cgc = new VelocityGridCanvas(host, { setBounds, paint }, {
       measureSize: () => ({ width: 100, height: 100 }),
       useHiDPI: false,
     });
@@ -103,7 +103,7 @@ describe('CGridCanvas', () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const paint = vi.fn();
-    const cgc = new CGridCanvas(host, { setBounds: () => {}, paint }, {
+    const cgc = new VelocityGridCanvas(host, { setBounds: () => {}, paint }, {
       measureSize: () => ({ width: 100, height: 100 }),
       useHiDPI: false,
     });

@@ -1,6 +1,6 @@
-import { CGrid } from '@cgrid/kernel';
-import type { CColDef } from '@cgrid/kernel';
-import { wireIntoKernel, getFormatterTemplate } from '@cgrid/format';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
+import type { CColDef } from '@wellsfargo-starui/velocity-grid';
+import { wireIntoKernel, getFormatterTemplate } from '@wellsfargo-starui/velocity-grid-format';
 import type { Feature } from './index';
 
 /**
@@ -173,7 +173,7 @@ export const formatDSL: Feature = {
     // compile during column resolution, so the format compiler must be
     // registered (wireIntoKernel) BEFORE the DSL columns resolve. The
     // full def list lands via updateGridOptions after wiring.
-    const grid = new CGrid<FormatRow>(gridHost, {
+    const grid = new VelocityGrid<FormatRow>(gridHost, {
       getRowId: (r) => r.symbol,
       columnDefs: [COLUMNS[0]!],
       theme,

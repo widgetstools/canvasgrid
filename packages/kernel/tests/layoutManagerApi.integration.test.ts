@@ -1,7 +1,7 @@
 /**
- * Grid Layouts — Phase A / Unit A3: CGrid API wiring, integration.
+ * Grid Layouts — Phase A / Unit A3: VelocityGrid API wiring, integration.
  *
- * Mounts a real CGrid (fake worker + canvas, per the repo integration
+ * Mounts a real VelocityGrid (fake worker + canvas, per the repo integration
  * harness) and drives the layout API end-to-end: save → mutate view →
  * load → view restored; grid-tier module slices left untouched while
  * layout-tier ones restore; grid-option override round-trips across
@@ -11,7 +11,7 @@
  * Reference: worklog A3; spec §§7–10.
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { DEFAULT_LAYOUT_ID, type GridLayout } from '../src/types/layout';
 import type { StateModule } from '../src/core/moduleState';
 
@@ -46,12 +46,12 @@ type Row = { id: string; name: string; qty: number };
 async function mountGrid(extra: Record<string, unknown> = {}) {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
-  const grid = new CGrid<Row>(container, {
+  const grid = new VelocityGrid<Row>(container, {
     columnDefs: [{ field: 'id' }, { field: 'name' }, { field: 'qty' }],
     getRowId: (r) => r.id,
-    theme: 'cg-theme-quartz',
+    theme: 'vg-theme-quartz',
     ...extra,
   });
   // Drive the fake worker 'ready' handshake so async construction completes.

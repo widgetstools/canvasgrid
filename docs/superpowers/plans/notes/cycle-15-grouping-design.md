@@ -76,52 +76,52 @@ group spine." canvasgrid takes the spine route. Reasoning:
 
 ### Tokens (committed to `tokens.css`)
 
-**Light theme `.cg-theme-quartz`:**
+**Light theme `.vg-theme-quartz`:**
 
 | Token | Value | Why |
 |---|---|---|
-| `--cg-group-chevron-color` | `#475569` | Muted slate — same family as `--cg-totals-fg-muted`. Readable but not loud. |
-| `--cg-group-count-color` | `#475569` | Same muted slate as chevron — the count is metadata, not the primary value. |
-| `--cg-group-indent` | `14px` | One chevron-width per depth level — the chevron "stacks" cleanly under nested groups. |
+| `--vg-group-chevron-color` | `#475569` | Muted slate — same family as `--vg-totals-fg-muted`. Readable but not loud. |
+| `--vg-group-count-color` | `#475569` | Same muted slate as chevron — the count is metadata, not the primary value. |
+| `--vg-group-indent` | `14px` | One chevron-width per depth level — the chevron "stacks" cleanly under nested groups. |
 
-**Dark theme `.cg-theme-quartz-dark`:**
+**Dark theme `.vg-theme-quartz-dark`:**
 
 | Token | Value | Why |
 |---|---|---|
-| `--cg-group-chevron-color` | `#94a3b8` | Pale slate matching `--cg-totals-fg-muted` dark. |
-| `--cg-group-count-color` | `#94a3b8` | Same pale slate as chevron — preserves the muted/primary split. |
+| `--vg-group-chevron-color` | `#94a3b8` | Pale slate matching `--vg-totals-fg-muted` dark. |
+| `--vg-group-count-color` | `#94a3b8` | Same pale slate as chevron — preserves the muted/primary split. |
 
-`--cg-group-indent` is unitless theme-agnostic (declared once at
+`--vg-group-indent` is unitless theme-agnostic (declared once at
 `:root`-ish scope, not per-theme).
 
 **Placeholders:**
 
 ```css
-.cg-group-cell    { /* placeholder — renderer reads tokens via cssReader */ }
-.cg-group-chevron { /* placeholder — color flows via theme.groupChevronColor */ }
-.cg-group-indent  { /* placeholder — width flows via theme.groupIndent */ }
-.cg-group-count   { /* placeholder — color flows via theme.groupCountColor */ }
+.vg-group-cell    { /* placeholder — renderer reads tokens via cssReader */ }
+.vg-group-chevron { /* placeholder — color flows via theme.groupChevronColor */ }
+.vg-group-indent  { /* placeholder — width flows via theme.groupIndent */ }
+.vg-group-count   { /* placeholder — color flows via theme.groupCountColor */ }
 ```
 
 ### Layout
 
 | Property | Value | Rationale |
 |---|---|---|
-| Row height | `var(--cg-row-height)` (32px) | Identical to body rows — group rows are the same height, not inflated |
+| Row height | `var(--vg-row-height)` (32px) | Identical to body rows — group rows are the same height, not inflated |
 | Top border | None | Group rows are NOT a region change. The totals/footer signature is reserved for synthesis rows. |
 | Bottom border | None | Same reason — gridLine alone separates rows |
 | Cell padding | 6px (body PADDING) | Body alignment, not header alignment |
-| Indent per depth | 14px (`--cg-group-indent`) | One chevron-width — chevrons at depth 0..N stack visually |
+| Indent per depth | 14px (`--vg-group-indent`) | One chevron-width — chevrons at depth 0..N stack visually |
 | Chevron size | 12px | Slightly smaller than sort icon (14px) so it reads as "indicator, not control" |
 | Chevron→value gap | 6px | Standard cell PADDING — matches text cell left padding so values align with same-column data |
 | Value→count gap | 4px | Tight — the count belongs to the value, not floating |
-| Font family | `var(--cg-font-family)` | Same monospace stack as body |
-| Font size | `var(--cg-font-size)` (13px) | Same as body — doesn't shout |
+| Font family | `var(--vg-font-family)` | Same monospace stack as body |
+| Font size | `var(--vg-font-size)` (13px) | Same as body — doesn't shout |
 | Font weight value | 400 (body weight) | NOT bolded. Structural cue is chevron + indent, not weight. |
 | Font weight count | 400 (body weight) | Same weight as value — color carries the metadata distinction |
-| Value color | `--cg-fg-color` (body fg) | Reads as data, not as a label |
-| Count color | `--cg-group-count-color` (muted slate) | Metadata: visually subordinate to value |
-| Chevron color | `--cg-group-chevron-color` (muted slate) | Indicator: visually subordinate to value |
+| Value color | `--vg-fg-color` (body fg) | Reads as data, not as a label |
+| Count color | `--vg-group-count-color` (muted slate) | Metadata: visually subordinate to value |
+| Chevron color | `--vg-group-chevron-color` (muted slate) | Indicator: visually subordinate to value |
 
 ### Chevron glyph
 
@@ -180,7 +180,7 @@ anchors only. The runtime path:
    (when `rowGroupCols.length > 0`) with `colId: 'ag-Grid-AutoColumn'`,
    `headerName: 'Group'`, `cellRenderer: 'group'`,
    `valueGetter` returning the row's `groupValue` from the chunk.
-3. `cgrid.ts` inserts the auto-group column at index 0 of
+3. `velocityGrid.ts` inserts the auto-group column at index 0 of
    `columnOrder` when grouping is active.
 4. `cellAt(rowIndex, 'ag-Grid-AutoColumn')` reads the chunk's
    per-row group fields (`rowKinds[i]`, `groupDepth[i]`,
@@ -210,11 +210,11 @@ grid reads as one page.**
 
 ### Vocabulary handed to subsequent tasks
 
-- **`--cg-group-*` token family** is the single source for group-cell
+- **`--vg-group-*` token family** is the single source for group-cell
   chrome decisions. Tasks 5–12 extend it as needed (Task 5 may add
-  `--cg-group-row-full-bg` for the `groupRows` variant; Task 7 may
-  add `--cg-group-chevron-hover-color` for hover hint; Task 8 may
-  add `--cg-group-checkbox-indeterminate-color` for tri-state).
+  `--vg-group-row-full-bg` for the `groupRows` variant; Task 7 may
+  add `--vg-group-chevron-hover-color` for hover hint; Task 8 may
+  add `--vg-group-checkbox-indeterminate-color` for tri-state).
 - **The "spine, not strip" pattern** — group rows carry chrome in
   the auto-group column ONLY, never row-wide — is the Cycle 15
   grammar. Task 12's per-group footer rows DEPART from this (they
@@ -287,9 +287,9 @@ differs (0 instead of `depth × 14px`).
 
 | Token | Reuse | Reason |
 |---|---|---|
-| `--cg-group-chevron-color` | unchanged from Task 4 | One chevron family across the cycle |
-| `--cg-group-count-color` | unchanged | Same muted-metadata role |
-| `--cg-group-indent` | unused in this variant | Each column owns one depth |
+| `--vg-group-chevron-color` | unchanged from Task 4 | One chevron family across the cycle |
+| `--vg-group-count-color` | unchanged | Same muted-metadata role |
+| `--vg-group-indent` | unused in this variant | Each column owns one depth |
 
 **Width default rationale:** A trader's `ticker` value is ~4 chars; a
 `sector` value is ~10 chars; a `subSector` value is ~14 chars. 140px
@@ -311,7 +311,7 @@ disappears as a signal. The strip needs SOME structural cue —
 otherwise group rows would blend into data rows above and below.
 
 **Treatment:** a subtle row-bg shift via the new
-`--cg-group-row-bg` token. Far lighter than the Cycle 14 totals
+`--vg-group-row-bg` token. Far lighter than the Cycle 14 totals
 "hairline lift" (totals: 3% slate bg + top border + weight +1; group
 rows: ~1.5% slate bg only, no border, no weight). Reserving the full
 totals signature for per-group footer rows (Task 12) so the
@@ -319,7 +319,7 @@ synthesis-vs-navigation distinction lands cleanly.
 
 | Token | Light | Dark | Why |
 |---|---|---|---|
-| `--cg-group-row-bg` | `#f1f5f9` | `#1e293b` | ~1.5% slate cast in light, paler slate in dark. Lighter than totals (`#f8fafc` / `#1e293b` per Cycle 14) so synthesis rows still read as the heaviest stripe in the column. |
+| `--vg-group-row-bg` | `#f1f5f9` | `#1e293b` | ~1.5% slate cast in light, paler slate in dark. Lighter than totals (`#f8fafc` / `#1e293b` per Cycle 14) so synthesis rows still read as the heaviest stripe in the column. |
 
 **Strip composition:**
 - Chevron at PADDING + `depth × 14px` from the row's left edge — SAME
@@ -346,7 +346,7 @@ column of cells and sees chevrons interleaved at the same indent.
 
 ### Variant 3 — `'custom'`
 
-**What:** Defers to `CGridOptions.groupRowRenderer` — a registered
+**What:** Defers to `VelocityGridOptions.groupRowRenderer` — a registered
 cell-renderer NAME (e.g. `'myAppGroupRow'`) the app pre-registers in
 the `CellRendererRegistry`. Cgrid:
 1. Allocates the full-row strip bounds (same as `groupRows`).
@@ -367,7 +367,7 @@ crash, and the per-grid setOption to swap renderers later works
 without a transient broken paint.
 
 **Why expose `'custom'` even before Task 12+ apps need it:** the
-groupDisplayType union is publicly typed in `CGridOptions`; shipping
+groupDisplayType union is publicly typed in `VelocityGridOptions`; shipping
 `'custom'` as a no-op in Task 4 and only wiring it in Task 12 would
 mean apps that opt in early would see broken paint. Wiring the renderer
 chain now keeps the surface coherent.
@@ -377,12 +377,12 @@ chain now keeps the surface coherent.
 | Atom | Rule |
 |---|---|
 | Chevron glyph | Lucide `chevron-right` / `chevron-down`, 12px |
-| Chevron color | `--cg-group-chevron-color` (muted slate) |
+| Chevron color | `--vg-group-chevron-color` (muted slate) |
 | Count format | `(${count.toLocaleString()})`, omit at `count === 0` |
-| Count color | `--cg-group-count-color` (muted slate) |
+| Count color | `--vg-group-count-color` (muted slate) |
 | Value color | body `fg` |
 | Em-dash placeholder | `'—'` for null / empty group values |
-| Row height | `var(--cg-row-height)` (32px) — no inflation for group rows |
+| Row height | `var(--vg-row-height)` (32px) — no inflation for group rows |
 | Sortable | `false` on synthesized columns (Task 11 lands sort) |
 
 ### Mode-by-mode comparison
@@ -390,7 +390,7 @@ chain now keeps the surface coherent.
 | Property | `singleColumn` (Task 4) | `multipleColumns` | `groupRows` | `custom` |
 |---|---|---|---|---|
 | Auto-group columns | 1 at index 0 | N, one per `rowGroupCols[i]` | 0 | 0 |
-| Row bg shift | none | none | `--cg-group-row-bg` | none |
+| Row bg shift | none | none | `--vg-group-row-bg` | none |
 | Indent unit | `depth × 14px` within the column | 0 (column owns one depth) | `depth × 14px` from row left | renderer-defined |
 | Full-row strip | no | no | yes | yes |
 | Data row chrome on auto-cols | blank | blank (N times) | n/a | n/a |
@@ -435,7 +435,7 @@ value + (count) stay constant.**
 
 ### Vocabulary handed to subsequent tasks
 
-- **`--cg-group-row-bg` token** — the ONE additional token Task 5
+- **`--vg-group-row-bg` token** — the ONE additional token Task 5
   introduces. Reused by Task 7 if a group-row hover hint lands at row
   level; reused by Task 10 if `showOpenedGroup` paints the expanded
   group's value on data rows under it.
@@ -444,7 +444,7 @@ value + (count) stay constant.**
   and 10 (`showOpenedGroup` / `groupRemoveSingleChildren`) inherit the
   rule unchanged.
 - **Custom renderer fallback to `'group'` in groupRows mode** — the
-  pattern for any future `'<role>RowRenderer'` option in cgrid:
+  pattern for any future `'<role>RowRenderer'` option in velocity-grid:
   named-renderer lookup, fallback to the canonical default. Keeps
   half-configured grids from crashing.
 - **groupRows DEPARTS from "spine, not strip"** by necessity, NOT
@@ -480,11 +480,11 @@ below it.
 
 Two prior surfaces could shape the row group panel:
 
-1. **Cycle 11 sidebar Columns panel — `.cg-columns-panel-drop-zone`**
+1. **Cycle 11 sidebar Columns panel — `.vg-columns-panel-drop-zone`**
    - dashed border (`1px dashed border-color @ 80%`)
    - 4px radius, 12px padding, centered text, opacity 0.7
    - placeholder text `Drag here to set row groups` / `Drag here to aggregate`
-2. **Cycle 13 status-bar — `.cg-status-bar`**
+2. **Cycle 13 status-bar — `.vg-status-bar`**
    - 28px height, three-zone flex layout
    - header-bg, hairline border (top OR bottom)
    - body text is `user-select: none`; the strip reports state
@@ -493,7 +493,7 @@ Two prior surfaces could shape the row group panel:
 
 | Element | Inherits from | Why |
 |---|---|---|
-| Strip background | Status-bar `--cg-header-bg` | The panel is a controls strip in the same family — sandwich language |
+| Strip background | Status-bar `--vg-header-bg` | The panel is a controls strip in the same family — sandwich language |
 | Strip border-bottom | Status-bar's hairline rule | Separates from column headers below |
 | Empty-state dashed border | Sidebar drop-zone | "This surface accepts drops" reads consistently across surfaces |
 | Empty-state placeholder text | Sidebar drop-zone, verbatim | One drop-zone vocabulary — `Drag here to set row groups` |
@@ -550,28 +550,28 @@ like a search-filter pill bar — back to step 1.
 ### Tokens (committed to `tokens.css`)
 
 ```css
-.cg-row-group-panel {
-  --cg-row-group-panel-height: 32px;
-  --cg-row-group-panel-padding-x: 8px;
-  --cg-row-group-panel-gap: 6px;
-  --cg-row-group-chip-height: 22px;
-  --cg-row-group-chip-radius: 4px;
-  --cg-row-group-chip-padding-x: 6px;
-  --cg-row-group-chip-gap: 4px;
-  --cg-row-group-chip-bg: transparent;
-  --cg-row-group-chip-border: var(--cg-border-color);
-  --cg-row-group-chip-fg: var(--cg-fg-color);
-  --cg-row-group-chip-hover-bg:
-    color-mix(in srgb, var(--cg-header-bg) 92%, var(--cg-fg-color) 8%);
-  --cg-row-group-chip-active-bg:
-    color-mix(in srgb, var(--cg-header-bg) 85%, var(--cg-fg-color) 15%);
-  --cg-row-group-panel-empty-fg:
-    color-mix(in srgb, var(--cg-fg-color) 60%, transparent);
-  --cg-row-group-panel-drop-border: var(--cg-focus-ring-color);
+.vg-row-group-panel {
+  --vg-row-group-panel-height: 32px;
+  --vg-row-group-panel-padding-x: 8px;
+  --vg-row-group-panel-gap: 6px;
+  --vg-row-group-chip-height: 22px;
+  --vg-row-group-chip-radius: 4px;
+  --vg-row-group-chip-padding-x: 6px;
+  --vg-row-group-chip-gap: 4px;
+  --vg-row-group-chip-bg: transparent;
+  --vg-row-group-chip-border: var(--vg-border-color);
+  --vg-row-group-chip-fg: var(--vg-fg-color);
+  --vg-row-group-chip-hover-bg:
+    color-mix(in srgb, var(--vg-header-bg) 92%, var(--vg-fg-color) 8%);
+  --vg-row-group-chip-active-bg:
+    color-mix(in srgb, var(--vg-header-bg) 85%, var(--vg-fg-color) 15%);
+  --vg-row-group-panel-empty-fg:
+    color-mix(in srgb, var(--vg-fg-color) 60%, transparent);
+  --vg-row-group-panel-drop-border: var(--vg-focus-ring-color);
 }
 ```
 
-`--cg-row-group-chip-separator-color` reuses `--cg-group-chevron-color`
+`--vg-row-group-chip-separator-color` reuses `--vg-group-chevron-color`
 from Task 4 — one chevron family across the cycle.
 
 ### Layout
@@ -580,18 +580,18 @@ from Task 4 — one chevron family across the cycle.
 |---|---|---|
 | Panel height | `32px` | Matches body row height — same vertical rhythm as the data grid |
 | Panel padding-x | `8px` | Slight inset so chips don't kiss the edge |
-| Panel bg | `var(--cg-header-bg)` | Status-bar family — controls strip vocabulary |
-| Panel border-bottom | `1px solid var(--cg-border-color)` | Hairline rule separates from column headers below |
+| Panel bg | `var(--vg-header-bg)` | Status-bar family — controls strip vocabulary |
+| Panel border-bottom | `1px solid var(--vg-border-color)` | Hairline rule separates from column headers below |
 | Panel gap (chip-to-chip) | `6px` | Enough breathing room that two chips don't kiss; tight enough that the `›` separator inside reads as belonging to the pair |
 | Chip height | `22px` | Header-zone control, not a data row — half-height of the row |
 | Chip radius | `4px` | Matches drop-zone radius + sidebar control radii |
 | Chip padding-x | `6px` | Matches body cell padding for vertical alignment with text below |
 | Chip internal gap | `4px` | Tight grouping: `≡` `label` `×` reads as one unit |
-| Chip border | `1px solid var(--cg-border-color)` | Hairline outline — quietest control affordance |
+| Chip border | `1px solid var(--vg-border-color)` | Hairline outline — quietest control affordance |
 | Chip bg default | `transparent` | OUTLINED tokens, not filled pills |
 | Chip bg hover | mix header-bg @ 92% + fg @ 8% | Faint tint lights up without changing identity |
 | Chip bg active | mix header-bg @ 85% + fg @ 15% | Slightly stronger during mousedown/drag |
-| Chip label font | `var(--cg-font-family)` | Same mono stack as body |
+| Chip label font | `var(--vg-font-family)` | Same mono stack as body |
 | Chip label size | `12px` | Smaller than body (13px) — header-zone control |
 | Chip label weight | `400` | Same as body — color carries the chip's identity, not weight |
 | Separator `›` | reuse Task 4 chevron color, 10px size | One chevron family; smaller than group-cell chevron because here it's typographic punctuation |
@@ -629,7 +629,7 @@ gap. NOT inside the chip itself — that would make the chip read as
 |---|---|---|
 | Glyph | `›` (U+203A) — single-right-pointing angle quotation mark | Same chevron family as Task 4; lighter than `▶` so it reads as punctuation, not as a chevron control |
 | Size | `10px` | Smaller than group-cell chevron (12px) — typographic punctuation, not interactive |
-| Color | `--cg-group-chevron-color` (muted slate) | Reuses Task 4 token verbatim — one chevron family |
+| Color | `--vg-group-chevron-color` (muted slate) | Reuses Task 4 token verbatim — one chevron family |
 | Margin | absorbed by panel gap | Doesn't add its own spacing — sits in the 6px gap centered |
 
 **Rejected alternatives:**
@@ -647,10 +647,10 @@ Two visual cues during a drag:
 1. **Panel-level dashed outline** — when the dragged column has
    `enableRowGroup: true` AND its colId is NOT already in
    `rowGroupCols`, the entire panel paints a `2px dashed
-   var(--cg-row-group-panel-drop-border)` outline (inset 2px). Signal:
+   var(--vg-row-group-panel-drop-border)` outline (inset 2px). Signal:
    "this surface accepts the drop."
 2. **Vertical insertion line** — at the position where the chip will
-   land. Reuses the same `.cg-column-drag-insertion-line` pattern
+   land. Reuses the same `.vg-column-drag-insertion-line` pattern
    from Cycle 6 (2px wide, focus-ring color), but scoped to the
    panel's vertical band. Painted between chips at the gap mid-point,
    or at the panel's right edge when appending.
@@ -660,7 +660,7 @@ line alone (no "this whole strip accepts drops" signal); a third
 hover state on the panel bg (would compete with the chip hover state).
 
 When the dragged column has `enableRowGroup: false`, the panel paints
-the dashed outline in a MUTED variant (`--cg-fg-muted` @ 30%) — a
+the dashed outline in a MUTED variant (`--vg-fg-muted` @ 30%) — a
 visual rejection signal that's clearly NOT the focus-ring blue. The
 drop handler rejects the same colId, so the visual + behavioral
 signals agree.
@@ -680,13 +680,13 @@ panel renders a single full-strip placeholder:
 
 | Property | Value |
 |---|---|
-| Border | `1px dashed color-mix(in srgb, var(--cg-border-color) 80%, transparent)` — same as sidebar drop-zone |
+| Border | `1px dashed color-mix(in srgb, var(--vg-border-color) 80%, transparent)` — same as sidebar drop-zone |
 | Border radius | `4px` |
 | Inset from panel edge | `4px` top/bottom, `8px` left/right (matches panel padding) |
 | Text | `Drag here to set row groups` — VERBATIM from sidebar |
 | Text alignment | centered |
 | Text size | `12px` |
-| Text color | `--cg-row-group-panel-empty-fg` (60% fg) |
+| Text color | `--vg-row-group-panel-empty-fg` (60% fg) |
 
 Vocabulary continuity is the goal: a user who has seen the sidebar's
 Row Groups drop zone recognises this strip as the same affordance,
@@ -896,7 +896,7 @@ Three layout positions were considered:
 
 | Option | Layout | Verdict |
 |---|---|---|
-| Before chevron | `[indent][checkbox][gap][chevron][gap][value]…` | Chevron geometry from Task 4 / Task 7 is load-bearing — `cgrid.ts:3953-3960` mirrors PADDING + CHEVRON_SIZE + INDENT_UNIT constants for the chevron-click hit-test. Drifting the chevron x-position requires parallel updates across painter + hit-tester. Rejected on coupling cost. |
+| Before chevron | `[indent][checkbox][gap][chevron][gap][value]…` | Chevron geometry from Task 4 / Task 7 is load-bearing — `velocityGrid.ts:3953-3960` mirrors PADDING + CHEVRON_SIZE + INDENT_UNIT constants for the chevron-click hit-test. Drifting the chevron x-position requires parallel updates across painter + hit-tester. Rejected on coupling cost. |
 | Row left edge | `[checkbox][gap][indent][chevron][gap][value]…` | Decouples checkbox from depth — every group's checkbox lands at the same x-coord regardless of nesting. Breaks the "depth → toggle → select" left-to-right reading; user can't tell at a glance which depth a checkbox belongs to. Rejected. |
 | **Between chevron and value** | `[indent][chevron][gap][checkbox][gap][value]…` | **Chosen.** Preserves chevron geometry from Task 4/7 — no constants drift. Checkbox + chevron read as paired group controls (expand vs select), sitting next to each other but not sharing an affordance. Reads as "depth → toggle → select → identify" left to right. New checkbox hit zone (14 px box + 4 px pad each side ≈ 22 × 22) doesn't intrude on the chevron's existing 20 × 20 hit zone. |
 
@@ -904,21 +904,21 @@ Three layout positions were considered:
 
 | Token | Light | Dark | Why |
 |---|---|---|---|
-| `--cg-group-checkbox-size` | `14px` | `14px` | Identical to existing `checkboxCell` hard-coded 14 — one box vocabulary across the grid |
-| `--cg-group-checkbox-border-color` | `var(--cg-fg-color)` | `var(--cg-fg-color)` | Same border as existing `checkboxCell` — visual continuity |
-| `--cg-group-checkbox-fill` | `transparent` | `transparent` | Outlined, never filled — preserves "no row chrome" rule |
-| `--cg-group-checkbox-check-color` | `var(--cg-fg-color)` | `var(--cg-fg-color)` | Same as existing check stroke — one checkmark vocabulary |
-| `--cg-group-checkbox-indeterminate-color` | `var(--cg-fg-color)` | `var(--cg-fg-color)` | Same color as check; SHAPE carries the distinction (dash vs √) |
-| `--cg-group-checkbox-gap` | `6px` | `6px` | Matches `CHEVRON_GAP` from Task 4 — one gap rhythm |
+| `--vg-group-checkbox-size` | `14px` | `14px` | Identical to existing `checkboxCell` hard-coded 14 — one box vocabulary across the grid |
+| `--vg-group-checkbox-border-color` | `var(--vg-fg-color)` | `var(--vg-fg-color)` | Same border as existing `checkboxCell` — visual continuity |
+| `--vg-group-checkbox-fill` | `transparent` | `transparent` | Outlined, never filled — preserves "no row chrome" rule |
+| `--vg-group-checkbox-check-color` | `var(--vg-fg-color)` | `var(--vg-fg-color)` | Same as existing check stroke — one checkmark vocabulary |
+| `--vg-group-checkbox-indeterminate-color` | `var(--vg-fg-color)` | `var(--vg-fg-color)` | Same color as check; SHAPE carries the distinction (dash vs √) |
+| `--vg-group-checkbox-gap` | `6px` | `6px` | Matches `CHEVRON_GAP` from Task 4 — one gap rhythm |
 
-All five color tokens default to `var(--cg-fg-color)` deliberately —
+All five color tokens default to `var(--vg-fg-color)` deliberately —
 the indeterminate state is differentiated by SHAPE (horizontal dash
 vs check √), not by hue. This keeps the two-tier color hierarchy
 (body fg + muted slate) intact and matches the existing
 `checkboxCell` painter's "outlined, single color" treatment.
 
 Apps that want a brand-accent fill on the checked state override
-`--cg-group-checkbox-fill` + `--cg-group-checkbox-check-color`;
+`--vg-group-checkbox-fill` + `--vg-group-checkbox-check-color`;
 nothing in cgrid forces the outlined look.
 
 ### Box composition (per state)
@@ -931,7 +931,7 @@ nothing in cgrid forces the outlined look.
 └──────┘           └──────┘           └─╱────┘
 ```
 
-- Box: 14 × 14, 1 px stroke border in `--cg-group-checkbox-border-color`,
+- Box: 14 × 14, 1 px stroke border in `--vg-group-checkbox-border-color`,
   positioned via the same `cx + 0.5 / cy + 0.5` integer-pixel snap as
   the existing `checkboxCell`.
 - 'all' check: same √ polyline as the existing `checkboxCell`
@@ -1009,7 +1009,7 @@ depth → toggle → select → identify reads left to right.**
   this grid differentiate states by interior shape (empty / check /
   dash), not by hue or fill. Cycle 16's leaf-row checkboxSelection
   inherits the same outlined box.
-- **`--cg-group-checkbox-*` token family** — extensibility hook for
+- **`--vg-group-checkbox-*` token family** — extensibility hook for
   apps that want a themed checkbox; defaults preserve the outlined
   vocabulary.
 - **Cascade math lives in the SelectionModel**, not the renderer —
@@ -1076,7 +1076,7 @@ text on those data rows — the smallest possible reintroduction:
   than the data row's nominal depth). The data row's "opened-group"
   label visually sits where the leaf group's value sits — a vertical
   echo, not a different column lane.
-- **Muted text color** — reuses `--cg-group-count-color` (the existing
+- **Muted text color** — reuses `--vg-group-count-color` (the existing
   muted slate). The label is metadata about the row's parent, not a
   primary value; same color family as the chevron + count so the spine
   reads as one vocabulary. No new token introduced.
@@ -1117,7 +1117,7 @@ sees the correct preceding group).
 |---|---|---|
 | Worker change | yes — `GroupPass.apply` skips group entries in flatOrder when `childCount === 1` | yes — slicer populates `groupValue[i]` for data rows |
 | Renderer change | none (elided rows paint as data rows) | yes — paints muted label on data rows with non-empty `groupValue` |
-| New token | none | none — reuses `--cg-group-count-color` |
+| New token | none | none — reuses `--vg-group-count-color` |
 | Mode coverage | every display mode (purely tree-shape) | `'singleColumn'` only |
 | Hit-test change | none | none (label is non-interactive) |
 
@@ -1129,8 +1129,8 @@ sees the correct preceding group).
 - `showOpenedGroup` in `'multipleColumns'` mode. Each column owns one
   depth; echoing the leaf-parent's label on data rows would conflict
   with the column ownership rule.
-- A separate `--cg-group-opened-fg` token. The opened-group label
-  reuses `--cg-group-count-color` so the muted-slate family stays a
+- A separate `--vg-group-opened-fg` token. The opened-group label
+  reuses `--vg-group-count-color` so the muted-slate family stays a
   single source for "metadata on a group row" colour decisions.
 - Runtime mutation of either option. Both are init-time options
   (matches the Task 9 `groupDefaultExpanded` pattern); `setGridOption`
@@ -1155,7 +1155,7 @@ muted echo at the leaf indent.**
   `valueFormatted !== ''` escape hatch. Cycle 16+ master/detail
   expand can reuse the same escape hatch (an expanded master row
   could paint a detail-toggle glyph in the same slot).
-- **Reuse `--cg-group-count-color` for any muted, non-interactive
+- **Reuse `--vg-group-count-color` for any muted, non-interactive
   text on a group / data row.** Don't introduce per-feature mute
   tokens — the muted family stays one colour.
 
@@ -1247,8 +1247,8 @@ and divider — same way the totals row works in an ungrouped grid.
 |---|---|
 | Indent | `(parentDepth + 1 - 1) × 14px = parentDepth × 14px` — the label sits at the SAME x-position as the parent group's value, so the eye traces parent → children → footer in one column-scan. |
 | Label | `Total ${parentGroupValue}` — verbatim from the ag-grid screenshot vocabulary. Defaults to just `Total` when the parent value is empty (grand-total case). |
-| Font weight | `--cg-group-footer-font-weight` (default 500 — same as totals). |
-| Font color | `--cg-group-footer-fg` (default `--cg-totals-fg`). |
+| Font weight | `--vg-group-footer-font-weight` (default 500 — same as totals). |
+| Font color | `--vg-group-footer-fg` (default `--vg-totals-fg`). |
 | Italic? | **No.** ag-grid italicises group totals; canvasgrid doesn't have italic in its monospace stack and adding it would require a font-family swap. The weight bump + bg lift carry the synthesis cue without the italic. |
 | Chevron / checkbox | **Omitted.** The footer is NOT a toggle target (the group above it owns expansion) and NOT a selection target (selecting the footer doesn't have well-defined semantics — it doesn't represent a single row). The auto-group cell paints label-only. |
 
@@ -1267,16 +1267,16 @@ stays right-aligned in the footer.
 
 | Token | Default | Why |
 |---|---|---|
-| `--cg-group-footer-bg` | `var(--cg-totals-bg)` | Inherit the totals tint; apps that want a lighter footer can override without touching grand-total chrome. |
-| `--cg-group-footer-fg` | `var(--cg-totals-fg)` | Same as bg — inherit then optionally diverge. |
-| `--cg-group-footer-border-top` | `var(--cg-totals-border-top)` | One hairline rule color across both synthesis row types by default. |
-| `--cg-group-footer-font-weight` | `500` (matches totals) | Same weight family as totals. Apps that want a lighter footer override to 450 or 400. |
+| `--vg-group-footer-bg` | `var(--vg-totals-bg)` | Inherit the totals tint; apps that want a lighter footer can override without touching grand-total chrome. |
+| `--vg-group-footer-fg` | `var(--vg-totals-fg)` | Same as bg — inherit then optionally diverge. |
+| `--vg-group-footer-border-top` | `var(--vg-totals-border-top)` | One hairline rule color across both synthesis row types by default. |
+| `--vg-group-footer-font-weight` | `500` (matches totals) | Same weight family as totals. Apps that want a lighter footer override to 450 or 400. |
 
 All four tokens default to the totals values so the SHIPPED look is
 "footer === grand total in visual stripe; differentiated by label
 + position." Apps that want to break the parity (e.g. footer 2 %
 tint, grand total 4 %) override the four tokens and keep the
-`--cg-totals-*` tokens untouched.
+`--vg-totals-*` tokens untouched.
 
 ### Grand-total footer (when `groupIncludeTotalFooter: true`)
 
@@ -1342,7 +1342,7 @@ gets.
 
 `ApplyCellPropsInput` grows a `isGroupFooter?: boolean` flag. When
 set, the lift treatment fires the same way as `isTotals === true`
-but reads from the `--cg-group-footer-*` token family instead. The
+but reads from the `--vg-group-footer-*` token family instead. The
 two flags are mutually exclusive — a row is either a footer
 (rowKind === 3) or a grand total (in `TotalsSubgrid`), never both.
 
@@ -1375,7 +1375,7 @@ different position + label.**
 
 ### Vocabulary handed to subsequent tasks
 
-- **`--cg-group-footer-*` token family** — extensibility hook for
+- **`--vg-group-footer-*` token family** — extensibility hook for
   apps that want footers visually distinct from grand totals.
   Defaults preserve visual parity.
 - **`rowKind === 3` is the canonical "inline synthesis row" signal**
@@ -1428,7 +1428,7 @@ those tokens — none of the existing values move.
 | Glyph (no sort) | indicator span NOT rendered | Chip width matches the byte-stable Task 6 baseline. Visual cells 22 / 23 (no-sort chips) stay pixel-identical to Cycle 15. The indicator appears as a side effect of the first sort click |
 | Position | between the label and `×` button | Reads as `Desk ↑ ×` — the sort sits next to the column it applies to, the `×` stays in its established right-edge slot |
 | Size | `11px` | One px smaller than the label (`12px`) — auxiliary metadata, never competes with the label |
-| Color | `--cg-group-chevron-color` | The one chevron family established by Cycle 15 Task 4 — used by the auto-group cell chevron AND the `›` separator |
+| Color | `--vg-group-chevron-color` | The one chevron family established by Cycle 15 Task 4 — used by the auto-group cell chevron AND the `›` separator |
 | Click region | (a) the indicator span when rendered; (b) the chip BODY when no indicator is rendered | The chip body becomes the "start a sort" click target; once a sort is active the indicator is the explicit toggle handle |
 | Cursor | `pointer` (indicator); `grab` (chip body, inherited from Task 6) | The chip body cursor stays `grab` so the drag affordance reads unchanged |
 
@@ -1447,7 +1447,7 @@ suite asserts the three transitions explicitly so a future refactor
 can't silently flip the cycle direction.
 
 When `rowGroupPanelSuppressSort: true` (already plumbed in
-`CGridOptions` since Task 6), the indicator span is omitted AND the
+`VelocityGridOptions` since Task 6), the indicator span is omitted AND the
 chip-body click handler short-circuits. The pill still drags +
 removes normally.
 
@@ -1471,10 +1471,10 @@ also needs end-of-strip + just-before-current-position drop slots).
 | Decision | Value | Why |
 |---|---|---|
 | Width | keep `2px` | Same precision as Task 6 drop indicator; no need to differentiate "this is a reorder drop" from "this is an add drop" — the resulting action is the same |
-| Color | keep `--cg-row-group-panel-drop-border` (focus-ring) | One drop-color across all drag sources |
+| Color | keep `--vg-row-group-panel-drop-border` (focus-ring) | One drop-color across all drag sources |
 | Animation | **NONE — instant position update** | A 200ms ease-out fade introduces visual lag at high mousemove rates; the line "tracks" the pointer at frame rate. A disciplined, instant indicator reads as precise; a lagged indicator reads as approximate |
 | Vertical inset | keep `top: 4px; bottom: 4px` | Already specced in Task 6 |
-| Z-index | inherits `.cg-row-group-panel` z-index (2) | Above the canvas + status bar, below the editor overlay — same stack as the rest of the panel |
+| Z-index | inherits `.vg-row-group-panel` z-index (2) | Above the canvas + status bar, below the editor overlay — same stack as the rest of the panel |
 
 The line's `left` coordinate updates on every `setDragHover`
 tick. The decision to snap to "before chip[i]" vs. "after the last
@@ -1485,15 +1485,15 @@ the same `updateInsertionLine` method as the reorder path.
 
 #### Drag ghost — opacity + shadow + size
 
-The pill-reorder gesture mounts a DOM `.cg-row-group-panel-chip-ghost`
+The pill-reorder gesture mounts a DOM `.vg-row-group-panel-chip-ghost`
 that mirrors the chip the user is dragging. The ghost is positioned
 `fixed` at the pointer's location and pointer-events are disabled so
 it never blocks hit-tests against the panel beneath.
 
 | Property | Value | Why |
 |---|---|---|
-| Background | `var(--cg-header-bg)` (opaque) | The chip-at-rest has a transparent bg; the ghost overrides to opaque so the chip reads cleanly when floating over any underlying canvas or column-header content |
-| Border | `1px solid var(--cg-row-group-chip-border)` | Matches the at-rest chip border — the ghost is the chip in flight |
+| Background | `var(--vg-header-bg)` (opaque) | The chip-at-rest has a transparent bg; the ghost overrides to opaque so the chip reads cleanly when floating over any underlying canvas or column-header content |
+| Border | `1px solid var(--vg-row-group-chip-border)` | Matches the at-rest chip border — the ghost is the chip in flight |
 | Box-shadow | `0 4px 8px rgba(0, 0, 0, 0.12)` | Subtle drop shadow; reads as "lifted off the page" without becoming a Material elevation card |
 | Opacity | `0.92` | Slightly translucent so the page beneath isn't fully occluded — the user can still see WHERE they're aiming |
 | Offset from pointer | `(+8px, +8px)` (right + below cursor) | Out of the cursor's direct overlap so the user can still see the chip's drop verdict + insertion line |
@@ -1528,13 +1528,13 @@ subsequent `pointerup` commits the reorder.
 ### Tokens (committed to `tokens.css`)
 
 ```css
-.cg-row-group-panel {
+.vg-row-group-panel {
   /* Added in 15.5 / Task 1 */
-  --cg-row-group-chip-sort-color: var(--cg-group-chevron-color);
-  --cg-row-group-chip-sort-size: 11px;
-  --cg-row-group-chip-ghost-bg: var(--cg-header-bg);
-  --cg-row-group-chip-ghost-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
-  --cg-row-group-chip-ghost-opacity: 0.92;
+  --vg-row-group-chip-sort-color: var(--vg-group-chevron-color);
+  --vg-row-group-chip-sort-size: 11px;
+  --vg-row-group-chip-ghost-bg: var(--vg-header-bg);
+  --vg-row-group-chip-ghost-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
+  --vg-row-group-chip-ghost-opacity: 0.92;
 }
 ```
 
@@ -1577,10 +1577,10 @@ that mutating via any one view triggers re-render in the others.
   fine.
 
 ### Reused vocabulary
-- `--cg-group-chevron-color` (Task 4) — the sort indicator hangs
+- `--vg-group-chevron-color` (Task 4) — the sort indicator hangs
   off this family so all chevron-like glyphs in the cycle read as
   one set.
-- `--cg-row-group-panel-drop-border` (Task 6) — both the
+- `--vg-row-group-panel-drop-border` (Task 6) — both the
   column-drag insertion line AND the pill-reorder insertion line
   use this color.
 - Cycle 6 column-drag-ghost CSS pattern (`pointer-events: none`,
@@ -1652,7 +1652,7 @@ trimmed for the narrower sidebar footprint.
 |---|---|---|---|
 | Layout | VERTICAL stack (one chip per row) | HORIZONTAL strip with `›` separators | Sidebar is ~240px wide; horizontal strip would wrap awkwardly. Vertical stack reads as a list, matching the column-list above |
 | Chip height | 22px (same) | 22px | One chip height across views — visual recall |
-| Chip border + radius | `--cg-row-group-chip-border` + 4px | identical | Same vocabulary token |
+| Chip border + radius | `--vg-row-group-chip-border` + 4px | identical | Same vocabulary token |
 | Drag handle glyph | OMITTED | `≡` rendered | Tool-panel chip body itself is the click/drag target; the sidebar is narrow + the chips are stacked so the drag affordance reads from the cursor change (`grab`) without needing a glyph. Panel chips use the handle because the horizontal strip benefits from the explicit "grab me here" cue |
 | Sort indicator | OMITTED | Optional `↑` / `↓` | Sort lives on the row group panel chips. The tool panel is the column-management view — adding sort here would duplicate the affordance. Per Prompt 7 the tool panel is for grouping membership; sort decoration belongs on the panel |
 | Remove `×` | `✕` (kept) | `✕` (kept) | One remove affordance across views |
@@ -1674,7 +1674,7 @@ The string is identical to the row group panel's empty-state, by
 design (one drop-zone vocabulary across the grid).
 
 When the zone has at least one pill, the placeholder is replaced
-by the pill stack. The dashed outline (`--cg-row-group-panel-drop-border`)
+by the pill stack. The dashed outline (`--vg-row-group-panel-drop-border`)
 stays — it reads as "this is a drop target" regardless of fill
 state, matching the row group panel.
 
@@ -1683,7 +1683,7 @@ state, matching the row group panel.
 A `2px` HORIZONTAL insertion line that snaps to the gap nearest
 the cursor between pills (or above the first / below the last
 pill). Mirrors the panel's vertical line in vocabulary — same
-color (`--cg-row-group-panel-drop-border`), same width, same
+color (`--vg-row-group-panel-drop-border`), same width, same
 instant-update discipline (no animation; the line tracks at frame
 rate).
 
@@ -1767,17 +1767,17 @@ both — keeps the menu compact + obvious.
 ### Tokens (committed to `tokens.css`)
 
 ```css
-.cg-columns-panel-rgz {
+.vg-columns-panel-rgz {
   /* Added in 15.5 / Task 2 — tool-panel Row Groups ZONE-specific
      tokens. Inherit from the row group panel chip family where
      possible; trim where the compact context calls for it. */
-  --cg-columns-panel-rgz-chip-font-size: 11px;
-  --cg-columns-panel-rgz-chip-gap: 4px;
-  --cg-columns-panel-rgz-drop-line-thickness: 2px;
+  --vg-columns-panel-rgz-chip-font-size: 11px;
+  --vg-columns-panel-rgz-chip-gap: 4px;
+  --vg-columns-panel-rgz-drop-line-thickness: 2px;
 }
 ```
 
-The drop line color reuses `--cg-row-group-panel-drop-border` —
+The drop line color reuses `--vg-row-group-panel-drop-border` —
 one drop color across all drop zones.
 
 ### What's deliberately NOT shipped in Task 2
@@ -1796,7 +1796,7 @@ one drop color across all drop zones.
   + the column-header drag (already wired in Cycle 15 / Task 6
   + extended in Task 1).
 - **`allowDragFromColumnsToolPanel` end-to-end.** The OPTION
-  lands in `CGridOptions` so apps can flip it; the actual
+  lands in `VelocityGridOptions` so apps can flip it; the actual
   "drag column out of the tool panel ONTO THE GRID body" path
   (vs. into the zone) is a Cycle 16 follow-up — the Cycle 15.5
   scope is the zone + the row group panel + the context menu.
@@ -1812,9 +1812,9 @@ one drop color across all drop zones.
   family is consistent across surfaces.
 - `▾` / `▸` (Cycle 15 / Task 7 auto-group cell chevrons) — Task 2
   uses them in the Expand/Collapse All Groups items.
-- `--cg-row-group-panel-drop-border` (Task 6) — one drop color
+- `--vg-row-group-panel-drop-border` (Task 6) — one drop color
   across the row group panel AND the tool-panel zone.
-- `--cg-row-group-chip-*` family (Task 6) — pill styling
+- `--vg-row-group-chip-*` family (Task 6) — pill styling
   vocabulary is shared; Task 2's compact variant overrides only
   font-size and omits the drag handle glyph.
 

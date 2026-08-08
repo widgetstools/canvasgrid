@@ -24,21 +24,21 @@ num('Daily P&L', 'dailyPnl', {
 ```css
 /* the appearance — authored entirely in CSS, scoped anywhere in the grid's cascade */
 .grid-host {
-  --cg-cell-class-loss-fg: #e63946;
-  --cg-cell-class-loss-bg: rgba(230, 57, 70, 0.10);
-  --cg-cell-class-loss-border-left-width: 3px;
-  --cg-cell-class-loss-border-left-style: solid;
-  --cg-cell-class-loss-border-left-color: #e63946;
-  --cg-cell-class-loss-font-weight: 700;
-  --cg-cell-class-loss-decorator-tr: "▼";
-  --cg-cell-class-loss-decorator-tr-color: #e63946;
+  --vg-cell-class-loss-fg: #e63946;
+  --vg-cell-class-loss-bg: rgba(230, 57, 70, 0.10);
+  --vg-cell-class-loss-border-left-width: 3px;
+  --vg-cell-class-loss-border-left-style: solid;
+  --vg-cell-class-loss-border-left-color: #e63946;
+  --vg-cell-class-loss-font-weight: 700;
+  --vg-cell-class-loss-decorator-tr: "▼";
+  --vg-cell-class-loss-decorator-tr-color: #e63946;
 }
 ```
 
-Header cells use the same scheme with `--cg-header-class-<name>-*` and
+Header cells use the same scheme with `--vg-header-class-<name>-*` and
 `colDef.headerClass` / `headerClassRules`.
 
-### Supported slots (`--cg-cell-class-<name>-<slot>`)
+### Supported slots (`--vg-cell-class-<name>-<slot>`)
 
 | Slot(s) | Paint artifact |
 |---|---|
@@ -61,25 +61,25 @@ programmatic, used by the UI customizer and calc). Its colour values may
 reference theme tokens, resolved through the active theme:
 
 ```ts
-num('Spread', 'spread', { cellStyle: { fg: 'var(--cg-info-color)' } });
+num('Spread', 'spread', { cellStyle: { fg: 'var(--vg-info-color)' } });
 ```
 
-`var(--cg-…)` (with optional `, fallback`) resolves once per token per theme and
+`var(--vg-…)` (with optional `, fallback`) resolves once per token per theme and
 re-resolves on theme swap. Literal colours pass through unchanged.
 
 ## 3. Data-viz renderer palette (tokens)
 
-The `@cgrid/renderers` data-viz painters read every colour and key dimension from
+The `@wellsfargo-starui/velocity-grid-renderers` data-viz painters read every colour and key dimension from
 CSS tokens (with the historical literals as defensive fallbacks), so a theme can
 recolour bars / heat / pills / ratings without touching code:
 
 | Token | Used by |
 |---|---|
-| `--cg-pos-color`, `--cg-neg-color`, `--cg-warning-color`, `--cg-info-color`, `--cg-muted-color` | semantic sign/status colours (P&L, bars, deltas, bps, …) |
-| `--cg-status-<state>-{bg,fg,border}` | order status pills (`working`, `part-fill`, `filled`, `cancelled`, `rejected`, `pending`) |
-| `--cg-rating-<grade>-color` | credit-rating scale (`aaa`…`d`, `nr`, `wd`) |
-| `--cg-venue-<mic>-color` | venue chips |
-| `--cg-bar-height`, `--cg-chip-height`, `--cg-chip-radius` | data-viz geometry |
+| `--vg-pos-color`, `--vg-neg-color`, `--vg-warning-color`, `--vg-info-color`, `--vg-muted-color` | semantic sign/status colours (P&L, bars, deltas, bps, …) |
+| `--vg-status-<state>-{bg,fg,border}` | order status pills (`working`, `part-fill`, `filled`, `cancelled`, `rejected`, `pending`) |
+| `--vg-rating-<grade>-color` | credit-rating scale (`aaa`…`d`, `nr`, `wd`) |
+| `--vg-venue-<mic>-color` | venue chips |
+| `--vg-bar-height`, `--vg-chip-height`, `--vg-chip-radius` | data-viz geometry |
 
 A theme that declares none of these renders identically to the built-in defaults.
 
@@ -87,6 +87,6 @@ A theme that declares none of these renders identically to the built-in defaults
 
 - **Data-viz geometry** — drawing a bar / heat fill / gauge is code; only its
   colours and dimensions come from CSS (§3).
-- **Conditional predicates** — `@cgrid/rules` decides *when* a style applies
+- **Conditional predicates** — `@wellsfargo-starui/velocity-grid-rules` decides *when* a style applies
   (dynamic, per row value), authored via the rule-builder UI; the style values it
   applies target the same paint artifacts.

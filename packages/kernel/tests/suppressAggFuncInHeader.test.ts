@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { decorateHeader } from '../src/renderer/painters/byRows';
 import { applyRuntimeOption, type RuntimeOptionTarget } from '../src/core/runtimeOptions';
 import type { ResolvedColDef } from '../src/core/propertyChain';
-import type { CGridOptions } from '../src/types';
+import type { VelocityGridOptions } from '../src/types';
 
 // Cycle 14 / Task 4 — `suppressAggFuncInHeader` behaviour test suite.
 //
@@ -102,16 +102,16 @@ describe('decorateHeader — pure decorator', () => {
 describe('suppressAggFuncInHeader — runtime option wiring', () => {
   // CASE 6 — Runtime option flip: setGridOption('suppressAggFuncInHeader',
   // …) routes through `applyRuntimeOption` which fires `refreshLayout`
-  // on the target. The cgrid.ts adapter's `refreshLayout`
+  // on the target. The velocityGrid.ts adapter's `refreshLayout`
   // (recomputeViewport + requestRepaint) is what actually re-runs the
   // painter and lights up the new header text; this test guards the
   // bridge. We exercise the runtime-options module directly (no
-  // CGrid + worker spin-up) because the bridge IS the unit-of-behaviour
+  // VelocityGrid + worker spin-up) because the bridge IS the unit-of-behaviour
   // — the integration round-trip gets pixel coverage in visual matrix
   // cell 19, which baselines both `?suppressAggHeader=1` AND the
   // default (decoration on) snapshots.
   it('case 6 — setGridOption flip re-paints via refreshLayout (both directions)', () => {
-    const options: CGridOptions = { columnDefs: [] };
+    const options: VelocityGridOptions = { columnDefs: [] };
     let refreshCount = 0;
     let rebuildCount = 0;
     const target: RuntimeOptionTarget = {
@@ -126,7 +126,7 @@ describe('suppressAggFuncInHeader — runtime option wiring', () => {
       rebuildSubgrids: () => { rebuildCount++; },
       forwardAggFuncs: () => {},
     };
-    // Storage is the CALLER's job (cgrid.ts mutates `options[key]`
+    // Storage is the CALLER's job (velocityGrid.ts mutates `options[key]`
     // before invoking applyRuntimeOption); mirror that here so the
     // assertion mirrors the live path.
     options.suppressAggFuncInHeader = true;

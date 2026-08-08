@@ -153,7 +153,7 @@ describe('planLayer', () => {
 
   // ─── Closeout fix wave — I-1 regression lock ─────────────────────────
   // `planLayer` itself stays exact-arithmetic pure (no quantization — that
-  // is deliberately the CALL SITE's job, cgrid.ts's paint closure); this
+  // is deliberately the CALL SITE's job, velocityGrid.ts's paint closure); this
   // proves the call site's quantization formula (`qdy = round(dy*dpr)/dpr`
   // before `layer.shift(qdy)`) keeps the anchor device-pixel-aligned
   // across repeated fractional shifts, and that OMITTING it (passing

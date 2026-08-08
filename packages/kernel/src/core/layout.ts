@@ -83,7 +83,7 @@ export interface SizeColumnsToFitParams {
   columnLimits?: Array<{ key: string; minWidth?: number; maxWidth?: number }>;
 }
 
-/** Pure helper for `CGridApi.sizeColumnsToFit`. Returns the new widths
+/** Pure helper for `VelocityGridApi.sizeColumnsToFit`. Returns the new widths
  *  keyed by `colId`. Honors `suppressSizeToFit` (the leaf keeps its
  *  current width and the remainder distributes among the rest), per-column
  *  `minWidth` / `maxWidth` (overridden by `params.columnLimits`, then by

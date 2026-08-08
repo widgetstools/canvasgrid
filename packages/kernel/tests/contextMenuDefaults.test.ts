@@ -5,7 +5,7 @@
  * (Copy, Copy with Headers, Paste, Cut, Export, Autosize Columns,
  * Pin Column ►, Reset Columns) with two separators between the logical
  * groups (clipboard / export / column-ops). Apps that don't supply
- * `CGridOptions.getContextMenuItems` see this list directly; apps that
+ * `VelocityGridOptions.getContextMenuItems` see this list directly; apps that
  * DO supply one read the same list via `params.defaultItems` and
  * mix-and-match.
  *

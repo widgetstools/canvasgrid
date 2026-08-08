@@ -6,12 +6,12 @@
 // with an initialSort but no index sort to the tail in their declaration
 // order.
 //
-// `CGridOptions.sortingOrder` reshapes the cycleSort cycle — default
+// `VelocityGridOptions.sortingOrder` reshapes the cycleSort cycle — default
 // `['asc', 'desc', null]`. Setting `['asc', 'desc']` removes the unsorted
 // state so the column always sorted (third cycle stage wraps back to asc).
 
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
 
 beforeAll(() => {
@@ -50,9 +50,9 @@ function mkGrid(opts: {
 }) {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
-  const grid = new CGrid<{ id: string; a: number; b: number; c: number }>(container, {
+  const grid = new VelocityGrid<{ id: string; a: number; b: number; c: number }>(container, {
     columnDefs: opts.columnDefs as any,
     sortingOrder: opts.sortingOrder,
     getRowId: (r) => r.id,

@@ -5,19 +5,19 @@ import { test, expect, type Page, type Locator } from '@playwright/test';
  *
  * The grid renders to <canvas> — column headers are NOT DOM, so every
  * assertion about grid/column-def STATE goes through
- * `window.__cgapi.getColumnGroupDefs()` (the live CGridApi handed to the
+ * `window.__cgapi.getColumnGroupDefs()` (the live VelocityGridApi handed to the
  * `gridReady` event — see `src/main.ts`). The tool PANEL itself (the
  * "Column Groups" sidebar tab) is real DOM, so panel interactions
  * (clicks, drags, form fields) use normal Playwright locators.
  *
  * Each test starts from a clean `persistState` slate: `persistState: true`
  * with `gridId: 'customizer-demo'` writes to `localStorage` under
- * `cgrid:state:customizer-demo` (see
+ * `velocity-grid:state:customizer-demo` (see
  * packages/kernel/src/core/statePersistence.ts), so a prior test's Apply
  * would otherwise leak into the next test via that key.
  */
 
-const STORAGE_KEY = 'cgrid:state:customizer-demo';
+const STORAGE_KEY = 'velocity-grid:state:customizer-demo';
 
 type AnyDef = Record<string, any>;
 
@@ -46,7 +46,7 @@ async function waitForGridReady(page: Page): Promise<void> {
 
 async function openColumnGroupsTab(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Column Groups' }).click();
-  await expect(page.locator('.cg-colgroups-panel')).toBeVisible();
+  await expect(page.locator('.vg-colgroups-panel')).toBeVisible();
 }
 
 /** Real mouse drag honoring the panel's 4px drag-promotion threshold
@@ -87,13 +87,13 @@ test.beforeEach(async ({ page }) => {
 test('Column Groups tab shows the seeded nested tree', async ({ page }) => {
   await openColumnGroupsTab(page);
 
-  await expect(page.locator('[data-cg-node="trade"][data-kind="group"]')).toBeVisible();
-  await expect(page.locator('[data-cg-node="valuation"][data-kind="group"]')).toBeVisible();
-  await expect(page.locator('[data-cg-node="risk"][data-kind="group"]')).toBeVisible();
+  await expect(page.locator('[data-vg-node="trade"][data-kind="group"]')).toBeVisible();
+  await expect(page.locator('[data-vg-node="valuation"][data-kind="group"]')).toBeVisible();
+  await expect(page.locator('[data-vg-node="risk"][data-kind="group"]')).toBeVisible();
 
   // Sanity: the nested group's own children are present under it.
-  await expect(page.locator('[data-cg-node="notionalAmount"]')).toBeVisible();
-  await expect(page.locator('[data-cg-node="marketValue"]')).toBeVisible();
+  await expect(page.locator('[data-vg-node="notionalAmount"]')).toBeVisible();
+  await expect(page.locator('[data-vg-node="marketValue"]')).toBeVisible();
 });
 
 /** Drives the "create a group, move a column into it" journey up through
@@ -102,13 +102,13 @@ test('Column Groups tab shows the seeded nested tree', async ({ page }) => {
 async function createAndPopulateCustomGroup(page: Page): Promise<void> {
   await openColumnGroupsTab(page);
 
-  await page.locator('[data-cg-add-group]').click();
-  const newRow = page.locator('[data-cg-node]').last();
+  await page.locator('[data-vg-add-group]').click();
+  const newRow = page.locator('[data-vg-node]').last();
   await expect(newRow).toHaveAttribute('data-kind', 'group');
-  const customId = await newRow.getAttribute('data-cg-node');
+  const customId = await newRow.getAttribute('data-vg-node');
   expect(customId).toBeTruthy();
 
-  const nameInput = page.locator(`[data-cg-node="${customId}"] input.cg-colgroups-name-group`);
+  const nameInput = page.locator(`[data-vg-node="${customId}"] input.vg-colgroups-name-group`);
   await nameInput.fill('Custom');
   await nameInput.press('Tab'); // blur -> 'change' -> renameGroup(...)
 
@@ -116,11 +116,11 @@ async function createAndPopulateCustomGroup(page: Page): Promise<void> {
   // ungrouped leaf (CUSIP) into the new group.
   await dragOnto(
     page,
-    page.locator('[data-cg-node="cusip"] .cg-colgroups-handle'),
-    page.locator(`[data-cg-node="${customId}"]`),
+    page.locator('[data-vg-node="cusip"] .vg-colgroups-handle'),
+    page.locator(`[data-vg-node="${customId}"]`),
   );
 
-  const applyBtn = page.locator('[data-cg-apply]');
+  const applyBtn = page.locator('[data-vg-apply]');
   await expect(applyBtn).toBeEnabled();
   await applyBtn.click();
 }
@@ -174,11 +174,11 @@ test(
 test('unchecking a leaf visibility checkbox sets hide:true after Apply', async ({ page }) => {
   await openColumnGroupsTab(page);
 
-  const checkbox = page.locator('[data-cg-node="cusip"] input.cg-colgroups-checkbox');
+  const checkbox = page.locator('[data-vg-node="cusip"] input.vg-colgroups-checkbox');
   await expect(checkbox).toBeChecked();
   await checkbox.uncheck();
 
-  const applyBtn = page.locator('[data-cg-apply]');
+  const applyBtn = page.locator('[data-vg-apply]');
   await expect(applyBtn).toBeEnabled();
   await applyBtn.click();
 
@@ -191,12 +191,12 @@ test('unchecking a leaf visibility checkbox sets hide:true after Apply', async (
 test('group header styling: bold + background color apply to headerStyle', async ({ page }) => {
   await openColumnGroupsTab(page);
 
-  await page.locator('[data-cg-node="trade"] [data-cg-select]').click();
-  await expect(page.locator('[data-cg-style][data-for="trade"]')).toBeVisible();
+  await page.locator('[data-vg-node="trade"] [data-vg-select]').click();
+  await expect(page.locator('[data-vg-style][data-for="trade"]')).toBeVisible();
 
-  // Bold — now a segment toggle button carrying data-cg-field directly.
-  await page.locator('[data-cg-field="fontWeight"]').click();
-  await expect(page.locator('[data-cg-field="fontWeight"]')).toHaveAttribute(
+  // Bold — now a segment toggle button carrying data-vg-field directly.
+  await page.locator('[data-vg-field="fontWeight"]').click();
+  await expect(page.locator('[data-vg-field="fontWeight"]')).toHaveAttribute(
     'aria-pressed',
     'true',
   );
@@ -204,13 +204,13 @@ test('group header styling: bold + background color apply to headerStyle', async
   // Background color — a custom swatch + popover (not a native <input
   // type=color>): click the swatch, type a hex into the popover's hex
   // field, then Tab to blur (fires 'change' -> commits).
-  await page.locator('[data-cg-field="bg"] .cg-colorpicker-swatch').click();
-  const hexInput = page.locator('.cg-colorpicker-popover .cg-colorpicker-hex');
+  await page.locator('[data-vg-field="bg"] .vg-colorpicker-swatch').click();
+  const hexInput = page.locator('.vg-colorpicker-popover .vg-colorpicker-hex');
   await expect(hexInput).toBeVisible();
   await hexInput.fill('#ff0000');
   await hexInput.press('Tab');
 
-  const applyBtn = page.locator('[data-cg-apply]');
+  const applyBtn = page.locator('[data-vg-apply]');
   await expect(applyBtn).toBeEnabled();
   await applyBtn.click();
 
@@ -228,12 +228,12 @@ test('group header styling: bold + background color apply to headerStyle', async
 test('group header styling: italic + dashed border apply to headerStyle and persist across reload', async ({ page }) => {
   await openColumnGroupsTab(page);
 
-  await page.locator('[data-cg-node="trade"] [data-cg-select]').click();
-  await expect(page.locator('[data-cg-style][data-for="trade"]')).toBeVisible();
+  await page.locator('[data-vg-node="trade"] [data-vg-select]').click();
+  await expect(page.locator('[data-vg-style][data-for="trade"]')).toBeVisible();
 
-  // Italic — segment toggle button carrying data-cg-field directly.
-  await page.locator('[data-cg-field="fontStyle"]').click();
-  await expect(page.locator('[data-cg-field="fontStyle"]')).toHaveAttribute(
+  // Italic — segment toggle button carrying data-vg-field directly.
+  await page.locator('[data-vg-field="fontStyle"]').click();
+  await expect(page.locator('[data-vg-field="fontStyle"]')).toHaveAttribute(
     'aria-pressed',
     'true',
   );
@@ -241,18 +241,18 @@ test('group header styling: italic + dashed border apply to headerStyle and pers
   // Border editor — the Side selector reads "All" by default, so width/style/
   // colour compose a single border.all object. Width + style (native number/
   // select controls).
-  await page.locator('[data-cg-field="borderWidth"] input').fill('2');
-  await page.locator('[data-cg-field="borderWidth"] input').blur();
-  await page.locator('[data-cg-field="borderStyle"] select').selectOption('dashed');
+  await page.locator('[data-vg-field="borderWidth"] input').fill('2');
+  await page.locator('[data-vg-field="borderWidth"] input').blur();
+  await page.locator('[data-vg-field="borderStyle"] select').selectOption('dashed');
 
   // Border colour — same colour-picker idiom as the Background field above.
-  await page.locator('[data-cg-field="borderColor"] .cg-colorpicker-swatch').click();
-  const borderHex = page.locator('.cg-colorpicker-popover .cg-colorpicker-hex');
+  await page.locator('[data-vg-field="borderColor"] .vg-colorpicker-swatch').click();
+  const borderHex = page.locator('.vg-colorpicker-popover .vg-colorpicker-hex');
   await expect(borderHex).toBeVisible();
   await borderHex.fill('#00ff00');
   await borderHex.press('Tab');
 
-  const applyBtn = page.locator('[data-cg-apply]');
+  const applyBtn = page.locator('[data-vg-apply]');
   await expect(applyBtn).toBeEnabled();
   await applyBtn.click();
 
@@ -289,18 +289,18 @@ test('group header styling: italic + dashed border apply to headerStyle and pers
 test('group header styling: a per-side (top) border applies to headerStyle.border.top and persists', async ({ page }) => {
   await openColumnGroupsTab(page);
 
-  await page.locator('[data-cg-node="trade"] [data-cg-select]').click();
-  await expect(page.locator('[data-cg-style][data-for="trade"]')).toBeVisible();
+  await page.locator('[data-vg-node="trade"] [data-vg-select]').click();
+  await expect(page.locator('[data-vg-style][data-for="trade"]')).toBeVisible();
 
   // Scope the border editor to the top side via the Side selector, then set
   // width + style.
-  await page.locator('[data-cg-border] [data-cg-border-side]').selectOption('top');
-  await expect(page.locator('[data-cg-border] [data-cg-border-side]')).toHaveValue('top');
-  await page.locator('[data-cg-field="borderWidth"] input').fill('3');
-  await page.locator('[data-cg-field="borderWidth"] input').blur();
-  await page.locator('[data-cg-field="borderStyle"] select').selectOption('dotted');
+  await page.locator('[data-vg-border] [data-vg-border-side]').selectOption('top');
+  await expect(page.locator('[data-vg-border] [data-vg-border-side]')).toHaveValue('top');
+  await page.locator('[data-vg-field="borderWidth"] input').fill('3');
+  await page.locator('[data-vg-field="borderWidth"] input').blur();
+  await page.locator('[data-vg-field="borderStyle"] select').selectOption('dotted');
 
-  const applyBtn = page.locator('[data-cg-apply]');
+  const applyBtn = page.locator('[data-vg-apply]');
   await expect(applyBtn).toBeEnabled();
   await applyBtn.click();
 
@@ -332,7 +332,7 @@ test('group header styling: a per-side (top) border applies to headerStyle.borde
 
 // Task 7 — `columnGroupShow` (always/open/closed) authoring. 'pnl' is a
 // direct child of the seeded 'trade' group (see apps/cgrid-customizer-demo/
-// src/main.ts), so it carries the inline `data-cg-groupshow` control. The
+// src/main.ts), so it carries the inline `data-vg-groupshow` control. The
 // kernel already ENFORCES the runtime open/closed semantics
 // (`resolveVisibleLeaves`, unit-covered) — this journey only proves the
 // editor round-trips the authored value through Apply and persistence.
@@ -341,13 +341,13 @@ test('setting a grouped column\'s columnGroupShow to "When collapsed" persists a
 
   // `columnGroupShow` is a 3-state segment (eye = always · ⌄ = when expanded ·
   // › = when collapsed), revealed on ROW HOVER — so hover the row first.
-  const row = page.locator('[data-cg-node="pnl"]');
+  const row = page.locator('[data-vg-node="pnl"]');
   await row.hover();
-  const groupShow = row.locator('[data-cg-groupshow]');
+  const groupShow = row.locator('[data-vg-groupshow]');
   await expect(groupShow).toBeVisible();
   await groupShow.locator('[data-value="closed"]').click();
 
-  const applyBtn = page.locator('[data-cg-apply]');
+  const applyBtn = page.locator('[data-vg-apply]');
   await expect(applyBtn).toBeEnabled();
   await applyBtn.click();
 
@@ -380,8 +380,8 @@ test('setting a grouped column\'s columnGroupShow to "When collapsed" persists a
 // hidden at rest and revealed only on row hover, so idle rows stay uncluttered.
 test('the column-group visibility control is hidden at rest and revealed on row hover', async ({ page }) => {
   await openColumnGroupsTab(page);
-  const row = page.locator('[data-cg-node="pnl"]');
-  const picker = row.locator('.cg-colgroups-vis-picker');
+  const row = page.locator('[data-vg-node="pnl"]');
+  const picker = row.locator('.vg-colgroups-vis-picker');
   // pnl is a grouped column → it has the control, but it is hidden at rest.
   await expect(picker).toHaveCount(1);
   await expect(picker).toBeHidden();
@@ -396,28 +396,28 @@ test('the column-group visibility control is hidden at rest and revealed on row 
 test('clicking a group\'s gear opens a floating Style editor (Close-only, no dock) and closing it deselects the group', async ({ page }) => {
   await openColumnGroupsTab(page);
 
-  const groupRow = page.locator('[data-cg-node="trade"][data-kind="group"]');
+  const groupRow = page.locator('[data-vg-node="trade"][data-kind="group"]');
   await groupRow.hover();
-  await groupRow.locator('[data-cg-select]').click();
+  await groupRow.locator('[data-vg-select]').click();
 
-  const float = page.locator('.cg-floating-panel');
+  const float = page.locator('.vg-floating-panel');
   await expect(float).toBeVisible();
-  await expect(page.locator('.cg-floating-panel-title')).toHaveText('Style — Trade');
+  await expect(page.locator('.vg-floating-panel-title')).toHaveText('Style — Trade');
   // Style controls are present (fill/text swatches).
-  await expect(float.locator('[data-cg-field="bg"]')).toBeVisible();
-  await expect(float.locator('[data-cg-field="fg"]')).toBeVisible();
+  await expect(float.locator('[data-vg-field="bg"]')).toBeVisible();
+  await expect(float.locator('[data-vg-field="fg"]')).toBeVisible();
   // Close-only — nowhere to dock back to.
-  await expect(float.locator('.cg-floating-panel-dock')).toHaveCount(0);
-  await expect(float.locator('.cg-floating-panel-close')).toBeVisible();
+  await expect(float.locator('.vg-floating-panel-dock')).toHaveCount(0);
+  await expect(float.locator('.vg-floating-panel-close')).toBeVisible();
   // The gear reflects the selection.
-  await expect(groupRow.locator('[data-cg-select]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(groupRow.locator('[data-vg-select]')).toHaveAttribute('aria-pressed', 'true');
   await expect(groupRow).toHaveAttribute('data-selected', '');
 
   // Close — the float disappears and the group is deselected.
-  await float.locator('.cg-floating-panel-close').click();
-  await expect(page.locator('.cg-floating-panel')).toHaveCount(0);
+  await float.locator('.vg-floating-panel-close').click();
+  await expect(page.locator('.vg-floating-panel')).toHaveCount(0);
   await expect(groupRow).not.toHaveAttribute('data-selected', '');
-  await expect(groupRow.locator('[data-cg-select]')).toHaveAttribute('aria-pressed', 'false');
+  await expect(groupRow.locator('[data-vg-select]')).toHaveAttribute('aria-pressed', 'false');
 });
 
 // Clicking the gear on a DIFFERENT group while one is already floating
@@ -425,17 +425,17 @@ test('clicking a group\'s gear opens a floating Style editor (Close-only, no doc
 test('selecting a different group\'s gear retargets the Style float to the new group', async ({ page }) => {
   await openColumnGroupsTab(page);
 
-  const tradeRow = page.locator('[data-cg-node="trade"][data-kind="group"]');
-  const riskRow = page.locator('[data-cg-node="risk"][data-kind="group"]');
+  const tradeRow = page.locator('[data-vg-node="trade"][data-kind="group"]');
+  const riskRow = page.locator('[data-vg-node="risk"][data-kind="group"]');
 
   await tradeRow.hover();
-  await tradeRow.locator('[data-cg-select]').click();
-  await expect(page.locator('.cg-floating-panel-title')).toHaveText('Style — Trade');
+  await tradeRow.locator('[data-vg-select]').click();
+  await expect(page.locator('.vg-floating-panel-title')).toHaveText('Style — Trade');
 
   await riskRow.hover();
-  await riskRow.locator('[data-cg-select]').click();
-  await expect(page.locator('.cg-floating-panel')).toHaveCount(1);
-  await expect(page.locator('.cg-floating-panel-title')).toHaveText('Style — Risk');
+  await riskRow.locator('[data-vg-select]').click();
+  await expect(page.locator('.vg-floating-panel')).toHaveCount(1);
+  await expect(page.locator('.vg-floating-panel-title')).toHaveText('Style — Risk');
   await expect(tradeRow).not.toHaveAttribute('data-selected', '');
   await expect(riskRow).toHaveAttribute('data-selected', '');
 });
@@ -490,11 +490,11 @@ test('drag an ungrouped column onto a group row to nest it', async ({ page }) =>
 
   await dragOnto(
     page,
-    page.locator('[data-cg-node="cusip"] .cg-colgroups-handle'),
-    page.locator('[data-cg-node="risk"]'),
+    page.locator('[data-vg-node="cusip"] .vg-colgroups-handle'),
+    page.locator('[data-vg-node="risk"]'),
   );
 
-  const applyBtn = page.locator('[data-cg-apply]');
+  const applyBtn = page.locator('[data-vg-apply]');
   await expect(applyBtn).toBeEnabled();
   await applyBtn.click();
 
@@ -513,7 +513,7 @@ test('drag an ungrouped column onto a group row to nest it', async ({ page }) =>
 // column out of the rendered viewport, and reopening brings it back.
 // `getHeaderBoundsAt(colId)` is the real runtime-visibility signal here —
 // it returns non-null bounds only while the column is in the current
-// column order (see `CGridApi.getHeaderBoundsAt`'s doc comment).
+// column order (see `VelocityGridApi.getHeaderBoundsAt`'s doc comment).
 test('collapsing "Valuation" hides its columnGroupShow:"open" column; reopening restores it', async ({ page }) => {
   await waitForGridReady(page);
 

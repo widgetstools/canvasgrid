@@ -1,8 +1,8 @@
 /**
- * cgrid-ext demo — live-STOMP testbed for `@cgrid/ext`.
+ * cgrid-ext demo — live-STOMP testbed for `@wellsfargo-starui/velocity-grid-ext`.
  *
  * ZERO feature code lives here: this app is a plain consumer that
- * instantiates CGridExt (the batteries-included kernel + extension shell)
+ * instantiates VelocityGridExt (the batteries-included kernel + extension shell)
  * with cgrid's existing tooling enabled — the StarUI theme, the `sideBar`
  * tool panels (Columns / Filters), Options + Column Groups in the ext
  * settings sheet (toolbar ⋯), the
@@ -10,16 +10,16 @@
  * pipes in the stomp-view-server feed (ws://localhost:8081, run it from
  * /Users/develop/wfh/starui/apps/stomp-view-server). The shell mounts even
  * if the feed never connects; STOMP errors only affect data. Anything not
- * doable through the public @cgrid/ext / @cgrid/kernel API is a gap to fix
+ * doable through the public @wellsfargo-starui/velocity-grid-ext / @wellsfargo-starui/velocity-grid API is a gap to fix
  * upstream, never worked around here.
  */
-import { CGridExt, titleBarExtensions, ribbonExtensions } from '@cgrid/ext';
-import { formatPrice32, type CColDef, type CColGroupDef } from '@cgrid/kernel';
-import '@cgrid/kernel/style.css';
-import { wireIntoKernel as wireFormat } from '@cgrid/format';
-import { wireEditIntoKernel } from '@cgrid/edit';
-import { wireIntoKernel as wireCalc } from '@cgrid/calc';
-import { wireIntoKernel as wireRules } from '@cgrid/rules';
+import { VelocityGridExt, titleBarExtensions, ribbonExtensions } from '@wellsfargo-starui/velocity-grid-ext';
+import { formatPrice32, type CColDef, type CColGroupDef } from '@wellsfargo-starui/velocity-grid';
+import '@wellsfargo-starui/velocity-grid/style.css';
+import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid-format';
+import { wireEditIntoKernel } from '@wellsfargo-starui/velocity-grid-edit';
+import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid-calc';
+import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid-rules';
 import { connectStomp, STOMP_SNAPSHOT_ROWS, type Position, type StompRow } from './stomp';
 import {
   buildColumnDefsFromRows,
@@ -30,7 +30,7 @@ import {
 // ─── Pixel-invariance test harness ──────────────────────────────────────
 // `?paintHarness` swaps the live STOMP feed for a fixed, deterministic
 // 200-row dataset and exposes `window.__paintHarness` so an E2E spec can
-// hash the live `.cg-canvas` pixels and diff a `suppressPartialRepaint:
+// hash the live `.vg-canvas` pixels and diff a `suppressPartialRepaint:
 // true` run against the default damage-region run. Never default-on:
 // `getImageData` on the live canvas can force it off the GPU compositing
 // path for the page's whole lifetime (see `snapshot()` below), so this
@@ -53,7 +53,7 @@ const NO_FLASH = harnessParams.has('noFlash');
 // without, must produce byte-identical pixels for the same step script.
 const NO_CACHE = harnessParams.has('noCache');
 // Low-end / no-GPU profile — `&quality=performance` forces paintCache off
-// via CGridOptions.qualityMode (same effective path as `&noCache`, but
+// via VelocityGridOptions.qualityMode (same effective path as `&noCache`, but
 // exercises the qualityMode resolver apps should use in product).
 const QUALITY_PERF = harnessParams.get('quality') === 'performance';
 // Cycle 22 (raster cache) — `&noRaster` boots with `rasterCache: false`,
@@ -150,7 +150,7 @@ const cat = (headerName: string, field: keyof Position): CColDef<Position> => ({
 const signStyle = (p: { value: unknown }) => {
   const n = Number(p.value);
   return Number.isFinite(n) && n !== 0
-    ? { fg: n > 0 ? 'var(--cg-pos-color)' : 'var(--cg-neg-color)' }
+    ? { fg: n > 0 ? 'var(--vg-pos-color)' : 'var(--vg-neg-color)' }
     : {};
 };
 
@@ -184,14 +184,14 @@ const columnDefs: (CColDef<Position> | CColGroupDef<Position>)[] = [
           if (!Number.isFinite(n) || n === 0) return {};
           if (n > 0) {
             return {
-              fg: 'var(--cg-pos-color)', fontWeight: 700,
-              decorators: [{ position: 'tr', kind: 'emoji', value: '▲', color: 'var(--cg-pos-color)', size: 9 }],
+              fg: 'var(--vg-pos-color)', fontWeight: 700,
+              decorators: [{ position: 'tr', kind: 'emoji', value: '▲', color: 'var(--vg-pos-color)', size: 9 }],
             };
           }
           return {
-            fg: 'var(--cg-neg-color)', fontWeight: 700,
-            border: { left: { width: 3, style: 'solid', color: 'var(--cg-neg-color)' } },
-            decorators: [{ position: 'tr', kind: 'emoji', value: '▼', color: 'var(--cg-neg-color)', size: 9 }],
+            fg: 'var(--vg-neg-color)', fontWeight: 700,
+            border: { left: { width: 3, style: 'solid', color: 'var(--vg-neg-color)' } },
+            decorators: [{ position: 'tr', kind: 'emoji', value: '▼', color: 'var(--vg-neg-color)', size: 9 }],
           };
         },
       }),
@@ -210,7 +210,7 @@ const columnDefs: (CColDef<Position> | CColGroupDef<Position>)[] = [
       num('DV01', 'dv01', { aggFunc: 'sum' }),
       num('PV01', 'pv01', { aggFunc: 'sum' }),
       num('Yield', 'yield', { valueFormatter: '0.000' }),
-      num('Spread', 'spread', { cellStyle: { fg: 'var(--cg-info-color)' } }),
+      num('Spread', 'spread', { cellStyle: { fg: 'var(--vg-info-color)' } }),
     ],
   },
 ];
@@ -229,12 +229,12 @@ const PLACEHOLDER_COLS: CColDef<FlatRow>[] = [
   { colId: 'positionId', field: 'positionId', headerName: 'Position', pinned: 'left', width: 140 },
 ];
 
-const ext = new CGridExt<FlatRow>(app, {
+const ext = new VelocityGridExt<FlatRow>(app, {
   gridId: 'ext-demo',
   persistState: true,
   getRowId: (r) => String(r.positionId),
   columnDefs: PAINT_HARNESS ? (columnDefs as CColDef<FlatRow>[]) : PLACEHOLDER_COLS,
-  theme: 'cg-theme-cursor-dark',
+  theme: 'vg-theme-cursor-dark',
   floatingFilterHeight: 34,
   floatingFilterInsetY: 8,
   // Wide blotters (hundreds of cols): FIXED widths + column virtualisation.
@@ -327,7 +327,7 @@ editHandle = wireEditIntoKernel(ext.grid);
 wireCalc(ext.grid);
 wireRules(ext.grid);
 
-// Engines register state modules after CGridExt's ctor bootstrap — re-apply
+// Engines register state modules after VelocityGridExt's ctor bootstrap — re-apply
 // so editSettings / calc / rules slices from the saved profile actually land.
 void ext.reapplyActiveProfile();
 
@@ -360,7 +360,7 @@ if (PAINT_HARNESS) {
   // exact "grouped + sticky + live tick" configuration C4 targets. A
   // colDef-level `rowGroup: true` does NOT auto-activate grouping at
   // construction (`GroupingCoordinator` is always seeded with an empty
-  // `rowGroupCols` — see cgrid.ts's ctor comment), so this goes through
+  // `rowGroupCols` — see velocityGrid.ts's ctor comment), so this goes through
   // the real runtime API instead, same as a user dragging the column into
   // the row-group panel would.
   if (GROUPED) {
@@ -370,7 +370,7 @@ if (PAINT_HARNESS) {
   (window as unknown as { __paintHarness: unknown }).__paintHarness = {
     rows,
     snapshot(): string {
-      const c = document.querySelector('.cg-canvas') as HTMLCanvasElement;
+      const c = document.querySelector('.vg-canvas') as HTMLCanvasElement;
       const ctx = c.getContext('2d')!;
       const d = ctx.getImageData(0, 0, c.width, c.height).data;
       let h = 0; // FNV-1a over every 16th byte — fast, deterministic
@@ -434,7 +434,7 @@ if (PAINT_HARNESS) {
      *  setting) — generous enough to always exclude the artifact while
      *  still byte-comparing ~93%+ of the canvas exactly. */
     snapshotSansEdgeRow(marginRows = 1): string {
-      const c = document.querySelector('.cg-canvas') as HTMLCanvasElement;
+      const c = document.querySelector('.vg-canvas') as HTMLCanvasElement;
       const ctx = c.getContext('2d')!;
       const g = ext.grid;
       // Rows 0/1 aren't always resolvable here — several of the NEW Task 5
@@ -468,7 +468,7 @@ if (PAINT_HARNESS) {
      *  stale/shifted row is a wholesale content difference across most of
      *  the band. */
     edgeRowSample(marginRows = 1): number[] {
-      const c = document.querySelector('.cg-canvas') as HTMLCanvasElement;
+      const c = document.querySelector('.vg-canvas') as HTMLCanvasElement;
       const ctx = c.getContext('2d')!;
       const g = ext.grid;
       let rowH = 32;

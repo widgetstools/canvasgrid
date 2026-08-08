@@ -1,4 +1,4 @@
-# `@cgrid/format`
+# `@wellsfargo-starui/velocity-grid-format`
 
 Unified formatting DSL for the cgrid monorepo. Three tiers, one parser,
 one docs page.
@@ -9,18 +9,18 @@ one docs page.
 
 **Status:** Cycle 21c — all three tiers shipped. `rule:<ruleId>` inside
 style expressions is an honest structural reserve — parses, resolves to
-`null` until `@cgrid/rules` (Cycle 21e) plugs the resolver in. Full spec:
+`null` until `@wellsfargo-starui/velocity-grid-rules` (Cycle 21e) plugs the resolver in. Full spec:
 `docs/superpowers/specs/2026-07-01-cycle-21c-format-design.md`.
 
 ## Quickstart
 
 ```ts
-import { CGrid } from '@cgrid/kernel';
-import { wireIntoKernel } from '@cgrid/format';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
+import { wireIntoKernel } from '@wellsfargo-starui/velocity-grid-format';
 
 // The compiler must be registered BEFORE columns with DSL strings
 // resolve — construct, wire, then land the defs.
-const grid = new CGrid(host, { columnDefs: [], /* ... */ });
+const grid = new VelocityGrid(host, { columnDefs: [], /* ... */ });
 wireIntoKernel(grid);  // idempotent — call once per grid instance
 
 grid.updateGridOptions({ columnDefs: [
@@ -75,7 +75,7 @@ reads `row.change`. A complete Tier 1 formatter:
 {icon:trending-up|[change] > 0 ? "trending-up" : "trending-down"} $#,##0.00
 ```
 
-**Sugar canonicalization** applied to bracket interiors before handoff to `@cgrid/expression`:
+**Sugar canonicalization** applied to bracket interiors before handoff to `@wellsfargo-starui/velocity-grid-expression`:
 
 - `if X then Y else Z` → `(X) ? (Y) : (Z)` (recursive)
 - Bare hex `#0a7`/`#00aa77`/`#00aa77ff` → string literal `"#..."`
@@ -148,7 +148,7 @@ export type {
 - `excel-section-count` — too many ;-separated sections (>4)
 - `tier1-parse` — Tier 1 bracket syntax error
 - `expression-parse` — `expression.parse` failed inside a bracket
-- `expression-compile` — `expression.compile` rejected the interior (e.g. aggregate function `SUM([price])` — ships in Cycle 21d via `@cgrid/calc`)
+- `expression-compile` — `expression.compile` rejected the interior (e.g. aggregate function `SUM([price])` — ships in Cycle 21d via `@wellsfargo-starui/velocity-grid-calc`)
 - `unknown-token` — unrecognized `{...}` token
 - `not-yet-implemented` — reserved for future extension
 
@@ -158,7 +158,7 @@ use these for error underlines.
 
 ## What's not in this cycle
 
-- `rule:<ruleId>` resolves to `null` — ships in Cycle 21e (`@cgrid/rules`).
-- Aggregate expressions inside brackets — reject with `not-yet-implemented`; ships in Cycle 21d (`@cgrid/calc`).
+- `rule:<ruleId>` resolves to `null` — ships in Cycle 21e (`@wellsfargo-starui/velocity-grid-rules`).
+- Aggregate expressions inside brackets — reject with `not-yet-implemented`; ships in Cycle 21d (`@wellsfargo-starui/velocity-grid-calc`).
 - Customizer editor UX (autocomplete / live preview) — Cycle 21i.
 - Format performance benchmarks at 60Hz × 50k rows — deferred to Cycle 20 (excel-pivot) exercise.

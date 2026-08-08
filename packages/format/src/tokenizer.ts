@@ -1,4 +1,4 @@
-import type { Loc } from '@cgrid/expression';
+import type { Loc } from '@wellsfargo-starui/velocity-grid-expression';
 import { lookupNamedColor } from './excel/namedColors';
 
 export type Token =

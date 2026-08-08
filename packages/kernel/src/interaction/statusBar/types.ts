@@ -16,7 +16,7 @@
  */
 
 /** Params handed to every `IStatusPanelComp.init`. `api` is typed `unknown`
- *  here to avoid a circular dep with `CGridApi`; panels cast to `CGridApi`
+ *  here to avoid a circular dep with `VelocityGridApi`; panels cast to `VelocityGridApi`
  *  inside their own implementation. `statusPanelParams` carries the
  *  app-supplied `StatusPanelDef.statusPanelParams` verbatim. */
 export interface StatusPanelParams<TGrid = unknown> {
@@ -46,7 +46,7 @@ export type IStatusPanel = IStatusPanelComp;
 
 /** Zero-arg constructor — the host calls `new Ctor()` then `init(params)`.
  *  Matches the ToolPanelComponent shape so panels register through the same
- *  `CGridOptions.components` channel. */
+ *  `VelocityGridOptions.components` channel. */
 export type StatusPanelComponent = new () => IStatusPanelComp;
 
 /** Where to mount a status panel inside the bar. Defaults to `'right'` when
@@ -70,7 +70,7 @@ export interface StatusPanelDef {
    *  `'agTotalRowCountComponent'`, `'agFilteredRowCountComponent'`,
    *  `'agSelectedRowCountComponent'`,
    *  `'agTotalAndFilteredRowCountComponent'`, `'agAggregationComponent'`
-   *  (Tasks 2 + 3). Custom panels resolve via `CGridOptions.components`. */
+   *  (Tasks 2 + 3). Custom panels resolve via `VelocityGridOptions.components`. */
   statusPanel: string;
   /** Which zone this panel mounts into. Default `'right'`. */
   align?: StatusPanelAlign;
@@ -78,7 +78,7 @@ export interface StatusPanelDef {
   statusPanelParams?: Record<string, unknown>;
 }
 
-/** Status bar configuration. Apps pass this via `CGridOptions.statusBar`. */
+/** Status bar configuration. Apps pass this via `VelocityGridOptions.statusBar`. */
 export interface StatusBarDef {
   /** Panel definitions in declaration order. Multiple panels in the same
    *  zone stack horizontally in this order. */

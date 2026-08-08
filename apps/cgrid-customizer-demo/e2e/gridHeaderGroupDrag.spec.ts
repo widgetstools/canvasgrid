@@ -18,7 +18,7 @@ import { test, expect, type Page } from '@playwright/test';
  *     in the canvas's own coordinate space.
  *   - `getDefaultHeaderHeight()` — the height of ONE header row. Every
  *     group-header row (including the leaf row) uses this same height
- *     (`packages/kernel/src/cgrid.ts` `rebuildSubgridStack` /
+ *     (`packages/kernel/src/velocityGrid.ts` `rebuildSubgridStack` /
  *     `effectiveLeafHeaderHeight`), so the TOP-MOST group row (depth 0)
  *     always spans canvas-local y in `[0, groupRowHeight)` regardless of
  *     how deep any group nests elsewhere in the header — the seeded
@@ -37,7 +37,7 @@ import { test, expect, type Page } from '@playwright/test';
  * `risk` (children: dv01, pv01, yield, spread) — `risk` has no sub-groups.
  */
 
-const STORAGE_KEY = 'cgrid:state:customizer-demo';
+const STORAGE_KEY = 'velocity-grid:state:customizer-demo';
 
 type AnyDef = Record<string, any>;
 
@@ -86,7 +86,7 @@ interface HeaderMeasurements {
 async function measureHeader(page: Page, colIds: string[]): Promise<HeaderMeasurements> {
   return page.evaluate((ids) => {
     const api = (window as unknown as { __cgapi: any }).__cgapi;
-    const canvas = document.querySelector('.cg-grid canvas') as HTMLCanvasElement;
+    const canvas = document.querySelector('.vg-grid canvas') as HTMLCanvasElement;
     const rect = canvas.getBoundingClientRect();
     const bounds: Record<string, { x: number; y: number; w: number; h: number } | null> = {};
     for (const id of ids) bounds[id] = api.getHeaderBoundsAt(id);

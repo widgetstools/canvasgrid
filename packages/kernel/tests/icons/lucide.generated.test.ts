@@ -17,7 +17,7 @@ function subpathsOf(d: string): string[] {
 }
 
 /** Resolve lucide-static/icons the same way build-lucide.ts does — the
- *  package is a devDependency of @cgrid/kernel, so it's present whenever
+ *  package is a devDependency of @wellsfargo-starui/velocity-grid, so it's present whenever
  *  this test suite runs. */
 function findLucideIconsDir(): string {
   const candidates = [

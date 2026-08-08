@@ -1,4 +1,4 @@
-# `@cgrid/rules`
+# `@wellsfargo-starui/velocity-grid-rules`
 
 Rule engine for the cgrid monorepo — conditional styling, indicator
 badges, flash-on-change, live match counts, and the alerts core.
@@ -13,19 +13,19 @@ badges, flash-on-change, live match counts, and the alerts core.
   + global token bucket, bounded history with unread count.
 
 **Status:** Cycle 21e — everything above shipped, including the kernel
-bridge and the `rule:<ruleId>` resolver that `@cgrid/format` reserved
+bridge and the `rule:<ruleId>` resolver that `@wellsfargo-starui/velocity-grid-format` reserved
 in Cycle 21c. Aggregate / `PREV()` rule conditions stay reserved
-(`not-yet-implemented`) until `@cgrid/calc` (Cycle 21d). Full spec:
+(`not-yet-implemented`) until `@wellsfargo-starui/velocity-grid-calc` (Cycle 21d). Full spec:
 `docs/superpowers/specs/2026-07-01-cycle-21e-rules-design.md`.
 
 ## Quickstart
 
 ```ts
-import { CGrid } from '@cgrid/kernel';
-import { wireIntoKernel as wireFormat } from '@cgrid/format';
-import { wireIntoKernel as wireRules } from '@cgrid/rules';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
+import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid-format';
+import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid-rules';
 
-const grid = new CGrid(host, { /* ... */ });
+const grid = new VelocityGrid(host, { /* ... */ });
 wireFormat(grid);   // optional — needed for per-rule valueFormatter
                     // strings and rule:<id> composite fragments
 const { rules, alerts } = wireRules(grid, {
@@ -96,7 +96,7 @@ exactly one column). Both are the repo's mandated vocabulary — no
 
 ## Condition language
 
-Conditions are `@cgrid/expression` predicates. There is **no infix
+Conditions are `@wellsfargo-starui/velocity-grid-expression` predicates. There is **no infix
 `AND`/`OR`** — boolean combination is the infix operators `&&` / `||`
 (call-style `AND(...)`/`OR(...)` also exist as builtins). Equality is
 `==`, not `=`. `[price.old]` / `[price.new]` are diff-aware:
@@ -111,7 +111,7 @@ value. Quiescent cells read `[col.old]` as `null`, so the canonical
 
 Truthiness is **strict boolean** — a rule matches only when the
 compiled condition evaluates `=== true`. `SUM(...)` / `PREV(...)`
-inside a condition surfaces `@cgrid/expression`'s `not-yet-implemented`
+inside a condition surfaces `@wellsfargo-starui/velocity-grid-expression`'s `not-yet-implemented`
 error (→ Cycle 21d).
 
 ## Precedence
@@ -186,8 +186,8 @@ that cell and `evalErrorCount(ruleId)` increments.
 
 ## What's not in this cycle
 
-- Aggregate / `PREV()` rule conditions — Cycle 21d (`@cgrid/calc`).
-- Rule/alert editor panels — Cycle 21i (`@cgrid/customizer`).
-- Plus/minus nudge rules — keyboard-edit cycle (`@cgrid/edit`).
+- Aggregate / `PREV()` rule conditions — Cycle 21d (`@wellsfargo-starui/velocity-grid-calc`).
+- Rule/alert editor panels — Cycle 21i (`@wellsfargo-starui/velocity-grid-customizer`).
+- Plus/minus nudge rules — keyboard-edit cycle (`@wellsfargo-starui/velocity-grid-edit`).
 - Worker-side rule evaluation / typed-array style channel — Cycle 20.
-- Excel export of resolved rule styles — Cycle 21h (`@cgrid/export`).
+- Excel export of resolved rule styles — Cycle 21h (`@wellsfargo-starui/velocity-grid-export`).

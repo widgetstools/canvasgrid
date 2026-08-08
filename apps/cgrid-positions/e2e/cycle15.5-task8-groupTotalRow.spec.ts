@@ -50,7 +50,7 @@ async function mountAndSeed(page: Page, urlSuffix: string): Promise<void> {
 
   // 5 AAPL + 5 MSFT rows
   await page.evaluate(() => {
-    const g = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+    const g = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
     const rows: Array<Record<string, unknown>> = [];
     const TICKERS = ['AAPL', 'MSFT'];
     for (let i = 0; i < 10; i++) {
@@ -78,7 +78,7 @@ test.describe('Cycle 15.5 / Task 8 — groupTotalRow + grandTotalRow', () => {
   test('groupTotalRow=bottom: 2 groups + 10 leaves + 2 group footers = 14', async ({ page }) => {
     await mountAndSeed(page, '&groupTotalRow=bottom&totals=off');
     const count = await page.evaluate(() => {
-      return (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getDisplayedRowCount();
+      return (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getDisplayedRowCount();
     });
     // 2 group rows + 10 leaf rows + 2 per-group footer rows
     expect(count).toBe(14);
@@ -87,7 +87,7 @@ test.describe('Cycle 15.5 / Task 8 — groupTotalRow + grandTotalRow', () => {
   test('groupTotalRow=bottom + grandTotalRow=bottom: 2 + 10 + 2 + 1 = 15', async ({ page }) => {
     await mountAndSeed(page, '&groupTotalRow=bottom&grandTotalRow=bottom&totals=off');
     const count = await page.evaluate(() => {
-      return (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getDisplayedRowCount();
+      return (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getDisplayedRowCount();
     });
     // 2 group rows + 10 leaf rows + 2 per-group footers + 1 grand-total footer
     expect(count).toBe(15);

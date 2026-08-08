@@ -1,9 +1,9 @@
 /**
- * Shared plain-DOM toolbar primitives for CGridExt chrome: inline Lucide-path
+ * Shared plain-DOM toolbar primitives for VelocityGridExt chrome: inline Lucide-path
  * SVG, the 30px icon button, and the click-away anchored popup. Extracted from
  * titleBar.ts so sibling toolbar modules (layoutsMenu) reuse them without an
- * import cycle. Styling comes from the title-bar stylesheet (`.cgext-iconbtn`,
- * `.cgext-menu*`) — callers must have called `injectTitleBarStyles()`.
+ * import cycle. Styling comes from the title-bar stylesheet (`.vgext-iconbtn`,
+ * `.vgext-menu*`) — callers must have called `injectTitleBarStyles()`.
  */
 
 export function svg(path: string, size = 16): string {
@@ -13,23 +13,23 @@ export function svg(path: string, size = 16): string {
 export function iconButton(icon: string, label: string): HTMLButtonElement {
   const b = document.createElement('button');
   b.type = 'button';
-  b.className = 'cgext-iconbtn';
+  b.className = 'vgext-iconbtn';
   b.title = label;
   b.setAttribute('aria-label', label);
   b.innerHTML = svg(icon);
   return b;
 }
 
-/** Mirror the anchor's active `.cg-theme-*` class onto a body-mounted
+/** Mirror the anchor's active `.vg-theme-*` class onto a body-mounted
  *  element. Popups mount OUTSIDE the shell root that carries the theme
- *  class, so without this every `--cg-*` token falls back to the
+ *  class, so without this every `--vg-*` token falls back to the
  *  neutral-dark defaults and popups render dark on light themes. Clears
  *  any previously-mirrored theme class first (the theme can be toggled
  *  between opens). */
 export function mirrorThemeClass(anchor: HTMLElement, el: HTMLElement): void {
-  for (const c of Array.from(el.classList)) if (c.startsWith('cg-theme-')) el.classList.remove(c);
-  const root = anchor.closest<HTMLElement>('.cgext-root');
-  const themeClass = root && Array.from(root.classList).find((c) => c.startsWith('cg-theme-'));
+  for (const c of Array.from(el.classList)) if (c.startsWith('vg-theme-')) el.classList.remove(c);
+  const root = anchor.closest<HTMLElement>('.vgext-root');
+  const themeClass = root && Array.from(root.classList).find((c) => c.startsWith('vg-theme-'));
   if (themeClass) el.classList.add(themeClass);
 }
 
@@ -62,7 +62,7 @@ export function menu(
   };
   const open = () => {
     panel = build(close);
-    panel.classList.add('cgext-menu');
+    panel.classList.add('vgext-menu');
     mirrorThemeClass(anchor, panel);
     document.body.appendChild(panel);
 
@@ -103,8 +103,8 @@ export function menu(
     }
     top = Math.max(bounds.top, Math.min(top, Math.max(bounds.top, bounds.bottom - Math.min(h, bounds.bottom - bounds.top))));
 
-    panel.style.setProperty('--cgext-menu-top', `${top}px`);
-    panel.style.setProperty('--cgext-menu-left', `${left}px`);
+    panel.style.setProperty('--vgext-menu-top', `${top}px`);
+    panel.style.setProperty('--vgext-menu-left', `${left}px`);
     document.addEventListener('pointerdown', onDoc, true);
     onOpenChange?.(true);
   };

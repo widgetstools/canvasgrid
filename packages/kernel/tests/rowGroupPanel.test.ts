@@ -100,15 +100,15 @@ describe('RowGroupPanelHost', () => {
     root.parentElement?.removeChild(root);
   });
 
-  it('mounts a .cg-row-group-panel inside root with chips for each rowGroupCols entry', () => {
+  it('mounts a .vg-row-group-panel inside root with chips for each rowGroupCols entry', () => {
     // Regression: the constructor must add the panel DOM and one chip
     // per `rowGroupCols[i]`. The chip order must match the array
     // order — that order IS the nesting order the user sees.
     const ctx = makeContext();
     const host = new RowGroupPanelHost(root, ctx, 'always', ['desk', 'region', 'ticker']);
-    const panel = root.querySelector('.cg-row-group-panel') as HTMLElement | null;
+    const panel = root.querySelector('.vg-row-group-panel') as HTMLElement | null;
     expect(panel).not.toBeNull();
-    const chips = panel!.querySelectorAll('.cg-row-group-panel-chip');
+    const chips = panel!.querySelectorAll('.vg-row-group-panel-chip');
     expect(chips).toHaveLength(3);
     expect((chips[0] as HTMLElement).dataset.colId).toBe('desk');
     expect((chips[1] as HTMLElement).dataset.colId).toBe('region');
@@ -149,7 +149,7 @@ describe('RowGroupPanelHost', () => {
     const host = new RowGroupPanelHost(root, ctx, 'onlyWhenGrouping', []);
     host.setRowGroupCols(['ticker']);
     expect(host.isVisible()).toBe(true);
-    const chip = root.querySelector('.cg-row-group-panel-chip') as HTMLElement | null;
+    const chip = root.querySelector('.vg-row-group-panel-chip') as HTMLElement | null;
     expect(chip).not.toBeNull();
     expect(chip!.dataset.colId).toBe('ticker');
     host.destroy();
@@ -162,7 +162,7 @@ describe('RowGroupPanelHost', () => {
     const host = new RowGroupPanelHost(root, ctx, 'onlyWhenGrouping', ['ticker']);
     host.setRowGroupCols([]);
     expect(host.isVisible()).toBe(false);
-    const panel = root.querySelector('.cg-row-group-panel') as HTMLElement;
+    const panel = root.querySelector('.vg-row-group-panel') as HTMLElement;
     expect(panel.style.display).toBe('none');
     const lastCall = ctx.reserveCalls[ctx.reserveCalls.length - 1];
     expect(lastCall.height).toBe(0);
@@ -176,7 +176,7 @@ describe('RowGroupPanelHost', () => {
     const ctx = makeContext();
     const host = new RowGroupPanelHost(root, ctx, 'always', []);
     expect(host.isVisible()).toBe(true);
-    const empty = root.querySelector('.cg-row-group-panel-empty') as HTMLElement | null;
+    const empty = root.querySelector('.vg-row-group-panel-empty') as HTMLElement | null;
     expect(empty).not.toBeNull();
     expect(empty!.textContent).toBe('Drag here to set row groups');
     host.destroy();
@@ -185,8 +185,8 @@ describe('RowGroupPanelHost', () => {
   it('renders AG-parity group icon on the left and hide ✕ on the right', () => {
     const ctx = makeContext();
     const host = new RowGroupPanelHost(root, ctx, 'always', []);
-    const icon = root.querySelector('.cg-row-group-panel-icon svg');
-    const close = root.querySelector('.cg-row-group-panel-close') as HTMLButtonElement | null;
+    const icon = root.querySelector('.vg-row-group-panel-icon svg');
+    const close = root.querySelector('.vg-row-group-panel-close') as HTMLButtonElement | null;
     expect(icon).not.toBeNull();
     expect(close).not.toBeNull();
     expect(close!.getAttribute('aria-label')).toBe('Hide row group panel');
@@ -199,8 +199,8 @@ describe('RowGroupPanelHost', () => {
     const ctx = makeContext();
     delete (ctx as { hidePanel?: () => void }).hidePanel;
     const host = new RowGroupPanelHost(root, ctx, 'always', ['ticker']);
-    expect(root.querySelector('.cg-row-group-panel-icon')).not.toBeNull();
-    expect(root.querySelector('.cg-row-group-panel-close')).toBeNull();
+    expect(root.querySelector('.vg-row-group-panel-icon')).not.toBeNull();
+    expect(root.querySelector('.vg-row-group-panel-close')).toBeNull();
     host.destroy();
   });
 
@@ -210,9 +210,9 @@ describe('RowGroupPanelHost', () => {
     // groupModel.
     const ctx = makeContext();
     const host = new RowGroupPanelHost(root, ctx, 'always', ['desk', 'region']);
-    const chips = root.querySelectorAll('.cg-row-group-panel-chip');
+    const chips = root.querySelectorAll('.vg-row-group-panel-chip');
     const removeBtn = (chips[0] as HTMLElement).querySelector(
-      '.cg-row-group-panel-chip-remove',
+      '.vg-row-group-panel-chip-remove',
     ) as HTMLButtonElement;
     removeBtn.click();
     expect(ctx.removeCalls).toEqual(['desk']);
@@ -274,7 +274,7 @@ describe('RowGroupPanelHost', () => {
     const ctx = makeContext();
     const host = new RowGroupPanelHost(root, ctx, 'always', ['desk']);
     host.setRowGroupCols(['ticker', 'region', 'desk']);
-    const chips = root.querySelectorAll('.cg-row-group-panel-chip');
+    const chips = root.querySelectorAll('.vg-row-group-panel-chip');
     const ids = Array.from(chips).map((c) => (c as HTMLElement).dataset.colId);
     expect(ids).toEqual(['ticker', 'region', 'desk']);
     host.destroy();
@@ -288,7 +288,7 @@ describe('RowGroupPanelHost', () => {
     ctx.headerNames.delete('ticker'); // force fallback
     const host = new RowGroupPanelHost(root, ctx, 'always', ['region', 'ticker']);
     const labels = Array.from(
-      root.querySelectorAll('.cg-row-group-panel-chip-label'),
+      root.querySelectorAll('.vg-row-group-panel-chip-label'),
     ).map((el) => el.textContent);
     expect(labels).toEqual(['Region', 'ticker']);
     host.destroy();
@@ -301,7 +301,7 @@ describe('RowGroupPanelHost', () => {
     const ctx = makeContext();
     const host = new RowGroupPanelHost(root, ctx, 'always', ['ticker']);
     host.destroy();
-    expect(root.querySelector('.cg-row-group-panel')).toBeNull();
+    expect(root.querySelector('.vg-row-group-panel')).toBeNull();
     const lastCall = ctx.reserveCalls[ctx.reserveCalls.length - 1];
     expect(lastCall.height).toBe(0);
     // Second destroy is a no-op (no exception, no extra reserve call).
@@ -326,7 +326,7 @@ describe('RowGroupPanelHost', () => {
     // re-render.
     host.setShowMode('always');
     expect(host.isVisible()).toBe(true);
-    const empty = root.querySelector('.cg-row-group-panel-empty');
+    const empty = root.querySelector('.vg-row-group-panel-empty');
     expect(empty).not.toBeNull();
     host.destroy();
   });
@@ -336,8 +336,8 @@ describe('RowGroupPanelHost', () => {
     // is empty string so textContent must be ''. The remove affordance stays '✕'.
     const ctx = makeContext();
     const host = new RowGroupPanelHost(root, ctx, 'always', ['ticker']);
-    const handle = root.querySelector('.cg-row-group-panel-chip-handle') as HTMLElement;
-    const remove = root.querySelector('.cg-row-group-panel-chip-remove') as HTMLElement;
+    const handle = root.querySelector('.vg-row-group-panel-chip-handle') as HTMLElement;
+    const remove = root.querySelector('.vg-row-group-panel-chip-remove') as HTMLElement;
     expect(handle.textContent).toBe('');
     expect(remove.textContent).toBe('✕');
     host.destroy();
@@ -350,7 +350,7 @@ describe('RowGroupPanelHost', () => {
     // are the punctuation.
     const ctx = makeContext();
     const host = new RowGroupPanelHost(root, ctx, 'always', ['desk', 'region', 'ticker']);
-    const seps = root.querySelectorAll('.cg-row-group-panel-separator');
+    const seps = root.querySelectorAll('.vg-row-group-panel-separator');
     expect(seps).toHaveLength(2);
     seps.forEach((sep) => expect(sep.textContent).toBe('›'));
     host.destroy();

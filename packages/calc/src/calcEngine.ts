@@ -23,8 +23,8 @@
 // for a subsequent registration of the same expression, since the
 // reference then resolves as an ordinary (unregistered) field name.
 
-import type { Schema } from '@cgrid/expression';
-import { compileFormat } from '@cgrid/format';
+import type { Schema } from '@wellsfargo-starui/velocity-grid-expression';
+import { compileFormat } from '@wellsfargo-starui/velocity-grid-format';
 import { compileCalc } from './compile';
 import { foldTemplateChain } from './templates';
 import { overrideToKernelPatch } from './overrides';

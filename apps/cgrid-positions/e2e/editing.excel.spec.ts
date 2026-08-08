@@ -14,7 +14,7 @@
  */
 import { test, expect } from '@playwright/test';
 
-type CGridGlobal = {
+type VelocityGridGlobal = {
   getCellBoundsAt: (r: number, c: string) => { x: number; y: number; w: number; h: number } | null;
   getCellValue: (r: number, c: string) => unknown;
   setFocusedCell: (rowId: string, colId: string) => void;
@@ -23,7 +23,7 @@ type CGridGlobal = {
 
 async function bounds(page: import('@playwright/test').Page, row: number, colId: string) {
   return page.evaluate(([r, c]) => {
-    const grid = (window as unknown as { __cgrid: CGridGlobal }).__cgrid;
+    const grid = (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid;
     return grid.getCellBoundsAt(r as number, c as string);
   }, [row, colId]);
 }
@@ -45,7 +45,7 @@ async function focusCell(page: import('@playwright/test').Page, row: number, col
   const visited = new Set<string>(['positionId']);
   for (let i = 0; i < 20; i++) {
     const f = await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: CGridGlobal }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid;
       return g.getFocusedCell();
     });
     if (f?.colId === colId) return;
@@ -69,7 +69,7 @@ test.describe('Excel-style editing (Cycle 5 / Task 5)', () => {
     await focusCell(page, 0, 'cusip');
     // Type 'X' — editor opens in 'enter' mode with charPress='X'.
     await page.keyboard.press('X');
-    const input = page.locator('input.cg-cell-editor--text');
+    const input = page.locator('input.vg-cell-editor--text');
     await expect(input).toBeVisible();
     await expect(input).toHaveValue('X');
     // ArrowDown in 'enter' mode → commit + move focus down.
@@ -77,14 +77,14 @@ test.describe('Excel-style editing (Cycle 5 / Task 5)', () => {
     await expect(input).toHaveCount(0);
     await expect.poll(
       () => page.evaluate(() => {
-        const g = (window as unknown as { __cgrid: CGridGlobal }).__cgrid;
+        const g = (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid;
         return g.getCellValue(0, 'cusip');
       }),
       { timeout: 5_000 },
     ).toBe('X');
     // Focus advanced to row 1 / cusip.
     const focused = await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: CGridGlobal }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: VelocityGridGlobal }).__cgrid;
       return g.getFocusedCell();
     });
     expect(focused?.colId).toBe('cusip');
@@ -93,7 +93,7 @@ test.describe('Excel-style editing (Cycle 5 / Task 5)', () => {
   test("F2 opens in 'edit' mode: ArrowDown moves caret, editor stays open", async ({ page }) => {
     await focusCell(page, 0, 'cusip');
     await page.keyboard.press('F2');
-    const input = page.locator('input.cg-cell-editor--text');
+    const input = page.locator('input.vg-cell-editor--text');
     await expect(input).toBeVisible();
     // ArrowDown in 'edit' mode → caret move; editor must remain mounted.
     await page.keyboard.press('ArrowDown');
@@ -107,7 +107,7 @@ test.describe('Excel-style editing (Cycle 5 / Task 5)', () => {
   test("type-to-edit then mousedown in input flips to 'edit': ArrowDown stays open", async ({ page }) => {
     await focusCell(page, 0, 'cusip');
     await page.keyboard.press('Q');
-    const input = page.locator('input.cg-cell-editor--text');
+    const input = page.locator('input.vg-cell-editor--text');
     await expect(input).toBeVisible();
     await expect(input).toHaveValue('Q');
     // Mousedown inside the input flips 'enter' → 'edit'.

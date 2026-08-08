@@ -14,19 +14,19 @@
  * the grid stay the single source of truth for "is this cell a
  * sparkline?".
  */
-import { Feature, type CGridEventCtx } from '../feature';
+import { Feature, type VelocityGridEventCtx } from '../feature';
 
 const VERTICAL_OFFSET = 24;
 
 export class SparklineTooltip extends Feature {
   private tooltipEl: HTMLElement | null = null;
 
-  override handleMouseMove(ctx: CGridEventCtx): void {
+  override handleMouseMove(ctx: VelocityGridEventCtx): void {
     this.updateTooltip(ctx);
     super.handleMouseMove(ctx);
   }
 
-  private updateTooltip(ctx: CGridEventCtx): void {
+  private updateTooltip(ctx: VelocityGridEventCtx): void {
     const hit = ctx.hit;
     if (hit.kind !== 'cell') {
       this.hide();
@@ -68,19 +68,19 @@ export class SparklineTooltip extends Feature {
     el.style.display = '';
   }
 
-  private ensureEl(ctx: CGridEventCtx): HTMLElement {
+  private ensureEl(ctx: VelocityGridEventCtx): HTMLElement {
     if (this.tooltipEl) return this.tooltipEl;
     const host = ctx.grid.getOverlayHost();
     const el = document.createElement('div');
-    el.className = 'cg-sparkline-tooltip';
+    el.className = 'vg-sparkline-tooltip';
     el.style.cssText = [
       'position:fixed',
       'pointer-events:none',
       'z-index:9999',
       'padding:4px 8px',
       'font: 12px Inter, system-ui, sans-serif',
-      'background:var(--cg-tooltip-bg, rgba(17,24,39,0.92))',
-      'color:var(--cg-tooltip-fg, #fff)',
+      'background:var(--vg-tooltip-bg, rgba(17,24,39,0.92))',
+      'color:var(--vg-tooltip-fg, #fff)',
       'border-radius:4px',
       'box-shadow:0 2px 8px rgba(0,0,0,0.25)',
       'white-space:nowrap',

@@ -10,7 +10,7 @@
 //   • Otherwise → `onDragOut()` fires (removes the pill from this
 //     zone's role).
 
-import type { CGridApi } from '../../../types';
+import type { VelocityGridApi } from '../../../types';
 import {
   DRAG_THRESHOLD_PX,
   getZoneRect,
@@ -31,7 +31,7 @@ export interface BeginPillDragOptions {
    *  closest theme ancestor. */
   rootHost: HTMLElement;
   /** Grid API (used only for cross-panel routing). */
-  api: CGridApi;
+  api: VelocityGridApi;
   /** Called when the drop lands outside every accepting zone (fallback
    *  = remove from this zone's role). */
   onDragOut: () => void;
@@ -52,7 +52,7 @@ export function beginPillDrag(opts: BeginPillDragOptions): void {
   const ghost = makeDragGhost(opts.rootHost, opts.label);
   let insertionLine: HTMLDivElement | null = null;
 
-  const liftedClass = `cg-columns-panel-${opts.zone}-pill--lifted`;
+  const liftedClass = `vg-columns-panel-${opts.zone}-pill--lifted`;
 
   /** Resolve the slot index (0..pills.length) the cursor is hovering
    *  over inside the zone's content container. The slot matches the
@@ -64,7 +64,7 @@ export function beginPillDrag(opts: BeginPillDragOptions): void {
     if (!content) return null;
     const pills = Array.from(content.children).filter(
       (el): el is HTMLElement => el instanceof HTMLElement
-        && el.classList.contains('cg-columns-panel-pill'),
+        && el.classList.contains('vg-columns-panel-pill'),
     );
     if (pills.length === 0) {
       const rect = content.getBoundingClientRect();
@@ -88,11 +88,11 @@ export function beginPillDrag(opts: BeginPillDragOptions): void {
     if (!target) return;
     if (!insertionLine) {
       insertionLine = document.createElement('div');
-      insertionLine.className = 'cg-columns-panel-insertion-line';
+      insertionLine.className = 'vg-columns-panel-insertion-line';
       // Inline a minimum-viable visual so themes that haven't styled
       // the class still see the indicator.
       insertionLine.style.cssText =
-        'position:absolute; left:0; right:0; height:2px; background:var(--cg-color-accent, #4aa3ff); pointer-events:none; z-index:5; border-radius:1px;';
+        'position:absolute; left:0; right:0; height:2px; background:var(--vg-color-accent, #4aa3ff); pointer-events:none; z-index:5; border-radius:1px;';
     }
     const zoneRect = content.getBoundingClientRect();
     if (insertionLine.parentElement !== content) content.style.position = 'relative';

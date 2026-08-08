@@ -1,4 +1,4 @@
-// @cgrid/calc — public re-exports.
+// @wellsfargo-starui/velocity-grid-calc — public re-exports.
 // See docs/superpowers/specs/2026-07-02-cycle-21d-calc-design.md §3.
 
 export { CalcEngine, ownTemplateId, isOwnTemplateId, type ColumnEditPatch } from './calcEngine';

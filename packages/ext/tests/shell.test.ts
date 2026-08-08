@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ShellLayout } from '../src/shell/shell';
-import type { CgExtContext, SettingsModule, ToolbarItem } from '../src/extension/types';
+import type { VelocityGridExtContext, SettingsModule, ToolbarItem } from '../src/extension/types';
 
-const ctx = {} as CgExtContext;
+const ctx = {} as VelocityGridExtContext;
 
 function toolbarItem(id: string, slot: any): ToolbarItem {
   return {
@@ -22,17 +22,17 @@ describe('ShellLayout', () => {
   it('builds the strip regions and exposes a grid mount', () => {
     const root = document.createElement('div');
     const shell = new ShellLayout(root);
-    expect(root.querySelector('.cgext-titlebar')).toBeTruthy();
-    expect(root.querySelector('.cgext-ribbon')).toBeTruthy();
-    expect(root.querySelector('.cgext-grid')).toBeTruthy();
-    expect(shell.gridMount.classList.contains('cgext-grid')).toBe(true);
+    expect(root.querySelector('.vgext-titlebar')).toBeTruthy();
+    expect(root.querySelector('.vgext-ribbon')).toBeTruthy();
+    expect(root.querySelector('.vgext-grid')).toBeTruthy();
+    expect(shell.gridMount.classList.contains('vgext-grid')).toBe(true);
   });
 
   it('mounts a toolbar item into its slot', () => {
     const root = document.createElement('div');
     const shell = new ShellLayout(root);
     shell.mountToolbarItem(toolbarItem('save', 'primary-right'), ctx);
-    expect(root.querySelector('.cgext-titlebar')!.textContent).toContain('save');
+    expect(root.querySelector('.vgext-titlebar')!.textContent).toContain('save');
   });
 
   it('opens the settings sheet and renders the requested module panel', async () => {
@@ -42,10 +42,10 @@ describe('ShellLayout', () => {
     expect(shell.isSettingsOpen()).toBe(false);
     shell.openSettings('grid-options');
     expect(shell.isSettingsOpen()).toBe(true);
-    expect(root.querySelector('.cgext-sheet')!.textContent).toContain('panel:grid-options');
-    expect(root.querySelector('.cgext-sheet-nav')).toBeNull(); // single module → no tabs
-    expect(root.querySelector('.cgext-sheet-footer')).toBeTruthy();
-    expect(root.querySelector('[data-testid="cgext-sheet-done"]')).toBeTruthy();
+    expect(root.querySelector('.vgext-sheet')!.textContent).toContain('panel:grid-options');
+    expect(root.querySelector('.vgext-sheet-nav')).toBeNull(); // single module → no tabs
+    expect(root.querySelector('.vgext-sheet-footer')).toBeTruthy();
+    expect(root.querySelector('[data-testid="vgext-sheet-done"]')).toBeTruthy();
     // Entrance uses rAF — wait so close sees `is-open` and runs the exit path.
     await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
     shell.closeSettings();
@@ -59,18 +59,18 @@ describe('ShellLayout', () => {
     shell.mountSettingsModule(settingsModule('grid-options'), ctx);
     shell.mountSettingsModule(settingsModule('column-settings'), ctx);
     shell.openSettings('grid-options');
-    const wrap = root.querySelector('.cgext-sheet-nav-wrap')!;
-    const nav = root.querySelector('.cgext-sheet-nav')!;
+    const wrap = root.querySelector('.vgext-sheet-nav-wrap')!;
+    const nav = root.querySelector('.vgext-sheet-nav')!;
     expect(wrap).toBeTruthy();
     expect(nav).toBeTruthy();
-    expect(root.querySelector('.cgext-sheet-nav-scroll--prev')).toBeTruthy();
-    expect(root.querySelector('.cgext-sheet-nav-scroll--next')).toBeTruthy();
+    expect(root.querySelector('.vgext-sheet-nav-scroll--prev')).toBeTruthy();
+    expect(root.querySelector('.vgext-sheet-nav-scroll--next')).toBeTruthy();
     expect(nav.textContent).toContain('grid-options');
     expect(nav.textContent).toContain('column-settings');
-    expect(root.querySelector('.cgext-sheet-body')!.textContent).toBe('panel:grid-options');
-    nav.querySelectorAll('.cgext-sheet-nav-item')[1]!.click();
-    expect(root.querySelector('.cgext-sheet-body')!.textContent).toBe('panel:column-settings');
-    expect(root.querySelector('.cgext-sheet-title')!.textContent).toBe('column-settings');
+    expect(root.querySelector('.vgext-sheet-body')!.textContent).toBe('panel:grid-options');
+    nav.querySelectorAll('.vgext-sheet-nav-item')[1]!.click();
+    expect(root.querySelector('.vgext-sheet-body')!.textContent).toBe('panel:column-settings');
+    expect(root.querySelector('.vgext-sheet-title')!.textContent).toBe('column-settings');
   });
 
   it('destroys mounted toolbar-item instances on teardown', () => {

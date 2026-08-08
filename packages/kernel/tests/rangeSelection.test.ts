@@ -7,7 +7,7 @@ import {
 } from '../src/interaction/features/rangeSelection';
 import { HeaderClick } from '../src/interaction/features/headerClick';
 import { SelectionModel } from '../src/interaction/selectionModel';
-import type { CGridEventCtx } from '../src/interaction/feature';
+import type { VelocityGridEventCtx } from '../src/interaction/feature';
 import type { Hit } from '../src/interaction/hitTester';
 
 interface MockGrid {
@@ -54,11 +54,11 @@ function ctx(
   point: { x: number; y: number },
   grid: MockGrid,
   raw: MouseEvent = new MouseEvent('mousedown'),
-): CGridEventCtx {
+): VelocityGridEventCtx {
   return {
     hit,
     point,
-    grid: grid as unknown as CGridEventCtx['grid'],
+    grid: grid as unknown as VelocityGridEventCtx['grid'],
     raw,
   };
 }

@@ -26,12 +26,12 @@ single-scan custom-property mechanism and *broadens* it.
 Move every hardcoded style **value** out of code into CSS tokens; code keeps only
 the *semantic → token-name* wiring (not a style value).
 
-- **`@cgrid/renderers/palette.ts`:**
-  - `SEMANTIC_COLORS` — add theme tokens `--cg-warning-color`, `--cg-info-color`,
-    `--cg-muted-color` (join existing `--cg-pos-color`/`--cg-neg-color`).
-  - `STATUS_PILL_MAP` (6 states) → `--cg-status-<state>-bg` / `-fg` / `-border`.
-  - `RATING_SCALE_BANDS` (24 grades) → `--cg-rating-<grade>-color`.
-  - `DEFAULT_VENUE_PALETTE` → `--cg-venue-<mic>-color`.
+- **`@wellsfargo-starui/velocity-grid-renderers/palette.ts`:**
+  - `SEMANTIC_COLORS` — add theme tokens `--vg-warning-color`, `--vg-info-color`,
+    `--vg-muted-color` (join existing `--vg-pos-color`/`--vg-neg-color`).
+  - `STATUS_PILL_MAP` (6 states) → `--vg-status-<state>-bg` / `-fg` / `-border`.
+  - `RATING_SCALE_BANDS` (24 grades) → `--vg-rating-<grade>-color`.
+  - `DEFAULT_VENUE_PALETTE` → `--vg-venue-<mic>-color`.
   - The TS module keeps the **names/order** (structure) but reads **values** from
     the resolved theme; the current literals become code-level *fallbacks* only
     (used when a theme omits a token — defensive, matching cssReader's pattern).
@@ -40,8 +40,8 @@ the *semantic → token-name* wiring (not a style value).
   `palette` sub-object, alongside the existing `posColor`/`negColor`). Renderers
   resolve `overrides ?? config.palette.X ?? FALLBACK` (extends today's
   `p.posColor ?? SEMANTIC_COLORS.positive`).
-- **Geometry-as-style tokens:** the clear *style* dimensions (`--cg-bar-height`,
-  `--cg-chip-height`/`-radius`, heat endpoints) become tokens with fallbacks.
+- **Geometry-as-style tokens:** the clear *style* dimensions (`--vg-bar-height`,
+  `--vg-chip-height`/`-radius`, heat endpoints) become tokens with fallbacks.
   Pure layout constants (paddings the painter computes) stay code.
 - Themes that want these declare the tokens; quartz/starui/perspective get
   sensible defaults. **No behavior change for a theme that omits a token**
@@ -50,11 +50,11 @@ the *semantic → token-name* wiring (not a style value).
 ## 3. Workstream B — broaden the CSS-class variant mechanism to the full vocabulary
 
 Today `scanVariantVariables()` (`cssReader.ts`) reads
-`--cg-cell-class-<name>-(bg|fg|font|halign)` → a 4-field `ColCellOverrides`.
+`--vg-cell-class-<name>-(bg|fg|font|halign)` → a 4-field `ColCellOverrides`.
 **Broaden the parser to the FULL `ColCellOverrides` vocabulary**, read in the
 same single theme scan (no per-cell cost):
 
-| Custom property (`--cg-cell-class-<name>-…`) | `ColCellOverrides` field |
+| Custom property (`--vg-cell-class-<name>-…`) | `ColCellOverrides` field |
 |---|---|
 | `-fg` / `-bg` | `fg` / `bg` |
 | `-halign` / `-valign` | `halign` / `valign` |
@@ -65,17 +65,17 @@ same single theme scan (no per-cell cost):
 | `-icon` / `-emoji` / `-content` (+ `-icon-color`/`-icon-size`) | `content` (`CellContent`) |
 | `-decorator-<pos>` (+ `-color`/`-size`/`-inset`/`-bg`) | `decorators[]` (`CellDecorator`) |
 
-Same for `--cg-header-class-<name>-*` → header overrides. This gives real
+Same for `--vg-header-class-<name>-*` → header overrides. This gives real
 CSS-authored per-cell styling (cascades, theme-swappable) across the WHOLE
 vocabulary, still read once per theme, no reflow. A consumer writes:
 
 ```css
-.cg-grid {
-  --cg-cell-class-loss-fg: #e63946;
-  --cg-cell-class-loss-bg: rgba(230,57,70,.08);
-  --cg-cell-class-loss-border-left-width: 2px;
-  --cg-cell-class-loss-border-left-color: #e63946;
-  --cg-cell-class-loss-decorator-tr: "▼";
+.vg-grid {
+  --vg-cell-class-loss-fg: #e63946;
+  --vg-cell-class-loss-bg: rgba(230,57,70,.08);
+  --vg-cell-class-loss-border-left-width: 2px;
+  --vg-cell-class-loss-border-left-color: #e63946;
+  --vg-cell-class-loss-decorator-tr: "▼";
 }
 ```
 and `colDef.cellClass: 'loss'` (static / function / `cellClassRules`).
@@ -84,7 +84,7 @@ and `colDef.cellClass: 'loss'` (static / function / `cellClassRules`).
 
 - **`colDef.cellStyle` / `headerStyle` objects STAY** (typed, programmatic, used
   by the UI customizer and calc). Not removed.
-- **Token-referenceable:** a style value of the form `var(--cg-…)` (or a bare
+- **Token-referenceable:** a style value of the form `var(--vg-…)` (or a bare
   token name) is resolved through `ResolvedTheme` at resolve time, so objects can
   pull values from CSS instead of hardcoding them. Colors first
   (`fg`/`bg`/border colors); the resolver is theme-swap-aware (re-resolves on
@@ -100,15 +100,15 @@ and `colDef.cellClass: 'loss'` (static / function / `cellClassRules`).
 2. **CSS-class variants** — `cellClass`/`cellClassRules` → broadened
    full-vocabulary `ColCellOverrides` (WS-B).
 3. **`cellStyle` object** — token-referenceable (WS-C).
-4. **Conditional rules** — `@cgrid/rules` (kept as-is, dynamic).
+4. **Conditional rules** — `@wellsfargo-starui/velocity-grid-rules` (kept as-is, dynamic).
 5. (Last) `textTransform` on the formatted string.
 
 ## 6. Testing
 
-- **Unit (kernel):** `cssReader` parses every new `--cg-cell-class-*` slot into
+- **Unit (kernel):** `cssReader` parses every new `--vg-cell-class-*` slot into
   the right `ColCellOverrides` field (per-side border, padding, content,
   decorators, font breakouts, valign, text-*); resolves the new renderer-palette
-  + geometry tokens (with fallback when absent); the `var(--cg-…)`-in-cellStyle
+  + geometry tokens (with fallback when absent); the `var(--vg-…)`-in-cellStyle
   resolver.
 - **Unit (renderers):** each data-viz painter reads its color from
   `config.palette` when present, falls back to the literal when absent (pos/neg
@@ -123,6 +123,6 @@ and `colDef.cellClass: 'loss'` (static / function / `cellClassRules`).
 
 - A `getComputedStyle`-per-class probe (rejected — §1).
 - Removing `cellStyle` objects (kept — §4).
-- The `@cgrid/rules` conditional engine internals (kept).
+- The `@wellsfargo-starui/velocity-grid-rules` conditional engine internals (kept).
 - Data-viz *geometry* (code); only its *values* move to CSS.
 - The look-and-feel Perspective branch (orthogonal).

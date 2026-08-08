@@ -1,7 +1,7 @@
 // AlertsEngine — trigger evaluation, debounce, token bucket, history ring.
 // Spec: docs/superpowers/specs/2026-07-01-cycle-21e-rules-design.md §4.3.
 // Evaluation modes (throttled queue) + settings surface complete in Task 8.
-import { compile, evaluate, parse, type Compiled, type Schema } from '@cgrid/expression';
+import { compile, evaluate, parse, type Compiled, type Schema } from '@wellsfargo-starui/velocity-grid-expression';
 import { DEFAULT_ALERTS_SETTINGS } from '../types';
 import type {
   AlertEvent, AlertRule, AlertsSettings, AlertTrigger,

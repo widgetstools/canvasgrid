@@ -1,12 +1,12 @@
 import { describe, it, expect, expectTypeOf } from 'vitest';
 import type {
-  CGridOptions, CColDef, CColGroupDef, CGridApi, CGridEvent, CValueGetterParams,
+  VelocityGridOptions, CColDef, CColGroupDef, VelocityGridApi, VelocityGridEvent, CValueGetterParams,
   CValueFormatterParams, SortModel, FilterModel, GroupModel, TransactionResult,
 } from '../src/types';
 
 describe('public types', () => {
-  it('CGridOptions requires getRowId', () => {
-    type Required = CGridOptions<{ id: string }>['getRowId'];
+  it('VelocityGridOptions requires getRowId', () => {
+    type Required = VelocityGridOptions<{ id: string }>['getRowId'];
     expectTypeOf<Required>().toBeFunction();
   });
 
@@ -16,9 +16,9 @@ describe('public types', () => {
     expectTypeOf<Field>().toEqualTypeOf<keyof Row & string | undefined>();
   });
 
-  it('CGridOptions.columnDefs accepts CColGroupDef entries', () => {
+  it('VelocityGridOptions.columnDefs accepts CColGroupDef entries', () => {
     interface Row { a: number; b: number }
-    const opts: CGridOptions<Row> = {
+    const opts: VelocityGridOptions<Row> = {
       columnDefs: [
         { field: 'a' },
         { children: [{ field: 'b' }] },
@@ -38,8 +38,8 @@ describe('public types', () => {
     expectTypeOf<V>().toEqualTypeOf<'open' | 'closed' | null | undefined>();
   });
 
-  it('CGridEvent is a discriminated union on .type', () => {
-    type T = CGridEvent['type'];
+  it('VelocityGridEvent is a discriminated union on .type', () => {
+    type T = VelocityGridEvent['type'];
     expectTypeOf<T>().toEqualTypeOf<
       'gridReady' | 'cellClicked' | 'cellDoubleClicked' | 'cellFocused' |
       'cellValueChanged' | 'selectionChanged' | 'viewportChanged' |

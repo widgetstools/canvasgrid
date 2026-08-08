@@ -4,7 +4,7 @@
  * `EditBridgeHandle.getSettings().bulkUpdate`, immediate-apply writes.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { mergeEditSettings, type EditBridgeHandle, type EditSettings } from '@cgrid/edit';
+import { mergeEditSettings, type EditBridgeHandle, type EditSettings } from '@wellsfargo-starui/velocity-grid-edit';
 import { bulkUpdateToolPanel } from '../src/panels/bulkUpdate';
 
 function makeHandle() {

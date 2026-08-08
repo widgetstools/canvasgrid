@@ -19,8 +19,8 @@
  *  - dragging the inner-edge resize handle widens the panel; the
  *    canvas region narrows correspondingly.
  *
- * The Task 2 stub panels render an empty `<div class="cg-tool-panel-stub">`.
- * Task 3 replaces the Columns stub with the real `.cg-columns-panel`; Task 4
+ * The Task 2 stub panels render an empty `<div class="vg-tool-panel-stub">`.
+ * Task 3 replaces the Columns stub with the real `.vg-columns-panel`; Task 4
  * does the same for Filters. This spec only verifies the SHELL behaviour,
  * not panel content — the panel-mount sentinel checks below assert
  * against the live class for whichever tab is being exercised.
@@ -28,10 +28,10 @@
 import { test, expect, Page } from '@playwright/test';
 
 const GRID_SELECTOR = '#grid canvas';
-const SIDE_BAR_SELECTOR = '.cg-side-bar';
-const TAB_SELECTOR = '.cg-side-bar-tab';
-const PANEL_SELECTOR = '.cg-side-bar-panel';
-const HANDLE_SELECTOR = '.cg-side-bar-resize';
+const SIDE_BAR_SELECTOR = '.vg-side-bar';
+const TAB_SELECTOR = '.vg-side-bar-tab';
+const PANEL_SELECTOR = '.vg-side-bar-panel';
+const HANDLE_SELECTOR = '.vg-side-bar-resize';
 
 async function waitForFrames(page: Page, n = 6): Promise<void> {
   await page.evaluate(
@@ -92,15 +92,15 @@ test.describe('Cycle 11 / Task 2 — side bar shell', () => {
     await expect(columnsTab).toHaveAttribute('aria-pressed', 'true');
     await expect(filtersTab).toHaveAttribute('aria-pressed', 'false');
     // Cycle 11 / Task 3 — the Columns tab now mounts the real
-    // `.cg-columns-panel` instead of the Task 1 `.cg-tool-panel-stub`.
-    await expect(panel.locator('.cg-columns-panel')).toHaveCount(1);
+    // `.vg-columns-panel` instead of the Task 1 `.vg-tool-panel-stub`.
+    await expect(panel.locator('.vg-columns-panel')).toHaveCount(1);
     await expect(panel).not.toHaveCSS('display', 'none');
 
     await columnsTab.click();
     await waitForFrames(page, 3);
     await expect(columnsTab).toHaveAttribute('aria-pressed', 'false');
     await expect(panel).toHaveCSS('display', 'none');
-    await expect(panel.locator('.cg-columns-panel')).toHaveCount(0);
+    await expect(panel.locator('.vg-columns-panel')).toHaveCount(0);
   });
 
   test('clicking Filters while Columns is open switches panels (only one open at a time)', async ({ page }) => {
@@ -154,7 +154,7 @@ test.describe('Cycle 11 / Task 2 — side bar shell', () => {
 
     const widthBefore = await canvasWidth(page);
     const panelWidthBefore = await page.evaluate(() => {
-      const p = document.querySelector('.cg-side-bar-panel') as HTMLElement | null;
+      const p = document.querySelector('.vg-side-bar-panel') as HTMLElement | null;
       return p ? Math.round(p.getBoundingClientRect().width) : 0;
     });
 
@@ -167,7 +167,7 @@ test.describe('Cycle 11 / Task 2 — side bar shell', () => {
 
     const widthAfter = await canvasWidth(page);
     const panelWidthAfter = await page.evaluate(() => {
-      const p = document.querySelector('.cg-side-bar-panel') as HTMLElement | null;
+      const p = document.querySelector('.vg-side-bar-panel') as HTMLElement | null;
       return p ? Math.round(p.getBoundingClientRect().width) : 0;
     });
 

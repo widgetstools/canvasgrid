@@ -45,7 +45,7 @@ beforeAll(() => {
 });
 
 /** Build a RangeSelection feature against a controlled SelectionModel
- *  and a minimal CGridLike stub. Mode parameter switches the row-
+ *  and a minimal VelocityGridLike stub. Mode parameter switches the row-
  *  selection mode the feature consults. */
 async function makeSetup(mode: 'none' | 'single' | 'multiple') {
   const { RangeSelection } = await import('../src/interaction/features/rangeSelection');

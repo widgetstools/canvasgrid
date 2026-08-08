@@ -49,7 +49,7 @@
  *   docs/superpowers/plans/notes/cycle-18-pivoting-design.md
  *   § Task 7 — Pivot panel in side bar (Cycle 11 tool panel extension).
  */
-import type { CGridApi } from '../../types';
+import type { VelocityGridApi } from '../../types';
 import type {
   IToolPanelColumnCompParams,
   ToolPanel,
@@ -63,7 +63,7 @@ import type { DropZoneSpec } from './columns/shared';
 
 export class ColumnsToolPanel implements ToolPanel {
   private root!: HTMLElement;
-  private api!: CGridApi;
+  private api!: VelocityGridApi;
   private params: IToolPanelColumnCompParams = {};
   private pivotModeBtn: HTMLButtonElement | null = null;
   private visibilityPanel: ColumnVisibilityPanel | null = null;
@@ -73,11 +73,11 @@ export class ColumnsToolPanel implements ToolPanel {
   private readonly unsubs: Array<() => void> = [];
 
   init(p: ToolPanelParams): void {
-    this.api = p.api as CGridApi;
+    this.api = p.api as VelocityGridApi;
     this.params = (p.toolPanelParams as IToolPanelColumnCompParams | undefined) ?? {};
 
     this.root = document.createElement('div');
-    this.root.className = 'cg-columns-panel';
+    this.root.className = 'vg-columns-panel';
 
     if (!this.params.suppressPivotMode) {
       this.root.appendChild(this.buildPivotModeRow());
@@ -97,8 +97,8 @@ export class ColumnsToolPanel implements ToolPanel {
       isColumnValueable: (colId) => this.api.isColumnValueEnabled?.(colId) === true,
       getDropZoneSpecs: () => this.currentDropZoneSpecs(),
     });
-    // Append the search row + list DIRECTLY to `.cg-columns-panel` so
-    // the CSS flex chain (`.cg-columns-panel-list` claims the remaining
+    // Append the search row + list DIRECTLY to `.vg-columns-panel` so
+    // the CSS flex chain (`.vg-columns-panel-list` claims the remaining
     // vertical space) works unchanged. Wrapping in an intermediary
     // container would collapse the list.
     this.visibilityPanel.appendTo(this.root);
@@ -182,15 +182,15 @@ export class ColumnsToolPanel implements ToolPanel {
 
   private buildPivotModeRow(): HTMLElement {
     const row = document.createElement('div');
-    row.className = 'cg-columns-panel-pivot-mode';
+    row.className = 'vg-columns-panel-pivot-mode';
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'cg-columns-panel-toggle';
+    btn.className = 'vg-columns-panel-toggle';
     const initial = this.api.isPivotMode?.() === true;
     btn.setAttribute('aria-pressed', String(initial));
     btn.setAttribute('aria-label', 'Pivot Mode');
     const knob = document.createElement('span');
-    knob.className = 'cg-columns-panel-toggle-knob';
+    knob.className = 'vg-columns-panel-toggle-knob';
     btn.appendChild(knob);
     btn.addEventListener('click', () => {
       const next = btn.getAttribute('aria-pressed') !== 'true';
@@ -206,7 +206,7 @@ export class ColumnsToolPanel implements ToolPanel {
     });
     this.pivotModeBtn = btn;
     const label = document.createElement('span');
-    label.className = 'cg-columns-panel-pivot-mode-label';
+    label.className = 'vg-columns-panel-pivot-mode-label';
     label.textContent = 'Pivot Mode';
     row.appendChild(btn);
     row.appendChild(label);

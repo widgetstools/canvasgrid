@@ -1,17 +1,17 @@
-import { CGridExt, type CGridExtOptions } from './cgridExt';
+import { VelocityGridExt, type VelocityGridExtOptions } from './velocityGridExt';
 
-/** Thin custom element over CGridExt. The class is the source of truth; the
+/** Thin custom element over VelocityGridExt. The class is the source of truth; the
  *  element is a shell. Set `.options` before or after connect; it (re)builds
  *  the instance on connect. */
-export class CgridExtElement extends HTMLElement {
-  options: CGridExtOptions = {} as CGridExtOptions;
-  private _instance: CGridExt | null = null;
+export class VelocityGridExtElement extends HTMLElement {
+  options: VelocityGridExtOptions = {} as VelocityGridExtOptions;
+  private _instance: VelocityGridExt | null = null;
 
-  get instance(): CGridExt | null { return this._instance; }
+  get instance(): VelocityGridExt | null { return this._instance; }
 
   connectedCallback(): void {
     if (this._instance) return;
-    this._instance = new CGridExt(this, this.options);
+    this._instance = new VelocityGridExt(this, this.options);
   }
   disconnectedCallback(): void {
     this._instance?.destroy();
@@ -19,6 +19,6 @@ export class CgridExtElement extends HTMLElement {
   }
 }
 
-export function defineCgridExt(tag = 'cgrid-ext'): void {
-  if (!customElements.get(tag)) customElements.define(tag, CgridExtElement);
+export function defineVelocityGridExt(tag = 'velocity-grid-ext'): void {
+  if (!customElements.get(tag)) customElements.define(tag, VelocityGridExtElement);
 }

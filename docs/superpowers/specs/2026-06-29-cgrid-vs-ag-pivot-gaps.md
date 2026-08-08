@@ -35,7 +35,7 @@ The remaining gaps are clustered in three areas:
    discovery harder than on AG.
 
 Visual/labelling differences in the column-group totals header
-(cgrid: `Total` wrapping leaves; AG: `sum(Total)` single column) are
+(velocity-grid: `Total` wrapping leaves; AG: `sum(Total)` single column) are
 cosmetic, not functional.
 
 ## 1. Behavior gaps
@@ -74,7 +74,7 @@ Error: [cgrid] 'pivotDefaultExpanded' is not a recognised runtime option
 AG accepts it and re-renders the pivot result columns at the new
 expansion depth without error.
 
-Workaround in cgrid: it can be set at construction. The user-visible
+Workaround in velocity-grid: it can be set at construction. The user-visible
 effect is that an app cannot offer a runtime "expand all / collapse
 all" pivot control via `setGridOption`. (`resetPivotExpansion` would
 be the equivalent imperative call to design.)
@@ -105,7 +105,7 @@ must replace `setValueColumns(list)` with a remove-all + add-loop.
 
 Reproduced at: `diff-scenario-05-06.json`.
 
-**Fix:** added `setValueColumns(list)` to `CGrid` as a public wrapper
+**Fix:** added `setValueColumns(list)` to `VelocityGrid` as a public wrapper
 over the existing `PivotState.setValueColumns` (which already
 supported atomic replacement — only the public exposure was
 missing). Apps can now drop the remove-all + add-loop dance.
@@ -126,7 +126,7 @@ the consumer.
 
 Reproduced at: `diff-scenario-05-06.json`.
 
-**Fix:** added `CGrid.getPivotResultColumns(): string[]` returning the
+**Fix:** added `VelocityGrid.getPivotResultColumns(): string[]` returning the
 keys of `pivotCellSpecById` (the synthesized result colIds). Returns
 `[]` when pivot is inactive. Note: AG returns `Column` instances;
 cgrid returns colIds (consistent with `getPivotColumns(): string[]`).

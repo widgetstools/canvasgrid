@@ -21,12 +21,12 @@
  *
  * The mock api wraps an in-memory equivalent of PivotState so the panel's
  * mutate-then-resubscribe flow can be exercised without standing up a real
- * CGrid+worker (those round-trips are covered by the integration tests in
+ * VelocityGrid+worker (those round-trips are covered by the integration tests in
  * apps/cgrid-positions/e2e).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ColumnsToolPanel } from '../src/interaction/toolPanels/columnsPanel';
-import type { CColumnState, CGridEvent } from '../src/types';
+import type { CColumnState, VelocityGridEvent } from '../src/types';
 import type { ToolPanelParams } from '../src/interaction/toolPanels/types';
 
 interface PivotMockApi {
@@ -66,7 +66,7 @@ interface PivotMockApi {
   removeEventListener: ReturnType<typeof vi.fn>;
   getGridOption: ReturnType<typeof vi.fn>;
   /** Pump a synthetic event into every subscriber. */
-  emit: (event: CGridEvent) => void;
+  emit: (event: VelocityGridEvent) => void;
 }
 
 interface PivotMockInit {
@@ -106,7 +106,7 @@ function makeApi(initial?: PivotMockInit): PivotMockApi {
   let valueColumns: Array<{ colId: string; aggFunc: string }> = (initial?.valueColumns ?? []).map((v) => ({ ...v }));
   let pivotMode = initial?.pivotMode ?? false;
   const allowDrag = initial?.allowDragFromColumnsToolPanel;
-  const listeners = new Map<string, Set<(e: CGridEvent) => void>>();
+  const listeners = new Map<string, Set<(e: VelocityGridEvent) => void>>();
 
   const fireRowGroupChanged = (source: 'add' | 'remove' | 'move' | 'set' | 'sort' | 'restore') => {
     api.emit({ type: 'columnRowGroupChanged', columns: [...rowGroupColumns], source });
@@ -187,7 +187,7 @@ function makeApi(initial?: PivotMockInit): PivotMockApi {
     isColumnValueEnabled: (colId) => valueable.has(colId),
     getColumnDefaultAggFunc: (colId) => defaultAggFunc[colId],
 
-    addEventListener: vi.fn((type: string, handler: (e: CGridEvent) => void) => {
+    addEventListener: vi.fn((type: string, handler: (e: VelocityGridEvent) => void) => {
       let bucket = listeners.get(type);
       if (!bucket) { bucket = new Set(); listeners.set(type, bucket); }
       bucket.add(handler);
@@ -198,7 +198,7 @@ function makeApi(initial?: PivotMockInit): PivotMockApi {
       if (key === 'allowDragFromColumnsToolPanel') return allowDrag;
       return undefined;
     }),
-    emit: (event: CGridEvent) => {
+    emit: (event: VelocityGridEvent) => {
       // Tests that emit a synthetic columnRowGroupChanged / pivotStateChanged
       // (simulating an external surface mutating state) should keep the
       // mock's underlying snapshot in sync with the payload.
@@ -251,7 +251,7 @@ describe('ColumnsToolPanel — pivot mode toggle (Cycle 18 / Task 5)', () => {
     const api = makeApi({ pivotMode: true });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    const btn = root.querySelector<HTMLButtonElement>('.cg-columns-panel-toggle');
+    const btn = root.querySelector<HTMLButtonElement>('.vg-columns-panel-toggle');
     expect(btn?.getAttribute('aria-pressed')).toBe('true');
   });
 
@@ -259,7 +259,7 @@ describe('ColumnsToolPanel — pivot mode toggle (Cycle 18 / Task 5)', () => {
     const api = makeApi({ pivotMode: false });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    const btn = root.querySelector<HTMLButtonElement>('.cg-columns-panel-toggle')!;
+    const btn = root.querySelector<HTMLButtonElement>('.vg-columns-panel-toggle')!;
     btn.click();
     expect(api.setPivotMode).toHaveBeenCalledWith(true, { discardSettings: true });
     expect(btn.getAttribute('aria-pressed')).toBe('true');
@@ -272,7 +272,7 @@ describe('ColumnsToolPanel — pivot mode toggle (Cycle 18 / Task 5)', () => {
     const api = makeApi({ pivotMode: false });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    const btn = root.querySelector<HTMLButtonElement>('.cg-columns-panel-toggle')!;
+    const btn = root.querySelector<HTMLButtonElement>('.vg-columns-panel-toggle')!;
     expect(btn.getAttribute('aria-pressed')).toBe('false');
     api.emit({ type: 'pivotStateChanged', pivotMode: true, pivotColumns: [], valueColumns: [], source: 'mode' });
     expect(btn.getAttribute('aria-pressed')).toBe('true');
@@ -282,8 +282,8 @@ describe('ColumnsToolPanel — pivot mode toggle (Cycle 18 / Task 5)', () => {
     const api = makeApi();
     const { panel, root } = mountPanel(api, { suppressPivotMode: true });
     hosts.push(panel);
-    expect(root.querySelector('.cg-columns-panel-pivot-mode')).toBeNull();
-    expect(root.querySelector('.cg-columns-panel-toggle')).toBeNull();
+    expect(root.querySelector('.vg-columns-panel-pivot-mode')).toBeNull();
+    expect(root.querySelector('.vg-columns-panel-toggle')).toBeNull();
   });
 
   it('panel subscribes to pivotStateChanged on init and unsubscribes on destroy', () => {
@@ -311,13 +311,13 @@ describe('ColumnsToolPanel — Values drop zone (Cycle 18 / Task 5)', () => {
     const api = makeApi();
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    const zone = root.querySelector<HTMLElement>('.cg-columns-panel-valz');
+    const zone = root.querySelector<HTMLElement>('.vg-columns-panel-valz');
     expect(zone).not.toBeNull();
     expect(zone!.getAttribute('role')).toBe('list');
     expect(zone!.getAttribute('aria-label')).toBe('Aggregate value columns');
-    const empty = zone!.querySelector<HTMLElement>('.cg-columns-panel-valz-empty');
+    const empty = zone!.querySelector<HTMLElement>('.vg-columns-panel-valz-empty');
     expect(empty?.textContent).toBe('Drag here to aggregate');
-    expect(zone!.querySelectorAll('.cg-columns-panel-valz-pill').length).toBe(0);
+    expect(zone!.querySelectorAll('.vg-columns-panel-valz-pill').length).toBe(0);
   });
 
   it('renders one pill per getValueColumns() entry in order with aggFunc(headerName) label', () => {
@@ -327,9 +327,9 @@ describe('ColumnsToolPanel — Values drop zone (Cycle 18 / Task 5)', () => {
     ] });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    const pills = Array.from(root.querySelectorAll<HTMLElement>('.cg-columns-panel-valz-pill'));
+    const pills = Array.from(root.querySelectorAll<HTMLElement>('.vg-columns-panel-valz-pill'));
     expect(pills.map((p) => p.dataset.colId)).toEqual(['gold', 'silver']);
-    const labels = pills.map((p) => p.querySelector<HTMLElement>('.cg-columns-panel-valz-pill-label')?.textContent);
+    const labels = pills.map((p) => p.querySelector<HTMLElement>('.vg-columns-panel-valz-pill-label')?.textContent);
     expect(labels).toEqual(['sum(Gold)', 'avg(Silver)']);
   });
 
@@ -337,8 +337,8 @@ describe('ColumnsToolPanel — Values drop zone (Cycle 18 / Task 5)', () => {
     const api = makeApi({ valueColumns: [{ colId: 'gold', aggFunc: 'sum' }] });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    const pill = root.querySelector<HTMLElement>('.cg-columns-panel-valz-pill[data-col-id="gold"]')!;
-    const remove = pill.querySelector<HTMLButtonElement>('.cg-columns-panel-valz-pill-remove')!;
+    const pill = root.querySelector<HTMLElement>('.vg-columns-panel-valz-pill[data-col-id="gold"]')!;
+    const remove = pill.querySelector<HTMLButtonElement>('.vg-columns-panel-valz-pill-remove')!;
     remove.click();
     expect(api.removeValueColumn).toHaveBeenCalledWith('gold');
   });
@@ -347,8 +347,8 @@ describe('ColumnsToolPanel — Values drop zone (Cycle 18 / Task 5)', () => {
     const api = makeApi();
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    pinZoneRect(root, '.cg-columns-panel-valz', { left: 0, top: 300, right: 240, bottom: 380 });
-    const handle = root.querySelector<HTMLElement>('.cg-columns-panel-row[data-col-id="gold"] .cg-columns-panel-row-handle')!;
+    pinZoneRect(root, '.vg-columns-panel-valz', { left: 0, top: 300, right: 240, bottom: 380 });
+    const handle = root.querySelector<HTMLElement>('.vg-columns-panel-row[data-col-id="gold"] .vg-columns-panel-row-handle')!;
     handle.dispatchEvent(new MouseEvent('mousedown', { clientX: 10, clientY: 50, bubbles: true }));
     window.dispatchEvent(new MouseEvent('mousemove', { clientX: 100, clientY: 340 }));
     window.dispatchEvent(new MouseEvent('mouseup', { clientX: 100, clientY: 340 }));
@@ -359,8 +359,8 @@ describe('ColumnsToolPanel — Values drop zone (Cycle 18 / Task 5)', () => {
     const api = makeApi({ defaultAggFunc: { gold: 'avg' } });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    pinZoneRect(root, '.cg-columns-panel-valz', { left: 0, top: 300, right: 240, bottom: 380 });
-    const handle = root.querySelector<HTMLElement>('.cg-columns-panel-row[data-col-id="gold"] .cg-columns-panel-row-handle')!;
+    pinZoneRect(root, '.vg-columns-panel-valz', { left: 0, top: 300, right: 240, bottom: 380 });
+    const handle = root.querySelector<HTMLElement>('.vg-columns-panel-row[data-col-id="gold"] .vg-columns-panel-row-handle')!;
     handle.dispatchEvent(new MouseEvent('mousedown', { clientX: 10, clientY: 50, bubbles: true }));
     window.dispatchEvent(new MouseEvent('mousemove', { clientX: 100, clientY: 340 }));
     window.dispatchEvent(new MouseEvent('mouseup', { clientX: 100, clientY: 340 }));
@@ -372,11 +372,11 @@ describe('ColumnsToolPanel — Values drop zone (Cycle 18 / Task 5)', () => {
     const api = makeApi();
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    pinZoneRect(root, '.cg-columns-panel-valz', { left: 0, top: 300, right: 240, bottom: 380 });
-    const handle = root.querySelector<HTMLElement>('.cg-columns-panel-row[data-col-id="country"] .cg-columns-panel-row-handle')!;
+    pinZoneRect(root, '.vg-columns-panel-valz', { left: 0, top: 300, right: 240, bottom: 380 });
+    const handle = root.querySelector<HTMLElement>('.vg-columns-panel-row[data-col-id="country"] .vg-columns-panel-row-handle')!;
     handle.dispatchEvent(new MouseEvent('mousedown', { clientX: 10, clientY: 50, bubbles: true }));
     window.dispatchEvent(new MouseEvent('mousemove', { clientX: 100, clientY: 340 }));
-    const zone = root.querySelector<HTMLElement>('.cg-columns-panel-valz')!;
+    const zone = root.querySelector<HTMLElement>('.vg-columns-panel-valz')!;
     expect(zone.dataset.drop).toBe('reject');
     window.dispatchEvent(new MouseEvent('mouseup', { clientX: 100, clientY: 340 }));
     expect(api.addValueColumn).not.toHaveBeenCalled();
@@ -387,11 +387,11 @@ describe('ColumnsToolPanel — Values drop zone (Cycle 18 / Task 5)', () => {
     const api = makeApi({ valueColumns: [{ colId: 'gold', aggFunc: 'sum' }] });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    pinZoneRect(root, '.cg-columns-panel-valz', { left: 0, top: 300, right: 240, bottom: 380 });
-    const handle = root.querySelector<HTMLElement>('.cg-columns-panel-row[data-col-id="gold"] .cg-columns-panel-row-handle')!;
+    pinZoneRect(root, '.vg-columns-panel-valz', { left: 0, top: 300, right: 240, bottom: 380 });
+    const handle = root.querySelector<HTMLElement>('.vg-columns-panel-row[data-col-id="gold"] .vg-columns-panel-row-handle')!;
     handle.dispatchEvent(new MouseEvent('mousedown', { clientX: 10, clientY: 50, bubbles: true }));
     window.dispatchEvent(new MouseEvent('mousemove', { clientX: 100, clientY: 340 }));
-    const zone = root.querySelector<HTMLElement>('.cg-columns-panel-valz')!;
+    const zone = root.querySelector<HTMLElement>('.vg-columns-panel-valz')!;
     expect(zone.dataset.drop).toBe('reject');
     window.dispatchEvent(new MouseEvent('mouseup', { clientX: 100, clientY: 340 }));
     expect(api.addValueColumn).not.toHaveBeenCalled();
@@ -401,8 +401,8 @@ describe('ColumnsToolPanel — Values drop zone (Cycle 18 / Task 5)', () => {
     const api = makeApi({ valueColumns: [{ colId: 'gold', aggFunc: 'sum' }] });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    pinZoneRect(root, '.cg-columns-panel-valz', { left: 0, top: 300, right: 240, bottom: 380 });
-    const pill = root.querySelector<HTMLElement>('.cg-columns-panel-valz-pill[data-col-id="gold"]')!;
+    pinZoneRect(root, '.vg-columns-panel-valz', { left: 0, top: 300, right: 240, bottom: 380 });
+    const pill = root.querySelector<HTMLElement>('.vg-columns-panel-valz-pill[data-col-id="gold"]')!;
     pill.dispatchEvent(new MouseEvent('mousedown', { clientX: 100, clientY: 340, bubbles: true }));
     window.dispatchEvent(new MouseEvent('mousemove', { clientX: 110, clientY: 350 }));
     window.dispatchEvent(new MouseEvent('mouseup', { clientX: 500, clientY: 500 }));
@@ -413,9 +413,9 @@ describe('ColumnsToolPanel — Values drop zone (Cycle 18 / Task 5)', () => {
     const api = makeApi();
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    expect(root.querySelectorAll('.cg-columns-panel-valz-pill').length).toBe(0);
+    expect(root.querySelectorAll('.vg-columns-panel-valz-pill').length).toBe(0);
     api.addValueColumn('gold', 'sum');
-    const pills = Array.from(root.querySelectorAll<HTMLElement>('.cg-columns-panel-valz-pill'));
+    const pills = Array.from(root.querySelectorAll<HTMLElement>('.vg-columns-panel-valz-pill'));
     expect(pills.map((p) => p.dataset.colId)).toEqual(['gold']);
   });
 
@@ -423,7 +423,7 @@ describe('ColumnsToolPanel — Values drop zone (Cycle 18 / Task 5)', () => {
     const api = makeApi({ valueColumns: [{ colId: 'gold', aggFunc: 'sum' }] });
     const { panel, root } = mountPanel(api, { suppressValues: true });
     hosts.push(panel);
-    expect(root.querySelector('.cg-columns-panel-valz')).toBeNull();
+    expect(root.querySelector('.vg-columns-panel-valz')).toBeNull();
   });
 });
 
@@ -441,7 +441,7 @@ describe('ColumnsToolPanel — pivotMode-dependent checkbox semantics (Cycle 18 
     const api = makeApi({ pivotMode: false });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    const cb = root.querySelector<HTMLInputElement>('.cg-columns-panel-row[data-col-id="country"] .cg-columns-panel-row-checkbox')!;
+    const cb = root.querySelector<HTMLInputElement>('.vg-columns-panel-row[data-col-id="country"] .vg-columns-panel-row-checkbox')!;
     cb.click(); // toggle off → makes hidden
     expect(api.setColumnsVisible).toHaveBeenCalledWith(['country'], false);
     expect(api.addRowGroupColumn).not.toHaveBeenCalled();
@@ -463,7 +463,7 @@ describe('ColumnsToolPanel — pivotMode-dependent checkbox semantics (Cycle 18 
     });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    const cb = root.querySelector<HTMLInputElement>('.cg-columns-panel-row[data-col-id="country"] .cg-columns-panel-row-checkbox')!;
+    const cb = root.querySelector<HTMLInputElement>('.vg-columns-panel-row[data-col-id="country"] .vg-columns-panel-row-checkbox')!;
     expect(cb.checked).toBe(false);
     cb.click();
     expect(api.addRowGroupColumn).toHaveBeenCalledWith('country');
@@ -480,7 +480,7 @@ describe('ColumnsToolPanel — pivotMode-dependent checkbox semantics (Cycle 18 
     });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    const cb = root.querySelector<HTMLInputElement>('.cg-columns-panel-row[data-col-id="gold"] .cg-columns-panel-row-checkbox')!;
+    const cb = root.querySelector<HTMLInputElement>('.vg-columns-panel-row[data-col-id="gold"] .vg-columns-panel-row-checkbox')!;
     expect(cb.checked).toBe(false);
     cb.click();
     expect(api.addValueColumn).toHaveBeenCalledWith('gold', 'sum');
@@ -492,7 +492,7 @@ describe('ColumnsToolPanel — pivotMode-dependent checkbox semantics (Cycle 18 
     const api = makeApi({ pivotMode: true, rowGroupColumns: ['country'] });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    const cb = root.querySelector<HTMLInputElement>('.cg-columns-panel-row[data-col-id="country"] .cg-columns-panel-row-checkbox')!;
+    const cb = root.querySelector<HTMLInputElement>('.vg-columns-panel-row[data-col-id="country"] .vg-columns-panel-row-checkbox')!;
     expect(cb.checked).toBe(true);
     cb.click();
     expect(api.removeRowGroupColumn).toHaveBeenCalledWith('country');
@@ -503,7 +503,7 @@ describe('ColumnsToolPanel — pivotMode-dependent checkbox semantics (Cycle 18 
     const api = makeApi({ pivotMode: true, valueColumns: [{ colId: 'gold', aggFunc: 'sum' }] });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    const cb = root.querySelector<HTMLInputElement>('.cg-columns-panel-row[data-col-id="gold"] .cg-columns-panel-row-checkbox')!;
+    const cb = root.querySelector<HTMLInputElement>('.vg-columns-panel-row[data-col-id="gold"] .vg-columns-panel-row-checkbox')!;
     expect(cb.checked).toBe(true);
     cb.click();
     expect(api.removeValueColumn).toHaveBeenCalledWith('gold');
@@ -519,7 +519,7 @@ describe('ColumnsToolPanel — pivotMode-dependent checkbox semantics (Cycle 18 
     });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    const cb = root.querySelector<HTMLInputElement>('.cg-columns-panel-row[data-col-id="athlete"] .cg-columns-panel-row-checkbox')!;
+    const cb = root.querySelector<HTMLInputElement>('.vg-columns-panel-row[data-col-id="athlete"] .vg-columns-panel-row-checkbox')!;
     expect(cb.checked).toBe(false);
     cb.click();
     expect(api.addRowGroupColumn).toHaveBeenCalledWith('athlete');
@@ -538,7 +538,7 @@ describe('ColumnsToolPanel — pivotMode-dependent checkbox semantics (Cycle 18 
     });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    const cb = root.querySelector<HTMLInputElement>('.cg-columns-panel-row[data-col-id="athlete"] .cg-columns-panel-row-checkbox')!;
+    const cb = root.querySelector<HTMLInputElement>('.vg-columns-panel-row[data-col-id="athlete"] .vg-columns-panel-row-checkbox')!;
     cb.click();
     expect(api.addRowGroupColumn).not.toHaveBeenCalled();
     expect(api.addValueColumn).not.toHaveBeenCalled();
@@ -553,9 +553,9 @@ describe('ColumnsToolPanel — pivotMode-dependent checkbox semantics (Cycle 18 
     });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    const countryCb = root.querySelector<HTMLInputElement>('.cg-columns-panel-row[data-col-id="country"] .cg-columns-panel-row-checkbox')!;
-    const goldCb = root.querySelector<HTMLInputElement>('.cg-columns-panel-row[data-col-id="gold"] .cg-columns-panel-row-checkbox')!;
-    const athleteCb = root.querySelector<HTMLInputElement>('.cg-columns-panel-row[data-col-id="athlete"] .cg-columns-panel-row-checkbox')!;
+    const countryCb = root.querySelector<HTMLInputElement>('.vg-columns-panel-row[data-col-id="country"] .vg-columns-panel-row-checkbox')!;
+    const goldCb = root.querySelector<HTMLInputElement>('.vg-columns-panel-row[data-col-id="gold"] .vg-columns-panel-row-checkbox')!;
+    const athleteCb = root.querySelector<HTMLInputElement>('.vg-columns-panel-row[data-col-id="athlete"] .vg-columns-panel-row-checkbox')!;
     // Country has rowGroup role → checked. Gold has value role →
     // checked. Athlete has no role → UNCHECKED, regardless of its
     // hide state (Cycle 19 / Task 5b — the pre-5b "visibility
@@ -577,7 +577,7 @@ describe('ColumnsToolPanel — pivotMode-dependent checkbox semantics (Cycle 18 
     });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    const countryCb = root.querySelector<HTMLInputElement>('.cg-columns-panel-row[data-col-id="country"] .cg-columns-panel-row-checkbox')!;
+    const countryCb = root.querySelector<HTMLInputElement>('.vg-columns-panel-row[data-col-id="country"] .vg-columns-panel-row-checkbox')!;
     expect(countryCb.checked).toBe(true); // grouped (role) → checked under pivot
     // Flip pivot mode off (e.g. via the toggle from elsewhere).
     api.emit({ type: 'pivotStateChanged', pivotMode: false, pivotColumns: [], valueColumns: [], source: 'mode' });

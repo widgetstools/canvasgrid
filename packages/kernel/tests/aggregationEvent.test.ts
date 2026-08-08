@@ -21,9 +21,9 @@
 //   5. does NOT fire on cosmetic re-renders — sort, scroll, theme.
 
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
-import type { AggregationChangedEvent, CGridEvent } from '../src/types';
+import type { AggregationChangedEvent, VelocityGridEvent } from '../src/types';
 
 beforeAll(() => {
   (globalThis as any).Worker = class {
@@ -57,12 +57,12 @@ beforeAll(() => {
 
 type Row = { id: string; price: number; qty: number };
 
-function mkGrid(opts?: Partial<Parameters<typeof CGrid<Row>>[1]>) {
+function mkGrid(opts?: Partial<Parameters<typeof VelocityGrid<Row>>[1]>) {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
-  const grid = new CGrid<Row>(container, {
+  const grid = new VelocityGrid<Row>(container, {
     columnDefs: [
       { field: 'id' },
       { field: 'price', aggFunc: 'sum' },
@@ -221,22 +221,22 @@ describe('aggregationChanged — cosmetic re-renders do NOT fire', () => {
     // (c) Theme. `setGridOption('theme', …)` swaps the theme class
     // and triggers a repaint, but no worker round-trip. We assert
     // no aggregationChanged emit fires.
-    t.grid.setGridOption('theme', 'cg-theme-balham');
+    t.grid.setGridOption('theme', 'vg-theme-balham');
     await tick(50);
     expect(t.events.length).toBe(afterInit);
     t.cleanup();
   });
 
-  // Extra guard — the event type IS a member of `CGridEvent`. This is
+  // Extra guard — the event type IS a member of `VelocityGridEvent`. This is
   // a static type assertion that prevents a future refactor from
   // dropping the discriminator from the public union by accident.
-  it('AggregationChangedEvent is assignable to CGridEvent', () => {
+  it('AggregationChangedEvent is assignable to VelocityGridEvent', () => {
     const evt: AggregationChangedEvent = {
       type: 'aggregationChanged',
       totals: { x: 1 },
       source: 'api',
     };
-    const wide: CGridEvent = evt;
+    const wide: VelocityGridEvent = evt;
     expect(wide.type).toBe('aggregationChanged');
   });
 });

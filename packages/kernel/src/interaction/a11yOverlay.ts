@@ -40,7 +40,7 @@ export class A11yOverlay {
 
   constructor(private container: HTMLElement) {
     const root = document.createElement('div');
-    root.className = 'cg-a11y-root';
+    root.className = 'vg-a11y-root';
     root.style.cssText = HIDDEN_STYLE;
     const grid = document.createElement('div');
     grid.setAttribute('role', 'grid');

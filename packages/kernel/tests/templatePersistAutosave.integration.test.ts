@@ -9,8 +9,8 @@
  * — it triggers no colDef rebuild, so nothing else could dirty the bus.
  */
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { CGrid } from '../src/cgrid';
-import { wireIntoKernel } from '@cgrid/calc';
+import { VelocityGrid } from '../src/velocityGrid';
+import { wireIntoKernel } from '@wellsfargo-starui/velocity-grid-calc';
 import { _resetCalcProvider_forTests } from '../src/core/calcSlot';
 
 beforeEach(() => { _resetCalcProvider_forTests(); });
@@ -54,12 +54,12 @@ function memAdapter() {
 async function mountWired(extra: Record<string, unknown> = {}) {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
-  const grid = new CGrid<{ id: string; qty: number; price: number }>(container, {
+  const grid = new VelocityGrid<{ id: string; qty: number; price: number }>(container, {
     columnDefs: [{ field: 'id' }, { field: 'qty' }, { field: 'price' }],
     getRowId: (r) => r.id,
-    theme: 'cg-theme-quartz',
+    theme: 'vg-theme-quartz',
     ...extra,
   });
   const { calc } = wireIntoKernel(grid);

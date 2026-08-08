@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
 
 // happy-dom shims: Worker + canvas 2D context. Mirrors the pattern used by
@@ -36,7 +36,7 @@ beforeAll(() => {
 function buildWiredGrid<T extends { id: string }>(rows: T[] | undefined, cols: any[]) {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
   const prevWorker = (globalThis as any).Worker;
   (globalThis as any).Worker = class {
@@ -54,7 +54,7 @@ function buildWiredGrid<T extends { id: string }>(rows: T[] | undefined, cols: a
     getRowId: (r: T) => r.id,
   };
   if (rows !== undefined) opts.rowData = rows;
-  const grid = new CGrid<T>(container, opts);
+  const grid = new VelocityGrid<T>(container, opts);
   const restore = () => { (globalThis as any).Worker = prevWorker; container.remove(); };
   return { grid, container, restore };
 }

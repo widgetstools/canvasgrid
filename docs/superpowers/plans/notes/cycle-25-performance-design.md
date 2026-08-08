@@ -48,7 +48,7 @@ metric. Outputs JSON; published baselines committed to git.
 ```typescript
 bench('cold start: 1k × 10', () => {
   const host = makeOffscreenContainer();
-  new CGrid(host, { columnDefs: cols10, rowData: rows1k });
+  new VelocityGrid(host, { columnDefs: cols10, rowData: rows1k });
   // bench tool measures wall-clock
 }, { iterations: 20, warmup: 5 });
 
@@ -104,7 +104,7 @@ viewport size, not the full chunk — irrelevant cost.
 
 ## Task 4 — OffscreenCanvas paint mode (opt-in)
 
-**Goal:** `CGridOptions.useOffscreenCanvas: true` mounts the canvas
+**Goal:** `VelocityGridOptions.useOffscreenCanvas: true` mounts the canvas
 as an `OffscreenCanvas` transferred to a paint worker. Main thread
 sends `ViewportState` via `postMessage`; paint worker does the
 entire `byRows + gridLines + overlays` paint.
@@ -221,7 +221,7 @@ chunks are no-op.
 **Edge case:** Direction reversal — cancel pending prefetches in
 the OPPOSITE direction.
 
-**File:** `cgrid.ts` (extended scroll handler).
+**File:** `velocityGrid.ts` (extended scroll handler).
 
 ---
 
@@ -256,7 +256,7 @@ in the same frame triggers ONE worker round-trip, not N.
 
 **Goal:** `WeakRef`-based chunk eviction when memory budget exceeded.
 
-**Budget:** `CGridOptions.memoryBudgetMB?: number` — when total
+**Budget:** `VelocityGridOptions.memoryBudgetMB?: number` — when total
 worker chunk memory exceeds this, evict the LRU chunks (held via
 `WeakRef` so they're collected at the next GC).
 

@@ -8,7 +8,7 @@
  *
  * Built-in IDs `'agColumnsToolPanel'` (Task 3) and `'agFiltersToolPanel'`
  * (Task 4) are pre-registered with stub implementations in Task 1; apps
- * register custom panels via `CGridOptions.components`.
+ * register custom panels via `VelocityGridOptions.components`.
  *
  * The `SideBarDef` / `ToolPanelDef` shapes mirror the catalog
  * (`docs/catalog/17-side-bar-and-tool-panels.md`). Param shapes
@@ -17,7 +17,7 @@
  */
 
 /** Params handed to every `ToolPanel.init`. `api` is typed `unknown` here
- *  to avoid a circular dep with `CGridApi`; panels cast to `CGridApi`
+ *  to avoid a circular dep with `VelocityGridApi`; panels cast to `VelocityGridApi`
  *  inside their own implementation. `toolPanelParams` carries the
  *  app-supplied `ToolPanelDef.toolPanelParams` verbatim. */
 export interface ToolPanelParams<TGrid = unknown> {
@@ -60,7 +60,7 @@ export interface ToolPanelDef {
   iconKey?: string;
   /** Component string name. Built-ins: `'agColumnsToolPanel'`,
    *  `'agFiltersToolPanel'`. Custom panels resolve via
-   *  `CGridOptions.components`. */
+   *  `VelocityGridOptions.components`. */
   toolPanel: string;
   /** Forwarded verbatim to the tool panel's `init({ toolPanelParams })`. */
   toolPanelParams?: Record<string, unknown>;
@@ -69,7 +69,7 @@ export interface ToolPanelDef {
   width?: number;
 }
 
-/** Side bar configuration. Apps pass this via `CGridOptions.sideBar`
+/** Side bar configuration. Apps pass this via `VelocityGridOptions.sideBar`
  *  starting in Task 2; Task 1 only ships the type. */
 export interface SideBarDef {
   toolPanels: (ToolPanelDef | string)[];

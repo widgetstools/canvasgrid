@@ -13,7 +13,7 @@ The customizer ships as **two packages**:
 | Package | Contains | Dependencies | License |
 |---|---|---|---|
 | **`cgrid`** (core) | Engine layer documented here: expression engine, format-string layer, edit journal, rule evaluators, calculated columns, serialize/deserialize, config management, data access. Plus the public API surface. | Vanilla TS, zero UI framework | MIT |
-| **`@cgrid/customizer`** (addon) | UI editors documented in [../starui-customizer-ui/](../starui-customizer-ui/). Consumes `cgrid` strictly through its public API. | Lit + Web Awesome + `cgrid` | TBD (can be commercial — see AG Grid Enterprise model) |
+| **`@wellsfargo-starui/velocity-grid-customizer`** (addon) | UI editors documented in [../starui-customizer-ui/](../starui-customizer-ui/). Consumes `cgrid` strictly through its public API. | Lit + Web Awesome + `cgrid` | TBD (can be commercial — see AG Grid Enterprise model) |
 
 **This doc covers the `cgrid` half.** The UI half lives in a sibling folder.
 
@@ -21,7 +21,7 @@ The customizer ships as **two packages**:
 
 - **Bundle hygiene** — users who just want a grid don't pay for the customizer.
 - **Forcing function for API design** — if the addon can't implement a feature using only the public API, that's a signal the API has a gap. Fix the gap rather than letting the addon reach into internals. This is the discipline that kept AG Grid Community's API clean for a decade.
-- **Optionality** — future UI variants (React wrapper, vanilla DOM editors, headless drivers) sit alongside `@cgrid/customizer` without touching the core.
+- **Optionality** — future UI variants (React wrapper, vanilla DOM editors, headless drivers) sit alongside `@wellsfargo-starui/velocity-grid-customizer` without touching the core.
 - **Independent release cadence** — the addon can iterate on UX without forcing a core release; the core can fix grid bugs without a UI version bump.
 
 ## Public API surface (the contract)
@@ -42,7 +42,7 @@ export type {
 } from './core/types';
 ```
 
-**Rule: anything not exported from `api.ts` is internal.** The addon imports only from `cgrid` (which re-exports `api.ts`). If `@cgrid/customizer` needs something that isn't exported, that's a signal to extend the API — not a signal to bypass it.
+**Rule: anything not exported from `api.ts` is internal.** The addon imports only from `cgrid` (which re-exports `api.ts`). If `@wellsfargo-starui/velocity-grid-customizer` needs something that isn't exported, that's a signal to extend the API — not a signal to bypass it.
 
 Enforce mechanically:
 - TypeScript `paths` restriction so deep imports don't resolve from outside the cgrid package

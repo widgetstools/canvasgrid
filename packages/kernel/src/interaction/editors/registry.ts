@@ -18,7 +18,7 @@ export class CellEditorRegistry {
   resolve(name: string): CellEditorCtor {
     const ctor = this.map.get(name);
     if (!ctor) {
-      throw new Error(`[cgrid] cellEditor '${name}' is not registered`);
+      throw new Error(`[velocity-grid] cellEditor '${name}' is not registered`);
     }
     return ctor;
   }

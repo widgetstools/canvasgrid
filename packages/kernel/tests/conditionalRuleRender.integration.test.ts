@@ -2,11 +2,11 @@
  * Grid Layouts — Phase C / C2: render-time application of conditional rules.
  *
  * Proves the worklog's C2 gate — "a rule paints the right cells" — END TO END
- * with the REAL @cgrid/rules RuleEngine + the REAL kernel painter fold
+ * with the REAL @wellsfargo-starui/velocity-grid-rules RuleEngine + the REAL kernel painter fold
  * (`applyCellProps`), NOT a fake engine. The Cycle-21e fold test
  * (core/propertyChain-ruleFold.test.ts) already covers the painter mechanics
  * with a stub engine over a cellClass/cellStyleFn base; C2 adds the Grid-Layouts
- * angle that C1's reconciliation onto @cgrid/rules made possible:
+ * angle that C1's reconciliation onto @wellsfargo-starui/velocity-grid-rules made possible:
  *
  *   1. the rule style layers OVER a TEMPLATE-RESOLVED base (spec §3.3:
  *      `templates base → conditional rules overlay`) — the template's static
@@ -19,7 +19,7 @@
  *   4. the rules arrive through the C1 LAYOUT-TIER `rules` state module
  *      (`module.set(...)` → `RuleEngine.setRules`) and reach the SAME engine the
  *      painter consults via the kernel rule-engine slot — the C1→C2 seam;
- *   5. on a REAL CGrid, `setState({ modules: { rules } })` (the layout-restore
+ *   5. on a REAL VelocityGrid, `setState({ modules: { rules } })` (the layout-restore
  *      path) feeds that engine.
  */
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
@@ -29,8 +29,8 @@ import {
   getRuleEngine,
   _resetRuleEngine_forTests,
 } from '../src/core/ruleEngineSlot';
-import { wireIntoKernel } from '@cgrid/rules';
-import type { ConditionalStyleRule } from '@cgrid/rules';
+import { wireIntoKernel } from '@wellsfargo-starui/velocity-grid-rules';
+import type { ConditionalStyleRule } from '@wellsfargo-starui/velocity-grid-rules';
 import type { CellPaintConfig } from '../src/renderer/cellRenderers/registry';
 import type { ResolvedTheme } from '../src/theming/cssReader';
 
@@ -72,7 +72,7 @@ function paint(
 }
 
 // ─── Fake grid host that forwards the rule engine into the KERNEL slot ───────
-// The @cgrid/rules bridge registers its adapter via grid.registerRuleEngine();
+// The @wellsfargo-starui/velocity-grid-rules bridge registers its adapter via grid.registerRuleEngine();
 // we route that into the real kernel slot so the real painter consults it.
 // Everything else is the minimal surface the bridge touches.
 
@@ -210,9 +210,9 @@ describe('Grid Layouts C2 — conditional rules render over the template base', 
   });
 });
 
-// ─── End-to-end on a REAL CGrid: setState({modules:{rules}}) feeds the engine ─
+// ─── End-to-end on a REAL VelocityGrid: setState({modules:{rules}}) feeds the engine ─
 
-describe('Grid Layouts C2 — rules ride a layout onto a real CGrid', () => {
+describe('Grid Layouts C2 — rules ride a layout onto a real VelocityGrid', () => {
   beforeAll(() => {
     (globalThis as unknown as { Worker: unknown }).Worker = class {
       listeners: Array<(e: { data: unknown }) => void> = [];
@@ -242,15 +242,15 @@ describe('Grid Layouts C2 — rules ride a layout onto a real CGrid', () => {
   beforeEach(() => _resetRuleEngine_forTests());
 
   it('setState({modules:{rules}}) installs rules into the engine the painter consults', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const container = document.createElement('div');
     container.style.cssText = 'width:800px; height:600px;';
-    container.className = 'cg-theme-quartz';
+    container.className = 'vg-theme-quartz';
     document.body.appendChild(container);
-    const grid = new CGrid<{ id: string; pnl: number }>(container, {
+    const grid = new VelocityGrid<{ id: string; pnl: number }>(container, {
       columnDefs: [{ field: 'id' }, { field: 'pnl' }],
       getRowId: (r) => r.id,
-      theme: 'cg-theme-quartz',
+      theme: 'vg-theme-quartz',
     });
     wireIntoKernel(grid, { now: () => 0 });
 

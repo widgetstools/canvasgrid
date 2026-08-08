@@ -59,14 +59,14 @@ async function waitForFrames(page: Page, n = 6): Promise<void> {
 
 async function rangesNow(page: Page): Promise<SelectionRange[]> {
   return page.evaluate(
-    () => (window as unknown as { __cgrid: GridSurface }).__cgrid.selection.state.ranges
+    () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.selection.state.ranges
       .map((r) => ({ rowStart: r.rowStart, rowEnd: r.rowEnd, colIds: [...r.colIds] })),
   );
 }
 
 async function focusNow(page: Page): Promise<{ rowIndex: number | null; colId: string | null }> {
   return page.evaluate(() => {
-    const s = (window as unknown as { __cgrid: GridSurface }).__cgrid.selection.state;
+    const s = (window as unknown as { __velocity-grid: GridSurface }).__cgrid.selection.state;
     return { rowIndex: s.focusedRowIndex, colId: s.focusedColId };
   });
 }
@@ -74,7 +74,7 @@ async function focusNow(page: Page): Promise<{ rowIndex: number | null; colId: s
 async function seed(page: Page, range: SelectionRange, focusRow: number, focusCol: string): Promise<void> {
   await page.evaluate(
     ({ r, fr, fc }) => {
-      const g = (window as unknown as { __cgrid: GridSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridSurface }).__cgrid;
       g.clearCellRanges();
       g.addCellRange(r);
       g.selection.setFocus(fr, fc);
@@ -206,7 +206,7 @@ test.describe('Cycle 9 patch — range collapses on keyboard focus moves', () =>
     await gridReady(page);
 
     await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: GridSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridSurface }).__cgrid;
       g.clearCellRanges();
       g.addCellRange({ rowStart: 1, rowEnd: 5, colIds: ['currentPrice', 'dailyPnl'] });
       // Move focus to a cell INSIDE the wide range via the non-collapsing

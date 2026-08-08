@@ -1,4 +1,4 @@
-// @cgrid/expression — public type surface.
+// @wellsfargo-starui/velocity-grid-expression — public type surface.
 //
 // All types are plain TypeScript: discriminated unions for the AST,
 // plain interfaces for results/errors. Nothing here is runtime; this

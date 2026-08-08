@@ -1,4 +1,4 @@
-// @cgrid/edit — public re-exports.
+// @wellsfargo-starui/velocity-grid-edit — public re-exports.
 // See docs/superpowers/specs/2026-07-02-cycle-21g-edit-design.md.
 
 export {

@@ -29,7 +29,7 @@ Maps Markets Playwright specs (`/Users/develop/wfh/stern-bak/apps/e2e/v2-*.spec.
 | `v2-alerts.spec.ts` | OpenFin channel disabled without `fin` | — | gap | Small UI assert |
 | `v2-alerts.spec.ts` | RelativeChange / tick rules | — | n/a | Needs live ticker; paintHarness has no ticks |
 | `v2-edit-history.spec.ts` | Suspended / stream / undo | `customizer.spec.ts` | covered | Smoke in existing suite |
-| `v2-filters-toolbar.spec.ts` | Empty +, capture, toggle, clear, rename, delete, no-dupe, persist | `savedFilters.spec.ts` | covered | Persist via `updateLayout` + `cgrid:state:ext-demo` |
+| `v2-filters-toolbar.spec.ts` | Empty +, capture, toggle, clear, rename, delete, no-dupe, persist | `savedFilters.spec.ts` | covered | Persist via `updateLayout` + `velocity-grid:state:ext-demo` |
 | `v2-filters-toolbar.spec.ts` | AND compose across columns | `savedFilters.spec.ts` | covered | |
 | `v2-filters-toolbar.spec.ts` | OR same-column / collapse summary / scrollbar hide | — | gap | Product may differ (no collapse chip yet) |
 | `v2-formatting-toolbar.spec.ts` | Enable on select, Bold, italic, underline, align, clear, overflow | `formattingToolbar.spec.ts` | covered | |

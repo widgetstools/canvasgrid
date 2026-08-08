@@ -250,16 +250,16 @@ the existing renderer pipeline (`renderer/renderer.ts`) alongside
 
 | # | Title | UI? | Worker? | Key files | New tests + visual cells |
 |---|-------|-----|---------|-----------|--------------------------|
-| 1 | Row group panel completeness (reorder + sort + live indicator + ghost + drag-from-tool-panel + one-list invariant) | yes | no | `cgrid/src/interaction/rowGroupPanel/host.ts`, `core/groupingState.ts` (new), `cgrid.ts`, `tokens.css` | `rowGroupPanelComplete.test.ts` (24 cases) + visual cell `27-rowGroupPanel-mid-drag-insertion.png` + E2E `cycle15.5-pillReorder.spec.ts` |
+| 1 | Row group panel completeness (reorder + sort + live indicator + ghost + drag-from-tool-panel + one-list invariant) | yes | no | `cgrid/src/interaction/rowGroupPanel/host.ts`, `core/groupingState.ts` (new), `velocityGrid.ts`, `tokens.css` | `rowGroupPanelComplete.test.ts` (24 cases) + visual cell `27-rowGroupPanel-mid-drag-insertion.png` + E2E `cycle15.5-pillReorder.spec.ts` |
 | 2 | Tool panel Row Groups drop zone + header context menu Group-by items (3 surfaces, 1 list) | yes | no | `cgrid/src/interaction/toolPanels/columnsPanel.ts`, `cgrid/src/interaction/contextMenu/host.ts`, `cgrid/src/interaction/contextMenu/mainMenuDefaults.ts`, `tokens.css` | `toolPanelRowGroups.test.ts` (18 cases) + `contextMenuGroupBy.test.ts` (10 cases) + visual cells `28-toolpanel-rowgroups-3-pills.png` + `29-header-context-menu-group-by.png` |
 | 3 | Sticky group rows (canvas overlay) | yes | partial (slicer surface) | `cgrid/src/renderer/painters/stickyGroups.ts` (new), `renderer/renderer.ts`, `core/viewport.ts`, `interaction/features/groupExpand.ts`, `tokens.css` | `stickyGroups.test.ts` (18 cases) + `stickyGroups.perf.test.ts` (≤ 1 ms over 100k × 3 levels) + visual cell `30-sticky-groups-deep-scroll.png` |
 | 4 | `groupHideOpenParents` (parent-replacement mode + force sticky off) | yes | yes | `worker/viewportSlicer.ts`, `core/subgrid.ts`, `renderer/cellRenderers/group.ts`, `renderer/painters/stickyGroups.ts` | `hideOpenParents.test.ts` (12 cases) + visual cell `31-hideOpenParents-expanded.png` |
 | 5 | Selection completeness (`groupSelects` modes + `checkboxLocation` + `selectAll`) | yes | no | `interaction/selectionModel.ts`, `renderer/cellRenderers/group.ts`, `interaction/features/headerCheckbox.ts` (new), `tokens.css` | `selectionModes.test.ts` (22 cases) + visual cell `32-selection-self-vs-descendants.png` |
-| 6 | Expand/collapse polish (`isGroupOpenByDefault` + `resetRowGroupExpansion` + `expandParents`/`forceSync` + keyboard nav + `ensureIndexVisible` + ARIA `aria-expanded`) | partial (keyboard, ARIA) | partial (worker reads callback) | `cgrid.ts`, `worker/passes/groupPass.ts`, `interaction/features/groupExpand.ts`, `interaction/features/keyPaging.ts`, a11y layer | `expandPolish.test.ts` (16 cases) + E2E `cycle15.5-keyboardGroupNav.spec.ts` |
-| 7 | Group rendering parity flags (`suppressCount` + `groupRowRendererParams.innerRenderer` + `suppressGroupChangesColumnVisibility` + `suppressDragLeaveHidesColumns`) | yes | no | `renderer/cellRenderers/group.ts`, `cgrid.ts`, `interaction/rowGroupPanel/host.ts`, `interaction/features/columnDrag.ts`, `types.ts` | `groupParityFlags.test.ts` (16 cases) + visual cell `33-customised-group-renderer.png` |
-| 8 | Aggregation extensions (object-returning custom aggFuncs + `groupTotalRow`/`grandTotalRow` + filtered-aggregates compose + incremental tick perf gate) | partial (total-row positions) | yes | `worker/passes/aggPass.ts`, `worker/aggFuncRegistry.ts`, `core/subgrid.ts`, `cgrid.ts` | `aggExtensions.test.ts` (20 cases) + `aggIncremental.perf.test.ts` (100k × 1 row update ≤ 0.5 ms) |
+| 6 | Expand/collapse polish (`isGroupOpenByDefault` + `resetRowGroupExpansion` + `expandParents`/`forceSync` + keyboard nav + `ensureIndexVisible` + ARIA `aria-expanded`) | partial (keyboard, ARIA) | partial (worker reads callback) | `velocityGrid.ts`, `worker/passes/groupPass.ts`, `interaction/features/groupExpand.ts`, `interaction/features/keyPaging.ts`, a11y layer | `expandPolish.test.ts` (16 cases) + E2E `cycle15.5-keyboardGroupNav.spec.ts` |
+| 7 | Group rendering parity flags (`suppressCount` + `groupRowRendererParams.innerRenderer` + `suppressGroupChangesColumnVisibility` + `suppressDragLeaveHidesColumns`) | yes | no | `renderer/cellRenderers/group.ts`, `velocityGrid.ts`, `interaction/rowGroupPanel/host.ts`, `interaction/features/columnDrag.ts`, `types.ts` | `groupParityFlags.test.ts` (16 cases) + visual cell `33-customised-group-renderer.png` |
+| 8 | Aggregation extensions (object-returning custom aggFuncs + `groupTotalRow`/`grandTotalRow` + filtered-aggregates compose + incremental tick perf gate) | partial (total-row positions) | yes | `worker/passes/aggPass.ts`, `worker/aggFuncRegistry.ts`, `core/subgrid.ts`, `velocityGrid.ts` | `aggExtensions.test.ts` (20 cases) + `aggIncremental.perf.test.ts` (100k × 1 row update ≤ 0.5 ms) |
 | 9 | Group sort by aggregate + per-level sort state + filtering interaction (composed rebuild over filtered leaves) | no | yes | `worker/passes/sortPass.ts`, `worker/passes/groupPass.ts`, `interaction/rowGroupPanel/host.ts` (pill sort sync) | `groupSortByAggregate.test.ts` (14 cases) + `filteringWithGrouping.test.ts` (12 cases) |
-| 10 | Grid State save/restore for grouping | no | partial (worker reads restored state) | `cgrid.ts`, `core/groupingState.ts`, `worker/passes/groupPass.ts` | `gridStateGrouping.test.ts` (12 cases) + E2E `cycle15.5-gridStateRoundtrip.spec.ts` |
+| 10 | Grid State save/restore for grouping | no | partial (worker reads restored state) | `velocityGrid.ts`, `core/groupingState.ts`, `worker/passes/groupPass.ts` | `gridStateGrouping.test.ts` (12 cases) + E2E `cycle15.5-gridStateRoundtrip.spec.ts` |
 | 11 | Perf + correctness gate (sticky perf, three-UIs-share-one-list invariant, ARIA assertions, no-allocation scroll path) | no | yes (perf) | `cgrid/tests/groupingPerf.test.ts` (new aggregator); `core/groupingState.ts` (event invariant assertion) | `groupingPerf.test.ts` (12 cases incl. all Prompt 13 assertions) + `threeUIsOneList.test.ts` (8 cases) |
 | 12 | Cycle 15.5 exit ritual | yes (demo wires sticky + selection modes default) | no | worklog Shipped block, FM Area 09 + 17 + 23 final flips, demo updates, README | full suite green; FM Area 09 = 54/54 ✅ |
 
@@ -305,8 +305,8 @@ the existing renderer pipeline (`renderer/renderer.ts`) alongside
     wired).
   - Subscribe to `groupingStateChanged` and re-render pills when
     the state mutates from another view.
-- `cgrid/src/cgrid.ts` — expose the primitive API on `CGridApi`.
-- `cgrid/src/types.ts` — `CGridOptions.suppressDragLeaveHidesColumns:
+- `cgrid/src/velocityGrid.ts` — expose the primitive API on `VelocityGridApi`.
+- `cgrid/src/types.ts` — `VelocityGridOptions.suppressDragLeaveHidesColumns:
   boolean` (default false; documented but the actual
   drag-leaves-grid wiring lands in Task 7 alongside the other
   visibility flags).
@@ -415,8 +415,8 @@ the existing renderer pipeline (`renderer/renderer.ts`) alongside
   drag-from-tool-panel into the row group panel (Task 1 wires the
   panel's acceptance; this task wires the tool panel's drag
   source).
-- `cgrid/src/cgrid.ts` —
-  `CGridOptions.allowDragFromColumnsToolPanel: boolean` (default
+- `cgrid/src/velocityGrid.ts` —
+  `VelocityGridOptions.allowDragFromColumnsToolPanel: boolean` (default
   true; allows the column list's drag handle to drag onto the grid
   or the panel).
 - `cgrid/src/theming/tokens.css` — drop zone styling.
@@ -501,10 +501,10 @@ the existing renderer pipeline (`renderer/renderer.ts`) alongside
   chevron hit-test to also consider pinned headers (translate
   pointer y into band space first; collapsing a pinned ancestor is
   the common "close the group I'm inside" interaction).
-- `cgrid/src/theming/tokens.css` — `.cg-sticky-group-band` selector
+- `cgrid/src/theming/tokens.css` — `.vg-sticky-group-band` selector
   (the band is canvas-painted but a `box-shadow`-based bottom
   border is painted in canvas; CSS only documents the convention).
-- `cgrid/src/types.ts` — `CGridOptions.suppressGroupRowsSticky:
+- `cgrid/src/types.ts` — `VelocityGridOptions.suppressGroupRowsSticky:
   boolean` (default false).
 - `cgrid/tests/stickyGroups.test.ts` (new) — 18 cases per Prompt 5.
 - `cgrid/tests/stickyGroups.perf.test.ts` (new) — 100k × 3-level
@@ -583,8 +583,8 @@ the existing renderer pipeline (`renderer/renderer.ts`) alongside
   depth slot.
 - `cgrid/src/renderer/painters/stickyGroups.ts` — early-return when
   `groupHideOpenParents === true`.
-- `cgrid/src/types.ts` — `CGridOptions.groupHideOpenParents:
-  boolean` (default false). `CGridOptions.groupAllowUnbalanced:
+- `cgrid/src/types.ts` — `VelocityGridOptions.groupHideOpenParents:
+  boolean` (default false). `VelocityGridOptions.groupAllowUnbalanced:
   boolean` (default false; deferred-impl follow-up — declare the
   type but document as "Cycle 16 follow-up").
 - `cgrid/tests/hideOpenParents.test.ts` (new) — 12 cases per
@@ -693,7 +693,7 @@ the existing renderer pipeline (`renderer/renderer.ts`) alongside
 - **Prompt 4** (additions beyond Cycle 15 / Tasks 7+9) from
   `docs/superpowers/notes/row-grouping-complete-prompts.md` — quote
   VERBATIM.
-- `cgrid/src/cgrid.ts` — public API surface; new methods land here.
+- `cgrid/src/velocityGrid.ts` — public API surface; new methods land here.
 - `cgrid/src/worker/passes/groupPass.ts` — `isGroupOpenByDefault`
   callback evaluated at group-pass time per node, after defaults.
 - `cgrid/src/interaction/features/keyPaging.ts` — base keyboard
@@ -702,7 +702,7 @@ the existing renderer pipeline (`renderer/renderer.ts`) alongside
   7 shipped chevron click; this task adds keyboard.
 
 **Files:**
-- `cgrid/src/cgrid.ts`:
+- `cgrid/src/velocityGrid.ts`:
   - `setRowNodeExpanded(nodeId, expanded, expandParents?, forceSync?)`
     — extend the existing API.
   - `resetRowGroupExpansion(): void` — discard user toggles,
@@ -717,7 +717,7 @@ the existing renderer pipeline (`renderer/renderer.ts`) alongside
   `aria-expanded="true|false"` on every group-row a11y entry; flip
   on toggle.
 - `cgrid/src/types.ts` —
-  `CGridOptions.isGroupOpenByDefault?: (node: { key: string;
+  `VelocityGridOptions.isGroupOpenByDefault?: (node: { key: string;
   route: string[] }) => boolean`.
 - `cgrid/tests/expandPolish.test.ts` (new) — 16 cases (callback
   identifies by route not key, resetRowGroupExpansion clears user
@@ -780,7 +780,7 @@ the existing renderer pipeline (`renderer/renderer.ts`) alongside
   is dragged OUT over a panel boundary and dropped outside the
   grid, normally hide it; if `suppressDragLeaveHidesColumns: true`,
   no-op.
-- `cgrid/src/cgrid.ts` — option resolution + runtime
+- `cgrid/src/velocityGrid.ts` — option resolution + runtime
   setGridOption support.
 - `cgrid/src/types.ts` — the four new options + the param shape
   for `groupRowRendererParams`.
@@ -838,8 +838,8 @@ the existing renderer pipeline (`renderer/renderer.ts`) alongside
 - `cgrid/src/core/subgrid.ts` — `TotalsSubgrid` accepts a
   `scope: 'grand' | 'group'` discriminator + a parent group key
   for per-group case.
-- `cgrid/src/cgrid.ts` — `CGridOptions.groupTotalRow:
-  'top' | 'bottom' | null` + `CGridOptions.grandTotalRow:
+- `cgrid/src/velocityGrid.ts` — `VelocityGridOptions.groupTotalRow:
+  'top' | 'bottom' | null` + `VelocityGridOptions.grandTotalRow:
   'top' | 'bottom' | null`.
 - `cgrid/tests/aggExtensions.test.ts` (new) — 20 cases (object
   aggFuncs, total row positions, filter-changes recompute only
@@ -856,7 +856,7 @@ the existing renderer pipeline (`renderer/renderer.ts`) alongside
    Brief: *"When both `groupTotalRow` and `grandTotalRow` are on,
    does the grand total at the bottom of the body sit above or
    below the last group's total? Does it inherit Cycle 14's
-   `--cg-totals-bg` exactly or get a slightly heavier weight to
+   `--vg-totals-bg` exactly or get a slightly heavier weight to
    distinguish from per-group totals?"* Append.
 2. Audit AggPass for tick-path performance. Document findings in
    the commit body.
@@ -904,7 +904,7 @@ the existing renderer pipeline (`renderer/renderer.ts`) alongside
 - `cgrid/src/interaction/rowGroupPanel/host.ts` — pill sort
   indicator subscribes to `GroupingState.perLevelSort` so external
   sort changes reflect in the panel.
-- `cgrid/src/cgrid.ts` — primitive
+- `cgrid/src/velocityGrid.ts` — primitive
   `setRowGroupColumnSort(colId, direction)` extends Task 1's
   primitive (already declared there; this task implements the
   sort-pass side).
@@ -946,10 +946,10 @@ the existing renderer pipeline (`renderer/renderer.ts`) alongside
 - This worklog's Architecture.
 - `cgrid/src/core/groupingState.ts` (Task 1) — the state primitive
   that owns the data this task serialises.
-- `cgrid/src/cgrid.ts` `getState` / `setState` (Cycle 4 surface).
+- `cgrid/src/velocityGrid.ts` `getState` / `setState` (Cycle 4 surface).
 
 **Files:**
-- `cgrid/src/cgrid.ts` — extend `getState` to include
+- `cgrid/src/velocityGrid.ts` — extend `getState` to include
   `grouping: { rowGroupColumns, expandedRoutes, groupDisplayType,
   perLevelSort }`. Extend `setState` to restore + rebuild the tree
   + reapply expansion + repaint without changing scrollTop.
@@ -1101,9 +1101,9 @@ All Tasks 4–12 delivered in the `ssrm` branch. Test count: **1480 → 1580** (
 |------|-------------|-------------|-----------|
 | 4 | `groupHideOpenParents` flag — expanded parents hidden from flatOrder, sticky suppressed | 15 | `protocol.ts`, `hideOpenParents.test.ts` |
 | 5 | `GroupSelectsMode` — self / descendants / filteredDescendants; checkbox gating | 25 | `selectionModel.ts`, `selectionModes.test.ts` |
-| 6 | Expand/collapse polish — `isGroupOpenByDefault` callback, keyboard nav, public API, **`aria-expanded` on group rows** | 15 + 5 E2E | `groupPass.ts`, `groupExpand.ts`, `cgrid.ts`, `a11yOverlay.ts`, `expandPolish.test.ts`, `a11yOverlay.test.ts`, `cycle15.5-keyboardGroupNav.spec.ts` |
-| 7 | Group rendering parity flags — `suppressCount`, `innerRenderer`, `suppressGroupChangesColumnVisibility` | 16 | `group.ts`, `cgrid.ts`, `groupParityFlags.test.ts` |
-| 8 | Aggregation extensions — object-returning aggFuncs + `groupTotalRow`/`grandTotalRow` aliases | 25 (20+5) | `cgrid.ts`, `aggExtensions.test.ts`, `aggIncremental.perf.test.ts` |
+| 6 | Expand/collapse polish — `isGroupOpenByDefault` callback, keyboard nav, public API, **`aria-expanded` on group rows** | 15 + 5 E2E | `groupPass.ts`, `groupExpand.ts`, `velocityGrid.ts`, `a11yOverlay.ts`, `expandPolish.test.ts`, `a11yOverlay.test.ts`, `cycle15.5-keyboardGroupNav.spec.ts` |
+| 7 | Group rendering parity flags — `suppressCount`, `innerRenderer`, `suppressGroupChangesColumnVisibility` | 16 | `group.ts`, `velocityGrid.ts`, `groupParityFlags.test.ts` |
+| 8 | Aggregation extensions — object-returning aggFuncs + `groupTotalRow`/`grandTotalRow` aliases | 25 (20+5) | `velocityGrid.ts`, `aggExtensions.test.ts`, `aggIncremental.perf.test.ts` |
 | 9 | Group sort by aggregate + per-level sort state + filtering interaction | 26 (14+12) | `groupSortByAggregate.test.ts`, `filteringWithGrouping.test.ts` |
 | 10 | Grid State save/restore — `GroupingState.serialize()` / `restore()` | 14 | `groupingState.ts`, `gridStateGrouping.test.ts` |
 | 11 | Perf + correctness gate — 12 perf cases + 8 three-UIs-one-list cases | 20 | `groupingPerf.test.ts`, `threeUIsOneList.test.ts` |
@@ -1116,7 +1116,7 @@ case masked by a `test.skip`) were completed and verified green:
 
 | Gap | What shipped | Verification |
 |-----|-------------|--------------|
-| **Drag ghost (Task 1)** | Built the `.cg-column-drag-ghost` floating header card shown during a plain column reorder (Cycle 6 design that was never implemented); pill chip now gated to the row group panel only | `cycle6-columnDrag.spec.ts` ghost test **unskipped** + passing; `columnDrag.test.ts` (14) still green |
+| **Drag ghost (Task 1)** | Built the `.vg-column-drag-ghost` floating header card shown during a plain column reorder (Cycle 6 design that was never implemented); pill chip now gated to the row group panel only | `cycle6-columnDrag.spec.ts` ghost test **unskipped** + passing; `columnDrag.test.ts` (14) still green |
 | **ARIA `aria-expanded` (Task 6)** | `A11yOverlay` sets `aria-expanded` on the focused group row, flips on toggle, removed on leaf rows | `a11yOverlay.test.ts` +1 case; `cycle15.5-keyboardGroupNav.spec.ts` +1 ARIA E2E |
 | **Header context menu Group-by E2E (Task 2)** | New E2E proving right-click → DOM menu → Group by / Un-Group by mutates `rowGroupColumns` | `cycle15.5-contextMenuGroupBy.spec.ts` (2 tests) |
 

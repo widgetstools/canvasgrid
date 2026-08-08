@@ -5,7 +5,7 @@
  * formatter → placement), CodeMirror 6 editor with live compile
  * validation and the shared Format picker.
  *
- * Mutations ride the idempotent @cgrid/calc engine handle; its bridge
+ * Mutations ride the idempotent @wellsfargo-starui/velocity-grid-calc engine handle; its bridge
  * persists the set in the grid config (layout-tier 'calc' state module)
  * and refolds columnDefs.
  */
@@ -15,8 +15,8 @@ import {
   listAggregates,
   type CalculatedColumnDef,
   type CellDataType,
-} from '@cgrid/calc';
-import type { SettingsModule, CgExtContext, ModuleInstance } from '../extension/types';
+} from '@wellsfargo-starui/velocity-grid-calc';
+import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import { ExpressionEditor, EXPRESSION_BUILTINS, type ExpressionFunction } from '../ui/expressionEditor';
 import { editorColumns, schemaFromGrid } from '../ui/gridSchema';
 import {
@@ -75,7 +75,7 @@ export function calculatedColumnsModule(): SettingsModule {
       injectCockpitStyles();
     },
 
-    mount(host: HTMLElement, ctx: CgExtContext): ModuleInstance {
+    mount(host: HTMLElement, ctx: VelocityGridExtContext): ModuleInstance {
       const { calc } = wireCalc(ctx.grid);
 
       let columns: CalculatedColumnDef[] = [];

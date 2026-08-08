@@ -1,29 +1,29 @@
-# CGridExt Format Picker Implementation Plan
+# VelocityGridExt Format Picker Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the ribbon `# Format` pill's `window.prompt()` with a full format-picker dropdown (categories, search, live previews, Custom tab) at parity with the reference screenshots, backed by native `@cgrid/format` DSL extensions (ticks, scientific, `=expr`).
+**Goal:** Replace the ribbon `# Format` pill's `window.prompt()` with a full format-picker dropdown (categories, search, live previews, Custom tab) at parity with the reference screenshots, backed by native `@wellsfargo-starui/velocity-grid-format` DSL extensions (ticks, scientific, `=expr`).
 
-**Architecture:** Phase A (Tasks 1-5) extends the format/expression/calc engines so every preset is a plain serializable DSL string. Phase B (Tasks 6-9) ports the starui preset catalog as pure data and builds the plain-DOM panel in `@cgrid/ext`, wiring it into `ribbon.ts` in place of the prompt. Task 10 is the E2E gate.
+**Architecture:** Phase A (Tasks 1-5) extends the format/expression/calc engines so every preset is a plain serializable DSL string. Phase B (Tasks 6-9) ports the starui preset catalog as pure data and builds the plain-DOM panel in `@wellsfargo-starui/velocity-grid-ext`, wiring it into `ribbon.ts` in place of the prompt. Task 10 is the E2E gate.
 
-**Tech Stack:** TypeScript; vitest (format/expression/calc/ext unit suites, happy-dom for ext); plain DOM + injected CSS with `--cg-*` tokens; Playwright E2E in `apps/cgrid-ext-demo`.
+**Tech Stack:** TypeScript; vitest (format/expression/calc/ext unit suites, happy-dom for ext); plain DOM + injected CSS with `--vg-*` tokens; Playwright E2E in `apps/cgrid-ext-demo`.
 
 **Spec:** `docs/superpowers/specs/2026-07-07-ext-format-picker-design.md`
 
 ## Global Constraints
 
-- No JS string is ever executed (`new Function`/`eval` forbidden) — ƒ(x) presets ride `@cgrid/expression`.
+- No JS string is ever executed (`new Function`/`eval` forbidden) — ƒ(x) presets ride `@wellsfargo-starui/velocity-grid-expression`.
 - Formatters never throw at paint time: eval errors → `''`; preview errors → `·`.
 - Column-scoped apply via the ribbon's existing `targetCols()` / `applyFormat()` → `editColumn` own-templates.
-- Plain DOM in ext (Lit is customizer-only); `cgext-fmt-` class prefix; all colors from `--cg-*` tokens with the title bar's neutral-dark fallbacks; panel width 440px.
+- Plain DOM in ext (Lit is customizer-only); `vgext-fmt-` class prefix; all colors from `--vg-*` tokens with the title bar's neutral-dark fallbacks; panel width 440px.
 - The `window.prompt` block in `ribbon.ts` is DELETED (spec §1).
 - Working branch: `cgridext/ribbon-density`. Commit after every task.
-- Suites: `cd packages/<pkg> && npx vitest run` (+ `npx tsc --noEmit`). The ext demo consumes the kernel's BUILT dist — `@cgrid/format`/`@cgrid/calc`/`@cgrid/expression` resolve source-direct, but if the demo behaves stale, `cd packages/kernel && npm run build` and clear `apps/cgrid-ext-demo/node_modules/.vite`.
+- Suites: `cd packages/<pkg> && npx vitest run` (+ `npx tsc --noEmit`). The ext demo consumes the kernel's BUILT dist — `@wellsfargo-starui/velocity-grid-format`/`@wellsfargo-starui/velocity-grid-calc`/`@wellsfargo-starui/velocity-grid-expression` resolve source-direct, but if the demo behaves stale, `cd packages/kernel && npm run build` and clear `apps/cgrid-ext-demo/node_modules/.vite`.
 - E2E: `cd apps/cgrid-ext-demo && npx playwright test` (server :5188; kill stale servers first; kill automation processes after).
 
 ---
 
-### Task 1: Tick sections in `@cgrid/format` (`TICK32`/`TICK32+`/`TICK64`/`TICK128`/`TICK256`)
+### Task 1: Tick sections in `@wellsfargo-starui/velocity-grid-format` (`TICK32`/`TICK32+`/`TICK64`/`TICK128`/`TICK256`)
 
 **Files:**
 - Create: `packages/format/src/excel/tick.ts`
@@ -114,7 +114,7 @@ Expected: FAIL — `Cannot find module '../../src/excel/tick'`.
  * Fixed-income tick formatting — bond prices quoted in 32nds with the
  * sub-32nd remainder as an eighths digit (market "101-162" convention;
  * the half-32nd renders as `+` in the TICK32+ style). The math is owned
- * here, NOT imported from the kernel's price32 editor — @cgrid/format
+ * here, NOT imported from the kernel's price32 editor — @wellsfargo-starui/velocity-grid-format
  * has no kernel dependency.
  */
 export function formatTick(
@@ -457,7 +457,7 @@ git commit -m "feat(expression): TRIM/TITLE/CAMEL/CAP/FIXED total builtins for =
 - Test: `packages/format/tests/exprFormat.test.ts`
 
 **Interfaces:**
-- Consumes: `parse`, `compile`, `evaluate` from `@cgrid/expression` (already a dependency; see `tier1/resolver.ts:1-7` for the import idiom) and Task 3's builtins.
+- Consumes: `parse`, `compile`, `evaluate` from `@wellsfargo-starui/velocity-grid-expression` (already a dependency; see `tier1/resolver.ts:1-7` for the import idiom) and Task 3's builtins.
 - Produces: any format string whose trimmed form starts with `=` compiles the remainder as an expression; `formatText` returns `String(result)` (`''` for null/undefined/throw). Eval context: `value` = the cell value (wins collisions), other identifiers = row fields. Tasks 6/7 rely on the `ƒ(x)`-detection convention `format.trimStart().startsWith('=')`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -512,7 +512,7 @@ Expected: FAIL — `=UPPER([value])` currently tokenizes as literals and renders
 
 Imports at top:
 ```ts
-import { parse as parseExpr, compile as compileExpr, evaluate as evaluateExpr } from '@cgrid/expression';
+import { parse as parseExpr, compile as compileExpr, evaluate as evaluateExpr } from '@wellsfargo-starui/velocity-grid-expression';
 ```
 
 Insert AFTER the tick branch (Task 1), BEFORE `tokenize`:
@@ -621,7 +621,7 @@ After the `EDITABLE_SCALAR_KEYS` merge loop (which will have set `target.format 
 - [ ] **Step 4: Verify green + full suites**
 
 Run: `cd packages/calc && npx vitest run && npx tsc --noEmit && cd ../kernel && npx vitest run && npx tsc --noEmit`
-Expected: calc green; kernel suite green (editColumn is public API surface — `CGridApi.editColumn` type flows from calc's `ColumnEditPatch`).
+Expected: calc green; kernel suite green (editColumn is public API surface — `VelocityGridApi.editColumn` type flows from calc's `ColumnEditPatch`).
 
 - [ ] **Step 5: Commit**
 
@@ -639,7 +639,7 @@ git commit -m "feat(calc): editColumn format:null removes the own-template forma
 - Test: `packages/ext/tests/formatPresets.test.ts`
 
 **Interfaces:**
-- Consumes: `compileFormat` from `@cgrid/format` (round-trip test only — the module itself is pure data/logic, no imports beyond types).
+- Consumes: `compileFormat` from `@wellsfargo-starui/velocity-grid-format` (round-trip test only — the module itself is pure data/logic, no imports beyond types).
 - Produces (Tasks 7/8/9 rely on these exact names):
 
 ```ts
@@ -666,7 +666,7 @@ export const CURRENCY_QUICK_INSERT: ReadonlyArray<{ label: string; symbol: strin
 ```ts
 // packages/ext/tests/formatPresets.test.ts
 import { describe, it, expect } from 'vitest';
-import { compileFormat } from '@cgrid/format';
+import { compileFormat } from '@wellsfargo-starui/velocity-grid-format';
 import {
   CATEGORY_LABELS, CURRENCY_QUICK_INSERT, EXCEL_EXAMPLES,
   applyCurrencySymbol, categoriesForDataType, codeText, defaultSampleValue,
@@ -790,7 +790,7 @@ Expected: FAIL — module not found.
 ```ts
 /**
  * Format-picker catalog — pure data + logic (no DOM). Ported from starui's
- * FormatterPicker and recast so EVERY preset is a plain @cgrid/format DSL
+ * FormatterPicker and recast so EVERY preset is a plain @wellsfargo-starui/velocity-grid-format DSL
  * string: excel sections, TICK* tokens (Task 1), 0.00E+00 (Task 2), and
  * `=expr` value formatters (Tasks 3-4). Sidebar counts are full category
  * sizes (reference behavior), independent of the active data type.
@@ -1010,7 +1010,7 @@ export const EXCEL_EXAMPLES: ExcelExampleSection[] = [
 - [ ] **Step 4: Run to verify green**
 
 Run: `cd packages/ext && npx vitest run tests/formatPresets.test.ts && npx tsc --noEmit`
-Expected: all pass — this is also the spec §3.4 round-trip gate (every preset compiles through the real `@cgrid/format`).
+Expected: all pass — this is also the spec §3.4 round-trip gate (every preset compiles through the real `@wellsfargo-starui/velocity-grid-format`).
 
 - [ ] **Step 5: Commit**
 
@@ -1029,7 +1029,7 @@ git commit -m "feat(ext): format preset catalog — 51 DSL-string presets, categ
 - Test: `packages/ext/tests/formatPicker.test.ts`
 
 **Interfaces:**
-- Consumes: `menu`, `svg` from `./ui`; Task 6's catalog; `compileFormat` from `@cgrid/format`.
+- Consumes: `menu`, `svg` from `./ui`; Task 6's catalog; `compileFormat` from `@wellsfargo-starui/velocity-grid-format`.
 - Produces (Task 8 extends the same panel; Task 9 wires it):
 
 ```ts
@@ -1046,9 +1046,9 @@ export function previewFormat(format: string, sample: unknown): string; // '·' 
 export function injectFormatPickerStyles(): void;
 ```
 
-DOM contract (tests + Task 8 + E2E): panel root `.cgext-menu.cgext-fmt` (width 440); CURRENT row `.cgext-fmt-current` with `.cgext-fmt-current-chip` and `.cgext-fmt-clear`; search `.cgext-fmt-search input`; sidebar `.cgext-fmt-tabs` with `.cgext-fmt-tab[data-cat]` (+ `.cgext-fmt-count`) and `.cgext-fmt-tab[data-cat="__custom__"]`; body `.cgext-fmt-body`; preset rows `.cgext-fmt-row[data-preset-id]` (left `.cgext-fmt-row-label` + `.cgext-fmt-row-code`, right `.cgext-fmt-row-preview`); empty state `.cgext-fmt-empty`.
+DOM contract (tests + Task 8 + E2E): panel root `.vgext-menu.vgext-fmt` (width 440); CURRENT row `.vgext-fmt-current` with `.vgext-fmt-current-chip` and `.vgext-fmt-clear`; search `.vgext-fmt-search input`; sidebar `.vgext-fmt-tabs` with `.vgext-fmt-tab[data-cat]` (+ `.vgext-fmt-count`) and `.vgext-fmt-tab[data-cat="__custom__"]`; body `.vgext-fmt-body`; preset rows `.vgext-fmt-row[data-preset-id]` (left `.vgext-fmt-row-label` + `.vgext-fmt-row-code`, right `.vgext-fmt-row-preview`); empty state `.vgext-fmt-empty`.
 
-Behavior: preset row click → `host.applyFormat(preset.format)` + close (selection = dismissal, layouts-panel precedent). CURRENT chip shows `previewFormat(current, defaultSampleValue(dataType))` or `—`; clear button → `host.clearFormat()`, stays open, re-renders. Active row = `preset.format === current?.trim()`. Search input flips the body to a flat filtered list across `presetsForDataType(dataType)`; blank restores tabs. Initial tab = active preset's category, else first category; when a current format matches no preset, initial tab = `__custom__` (Task 8 renders its content; until then the custom tab body may be an empty `.cgext-fmt-custom` container). Escape closes. No target columns → panel renders a single `.cgext-fmt-empty` hint "Select a cell or column first".
+Behavior: preset row click → `host.applyFormat(preset.format)` + close (selection = dismissal, layouts-panel precedent). CURRENT chip shows `previewFormat(current, defaultSampleValue(dataType))` or `—`; clear button → `host.clearFormat()`, stays open, re-renders. Active row = `preset.format === current?.trim()`. Search input flips the body to a flat filtered list across `presetsForDataType(dataType)`; blank restores tabs. Initial tab = active preset's category, else first category; when a current format matches no preset, initial tab = `__custom__` (Task 8 renders its content; until then the custom tab body may be an empty `.vgext-fmt-custom` container). Escape closes. No target columns → panel renders a single `.vgext-fmt-empty` hint "Select a cell or column first".
 
 - [ ] **Step 1: Write the harness**
 
@@ -1076,7 +1076,7 @@ export function mountPicker(host = new FakeFormatHost()) {
   const { formatPickerMenu } = require('../src/toolbar/formatPicker') as typeof import('../src/toolbar/formatPicker');
   const m = formatPickerMenu(anchor, host);
   m.toggle();
-  const panel = document.querySelector<HTMLElement>('.cgext-menu.cgext-fmt')!;
+  const panel = document.querySelector<HTMLElement>('.vgext-menu.vgext-fmt')!;
   return { anchor, host, m, panel };
 }
 ```
@@ -1104,85 +1104,85 @@ describe('previewFormat', () => {
 describe('panel anatomy', () => {
   it('renders sidebar tabs with counts for the data type + the custom tab', () => {
     const { panel } = mountPicker();
-    const cats = [...panel.querySelectorAll<HTMLElement>('.cgext-fmt-tab')].map((t) => t.dataset.cat);
+    const cats = [...panel.querySelectorAll<HTMLElement>('.vgext-fmt-tab')].map((t) => t.dataset.cat);
     expect(cats).toEqual(['number', 'negatives', 'conditional', 'tick', 'percent', '__custom__']);
-    expect(panel.querySelector('.cgext-fmt-tab[data-cat="number"] .cgext-fmt-count')!.textContent).toBe('6');
-    expect(panel.querySelector('.cgext-fmt-tab[data-cat="__custom__"] .cgext-fmt-count')).toBeNull();
+    expect(panel.querySelector('.vgext-fmt-tab[data-cat="number"] .vgext-fmt-count')!.textContent).toBe('6');
+    expect(panel.querySelector('.vgext-fmt-tab[data-cat="__custom__"] .vgext-fmt-count')).toBeNull();
   });
   it('date columns get the date rail', () => {
     const host = new FakeFormatHost();
     host.dt = 'date';
     const { panel } = mountPicker(host);
-    const cats = [...panel.querySelectorAll<HTMLElement>('.cgext-fmt-tab')].map((t) => t.dataset.cat);
+    const cats = [...panel.querySelectorAll<HTMLElement>('.vgext-fmt-tab')].map((t) => t.dataset.cat);
     expect(cats).toEqual(['date', '__custom__']);
   });
   it('shows rows for the active tab with label, code, live preview', () => {
     const { panel } = mountPicker();
-    const row = panel.querySelector<HTMLElement>('.cgext-fmt-row[data-preset-id="num-integer"]')!;
-    expect(row.querySelector('.cgext-fmt-row-label')!.textContent).toBe('Integer');
-    expect(row.querySelector('.cgext-fmt-row-code')!.textContent).toBe('#,##0');
-    expect(row.querySelector('.cgext-fmt-row-preview')!.textContent).toBe('1,235');
+    const row = panel.querySelector<HTMLElement>('.vgext-fmt-row[data-preset-id="num-integer"]')!;
+    expect(row.querySelector('.vgext-fmt-row-label')!.textContent).toBe('Integer');
+    expect(row.querySelector('.vgext-fmt-row-code')!.textContent).toBe('#,##0');
+    expect(row.querySelector('.vgext-fmt-row-preview')!.textContent).toBe('1,235');
   });
   it('ƒ(x) code text for expression presets', () => {
     const { panel } = mountPicker();
     // Basis points is on the number tab
-    const row = panel.querySelector<HTMLElement>('.cgext-fmt-row[data-preset-id="num-bps"]')!;
-    expect(row.querySelector('.cgext-fmt-row-code')!.textContent).toBe('ƒ(x)');
-    expect(row.querySelector('.cgext-fmt-row-preview')!.textContent).toBe('+12.3 bp');
+    const row = panel.querySelector<HTMLElement>('.vgext-fmt-row[data-preset-id="num-bps"]')!;
+    expect(row.querySelector('.vgext-fmt-row-code')!.textContent).toBe('ƒ(x)');
+    expect(row.querySelector('.vgext-fmt-row-preview')!.textContent).toBe('+12.3 bp');
   });
   it('no target columns → disabled hint', () => {
     const host = new FakeFormatHost();
     host.cols = [];
     const { panel } = mountPicker(host);
-    expect(panel.querySelector('.cgext-fmt-empty')!.textContent).toContain('Select a cell or column');
-    expect(panel.querySelector('.cgext-fmt-row')).toBeNull();
+    expect(panel.querySelector('.vgext-fmt-empty')!.textContent).toContain('Select a cell or column');
+    expect(panel.querySelector('.vgext-fmt-row')).toBeNull();
   });
 });
 
 describe('apply / current / clear', () => {
   it('row click applies the preset format and closes', () => {
     const { panel, host } = mountPicker();
-    panel.querySelector<HTMLElement>('.cgext-fmt-row[data-preset-id="num-2dp"]')!.click();
+    panel.querySelector<HTMLElement>('.vgext-fmt-row[data-preset-id="num-2dp"]')!.click();
     expect(host.applyFormat).toHaveBeenCalledWith('#,##0.00');
-    expect(document.querySelector('.cgext-menu.cgext-fmt')).toBeNull();
+    expect(document.querySelector('.vgext-menu.vgext-fmt')).toBeNull();
   });
   it('CURRENT chip previews the current format; active row highlighted; clear stays open', () => {
     const host = new FakeFormatHost();
     host.format = '#,##0';
     const { panel } = mountPicker(host);
-    expect(panel.querySelector('.cgext-fmt-current-chip')!.textContent).toBe('1,235');
-    expect(panel.querySelector('.cgext-fmt-row[data-preset-id="num-integer"]')!.classList.contains('is-active')).toBe(true);
-    const clear = panel.querySelector<HTMLButtonElement>('.cgext-fmt-clear')!;
+    expect(panel.querySelector('.vgext-fmt-current-chip')!.textContent).toBe('1,235');
+    expect(panel.querySelector('.vgext-fmt-row[data-preset-id="num-integer"]')!.classList.contains('is-active')).toBe(true);
+    const clear = panel.querySelector<HTMLButtonElement>('.vgext-fmt-clear')!;
     expect(clear.disabled).toBe(false);
     clear.click();
     expect(host.clearFormat).toHaveBeenCalled();
-    expect(document.querySelector('.cgext-menu.cgext-fmt')).not.toBeNull(); // stays open
-    expect(panel.querySelector('.cgext-fmt-current-chip')!.textContent).toBe('—');
+    expect(document.querySelector('.vgext-menu.vgext-fmt')).not.toBeNull(); // stays open
+    expect(panel.querySelector('.vgext-fmt-current-chip')!.textContent).toBe('—');
   });
   it('clear is disabled with no current format', () => {
     const { panel } = mountPicker();
-    expect(panel.querySelector<HTMLButtonElement>('.cgext-fmt-clear')!.disabled).toBe(true);
+    expect(panel.querySelector<HTMLButtonElement>('.vgext-fmt-clear')!.disabled).toBe(true);
   });
 });
 
 describe('search', () => {
   const type = (panel: HTMLElement, text: string) => {
-    const input = panel.querySelector<HTMLInputElement>('.cgext-fmt-search input')!;
+    const input = panel.querySelector<HTMLInputElement>('.vgext-fmt-search input')!;
     input.value = text;
     input.dispatchEvent(new Event('input', { bubbles: true }));
   };
   it('non-blank query flips to a flat result list; blank restores tabs', () => {
     const { panel } = mountPicker();
     type(panel, 'parens');
-    expect(panel.querySelector('.cgext-fmt-tabs')).toBeNull();
-    expect(panel.querySelectorAll('.cgext-fmt-row').length).toBeGreaterThan(0);
+    expect(panel.querySelector('.vgext-fmt-tabs')).toBeNull();
+    expect(panel.querySelectorAll('.vgext-fmt-row').length).toBeGreaterThan(0);
     type(panel, '');
-    expect(panel.querySelector('.cgext-fmt-tabs')).not.toBeNull();
+    expect(panel.querySelector('.vgext-fmt-tabs')).not.toBeNull();
   });
   it('zero matches show the empty-state hint', () => {
     const { panel } = mountPicker();
     type(panel, 'zzzznope');
-    expect(panel.querySelector('.cgext-fmt-empty')!.textContent).toContain('No formats match');
+    expect(panel.querySelector('.vgext-fmt-empty')!.textContent).toContain('No formats match');
   });
 });
 
@@ -1190,7 +1190,7 @@ describe('lifecycle', () => {
   it('Escape closes; destroy cleans up', () => {
     const { panel, m } = mountPicker();
     panel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    expect(document.querySelector('.cgext-menu.cgext-fmt')).toBeNull();
+    expect(document.querySelector('.vgext-menu.vgext-fmt')).toBeNull();
     m.destroy(); // second destroy must not throw
   });
 });
@@ -1212,7 +1212,7 @@ Expected: FAIL — module not found.
  * and the Custom tab's quick-inserts keep the panel open.
  */
 import { menu, svg } from './ui';
-import { compileFormat } from '@cgrid/format';
+import { compileFormat } from '@wellsfargo-starui/velocity-grid-format';
 import {
   CATEGORY_LABELS, CURRENCY_QUICK_INSERT, EXCEL_EXAMPLES,
   applyCurrencySymbol, categoriesForDataType, codeText, defaultSampleValue,
@@ -1258,11 +1258,11 @@ export function formatPickerMenu(
 
 function buildPanel(host: FormatPickerHost, close: () => void): HTMLElement {
   const el = document.createElement('div');
-  el.className = 'cgext-fmt';
+  el.className = 'vgext-fmt';
   el.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
 
   if (host.targetCols().length === 0) {
-    el.innerHTML = `<div class="cgext-fmt-empty">Select a cell or column first.</div>`;
+    el.innerHTML = `<div class="vgext-fmt-empty">Select a cell or column first.</div>`;
     return el;
   }
 
@@ -1276,17 +1276,17 @@ function buildPanel(host: FormatPickerHost, close: () => void): HTMLElement {
     ?? (current() !== undefined ? CUSTOM_TAB : categories[0] ?? CUSTOM_TAB);
 
   el.innerHTML =
-    `<div class="cgext-fmt-current">` +
-      `<span class="cgext-fmt-caps">CURRENT</span>` +
-      `<span class="cgext-fmt-current-chip"></span>` +
-      `<button type="button" class="cgext-fmt-clear" title="Clear format">${svg(I.x, 14)}</button>` +
+    `<div class="vgext-fmt-current">` +
+      `<span class="vgext-fmt-caps">CURRENT</span>` +
+      `<span class="vgext-fmt-current-chip"></span>` +
+      `<button type="button" class="vgext-fmt-clear" title="Clear format">${svg(I.x, 14)}</button>` +
     `</div>` +
-    `<div class="cgext-fmt-search">${svg(I.search, 14)}<input type="search" placeholder="Search formats…" aria-label="Search formats" /></div>` +
-    `<div class="cgext-fmt-main"></div>`;
-  const chipEl = el.querySelector<HTMLElement>('.cgext-fmt-current-chip')!;
-  const clearBtn = el.querySelector<HTMLButtonElement>('.cgext-fmt-clear')!;
-  const mainEl = el.querySelector<HTMLElement>('.cgext-fmt-main')!;
-  const searchInput = el.querySelector<HTMLInputElement>('.cgext-fmt-search input')!;
+    `<div class="vgext-fmt-search">${svg(I.search, 14)}<input type="search" placeholder="Search formats…" aria-label="Search formats" /></div>` +
+    `<div class="vgext-fmt-main"></div>`;
+  const chipEl = el.querySelector<HTMLElement>('.vgext-fmt-current-chip')!;
+  const clearBtn = el.querySelector<HTMLButtonElement>('.vgext-fmt-clear')!;
+  const mainEl = el.querySelector<HTMLElement>('.vgext-fmt-main')!;
+  const searchInput = el.querySelector<HTMLInputElement>('.vgext-fmt-search input')!;
 
   const renderCurrent = () => {
     const cur = current();
@@ -1299,15 +1299,15 @@ function buildPanel(host: FormatPickerHost, close: () => void): HTMLElement {
   const presetRow = (p: FormatPreset): HTMLElement => {
     const row = document.createElement('button');
     row.type = 'button';
-    row.className = 'cgext-fmt-row' + (p.format === current() ? ' is-active' : '');
+    row.className = 'vgext-fmt-row' + (p.format === current() ? ' is-active' : '');
     row.dataset.presetId = p.id;
     const preview = previewFormat(p.format, p.sample ?? sample);
     row.innerHTML =
-      `<span class="cgext-fmt-row-main"><span class="cgext-fmt-row-label"></span><span class="cgext-fmt-row-code"></span></span>` +
-      `<span class="cgext-fmt-row-preview"></span>`;
-    row.querySelector('.cgext-fmt-row-label')!.textContent = p.label;
-    row.querySelector('.cgext-fmt-row-code')!.textContent = codeText(p.format);
-    row.querySelector('.cgext-fmt-row-preview')!.textContent = preview;
+      `<span class="vgext-fmt-row-main"><span class="vgext-fmt-row-label"></span><span class="vgext-fmt-row-code"></span></span>` +
+      `<span class="vgext-fmt-row-preview"></span>`;
+    row.querySelector('.vgext-fmt-row-label')!.textContent = p.label;
+    row.querySelector('.vgext-fmt-row-code')!.textContent = codeText(p.format);
+    row.querySelector('.vgext-fmt-row-preview')!.textContent = preview;
     row.title = `${p.label} · ${preview}`;
     row.addEventListener('click', () => { host.applyFormat(p.format); close(); });
     return row;
@@ -1318,10 +1318,10 @@ function buildPanel(host: FormatPickerHost, close: () => void): HTMLElement {
     if (query.trim()) {
       const results = filterPresets(presetsForDataType(dataType), query);
       const list = document.createElement('div');
-      list.className = 'cgext-fmt-list';
+      list.className = 'vgext-fmt-list';
       if (results.length === 0) {
-        list.innerHTML = `<div class="cgext-fmt-empty"></div>`;
-        list.querySelector('.cgext-fmt-empty')!.textContent =
+        list.innerHTML = `<div class="vgext-fmt-empty"></div>`;
+        list.querySelector('.vgext-fmt-empty')!.textContent =
           `No formats match "${query.trim()}". Try the Custom tab.`;
       } else {
         list.append(...results.map(presetRow));
@@ -1330,14 +1330,14 @@ function buildPanel(host: FormatPickerHost, close: () => void): HTMLElement {
       return;
     }
     const tabs = document.createElement('div');
-    tabs.className = 'cgext-fmt-tabs';
+    tabs.className = 'vgext-fmt-tabs';
     const tabBtn = (cat: string, label: string, count: number | null) => {
       const b = document.createElement('button');
       b.type = 'button';
-      b.className = 'cgext-fmt-tab' + (tab === cat ? ' is-active' : '');
+      b.className = 'vgext-fmt-tab' + (tab === cat ? ' is-active' : '');
       b.dataset.cat = cat;
       b.innerHTML = `<span></span>` +
-        (count === null ? svg(I.hash, 13) : `<span class="cgext-fmt-count">${count}</span>`);
+        (count === null ? svg(I.hash, 13) : `<span class="vgext-fmt-count">${count}</span>`);
       b.querySelector('span')!.textContent = label;
       b.addEventListener('click', () => { tab = cat; renderMain(); });
       tabs.appendChild(b);
@@ -1346,12 +1346,12 @@ function buildPanel(host: FormatPickerHost, close: () => void): HTMLElement {
     tabBtn(CUSTOM_TAB, 'Custom', null);
 
     const body = document.createElement('div');
-    body.className = 'cgext-fmt-body';
+    body.className = 'vgext-fmt-body';
     if (tab === CUSTOM_TAB) {
       body.appendChild(buildCustomTab(host, dataType, { current, renderCurrent, renderMain, close }));
     } else {
       const list = document.createElement('div');
-      list.className = 'cgext-fmt-list';
+      list.className = 'vgext-fmt-list';
       list.append(...presetsForCategory(tab as never).map(presetRow));
       body.appendChild(list);
     }
@@ -1375,86 +1375,86 @@ function buildCustomTab(
   _ctx: { current(): string | undefined; renderCurrent(): void; renderMain(): void; close(): void },
 ): HTMLElement {
   const wrap = document.createElement('div');
-  wrap.className = 'cgext-fmt-custom';
+  wrap.className = 'vgext-fmt-custom';
   return wrap;
 }
 
 export function injectFormatPickerStyles(): void {
   if (typeof document === 'undefined') return;
-  if (document.getElementById('cgext-fmt-styles')) return;
+  if (document.getElementById('vgext-fmt-styles')) return;
   const style = document.createElement('style');
-  style.id = 'cgext-fmt-styles';
+  style.id = 'vgext-fmt-styles';
   style.textContent = FMT_CSS;
   document.head.appendChild(style);
 }
 
 const FMT_CSS = `
-.cgext-menu.cgext-fmt { width: 440px; padding: 10px 12px 12px; }
-.cgext-fmt-caps { font-size: 11px; font-weight: 650; letter-spacing: 0.08em; color: var(--cg-muted-fg-color, #9aa4b6); }
-.cgext-fmt-current { display: flex; align-items: center; gap: 10px; padding-bottom: 8px; }
-.cgext-fmt-current-chip {
+.vgext-menu.vgext-fmt { width: 440px; padding: 10px 12px 12px; }
+.vgext-fmt-caps { font-size: 11px; font-weight: 650; letter-spacing: 0.08em; color: var(--vg-muted-fg-color, #9aa4b6); }
+.vgext-fmt-current { display: flex; align-items: center; gap: 10px; padding-bottom: 8px; }
+.vgext-fmt-current-chip {
   flex: 1 1 auto; min-width: 0; height: 26px; display: inline-flex; align-items: center;
-  padding: 0 10px; border: 1px dashed var(--cg-border-color, #2a3140); border-radius: 6px;
+  padding: 0 10px; border: 1px dashed var(--vg-border-color, #2a3140); border-radius: 6px;
   font-family: 'JetBrains Mono', Menlo, Consolas, monospace; font-size: 12px;
-  color: var(--cg-muted-fg-color, #9aa4b6);
+  color: var(--vg-muted-fg-color, #9aa4b6);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.cgext-fmt-current-chip.has-format { color: var(--cg-fg-color, #e5e9f0); border-color: var(--cg-accent-color, #4f9cf9); }
-.cgext-fmt-clear {
-  appearance: none; width: 26px; height: 26px; border: 1px solid var(--cg-border-color, #2a3140);
-  border-radius: 6px; background: transparent; color: var(--cg-muted-fg-color, #9aa4b6);
+.vgext-fmt-current-chip.has-format { color: var(--vg-fg-color, #e5e9f0); border-color: var(--vg-accent-color, #4f9cf9); }
+.vgext-fmt-clear {
+  appearance: none; width: 26px; height: 26px; border: 1px solid var(--vg-border-color, #2a3140);
+  border-radius: 6px; background: transparent; color: var(--vg-muted-fg-color, #9aa4b6);
   display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
 }
-.cgext-fmt-clear:hover:not(:disabled) { color: var(--cg-neg-color, #e2606c); border-color: var(--cg-neg-color, #e2606c); }
-.cgext-fmt-clear:disabled { opacity: 0.4; cursor: default; }
-.cgext-fmt-search {
+.vgext-fmt-clear:hover:not(:disabled) { color: var(--vg-neg-color, #e2606c); border-color: var(--vg-neg-color, #e2606c); }
+.vgext-fmt-clear:disabled { opacity: 0.4; cursor: default; }
+.vgext-fmt-search {
   display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px;
-  border: 1px solid var(--cg-accent-color, #4f9cf9); border-radius: 8px; margin-bottom: 8px;
-  color: var(--cg-muted-fg-color, #9aa4b6);
+  border: 1px solid var(--vg-accent-color, #4f9cf9); border-radius: 8px; margin-bottom: 8px;
+  color: var(--vg-muted-fg-color, #9aa4b6);
 }
-.cgext-fmt-search input {
+.vgext-fmt-search input {
   flex: 1 1 auto; min-width: 0; border: none; background: transparent; outline: none;
-  color: var(--cg-fg-color, #e5e9f0); font: inherit; font-size: 13px;
+  color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: 13px;
 }
-.cgext-fmt-main { display: flex; gap: 12px; min-height: 220px; }
-.cgext-fmt-tabs { display: flex; flex-direction: column; gap: 2px; width: 132px; flex: 0 0 auto; }
-.cgext-fmt-tab {
+.vgext-fmt-main { display: flex; gap: 12px; min-height: 220px; }
+.vgext-fmt-tabs { display: flex; flex-direction: column; gap: 2px; width: 132px; flex: 0 0 auto; }
+.vgext-fmt-tab {
   appearance: none; display: flex; align-items: center; justify-content: space-between; gap: 6px;
   padding: 7px 9px; border: none; border-radius: 6px; background: transparent;
-  color: var(--cg-muted-fg-color, #9aa4b6); font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+  color: var(--vg-muted-fg-color, #9aa4b6); font: inherit; font-size: 13px; text-align: left; cursor: pointer;
 }
-.cgext-fmt-tab:hover { background: var(--cg-row-alt-bg, rgba(255,255,255,0.06)); }
-.cgext-fmt-tab.is-active {
-  color: var(--cg-accent-color, #4f9cf9);
-  background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 12%, transparent);
-  box-shadow: inset 2px 0 0 var(--cg-accent-color, #4f9cf9);
+.vgext-fmt-tab:hover { background: var(--vg-row-alt-bg, rgba(255,255,255,0.06)); }
+.vgext-fmt-tab.is-active {
+  color: var(--vg-accent-color, #4f9cf9);
+  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 12%, transparent);
+  box-shadow: inset 2px 0 0 var(--vg-accent-color, #4f9cf9);
 }
-.cgext-fmt-count { font-family: 'JetBrains Mono', Menlo, Consolas, monospace; font-size: 11px; opacity: 0.75; }
-.cgext-fmt-body { flex: 1 1 auto; min-width: 0; max-height: 320px; overflow-y: auto; }
-.cgext-fmt-list { display: flex; flex-direction: column; gap: 2px; }
-.cgext-fmt-row {
+.vgext-fmt-count { font-family: 'JetBrains Mono', Menlo, Consolas, monospace; font-size: 11px; opacity: 0.75; }
+.vgext-fmt-body { flex: 1 1 auto; min-width: 0; max-height: 320px; overflow-y: auto; }
+.vgext-fmt-list { display: flex; flex-direction: column; gap: 2px; }
+.vgext-fmt-row {
   appearance: none; display: flex; align-items: center; justify-content: space-between; gap: 10px;
   padding: 7px 9px; border: 1px solid transparent; border-radius: 6px; background: transparent;
-  color: var(--cg-fg-color, #e5e9f0); font: inherit; text-align: left; cursor: pointer;
+  color: var(--vg-fg-color, #e5e9f0); font: inherit; text-align: left; cursor: pointer;
 }
-.cgext-fmt-row:hover { background: var(--cg-row-alt-bg, rgba(255,255,255,0.06)); }
-.cgext-fmt-row.is-active {
-  background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 12%, transparent);
-  border-color: var(--cg-accent-color, #4f9cf9);
+.vgext-fmt-row:hover { background: var(--vg-row-alt-bg, rgba(255,255,255,0.06)); }
+.vgext-fmt-row.is-active {
+  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 12%, transparent);
+  border-color: var(--vg-accent-color, #4f9cf9);
 }
-.cgext-fmt-row-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.cgext-fmt-row-label { font-weight: 600; font-size: 13px; }
-.cgext-fmt-row-code {
+.vgext-fmt-row-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.vgext-fmt-row-label { font-weight: 600; font-size: 13px; }
+.vgext-fmt-row-code {
   font-family: 'JetBrains Mono', Menlo, Consolas, monospace; font-size: 11.5px;
-  color: var(--cg-muted-fg-color, #9aa4b6);
+  color: var(--vg-muted-fg-color, #9aa4b6);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px;
 }
-.cgext-fmt-row-preview {
+.vgext-fmt-row-preview {
   font-family: 'JetBrains Mono', Menlo, Consolas, monospace; font-size: 12px;
-  color: var(--cg-fg-color, #d3dbe7); white-space: nowrap; flex: 0 0 auto;
+  color: var(--vg-fg-color, #d3dbe7); white-space: nowrap; flex: 0 0 auto;
 }
-.cgext-fmt-empty { padding: 18px 10px; font-size: 12.5px; color: var(--cg-muted-fg-color, #9aa4b6); }
-.cgext-fmt-custom { display: flex; flex-direction: column; gap: 10px; }
+.vgext-fmt-empty { padding: 18px 10px; font-size: 12.5px; color: var(--vg-muted-fg-color, #9aa4b6); }
+.vgext-fmt-custom { display: flex; flex-direction: column; gap: 10px; }
 `;
 ```
 
@@ -1480,7 +1480,7 @@ git commit -m "feat(ext): format picker panel — CURRENT chip, search, category
 
 **Interfaces:**
 - Consumes: Task 6's `CURRENCY_QUICK_INSERT`, `applyCurrencySymbol`, `EXCEL_EXAMPLES`; Task 7's panel ctx `{ current, renderCurrent, renderMain, close }`.
-- Produces DOM hooks: `.cgext-fmt-custom`; symbol row `.cgext-fmt-symbols button[data-symbol]`; input `.cgext-fmt-custom-input input` (+ `.is-error`); apply `.cgext-fmt-custom-apply`; clear `.cgext-fmt-custom-clear`; reference `.cgext-fmt-ref` with `.cgext-fmt-ref-title` and `.cgext-fmt-ref-row[data-format]` (sentinel rows get `disabled`).
+- Produces DOM hooks: `.vgext-fmt-custom`; symbol row `.vgext-fmt-symbols button[data-symbol]`; input `.vgext-fmt-custom-input input` (+ `.is-error`); apply `.vgext-fmt-custom-apply`; clear `.vgext-fmt-custom-clear`; reference `.vgext-fmt-ref` with `.vgext-fmt-ref-title` and `.vgext-fmt-ref-row[data-format]` (sentinel rows get `disabled`).
 
 - [ ] **Step 1: Write the failing tests (append)**
 
@@ -1490,17 +1490,17 @@ import { EXCEL_EXAMPLES } from '../src/toolbar/formatPresets';
 describe('custom tab', () => {
   const openCustom = (host?: FakeFormatHost) => {
     const r = mountPicker(host);
-    r.panel.querySelector<HTMLElement>('.cgext-fmt-tab[data-cat="__custom__"]')!.click();
+    r.panel.querySelector<HTMLElement>('.vgext-fmt-tab[data-cat="__custom__"]')!.click();
     return r;
   };
   const draftInput = (panel: HTMLElement) =>
-    panel.querySelector<HTMLInputElement>('.cgext-fmt-custom-input input')!;
+    panel.querySelector<HTMLInputElement>('.vgext-fmt-custom-input input')!;
 
   it('symbol quick-insert seeds/replaces the draft and applies immediately, staying open', () => {
     const { panel, host } = openCustom();
-    panel.querySelector<HTMLElement>('.cgext-fmt-symbols button[data-symbol=\'"£"\']')!.click();
+    panel.querySelector<HTMLElement>('.vgext-fmt-symbols button[data-symbol=\'"£"\']')!.click();
     expect(host.applyFormat).toHaveBeenCalledWith('"£"#,##0.00');
-    expect(document.querySelector('.cgext-menu.cgext-fmt')).not.toBeNull();
+    expect(document.querySelector('.vgext-menu.vgext-fmt')).not.toBeNull();
     expect(draftInput(panel).value).toBe('"£"#,##0.00');
   });
   it('valid input + ✓ applies and closes; invalid input shows error state and disables ✓', () => {
@@ -1509,11 +1509,11 @@ describe('custom tab', () => {
     input.value = '0.00%';
     input.dispatchEvent(new Event('input', { bubbles: true }));
     expect(input.classList.contains('is-error')).toBe(false);
-    const apply = panel.querySelector<HTMLButtonElement>('.cgext-fmt-custom-apply')!;
+    const apply = panel.querySelector<HTMLButtonElement>('.vgext-fmt-custom-apply')!;
     expect(apply.disabled).toBe(false);
     apply.click();
     expect(host.applyFormat).toHaveBeenCalledWith('0.00%');
-    expect(document.querySelector('.cgext-menu.cgext-fmt')).toBeNull();
+    expect(document.querySelector('.vgext-menu.vgext-fmt')).toBeNull();
   });
   it('invalid draft: error class + disabled apply', () => {
     const { panel } = openCustom();
@@ -1521,31 +1521,31 @@ describe('custom tab', () => {
     input.value = '=UPPER(';
     input.dispatchEvent(new Event('input', { bubbles: true }));
     expect(input.classList.contains('is-error')).toBe(true);
-    expect(panel.querySelector<HTMLButtonElement>('.cgext-fmt-custom-apply')!.disabled).toBe(true);
+    expect(panel.querySelector<HTMLButtonElement>('.vgext-fmt-custom-apply')!.disabled).toBe(true);
   });
   it('✕ clears the draft and the applied format, staying open', () => {
     const host = new FakeFormatHost();
     host.format = '#,##0';
     const { panel } = openCustom(host);
-    panel.querySelector<HTMLElement>('.cgext-fmt-custom-clear')!.click();
+    panel.querySelector<HTMLElement>('.vgext-fmt-custom-clear')!.click();
     expect(host.clearFormat).toHaveBeenCalled();
     expect(draftInput(panel).value).toBe('');
-    expect(document.querySelector('.cgext-menu.cgext-fmt')).not.toBeNull();
+    expect(document.querySelector('.vgext-menu.vgext-fmt')).not.toBeNull();
   });
   it('reference rows copy + apply + close; tick sentinels are disabled', () => {
     const writes: string[] = [];
     Object.assign(navigator, { clipboard: { writeText: (t: string) => { writes.push(t); return Promise.resolve(); } } });
     const { panel, host } = openCustom();
-    const titles = [...panel.querySelectorAll('.cgext-fmt-ref-title')].map((t) => t.textContent);
+    const titles = [...panel.querySelectorAll('.vgext-fmt-ref-title')].map((t) => t.textContent);
     expect(titles).toEqual(EXCEL_EXAMPLES.map((s) => s.title));
-    panel.querySelector<HTMLElement>('.cgext-fmt-ref-row[data-format="0.00E+00"]')!.click();
+    panel.querySelector<HTMLElement>('.vgext-fmt-ref-row[data-format="0.00E+00"]')!.click();
     expect(host.applyFormat).toHaveBeenCalledWith('0.00E+00');
     expect(writes).toEqual(['0.00E+00']);
-    expect(document.querySelector('.cgext-menu.cgext-fmt')).toBeNull();
+    expect(document.querySelector('.vgext-menu.vgext-fmt')).toBeNull();
   });
   it('tick sentinel rows are disabled buttons', () => {
     const { panel } = openCustom();
-    const sentinel = [...panel.querySelectorAll<HTMLButtonElement>('.cgext-fmt-ref-row')]
+    const sentinel = [...panel.querySelectorAll<HTMLButtonElement>('.vgext-fmt-ref-row')]
       .find((r) => r.dataset.format!.startsWith('—'))!;
     expect(sentinel.disabled).toBe(true);
   });
@@ -1572,20 +1572,20 @@ function buildCustomTab(
   ctx: { current(): string | undefined; renderCurrent(): void; renderMain(): void; close(): void },
 ): HTMLElement {
   const wrap = document.createElement('div');
-  wrap.className = 'cgext-fmt-custom';
+  wrap.className = 'vgext-fmt-custom';
   wrap.innerHTML =
-    `<div class="cgext-fmt-caps">CUSTOM EXCEL FORMAT</div>` +
-    `<div class="cgext-fmt-symbols"><span class="cgext-fmt-caps">SYMBOL</span></div>` +
-    `<div class="cgext-fmt-custom-input">` +
+    `<div class="vgext-fmt-caps">CUSTOM EXCEL FORMAT</div>` +
+    `<div class="vgext-fmt-symbols"><span class="vgext-fmt-caps">SYMBOL</span></div>` +
+    `<div class="vgext-fmt-custom-input">` +
       `${svg(I.hash, 14)}<input type="text" spellcheck="false" aria-label="Custom format" />` +
-      `<button type="button" class="cgext-fmt-custom-apply" title="Apply format">${svg(I.check, 14)}</button>` +
-      `<button type="button" class="cgext-fmt-custom-clear" title="Clear format">${svg(I.x, 14)}</button>` +
+      `<button type="button" class="vgext-fmt-custom-apply" title="Apply format">${svg(I.check, 14)}</button>` +
+      `<button type="button" class="vgext-fmt-custom-clear" title="Clear format">${svg(I.x, 14)}</button>` +
     `</div>` +
-    `<div class="cgext-fmt-ref"></div>`;
+    `<div class="vgext-fmt-ref"></div>`;
 
-  const input = wrap.querySelector<HTMLInputElement>('.cgext-fmt-custom-input input')!;
-  const applyBtn = wrap.querySelector<HTMLButtonElement>('.cgext-fmt-custom-apply')!;
-  const clearBtn = wrap.querySelector<HTMLButtonElement>('.cgext-fmt-custom-clear')!;
+  const input = wrap.querySelector<HTMLInputElement>('.vgext-fmt-custom-input input')!;
+  const applyBtn = wrap.querySelector<HTMLButtonElement>('.vgext-fmt-custom-apply')!;
+  const clearBtn = wrap.querySelector<HTMLButtonElement>('.vgext-fmt-custom-clear')!;
   input.placeholder = dataType === 'date' ? 'yyyy-mm-dd' : '#,##0.00';
   // Prefill with a current format that matches no preset (custom source of truth).
   const cur = ctx.current();
@@ -1617,11 +1617,11 @@ function buildCustomTab(
     ctx.renderCurrent();
   });
 
-  const symbols = wrap.querySelector<HTMLElement>('.cgext-fmt-symbols')!;
+  const symbols = wrap.querySelector<HTMLElement>('.vgext-fmt-symbols')!;
   for (const c of CURRENCY_QUICK_INSERT) {
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'cgext-fmt-symbol';
+    b.className = 'vgext-fmt-symbol';
     b.dataset.symbol = c.symbol;
     b.textContent = c.label;
     b.setAttribute('aria-label', `Insert ${c.label} currency symbol`);
@@ -1633,27 +1633,27 @@ function buildCustomTab(
     symbols.appendChild(b);
   }
 
-  const ref = wrap.querySelector<HTMLElement>('.cgext-fmt-ref')!;
+  const ref = wrap.querySelector<HTMLElement>('.vgext-fmt-ref')!;
   for (const section of EXCEL_EXAMPLES) {
     const title = document.createElement('div');
-    title.className = 'cgext-fmt-ref-title cgext-fmt-caps';
+    title.className = 'vgext-fmt-ref-title vgext-fmt-caps';
     title.textContent = section.title;
     ref.appendChild(title);
     for (const row of section.rows) {
       const b = document.createElement('button');
       b.type = 'button';
-      b.className = 'cgext-fmt-ref-row';
+      b.className = 'vgext-fmt-ref-row';
       b.dataset.format = row.format;
       const sentinel = row.format.startsWith('—');
       b.disabled = sentinel;
       b.innerHTML =
-        `<span class="cgext-fmt-ref-label"></span>` +
-        `<span class="cgext-fmt-ref-code"></span>` +
-        `<span class="cgext-fmt-ref-sample"></span>` +
-        (sentinel ? '' : `<span class="cgext-fmt-ref-copy">${svg(I.copy, 12)}</span>`);
-      b.querySelector('.cgext-fmt-ref-label')!.textContent = row.label;
-      b.querySelector('.cgext-fmt-ref-code')!.textContent = row.format;
-      b.querySelector('.cgext-fmt-ref-sample')!.textContent = row.sample;
+        `<span class="vgext-fmt-ref-label"></span>` +
+        `<span class="vgext-fmt-ref-code"></span>` +
+        `<span class="vgext-fmt-ref-sample"></span>` +
+        (sentinel ? '' : `<span class="vgext-fmt-ref-copy">${svg(I.copy, 12)}</span>`);
+      b.querySelector('.vgext-fmt-ref-label')!.textContent = row.label;
+      b.querySelector('.vgext-fmt-ref-code')!.textContent = row.format;
+      b.querySelector('.vgext-fmt-ref-sample')!.textContent = row.sample;
       if (!sentinel) {
         b.addEventListener('click', () => {
           try { void navigator.clipboard?.writeText(row.format); } catch { /* copy is best-effort */ }
@@ -1671,45 +1671,45 @@ function buildCustomTab(
 Append to `FMT_CSS`:
 
 ```css
-.cgext-fmt-symbols { display: flex; align-items: center; gap: 6px; }
-.cgext-fmt-symbol {
+.vgext-fmt-symbols { display: flex; align-items: center; gap: 6px; }
+.vgext-fmt-symbol {
   appearance: none; min-width: 34px; height: 30px; padding: 0 8px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 6px; background: transparent;
-  color: var(--cg-fg-color, #e5e9f0); font: inherit; font-size: 13px; cursor: pointer;
+  border: 1px solid var(--vg-border-color, #2a3140); border-radius: 6px; background: transparent;
+  color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: 13px; cursor: pointer;
 }
-.cgext-fmt-symbol:hover { border-color: var(--cg-accent-color, #4f9cf9); }
-.cgext-fmt-custom-input {
+.vgext-fmt-symbol:hover { border-color: var(--vg-accent-color, #4f9cf9); }
+.vgext-fmt-custom-input {
   display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 7px;
-  color: var(--cg-muted-fg-color, #9aa4b6);
+  border: 1px solid var(--vg-border-color, #2a3140); border-radius: 7px;
+  color: var(--vg-muted-fg-color, #9aa4b6);
 }
-.cgext-fmt-custom-input input {
+.vgext-fmt-custom-input input {
   flex: 1 1 auto; min-width: 0; border: none; background: transparent; outline: none;
-  color: var(--cg-fg-color, #e5e9f0);
+  color: var(--vg-fg-color, #e5e9f0);
   font-family: 'JetBrains Mono', Menlo, Consolas, monospace; font-size: 12.5px;
 }
-.cgext-fmt-custom-input input.is-error { color: var(--cg-neg-color, #e2606c); }
-.cgext-fmt-custom-apply, .cgext-fmt-custom-clear {
-  appearance: none; width: 28px; height: 28px; border: 1px solid var(--cg-border-color, #2a3140);
+.vgext-fmt-custom-input input.is-error { color: var(--vg-neg-color, #e2606c); }
+.vgext-fmt-custom-apply, .vgext-fmt-custom-clear {
+  appearance: none; width: 28px; height: 28px; border: 1px solid var(--vg-border-color, #2a3140);
   border-radius: 6px; background: transparent; display: inline-flex; align-items: center;
   justify-content: center; cursor: pointer;
 }
-.cgext-fmt-custom-apply { color: var(--cg-accent-color, #4f9cf9); }
-.cgext-fmt-custom-apply:disabled { opacity: 0.4; cursor: default; }
-.cgext-fmt-custom-clear { color: var(--cg-neg-color, #e2606c); }
-.cgext-fmt-ref { display: flex; flex-direction: column; gap: 2px; border-top: 1px solid var(--cg-border-color, #2a3140); padding-top: 8px; }
-.cgext-fmt-ref-title { padding: 8px 2px 4px; }
-.cgext-fmt-ref-row {
+.vgext-fmt-custom-apply { color: var(--vg-accent-color, #4f9cf9); }
+.vgext-fmt-custom-apply:disabled { opacity: 0.4; cursor: default; }
+.vgext-fmt-custom-clear { color: var(--vg-neg-color, #e2606c); }
+.vgext-fmt-ref { display: flex; flex-direction: column; gap: 2px; border-top: 1px solid var(--vg-border-color, #2a3140); padding-top: 8px; }
+.vgext-fmt-ref-title { padding: 8px 2px 4px; }
+.vgext-fmt-ref-row {
   appearance: none; display: grid; grid-template-columns: 130px 1fr auto auto; gap: 8px; align-items: center;
   padding: 5px 6px; border: 1px solid transparent; border-radius: 6px; background: transparent;
-  color: var(--cg-fg-color, #e5e9f0); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer;
+  color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer;
 }
-.cgext-fmt-ref-row:hover:not(:disabled) { background: var(--cg-row-alt-bg, rgba(255,255,255,0.06)); }
-.cgext-fmt-ref-row:disabled { opacity: 0.55; cursor: default; }
-.cgext-fmt-ref-code, .cgext-fmt-ref-sample { font-family: 'JetBrains Mono', Menlo, Consolas, monospace; font-size: 11.5px; }
-.cgext-fmt-ref-code { color: var(--cg-accent-color, #4f9cf9); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cgext-fmt-ref-sample { color: var(--cg-muted-fg-color, #9aa4b6); white-space: nowrap; }
-.cgext-fmt-ref-copy { display: inline-flex; color: var(--cg-muted-fg-color, #9aa4b6); }
+.vgext-fmt-ref-row:hover:not(:disabled) { background: var(--vg-row-alt-bg, rgba(255,255,255,0.06)); }
+.vgext-fmt-ref-row:disabled { opacity: 0.55; cursor: default; }
+.vgext-fmt-ref-code, .vgext-fmt-ref-sample { font-family: 'JetBrains Mono', Menlo, Consolas, monospace; font-size: 11.5px; }
+.vgext-fmt-ref-code { color: var(--vg-accent-color, #4f9cf9); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vgext-fmt-ref-sample { color: var(--vg-muted-fg-color, #9aa4b6); white-space: nowrap; }
+.vgext-fmt-ref-copy { display: inline-flex; color: var(--vg-muted-fg-color, #9aa4b6); }
 ```
 
 Also add `findPresetByFormat` to the existing `./formatPresets` import in `formatPicker.ts` if Task 7's transcription didn't already include it.
@@ -1836,7 +1836,7 @@ Pill caption — in `refresh()` (the ribbon's existing state-sync function), add
     r.fmtCode.classList.toggle('is-set', fmt !== undefined);
 ```
 
-(The pill's `<span>` comes from `pill('# Format')` :122-127. Add `.cgext-rb-pill.is-set { color: var(--cg-accent-color, #4f9cf9); }` to the ribbon CSS block.) Ensure the ribbon's destroy path calls `fmtPicker.destroy()` alongside its other cleanup.
+(The pill's `<span>` comes from `pill('# Format')` :122-127. Add `.vgext-rb-pill.is-set { color: var(--vg-accent-color, #4f9cf9); }` to the ribbon CSS block.) Ensure the ribbon's destroy path calls `fmtPicker.destroy()` alongside its other cleanup.
 
 - [ ] **Step 4: Verify green + full suite**
 
@@ -1858,7 +1858,7 @@ git commit -m "feat(ext): # Format pill opens the format picker — window.promp
 - Create: `apps/cgrid-ext-demo/e2e/formatPicker.spec.ts`
 
 **Interfaces:**
-- Consumes: `window.__ext` (`__ext.grid` = kernel CGrid: `getTemplates()`, `getCellRanges`, focus APIs), the demo's `persistState: true` + `gridId: 'ext-demo'`, Tasks 7-9 DOM hooks, the demo's `currentPrice` column (number) and `ticker` column (text).
+- Consumes: `window.__ext` (`__ext.grid` = kernel VelocityGrid: `getTemplates()`, `getCellRanges`, focus APIs), the demo's `persistState: true` + `gridId: 'ext-demo'`, Tasks 7-9 DOM hooks, the demo's `currentPrice` column (number) and `ticker` column (text).
 
 - [ ] **Step 1: Write the E2E spec**
 
@@ -1872,11 +1872,11 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await page.evaluate(() => localStorage.clear());
   await page.reload();
-  await expect(page.locator('.cgext-titlebar')).toBeVisible();
+  await expect(page.locator('.vgext-titlebar')).toBeVisible();
 });
 
 const pill = (page: Page) => page.locator('[data-item-id]').filter({ hasText: '# ' }).first();
-const panel = (page: Page) => page.locator('.cgext-menu.cgext-fmt');
+const panel = (page: Page) => page.locator('.vgext-menu.vgext-fmt');
 
 /** Focus a cell in the given column so targetCols() resolves. */
 async function focusColumn(page: Page, colId: string): Promise<void> {
@@ -1899,39 +1899,39 @@ test('preset apply → own template + CURRENT chip + caption; persists across re
   await focusColumn(page, 'notionalAmount');
   await pill(page).click();
   await expect(panel(page)).toBeVisible();
-  await expect(panel(page).locator('.cgext-fmt-tab[data-cat="number"] .cgext-fmt-count')).toHaveText('6');
+  await expect(panel(page).locator('.vgext-fmt-tab[data-cat="number"] .vgext-fmt-count')).toHaveText('6');
 
-  await panel(page).locator('.cgext-fmt-row[data-preset-id="num-2dp"]').click();
+  await panel(page).locator('.vgext-fmt-row[data-preset-id="num-2dp"]').click();
   await expect(panel(page)).not.toBeVisible(); // apply closes
   expect(await ownFormat(page, 'notionalAmount')).toBe('#,##0.00');
   await expect(pill(page)).toContainText('# 2 decimals');
 
   // Reopen: CURRENT chip previews, active row highlighted.
   await pill(page).click();
-  await expect(panel(page).locator('.cgext-fmt-current-chip')).toHaveText('1,234.57');
-  await expect(panel(page).locator('.cgext-fmt-row[data-preset-id="num-2dp"]')).toHaveClass(/is-active/);
+  await expect(panel(page).locator('.vgext-fmt-current-chip')).toHaveText('1,234.57');
+  await expect(panel(page).locator('.vgext-fmt-row[data-preset-id="num-2dp"]')).toHaveClass(/is-active/);
   await page.keyboard.press('Escape');
 
   // Persistence: wait for the debounced autosave, then reload.
   await page.waitForFunction(() =>
     Object.keys(localStorage).some((k) => (localStorage.getItem(k) ?? '').includes('#,##0.00')));
   await page.reload();
-  await expect(page.locator('.cgext-titlebar')).toBeVisible();
+  await expect(page.locator('.vgext-titlebar')).toBeVisible();
   expect(await ownFormat(page, 'notionalAmount')).toBe('#,##0.00');
 });
 
 test('tick preset renders on the price column; clear removes it', async ({ page }) => {
   await focusColumn(page, 'currentPrice');
   await pill(page).click();
-  await panel(page).locator('.cgext-fmt-tab[data-cat="tick"]').click();
-  await expect(panel(page).locator('.cgext-fmt-row[data-preset-id="tick-32"] .cgext-fmt-row-preview')).toHaveText('101-16');
-  await panel(page).locator('.cgext-fmt-row[data-preset-id="tick-32"]').click();
+  await panel(page).locator('.vgext-fmt-tab[data-cat="tick"]').click();
+  await expect(panel(page).locator('.vgext-fmt-row[data-preset-id="tick-32"] .vgext-fmt-row-preview')).toHaveText('101-16');
+  await panel(page).locator('.vgext-fmt-row[data-preset-id="tick-32"]').click();
   expect(await ownFormat(page, 'currentPrice')).toBe('TICK32');
 
   await pill(page).click();
-  await panel(page).locator('.cgext-fmt-clear').click();
+  await panel(page).locator('.vgext-fmt-clear').click();
   expect(await ownFormat(page, 'currentPrice')).toBeUndefined();
-  await expect(panel(page).locator('.cgext-fmt-current-chip')).toHaveText('—');
+  await expect(panel(page).locator('.vgext-fmt-current-chip')).toHaveText('—');
 });
 
 test('custom format via input; search; text column rail', async ({ page }) => {
@@ -1939,29 +1939,29 @@ test('custom format via input; search; text column rail', async ({ page }) => {
   await pill(page).click();
 
   // Search flips to flat results.
-  await panel(page).locator('.cgext-fmt-search input').fill('parens');
-  await expect(panel(page).locator('.cgext-fmt-tabs')).toHaveCount(0);
-  await expect(panel(page).locator('.cgext-fmt-row').first()).toBeVisible();
-  await panel(page).locator('.cgext-fmt-search input').fill('');
+  await panel(page).locator('.vgext-fmt-search input').fill('parens');
+  await expect(panel(page).locator('.vgext-fmt-tabs')).toHaveCount(0);
+  await expect(panel(page).locator('.vgext-fmt-row').first()).toBeVisible();
+  await panel(page).locator('.vgext-fmt-search input').fill('');
 
   // Custom tab: type + apply.
-  await panel(page).locator('.cgext-fmt-tab[data-cat="__custom__"]').click();
-  const input = panel(page).locator('.cgext-fmt-custom-input input');
+  await panel(page).locator('.vgext-fmt-tab[data-cat="__custom__"]').click();
+  const input = panel(page).locator('.vgext-fmt-custom-input input');
   await input.fill('#,##0.000');
-  await panel(page).locator('.cgext-fmt-custom-apply').click();
+  await panel(page).locator('.vgext-fmt-custom-apply').click();
   expect(await ownFormat(page, 'notionalAmount')).toBe('#,##0.000');
   await expect(pill(page)).toContainText('#,##0.000');
 
   // Text column shows the text rail with the ƒ(x) presets.
   await focusColumn(page, 'ticker');
   await pill(page).click();
-  await expect(panel(page).locator('.cgext-fmt-tab[data-cat="text"] .cgext-fmt-count')).toHaveText('9');
-  await panel(page).locator('.cgext-fmt-row[data-preset-id="str-upper"]').click();
+  await expect(panel(page).locator('.vgext-fmt-tab[data-cat="text"] .vgext-fmt-count')).toHaveText('9');
+  await panel(page).locator('.vgext-fmt-row[data-preset-id="str-upper"]').click();
   expect(await ownFormat(page, 'ticker')).toBe('=UPPER([value])');
 });
 ```
 
-Note on `pill(page)`: if the `# Format` pill lacks a stable `data-item-id` hook, target it as `page.locator('.cgext-rb-pill', { hasText: /# / }).first()` — verify against the rendered DOM and keep ONE stable locator; adding `data-fmt-pill` to the pill in Task 9 is the preferred fix if neither is unique.
+Note on `pill(page)`: if the `# Format` pill lacks a stable `data-item-id` hook, target it as `page.locator('.vgext-rb-pill', { hasText: /# / }).first()` — verify against the rendered DOM and keep ONE stable locator; adding `data-fmt-pill` to the pill in Task 9 is the preferred fix if neither is unique.
 
 - [ ] **Step 2: Run the new spec**
 
@@ -1988,4 +1988,4 @@ git commit -m "test(e2e): format picker — preset/tick/custom apply, clear, sea
 
 ## Batch closeout (after all 10 tasks)
 
-ONE closeout review over Tasks 1-10 + a single fix wave (standing batch-review rule). Verification: format + expression + calc + ext unit suites and typechecks; kernel suite (calc type flows into `CGridApi`); full demo E2E; manual browser pass of the picker in light AND dark theme (flip via the overflow menu), automation browser killed after.
+ONE closeout review over Tasks 1-10 + a single fix wave (standing batch-review rule). Verification: format + expression + calc + ext unit suites and typechecks; kernel suite (calc type flows into `VelocityGridApi`); full demo E2E; manual browser pass of the picker in light AND dark theme (flip via the overflow menu), automation browser killed after.

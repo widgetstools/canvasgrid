@@ -41,7 +41,7 @@ export class TypedEventEmitter<E extends { type: string }> {
       } catch (err) {
         // Isolate handler failures so siblings still run.
         // eslint-disable-next-line no-console
-        console.error('[cgrid] event handler error:', err);
+        console.error('[velocity-grid] event handler error:', err);
       }
     }
   }

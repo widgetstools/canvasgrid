@@ -129,7 +129,7 @@ export function cloneDefsTree<T>(value: T): T {
  * Assign a stable, explicit `groupId` to every group in `defs` that was
  * authored without one — a legal ag-grid pattern (`{ headerName, children }`
  * with no `groupId`). Returns a clone (`cloneDefsTree`); the input is never
- * mutated. IDs are synthesized `cg-grp-${n}` in the SAME pre-order DFS
+ * mutated. IDs are synthesized `vg-grp-${n}` in the SAME pre-order DFS
  * (roots → children, incrementing only for groups lacking a `groupId`) that
  * `resolveColumnTree` uses internally, so a caller that also runs the defs
  * through `resolveColumnTree` sees IDENTICAL synthesized ids — the two
@@ -150,7 +150,7 @@ export function ensureGroupIds<TRow>(
     for (const node of nodes) {
       if (isColGroupDef(node)) {
         if (node.groupId == null) {
-          node.groupId = `cg-grp-${++autoGroupSeq}`;
+          node.groupId = `vg-grp-${++autoGroupSeq}`;
         }
         walk(node.children);
       }
@@ -186,11 +186,11 @@ export function resolveColumnTree<TRow>(
   ): ColumnTreeNode {
     if (isColGroupDef(node)) {
       if (node.children.length === 0) {
-        throw new Error('[cgrid] ColGroupDef has empty children array');
+        throw new Error('[velocity-grid] ColGroupDef has empty children array');
       }
-      const groupId = node.groupId ?? `cg-grp-${++autoGroupSeq}`;
+      const groupId = node.groupId ?? `vg-grp-${++autoGroupSeq}`;
       if (groupById.has(groupId)) {
-        throw new Error(`[cgrid] duplicate groupId '${groupId}'`);
+        throw new Error(`[velocity-grid] duplicate groupId '${groupId}'`);
       }
       // Pre-resolve group headerClass into static array or fn — mirrors leaf
       // resolveColDef logic; inlined here to avoid import cycles with propertyChain.ts.
@@ -244,7 +244,7 @@ export function resolveColumnTree<TRow>(
 
     const resolved = resolveColDef<TRow>(node, defaultColDef, columnTypes);
     if (leafById.has(resolved.colId)) {
-      throw new Error(`[cgrid] duplicate colId '${resolved.colId}'`);
+      throw new Error(`[velocity-grid] duplicate colId '${resolved.colId}'`);
     }
     leafById.set(resolved.colId, resolved);
     leaves.push(resolved);

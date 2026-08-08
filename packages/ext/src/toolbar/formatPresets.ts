@@ -1,6 +1,6 @@
 /**
  * Format-picker catalog — pure data + logic (no DOM). Ported from starui's
- * FormatterPicker and recast so EVERY preset is a plain @cgrid/format DSL
+ * FormatterPicker and recast so EVERY preset is a plain @wellsfargo-starui/velocity-grid-format DSL
  * string: excel sections, TICK* tokens (Task 1), 0.00E+00 (Task 2), and
  * `=expr` value formatters (Tasks 3-4). Sidebar counts are full category
  * sizes (reference behavior), independent of the active data type.

@@ -1,5 +1,5 @@
 /**
- * Minimal consumer of `@cgrid/perspective` — the whole integration:
+ * Minimal consumer of `@wellsfargo-starui/velocity-grid-perspective` — the whole integration:
  * a provider, a grid built from its options bundle, one `attach` call.
  *
  * Everything else (WASM engine in a SharedWorker, cross-tab shared table,
@@ -8,9 +8,9 @@
  * the provider. `feed: 'stomp'` + `wsUrl` swaps the seed book for a live
  * STOMP feed with the same three lines.
  */
-import { CGrid } from '@cgrid/kernel';
-import '@cgrid/kernel/style.css';
-import { StompPerspectiveProvider } from '@cgrid/perspective';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
+import '@wellsfargo-starui/velocity-grid/style.css';
+import { StompPerspectiveProvider } from '@wellsfargo-starui/velocity-grid-perspective';
 
 const provider = new StompPerspectiveProvider({
   feed: 'seed',            // 'stomp' + wsUrl/clientId for a live broker
@@ -19,8 +19,8 @@ const provider = new StompPerspectiveProvider({
   label: 'All positions',
 });
 
-const grid = new CGrid(document.getElementById('grid')!, {
-  theme: 'cg-theme-quartz-dark',
+const grid = new VelocityGrid(document.getElementById('grid')!, {
+  theme: 'vg-theme-quartz-dark',
   ...provider.gridOptions(), // columnDefs + SSRM contract (provider IS the datasource)
 });
 

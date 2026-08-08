@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { installGridTestEnv } from './setup';
-import { CGrid } from '@cgrid/kernel';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
 import { LocalStorageProfileStore } from '../src/profiles/localStorageStore';
 import { ProfilesController } from '../src/profiles/controller';
 import { createExtContext } from '../src/extension/context';
@@ -8,10 +8,10 @@ import { createExtContext } from '../src/extension/context';
 beforeAll(() => installGridTestEnv());
 beforeEach(() => localStorage.clear());
 
-function makeGrid(): CGrid {
+function makeGrid(): VelocityGrid {
   const host = document.createElement('div');
   document.body.appendChild(host);
-  return new CGrid(host, {
+  return new VelocityGrid(host, {
     getRowId: (r: any) => r.a,
     columnDefs: [{ colId: 'a', field: 'a' }],
     rowData: [],

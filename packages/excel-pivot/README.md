@@ -1,4 +1,4 @@
-# @cgrid/excel-pivot
+# @wellsfargo-starui/velocity-grid-excel-pivot
 
 ExcelPivotGrid — Excel-native pivot data model + engine (cycle 20).
 

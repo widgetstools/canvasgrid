@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { GroupExpandFeature } from '../src/interaction/features/groupExpand';
-import type { CGridEventCtx, CGridLike } from '../src/interaction/feature';
+import type { VelocityGridEventCtx, VelocityGridLike } from '../src/interaction/feature';
 import type { Hit } from '../src/interaction/hitTester';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
 
 /**
@@ -11,7 +11,7 @@ import { createWorkerHost } from '../src/worker/worker';
  * Two-part suite:
  *
  * Feature half (cases 1-8) — `GroupExpandFeature` chain semantics
- * against a mock `CGridLike`. The feature only ever fans out through
+ * against a mock `VelocityGridLike`. The feature only ever fans out through
  * two hooks: `hitTestGroupChevron(x, y)` resolves a canvas-local point
  * to a group key, `toggleGroupExpanded(key)` mutates the expansion
  * state. The feature decides:
@@ -71,7 +71,7 @@ function makeCtx(
   grid: MockGrid,
   point: { x: number; y: number },
   raw?: MouseEvent | KeyboardEvent | WheelEvent,
-): CGridEventCtx {
+): VelocityGridEventCtx {
   const hit: Hit = { kind: 'empty' };
   // Cycle 15 / Task 8 — splice default `hitTestGroupCheckbox` /
   // `toggleGroupChildrenSelected` stubs onto Task-7-era mocks that
@@ -86,7 +86,7 @@ function makeCtx(
   return {
     hit,
     point,
-    grid: augmented as unknown as CGridLike,
+    grid: augmented as unknown as VelocityGridLike,
     raw: raw ?? new MouseEvent('mousedown', { button: 0 }),
   };
 }
@@ -96,7 +96,7 @@ function makeCtx(
 function buildWiredGrid<T extends { id: string }>(rows: T[], cols: Array<Record<string, unknown>>) {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
   const prevWorker = (globalThis as { Worker?: unknown }).Worker;
   (globalThis as { Worker?: unknown }).Worker = class {
@@ -109,8 +109,8 @@ function buildWiredGrid<T extends { id: string }>(rows: T[], cols: Array<Record<
     addEventListener(_: string, cb: (e: { data: unknown }) => void) { this.listeners.push(cb); }
     terminate() {}
   };
-  const grid = new CGrid<T>(container, {
-    columnDefs: cols as Parameters<typeof CGrid<T>>[1]['columnDefs'],
+  const grid = new VelocityGrid<T>(container, {
+    columnDefs: cols as Parameters<typeof VelocityGrid<T>>[1]['columnDefs'],
     getRowId: (r) => r.id,
     rowData: rows,
   });
@@ -323,7 +323,7 @@ const SAMPLE_COLS = [
   { field: 'pri', type: 'number' },
 ];
 
-describe('CGrid — expand / collapse API', () => {
+describe('VelocityGrid — expand / collapse API', () => {
   it('9. setGroupModel resolves the worker round-trip and getExpandedKeys returns every known key', async () => {
     const { grid, restore } = buildWiredGrid<Row>(SAMPLE_ROWS, SAMPLE_COLS);
     await new Promise((r) => setTimeout(r, 50));
@@ -438,7 +438,7 @@ describe('CGrid — expand / collapse API', () => {
   });
 });
 
-describe('CGrid — grouping survives late columnDefs (persist/profile restore race)', () => {
+describe('VelocityGrid — grouping survives late columnDefs (persist/profile restore race)', () => {
   it('re-applies rowGroupColumns after updateGridOptions brings missing group cols online', async () => {
     // Mirrors the STOMP / persist boot path: restore installs rowGroupColumns
     // while only a placeholder leaf exists; chips paint but the worker rejects

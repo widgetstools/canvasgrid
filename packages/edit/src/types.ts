@@ -1,4 +1,4 @@
-// @cgrid/edit — public types.
+// @wellsfargo-starui/velocity-grid-edit — public types.
 // Authoritative reference: docs/superpowers/specs/2026-07-02-cycle-21g-edit-design.md §2.2
 // (core models, copied verbatim) + §2.3 (engine discipline).
 

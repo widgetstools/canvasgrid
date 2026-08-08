@@ -4,7 +4,7 @@
 // (filter params), and the external iCellEditor module.
 
 import type { CellEditorCtor } from '../interaction/editors/iCellEditor';
-import type { Fragment, IconRef } from '@cgrid/format';
+import type { Fragment, IconRef } from '@wellsfargo-starui/velocity-grid-format';
 import type {
   CellClass,
   CellClassRules,
@@ -19,7 +19,7 @@ import type {
   CTextFilterParams,
 } from './filter';
 
-/** Params for `CGridOptions.getRowHeight`. The row is identified by its
+/** Params for `VelocityGridOptions.getRowHeight`. The row is identified by its
  *  full data + the application-provided rowId; `rowIndex` is the row's
  *  current position in the visible (filter + sort) order at the time the
  *  callback runs. */
@@ -36,7 +36,7 @@ export type EditableCallback<TRow = any, TValue = any> = (
 ) => boolean;
 
 /** Cycle 4 / Task 11 (cell-flash patch) — params for
- *  `CGridApi.flashCells`. Programmatic cell flash for app-driven
+ *  `VelocityGridApi.flashCells`. Programmatic cell flash for app-driven
  *  highlights (validation success pulse, row-just-loaded). */
 export interface FlashCellsParams {
   /** Row IDs to flash. Required; must be non-empty. */
@@ -66,9 +66,9 @@ export type SuppressKeyboardEventCallback<TRow = any> = (
   params: { event: KeyboardEvent; editing: boolean; data: TRow; colId: string },
 ) => boolean;
 
-/** Cycle 9 / Task 5 — params for `CGridOptions.fillOperation`. Mirrors
+/** Cycle 9 / Task 5 — params for `VelocityGridOptions.fillOperation`. Mirrors
  *  ag-grid's `FillOperationParams`. (Lives in column.ts rather than its
- *  own module because both `CColDef` and `CGridOptions` carry it.) */
+ *  own module because both `CColDef` and `VelocityGridOptions` carry it.) */
 export interface FillOperationParams<TRow = any> {
   /** The values from the source rect (the original selection before the
    *  fill-handle drag), in source-row order, for the column being filled. */
@@ -101,7 +101,7 @@ export interface CColDef<TRow = any, TValue = any> {
   maxWidth?: number;
   pinned?: 'left' | 'right';
   /**
-   * Named column type(s) declared in `CGridOptions.columnTypes`. Each named
+   * Named column type(s) declared in `VelocityGridOptions.columnTypes`. Each named
    * entry is a `Partial<CColDef>` bundle; the resolved column merges the
    * bundles left-to-right, then `defaultColDef`, then this column's own
    * fields — the column's own properties always win.
@@ -123,7 +123,7 @@ export interface CColDef<TRow = any, TValue = any> {
    */
   cellDataType?: 'text' | 'number';
   valueGetter?: (params: CValueGetterParams<TRow>) => TValue;
-  /** DSL string OR function. String form compiles via @cgrid/format
+  /** DSL string OR function. String form compiles via @wellsfargo-starui/velocity-grid-format
    *  at ColDef-resolve time. */
   valueFormatter?: string | ((params: CValueFormatterParams<TRow, TValue>) => string);
 
@@ -198,7 +198,7 @@ export interface CColDef<TRow = any, TValue = any> {
    *  `textFormatter` / `showCaseSensitiveToggle` without a cast. Cycle
    *  7 / Task 3 (+ Task 8 type widening). */
   filterParams?: CFilterParams | CTextFilterParams | CSetFilterParams;
-  /** Per-column override of `CGridOptions.floatingFilter`. When set on a
+  /** Per-column override of `VelocityGridOptions.floatingFilter`. When set on a
    *  column, the column joins (or opts out of) the floating-filter row
    *  regardless of the grid-wide default. Cycle 7 / Task 1. */
   floatingFilter?: boolean;
@@ -222,14 +222,14 @@ export interface CColDef<TRow = any, TValue = any> {
   /** Cycle 14 / Task 3 — name of the column's totals aggregation.
    *  Built-in names: `'sum' | 'avg' | 'min' | 'max' | 'count' | 'first'
    *  | 'last'`. Custom names resolve against the registry passed via
-   *  `CGridOptions.aggFuncs` (or registered at runtime via
+   *  `VelocityGridOptions.aggFuncs` (or registered at runtime via
    *  `api.setGridOption('aggFuncs', …)`). Unknown names produce an
    *  `undefined` total for the column — the totals row paints the
    *  cell empty. An array form (`['sum', 'avg']`) uses the FIRST entry
    *  that resolves; subsequent entries serve as fallbacks. */
   aggFunc?: string | string[];
   /** Cycle 14 / Task 4 — per-column override of
-   *  `CGridOptions.suppressAggFuncInHeader`. When set, this column's
+   *  `VelocityGridOptions.suppressAggFuncInHeader`. When set, this column's
    *  header decoration follows the column-level flag regardless of the
    *  grid-level value. Unset (`undefined`) defers to the grid-level
    *  option (default `false` → show `sum(Notional)`). Has no visible
@@ -243,7 +243,7 @@ export interface CColDef<TRow = any, TValue = any> {
    *  renderer registered via `api.registerCellRenderer`) to opt the
    *  column out of the polished totals treatment for this single
    *  column. Has no effect when the grid has no totals row mounted
-   *  (`CGridOptions.totalsRowPosition` is `null` / unset). */
+   *  (`VelocityGridOptions.totalsRowPosition` is `null` / unset). */
   totalsCellRenderer?: string;
   sortable?: boolean;
   /** Diacritic-aware string sort. When `true`, `SortPass` orders this
@@ -258,7 +258,7 @@ export interface CColDef<TRow = any, TValue = any> {
    *  (`chevrons-up-down`) any time this column is sortable but not
    *  currently in the sort model — a hint to the user that the column
    *  can be clicked to sort. Has no effect when `sortable === false`.
-   *  The icon color resolves from the theme's `--cg-unsort-icon-color`
+   *  The icon color resolves from the theme's `--vg-unsort-icon-color`
    *  custom property and falls back to a 40% alpha headerFg. Cycle 8 /
    *  Task 5. */
   unSortIcon?: boolean;
@@ -283,7 +283,7 @@ export interface CColDef<TRow = any, TValue = any> {
   /** Editable predicate. Pass `true` / `false` for a static answer, or a
    *  callback receiving `{ data, colId, rowIndex, value }`. */
   editable?: boolean | EditableCallback<TRow, TValue>;
-  /** Per-column override of `CGridOptions.singleClickEdit`. When set, this
+  /** Per-column override of `VelocityGridOptions.singleClickEdit`. When set, this
    *  wins over the grid-level value for this column. */
   singleClickEdit?: boolean;
   /** Per-column key-event short-circuit. Runs at the head of the input
@@ -558,7 +558,7 @@ export type CCellRendererSelector<TRow = any, TValue = any> = (
  * list. `groupId` is auto-generated when omitted.
  */
 export interface CColGroupDef<TRow = any> {
-  /** Stable identifier. Auto-generated as `cg-grp-${n}` when omitted. */
+  /** Stable identifier. Auto-generated as `vg-grp-${n}` when omitted. */
   groupId?: string;
   /** Text shown in the group header cell. Empty string OK. */
   headerName?: string;
@@ -685,7 +685,7 @@ export interface CColumnState {
 }
 
 /**
- * Parameters for `CGridApi.applyColumnState`. Cycle 6 / Task 2.
+ * Parameters for `VelocityGridApi.applyColumnState`. Cycle 6 / Task 2.
  *
  * - `state` — per-leaf restore entries; matched by `colId`. Leaves not
  *   mentioned fall back to `defaultState` (if provided) or stay unchanged.
@@ -702,7 +702,7 @@ export interface CApplyColumnStateParams {
 }
 
 /**
- * Parameters for `CGridApi.sizeColumnsToFit`. Cycle 6 / Task 3.
+ * Parameters for `VelocityGridApi.sizeColumnsToFit`. Cycle 6 / Task 3.
  *
  * - `width` — explicit width to fit to. Defaults to the canvas drawable
  *   width (already excludes the vertical-scrollbar gutter).

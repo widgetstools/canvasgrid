@@ -82,7 +82,7 @@ export async function focusCell(
   colId: string,
   rowIndex = 0,
 ): Promise<void> {
-  const canvas = page.locator('.cgext-grid canvas, .cg-grid canvas').first();
+  const canvas = page.locator('.vgext-grid canvas, .vg-grid canvas').first();
   await canvas.click({ position: { x: 200, y: 80 } });
   await page.evaluate(({ rowId: id, colId: c, rowIndex: ri }) => {
     const g = (window as unknown as EditWindow).__ext.grid;
@@ -102,7 +102,7 @@ export async function toggleSettingsRow(page: Page, label: RegExp | string): Pro
 
 /** Press a key against the grid canvas (required for cellKeyDown). */
 export async function pressGridKey(page: Page, key: string): Promise<void> {
-  const canvas = page.locator('.cgext-grid canvas, .cg-grid canvas').first();
+  const canvas = page.locator('.vgext-grid canvas, .vg-grid canvas').first();
   await canvas.focus();
   await page.keyboard.press(key);
 }
@@ -138,7 +138,7 @@ export async function makeTarget(
 }
 
 export async function undoOnce(page: Page): Promise<void> {
-  const btn = page.locator('.cgext-ribbon button[title="Undo"]');
+  const btn = page.locator('.vgext-ribbon button[title="Undo"]');
   if (await btn.isEnabled().catch(() => false)) {
     await btn.click();
     return;

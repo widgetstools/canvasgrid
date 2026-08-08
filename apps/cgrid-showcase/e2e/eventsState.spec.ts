@@ -5,14 +5,14 @@ test.describe('events + state feature', () => {
   // Each test that doesn't deliberately exercise auto-restore clears
   // localStorage AFTER mounting (not via addInitScript — that would
   // also clear it after `page.reload()`, defeating the restore test).
-  const STORAGE_KEY = 'cgrid:showcase:events-state:snapshot';
+  const STORAGE_KEY = 'velocity-grid:showcase:events-state:snapshot';
 
   test('save layout writes the snapshot to localStorage', async ({ page }) => {
     await gotoFeature(page, 'eventsState');
     await page.evaluate((k) => localStorage.removeItem(k), STORAGE_KEY);
     await page.getByTestId('btn-save-state').click();
     const stored: string | null = await page.evaluate(() =>
-      localStorage.getItem('cgrid:showcase:events-state:snapshot'));
+      localStorage.getItem('velocity-grid:showcase:events-state:snapshot'));
     expect(stored).not.toBeNull();
     const parsed = JSON.parse(stored!);
     expect(parsed.version).toBe(1);
@@ -43,7 +43,7 @@ test.describe('events + state feature', () => {
     await page.getByTestId('btn-save-state').click();
     await page.getByTestId('btn-reset-state').click();
     const stored: string | null = await page.evaluate(() =>
-      localStorage.getItem('cgrid:showcase:events-state:snapshot'));
+      localStorage.getItem('velocity-grid:showcase:events-state:snapshot'));
     expect(stored).toBeNull();
     const sortModel = await page.evaluate(() => (window as any).__cgrid.getSortModel());
     expect(sortModel.length).toBe(0);

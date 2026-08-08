@@ -1,5 +1,5 @@
-// AUTO-GENERATED — do not edit. Regenerate via `npm --workspace @cgrid/ext run prebuild-icon-catalog`.
-// Categorizes @cgrid/kernel's Lucide bundle for the ribbon icon picker.
+// AUTO-GENERATED — do not edit. Regenerate via `npm --workspace @wellsfargo-starui/velocity-grid-ext run prebuild-icon-catalog`.
+// Categorizes @wellsfargo-starui/velocity-grid's Lucide bundle for the ribbon icon picker.
 export const lucideCategories: ReadonlyArray<{ readonly category: string; readonly icons: readonly string[] }> = [
   {
     "category": "Arrows & Direction",

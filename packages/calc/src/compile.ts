@@ -12,8 +12,8 @@
 // Authoritative reference:
 // docs/superpowers/specs/2026-07-02-cycle-21d-calc-design.md §1.1.2 + §5.
 
-import { compile as compileExpression, evaluate, parse, EvalError } from '@cgrid/expression';
-import type { Ast, AstNode, Compiled, Schema } from '@cgrid/expression';
+import { compile as compileExpression, evaluate, parse, EvalError } from '@wellsfargo-starui/velocity-grid-expression';
+import type { Ast, AstNode, Compiled, Schema } from '@wellsfargo-starui/velocity-grid-expression';
 import { AGG_ROOT, PREV_ROOT, collectWatchedColIds, transformAggregates } from './aggTransform';
 import type { CalcValidationError, CompiledCalc } from './types';
 

@@ -126,8 +126,8 @@ adds Uint8Array / Uint32Array typed arrays (already in the project).
     renderer registers here.
   - `cgrid/src/interaction/selectionModel.ts` — tri-state
     selection extension.
-  - `cgrid/src/theming/tokens.css` — `.cg-group-row`,
-    `.cg-group-chevron`, `.cg-group-indent`, footer rules.
+  - `cgrid/src/theming/tokens.css` — `.vg-group-row`,
+    `.vg-group-chevron`, `.vg-group-indent`, footer rules.
 
 **Global Constraints:**
 
@@ -173,14 +173,14 @@ adds Uint8Array / Uint32Array typed arrays (already in the project).
 | 2 | Group-aware `ViewportSlicer` (collapse-skip walk) | no | yes | `cgrid/src/worker/viewportSlicer.ts` | `viewportSlicer.group.test.ts` (14 cases) |
 | 3 | `GroupedRow` chunk format extension | no | yes | `cgrid/src/worker/chunkFormat.ts`, `protocol.ts`, `client.ts` | `chunkFormat.group.test.ts` (10 cases + ungrouped fixture round-trip) |
 | 4 | Auto-group column + `'group'` cell renderer | yes | no | `cgrid/src/core/autoGroupColumn.ts` (new), `cgrid/src/renderer/cellRenderers/group.ts` (new), `cgrid/src/renderer/cellRenderers/registry.ts`, `tokens.css` | `autoGroupColumn.test.ts` (12 cases) + visual cell `20-group-one-level.png` |
-| 5 | `groupDisplayType: 'multipleColumns' | 'groupRows' | 'custom'` | yes | no | `cgrid/src/cgrid.ts`, `cgrid/src/core/autoGroupColumn.ts` | `groupDisplayType.test.ts` (9 cases) + visual cell `21-group-three-level-multipleColumns.png` |
-| 6 | **Row group panel** (drop strip above headers) + drag-from-header + `rowGroupPanelShow` + `rowGroupPanelSuppressSort` + `enableRowGroup` | yes | no | `cgrid/src/interaction/rowGroupPanel/host.ts` (new), `cgrid/src/interaction/features/columnDrag.ts` (extend with row-group-panel drop target), `cgrid/src/cgrid.ts`, `tokens.css` | `rowGroupPanel.test.ts` (16 cases) + visual cells `22-rowGroupPanel-empty.png` + `23-rowGroupPanel-three-chips.png` + E2E `cycle15-dragColumnToRowGroupPanel.spec.ts` |
-| 7 | Expand/collapse interaction + API | yes | no | `cgrid/src/interaction/features/groupExpand.ts` (new), `cgrid/src/cgrid.ts`, `cgrid/src/worker/passes/groupPass.ts` | `groupExpand.test.ts` (15 cases) + visual cell `24-groups-all-collapsed.png` + E2E `cycle15-groupExpand.spec.ts` |
+| 5 | `groupDisplayType: 'multipleColumns' | 'groupRows' | 'custom'` | yes | no | `cgrid/src/velocityGrid.ts`, `cgrid/src/core/autoGroupColumn.ts` | `groupDisplayType.test.ts` (9 cases) + visual cell `21-group-three-level-multipleColumns.png` |
+| 6 | **Row group panel** (drop strip above headers) + drag-from-header + `rowGroupPanelShow` + `rowGroupPanelSuppressSort` + `enableRowGroup` | yes | no | `cgrid/src/interaction/rowGroupPanel/host.ts` (new), `cgrid/src/interaction/features/columnDrag.ts` (extend with row-group-panel drop target), `cgrid/src/velocityGrid.ts`, `tokens.css` | `rowGroupPanel.test.ts` (16 cases) + visual cells `22-rowGroupPanel-empty.png` + `23-rowGroupPanel-three-chips.png` + E2E `cycle15-dragColumnToRowGroupPanel.spec.ts` |
+| 7 | Expand/collapse interaction + API | yes | no | `cgrid/src/interaction/features/groupExpand.ts` (new), `cgrid/src/velocityGrid.ts`, `cgrid/src/worker/passes/groupPass.ts` | `groupExpand.test.ts` (15 cases) + visual cell `24-groups-all-collapsed.png` + E2E `cycle15-groupExpand.spec.ts` |
 | 8 | `groupSelectsChildren` + tri-state checkbox | yes | no | `cgrid/src/interaction/selectionModel.ts`, `cgrid/src/renderer/cellRenderers/group.ts`, `tokens.css` | `triStateSelection.test.ts` (13 cases) + visual cell `25-groupSelectsChildren-indeterminate.png` |
-| 9 | `groupDefaultExpanded` + `groupDefaultExpandedKeys` | no | partial (worker reads option on init) | `cgrid/src/cgrid.ts`, `cgrid/src/worker/passes/groupPass.ts` | `groupDefaultExpanded.test.ts` (7 cases) |
+| 9 | `groupDefaultExpanded` + `groupDefaultExpandedKeys` | no | partial (worker reads option on init) | `cgrid/src/velocityGrid.ts`, `cgrid/src/worker/passes/groupPass.ts` | `groupDefaultExpanded.test.ts` (7 cases) |
 | 10 | `showOpenedGroup` + `groupRemoveSingleChildren` | yes (polish) | yes | `cgrid/src/worker/passes/groupPass.ts`, `cgrid/src/renderer/cellRenderers/group.ts` | `groupElision.test.ts` (8 cases); visual cell 21 re-baselines if elision changes the demo |
 | 11 | Group-aware sort | no | yes | `cgrid/src/worker/passes/sortPass.ts` | `groupSort.test.ts` (10 cases) + `groupSort.perf.test.ts` (100 K ≤ 100 ms) |
-| 12 | Group totals (footer rows) | yes | yes | `cgrid/src/core/subgrid.ts` (extend `TotalsSubgrid`), `cgrid/src/worker/passes/aggPass.ts`, `cgrid/src/cgrid.ts`, `tokens.css` | `groupFooter.test.ts` (12 cases) + visual cell `26-group-footer-rows.png` |
+| 12 | Group totals (footer rows) | yes | yes | `cgrid/src/core/subgrid.ts` (extend `TotalsSubgrid`), `cgrid/src/worker/passes/aggPass.ts`, `cgrid/src/velocityGrid.ts`, `tokens.css` | `groupFooter.test.ts` (12 cases) + visual cell `26-group-footer-rows.png` |
 | 13 | Cycle 15 exit ritual | yes (demo wires grouping default) | no | worklog Shipped block, FM Area 09 + 10 flips, demo update | full suite green; FM 52/54 rows ✅ |
 
 ---
@@ -408,12 +408,12 @@ column and the `'group'` cell renderer.
   + optional `(count)`.
 - `cgrid/src/renderer/cellRenderers/registry.ts` — register
   `'group'` under that key.
-- `cgrid/src/theming/tokens.css` — `.cg-group-cell`,
-  `.cg-group-chevron`, `.cg-group-indent`, `.cg-group-count` rules.
+- `cgrid/src/theming/tokens.css` — `.vg-group-cell`,
+  `.vg-group-chevron`, `.vg-group-indent`, `.vg-group-count` rules.
   Designed per the design-pass plan.
-- `cgrid/src/cgrid.ts` — insert auto-group column when grouping
+- `cgrid/src/velocityGrid.ts` — insert auto-group column when grouping
   is active.
-- `cgrid/src/types.ts` — `CGridOptions.autoGroupColumnDef`,
+- `cgrid/src/types.ts` — `VelocityGridOptions.autoGroupColumnDef`,
   `groupDisplayType` (Task 5 extends).
 - `cgrid/tests/autoGroupColumn.test.ts` (new) — 12 cases: insert
   at idx 0 / no insert when rowGroupCols empty / no insert when
@@ -449,7 +449,7 @@ column and the `'group'` cell renderer.
    (new) and cite that file in the commit message.
 2. Implement `autoGroupColumn.ts`.
 3. Implement the `'group'` cell renderer.
-4. Wire into `cgrid.ts` (insert column when grouping active).
+4. Wire into `velocityGrid.ts` (insert column when grouping active).
 5. Build the 12-case test suite.
 6. Build visual cell 20.
 7. Visual review against the reference. If the group row looks
@@ -483,7 +483,7 @@ column and the `'group'` cell renderer.
   rowGroupCols entry.
 
 **Files:**
-- `cgrid/src/cgrid.ts` — option resolution for
+- `cgrid/src/velocityGrid.ts` — option resolution for
   `groupDisplayType: 'singleColumn' | 'multipleColumns' | 'groupRows' | 'custom'`.
 - `cgrid/src/core/autoGroupColumn.ts` — `'multipleColumns'` mode
   synthesizes one column per rowGroupCol; `'groupRows'` mode
@@ -569,19 +569,19 @@ column and the `'group'` cell renderer.
   becomes a drop target. Drop appends the column to
   `rowGroupCols` (or moves it within the chip strip when
   dragging an existing chip).
-- `cgrid/src/cgrid.ts` — mount the host when `rowGroupPanelShow`
+- `cgrid/src/velocityGrid.ts` — mount the host when `rowGroupPanelShow`
   resolves to `'always'` or `'onlyWhenGrouping' AND
   rowGroupCols.length > 0`. Reserve top-inset via the same
   `setHostBounds` channel side bar / status bar use.
 - `cgrid/src/core/canvas.ts` — extend `setHostBounds` to also
   accept a `top` inset (currently `top: 0` is hardcoded for the
   header subgrid; the panel sits ABOVE that subgrid).
-- `cgrid/src/theming/tokens.css` — `.cg-row-group-panel`,
-  `.cg-row-group-chip`, `.cg-row-group-chip-handle`,
-  `.cg-row-group-chip-label`, `.cg-row-group-chip-remove`,
-  `.cg-row-group-panel-empty` rules. Designed per the
+- `cgrid/src/theming/tokens.css` — `.vg-row-group-panel`,
+  `.vg-row-group-chip`, `.vg-row-group-chip-handle`,
+  `.vg-row-group-chip-label`, `.vg-row-group-chip-remove`,
+  `.vg-row-group-panel-empty` rules. Designed per the
   `/frontend-design` plan.
-- `cgrid/src/cgrid.ts` — `CGridOptions.rowGroupPanelShow:
+- `cgrid/src/velocityGrid.ts` — `VelocityGridOptions.rowGroupPanelShow:
   'always' | 'onlyWhenGrouping' | 'never'` (default `'never'`),
   `rowGroupPanelSuppressSort: boolean`, per-column
   `enableRowGroup: boolean`.
@@ -641,7 +641,7 @@ column and the `'group'` cell renderer.
 4. Extend `columnDrag.ts` with the row-group-panel drop target.
    Reuse the existing drag-start / drag-move event flow; only
    the drop handler is new.
-5. Wire option resolution in `cgrid.ts`. The panel mounts based
+5. Wire option resolution in `velocityGrid.ts`. The panel mounts based
    on the `rowGroupPanelShow` value and current
    `rowGroupCols.length`.
 6. Build the 16-case test suite.
@@ -685,7 +685,7 @@ hierarchical tri-state.
 - `cgrid/src/interaction/features/featureChain.ts` — feature
   registration; `GroupExpandFeature` slots into the chain before
   `EditTriggerFeature`.
-- `cgrid/src/interaction/feature.ts` — `CGridLike` interface.
+- `cgrid/src/interaction/feature.ts` — `VelocityGridLike` interface.
 - `cgrid/src/worker/passes/groupPass.ts` (Task 1) —
   `expandedKeys` is the input that drives slicing.
 
@@ -694,7 +694,7 @@ hierarchical tri-state.
   on the chevron region of an auto-group cell; toggle the group's
   `expandedKeys` entry; dispatch to the worker via
   `workerClient.setExpandedKeys(Set<string>)`.
-- `cgrid/src/cgrid.ts` — API: `expandAll()` / `collapseAll()` /
+- `cgrid/src/velocityGrid.ts` — API: `expandAll()` / `collapseAll()` /
   `setExpanded(groupKey: string, expanded: boolean)` /
   `getExpandedKeys(): Set<string>`. Event: `rowGroupOpened`
   fires when an individual group toggles;
@@ -718,7 +718,7 @@ hierarchical tri-state.
    highlight, none?), expand/collapse animation (none vs 200ms
    chevron rotate)."* Append to notes.
 2. Implement `GroupExpandFeature`.
-3. Implement the API on `cgrid.ts`.
+3. Implement the API on `velocityGrid.ts`.
 4. Wire the worker `setExpandedKeys` message.
 5. Build the 15-case test suite.
 6. Build visual cell 22.
@@ -761,7 +761,7 @@ hierarchical tri-state.
   tri-state checkbox per the design.
 - `cgrid/src/theming/tokens.css` — indeterminate checkbox visual
   (often a dash inside the box).
-- `cgrid/src/cgrid.ts` — `CGridOptions.groupSelectsChildren:
+- `cgrid/src/velocityGrid.ts` — `VelocityGridOptions.groupSelectsChildren:
   boolean` option.
 - `cgrid/tests/triStateSelection.test.ts` (new) — 13 cases.
 - `apps/cgrid-positions/e2e-visual/25-groupSelectsChildren-indeterminate.spec.ts`
@@ -808,7 +808,7 @@ chrome.
 **Read first:** This worklog's Architecture; Task 6.
 
 **Files:**
-- `cgrid/src/cgrid.ts` — `groupDefaultExpanded: number | 'all'`
+- `cgrid/src/velocityGrid.ts` — `groupDefaultExpanded: number | 'all'`
   (number = expand depth ≤ N) + `groupDefaultExpandedKeys: string[]`
   (explicit list overrides depth).
 - `cgrid/src/worker/passes/groupPass.ts` — read the option on
@@ -901,11 +901,11 @@ The aggregation feedback loop: per-group totals via the same
 - `cgrid/src/worker/passes/aggPass.ts` — compute per-group
   totals during the same pass that computes the grand total.
   Reuse `AggFuncRegistry`.
-- `cgrid/src/cgrid.ts` — `CGridOptions.groupIncludeFooter: boolean`
+- `cgrid/src/velocityGrid.ts` — `VelocityGridOptions.groupIncludeFooter: boolean`
   + `groupIncludeTotalFooter: boolean`. When true, mount a
   footer row at the bottom of each expanded group.
-- `cgrid/src/theming/tokens.css` — extend `.cg-totals-row` /
-  `.cg-totals-cell` to handle the per-group case (slightly less
+- `cgrid/src/theming/tokens.css` — extend `.vg-totals-row` /
+  `.vg-totals-cell` to handle the per-group case (slightly less
   weight than the grand total).
 - `cgrid/tests/groupFooter.test.ts` (new) — 12 cases.
 - `apps/cgrid-positions/e2e-visual/26-group-footer-rows.spec.ts`
@@ -1083,7 +1083,7 @@ renderer (`cgrid/src/renderer/cellRenderers/group.ts`) reads `chunk
 and paints: indent (one chevron-width per depth level), chevron (▶
 collapsed / ▼ expanded), the group value (formatted via the source
 column's `valueFormatter`), and an optional `(count)` suffix in the
-muted token (`--cg-group-count-fg`). Visual cell 20
+muted token (`--vg-group-count-fg`). Visual cell 20
 (`20-group-one-level.png`) baselines one-level grouping; design notes
 in `docs/superpowers/plans/notes/cycle-15-grouping-design.md` § Task 4
 record the chevron/indent/typography decisions (chevron = unicode ▶/▼
@@ -1097,7 +1097,7 @@ one auto-column; `'multipleColumns'` synthesises one auto-group column
 per `rowGroupCols` entry, each `cellRendererParams.groupColumnDepth`
 matching the row's depth so each chevron + value + (count) routes to
 its own column; `'groupRows'` paints a full-row group strip (no
-auto-column); `'custom'` defers to `CGridOptions.groupRowRenderer`.
+auto-column); `'custom'` defers to `VelocityGridOptions.groupRowRenderer`.
 Visual cell 21 (`21-group-three-level-multipleColumns.png`) baselines
 the three-level multipleColumns variant per the canonical screenshot.
 Nine Vitest cases cover all four modes + their layout edge cases.
@@ -1125,7 +1125,7 @@ unmount / chip ordering / drop verdict / runtime mid-flight re-mounts.
 (`cgrid/src/interaction/features/groupExpand.ts`) hit-tests on the
 chevron region of an auto-group cell, toggles the row's expansion in
 `expandedKeys`, and ships the new set to the worker via
-`workerClient.setExpandedKeys`. APIs on `CGrid`: `expandAll()` (sets
+`workerClient.setExpandedKeys`. APIs on `VelocityGrid`: `expandAll()` (sets
 the model marker to "all keys" so future-added groups inherit;
 fires `expandOrCollapseAll: { expanded: true }`), `collapseAll()`
 (empty explicit set; fires the same event with `expanded: false`),
@@ -1143,7 +1143,7 @@ target is a group AND `groupSelectsChildren` is on. A new
 `getGroupSelectionState(groupKey): 'none' | 'partial' | 'all'` powers
 the auto-group cell's tri-state checkbox: dash-inside-box for
 `'partial'` (the Excel/macOS-familiar indeterminate visual rendered
-via the `--cg-checkbox-indeterminate-*` tokens). `getSelectedRowIds()`
+via the `--vg-checkbox-indeterminate-*` tokens). `getSelectedRowIds()`
 returns leaf-only ids so downstream consumers (clipboard, status
 panel) read coherent data. Visual cell 25
 (`25-groupSelectsChildren-indeterminate.png`) baselines a partial

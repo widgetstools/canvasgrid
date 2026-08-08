@@ -3,13 +3,13 @@
  *
  * Five panel containers carry pills representing a column's role:
  *
- *   • top-strip Row Group panel  (`.cg-row-group-panel`)        — rowGroup
- *   • top-strip Pivot panel      (`.cg-pivot-panel`)            — pivot
- *   • columns side-panel rgz     (`.cg-columns-panel-rgz`)      — rowGroup
- *   • columns side-panel plz     (`.cg-columns-panel-plz`)      — pivot
- *   • columns side-panel valz    (`.cg-columns-panel-valz`)     — value
+ *   • top-strip Row Group panel  (`.vg-row-group-panel`)        — rowGroup
+ *   • top-strip Pivot panel      (`.vg-pivot-panel`)            — pivot
+ *   • columns side-panel rgz     (`.vg-columns-panel-rgz`)      — rowGroup
+ *   • columns side-panel plz     (`.vg-columns-panel-plz`)      — pivot
+ *   • columns side-panel valz    (`.vg-columns-panel-valz`)     — value
  *
- * Each one carries `data-cg-pill-role="rowGroup" | "pivot" | "value"` so a
+ * Each one carries `data-vg-pill-role="rowGroup" | "pivot" | "value"` so a
  * single point-to-role hit test (`resolveDragTargetRole`) walks
  * `elementFromPoint` and finds the first ancestor with the marker.
  *
@@ -80,7 +80,7 @@ export function commitPanelMove(
 
 /** Hit-test a viewport-coord point to the panel role underneath it.
  *  Walks `elementFromPoint(x, y)` upward looking for the first ancestor
- *  with `data-cg-pill-role`. Returns `null` when no panel was hit. */
+ *  with `data-vg-pill-role`. Returns `null` when no panel was hit. */
 export function resolveDragTargetRole(
   clientX: number,
   clientY: number,
@@ -90,9 +90,9 @@ export function resolveDragTargetRole(
   if (!d) return null;
   const el = d.elementFromPoint(clientX, clientY) as Element | null;
   if (!el) return null;
-  const container = el.closest('[data-cg-pill-role]');
+  const container = el.closest('[data-vg-pill-role]');
   if (!container) return null;
-  const role = container.getAttribute('data-cg-pill-role');
+  const role = container.getAttribute('data-vg-pill-role');
   if (role === 'rowGroup' || role === 'pivot' || role === 'value') return role;
   return null;
 }

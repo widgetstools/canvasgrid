@@ -29,7 +29,7 @@ async function readBaselineRowHeight(page: import('@playwright/test').Page): Pro
   return page.evaluate(() => {
     const host = document.getElementById('grid');
     if (!host) return 30;
-    const v = parseFloat(getComputedStyle(host).getPropertyValue('--cg-row-height'));
+    const v = parseFloat(getComputedStyle(host).getPropertyValue('--vg-row-height'));
     return Number.isFinite(v) ? v : 30;
   });
 }
@@ -61,7 +61,7 @@ test.describe('autoHeight column (Cycle 5 / Task 8)', () => {
   test('rows that the demo seeded with long notes paint taller than baseline', async ({ page }) => {
     const baseline = await readBaselineRowHeight(page);
     const rows = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       const out: { rowIndex: number; positionId: string; height: number }[] = [];
       for (let i = 0; i < 40; i++) {
         const b = grid.getRowBoundsAt(i);
@@ -90,7 +90,7 @@ test.describe('autoHeight column (Cycle 5 / Task 8)', () => {
   test('rows the demo did NOT seed remain at baseline or the Task 6 override', async ({ page }) => {
     const baseline = await readBaselineRowHeight(page);
     const rows = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       const out: { rowIndex: number; positionId: string; height: number }[] = [];
       for (let i = 0; i < 40; i++) {
         const b = grid.getRowBoundsAt(i);
@@ -119,7 +119,7 @@ test.describe('autoHeight column (Cycle 5 / Task 8)', () => {
     // Same invariant as the Task 6 spec, re-asserted under the autoHeight
     // load: per-row accumulator positions tall + short rows without seams.
     const bounds = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       const out: { y: number; h: number }[] = [];
       for (let i = 0; i < 20; i++) {
         const b = grid.getRowBoundsAt(i);

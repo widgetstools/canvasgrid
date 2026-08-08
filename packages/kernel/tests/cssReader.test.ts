@@ -7,24 +7,24 @@ describe('CssReader', () => {
   beforeEach(() => {
     container = document.createElement('div');
     container.style.cssText = `
-      --cg-font-family: Inter;
-      --cg-font-size: 14px;
-      --cg-row-height: 32px;
-      --cg-header-height: 36px;
-      --cg-fg-color: #111;
-      --cg-bg-color: #fff;
-      --cg-row-alt-bg: #fafafa;
-      --cg-header-bg: #eee;
-      --cg-header-fg: #111;
-      --cg-border-color: #ccc;
-      --cg-grid-line-color: #eee;
-      --cg-row-hover-bg: #f5f5f5;
-      --cg-row-selected-bg: rgba(0,0,0,0.1);
-      --cg-focus-ring-color: #08f;
-      --cg-focus-ring-width: 2px;
-      --cg-flash-from-color: yellow;
-      --cg-flash-to-color: transparent;
-      --cg-resizer-hot-zone: 4px;
+      --vg-font-family: Inter;
+      --vg-font-size: 14px;
+      --vg-row-height: 32px;
+      --vg-header-height: 36px;
+      --vg-fg-color: #111;
+      --vg-bg-color: #fff;
+      --vg-row-alt-bg: #fafafa;
+      --vg-header-bg: #eee;
+      --vg-header-fg: #111;
+      --vg-border-color: #ccc;
+      --vg-grid-line-color: #eee;
+      --vg-row-hover-bg: #f5f5f5;
+      --vg-row-selected-bg: rgba(0,0,0,0.1);
+      --vg-focus-ring-color: #08f;
+      --vg-focus-ring-width: 2px;
+      --vg-flash-from-color: yellow;
+      --vg-flash-to-color: transparent;
+      --vg-resizer-hot-zone: 4px;
     `;
     document.body.appendChild(container);
   });
@@ -80,17 +80,17 @@ describe('CssReader — rendererPalette (Workstream A)', () => {
     container.remove();
   });
 
-  it('resolves --cg-pos-color/--cg-neg-color/--cg-warning-color/--cg-info-color/--cg-muted-color and --cg-bar-height/--cg-chip-height/--cg-chip-radius', () => {
+  it('resolves --vg-pos-color/--vg-neg-color/--vg-warning-color/--vg-info-color/--vg-muted-color and --vg-bar-height/--vg-chip-height/--vg-chip-radius', () => {
     container = document.createElement('div');
     container.style.cssText = `
-      --cg-pos-color: #00ff00;
-      --cg-neg-color: #ff0000;
-      --cg-warning-color: #ffaa00;
-      --cg-info-color: #0000ff;
-      --cg-muted-color: #999999;
-      --cg-bar-height: 12px;
-      --cg-chip-height: 20px;
-      --cg-chip-radius: 6px;
+      --vg-pos-color: #00ff00;
+      --vg-neg-color: #ff0000;
+      --vg-warning-color: #ffaa00;
+      --vg-info-color: #0000ff;
+      --vg-muted-color: #999999;
+      --vg-bar-height: 12px;
+      --vg-chip-height: 20px;
+      --vg-chip-radius: 6px;
     `;
     document.body.appendChild(container);
 
@@ -134,8 +134,8 @@ describe('CssReader — rendererPalette (Workstream A)', () => {
 // ───────────────────────────────────────────────────────────────────────
 // Workstream A, part 2 (2026-07-06 CSS styling model) — status-pill /
 // rating-scale / venue structured maps, widening the same rendererPalette
-// channel WS-A1 built. `--cg-status-<state>-bg/-fg/-border`,
-// `--cg-rating-<grade>-color`, `--cg-venue-<mic>-color`. `dashed` stays a
+// channel WS-A1 built. `--vg-status-<state>-bg/-fg/-border`,
+// `--vg-rating-<grade>-color`, `--vg-venue-<mic>-color`. `dashed` stays a
 // code-level structural flag (never sourced from a token).
 // ───────────────────────────────────────────────────────────────────────
 describe('CssReader — rendererPalette status/rating/venue maps (Workstream A part 2)', () => {
@@ -148,14 +148,14 @@ describe('CssReader — rendererPalette status/rating/venue maps (Workstream A p
   it('resolves representative status/rating/venue tokens (custom overrides)', () => {
     container = document.createElement('div');
     container.style.cssText = `
-      --cg-status-working-bg: #123456;
-      --cg-status-working-fg: #654321;
-      --cg-status-part-fill-bg: #111111;
-      --cg-status-rejected-border: #ff00ff;
-      --cg-rating-aaa-color: #00ff00;
-      --cg-rating-bb-plus-color: #ff9900;
-      --cg-rating-nr-color: #101010;
-      --cg-venue-xnas-color: #abcdef;
+      --vg-status-working-bg: #123456;
+      --vg-status-working-fg: #654321;
+      --vg-status-part-fill-bg: #111111;
+      --vg-status-rejected-border: #ff00ff;
+      --vg-rating-aaa-color: #00ff00;
+      --vg-rating-bb-plus-color: #ff9900;
+      --vg-rating-nr-color: #101010;
+      --vg-venue-xnas-color: #abcdef;
     `;
     document.body.appendChild(container);
 
@@ -214,11 +214,11 @@ describe('CssReader — cellClass / headerClass variant parsing', () => {
 
   it('[regression] still parses the original 4 cell slots (bg/fg/font/halign)', () => {
     insertStyle(`
-      .cg-grid {
-        --cg-cell-class-loss-fg: #e63946;
-        --cg-cell-class-loss-bg: rgba(230,57,70,.08);
-        --cg-cell-class-loss-font: 600 13px Inter;
-        --cg-cell-class-loss-halign: right;
+      .vg-grid {
+        --vg-cell-class-loss-fg: #e63946;
+        --vg-cell-class-loss-bg: rgba(230,57,70,.08);
+        --vg-cell-class-loss-font: 600 13px Inter;
+        --vg-cell-class-loss-halign: right;
       }
     `);
     const { cellClassVariants } = new CssReader(container).read();
@@ -232,11 +232,11 @@ describe('CssReader — cellClass / headerClass variant parsing', () => {
 
   it('[regression] still parses the original 4 header slots (bg/fg/font/halign)', () => {
     insertStyle(`
-      .cg-grid {
-        --cg-header-class-hl-fg: #111;
-        --cg-header-class-hl-bg: #eee;
-        --cg-header-class-hl-font: 700 13px Inter;
-        --cg-header-class-hl-halign: center;
+      .vg-grid {
+        --vg-header-class-hl-fg: #111;
+        --vg-header-class-hl-bg: #eee;
+        --vg-header-class-hl-font: 700 13px Inter;
+        --vg-header-class-hl-halign: center;
       }
     `);
     const { headerClassVariants } = new CssReader(container).read();
@@ -249,7 +249,7 @@ describe('CssReader — cellClass / headerClass variant parsing', () => {
   });
 
   it('parses valign', () => {
-    insertStyle(`.x { --cg-cell-class-top-valign: top; }`);
+    insertStyle(`.x { --vg-cell-class-top-valign: top; }`);
     const { cellClassVariants } = new CssReader(container).read();
     expect(cellClassVariants.get('top')).toEqual({ valign: 'top' });
   });
@@ -257,10 +257,10 @@ describe('CssReader — cellClass / headerClass variant parsing', () => {
   it('parses font breakouts: font-family, font-size (px), font-weight (numeric), font-style', () => {
     insertStyle(`
       .x {
-        --cg-cell-class-hero-font-family: "JetBrains Mono";
-        --cg-cell-class-hero-font-size: 15px;
-        --cg-cell-class-hero-font-weight: 700;
-        --cg-cell-class-hero-font-style: italic;
+        --vg-cell-class-hero-font-family: "JetBrains Mono";
+        --vg-cell-class-hero-font-size: 15px;
+        --vg-cell-class-hero-font-weight: 700;
+        --vg-cell-class-hero-font-style: italic;
       }
     `);
     const { cellClassVariants } = new CssReader(container).read();
@@ -273,7 +273,7 @@ describe('CssReader — cellClass / headerClass variant parsing', () => {
   });
 
   it('parses font-weight as a CSS keyword', () => {
-    insertStyle(`.x { --cg-cell-class-bold-font-weight: bold; }`);
+    insertStyle(`.x { --vg-cell-class-bold-font-weight: bold; }`);
     const { cellClassVariants } = new CssReader(container).read();
     expect(cellClassVariants.get('bold')).toEqual({ fontWeight: 'bold' });
   });
@@ -281,10 +281,10 @@ describe('CssReader — cellClass / headerClass variant parsing', () => {
   it('parses text-transform, text-decoration, letter-spacing, line-height', () => {
     insertStyle(`
       .x {
-        --cg-cell-class-shout-text-transform: uppercase;
-        --cg-cell-class-shout-text-decoration: underline;
-        --cg-cell-class-shout-letter-spacing: 0.5px;
-        --cg-cell-class-shout-line-height: 1.4;
+        --vg-cell-class-shout-text-transform: uppercase;
+        --vg-cell-class-shout-text-decoration: underline;
+        --vg-cell-class-shout-letter-spacing: 0.5px;
+        --vg-cell-class-shout-line-height: 1.4;
       }
     `);
     const { cellClassVariants } = new CssReader(container).read();
@@ -297,7 +297,7 @@ describe('CssReader — cellClass / headerClass variant parsing', () => {
   });
 
   it('parses a uniform padding number', () => {
-    insertStyle(`.x { --cg-cell-class-pad-padding: 8px; }`);
+    insertStyle(`.x { --vg-cell-class-pad-padding: 8px; }`);
     const { cellClassVariants } = new CssReader(container).read();
     expect(cellClassVariants.get('pad')).toEqual({ padding: 8 });
   });
@@ -305,8 +305,8 @@ describe('CssReader — cellClass / headerClass variant parsing', () => {
   it('merges per-side padding with the uniform fallback', () => {
     insertStyle(`
       .x {
-        --cg-cell-class-pad2-padding: 4px;
-        --cg-cell-class-pad2-padding-left: 12px;
+        --vg-cell-class-pad2-padding: 4px;
+        --vg-cell-class-pad2-padding-left: 12px;
       }
     `);
     const { cellClassVariants } = new CssReader(container).read();
@@ -318,9 +318,9 @@ describe('CssReader — cellClass / headerClass variant parsing', () => {
   it('assembles a per-side border from discrete width/style/color slots', () => {
     insertStyle(`
       .x {
-        --cg-cell-class-loss-border-left-width: 2px;
-        --cg-cell-class-loss-border-left-style: dashed;
-        --cg-cell-class-loss-border-left-color: #e63946;
+        --vg-cell-class-loss-border-left-width: 2px;
+        --vg-cell-class-loss-border-left-style: dashed;
+        --vg-cell-class-loss-border-left-color: #e63946;
       }
     `);
     const { cellClassVariants } = new CssReader(container).read();
@@ -330,7 +330,7 @@ describe('CssReader — cellClass / headerClass variant parsing', () => {
   });
 
   it('parses a per-side border shorthand in any token order', () => {
-    insertStyle(`.x { --cg-cell-class-loss-border-top: solid 2px #e63946; }`);
+    insertStyle(`.x { --vg-cell-class-loss-border-top: solid 2px #e63946; }`);
     const { cellClassVariants } = new CssReader(container).read();
     expect(cellClassVariants.get('loss')).toEqual({
       border: { top: { style: 'solid', width: 2, color: '#e63946' } },
@@ -338,7 +338,7 @@ describe('CssReader — cellClass / headerClass variant parsing', () => {
   });
 
   it('parses border.all from the -border shorthand and from -border-width/-style/-color', () => {
-    insertStyle(`.a { --cg-cell-class-boxed-border: 1px solid #ccc; }`);
+    insertStyle(`.a { --vg-cell-class-boxed-border: 1px solid #ccc; }`);
     const rA = new CssReader(container).read();
     expect(rA.cellClassVariants.get('boxed')).toEqual({
       border: { all: { width: 1, style: 'solid', color: '#ccc' } },
@@ -346,9 +346,9 @@ describe('CssReader — cellClass / headerClass variant parsing', () => {
 
     insertStyle(`
       .b {
-        --cg-cell-class-boxed2-border-width: 1px;
-        --cg-cell-class-boxed2-border-style: dotted;
-        --cg-cell-class-boxed2-border-color: #999;
+        --vg-cell-class-boxed2-border-width: 1px;
+        --vg-cell-class-boxed2-border-style: dotted;
+        --vg-cell-class-boxed2-border-color: #999;
       }
     `);
     const rB = new CssReader(container).read();
@@ -360,9 +360,9 @@ describe('CssReader — cellClass / headerClass variant parsing', () => {
   it('parses -icon (+ -icon-color/-icon-size) into content', () => {
     insertStyle(`
       .x {
-        --cg-cell-class-flag-icon: warning;
-        --cg-cell-class-flag-icon-color: #f59e0b;
-        --cg-cell-class-flag-icon-size: 14px;
+        --vg-cell-class-flag-icon: warning;
+        --vg-cell-class-flag-icon-color: #f59e0b;
+        --vg-cell-class-flag-icon-size: 14px;
       }
     `);
     const { cellClassVariants } = new CssReader(container).read();
@@ -374,8 +374,8 @@ describe('CssReader — cellClass / headerClass variant parsing', () => {
   it('parses -emoji (+ size) into content', () => {
     insertStyle(`
       .x {
-        --cg-cell-class-fire-emoji: "🔥";
-        --cg-cell-class-fire-icon-size: 16px;
+        --vg-cell-class-fire-emoji: "🔥";
+        --vg-cell-class-fire-icon-size: 16px;
       }
     `);
     const { cellClassVariants } = new CssReader(container).read();
@@ -385,7 +385,7 @@ describe('CssReader — cellClass / headerClass variant parsing', () => {
   });
 
   it('parses -content into a text content override', () => {
-    insertStyle(`.x { --cg-cell-class-label-content: "N/A"; }`);
+    insertStyle(`.x { --vg-cell-class-label-content: "N/A"; }`);
     const { cellClassVariants } = new CssReader(container).read();
     expect(cellClassVariants.get('label')).toEqual({
       content: { kind: 'text', value: 'N/A' },
@@ -395,9 +395,9 @@ describe('CssReader — cellClass / headerClass variant parsing', () => {
   it('parses -decorator-tr (+ color/size) into a decorators[] entry at position tr', () => {
     insertStyle(`
       .x {
-        --cg-cell-class-loss-decorator-tr: "▼";
-        --cg-cell-class-loss-decorator-tr-color: #e63946;
-        --cg-cell-class-loss-decorator-tr-size: 10px;
+        --vg-cell-class-loss-decorator-tr: "▼";
+        --vg-cell-class-loss-decorator-tr-color: #e63946;
+        --vg-cell-class-loss-decorator-tr-size: 10px;
       }
     `);
     const { cellClassVariants } = new CssReader(container).read();
@@ -407,7 +407,7 @@ describe('CssReader — cellClass / headerClass variant parsing', () => {
   });
 
   it('parses -decorator-<pos>-dot into a dot decorator', () => {
-    insertStyle(`.x { --cg-cell-class-status-decorator-bl-dot: #22c55e; }`);
+    insertStyle(`.x { --vg-cell-class-status-decorator-bl-dot: #22c55e; }`);
     const { cellClassVariants } = new CssReader(container).read();
     expect(cellClassVariants.get('status')).toEqual({
       decorators: [{ position: 'bl', kind: 'dot', color: '#22c55e' }],
@@ -415,7 +415,7 @@ describe('CssReader — cellClass / headerClass variant parsing', () => {
   });
 
   it('parses a bare (unquoted) decorator value as an icon reference', () => {
-    insertStyle(`.x { --cg-cell-class-flag2-decorator-tl: star; }`);
+    insertStyle(`.x { --vg-cell-class-flag2-decorator-tl: star; }`);
     const { cellClassVariants } = new CssReader(container).read();
     expect(cellClassVariants.get('flag2')).toEqual({
       decorators: [{ position: 'tl', kind: 'icon', icon: 'star' }],
@@ -425,9 +425,9 @@ describe('CssReader — cellClass / headerClass variant parsing', () => {
   it('parses the full vocabulary on a header-class variant too', () => {
     insertStyle(`
       .x {
-        --cg-header-class-num-halign: right;
-        --cg-header-class-num-font-weight: 600;
-        --cg-header-class-num-border-bottom: 2px solid #0d9488;
+        --vg-header-class-num-halign: right;
+        --vg-header-class-num-font-weight: 600;
+        --vg-header-class-num-border-bottom: 2px solid #0d9488;
       }
     `);
     const { headerClassVariants } = new CssReader(container).read();
@@ -441,8 +441,8 @@ describe('CssReader — cellClass / headerClass variant parsing', () => {
   it('ignores unknown suffixes (forward-compatible)', () => {
     insertStyle(`
       .x {
-        --cg-cell-class-mystery-not-a-real-slot: 42;
-        --cg-cell-class-mystery-fg: #123456;
+        --vg-cell-class-mystery-not-a-real-slot: 42;
+        --vg-cell-class-mystery-fg: #123456;
       }
     `);
     const { cellClassVariants } = new CssReader(container).read();
@@ -452,8 +452,8 @@ describe('CssReader — cellClass / headerClass variant parsing', () => {
 
 // ───────────────────────────────────────────────────────────────────────
 // Workstream C (2026-07-06 CSS styling model) — token-referenceable
-// cellStyle/headerStyle values. `resolveVarRef` resolves `var(--cg-x)` /
-// `var(--cg-x, fallback)` / bare `--cg-x` refs through this theme's
+// cellStyle/headerStyle values. `resolveVarRef` resolves `var(--vg-x)` /
+// `var(--vg-x, fallback)` / bare `--vg-x` refs through this theme's
 // resolved custom properties, memoized per token for the theme's
 // lifetime (never a per-cell getComputedStyle cost).
 // ───────────────────────────────────────────────────────────────────────
@@ -462,7 +462,7 @@ describe('CssReader — resolveVarRef (Workstream C token-referenceable cellStyl
 
   beforeEach(() => {
     container = document.createElement('div');
-    container.style.cssText = `--cg-pos-color: #16a34a;`;
+    container.style.cssText = `--vg-pos-color: #16a34a;`;
     document.body.appendChild(container);
   });
 
@@ -470,24 +470,24 @@ describe('CssReader — resolveVarRef (Workstream C token-referenceable cellStyl
     container.remove();
   });
 
-  it('resolves var(--cg-x) to the declared token value', () => {
+  it('resolves var(--vg-x) to the declared token value', () => {
     const theme = new CssReader(container).read();
-    expect(theme.resolveVarRef!('var(--cg-pos-color)')).toBe('#16a34a');
+    expect(theme.resolveVarRef!('var(--vg-pos-color)')).toBe('#16a34a');
   });
 
-  it('resolves a bare --cg-x token reference (no var() wrapper)', () => {
+  it('resolves a bare --vg-x token reference (no var() wrapper)', () => {
     const theme = new CssReader(container).read();
-    expect(theme.resolveVarRef!('--cg-pos-color')).toBe('#16a34a');
+    expect(theme.resolveVarRef!('--vg-pos-color')).toBe('#16a34a');
   });
 
   it('falls back to the var() fallback when the token is undeclared', () => {
     const theme = new CssReader(container).read();
-    expect(theme.resolveVarRef!('var(--cg-missing, #fff)')).toBe('#fff');
+    expect(theme.resolveVarRef!('var(--vg-missing, #fff)')).toBe('#fff');
   });
 
   it('returns the original var() text when undeclared and no fallback given', () => {
     const theme = new CssReader(container).read();
-    expect(theme.resolveVarRef!('var(--cg-missing)')).toBe('var(--cg-missing)');
+    expect(theme.resolveVarRef!('var(--vg-missing)')).toBe('var(--vg-missing)');
   });
 
   it('leaves a literal hex color unchanged', () => {
@@ -509,9 +509,9 @@ describe('CssReader — resolveVarRef (Workstream C token-referenceable cellStyl
     const theme = new CssReader(container).read();
     const spy = vi.spyOn(CSSStyleDeclaration.prototype, 'getPropertyValue');
     spy.mockClear();
-    expect(theme.resolveVarRef!('var(--cg-pos-color)')).toBe('#16a34a');
-    expect(theme.resolveVarRef!('var(--cg-pos-color)')).toBe('#16a34a');
-    expect(theme.resolveVarRef!('var(--cg-pos-color, #000)')).toBe('#16a34a');
+    expect(theme.resolveVarRef!('var(--vg-pos-color)')).toBe('#16a34a');
+    expect(theme.resolveVarRef!('var(--vg-pos-color)')).toBe('#16a34a');
+    expect(theme.resolveVarRef!('var(--vg-pos-color, #000)')).toBe('#16a34a');
     expect(spy).toHaveBeenCalledTimes(1);
     spy.mockRestore();
   });
@@ -519,14 +519,14 @@ describe('CssReader — resolveVarRef (Workstream C token-referenceable cellStyl
   it('theme swap (read() called again) clears the memo — re-resolve reflects the new token value', () => {
     const reader = new CssReader(container);
     const themeA = reader.read();
-    expect(themeA.resolveVarRef!('var(--cg-pos-color)')).toBe('#16a34a');
+    expect(themeA.resolveVarRef!('var(--vg-pos-color)')).toBe('#16a34a');
 
-    container.style.cssText = `--cg-pos-color: #22c55e;`;
+    container.style.cssText = `--vg-pos-color: #22c55e;`;
     const themeB = reader.read();
-    expect(themeB.resolveVarRef!('var(--cg-pos-color)')).toBe('#22c55e');
+    expect(themeB.resolveVarRef!('var(--vg-pos-color)')).toBe('#22c55e');
     // The old ResolvedTheme's own resolver closed over its own (pre-swap)
     // memo/computed-style snapshot — it keeps reading the value valid at
     // the time it was produced, it doesn't retroactively pick up the swap.
-    expect(themeA.resolveVarRef!('var(--cg-pos-color)')).toBe('#16a34a');
+    expect(themeA.resolveVarRef!('var(--vg-pos-color)')).toBe('#16a34a');
   });
 });

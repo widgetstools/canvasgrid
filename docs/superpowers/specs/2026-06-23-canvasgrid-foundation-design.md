@@ -19,7 +19,7 @@ The user's directive: vanilla TS/JS for the library (no framework dependency); e
 **In scope (this cycle):**
 
 - Repo restructure: npm workspaces with `cgrid/` (library) + `apps/showcase/` (existing AG Grid React app, relocated) + `apps/cgrid-positions/` (new vanilla TS demo).
-- `cgrid/` library: imperative `CGrid` class, typed event emitter, public API for data ingestion (full + sync transaction + async transaction), single + multi row selection, focused-cell concept, text + number cell editors via DOM overlay, ARIA-overlay accessibility scaffold, theme via `--cg-*` CSS custom properties.
+- `cgrid/` library: imperative `VelocityGrid` class, typed event emitter, public API for data ingestion (full + sync transaction + async transaction), single + multi row selection, focused-cell concept, text + number cell editors via DOM overlay, ARIA-overlay accessibility scaffold, theme via `--vg-*` CSS custom properties.
 - Render engine: single-canvas layered painters (header / pinned-left / body / pinned-right / overlay), DPR-aware paint, dirty-region accumulation, rAF paint loop, cell-flash animation primitive.
 - Viewport virtualization: pre-computed `visibleColumns[]` / `visibleRows[]`, binary-search hit-testing, scroll model, pinned column regions, flex column sizing, basic uniform row height (per-row height is a follow-up cycle).
 - Worker data pipeline: Client-Side Row Model (CSRM) with sort / filter / aggregation in worker, transactional async batching, viewport slicer returning packed transferable chunks, typed RPC protocol with id correlation, push events for async-flush notifications.
@@ -63,8 +63,8 @@ Three logically separate execution contexts: main thread (renderer + interaction
 
 ```
 ┌───────────────────────────── Main Thread ─────────────────────────────┐
-│  Public API: class CGrid                                              │
-│    - Constructor: new CGrid(container, options)                       │
+│  Public API: class VelocityGrid                                              │
+│    - Constructor: new VelocityGrid(container, options)                       │
 │    - Imperative methods (setRowData, applyTransaction, …)             │
 │    - Typed event emitter (cellClicked, viewportChanged, …)            │
 │           │                                            │              │
@@ -112,11 +112,11 @@ canvasgrid/                              ← repo root (existing)
         style.css
       vite.config.ts
   cgrid/                                 ← NEW library (vanilla TS, no framework)
-    package.json                         ← name: "cgrid", main: dist/cgrid.js, exports
+    package.json                         ← name: "cgrid", main: dist/velocity-grid.js, exports
     tsconfig.json
     vite.config.ts                       ← library mode + worker plugin
     src/
-      cgrid.ts                           ← public class CGrid + re-exports
+      velocityGrid.ts                           ← public class VelocityGrid + re-exports
       types.ts                           ← all public types
       core/
         viewport.ts                      ← visibleColumns/visibleRows math + hit-test
@@ -150,7 +150,7 @@ canvasgrid/                              ← repo root (existing)
         dataPipeline.ts                  ← RowStore + Filter/Sort/Agg/Slicer pipeline
         chunkFormat.ts                   ← typed-array chunk encode/decode
       theming/
-        tokens.css                       ← --cg-* default values
+        tokens.css                       ← --vg-* default values
         cssReader.ts                     ← getComputedStyle → render-time tokens
   docs/...                               ← catalog + specs + plans (unchanged from prior cycles)
   node_modules/
@@ -211,7 +211,7 @@ type Hit =
   | { kind: 'empty' };
 ```
 
-The 4-pixel resizer hot zone uses CSS `--cg-resizer-hot-zone` so themes can adjust feel.
+The 4-pixel resizer hot zone uses CSS `--vg-resizer-hot-zone` so themes can adjust feel.
 
 ### 6.4 Cell-paint contract
 
@@ -394,7 +394,7 @@ The public types — all under `cgrid/src/types.ts`:
 
 ```typescript
 // Top-level options
-export interface CGridOptions<TRow = any> {
+export interface VelocityGridOptions<TRow = any> {
   columnDefs: CColDef<TRow>[];
   defaultColDef?: Partial<CColDef<TRow>>;
   rowData?: TRow[];
@@ -406,7 +406,7 @@ export interface CGridOptions<TRow = any> {
   cellFlashDuration?: number;               // ms; default 500
   cellFadeDuration?: number;                // ms; default 1000
   asyncTransactionWaitMillis?: number;      // ms; default 50
-  theme?: string;                           // CSS class name; library ships 'cg-theme-quartz', 'cg-theme-quartz-dark'
+  theme?: string;                           // CSS class name; library ships 'vg-theme-quartz', 'vg-theme-quartz-dark'
   worker?: { url?: string };                // dependency-injection for custom worker URL (Vite, etc.)
 }
 
@@ -456,8 +456,8 @@ export interface TransactionResult {
 }
 
 // Events
-export type CGridEvent =
-  | { type: 'gridReady';              api: CGridApi }
+export type VelocityGridEvent =
+  | { type: 'gridReady';              api: VelocityGridApi }
   | { type: 'cellClicked';            rowId: string; colId: string; value: unknown; mouse: MouseEvent }
   | { type: 'cellDoubleClicked';      rowId: string; colId: string; value: unknown; mouse: MouseEvent }
   | { type: 'cellFocused';            rowId: string; colId: string }
@@ -470,8 +470,8 @@ export type CGridEvent =
   | { type: 'columnResized';          colId: string; width: number }
   | { type: 'asyncTransactionsFlushed'; results: TransactionResult[] };
 
-// Public API surface (returned from CGrid construction)
-export interface CGridApi {
+// Public API surface (returned from VelocityGrid construction)
+export interface VelocityGridApi {
   setRowData(rows: any[]): void;
   applyTransaction(t: Tx): TransactionResult;
   applyTransactionAsync(t: Tx): void;
@@ -498,19 +498,19 @@ export interface CGridApi {
 ### 10.1 Public class
 
 ```typescript
-class CGrid<TRow = any> {
-  constructor(container: HTMLElement, options: CGridOptions<TRow>);
+class VelocityGrid<TRow = any> {
+  constructor(container: HTMLElement, options: VelocityGridOptions<TRow>);
 
-  // Public methods mirror CGridApi above
+  // Public methods mirror VelocityGridApi above
   setRowData(rows: TRow[]): void;
   applyTransaction(t: Tx): TransactionResult;
   applyTransactionAsync(t: Tx): void;
   // …
 
   // Typed event subscription; returns unsubscribe fn
-  on<E extends CGridEvent['type']>(
+  on<E extends VelocityGridEvent['type']>(
     type: E,
-    handler: (e: Extract<CGridEvent, { type: E }>) => void,
+    handler: (e: Extract<VelocityGridEvent, { type: E }>) => void,
   ): () => void;
 
   destroy(): void;
@@ -519,7 +519,7 @@ class CGrid<TRow = any> {
 
 Construction flow:
 
-1. Build container DOM: `<div class="cg-root">` with child `<canvas>` + hidden `<div role="grid">` (ARIA scaffold) + popup root for editor overlays.
+1. Build container DOM: `<div class="vg-root">` with child `<canvas>` + hidden `<div role="grid">` (ARIA scaffold) + popup root for editor overlays.
 2. Resolve theme tokens via `cssReader`.
 3. Instantiate worker (`new Worker(new URL('./worker/worker.ts', import.meta.url), { type: 'module' })` — Vite handles the bundling).
 4. Send `init` request to worker with column defs + the field/path expressions needed to reconstruct `getRowId` and `valueGetter` server-side (functions are serialized as named refs into a small library of safe expressions; arbitrary fn injection is a known limitation closed in a later cycle).
@@ -546,7 +546,7 @@ Selection edits emit `selectionChanged` and mark affected rows dirty. `focusedRo
 
 ### 10.3 EditorOverlay
 
-A single `<div class="cg-editor-overlay">` rooted to the container, positioned absolutely. On `cellDoubleClicked` or `F2` keypress over an `editable` cell:
+A single `<div class="vg-editor-overlay">` rooted to the container, positioned absolutely. On `cellDoubleClicked` or `F2` keypress over an `editable` cell:
 
 1. Resolve CSS-pixel bounds from canvas pixels (`bounds / dpr`).
 2. Mount the appropriate editor (`<input type="text">` or `<input type="number">`) sized to bounds.
@@ -560,7 +560,7 @@ DOM overlay strategy is hypergrid's pattern, AG Grid's pattern, and the only pra
 The catalog's `20-keyboard-and-accessibility.md` Canvas-port implications: canvas is opaque to screen readers. The fix is a hidden DOM scaffold that mirrors *just the focused row's window* of cells, with ARIA roles:
 
 ```html
-<div class="cg-a11y-root" role="grid"
+<div class="vg-a11y-root" role="grid"
      aria-rowcount={visibleRowCount}
      aria-colcount={columns.length}>
   <div role="row" aria-rowindex={focusedRowIndex + 1}>
@@ -580,41 +580,41 @@ This pattern is taken from W3C WAI-ARIA grid pattern + SlickGrid's implementatio
 CSS custom properties as the canonical theme surface. The library ships defaults in `tokens.css` and the consumer applies a theme class to the container:
 
 ```css
-.cg-theme-quartz {
-  --cg-font-family: Inter, system-ui, -apple-system, sans-serif;
-  --cg-font-size: 13px;
-  --cg-line-height: 1.4;
-  --cg-row-height: 30px;
-  --cg-header-height: 32px;
-  --cg-fg-color: #1a1f24;
-  --cg-bg-color: #ffffff;
-  --cg-row-alt-bg: #f4f6f8;
-  --cg-header-bg: #e8ecef;
-  --cg-header-fg: #1a1f24;
-  --cg-border-color: #d5dbe0;
-  --cg-grid-line-color: #e8ecef;
-  --cg-row-hover-bg: #eef1f3;
-  --cg-row-selected-bg: rgb(13 148 136 / 12%);
-  --cg-focus-ring-color: #0d9488;
-  --cg-focus-ring-width: 2px;
-  --cg-flash-from-color: #fef3c7;
-  --cg-flash-to-color: transparent;
-  --cg-resizer-hot-zone: 4px;
-  --cg-scrollbar-thickness: 8px;
+.vg-theme-quartz {
+  --vg-font-family: Inter, system-ui, -apple-system, sans-serif;
+  --vg-font-size: 13px;
+  --vg-line-height: 1.4;
+  --vg-row-height: 30px;
+  --vg-header-height: 32px;
+  --vg-fg-color: #1a1f24;
+  --vg-bg-color: #ffffff;
+  --vg-row-alt-bg: #f4f6f8;
+  --vg-header-bg: #e8ecef;
+  --vg-header-fg: #1a1f24;
+  --vg-border-color: #d5dbe0;
+  --vg-grid-line-color: #e8ecef;
+  --vg-row-hover-bg: #eef1f3;
+  --vg-row-selected-bg: rgb(13 148 136 / 12%);
+  --vg-focus-ring-color: #0d9488;
+  --vg-focus-ring-width: 2px;
+  --vg-flash-from-color: #fef3c7;
+  --vg-flash-to-color: transparent;
+  --vg-resizer-hot-zone: 4px;
+  --vg-scrollbar-thickness: 8px;
   /* … ~30 tokens total */
 }
 
-.cg-theme-quartz-dark {
-  --cg-bg-color: #0f172a;
-  --cg-fg-color: #e2e8f0;
-  --cg-header-bg: #1e293b;
-  --cg-header-fg: #e2e8f0;
-  --cg-border-color: #334155;
-  --cg-grid-line-color: #1e293b;
-  --cg-row-alt-bg: #111c2f;
-  --cg-row-hover-bg: #1a2540;
-  --cg-row-selected-bg: rgb(13 148 136 / 22%);
-  --cg-flash-from-color: #b45309;
+.vg-theme-quartz-dark {
+  --vg-bg-color: #0f172a;
+  --vg-fg-color: #e2e8f0;
+  --vg-header-bg: #1e293b;
+  --vg-header-fg: #e2e8f0;
+  --vg-border-color: #334155;
+  --vg-grid-line-color: #1e293b;
+  --vg-row-alt-bg: #111c2f;
+  --vg-row-hover-bg: #1a2540;
+  --vg-row-selected-bg: rgb(13 148 136 / 22%);
+  --vg-flash-from-color: #b45309;
 }
 ```
 
@@ -626,10 +626,10 @@ class CssReader {
   read(): ResolvedTheme {
     const cs = getComputedStyle(this.container);
     return {
-      font: `${cs.getPropertyValue('--cg-font-size').trim()} ${cs.getPropertyValue('--cg-font-family').trim()}`,
-      fg:  cs.getPropertyValue('--cg-fg-color').trim(),
-      bg:  cs.getPropertyValue('--cg-bg-color').trim(),
-      headerBg: cs.getPropertyValue('--cg-header-bg').trim(),
+      font: `${cs.getPropertyValue('--vg-font-size').trim()} ${cs.getPropertyValue('--vg-font-family').trim()}`,
+      fg:  cs.getPropertyValue('--vg-fg-color').trim(),
+      bg:  cs.getPropertyValue('--vg-bg-color').trim(),
+      headerBg: cs.getPropertyValue('--vg-header-bg').trim(),
       // … one per token
     };
   }
@@ -645,7 +645,7 @@ This is exactly AG Grid 35.x's `--ag-*` approach, renamed and read by canvas pai
 `apps/cgrid-positions/src/positionsGrid.ts` — entire file approximately:
 
 ```typescript
-import { CGrid, type CGridOptions } from 'cgrid';
+import { VelocityGrid, type VelocityGridOptions } from 'cgrid';
 import { connectStomp } from './stomp';
 
 interface Position {
@@ -653,7 +653,7 @@ interface Position {
   notionalAmount: number; currentPrice: number; pnl: number; /* … same shape as showcase */
 }
 
-const options: CGridOptions<Position> = {
+const options: VelocityGridOptions<Position> = {
   columnDefs: [
     { field: 'positionId', headerName: 'Position ID', width: 150, pinned: 'left' },
     { field: 'cusip',      headerName: 'CUSIP',       width: 110, pinned: 'left' },
@@ -668,11 +668,11 @@ const options: CGridOptions<Position> = {
   cellFlashDuration: 500,
   cellFadeDuration: 800,
   asyncTransactionWaitMillis: 50,
-  theme: 'cg-theme-quartz',
+  theme: 'vg-theme-quartz',
 };
 
 const container = document.getElementById('grid')!;
-const grid = new CGrid<Position>(container, options);
+const grid = new VelocityGrid<Position>(container, options);
 
 connectStomp({
   onSnapshot: (rows) => grid.setRowData(rows),
@@ -686,14 +686,14 @@ connectStomp({
 
 This cycle is complete when:
 
-1. Repo restructured: `apps/showcase/` contains the existing AG Grid React app (relocated, still runs via `npm run dev`); `cgrid/` is a workspace package exporting `CGrid`; `apps/cgrid-positions/` is a workspace app running via `npm run dev`. Root `package.json` declares `workspaces: ['cgrid', 'apps/*']`.
-2. `cgrid` builds cleanly (`tsc --noEmit` + `vite build`). Library is consumable via `import { CGrid } from 'cgrid'`.
+1. Repo restructured: `apps/showcase/` contains the existing AG Grid React app (relocated, still runs via `npm run dev`); `cgrid/` is a workspace package exporting `VelocityGrid`; `apps/cgrid-positions/` is a workspace app running via `npm run dev`. Root `package.json` declares `workspaces: ['cgrid', 'apps/*']`.
+2. `cgrid` builds cleanly (`tsc --noEmit` + `vite build`). Library is consumable via `import { VelocityGrid } from 'cgrid'`.
 3. `apps/cgrid-positions` runs against `ws://localhost:8081`, paints a 3000-row snapshot, applies live updates from `applyTransactionAsync`, and stays at 60 fps under the showcase's existing load on a baseline 2024 MacBook Pro (measured via `performance.now()` in a stress harness; reported in the task's report file).
 4. CSRM sort (any column) and filter (text `contains`, number `gt`) and a `sum` / `avg` agg run in the worker and reflect correctly in the rendered viewport.
 5. Single + multi row selection works via checkbox column + Space key + Shift+click range.
 6. Text + number cell editors work via double-click and F2; `cellValueChanged` event fires; new value persists through the worker transaction.
 7. A11y scaffold passes axe-core with no Critical issues on the demo page. Screen-reader (VoiceOver, NVDA) reach the focused row's cells via arrow keys.
-8. Theme switch between `cg-theme-quartz` and `cg-theme-quartz-dark` works by changing the container class; renderer reflects the new tokens on the next frame.
+8. Theme switch between `vg-theme-quartz` and `vg-theme-quartz-dark` works by changing the container class; renderer reflects the new tokens on the next frame.
 9. Catalog `Canvas-port implications` sections for areas 01 (grid options), 02 (column model), 03 (row models — CSRM only), 04 (data updates), 05 (rendering & DOM), 07 (sorting), 10 (aggregation — basic), 12 (selection — row + cell focus only), 20 (a11y — focused-row scaffold), and 21 (themes — Quartz Light + Dark) are demonstrably covered. Other areas remain catalog-only until their respective cycles.
 10. README at `cgrid/README.md` explains how to consume the library, how the worker is bundled, and the public API. README at `apps/cgrid-positions/README.md` explains how to run the demo.
 

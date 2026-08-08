@@ -8,7 +8,7 @@
 // apply semantics (placement slots, editColumn) — this module is pure UI.
 
 import { mirrorThemeClass } from './ui';
-import { lucideBundle } from '@cgrid/kernel/icons/lucide.generated';
+import { lucideBundle } from '@wellsfargo-starui/velocity-grid/icons/lucide.generated';
 import { lucideCategories } from './iconCatalog.generated';
 import { emojiCategories } from './emojiCatalog';
 
@@ -44,19 +44,19 @@ export function createIconPicker(opts: { onSelect: (sel: IconSelection) => void 
   // was easy to miss entirely.
   const button = document.createElement('button');
   button.type = 'button';
-  button.className = 'cgext-ip-open';
+  button.className = 'vgext-ip-open';
   button.title = 'Pick icon or emoji';
   button.setAttribute('aria-label', 'Pick icon or emoji');
   button.dataset.ip = 'open';
   button.innerHTML =
-    `<span class="cgext-ip-well">${PLACEHOLDER_SVG}</span>` +
-    `<span class="cgext-ip-openlabel">Add icon</span>` +
+    `<span class="vgext-ip-well">${PLACEHOLDER_SVG}</span>` +
+    `<span class="vgext-ip-openlabel">Add icon</span>` +
     '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
-  const previewWell = button.querySelector<HTMLElement>('.cgext-ip-well')!;
-  const previewLabel = button.querySelector<HTMLElement>('.cgext-ip-openlabel')!;
+  const previewWell = button.querySelector<HTMLElement>('.vgext-ip-well')!;
+  const previewLabel = button.querySelector<HTMLElement>('.vgext-ip-openlabel')!;
 
   const panel = document.createElement('div');
-  panel.className = 'cgext-ip-panel';
+  panel.className = 'vgext-ip-panel';
   panel.setAttribute('role', 'dialog');
   panel.setAttribute('aria-label', 'Icons and emojis');
   panel.hidden = true;
@@ -68,26 +68,26 @@ export function createIconPicker(opts: { onSelect: (sel: IconSelection) => void 
     // Search field — a solid leading magnifier framing the input, which keeps
     // the real E2E hook (`[data-ip="search"]`) on the <input> itself.
     const searchWrap = document.createElement('div');
-    searchWrap.className = 'cgext-ip-searchwrap';
+    searchWrap.className = 'vgext-ip-searchwrap';
     searchWrap.innerHTML = SEARCH_SVG;
     const search = document.createElement('input');
     search.type = 'search';
     search.placeholder = 'Search icons & emojis…';
-    search.className = 'cgext-ip-search';
+    search.className = 'vgext-ip-search';
     search.dataset.ip = 'search';
     search.setAttribute('aria-label', 'Search icons and emojis');
     searchWrap.append(search);
 
     const scroller = document.createElement('div');
-    scroller.className = 'cgext-ip-scroll';
+    scroller.className = 'vgext-ip-scroll';
 
     // Empty state — a directive line that echoes what was searched, so a
     // no-match read gives the person something to correct, not just a shrug.
     const empty = document.createElement('div');
-    empty.className = 'cgext-ip-empty';
+    empty.className = 'vgext-ip-empty';
     empty.innerHTML = SEARCH_SVG;
     const emptyMsg = document.createElement('div');
-    emptyMsg.className = 'cgext-ip-empty-msg';
+    emptyMsg.className = 'vgext-ip-empty-msg';
     emptyMsg.textContent = 'No icons match';
     empty.append(emptyMsg);
     empty.hidden = true;
@@ -103,17 +103,17 @@ export function createIconPicker(opts: { onSelect: (sel: IconSelection) => void 
       entries: ReadonlyArray<{ key: string; label: string; sel: IconSelection; html?: string; text?: string; glyph?: string }>,
     ): void => {
       const root = document.createElement('div');
-      root.className = 'cgext-ip-section';
+      root.className = 'vgext-ip-section';
       const label = document.createElement('div');
-      label.className = 'cgext-ip-cat';
+      label.className = 'vgext-ip-cat';
       label.textContent = title;
       const grid = document.createElement('div');
-      grid.className = 'cgext-ip-grid';
+      grid.className = 'vgext-ip-grid';
       const tiles: Section['tiles'] = [];
       for (const e of entries) {
         const t = document.createElement('button');
         t.type = 'button';
-        t.className = 'cgext-ip-tile';
+        t.className = 'vgext-ip-tile';
         t.title = e.label;
         t.setAttribute('aria-label', e.label);
         if (e.sel.name) t.dataset.icon = e.sel.name;
@@ -176,12 +176,12 @@ export function createIconPicker(opts: { onSelect: (sel: IconSelection) => void 
   const open = (): void => {
     if (!built) build();
     // Body-mounted panel: mirror the anchor's theme class per open (theme
-    // may have been toggled since) so `--cg-*` tokens resolve for the
+    // may have been toggled since) so `--vg-*` tokens resolve for the
     // active light/dark mode. Shared helper with ui.ts `menu()`.
     mirrorThemeClass(button, panel);
     const r = button.getBoundingClientRect();
-    panel.style.setProperty('--cgext-menu-left', `${Math.max(8, Math.min(r.left, window.innerWidth - 348))}px`);
-    panel.style.setProperty('--cgext-menu-top', `${r.bottom + 6}px`);
+    panel.style.setProperty('--vgext-menu-left', `${Math.max(8, Math.min(r.left, window.innerWidth - 348))}px`);
+    panel.style.setProperty('--vgext-menu-top', `${r.bottom + 6}px`);
     panel.hidden = false;
     button.classList.add('is-open');
     (panel.querySelector('[data-ip="search"]') as HTMLInputElement | null)?.focus();

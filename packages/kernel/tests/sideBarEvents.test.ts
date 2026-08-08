@@ -14,7 +14,7 @@
  * Source tagging:
  *   - `'sideBarInitializing'` — emitted exactly once at mount when
  *     `SideBarDef.defaultToolPanel` causes the host to auto-open a panel.
- *   - `'api'` — emitted from any of the seven Task 6 CGridApi setters
+ *   - `'api'` — emitted from any of the seven Task 6 VelocityGridApi setters
  *     (`setSideBarVisible`, `openToolPanel`, `closeToolPanel`, …) and from
  *     direct programmatic calls to the host's public methods that don't
  *     specify another source.
@@ -22,10 +22,10 @@
  *     that the SideBarHost binds when building the tab strip.
  *
  * The host fires events through an optional `emit` callback on its
- * `SideBarGridContext`. CGrid wires the callback into its typed event
+ * `SideBarGridContext`. VelocityGrid wires the callback into its typed event
  * emitter so apps can `grid.on('toolPanelVisibleChanged', ...)` like any
  * other event. These tests pin the emit callback directly on a custom
- * context so we can assert payloads without standing up a full CGrid.
+ * context so we can assert payloads without standing up a full VelocityGrid.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SideBarHost, type SideBarGridContext } from '../src/interaction/sideBar/host';
@@ -34,7 +34,7 @@ import type { ToolPanel, ToolPanelParams } from '../src/interaction/toolPanels/t
 
 class StubPanel implements ToolPanel {
   readonly gui = document.createElement('div');
-  constructor() { this.gui.className = 'cg-tool-panel-stub'; }
+  constructor() { this.gui.className = 'vg-tool-panel-stub'; }
   init(_params: ToolPanelParams): void {}
   getGui(): HTMLElement { return this.gui; }
   refresh(): void {}
@@ -156,7 +156,7 @@ describe('SideBarHost events (Cycle 11 / Task 7)', () => {
       const ctx = makeContext();
       const host = new SideBarHost(root, ctx, { toolPanels: ['columns'] });
       ctx.events.length = 0;
-      const tab = root.querySelector('.cg-side-bar-tab') as HTMLButtonElement;
+      const tab = root.querySelector('.vg-side-bar-tab') as HTMLButtonElement;
       tab.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       const opened = ctx.events.filter((e) => e.type === 'toolPanelVisibleChanged');
       expect(opened).toHaveLength(1);
@@ -184,7 +184,7 @@ describe('SideBarHost events (Cycle 11 / Task 7)', () => {
       host.openPanel('agColumnsToolPanel'); // mount-time open under 'api'
       ctx.events.length = 0;
       // Click the Filters tab.
-      const filtersTab = root.querySelectorAll('.cg-side-bar-tab')[1] as HTMLButtonElement;
+      const filtersTab = root.querySelectorAll('.vg-side-bar-tab')[1] as HTMLButtonElement;
       filtersTab.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       const panelEvents = ctx.events.filter((e) => e.type === 'toolPanelVisibleChanged');
       expect(panelEvents).toHaveLength(2);

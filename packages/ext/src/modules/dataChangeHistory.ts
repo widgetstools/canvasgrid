@@ -2,12 +2,12 @@
  * Edit History — Customize sheet module for Data Change History settings
  * + live journal monitor (starui customizer-ui #11).
  *
- * Settings ride `@cgrid/edit`'s `editSettings` state module via the wired
+ * Settings ride `@wellsfargo-starui/velocity-grid-edit`'s `editSettings` state module via the wired
  * edit handle. Journal stacks are session-only (never persisted). Suspend
  * syncs live; other fields wait for Save.
  */
-import type { DataChangeHistorySettings, EditJournalEntry, EditSource } from '@cgrid/edit';
-import type { SettingsModule, CgExtContext, ModuleInstance } from '../extension/types';
+import type { DataChangeHistorySettings, EditJournalEntry, EditSource } from '@wellsfargo-starui/velocity-grid-edit';
+import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import {
   band, chip, el, injectCockpitStyles, lucideSvg, numberInput, row, switchToggle,
 } from '../ui/cockpit';
@@ -66,7 +66,7 @@ export function dataChangeHistoryModule(): SettingsModule {
       injectCockpitStyles();
     },
 
-    mount(host: HTMLElement, ctx: CgExtContext): ModuleInstance {
+    mount(host: HTMLElement, ctx: VelocityGridExtContext): ModuleInstance {
       let committed: DataChangeHistorySettings | null = null;
       let draft: DataChangeHistorySettings | null = null;
       let unsubJournal: (() => void) | null = null;

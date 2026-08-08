@@ -2,7 +2,7 @@
 //
 // Target keys VERIFIED against packages/kernel/src/types/column.ts
 // (2026-07-02): `headerName` (:97), `width` (:98), `valueFormatter` — string
-// form compiles via @cgrid/format at ColDef-resolve time (:126-128),
+// form compiles via @wellsfargo-starui/velocity-grid-format at ColDef-resolve time (:126-128),
 // `cellRenderer` (:151), `editable` (:272), `cellStyle` (:348), `hide` (:421).
 // Patches write the LIVE `hide`/`width` keys, never `initialHide` (:427) /
 // `initialWidth` (:437): initial* is first-construction-only and

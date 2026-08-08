@@ -9,10 +9,10 @@
 //   - Editor closed: F2 opens; Enter opens unless `enterNavigatesVertically`
 //     is on, in which case Enter walks down by one row.
 
-import { Feature, type CGridEventCtx } from '../feature';
+import { Feature, type VelocityGridEventCtx } from '../feature';
 
 export class KeyPaging extends Feature {
-  override handleKeyDown(ctx: CGridEventCtx): void {
+  override handleKeyDown(ctx: VelocityGridEventCtx): void {
     const sel = ctx.grid.selection;
     const cols = ctx.grid.allColIds();
     const rowCount = ctx.grid.totalRowCount();

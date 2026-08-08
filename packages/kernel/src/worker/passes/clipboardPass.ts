@@ -41,7 +41,7 @@ export interface SerializeColumnRef {
 
 /**
  * Cycle 10 / Task 5 — per-cell transform applied BEFORE RFC-4180 quoting.
- * Mirrors `CGridOptions.processCellForClipboard` exactly so cgrid can
+ * Mirrors `VelocityGridOptions.processCellForClipboard` exactly so cgrid can
  * pass the user callback through without an adapter. Runs ONCE per cell
  * resolved during `serializeRanges` (range-row-major, then column order
  * within each row). The returned value flows through `formatCell` like
@@ -231,7 +231,7 @@ export function deserializeTsv(
 
 /**
  * Cycle 10 / Task 5 — per-cell paste transform. Mirrors
- * `CGridOptions.processCellFromClipboard` exactly. Runs ONCE per
+ * `VelocityGridOptions.processCellFromClipboard` exactly. Runs ONCE per
  * (parsed-cell × resolved-target-cell) tuple, in row-major order over
  * the parsed grid, mapped onto the anchor band (focused cell, walking
  * the visible column order rightward).

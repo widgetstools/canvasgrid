@@ -1,4 +1,4 @@
-// @cgrid/edit — EditJournal: dual undo/redo stacks + decoupled monitor list.
+// @wellsfargo-starui/velocity-grid-edit — EditJournal: dual undo/redo stacks + decoupled monitor list.
 // Authoritative reference: docs/superpowers/specs/2026-07-02-cycle-21g-edit-design.md
 // §1.1.1 (journal), §3.5 (suspend/monitor semantics), §3.2 (undoEntry cascade — Task 3).
 // Recon: docs/superpowers/plans/notes/2026-07-02-cycle-21g-recon.md A.1/A.2.

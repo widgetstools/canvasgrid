@@ -102,11 +102,11 @@ describe('ColumnsToolPanel', () => {
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
 
-    expect(root.classList.contains('cg-columns-panel')).toBe(true);
-    expect(root.querySelector('.cg-columns-panel-search')).not.toBeNull();
-    expect(root.querySelector('.cg-columns-panel-pivot-mode')).not.toBeNull();
-    expect(root.querySelector('.cg-columns-panel-list')).not.toBeNull();
-    const sections = Array.from(root.querySelectorAll('.cg-columns-panel-section-header'))
+    expect(root.classList.contains('vg-columns-panel')).toBe(true);
+    expect(root.querySelector('.vg-columns-panel-search')).not.toBeNull();
+    expect(root.querySelector('.vg-columns-panel-pivot-mode')).not.toBeNull();
+    expect(root.querySelector('.vg-columns-panel-list')).not.toBeNull();
+    const sections = Array.from(root.querySelectorAll('.vg-columns-panel-section-header'))
       .map((el) => el.textContent?.trim());
     // Cycle 21i / Phase 1 (revised) — Column Labels zone lives in the
     // side panel (below Values) AND the top pivot strip.
@@ -118,9 +118,9 @@ describe('ColumnsToolPanel', () => {
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
 
-    const rows = Array.from(root.querySelectorAll<HTMLElement>('.cg-columns-panel-row'));
+    const rows = Array.from(root.querySelectorAll<HTMLElement>('.vg-columns-panel-row'));
     expect(rows.map((r) => r.dataset.colId)).toEqual(['athlete', 'age', 'country', 'year', 'gold']);
-    expect(rows.map((r) => r.querySelector<HTMLElement>('.cg-columns-panel-row-label')?.textContent)).toEqual([
+    expect(rows.map((r) => r.querySelector<HTMLElement>('.vg-columns-panel-row-label')?.textContent)).toEqual([
       'Athlete', 'Age', 'Country', 'Year', 'Gold',
     ]);
     const checkboxes = rows.map((r) => r.querySelector<HTMLInputElement>('input[type="checkbox"]')!);
@@ -135,7 +135,7 @@ describe('ColumnsToolPanel', () => {
     });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    const label = root.querySelector<HTMLElement>('.cg-columns-panel-row-label');
+    const label = root.querySelector<HTMLElement>('.vg-columns-panel-row-label');
     expect(label?.textContent).toBe('unlabelled');
   });
 
@@ -144,7 +144,7 @@ describe('ColumnsToolPanel', () => {
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
 
-    const ageRow = root.querySelector<HTMLElement>('.cg-columns-panel-row[data-col-id="age"]')!;
+    const ageRow = root.querySelector<HTMLElement>('.vg-columns-panel-row[data-col-id="age"]')!;
     const checkbox = ageRow.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
     expect(checkbox.checked).toBe(true);
     checkbox.click();
@@ -159,17 +159,17 @@ describe('ColumnsToolPanel', () => {
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
 
-    const search = root.querySelector<HTMLInputElement>('.cg-columns-panel-search input[type="search"]')!;
+    const search = root.querySelector<HTMLInputElement>('.vg-columns-panel-search input[type="search"]')!;
     search.value = 'go';
     search.dispatchEvent(new Event('input', { bubbles: true }));
-    const rows = Array.from(root.querySelectorAll<HTMLElement>('.cg-columns-panel-row'));
+    const rows = Array.from(root.querySelectorAll<HTMLElement>('.vg-columns-panel-row'));
     const visible = rows.filter((r) => r.style.display !== 'none');
     expect(visible.map((r) => r.dataset.colId)).toEqual(['gold']);
 
     // Clear → all rows return.
     search.value = '';
     search.dispatchEvent(new Event('input', { bubbles: true }));
-    const restored = Array.from(root.querySelectorAll<HTMLElement>('.cg-columns-panel-row'))
+    const restored = Array.from(root.querySelectorAll<HTMLElement>('.vg-columns-panel-row'))
       .filter((r) => r.style.display !== 'none');
     expect(restored.length).toBe(5);
   });
@@ -178,14 +178,14 @@ describe('ColumnsToolPanel', () => {
     const api = makeApi();
     const { panel, root } = mountPanel(api, { suppressColumnFilter: true });
     hosts.push(panel);
-    expect(root.querySelector('.cg-columns-panel-search')).toBeNull();
+    expect(root.querySelector('.vg-columns-panel-search')).toBeNull();
   });
 
   it('suppressRowGroups hides the Row Groups section', () => {
     const api = makeApi();
     const { panel, root } = mountPanel(api, { suppressRowGroups: true });
     hosts.push(panel);
-    const sections = Array.from(root.querySelectorAll('.cg-columns-panel-section-header'))
+    const sections = Array.from(root.querySelectorAll('.vg-columns-panel-section-header'))
       .map((el) => el.textContent?.trim());
     expect(sections).not.toContain('Row Groups');
     // Values section is still present.
@@ -196,7 +196,7 @@ describe('ColumnsToolPanel', () => {
     const api = makeApi();
     const { panel, root } = mountPanel(api, { suppressValues: true });
     hosts.push(panel);
-    const sections = Array.from(root.querySelectorAll('.cg-columns-panel-section-header'))
+    const sections = Array.from(root.querySelectorAll('.vg-columns-panel-section-header'))
       .map((el) => el.textContent?.trim());
     expect(sections).not.toContain('Values');
     expect(sections).toContain('Row Groups');
@@ -206,14 +206,14 @@ describe('ColumnsToolPanel', () => {
     const api = makeApi();
     const { panel, root } = mountPanel(api, { suppressPivotMode: true });
     hosts.push(panel);
-    expect(root.querySelector('.cg-columns-panel-pivot-mode')).toBeNull();
+    expect(root.querySelector('.vg-columns-panel-pivot-mode')).toBeNull();
   });
 
   it('suppressColumnMove hides the drag handles', () => {
     const api = makeApi();
     const { panel, root } = mountPanel(api, { suppressColumnMove: true });
     hosts.push(panel);
-    const handles = root.querySelectorAll('.cg-columns-panel-row-handle');
+    const handles = root.querySelectorAll('.vg-columns-panel-row-handle');
     expect(handles.length).toBe(0);
   });
 
@@ -252,7 +252,7 @@ describe('ColumnsToolPanel', () => {
     // Root identity is preserved (no rebuild of root container).
     expect(panel.getGui()).toBe(originalRoot);
 
-    const rows = Array.from(root.querySelectorAll<HTMLElement>('.cg-columns-panel-row'));
+    const rows = Array.from(root.querySelectorAll<HTMLElement>('.vg-columns-panel-row'));
     expect(rows.map((r) => r.dataset.colId)).toEqual(['c', 'a', 'b']);
     const checkboxes = rows.map((r) => r.querySelector<HTMLInputElement>('input[type="checkbox"]')!);
     expect(checkboxes.map((c) => c.checked)).toEqual([true, true, false]);
@@ -287,7 +287,7 @@ describe('ColumnsToolPanel', () => {
     const api = makeApi();
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    const dropZones = Array.from(root.querySelectorAll<HTMLElement>('.cg-columns-panel-drop-zone'));
+    const dropZones = Array.from(root.querySelectorAll<HTMLElement>('.vg-columns-panel-drop-zone'));
     // Cycle 21i / Phase 1 (revised) — three live drop zones.
     expect(dropZones.length).toBe(3);
     const texts = dropZones.map((z) => z.textContent?.trim());
@@ -300,7 +300,7 @@ describe('ColumnsToolPanel', () => {
     const api = makeApi();
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    const toggle = root.querySelector<HTMLElement>('.cg-columns-panel-pivot-mode')!;
+    const toggle = root.querySelector<HTMLElement>('.vg-columns-panel-pivot-mode')!;
     const button = toggle.querySelector<HTMLButtonElement>('button')!;
     expect(button.getAttribute('aria-pressed')).toBe('false');
     button.click();

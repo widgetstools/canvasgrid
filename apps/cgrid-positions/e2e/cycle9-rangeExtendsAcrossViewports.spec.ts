@@ -59,7 +59,7 @@ test.describe('range drag extends across viewports (auto-scroll cooperates with 
     await gridReady(page);
 
     const result = await page.evaluate(async () => {
-      const g = (window as unknown as { __cgrid: GridSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridSurface }).__cgrid;
       const canvas = document.querySelector('#grid canvas') as HTMLCanvasElement;
       const r = canvas.getBoundingClientRect();
       const sleep = (ms: number): Promise<void> => new Promise((res) => setTimeout(res, ms));
@@ -120,7 +120,7 @@ test.describe('range drag extends across viewports (auto-scroll cooperates with 
     await gridReady(page);
     // Seed a 30-row × 2-col range via the API (no drag flake).
     const out = await page.evaluate(async () => {
-      const g = (window as unknown as { __cgrid: GridSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridSurface }).__cgrid;
       g.clearCellRanges();
       g.addCellRange({ rowStart: 5, rowEnd: 34, colIds: ['ticker', 'currentPrice'] });
       await new Promise((r) => setTimeout(r, 50));

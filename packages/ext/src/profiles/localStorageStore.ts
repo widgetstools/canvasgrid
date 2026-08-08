@@ -4,7 +4,7 @@ import type { ProfileStore, ProfileSnapshot, ProfileMeta } from '../extension/ty
  *  `{ [id]: ProfileSnapshot }` map. Consumers swap in server/IndexedDB
  *  stores by implementing `ProfileStore`. */
 export class LocalStorageProfileStore implements ProfileStore {
-  constructor(private namespace = 'cgrid-ext') {}
+  constructor(private namespace = 'velocity-grid-ext') {}
   private get key(): string { return `${this.namespace}:profiles`; }
 
   private read(): Record<string, ProfileSnapshot> {

@@ -37,7 +37,7 @@ only the spec + this worklog.
 - `getState()`/`setState()` + `GridState` + `ModuleStateRegistry` (`registerStateModule`) —
   layouts are tiered snapshots over these.
 - `runtimeTouchedOptions` = per-layout grid-option deltas (§7).
-- `@cgrid/calc`: `ColumnTemplate`, `ColumnOverride.templateIds`, `foldTemplateChain` (the
+- `@wellsfargo-starui/velocity-grid-calc`: `ColumnTemplate`, `ColumnOverride.templateIds`, `foldTemplateChain` (the
   template cascade), CalcEngine (calculated columns) — Phase B extends these.
 - Registered modules today: `columnGroups` (layout-tier), `editSettings` (grid-tier).
 - `persistState` / `statePersistence.ts` (localStorage keyed by `gridId`).
@@ -54,7 +54,7 @@ overrides). No calc/rules dependency. Spec §§4–12.
 |------|-------|-----------|
 | **A1** | Types (`GridLayout`, `GridLayoutsBundle`, `LayoutState`) + new `core/layoutManager.ts`: registry, active id, construction-baseline retention, Default invariants. Pure unit tests with mock accessors (save/load/delete/rename/duplicate/reset; Default undeletable; active-delete→Default fallback; unique-name enforcement). | LayoutManager unit-tested in isolation |
 | **A2** | Module-tier filtering (grid-tier set default `{editSettings}`; layout-tier snapshot/restore) + grid-option override capture (from `runtimeTouchedOptions`) & apply (reset-to-baseline then layer overrides). Unit tests. | Tier split + option override proven |
-| **A3** | CGrid wiring: delegate API methods (getLayouts/getActiveLayoutId/getActiveLayout/saveLayout/updateLayout/loadLayout/deleteLayout/renameLayout/duplicateLayout/resetLayout/getGridConfig/setGridConfig) to LayoutManager via thin accessors; add to `CGridApi` + api wiring; construction opts (`layouts?`, `activeLayoutId?`, `layoutGridLevelModules?`); `layoutChanged` event. Kernel integration tests (mount → save → mutate view → load → view restored, grid-tier modules untouched). | API live + round-trips on a real grid |
+| **A3** | VelocityGrid wiring: delegate API methods (getLayouts/getActiveLayoutId/getActiveLayout/saveLayout/updateLayout/loadLayout/deleteLayout/renameLayout/duplicateLayout/resetLayout/getGridConfig/setGridConfig) to LayoutManager via thin accessors; add to `VelocityGridApi` + api wiring; construction opts (`layouts?`, `activeLayoutId?`, `layoutGridLevelModules?`); `layoutChanged` event. Kernel integration tests (mount → save → mutate view → load → view restored, grid-tier modules untouched). | API live + round-trips on a real grid |
 | **A4** | Import/export: `exportLayout` (bundles referenced template defs — stub until Phase B), `exportLayouts`, `importLayout(s)` (collision→new id unless overwrite; replace vs merge); bundle version + `migrateSnapshot`-style migration. Unit tests. | JSON round-trip + migration |
 | **A5** | Persistence: fold bundle under reserved `layouts` field of the persisted blob; restore precedence (persisted > `options.layouts` > synthesized Default); mutations mark the state bus dirty → autosave. Kernel persistence round-trip test. | Layouts survive reload |
 | **A6** | Minimal demo control in `cgrid-customizer-demo` (save / select / delete / export / import layouts); browser-verify (light+dark; reset state; kill browser after) + 1–2 E2E. **SINGLE Phase-A closeout review** (fable) + fix wave. PR + squash-merge; ff-only sync; ledger. | Phase A MERGED |
@@ -62,13 +62,13 @@ overrides). No calc/rules dependency. Spec §§4–12.
 ## PHASE B — Styling templates (branch `feature/grid-layouts-b`, off merged A)
 
 Normalize static styling into the shared template library so column defs stay light and
-templates ride in layouts. Extends `@cgrid/calc`. Spec §3.1, §3.4, §5–§6.
+templates ride in layouts. Extends `@wellsfargo-starui/velocity-grid-calc`. Spec §3.1, §3.4, §5–§6.
 
 | Unit | Scope | End state |
 |------|-------|-----------|
 | **B1** | Register `templates` state module (grid-tier) = the calc template library snapshot/restore (`ColumnTemplate[]`); register `calc` state module (layout-tier) = calculated-column definitions from CalcEngine. Unit tests: both round-trip through getState/setState. | Templates + calc defs persist |
 | **B2** | Auto-template-on-edit in calc: editing an editable column attr writes to that column's own `<col>_template` (create-if-absent, unique name), assign its id to the column's `templateIds`; consumer-edit never mutates a shared template (forks to own). Column state carries `templateIds`. Unit tests (calc engine + cascade order). | Auto-template rule proven |
-| **B3** | Template API on `CGridApi` (getTemplates/saveTemplate/renameTemplate[unique]/deleteTemplate/applyTemplate/removeTemplate) via the calc bridge; `templatesChanged` event. Reconcile against the existing calc bridge surface (don't fork it). Tests. | Template API live |
+| **B3** | Template API on `VelocityGridApi` (getTemplates/saveTemplate/renameTemplate[unique]/deleteTemplate/applyTemplate/removeTemplate) via the calc bridge; `templatesChanged` event. Reconcile against the existing calc bridge surface (don't fork it). Tests. | Template API live |
 | **B4** | Export portability: `exportLayout` bundles the template defs its columns reference; import re-materializes them. Layouts round-trip template assignments + library. Tests. | Portable layout export w/ templates |
 | **B5** | Demo (apply template; edit a column → auto-template; reuse a template across columns; calc column styled by a template, stays non-editable); browser-verify. **SINGLE Phase-B closeout review** + fix wave. PR + merge; sync; ledger. | Phase B MERGED |
 
@@ -80,7 +80,7 @@ New subsystem: expression → style, targeting rows/columns; layout-tier. Spec �
 |------|-------|-----------|
 | **C1** | `ConditionalRule` model + rule store + `rules` state module (layout-tier). Expression compiled via the calc AST/watched-colId engine (reuse; no second parser). Unit tests: eval truthiness + watched-column tracking. | Rule store + eval |
 | **C2** | Render-time application: painter layers conditional-rule style over the template-resolved base by `priority`; target = whole row or `colIds` set. Integration tests (a rule paints the right cells). | Rules render |
-| **C3** | Rules API on `CGridApi` (add/update/delete/enable/reorder) + events; rules ride in the layout (`rules` module) so they round-trip + import/export. Tests. | Rules API + round-trip |
+| **C3** | Rules API on `VelocityGridApi` (add/update/delete/enable/reorder) + events; rules ride in the layout (`rules` module) so they round-trip + import/export. Tests. | Rules API + round-trip |
 | **C4** | Demo (create a rule → row/column restyle; per-layout rule sets); browser-verify + E2E. **SINGLE Phase-C closeout review** + fix wave. PR + merge; sync; ledger. | Phase C MERGED — feature complete |
 
 ## Standing constraints (all sessions)
@@ -131,8 +131,8 @@ PR + squash-merge. -->
   `fbdfcae` demo+E2E, `6c8bbee` review fix-wave, + this worklog).
   - **Demo (`apps/cgrid-customizer-demo`):** a "Rules" cluster matching the Layout/Templates chrome
     (reused `.layouts-control`/`.cluster-label`/`.cluster-readout` classes — NO new CSS; frontend-design
-    calibration confirmed the right move is consistency, not a distinctive cluster). Wires `@cgrid/rules`
-    (new demo dep); drives the PUBLIC CGridApi rules API. Two rules demonstrate BOTH targets (spec §3.2):
+    calibration confirmed the right move is consistency, not a distinctive cluster). Wires `@wellsfargo-starui/velocity-grid-rules`
+    (new demo dep); drives the PUBLIC VelocityGridApi rules API. Two rules demonstrate BOTH targets (spec §3.2):
     "Flag losses" (CELL rule — red bg + bold on negative P&L, distinct from the column's `[Red]` TEXT
     formatter, layered over it) + "Big rows" (ROW rule — amber tint on notional > 5M); "Clear" removes
     all. Count readout re-syncs on `rulesChanged` + `layoutChanged`. `__cgrules` test hook.
@@ -146,7 +146,7 @@ PR + squash-merge. -->
     Clear; **rules ride a saved layout + clear-on-switch-to-Default + restore-on-switch-back (per-layout
     rule sets)**; **persist across reload (autosave via `rulesChanged`)**. Full demo **E2E 25/25**.
   - **DX fix (in `fbdfcae`):** `ConditionalRuleShape` dropped its index signature — a nominal
-    `@cgrid/rules` rule (no index sig) wasn't assignable to an index-sig target, so consumers couldn't
+    `@wellsfargo-starui/velocity-grid-rules` rule (no index sig) wasn't assignable to an index-sig target, so consumers couldn't
     pass their typed rules to `addRule`. Minimal control shape is all the kernel reads; runtime spreads
     carry the full payload.
   - **SINGLE Phase-C closeout review (fable, batch over C1–C4) + fix wave (`6c8bbee`).** Verdict
@@ -179,11 +179,11 @@ PR + squash-merge. -->
     Layouts is feature-complete.**
 
 - **2026-07-05 · C3 done** (branch `feature/grid-layouts-c`; commit `e2d856c`).
-  - **Gate "Rules API live + round-trip."** Added the conditional-rules API to `CGridApi`:
+  - **Gate "Rules API live + round-trip."** Added the conditional-rules API to `VelocityGridApi`:
     `getRules` / `addRule` / `updateRule` / `deleteRule` / `setRuleEnabled` / `reorderRules` + a
     `rulesChanged` event (`RuleChangeSource` = add|update|delete|enable|reorder, carries `ruleId?`).
     Mirrors B3's template-API-over-provider pattern — NO parallel store.
-  - **`@cgrid/rules` bridge (`packages/rules/src/bridge.ts`):** the rule-engine adapter (registered
+  - **`@wellsfargo-starui/velocity-grid-rules` bridge (`packages/rules/src/bridge.ts`):** the rule-engine adapter (registered
     via `grid.registerRuleEngine`) gains `getRules()` / `setRules(next)` delegating to the
     `RuleEngine`; `setRules` re-seeds match counts (setRules zeroes them) — extracted the shared
     `reseedCounts()` ABOVE the adapter (wire-time seed + C1 module restore + C3 all reuse it). Invalid
@@ -193,7 +193,7 @@ PR + squash-merge. -->
     the kernel touches only `id`/`enabled`/`priority` for its transforms; the rest is the 21e
     `StyleRule` payload carried verbatim (engine stays the shape/validation owner).
   - **Kernel owns the CRUD as PURE array transforms** over `getRules()`/`setRules()` (like
-    `LayoutManager` owns layout CRUD — semantics in the kernel, not pushed into `@cgrid/rules`):
+    `LayoutManager` owns layout CRUD — semantics in the kernel, not pushed into `@wellsfargo-starui/velocity-grid-rules`):
     addRule = append; updateRule = shallow-merge by id (id preserved); deleteRule = filter;
     setRuleEnabled = toggle; reorderRules = by id order (unlisted keep relative order, unknown
     ignored). **Unknown-id mutations no-op with NO event.** No engine wired → `getRules()` = `[]`,
@@ -203,10 +203,10 @@ PR + squash-merge. -->
     every rule mutation dirties the bus → debounced autosave (rules don't rebuild colDefs, so nothing
     else would mark it dirty — same reasoning as `templatesChanged`). Round-trip + import/export come
     free from C1's `rules` module.
-  - **Wiring:** `CGridApi` signatures + `makeApi` entries; `rulesChanged` added to the `CGridEvent`
+  - **Wiring:** `VelocityGridApi` signatures + `makeApi` entries; `rulesChanged` added to the `VelocityGridEvent`
     union; public exports of `RuleChangeSource` + `ConditionalRuleShape` from the kernel entry.
   - **Tests:** +9 kernel integration (`packages/kernel/tests/rulesApiKernel.integration.test.ts`,
-    real CGrid wired to `@cgrid/rules`): add→getRules+event; update merge; delete; enable-toggle +
+    real VelocityGrid wired to `@wellsfargo-starui/velocity-grid-rules`): add→getRules+event; update merge; delete; enable-toggle +
     disabled-stops-matching (via `evaluateCell`); reorder; every-source ordering; **round-trip through
     `getState().modules.rules.data`** (rides the layout); unknown-id no-op no-event; no-engine
     degradation. +2 rules bridge (adapter getRules/setRules delegate + re-seed counts).
@@ -216,26 +216,26 @@ PR + squash-merge. -->
 
 - **2026-07-05 · C2 done** (branch `feature/grid-layouts-c`; commit `bc89160`).
   - **Gate "a rule paints the right cells" — proven END TO END, zero painter code.** C1's
-    reconciliation onto `@cgrid/rules` means the render-time overlay ALREADY EXISTS: `applyCellProps`
+    reconciliation onto `@wellsfargo-starui/velocity-grid-rules` means the render-time overlay ALREADY EXISTS: `applyCellProps`
     step 3.5 (`packages/kernel/src/core/propertyChain.ts`, Cycle 21e / Task 11) folds the rule style
     over the resolved colDef `cellStyle` base — AFTER cellClass variants, BEFORE function-form
     cellStyle (spec §3.3) — by priority (`RuleEngine.evaluateCell` folds candidates priority-asc,
     higher wins per-property). The kernel consults the engine via `core/ruleEngineSlot.ts`
-    (`getRuleEngine`), which the `@cgrid/rules` bridge populates through `grid.registerRuleEngine`.
+    (`getRuleEngine`), which the `@wellsfargo-starui/velocity-grid-rules` bridge populates through `grid.registerRuleEngine`.
     So C2 delivered the INTEGRATION PROOF the worklog scopes, not new code.
   - **Why new tests were still needed:** 21e's own fold test (`core/propertyChain-ruleFold.test.ts`)
     only uses a STUB engine over a `cellClass`/`cellStyleFn` base — never the real `RuleEngine`,
     never a template base, never priority across rules, never row-vs-columns, never the C1 module.
     C2 covers exactly that Grid-Layouts angle.
   - **New: `packages/kernel/tests/conditionalRuleRender.integration.test.ts` (+6).** REAL `RuleEngine`
-    (via the `@cgrid/rules` bridge) + REAL painter (`applyCellProps`): (1) rule overlays a
+    (via the `@wellsfargo-starui/velocity-grid-rules` bridge) + REAL painter (`applyCellProps`): (1) rule overlays a
     TEMPLATE-RESOLVED base (`colDef.cellStyle` object — the slot `foldCalcColumnDefs` populates) on
     match, base preserved on no-match + per-property; (2) PRIORITY per-property (higher wins the
     conflict, lower's non-conflicting field survives); (3) TARGET row (paints any column's cell) vs
     columns (scoped to its colIds; sibling column untouched); (4) theme-aware slice resolves
     light/dark through the painter; (5) disabled rule doesn't paint; (6) **C1→C2 seam** — rules are
     installed via the layout-tier `rules` module's `set()` (NOT opts), reaching the SAME engine the
-    painter consults; PLUS a REAL-CGrid test proving `setState({ modules: { rules: { version, data } } })`
+    painter consults; PLUS a REAL-VelocityGrid test proving `setState({ modules: { rules: { version, data } } })`
     (the layout-restore path) feeds that engine. The fake host forwards `registerRuleEngine` into the
     real kernel slot so the real painter path is exercised.
   - **DISCOVERED (flag for C4 review; pre-existing B-phase/calc, NOT C-scope):** a calc template's
@@ -256,16 +256,16 @@ PR + squash-merge. -->
 - **2026-07-05 · C1 done** (branch `feature/grid-layouts-c`, off merged B `b73ec62`; commit
   `267b61c`).
   - **RECONCILIATION DECISION (the crux of C1 — "reconcile against packages/rules, don't fork
-    blindly").** There are two conditional-rule worlds: (a) `@cgrid/rules` (Cycle 21e) — a full,
+    blindly").** There are two conditional-rule worlds: (a) `@wellsfargo-starui/velocity-grid-rules` (Cycle 21e) — a full,
     ALREADY-SHIPPED, ALREADY-WIRED conditional-styling + alerts subsystem: kernel has
     `registerRuleEngine` + `core/ruleEngineSlot.ts`, the painter consults `RuleEngine.evaluateCell`
     at render time, `apps/cgrid-showcase` uses it; its `RuleEngine` already provides the C1 contract
-    (`compileCondition`/`evaluateCell` truthiness + `watchedColIds`) built on `@cgrid/expression` (the
-    shared AST `@cgrid/calc` also wraps — NOT a second parser). (b) The Grid Layouts spec §3.2's NEW
+    (`compileCondition`/`evaluateCell` truthiness + `watchedColIds`) built on `@wellsfargo-starui/velocity-grid-expression` (the
+    shared AST `@wellsfargo-starui/velocity-grid-calc` also wraps — NOT a second parser). (b) The Grid Layouts spec §3.2's NEW
     `ConditionalRule`. The ONLY thing 21e lacked vs spec §3.2/§6: its bridge registered NO state
     module → rules didn't persist / weren't layout-tier. **So C1 = wire that one gap, not build a
     parallel store.** Building a new `ConditionalRule` store + a second painter path would violate
-    "no retroactive layering" and duplicate the shared expression AST. Extending `@cgrid/calc` was
+    "no retroactive layering" and duplicate the shared expression AST. Extending `@wellsfargo-starui/velocity-grid-calc` was
     also rejected: calc's `resolvedPatchFor` is a STATIC per-column fold with no per-row-value eval —
     conditional rules are RENDER-TIME, which is exactly the `ruleEngineSlot` overlay 21e owns. Spec
     §3.3's cascade (templates base → conditional rules overlay) is already how the kernel is
@@ -296,7 +296,7 @@ PR + squash-merge. -->
     the dataset. Extended the shared fake grid to capture `registerStateModule`.
   - **Verify:** rules typecheck clean; rules full suite **151 pass (9 files)**. Kernel typecheck +
     `npm run build` clean; kernel full suite **2878 pass (229 files)** — no regressions, no perf-flaky red.
-    `@cgrid/rules` has no dist build (scaffold — consumed from src). Unit-only per the C1 scope
+    `@wellsfargo-starui/velocity-grid-rules` has no dist build (scaffold — consumed from src). Unit-only per the C1 scope
     (render-time painting = C2, API = C3, demo + E2E = C4). NO per-task review (single batch review at C4).
 
 - **2026-07-05 · B5 done — Phase B COMPLETE on branch** (branch `feature/grid-layouts-b`;
@@ -307,13 +307,13 @@ PR + squash-merge. -->
     unchanged), preserve = `layoutGridLevelModules ?? DEFAULT_GRID_LEVEL_MODULES`. So switching a
     styled layout → Default clears its calc cols + template assignments; grid-tier `templates` library
     survives. +3 registry unit +2 integration tests.
-  - **`CGridApi.editColumn` (`a377f38`):** auto-template-on-edit (spec §3.1) promoted to the public API
-    (was engine-only since B2) so the demo is a pure `@cgrid/kernel` consumer — routes through the calc
+  - **`VelocityGridApi.editColumn` (`a377f38`):** auto-template-on-edit (spec §3.1) promoted to the public API
+    (was engine-only since B2) so the demo is a pure `@wellsfargo-starui/velocity-grid` consumer — routes through the calc
     provider (new optional `editColumn` on `CalcProviderShape` + bridge surface) → `CalcEngine.editColumn`;
     fires `templatesChanged`; no-op without calc.
   - **Demo (`a377f38`):** a "Templates" chrome cluster in `cgrid-customizer-demo` (matches the Layout
     cluster) — Apply $ (one template reused across 2 columns), Edit Yield (→ own auto-template), Calc col
-    (a calculated column styled by the $ template, stays non-editable). Wires `@cgrid/calc`; library-size
+    (a calculated column styled by the $ template, stays non-editable). Wires `@wellsfargo-starui/velocity-grid-calc`; library-size
     readout syncs on `templatesChanged` + `layoutChanged`; `__cgcalc` test hook. Browser-verified
     light+dark (chrome consistent; STOMP feed unavailable in this env → 0 rows, so cell styling wasn't
     visually exercised — behavior covered by E2E; dev server + automation browser killed after).
@@ -385,15 +385,15 @@ PR + squash-merge. -->
     kernel full suite **2868 pass (227 files)** — no regressions.
 
 - **2026-07-05 · B3 done** (branch `feature/grid-layouts-b`, commit `9a2870a`).
-  - **Template API on `CGridApi` (spec §8)** — `getTemplates` / `saveTemplate` /
+  - **Template API on `VelocityGridApi` (spec §8)** — `getTemplates` / `saveTemplate` /
     `renameTemplate` / `deleteTemplate` / `applyTemplate(colId, templateId)` /
     `removeTemplate(colId, templateId)` + a `templatesChanged` event
     (`TemplateChangeSource` = save|rename|delete|apply|remove, carries `templateId`).
-    Mirrors the Phase-A layout API shape (thin CGrid delegators + `makeApi` entries +
+    Mirrors the Phase-A layout API shape (thin VelocityGrid delegators + `makeApi` entries +
     a public re-export of `TemplateSaveInput` / `TemplateChangeSource`).
   - **Routing (no parallel path):** reuses the EXISTING calc DI slot. `CalcProviderShape`
     (`core/calcSlot.ts`) gains OPTIONAL template ops; the calc bridge's registered provider
-    implements them (delegating to the engine); `CGrid.*` template methods call
+    implements them (delegating to the engine); `VelocityGrid.*` template methods call
     `getCalcProvider()?.<op>?.(...)`. Kernel stamps `Date.now()` (engine stays Date-free);
     no calc wired → `getTemplates()` returns `[]` and mutators no-op (no event). A failed
     `renameTemplate` (duplicate name) THROWS before the event fires.
@@ -465,7 +465,7 @@ PR + squash-merge. -->
       surface / pre-Phase-B kernel still wires (just doesn't persist these slices).
   - **Tests:** `packages/calc/tests/bridge.test.ts` +5 (register both ids; empty→undefined; synthetic
     typeDefaults excluded; set() round-trip into a fresh engine; set() REPLACE not merge).
-    `packages/kernel/tests/layoutStateModulesCalc.test.ts` +2 (real CGrid + `wireIntoKernel`:
+    `packages/kernel/tests/layoutStateModulesCalc.test.ts` +2 (real VelocityGrid + `wireIntoKernel`:
     getState→modules.templates+modules.calc, setState restores into a fresh wired grid; a saved
     layout carries layout-tier `calc` but NOT grid-tier `templates`).
   - **Known quirk (pre-existing calc):** `saveTemplate(now)` collapses `createdAt` onto `updatedAt`,
@@ -479,7 +479,7 @@ PR + squash-merge. -->
 
 - **2026-07-05 · A1 done** (branch `feature/grid-layouts-a`, off `origin/main` @ `abbb155`).
   - `packages/kernel/src/types/layout.ts` — `LayoutState` (= layout-tier `GridState`),
-    `GridLayout`, `GridLayoutsBundle`, `DEFAULT_LAYOUT_ID`; reuses `@cgrid/calc`'s
+    `GridLayout`, `GridLayoutsBundle`, `DEFAULT_LAYOUT_ID`; reuses `@wellsfargo-starui/velocity-grid-calc`'s
     `ColumnTemplate` (no parallel type). Re-exported from the `types.ts` barrel.
   - `packages/kernel/src/core/layoutManager.ts` — pure `LayoutManager` over an injected
     `LayoutManagerHost` (`captureState`/`applyState`/`newId`/`now`): registry, active id,
@@ -490,7 +490,7 @@ PR + squash-merge. -->
     fallback + re-apply; unique-name (trimmed, case-insensitive); value-semantics/defensive
     clones; construction Default synthesis + activeId fallback).
   - **Scope boundaries honored:** `overrides` (grid-option/editing deltas) carried but NOT
-    captured (→ A2); no persistence (→ A5); no CGrid wiring / events (→ A3).
+    captured (→ A2); no persistence (→ A5); no VelocityGrid wiring / events (→ A3).
   - **Design calls (flagged for A2/A3 review):** (1) `saveLayout` activates by default
     (capture == live view, no re-apply); `duplicateLayout` does NOT (copy may differ from
     screen). (2) Default's DISPLAY NAME is renamable per §9 (only the id is fixed) —
@@ -516,7 +516,7 @@ PR + squash-merge. -->
       stale delta). Synthesized Default seeded from the baseline's layout tier.
     - Apply (load/fallback/reset) re-injects `overrides.gridOptions` into the applied
       snapshot; **host `applyState` owns the reset-to-baseline half of §7** (kernel `setState`
-      layers options additively — verified cgrid.ts:7698 — so the host must clear runtime
+      layers options additively — verified velocityGrid.ts:7698 — so the host must clear runtime
       options to baseline first; wired in A3). New `layoutGridLevelModules` init option.
   - `packages/kernel/tests/layoutManagerTier.test.ts` — 14 tests: pure tier-filter + option
     extraction; tier-aware capture (grid-tier excluded, options lifted, custom grid-level
@@ -526,7 +526,7 @@ PR + squash-merge. -->
     reset runtime options to baseline before restoring. A1's mock host already returned a
     full state → all 31 A1 tests unchanged & green.
   - **Scope held:** `overrides.editing` still NOT captured (grid-tier `editSettings` stays on
-    baseline; the editing-override refinement rides with Phase B). No CGrid wiring (→ A3), no
+    baseline; the editing-override refinement rides with Phase B). No VelocityGrid wiring (→ A3), no
     persistence (→ A5).
   - **Verify:** typecheck clean; full suite 2826 pass (222 files). Unit-only (no UI in A2).
 
@@ -534,8 +534,8 @@ PR + squash-merge. -->
   - **Types:** `types/event.ts` — `layoutChanged` event + `LayoutChangeSource`. `types/layout.ts`
     — `GridBaselineConfig` (reused by `GridLayoutsBundle.grid`). `types/options.ts` — construction
     opts `layouts?` / `activeLayoutId?` / `layoutGridLevelModules?`. `types/api.ts` — 12 methods on
-    `CGridApi`. Barrel exports `GridBaselineConfig`, `DEFAULT_GRID_LEVEL_MODULES`, `LayoutChangeSource`.
-  - **cgrid.ts wiring:** `LayoutManager` built lazily (`getLayoutManager`, eager call after
+    `VelocityGridApi`. Barrel exports `GridBaselineConfig`, `DEFAULT_GRID_LEVEL_MODULES`, `LayoutChangeSource`.
+  - **velocityGrid.ts wiring:** `LayoutManager` built lazily (`getLayoutManager`, eager call after
     `initialState` so baseline = as-built view) over a real host —
     `captureState = getState`, `applyState = applyLayoutSnapshot`, `newId = generateLayoutId`
     (crypto.randomUUID + counter fallback), `now = Date.now`. **`applyLayoutSnapshot` implements the
@@ -568,13 +568,13 @@ PR + squash-merge. -->
     uniquified to keep the invariant; per-layout `state` forward-migrated tolerantly),
     `importLayouts(bundle, {mode:'replace'|'merge', overwrite})` (replace swaps set+active+config,
     synthesizes Default if absent, dedupes names; merge folds in + merges config). Import methods
-    are PURE (no host apply) — the live grid resync is CGrid's job.
-  - `cgrid.ts` — dropped the local `gridBaseline`; `getGridConfig`/`setGridConfig` delegate to the
+    are PURE (no host apply) — the live grid resync is VelocityGrid's job.
+  - `velocityGrid.ts` — dropped the local `gridBaseline`; `getGridConfig`/`setGridConfig` delegate to the
     manager (with a live editSettings/templates module overlay). `applyGridConfigLive` extracted +
     reused by import. 4 methods: `exportLayout`/`exportLayouts` (overlays live grid config),
     `importLayout` (activate→loadLayout applies), `importLayouts` (import → applyGridConfigLive →
     loadLayout(active) so the option baseline lands before the active view resets to it). 4 `makeApi`
-    + `CGridApi` entries.
+    + `VelocityGridApi` entries.
   - `tests/layoutManagerImportExport.test.ts` — 14 pure tests: export shape + defensive copy;
     exportLayout stub + unknown-throw; importLayout collision→new-id / overwrite-in-place /
     name-uniquify / state-migration; merge (keep existing, merge config, no active switch); replace
@@ -582,7 +582,7 @@ PR + squash-merge. -->
     newer→throw; **full JSON round-trip**. +2 live-grid integration tests (export→import into a
     fresh grid restores view + option override; importLayout{activate} applies).
   - **Design calls:** `importLayout(s)` PURE in the manager (activation/live-apply orchestrated by
-    CGrid). Import names are uniquified (never rejected — import must not drop a layout). CGrid
+    VelocityGrid). Import names are uniquified (never rejected — import must not drop a layout). VelocityGrid
     import emits a single `layoutChanged` source `'import'`.
   - **Scope held:** layouts still NOT folded into the persisted blob / no autosave-dirty (→ A5);
     `exportLayout` templates stub (→ B4); `overrides.editing` not captured (Phase B).
@@ -590,7 +590,7 @@ PR + squash-merge. -->
     A1(31)+A2(14)+A4-unit(14)+integration(8) green.
 
 - **2026-07-05 · A5 done** (branch `feature/grid-layouts-a`).
-  - **Save fold (spec §11):** CGrid's persistence `onStateUpdated` hook folds the bundle into the
+  - **Save fold (spec §11):** VelocityGrid's persistence `onStateUpdated` hook folds the bundle into the
     saved blob under the reserved `layouts` field — `{ ...getState(), layouts: exportLayouts() }`.
     `StateStorageAdapter.save` unchanged.
   - **Autosave-dirty:** `stateUpdatedBus` `EVENT_TO_KEY` now maps `layoutChanged → 'layouts'` (a
@@ -607,7 +607,7 @@ PR + squash-merge. -->
     state).
   - **Tests:** +3 live-grid integration tests (fold+reload restores layouts + active + option
     override into a fresh grid; persisted > options.layouts; legacy no-`layouts` blob still
-    restores). `statePersistence.test.ts` (controller unit) unaffected — the fold is at the CGrid
+    restores). `statePersistence.test.ts` (controller unit) unaffected — the fold is at the VelocityGrid
     seam, not in the controller/adapter.
   - **Scope held:** template-library persistence rides the same `layouts` bundle once Phase B
     registers the `templates` module; `overrides.editing` still Phase B.
@@ -617,10 +617,10 @@ PR + squash-merge. -->
 
 - **2026-07-05 · A6 (demo + browser-verify + E2E) done; review+merge in progress** (branch
   `feature/grid-layouts-a`).
-  - **Public API surface:** `cgrid.ts` now re-exports the layout types (`LayoutState`,
+  - **Public API surface:** `velocityGrid.ts` now re-exports the layout types (`LayoutState`,
     `GridLayout`, `GridLayoutsBundle`, `GridBaselineConfig`, `LayoutChangeSource`) + value consts
     (`DEFAULT_LAYOUT_ID`, `DEFAULT_GRID_LEVEL_MODULES`, `LAYOUTS_BUNDLE_VERSION`) from the public
-    entry — they were only on the `types` barrel before, so `@cgrid/kernel` consumers (the demo)
+    entry — they were only on the `types` barrel before, so `@wellsfargo-starui/velocity-grid` consumers (the demo)
     couldn't import them. Kernel `dist` rebuilt.
   - **Restore event:** `restorePersistedBlob` now emits `layoutChanged` (new source `'restore'`)
     after a persisted bundle reseeds the manager, so app switchers re-sync on reload. (Fills a real
@@ -629,7 +629,7 @@ PR + squash-merge. -->
     mirroring the active layout (re-synced on every `layoutChanged`, incl. `'restore'`) + Save
     (prompt→saveLayout), Delete (disabled on Default), Export (download bundle JSON), Import (file→
     importLayouts merge). Matches the demo's slate chrome; `.actions` now wraps. Zero feature code in
-    the app — pure `@cgrid/kernel` API.
+    the app — pure `@wellsfargo-starui/velocity-grid` API.
   - **Browser-verified** (customizer-demo :5188, live STOMP 5k rows, state reset first, light+dark,
     browser + dev server killed after): save→switch round-trips the view (Default clears sort,
     Blotter restores it); reload persists Blotter (active + view) via the restore event; export
@@ -674,7 +674,7 @@ PR + squash-merge. -->
     E2E **3/3** (incl. the new filter round-trip). Review verdict was needs-work → after this fix
     wave: ship.
   - **Integration:** local squash-merge was NOT possible — the `main` checkout had uncommitted
-    changes to `cgrid.ts` + `api.ts` (the files Phase A rewrote), which blocks a clean merge. So
+    changes to `velocityGrid.ts` + `api.ts` (the files Phase A rewrote), which blocks a clean merge. So
     Phase A was pushed and opened as **PR #103** (https://github.com/widgetstools/canvasgrid/pull/103)
     for squash-merge on GitHub. Branch `feature/grid-layouts-a` (7 commits) + worktree preserved.
     Once #103 squash-merges, tick A6 and sync main ff-only.

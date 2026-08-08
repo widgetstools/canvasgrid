@@ -7,7 +7,7 @@
  * (the previous lit cgc-switch path never re-painted, so toggles looked
  * dead after the first click).
  */
-import type { SettingsModule, CgExtContext, ModuleInstance } from '../extension/types';
+import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import {
   aggFuncChoices,
   effectiveFlag,
@@ -49,7 +49,7 @@ interface CalcCaptionHost {
   };
 }
 
-function leafColumns(grid: CgExtContext['grid']): ColItem[] {
+function leafColumns(grid: VelocityGridExtContext['grid']): ColItem[] {
   const out: ColItem[] = [];
   const walk = (defs: readonly unknown[]): void => {
     for (const d of defs) {
@@ -69,7 +69,7 @@ function leafColumns(grid: CgExtContext['grid']): ColItem[] {
   return out;
 }
 
-function asGrid(grid: CgExtContext['grid']): ColumnConfigGrid {
+function asGrid(grid: VelocityGridExtContext['grid']): ColumnConfigGrid {
   return grid as unknown as ColumnConfigGrid;
 }
 
@@ -169,7 +169,7 @@ export function columnSettingsModule(): SettingsModule {
       injectCockpitStyles();
     },
 
-    mount(host: HTMLElement, ctx: CgExtContext): ModuleInstance {
+    mount(host: HTMLElement, ctx: VelocityGridExtContext): ModuleInstance {
       const grid = asGrid(ctx.grid);
 
       let columns: ColItem[] = [];

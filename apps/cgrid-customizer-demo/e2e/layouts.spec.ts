@@ -7,11 +7,11 @@ import { test, expect, type Page } from '@playwright/test';
  * Save/Delete/Export/Import) and asserts view state through the live
  * `window.__cgapi` (the grid renders to <canvas>, so sort/layout state is
  * read via the API, not the DOM). Each test starts from a clean
- * `persistState` slate (localStorage key `cgrid:state:customizer-demo`) so a
+ * `persistState` slate (localStorage key `velocity-grid:state:customizer-demo`) so a
  * prior test's saved layout can't leak into the next.
  */
 
-const STORAGE_KEY = 'cgrid:state:customizer-demo';
+const STORAGE_KEY = 'velocity-grid:state:customizer-demo';
 
 async function waitForGridReady(page: Page): Promise<void> {
   await page.waitForFunction(() => (window as unknown as { __cgridReady?: boolean }).__cgridReady === true, {

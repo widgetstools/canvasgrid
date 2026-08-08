@@ -16,7 +16,7 @@
  *      the recorded gc call sequence is byte-identical to the shipped
  *      pipeline — and an unavailable cache degrades to the same sequence.
  *  (e) stats counters (cellCacheHits/Misses/Bypasses) move.
- *  (f) CGrid-level wiring: construction, PaintStats fields, runtime
+ *  (f) VelocityGrid-level wiring: construction, PaintStats fields, runtime
  *      `rasterCache` flip disposes both tiers, theme swap bumps the epoch,
  *      destroy releases the budget.
  */
@@ -36,9 +36,9 @@ import type { ResolvedColDef } from '../src/core/propertyChain';
 import type { ResolvedTheme } from '../src/theming/cssReader';
 import type { CachedContext2D } from '../src/renderer/gc';
 import type { Subgrid } from '../src/core/subgrid';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
-import type { CGridOptions } from '../src/types/options';
+import type { VelocityGridOptions } from '../src/types/options';
 
 // ─── fakeGc — same recording idiom as tests/rendererPaintCache.test.ts ──────
 
@@ -485,7 +485,7 @@ describe('paintCellThroughCache — direct bypass coverage', () => {
 // CLEARED (transparent) scratch instead composites a translucent
 // prefill/bg TWICE through 8-bit premultiplied storage (once into the
 // bitmap, once at the blit) — measured at up to 5 LSB off vs the live
-// single composite when cursor-dark's 2%-alpha zebra (`--cg-row-alt-bg:
+// single composite when cursor-dark's 2%-alpha zebra (`--vg-row-alt-bg:
 // rgb(240 240 240 / 2%)`) rode Tier-1 bitmaps (caught by the E2E
 // raster-on-vs-off invariance arm). The scratch must therefore start from
 // `surfaceBg` (the epoch-scoped opaque surface color): fill surfaceBg,
@@ -601,7 +601,7 @@ describe('seam — rasterCache off reproduces the shipped pipeline byte-for-byte
   });
 });
 
-// ─── (f) CGrid-level wiring ─────────────────────────────────────────────────
+// ─── (f) VelocityGrid-level wiring ─────────────────────────────────────────────────
 
 // happy-dom has no canvas 2d context — the rendererPaintCache.test.ts
 // idiom, EXCEPT one ctx PER CANVAS (a WeakMap) instead of one shared
@@ -637,11 +637,11 @@ beforeAll(() => {
 function buildWiredGrid<T extends { id: string }>(
   rowData: T[],
   cols: any[],
-  options: Partial<CGridOptions<T>> = {},
+  options: Partial<VelocityGridOptions<T>> = {},
 ) {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
   const prevWorker = (globalThis as any).Worker;
   (globalThis as any).Worker = class {
@@ -654,7 +654,7 @@ function buildWiredGrid<T extends { id: string }>(
     addEventListener(_: string, cb: (e: { data: any }) => void) { this.listeners.push(cb); }
     terminate() {}
   };
-  const grid = new CGrid<T>(container, {
+  const grid = new VelocityGrid<T>(container, {
     columnDefs: cols,
     getRowId: (r) => r.id,
     rowData,
@@ -675,7 +675,7 @@ function rows(n: number): Array<{ id: string; v: number }> {
 }
 const cols = [{ field: 'id' }, { field: 'v', type: 'number' }];
 
-describe('CGrid — raster-cache wiring (options / stats / epochs / dispose)', () => {
+describe('VelocityGrid — raster-cache wiring (options / stats / epochs / dispose)', () => {
   it('constructs both tiers by default; PaintStats carries the new counters; a paint moves them', async () => {
     const { grid, restore } = buildWiredGrid(rows(50), cols);
     const g = grid as any;
@@ -760,7 +760,7 @@ describe('CGrid — raster-cache wiring (options / stats / epochs / dispose)', (
     g.cgridCanvas.tickPaint(performance.now());
     expect(g.rasterCells.stats().entries).toBeGreaterThan(0);
 
-    grid.setTheme('cg-theme-quartz-dark');
+    grid.setTheme('vg-theme-quartz-dark');
     expect(g.rasterCells.stats().entries).toBe(0);
 
     grid.destroy();

@@ -17,7 +17,7 @@
 - Rect cap: >12 resolved rects or union area >60% of canvas ⇒ collapse to full (spec §3a).
 - Bleed contract (spec §4): every rect +2px; sticky band ∪ shadow extension; row rects span full body width; header/pinned/totals band-atomic extension; DPR-snap outward.
 - Grid option `suppressPartialRepaint?: boolean` (default `false`) forces full damage everywhere (spec §8).
-- `packages/kernel/src/cgrid.ts` contains a NUL byte (~offset 127773): plain grep sees it as binary — use `grep -a` / `rg -a`, and pipe reads through `tr -d '\000'` when needed. Edit tool works normally.
+- `packages/kernel/src/velocityGrid.ts` contains a NUL byte (~offset 127773): plain grep sees it as binary — use `grep -a` / `rg -a`, and pipe reads through `tr -d '\000'` when needed. Edit tool works normally.
 - Verification per task: `cd packages/kernel && npx vitest run <files>` then the FULL kernel suite + `npx tsc --noEmit` before each commit.
 - Commit directly to branch `cgridext/cursor-theme`. Batch review: NO per-task reviewers; ONE closeout review + one fix wave at the end (user standing rule).
 
@@ -25,7 +25,7 @@
 
 - Create `packages/kernel/src/core/damageLedger.ts` — ledger + resolution (pure, no DOM).
 - Create `packages/kernel/tests/damageLedger.test.ts`, `tests/rendererDamage.test.ts`, `tests/paintStats.integration.test.ts`.
-- Modify `packages/kernel/src/renderer/renderer.ts` (damage param + clip), `src/renderer/painters/byRows.ts` (row/col culling), `src/core/canvas.ts` (expose canvas to component paint — blit), `src/cgrid.ts` (ledger ownership, source wiring, stats, scroll blit decision), `src/worker/worker.ts` + `src/worker/viewportSlicer.ts` + `src/worker/protocol.ts` (touchedRows), `src/types/api.ts` + `src/types/options.ts` (getPaintStats / suppressPartialRepaint).
+- Modify `packages/kernel/src/renderer/renderer.ts` (damage param + clip), `src/renderer/painters/byRows.ts` (row/col culling), `src/core/canvas.ts` (expose canvas to component paint — blit), `src/velocityGrid.ts` (ledger ownership, source wiring, stats, scroll blit decision), `src/worker/worker.ts` + `src/worker/viewportSlicer.ts` + `src/worker/protocol.ts` (touchedRows), `src/types/api.ts` + `src/types/options.ts` (getPaintStats / suppressPartialRepaint).
 - Create `apps/cgrid-ext-demo/e2e/paintInvariance.spec.ts` + a `?paintHarness` hook in `apps/cgrid-ext-demo/src/main.ts`.
 
 ---
@@ -426,8 +426,8 @@ git commit -m "feat(kernel): DamageLedger — semantic damage accumulation resol
 **Files:**
 - Modify: `packages/kernel/src/renderer/renderer.ts` (paint signature + clip, lines ~153–205)
 - Modify: `packages/kernel/src/renderer/painters/byRows.ts` (row culling in the `vs.visibleRows` loops)
-- Modify: `packages/kernel/src/cgrid.ts` (ledger field, paint closure at :1450, stats, API methods)
-- Modify: `packages/kernel/src/types/api.ts` (getPaintStats/resetPaintStats), `src/types/options.ts` or wherever `CGridOptions` lives (`suppressPartialRepaint`)
+- Modify: `packages/kernel/src/velocityGrid.ts` (ledger field, paint closure at :1450, stats, API methods)
+- Modify: `packages/kernel/src/types/api.ts` (getPaintStats/resetPaintStats), `src/types/options.ts` or wherever `VelocityGridOptions` lives (`suppressPartialRepaint`)
 - Test: `packages/kernel/tests/rendererDamage.test.ts`
 
 **Interfaces:**
@@ -435,7 +435,7 @@ git commit -m "feat(kernel): DamageLedger — semantic damage accumulation resol
 - Produces:
   - `Renderer.paint(gc: CachedContext2D, damage?: ResolvedDamage): void` — `undefined` or `{full:true}` behaves exactly as today.
   - `pctx.damageBounds?: { minX: number; minY: number; maxX: number; maxY: number } | null` — added to the painter context; byRows culls rows/columns against it.
-  - On `CGrid`: `private damageLedger = new DamageLedger()`, `private paintStats: MutablePaintStats`, helpers `repaintFull()`, `repaintRows(indices: number[])`, `repaintCells(cells: Array<{rowId:number;colId:string}>)` — each adds damage then calls `this.cgridCanvas.requestRepaint()`. `suppressPartialRepaint` option forces `repaint*` helpers to record `full`.
+  - On `VelocityGrid`: `private damageLedger = new DamageLedger()`, `private paintStats: MutablePaintStats`, helpers `repaintFull()`, `repaintRows(indices: number[])`, `repaintCells(cells: Array<{rowId:number;colId:string}>)` — each adds damage then calls `this.cgridCanvas.requestRepaint()`. `suppressPartialRepaint` option forces `repaint*` helpers to record `full`.
   - Public API: `getPaintStats(): PaintStats`, `resetPaintStats(): void` with
     `interface PaintStats { paints: number; fullPaints: number; partialPaints: number; blits: number; lastRects: number; lastAreaPct: number; avgPaintMs: number; worstPaintMs: number }`.
 
@@ -522,7 +522,7 @@ if (db && (row.bottom < db.minY || row.top > db.maxY)) continue;
 
 and in the per-column loops (~110, 244): `if (db && (colRight < db.minX || colLeft > db.maxX)) continue;` using the loop's existing x/width locals. Add `damageBounds` to the painter-context type (`renderer/painters/types.ts` — find the `pctx` interface there).
 
-- [ ] **Step 4: Wire ledger + stats + API in cgrid.ts**
+- [ ] **Step 4: Wire ledger + stats + API in velocityGrid.ts**
 
 At the class fields (near `hoveredRowIndex`, :699): add
 
@@ -557,7 +557,7 @@ paint: (gc) => {
 },
 ```
 
-Add `buildDamageResolveCtx(): DamageResolveCtx` as a private method reading the live `this.viewportState` (`vs.bodyTop/bodyBottom/bodyLeft/bodyRight`, `vs.visibleRows`, `vs.visibleColumns`), `this.canvasBounds`, `devicePixelRatio`; `stickyBandBottom` from the sticky-ancestors band the renderer uses (`getStickyAncestors()` — band height = ancestors.length × their row height; read how `stickyGroups.ts` computes `lastRowBottom` and mirror; return null when no ancestors); `rowBand(local)` scans `vs.visibleRows` for the DataSubgrid row with `localRowIndex === local`; `rowIndexForRowId(id)` scans the CURRENT chunk (`this.lastChunk` or whatever field `handleViewportChunk` stores — find with `grep -an "chunk.rowIds" src/cgrid.ts | head`) for `rowIds[i] === id` → `rowStart + i`; `colBounds(colId)` scans `vs.visibleColumns`.
+Add `buildDamageResolveCtx(): DamageResolveCtx` as a private method reading the live `this.viewportState` (`vs.bodyTop/bodyBottom/bodyLeft/bodyRight`, `vs.visibleRows`, `vs.visibleColumns`), `this.canvasBounds`, `devicePixelRatio`; `stickyBandBottom` from the sticky-ancestors band the renderer uses (`getStickyAncestors()` — band height = ancestors.length × their row height; read how `stickyGroups.ts` computes `lastRowBottom` and mirror; return null when no ancestors); `rowBand(local)` scans `vs.visibleRows` for the DataSubgrid row with `localRowIndex === local`; `rowIndexForRowId(id)` scans the CURRENT chunk (`this.lastChunk` or whatever field `handleViewportChunk` stores — find with `grep -an "chunk.rowIds" src/velocityGrid.ts | head`) for `rowIds[i] === id` → `rowStart + i`; `colBounds(colId)` scans `vs.visibleColumns`.
 
 Add the three repaint helpers near `refresh()` (~:5217):
 
@@ -573,14 +573,14 @@ private repaintCells(cells: Array<{ rowId: number; colId: string }>): void {
 }
 ```
 
-Public API (add to `CGridApi` in `src/types/api.ts` with doc comments, and implement on CGrid next to `flashCells` — find with `grep -an "flashCells(" src/cgrid.ts`):
+Public API (add to `VelocityGridApi` in `src/types/api.ts` with doc comments, and implement on VelocityGrid next to `flashCells` — find with `grep -an "flashCells(" src/velocityGrid.ts`):
 
 ```ts
 getPaintStats(): PaintStats { return { ...this.paintStats }; }
 resetPaintStats(): void { this.paintStats = { paints: 0, fullPaints: 0, partialPaints: 0, blits: 0, lastRects: 0, lastAreaPct: 100, avgPaintMs: 0, worstPaintMs: 0 }; }
 ```
 
-`PaintStats` interface lives in `src/types/api.ts` and re-exports from the package entry alongside the other API types. Add `suppressPartialRepaint?: boolean` to `CGridOptions` (find the options interface: `grep -rn "interface CGridOptions" src/types`).
+`PaintStats` interface lives in `src/types/api.ts` and re-exports from the package entry alongside the other API types. Add `suppressPartialRepaint?: boolean` to `VelocityGridOptions` (find the options interface: `grep -rn "interface VelocityGridOptions" src/types`).
 
 **Critical invariant of this task:** no `requestRepaint()` call site is migrated yet — every existing caller records nothing, the ledger resolves EMPTY → FULL, so behavior is byte-identical to today. This task must be a pure no-op for rendering output.
 
@@ -599,7 +599,7 @@ git commit -m "feat(kernel): damage-aware Renderer.paint + PaintStats API — le
 
 **Files:**
 - Modify: `packages/kernel/src/worker/worker.ts` (queue flush ~:428–455), `src/worker/workerState.ts` (add `pendingTouched`), `src/worker/viewportSlicer.ts` (~:361–412), `src/worker/protocol.ts` (ViewportChunk field)
-- Modify: `packages/kernel/src/cgrid.ts` — `handleViewportChunk` (:7508–7620), flash tick loop (:7710–7735)
+- Modify: `packages/kernel/src/velocityGrid.ts` — `handleViewportChunk` (:7508–7620), flash tick loop (:7710–7735)
 - Modify: `packages/kernel/src/core/flashRegistry.ts` (expose active cell keys)
 - Test: `packages/kernel/tests/viewportSlicerTouched.test.ts`, extend `tests/paintStats.integration.test.ts` (created here)
 
@@ -644,7 +644,7 @@ touchedRows?: Uint32Array;
 
   If `normalizeViewportChunk` (protocol.ts — grep it) fills defaults for optional fields, leave `touchedRows` absent (absence is meaningful).
 
-- [ ] **Step 4: Main-thread wiring in `handleViewportChunk` (cgrid.ts :7610–7616)**
+- [ ] **Step 4: Main-thread wiring in `handleViewportChunk` (velocityGrid.ts :7610–7616)**
 
 Replace the tail `this.recomputeViewport(); this.cgridCanvas.requestRepaint();` with:
 
@@ -684,7 +684,7 @@ activeCells(): Array<{ rowId: number; colId: string }> {
 }
 ```
 
-In `FlashRegistry.tick` (:168–178), the `deps.requestRepaint()` dep is wired from cgrid — change the dep wiring (find `new FlashRegistry(` in cgrid.ts) so the registry's repaint dep calls `this.repaintCells(this.flashRegistry.activeCells())` instead of raw requestRepaint. In the grid's own flash tick loop (cgrid.ts :7725), the `groupFlashMap` branch keeps `requestRepaint()` **replaced by `this.repaintFull()`** (group rows have no rowId-cell rects yet — full is the correct conservative damage; note this in a comment).
+In `FlashRegistry.tick` (:168–178), the `deps.requestRepaint()` dep is wired from cgrid — change the dep wiring (find `new FlashRegistry(` in velocityGrid.ts) so the registry's repaint dep calls `this.repaintCells(this.flashRegistry.activeCells())` instead of raw requestRepaint. In the grid's own flash tick loop (velocityGrid.ts :7725), the `groupFlashMap` branch keeps `requestRepaint()` **replaced by `this.repaintFull()`** (group rows have no rowId-cell rects yet — full is the correct conservative damage; note this in a comment).
 
 - [ ] **Step 6: Integration test** — `tests/paintStats.integration.test.ts` using the `buildWiredGrid` harness idiom from `tests/cgrid.integration.test.ts` (copy the local helper; wire a real worker via createWorkerHost fake):
   1. Boot grid with data, wait first paint → `getPaintStats().fullPaints >= 1`.
@@ -704,11 +704,11 @@ git commit -m "feat(kernel): tick + flash damage — worker touchedRows protocol
 ### Task 4: Hover, selection, and focus damage
 
 **Files:**
-- Modify: `packages/kernel/src/interaction/features/onHover.ts` (:39, :74), `packages/kernel/src/cgrid.ts` (selection onChange :2294–2327, setHoveredRow dep :1710)
+- Modify: `packages/kernel/src/interaction/features/onHover.ts` (:39, :74), `packages/kernel/src/velocityGrid.ts` (selection onChange :2294–2327, setHoveredRow dep :1710)
 - Test: extend `packages/kernel/tests/paintStats.integration.test.ts`
 
 **Interfaces:**
-- Consumes: `repaintRows`/`repaintFull` (Task 2). Hover/selection features reach the grid through `ctx.grid` (`CGridEventCtx['grid']`) — extend that structural type with `repaintRows?: (rows: number[]) => void` (find it: `grep -rn "interface CGridEventCtx" src/interaction`), optional so tests with stub grids still compile.
+- Consumes: `repaintRows`/`repaintFull` (Task 2). Hover/selection features reach the grid through `ctx.grid` (`VelocityGridEventCtx['grid']`) — extend that structural type with `repaintRows?: (rows: number[]) => void` (find it: `grep -rn "interface VelocityGridEventCtx" src/interaction`), optional so tests with stub grids still compile.
 
 - [ ] **Step 1: Failing integration tests** (same harness): (a) simulate hover row change via the grid's `setHoveredRow` path + assert a partial paint with small area; (b) focus a cell (`setFocusedCell` or the selection API used by existing tests) → partial; (c) select-all → full (row-selection of everything must NOT enumerate 5k rows into the ledger).
 
@@ -727,7 +727,7 @@ else ctx.grid.canvas.requestRepaint();
 ```
 
     and `reset` (:39): damage the previously hovered row the same way (prev row index from `prev`), falling back to `requestRepaint()`.
-  - Selection onChange (cgrid.ts :2324): compute damage from the state delta. Keep a `lastSelectionDamage` snapshot `{ selectedRowIndices: number[] | 'all', focusedRowIndex: number | null, rangeRects: string }`. Rules:
+  - Selection onChange (velocityGrid.ts :2324): compute damage from the state delta. Keep a `lastSelectionDamage` snapshot `{ selectedRowIndices: number[] | 'all', focusedRowIndex: number | null, rangeRects: string }`. Rules:
     - focus-only change (selection sets untouched, ranges unchanged): `repaintRows([oldFocusRow, newFocusRow].filter(n => n !== null))`.
     - row-selection change where `|old Δ new| ≤ 24` indices: `repaintRows(delta)`.
     - anything else (range gestures, select-all, header select, >24 rows): `repaintFull()`.
@@ -748,7 +748,7 @@ git commit -m "feat(kernel): hover + selection/focus damage — row-band repaint
 ### Task 5: Scroll blit
 
 **Files:**
-- Modify: `packages/kernel/src/renderer/renderer.ts` (blit execution), `packages/kernel/src/cgrid.ts` (afterScrollTick :1332, blit-decision state), `packages/kernel/src/renderer/gc.ts` (drawImage passthrough if missing)
+- Modify: `packages/kernel/src/renderer/renderer.ts` (blit execution), `packages/kernel/src/velocityGrid.ts` (afterScrollTick :1332, blit-decision state), `packages/kernel/src/renderer/gc.ts` (drawImage passthrough if missing)
 - Test: `packages/kernel/tests/scrollBlit.test.ts` + extend `tests/paintStats.integration.test.ts`
 
 **Interfaces:**
@@ -780,7 +780,7 @@ it('dpr/bounds change → full', () => {
 
 - [ ] **Step 2: Verify failure; implement `decideScrollDamage` in `damageLedger.ts`** (exact translation of the four rules; spec §5.4).
 
-- [ ] **Step 3: Wire the scroll path.** In cgrid.ts `afterScrollTick` (:1332): track `lastPaintedScrollLeft/Top` fields (updated inside the paint closure from Task 2 after each paint); compute `dx/dy` as `current - lastPainted`, call `decideScrollDamage`, `this.damageLedger.add(result)`, then `requestRepaint()`. Horizontal-scroll-only frames therefore go full (Phase B scope is vertical; note in comment). Pinned rows / totals bands: the resolver already redamages the sticky band on scroll (Task 1); ALSO redamage the pinned/totals band rect — extend the ledger's scroll resolution to push every `ctx.pinnedBandRects` rect whenever `blit !== null` (the field exists since Task 1; cgrid's `buildDamageResolveCtx` supplies the totals/pinned-row band rects from its viewport state — find where totals rows get their y-band in `viewport.ts` / `byRows.ts` totals handling).
+- [ ] **Step 3: Wire the scroll path.** In velocityGrid.ts `afterScrollTick` (:1332): track `lastPaintedScrollLeft/Top` fields (updated inside the paint closure from Task 2 after each paint); compute `dx/dy` as `current - lastPainted`, call `decideScrollDamage`, `this.damageLedger.add(result)`, then `requestRepaint()`. Horizontal-scroll-only frames therefore go full (Phase B scope is vertical; note in comment). Pinned rows / totals bands: the resolver already redamages the sticky band on scroll (Task 1); ALSO redamage the pinned/totals band rect — extend the ledger's scroll resolution to push every `ctx.pinnedBandRects` rect whenever `blit !== null` (the field exists since Task 1; cgrid's `buildDamageResolveCtx` supplies the totals/pinned-row band rects from its viewport state — find where totals rows get their y-band in `viewport.ts` / `byRows.ts` totals handling).
 
 - [ ] **Step 4: Blit execution in Renderer.paint** — before the clip/fill block:
 
@@ -799,7 +799,7 @@ if (partial && damage.blit) {
 }
 ```
 
-  (drawImage in device px with 1:1 scale; if `CachedContext2D` lacks `drawImage`, add the passthrough in gc.ts.) `getCanvasElement` wired in cgrid.ts's `new Renderer({...})` bag (:1353): `getCanvasElement: () => this.cgridCanvas.canvas`.
+  (drawImage in device px with 1:1 scale; if `CachedContext2D` lacks `drawImage`, add the passthrough in gc.ts.) `getCanvasElement` wired in velocityGrid.ts's `new Renderer({...})` bag (:1353): `getCanvasElement: () => this.cgridCanvas.canvas`.
 
 - [ ] **Step 5: Integration test** — programmatic `scrollTo`/`setScrollTop` (find the API existing tests use: `grep -an "scrollTop\|ensureRowIndexVisible" packages/kernel/tests/cgrid.integration.test.ts | head`) by one row height → `getPaintStats().blits >= 1` and `lastAreaPct < 30`. Then a full-page jump (≥ body height) → full paint, `blits` unchanged.
 
@@ -826,7 +826,7 @@ git commit -m "feat(kernel): scroll self-blit — vertical scrolls copy the vali
 ```ts
 (window as any).__paintHarness = {
   snapshot(): string {
-    const c = document.querySelector('.cg-canvas') as HTMLCanvasElement;
+    const c = document.querySelector('.vg-canvas') as HTMLCanvasElement;
     const ctx = c.getContext('2d')!;
     const d = ctx.getImageData(0, 0, c.width, c.height).data;
     let h = 0; // FNV-1a over every 16th byte — fast, deterministic

@@ -4,7 +4,7 @@
  * Pins the ancestor group band to the top of the body area when the
  * user has scrolled past one or more group rows. Each band row mirrors
  * the layout of a regular group row (indent + chevron + value + child-
- * count badge) and is interactive via `hitTestStickyChevron` in cgrid.ts.
+ * count badge) and is interactive via `hitTestStickyChevron` in velocityGrid.ts.
  *
  * Layout:
  *   bodyTop + 0 × rowH  → ancestor at depth 0 (top-level group)

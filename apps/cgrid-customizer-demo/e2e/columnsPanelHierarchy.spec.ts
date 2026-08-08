@@ -4,14 +4,14 @@ import { test, expect, type Page, type Locator } from '@playwright/test';
  * Columns tool panel — hierarchy + group-aware drag E2E (T4).
  *
  * T1-T3 built: a group-membership mutation API (`moveColumnToGroup` /
- * `moveColumnGroup` on `CGridApi`), hierarchical rendering of the
+ * `moveColumnGroup` on `VelocityGridApi`), hierarchical rendering of the
  * `columns` sideBar tool panel (group rows with carets + tri-state
  * checkboxes, indented children), and group-aware drag (reorder +
  * re-parent) within that panel.
  *
  * Like `columnGroups.spec.ts`, the grid renders to <canvas> — column
  * headers are NOT DOM — so every assertion about grid/column-def STATE
- * goes through `window.__cgapi` (the live CGridApi handed to `gridReady`).
+ * goes through `window.__cgapi` (the live VelocityGridApi handed to `gridReady`).
  * The tool PANEL itself (the "Columns" sidebar tab) is real DOM, so panel
  * interactions (clicks, drags) use normal Playwright locators.
  *
@@ -21,7 +21,7 @@ import { test, expect, type Page, type Locator } from '@playwright/test';
  * `yield`, `spread`). `cusip` and `ticker` are ungrouped top-level leaves.
  */
 
-const STORAGE_KEY = 'cgrid:state:customizer-demo';
+const STORAGE_KEY = 'velocity-grid:state:customizer-demo';
 
 type AnyDef = Record<string, any>;
 
@@ -62,7 +62,7 @@ async function waitForGridReady(page: Page): Promise<void> {
 
 async function openColumnsTab(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Columns' }).click();
-  await expect(page.locator('.cg-columns-panel')).toBeVisible();
+  await expect(page.locator('.vg-columns-panel')).toBeVisible();
 }
 
 /** Real mouse drag honoring the panel's drag-promotion threshold — mirrors
@@ -87,10 +87,10 @@ async function dragOnto(page: Page, source: Locator, target: Locator): Promise<v
   await page.mouse.up();
 }
 
-/** Reads the `--cg-indent` custom property a row carries as inline style
+/** Reads the `--vg-indent` custom property a row carries as inline style
  *  (`visibilityPanel.ts`'s `buildRow`/`buildGroupRow`), as a number. */
 async function indentOf(locator: Locator): Promise<number> {
-  const raw = await locator.evaluate((el) => (el as HTMLElement).style.getPropertyValue('--cg-indent'));
+  const raw = await locator.evaluate((el) => (el as HTMLElement).style.getPropertyValue('--vg-indent'));
   return Number(raw);
 }
 
@@ -113,8 +113,8 @@ test('Columns panel renders the seeded groups hierarchically with indented child
   await expect(riskGroup).toBeVisible();
 
   // Group rows carry a caret + tri-state checkbox.
-  await expect(tradeGroup.locator('.cg-columns-panel-row-caret')).toHaveCount(1);
-  await expect(tradeGroup.locator('input.cg-columns-panel-row-checkbox')).toHaveCount(1);
+  await expect(tradeGroup.locator('.vg-columns-panel-row-caret')).toHaveCount(1);
+  await expect(tradeGroup.locator('input.vg-columns-panel-row-checkbox')).toHaveCount(1);
 
   // A top-level, ungrouped column sits at depth 0.
   const topLevelLeaf = page.locator('[data-col-id="cusip"]');
@@ -152,7 +152,7 @@ test('toggling a group tri-state checkbox hides its descendant leaves', async ({
     expect(beforeById.get(colId)?.hide, `${colId} should start visible`).not.toBe(true);
   }
 
-  const tradeCheckbox = page.locator('[data-group-id="trade"] input.cg-columns-panel-row-checkbox');
+  const tradeCheckbox = page.locator('[data-group-id="trade"] input.vg-columns-panel-row-checkbox');
   await expect(tradeCheckbox).toBeChecked();
   expect(await tradeCheckbox.evaluate((el) => (el as HTMLInputElement).indeterminate)).toBe(false);
 
@@ -182,10 +182,10 @@ test('a mixed group shows an indeterminate tri-state checkbox', async ({ page })
 
   // Hide exactly one of 'trade's descendants directly (not via the group
   // checkbox) so the group itself lands in the 'mixed' tri-state.
-  const pnlCheckbox = page.locator('[data-col-id="pnl"] input.cg-columns-panel-row-checkbox');
+  const pnlCheckbox = page.locator('[data-col-id="pnl"] input.vg-columns-panel-row-checkbox');
   await pnlCheckbox.uncheck();
 
-  const tradeCheckbox = page.locator('[data-group-id="trade"] input.cg-columns-panel-row-checkbox');
+  const tradeCheckbox = page.locator('[data-group-id="trade"] input.vg-columns-panel-row-checkbox');
   await expect(tradeCheckbox).not.toBeChecked();
   await expect
     .poll(() => tradeCheckbox.evaluate((el) => (el as HTMLInputElement).indeterminate))
@@ -215,7 +215,7 @@ test('drag an ungrouped column onto a group row to re-parent it', async ({ page 
 
   await dragOnto(
     page,
-    page.locator('[data-col-id="cusip"] .cg-columns-panel-row-handle'),
+    page.locator('[data-col-id="cusip"] .vg-columns-panel-row-handle'),
     page.locator('[data-group-id="risk"]'),
   );
 

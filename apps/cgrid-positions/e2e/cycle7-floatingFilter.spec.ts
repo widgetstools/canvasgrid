@@ -37,7 +37,7 @@ test.describe('Cycle 7 / Task 1 — floating-filter row', () => {
   test('mounts a floating-filter input for every visible column', async ({ page }) => {
     await gridReady(page);
     const inputCount = await page.evaluate(
-      () => document.querySelectorAll('input[data-cg-floating-filter]').length,
+      () => document.querySelectorAll('input[data-vg-floating-filter]').length,
     );
     // Demo has 17 cols; some pinned-right ones may render too. Assert a
     // healthy lower bound rather than an exact count so future column
@@ -48,10 +48,10 @@ test.describe('Cycle 7 / Task 1 — floating-filter row', () => {
   test('typing into a floating-filter input reduces the displayed row count', async ({ page }) => {
     await gridReady(page);
     const before = await page.evaluate(
-      () => (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
+      () => (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
     );
     expect(before).toBeGreaterThan(10);
-    const sel = 'input[data-cg-floating-filter][data-cg-col-id="positionId"]';
+    const sel = 'input[data-vg-floating-filter][data-vg-col-id="positionId"]';
     await page.fill(sel, 'POS-1');
     // Default debounce is 500ms. Wait it out, then a couple of RAFs for
     // the worker round-trip + recomputeViewport to land.
@@ -64,7 +64,7 @@ test.describe('Cycle 7 / Task 1 — floating-filter row', () => {
       }),
     );
     const after = await page.evaluate(
-      () => (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
+      () => (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
     );
     expect(after).toBeLessThan(before);
     expect(after).toBeGreaterThan(0);
@@ -73,16 +73,16 @@ test.describe('Cycle 7 / Task 1 — floating-filter row', () => {
   test('horizontal scroll re-pins the cells via transform (not via the left style)', async ({ page }) => {
     await gridReady(page);
     // Cycle 7 / Task 1 (clear-button refactor): the input is now wrapped
-    // in a positioning cell (`div[data-cg-floating-filter-cell]`); the
+    // in a positioning cell (`div[data-vg-floating-filter-cell]`); the
     // transform that follows scroll lives on the wrapper.
-    const sel = 'div[data-cg-floating-filter-cell][data-cg-col-id="dailyPnl"]';
+    const sel = 'div[data-vg-floating-filter-cell][data-vg-col-id="dailyPnl"]';
     const before = await page.evaluate((s) => {
       const el = document.querySelector(s) as HTMLElement | null;
       return el ? { transform: el.style.transform, left: el.style.left } : null;
     }, sel);
     expect(before).not.toBeNull();
     await page.evaluate(
-      () => { (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getScroller().scrollLeft = 200; },
+      () => { (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getScroller().scrollLeft = 200; },
     );
     await page.waitForTimeout(50);
     await page.evaluate(

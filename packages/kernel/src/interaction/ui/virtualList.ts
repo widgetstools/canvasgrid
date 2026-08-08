@@ -18,9 +18,9 @@
  * Inner DOM:
  *
  *   host (overflow: auto; the caller sets its own height/width)
- *     ├── sizer  (data-cg-vlist-sizer; absolute, height = items.length * rowHeight)
- *     └── window (data-cg-vlist-window; relative, holds the mounted rows)
- *           └── row[i] (data-cg-vlist-row, data-cg-vlist-index="<i>"; absolute, top: i * rowHeight)
+ *     ├── sizer  (data-vg-vlist-sizer; absolute, height = items.length * rowHeight)
+ *     └── window (data-vg-vlist-window; relative, holds the mounted rows)
+ *           └── row[i] (data-vg-vlist-row, data-vg-vlist-index="<i>"; absolute, top: i * rowHeight)
  *
  * Rows are pooled by their item index (a `Map<number, HTMLElement>`).
  * Scrolling by one row reuses every previously-mounted DOM node whose
@@ -81,10 +81,10 @@ export class VirtualList<T> {
       host.style.position = 'relative';
     }
     this.sizer = document.createElement('div');
-    this.sizer.setAttribute('data-cg-vlist-sizer', '');
+    this.sizer.setAttribute('data-vg-vlist-sizer', '');
     this.sizer.style.cssText = 'position:absolute; left:0; top:0; width:1px; pointer-events:none;';
     this.window = document.createElement('div');
-    this.window.setAttribute('data-cg-vlist-window', '');
+    this.window.setAttribute('data-vg-vlist-window', '');
     this.window.style.cssText = 'position:absolute; left:0; top:0; right:0;';
     host.appendChild(this.sizer);
     host.appendChild(this.window);
@@ -242,8 +242,8 @@ export class VirtualList<T> {
       if (item === undefined) continue;
       const el = this.renderRow(item, i);
       if (!el) continue;
-      el.setAttribute('data-cg-vlist-row', '');
-      el.setAttribute('data-cg-vlist-index', String(i));
+      el.setAttribute('data-vg-vlist-row', '');
+      el.setAttribute('data-vg-vlist-index', String(i));
       el.style.position = 'absolute';
       el.style.left = '0';
       el.style.right = '0';

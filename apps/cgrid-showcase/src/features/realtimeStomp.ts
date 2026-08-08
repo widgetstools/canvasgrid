@@ -1,5 +1,5 @@
-import { CGrid, type CColDef } from '@cgrid/kernel';
-import { wireIntoKernel } from '@cgrid/format';
+import { VelocityGrid, type CColDef } from '@wellsfargo-starui/velocity-grid';
+import { wireIntoKernel } from '@wellsfargo-starui/velocity-grid-format';
 import type { Feature } from './index';
 import { Client, type IFrame, type IMessage } from '@stomp/stompjs';
 
@@ -35,7 +35,7 @@ const COLUMNS: CColDef<Position>[] = [
   { colId: 'notionalAmount', field: 'notionalAmount', headerName: 'Notional', cellDataType: 'number', width: 130, filter: 'number', enableValue: true, aggFunc: 'sum' },
   { colId: 'marketValue',    field: 'marketValue',    headerName: 'Market Value', cellDataType: 'number', width: 140, filter: 'number', enableValue: true, aggFunc: 'sum' },
   { colId: 'pnl',            field: 'pnl',            headerName: 'P&L',          cellDataType: 'number', width: 110, filter: 'number', enableValue: true, aggFunc: 'sum' },
-  // Cycle 21c / Task 18 — two columns upgraded to @cgrid/format DSL
+  // Cycle 21c / Task 18 — two columns upgraded to @wellsfargo-starui/velocity-grid-format DSL
   // strings so the demo proves DSL rendering under live STOMP ticks:
   //   • dailyPnl — Tier 1: per-row color expression by sign.
   //   • currentPrice — Tier 0: plain Excel currency code.
@@ -58,7 +58,7 @@ export const realtimeStomp: Feature = {
     'Connects cgrid to the local stomp-view-server (ws://localhost:8081). Snapshot then live updates flow through applyTransactionAsync — toggle pivot mode to evaluate the same stream as a flat blotter or a cross-tab. Server must be running (cd stomp-view-server && npm start).',
 
   mount(gridHost, controls, theme) {
-    const grid = new CGrid<Position>(gridHost, {
+    const grid = new VelocityGrid<Position>(gridHost, {
       getRowId: (r: Position) => r.positionId,
       columnDefs: COLUMNS,
       theme,
@@ -69,7 +69,7 @@ export const realtimeStomp: Feature = {
       enableCellChangeFlash: true,
     } as never);
 
-    // Cycle 21c / Task 18 — register the @cgrid/format compiler and
+    // Cycle 21c / Task 18 — register the @wellsfargo-starui/velocity-grid-format compiler and
     // re-issue the defs: string valueFormatters compile during column
     // resolution, which already ran once during construction (before
     // the compiler existed). The re-issue recompiles the two DSL

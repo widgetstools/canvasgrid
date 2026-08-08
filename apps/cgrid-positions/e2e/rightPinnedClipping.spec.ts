@@ -31,7 +31,7 @@ test.describe('right-pinned column right-edge clipping', () => {
 
     const result = await page.evaluate(() => {
       const grid = (window as unknown as {
-        __cgrid: { getHeaderBoundsAt(id: string): { x: number; y: number; w: number; h: number } | null };
+        __velocity-grid: { getHeaderBoundsAt(id: string): { x: number; y: number; w: number; h: number } | null };
       }).__cgrid;
       const bounds = grid.getHeaderBoundsAt('pnl');
       const canvas = document.querySelector('#grid canvas') as HTMLCanvasElement;

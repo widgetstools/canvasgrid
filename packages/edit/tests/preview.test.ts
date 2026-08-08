@@ -1,4 +1,4 @@
-// @cgrid/edit — preview.test.ts
+// @wellsfargo-starui/velocity-grid-edit — preview.test.ts
 // Covers previewPatches, combineValidators.
 // Spec: docs/superpowers/specs/2026-07-02-cycle-21g-edit-design.md §1.1.2, §3.3.
 // Plan: docs/superpowers/plans/2026-07-02-cycle-21g-edit.md — Task 4 Step 1 (9 cases).

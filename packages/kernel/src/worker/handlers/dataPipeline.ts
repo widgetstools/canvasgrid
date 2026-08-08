@@ -321,7 +321,7 @@ export async function handleDataPipeline(
           post({
             id: req.id,
             type: 'error',
-            error: `[cgrid] failed to deserialise aggFunc '${entry.name}': ${
+            error: `[velocity-grid] failed to deserialise aggFunc '${entry.name}': ${
               String((err as Error).message ?? err)
             }`,
           });
@@ -331,7 +331,7 @@ export async function handleDataPipeline(
           post({
             id: req.id,
             type: 'error',
-            error: `[cgrid] aggFunc '${entry.name}' did not deserialise to a function`,
+            error: `[velocity-grid] aggFunc '${entry.name}' did not deserialise to a function`,
           });
           return;
         }
@@ -374,7 +374,7 @@ export async function handleDataPipeline(
         post({
           id: req.id,
           type: 'error',
-          error: `[cgrid] failed to deserialise comparator '${name}': ${
+          error: `[velocity-grid] failed to deserialise comparator '${name}': ${
             String((err as Error).message ?? err)
           }`,
         });
@@ -384,7 +384,7 @@ export async function handleDataPipeline(
         post({
           id: req.id,
           type: 'error',
-          error: `[cgrid] comparator '${name}' did not deserialise to a function`,
+          error: `[velocity-grid] comparator '${name}' did not deserialise to a function`,
         });
         return;
       }

@@ -22,12 +22,12 @@
  *      sibling's refresh skipped after the thrower's throw escapes.
  */
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { StatusBarHost } from '../src/interaction/statusBar/host';
 import { StatusPanelRegistry } from '../src/interaction/statusBar/registry';
 import type { IStatusPanelComp, StatusPanelParams, StatusBarPosition } from '../src/interaction/statusBar/types';
 
-// Worker + canvas stubs so CGrid construction completes under
+// Worker + canvas stubs so VelocityGrid construction completes under
 // happy-dom — same shape as the customStatusPanel.test.ts setup.
 beforeAll(() => {
   (globalThis as unknown as { Worker: unknown }).Worker = class {
@@ -55,7 +55,7 @@ beforeAll(() => {
   })() as typeof HTMLCanvasElement.prototype.getContext;
 });
 
-/** Minimal emitter that satisfies the slice of `CGridApi` the count +
+/** Minimal emitter that satisfies the slice of `VelocityGridApi` the count +
  *  agg panels read (and that we want to drive in unit tests). Used as
  *  the `api` passed to `StatusBarHost` so each panel's `init()` can
  *  register its real listener path. */
@@ -93,7 +93,7 @@ class CountingPanel implements IStatusPanelComp {
   init(params: StatusPanelParams): void {
     const api = params.api as ApiEmitter;
     this.off = api.addEventListener('selectionChanged', () => this.refresh());
-    this.gui.className = 'cg-counting-status-panel';
+    this.gui.className = 'vg-counting-status-panel';
   }
   getGui(): HTMLElement { return this.gui; }
   refresh(): void { this.refreshCount += 1; }
@@ -109,7 +109,7 @@ class ThrowingPanel implements IStatusPanelComp {
   init(params: StatusPanelParams): void {
     const api = params.api as ApiEmitter;
     this.off = api.addEventListener('selectionChanged', () => this.refresh());
-    this.gui.className = 'cg-throwing-status-panel';
+    this.gui.className = 'vg-throwing-status-panel';
   }
   getGui(): HTMLElement { return this.gui; }
   refresh(): void { throw new Error('counting panel refresh blew up'); }
@@ -171,9 +171,9 @@ describe('Cycle 13 / Task 5 — status-bar perf gate + rAF batching', () => {
   it('triggering 100 selectionChanged events does NOT call cgridCanvas.requestRepaint', () => {
     const container = document.createElement('div');
     container.style.cssText = 'width:800px; height:600px;';
-    container.className = 'cg-theme-quartz';
+    container.className = 'vg-theme-quartz';
     document.body.appendChild(container);
-    const grid = new CGrid<{ id: string }>(container, {
+    const grid = new VelocityGrid<{ id: string }>(container, {
       columnDefs: [{ field: 'id' }],
       getRowId: (r) => r.id,
       statusBar: {

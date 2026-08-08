@@ -1,5 +1,5 @@
-import { CGrid } from '@cgrid/kernel';
-import type { CColDef } from '@cgrid/kernel';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
+import type { CColDef } from '@wellsfargo-starui/velocity-grid';
 import type { Feature } from './index';
 import type { ShowcaseRow } from '../seedData';
 import { makeRows } from '../seedData';
@@ -46,10 +46,10 @@ const COLUMNS: CColDef<ShowcaseRow>[] = [
 ];
 
 type ThemeChoice =
-  | 'cg-theme-quartz'
-  | 'cg-theme-quartz-dark'
-  | 'cg-theme-high-contrast'
-  | 'cg-theme-high-contrast-dark';
+  | 'vg-theme-quartz'
+  | 'vg-theme-quartz-dark'
+  | 'vg-theme-high-contrast'
+  | 'vg-theme-high-contrast-dark';
 
 export const a11y: Feature = {
   id: 'a11y',
@@ -66,16 +66,16 @@ export const a11y: Feature = {
     // keeps its own Quartz baseline rather than inheriting the showcase's
     // global StarUI default (which has no pill in this picker).
     const A11Y_THEMES: ThemeChoice[] = [
-      'cg-theme-quartz', 'cg-theme-quartz-dark',
-      'cg-theme-high-contrast', 'cg-theme-high-contrast-dark',
+      'vg-theme-quartz', 'vg-theme-quartz-dark',
+      'vg-theme-high-contrast', 'vg-theme-high-contrast-dark',
     ];
     let activeTheme: ThemeChoice = A11Y_THEMES.includes(theme as ThemeChoice)
       ? (theme as ThemeChoice)
-      : 'cg-theme-quartz';
+      : 'vg-theme-quartz';
     let tabExits = false;
     let checkboxOnly = false;
 
-    const grid = new CGrid<ShowcaseRow>(gridHost, {
+    const grid = new VelocityGrid<ShowcaseRow>(gridHost, {
       getRowId: (r) => r.id,
       columnDefs: COLUMNS,
       theme: activeTheme,
@@ -93,10 +93,10 @@ export const a11y: Feature = {
     // ─── Theme pills ─────────────────────────────────────────────────
 
     const themeLabels: Record<ThemeChoice, string> = {
-      'cg-theme-quartz': 'Light',
-      'cg-theme-quartz-dark': 'Dark',
-      'cg-theme-high-contrast': 'High contrast',
-      'cg-theme-high-contrast-dark': 'High contrast dark',
+      'vg-theme-quartz': 'Light',
+      'vg-theme-quartz-dark': 'Dark',
+      'vg-theme-high-contrast': 'High contrast',
+      'vg-theme-high-contrast-dark': 'High contrast dark',
     };
     const themeButtons: Partial<Record<ThemeChoice, HTMLButtonElement>> = {};
     const refreshTheme = () => {
@@ -114,7 +114,7 @@ export const a11y: Feature = {
       const btn = document.createElement('button');
       btn.className = 'ctrl-btn' + (t === activeTheme ? ' primary' : '');
       btn.textContent = themeLabels[t];
-      btn.setAttribute('data-testid', `btn-a11y-theme-${t.replace('cg-theme-', '')}`);
+      btn.setAttribute('data-testid', `btn-a11y-theme-${t.replace('vg-theme-', '')}`);
       btn.addEventListener('click', () => {
         activeTheme = t;
         grid.setTheme(t);
@@ -178,9 +178,9 @@ export const a11y: Feature = {
     panel.style.cssText = [
       'position:absolute', 'top:8px', 'right:8px', 'width:300px',
       'max-height:50vh', 'overflow:auto', 'padding:8px 10px',
-      'background:var(--cg-popup-bg, rgba(0,0,0,0.85))',
-      'color:var(--cg-popup-fg, #f3f4f6)',
-      'border:1px solid var(--cg-popup-border, rgba(255,255,255,0.15))',
+      'background:var(--vg-popup-bg, rgba(0,0,0,0.85))',
+      'color:var(--vg-popup-fg, #f3f4f6)',
+      'border:1px solid var(--vg-popup-border, rgba(255,255,255,0.15))',
       'border-radius:6px', 'font:11px/1.45 ui-monospace, monospace',
       'pointer-events:none', 'z-index:50',
     ].join(';');

@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import type { CColDef, CColGroupDef } from '../src/types';
 
-// Stubs Worker + 2D canvas so a CGrid can construct under happy-dom,
+// Stubs Worker + 2D canvas so a VelocityGrid can construct under happy-dom,
 // mirroring the pattern used across the kernel test suite.
 beforeAll(() => {
   (globalThis as any).Worker = class {
@@ -30,7 +30,7 @@ beforeAll(() => {
   })() as any;
 });
 
-// NOTE: `CGrid` has no public `.api` property — the api surface is built
+// NOTE: `VelocityGrid` has no public `.api` property — the api surface is built
 // fresh by the private `makeApi()` and handed out via the `gridReady`
 // event / tool-panel construction (see `runtimeOptions.test.ts` for the
 // established `(grid as any).makeApi()` test pattern). We follow that
@@ -38,7 +38,7 @@ beforeAll(() => {
 function mount(columnDefs: (CColDef | CColGroupDef)[]) {
   const el = document.createElement('div');
   document.body.appendChild(el);
-  const grid = new CGrid(el, { columnDefs, rowData: [], getRowId: (r: any) => r.id });
+  const grid = new VelocityGrid(el, { columnDefs, rowData: [], getRowId: (r: any) => r.id });
   return { grid, api: (grid as any).makeApi() };
 }
 

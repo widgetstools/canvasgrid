@@ -12,7 +12,7 @@
 // `registerComparator` — closures don't cross the worker boundary.
 
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
 import { ComparatorRegistry } from '../src/worker/comparatorRegistry';
 import { SortPass, RowStore } from '../src/worker/dataPipeline';
@@ -132,13 +132,13 @@ describe('SortPass dispatches through ComparatorRegistry', () => {
   });
 });
 
-describe('CGridApi.registerComparator — end-to-end across postMessage', () => {
+describe('VelocityGridApi.registerComparator — end-to-end across postMessage', () => {
   function mkGrid() {
     const container = document.createElement('div');
     container.style.cssText = 'width:800px; height:600px;';
-    container.className = 'cg-theme-quartz';
+    container.className = 'vg-theme-quartz';
     document.body.appendChild(container);
-    const grid = new CGrid<{ id: string; ticker: string }>(container, {
+    const grid = new VelocityGrid<{ id: string; ticker: string }>(container, {
       columnDefs: [
         { field: 'id' },
         { field: 'ticker', headerName: 'Ticker', comparator: 'naturalOrder' },
@@ -183,9 +183,9 @@ describe('CGridApi.registerComparator — end-to-end across postMessage', () => 
   it('inline-closure on col def throws at setSortModel time', async () => {
     const container = document.createElement('div');
     container.style.cssText = 'width:800px; height:600px;';
-    container.className = 'cg-theme-quartz';
+    container.className = 'vg-theme-quartz';
     document.body.appendChild(container);
-    const grid = new CGrid<{ id: string; a: string }>(container, {
+    const grid = new VelocityGrid<{ id: string; a: string }>(container, {
       columnDefs: [
         { field: 'id' },
         { field: 'a', comparator: ((a: string, b: string) => a.localeCompare(b)) as any },

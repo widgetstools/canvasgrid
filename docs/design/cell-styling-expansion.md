@@ -358,7 +358,7 @@ For `'double'`: render as two parallel lines `width` apart. Slightly more painte
 | [cgrid/src/types.ts](cgrid/src/types.ts) | Add `BorderSide`, `BorderSpec`, `BorderStyle` (from Task 1's type system). |
 | [cgrid/src/renderer/painters/cellBordersPainter.ts](cgrid/src/renderer/painters/cellBordersPainter.ts) | **NEW.** Per-cell border painter. |
 | [cgrid/src/renderer/painters/gridLinesPainter.ts](cgrid/src/renderer/painters/gridLinesPainter.ts) | Add `excludeSegments` parameter to suppress default lines where per-cell borders override. |
-| [cgrid/src/cgrid.ts](cgrid/src/cgrid.ts) (or the renderer orchestration) | Wire the new painter into the paint pipeline; run after content paint, before overlays. |
+| [cgrid/src/velocityGrid.ts](cgrid/src/velocityGrid.ts) (or the renderer orchestration) | Wire the new painter into the paint pipeline; run after content paint, before overlays. |
 
 ### Deliverables
 
@@ -482,7 +482,7 @@ Errors logged once per colDef compile, not per cell paint.
 | [cgrid/src/renderer/cellRenderers/contentSlot.ts](cgrid/src/renderer/cellRenderers/contentSlot.ts) | **NEW.** Content dispatcher (text/icon/emoji/icon+text). |
 | [cgrid/src/renderer/cellRenderers/decorators.ts](cgrid/src/renderer/cellRenderers/decorators.ts) | **NEW.** Decorator paint layer + position computation. |
 | [cgrid/src/renderer/cellRenderers/registry.ts](cgrid/src/renderer/cellRenderers/registry.ts) | `textCell`/`numberCell`: replace inline `fillText` with `renderCellContent`; call `paintDecorators` after content. |
-| [cgrid/src/cgrid.ts](cgrid/src/cgrid.ts) | Expose `registerIcon` / `registerIcons` on the public API. |
+| [cgrid/src/velocityGrid.ts](cgrid/src/velocityGrid.ts) | Expose `registerIcon` / `registerIcons` on the public API. |
 
 ### Deliverables
 

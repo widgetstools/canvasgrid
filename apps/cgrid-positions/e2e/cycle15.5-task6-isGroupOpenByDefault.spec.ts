@@ -50,7 +50,7 @@ async function gridReady(page: Page): Promise<void> {
 
 async function seedTwoGroupRows(page: Page): Promise<void> {
   await page.evaluate(() => {
-    const g = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+    const g = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
     const rows: Array<Record<string, unknown>> = [];
     const TICKERS = ['AAPL', 'MSFT'];
     for (let i = 0; i < 20; i++) {
@@ -81,31 +81,31 @@ test.describe('Cycle 15.5 / Task 6 — isGroupOpenByDefault + resetRowGroupExpan
 
     // After seeding: callback fired → groups are expanded.
     const initialKeys = await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return Array.from(api.getExpandedKeys());
     });
     expect(initialKeys.length).toBeGreaterThan(0);
 
     // collapseAll clears all expanded state.
     await page.evaluate(() => {
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.collapseAll();
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.collapseAll();
     });
     await waitForFrames(page, 12);
 
     const collapsedKeys = await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return Array.from(api.getExpandedKeys());
     });
     expect(collapsedKeys.length).toBe(0);
 
     // resetRowGroupExpansion re-runs the isGroupOpenByDefault callback.
     await page.evaluate(() => {
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.resetRowGroupExpansion();
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.resetRowGroupExpansion();
     });
     await waitForFrames(page, 12);
 
     const resetKeys = await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return Array.from(api.getExpandedKeys());
     });
     expect(resetKeys.length).toBeGreaterThan(0);

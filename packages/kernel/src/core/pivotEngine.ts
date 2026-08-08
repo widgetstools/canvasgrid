@@ -1,4 +1,4 @@
-// Cycle 19 / Task 5 — owns the pivot subsystem extracted from CGrid:
+// Cycle 19 / Task 5 — owns the pivot subsystem extracted from VelocityGrid:
 // the canonical `PivotState` (pivotMode + pivotColumns + valueColumns),
 // the `pivotActive` flag that gates whether the synthesized pivot tree
 // is currently installed, the saved primary column tree + group state
@@ -7,7 +7,7 @@
 // signature-compare that keeps steady-state scrolls from churning the
 // column tree.
 //
-// CGrid is the thin consumer:
+// VelocityGrid is the thin consumer:
 //   • Public pivot API (`isPivotMode` / `setPivotMode` / `getPivotColumns`
 //     / …) delegates to `pivotEngine.*`.
 //   • Chunk-arrival path calls `pivotEngine.maybeSyncPivotColumns(chunk)`
@@ -24,7 +24,7 @@
 // the group state, the columnDefsMap, the visible column order, the
 // column layout, the subgrid stack, and repaints the canvas. Every
 // touch is routed through explicit deps callbacks so the engine stays
-// unaware of CGrid's private fields.
+// unaware of VelocityGrid's private fields.
 //
 // Cycle 19 / Task 5b — the pivot-mode-toggle now owns the AG-v36
 // "primaries auto-hide under pivot mode" invariant. When the mode
@@ -49,7 +49,7 @@ import type { ColumnTree } from './columnTree';
 import { ColumnGroupState } from './columnGroupState';
 import type { ResolvedColDef } from './propertyChain';
 import type { ColumnLayout } from './layout';
-import type { CGridEvent, CGridOptions } from '../types';
+import type { VelocityGridEvent, VelocityGridOptions } from '../types';
 import type { ViewportChunk } from '../worker/protocol';
 import type { PivotModel } from '../worker/passes/pivotPass';
 import {
@@ -66,7 +66,7 @@ import {
 import { resolveColumnTree } from './columnTree';
 import { resolveColumnWidths } from './layout';
 
-/** Subset of `CGridOptions` the pivot engine reads. Passed through a
+/** Subset of `VelocityGridOptions` the pivot engine reads. Passed through a
  *  closure so per-tick `setGridOption` flips light up on the next
  *  chunk-arrival without re-wiring the engine. */
 export interface PivotEngineOptions {
@@ -74,8 +74,8 @@ export interface PivotEngineOptions {
   pivotGrandTotals?: boolean;
   pivotRowTotals?: 'before' | 'after' | null;
   pivotColumnGroupTotals?: 'before' | 'after' | null;
-  processPivotResultColDef?: CGridOptions<unknown>['processPivotResultColDef'];
-  processPivotResultColGroupDef?: CGridOptions<unknown>['processPivotResultColGroupDef'];
+  processPivotResultColDef?: VelocityGridOptions<unknown>['processPivotResultColDef'];
+  processPivotResultColGroupDef?: VelocityGridOptions<unknown>['processPivotResultColGroupDef'];
 }
 
 /** Panel host surface consumed on pivot-state changes. `null` when the
@@ -85,19 +85,19 @@ export interface PivotPanelHostSurface {
   setPivotActive(active: boolean): void;
 }
 
-/** Deps interface: every access the engine needs into CGrid state,
+/** Deps interface: every access the engine needs into VelocityGrid state,
  *  worker plumbing, and layout / repaint pipeline. Intentionally fat —
  *  the pivot swap orchestrates every rendering-state field the tree
  *  swap touches, and routing each one through an explicit callback
- *  keeps the engine unaware of CGrid's private fields. */
+ *  keeps the engine unaware of VelocityGrid's private fields. */
 export interface PivotEngineDeps<TRow> {
-  events: TypedEventEmitter<CGridEvent>;
+  events: TypedEventEmitter<VelocityGridEvent>;
   isDestroyed(): boolean;
   getOptions(): PivotEngineOptions;
 
   // ── worker round-trip ────────────────────────────────────────────────
   /** Fresh workerColumns snapshot (already includes pivot/value
-   *  columns as extras). CGrid owns the derivation; engine ships it. */
+   *  columns as extras). VelocityGrid owns the derivation; engine ships it. */
   workerColumns(): unknown[];
   updateWorkerColumns(cols: unknown[]): Promise<unknown>;
   setWorkerPivotModel(model: PivotModel): Promise<unknown>;
@@ -143,7 +143,7 @@ export interface PivotEngineDeps<TRow> {
   /** Same signature as the public API — the engine calls this on
    *  pivot-mode flips to drive the primary auto-hide / restore pass
    *  through the same code path the panel + `applyColumnState` use.
-   *  Routing through CGrid keeps the `columnVisible` event + worker
+   *  Routing through VelocityGrid keeps the `columnVisible` event + worker
    *  updateColumns roundtrip intact. */
   setColumnsVisible(colIds: string[], visible: boolean): void;
 }
@@ -199,7 +199,7 @@ export class PivotEngine<TRow = unknown> {
   isPivotStateActive(): boolean { return this.state.isPivotActive(); }
   getPivotColumns(): string[] { return this.state.getPivotColumns(); }
   getValueColumns(): PivotValueColumn[] { return this.state.getValueColumns(); }
-  /** Same signature CGrid exposes on the public API (plain object list). */
+  /** Same signature VelocityGrid exposes on the public API (plain object list). */
   getValueColumnsApiShape(): Array<{ colId: string; aggFunc: string }> {
     return this.state.getValueColumns().map((v) => ({ colId: v.colId, aggFunc: v.aggFunc }));
   }
@@ -281,7 +281,7 @@ export class PivotEngine<TRow = unknown> {
     this.deps.setWorkerPivotMaxGeneratedColumns(cap)
       .then(() => { if (!this.deps.isDestroyed()) this.deps.requestViewport(); })
       .catch((err) => {
-        if (!this.deps.isDestroyed()) console.error('[cgrid] setPivotMaxGeneratedColumns:', err);
+        if (!this.deps.isDestroyed()) console.error('[velocity-grid] setPivotMaxGeneratedColumns:', err);
       });
   }
 
@@ -292,7 +292,7 @@ export class PivotEngine<TRow = unknown> {
     this.deps.setWorkerStrictPivotColumnOrder(strict === true)
       .then(() => { if (!this.deps.isDestroyed()) this.deps.requestViewport(); })
       .catch((err) => {
-        if (!this.deps.isDestroyed()) console.error('[cgrid] setStrictPivotColumnOrder:', err);
+        if (!this.deps.isDestroyed()) console.error('[velocity-grid] setStrictPivotColumnOrder:', err);
       });
   }
 
@@ -438,7 +438,7 @@ export class PivotEngine<TRow = unknown> {
         if (this.deps.isDestroyed()) return;
         this.deps.requestViewport();
       })
-      .catch((err) => { if (!this.deps.isDestroyed()) console.error('[cgrid]', err); });
+      .catch((err) => { if (!this.deps.isDestroyed()) console.error('[velocity-grid]', err); });
   }
 
   /** Task 5b — apply the AG-v36 "primaries auto-hide under pivot mode"
@@ -526,10 +526,10 @@ export class PivotEngine<TRow = unknown> {
     const pivotTree = resolveColumnTree<TRow>(defs);
     this.deps.setColumnTree(pivotTree);
     // Late import (require) would circularise; deps.setColumnGroupState
-    // gets a fresh instance from CGrid via `subscribeColumnGroupState`
+    // gets a fresh instance from VelocityGrid via `subscribeColumnGroupState`
     // which the ctor sets up. We must construct the new state HERE so
     // the freshly-swapped tree is what the pivot column-group chevron
-    // reads from. CGrid's subscribe hook re-wires the change listener
+    // reads from. VelocityGrid's subscribe hook re-wires the change listener
     // after we install the new state.
     this.deps.setColumnGroupState(new ColumnGroupState(pivotTree));
     this.deps.subscribeColumnGroupState();

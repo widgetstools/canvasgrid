@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { installGridTestEnv } from './setup';
-import { CGridExt } from '../src/cgridExt';
-import { wireEditIntoKernel } from '@cgrid/edit';
+import { VelocityGridExt } from '../src/velocityGridExt';
+import { wireEditIntoKernel } from '@wellsfargo-starui/velocity-grid-edit';
 
 beforeAll(() => installGridTestEnv());
 beforeEach(() => localStorage.clear());
@@ -9,7 +9,7 @@ beforeEach(() => localStorage.clear());
 function mountExt() {
   const host = document.createElement('div');
   document.body.appendChild(host);
-  const ext = new CGridExt(host, {
+  const ext = new VelocityGridExt(host, {
     getRowId: (r: { a: string }) => r.a,
     columnDefs: [
       { colId: 'a', field: 'a', editable: true },
@@ -31,7 +31,7 @@ describe('editing settings modules', () => {
       ['shortcuts', 'Shortcuts'],
     ] as const) {
       ext.openSettings(id);
-      expect(host.querySelector('.cgext-sheet-title')?.textContent).toBe(title);
+      expect(host.querySelector('.vgext-sheet-title')?.textContent).toBe(title);
     }
     ext.destroy();
     host.remove();

@@ -2,11 +2,11 @@
  * Cycle 13 / Task 1 — StatusPanelRegistry.
  *
  * Plain `Map<key, ctor>` wrapper that owns status-panel component
- * registration. The CGrid constructor seeds the built-in keys
+ * registration. The VelocityGrid constructor seeds the built-in keys
  * (`agTotalRowCountComponent`, …) via `seedBuiltIns()` and then merges
- * `CGridOptions.components` entries on top — apps add new keys or override
+ * `VelocityGridOptions.components` entries on top — apps add new keys or override
  * built-ins by registering against the same key. Same shape as
- * `ToolPanelRegistry` so a single `CGridOptions.components` channel feeds
+ * `ToolPanelRegistry` so a single `VelocityGridOptions.components` channel feeds
  * both surfaces.
  *
  * Task 2 wired the real count-panel ctors into the four
@@ -27,7 +27,7 @@ import type { IStatusPanelComp, StatusPanelComponent, StatusPanelParams } from '
 class StubBuiltInStatusPanel implements IStatusPanelComp {
   private gui: HTMLDivElement = document.createElement('div');
   init(_params: StatusPanelParams): void {
-    this.gui.className = 'cg-status-panel-stub';
+    this.gui.className = 'vg-status-panel-stub';
   }
   getGui(): HTMLElement {
     return this.gui;
@@ -88,7 +88,7 @@ export class StatusPanelRegistry {
 
   /** Seed the built-in keys with their real implementations (or the
    *  inert stub when a real ctor hasn't shipped yet). Called once at
-   *  CGrid construction BEFORE merging `CGridOptions.components`, so
+   *  VelocityGrid construction BEFORE merging `VelocityGridOptions.components`, so
    *  app-supplied entries can still override either the real built-in
    *  or the stub by registering against the same key.
    *

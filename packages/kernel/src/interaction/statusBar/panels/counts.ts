@@ -13,8 +13,8 @@
  * the design notes (`cycle-13-statusbar-design.md` § Task 2):
  *
  *   - Hierarchy is carried by COLOUR, never weight. Label uses
- *     `--cg-status-bar-fg-muted` (60% alpha), value uses
- *     `--cg-status-bar-fg`. Mono at 13px can't carry weight.
+ *     `--vg-status-bar-fg-muted` (60% alpha), value uses
+ *     `--vg-status-bar-fg`. Mono at 13px can't carry weight.
  *   - `Intl.NumberFormat('en-US')` is the default value formatter;
  *     `statusPanelParams.numberFormatter` is the per-panel escape
  *     hatch (custom locale, accountancy format, etc.).
@@ -28,21 +28,21 @@
  * status bar updates must NOT call cgridCanvas.requestRepaint"),
  * which holds because the only mutation is `textContent` on a span.
  */
-import type { CGridEvent } from '../../../types';
+import type { VelocityGridEvent } from '../../../types';
 import type { IStatusPanelComp, StatusPanelParams } from '../types';
 
-/** The subset of `CGridApi` the count panels touch. Typed inline
- *  rather than importing `CGridApi` to avoid forming a circular dep
- *  through `cgrid.ts` (status-bar host is referenced by `cgrid.ts`,
+/** The subset of `VelocityGridApi` the count panels touch. Typed inline
+ *  rather than importing `VelocityGridApi` to avoid forming a circular dep
+ *  through `velocityGrid.ts` (status-bar host is referenced by `velocityGrid.ts`,
  *  which exports the api). Apps that pass a partial api in a test
  *  harness need only stub these four methods. */
 interface CountPanelApi {
   getTotalRowCount(): number;
   getDisplayedRowCount(): number;
   getSelectedRowIds(): string[];
-  addEventListener<K extends CGridEvent['type']>(
+  addEventListener<K extends VelocityGridEvent['type']>(
     type: K,
-    handler: (event: Extract<CGridEvent, { type: K }>) => void,
+    handler: (event: Extract<VelocityGridEvent, { type: K }>) => void,
   ): () => void;
 }
 
@@ -69,19 +69,19 @@ function resolveFormatter(params: StatusPanelParams): CountValueFormatter {
  *  declared in Task 2. Returns the wrapper element AND a setter so
  *  the panel can update the value without a re-query. The wrapper is
  *  re-used both as the root of a single-fact panel AND as the
- *  `.cg-status-panel-count-pair` inside the combined panel — see the
+ *  `.vg-status-panel-count-pair` inside the combined panel — see the
  *  `pair` flag. */
 function buildLabelValue(
   label: string,
   asPair: boolean,
 ): { root: HTMLElement; setValue: (text: string) => void } {
   const root = document.createElement('span');
-  root.className = asPair ? 'cg-status-panel-count-pair' : 'cg-status-panel-count';
+  root.className = asPair ? 'vg-status-panel-count-pair' : 'vg-status-panel-count';
   const labelEl = document.createElement('span');
-  labelEl.className = 'cg-status-panel-count-label';
+  labelEl.className = 'vg-status-panel-count-label';
   labelEl.textContent = label;
   const valueEl = document.createElement('span');
-  valueEl.className = 'cg-status-panel-count-value';
+  valueEl.className = 'vg-status-panel-count-value';
   root.append(labelEl, valueEl);
   return { root, setValue: (text) => { valueEl.textContent = text; } };
 }
@@ -197,7 +197,7 @@ export class AgTotalAndFilteredRowCountPanel implements IStatusPanelComp {
 
   constructor() {
     this.gui = document.createElement('span');
-    this.gui.className = 'cg-status-panel-count cg-status-panel-count--combined';
+    this.gui.className = 'vg-status-panel-count vg-status-panel-count--combined';
     const total = buildLabelValue('Total Rows:', /* asPair= */ true);
     const filtered = buildLabelValue('Rows:', /* asPair= */ true);
     this.gui.append(total.root, filtered.root);

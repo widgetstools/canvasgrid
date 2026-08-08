@@ -91,7 +91,7 @@ export interface AutosizeGroupContext {
    *  so the indent lives in the column ORDER rather than in the cell. */
   indentUnit: number;
   /** `true` suppresses the `(count)` suffix regardless of `childCount`
-   *  (mirrors `CGridOptions.suppressCount` / `groupRowRendererParams.suppressCount`). */
+   *  (mirrors `VelocityGridOptions.suppressCount` / `groupRowRendererParams.suppressCount`). */
   suppressCount: boolean;
   /** Gap between the value text and the `(count)` suffix in px.
    *  Constant in the renderer (`COUNT_GAP = 4`). */

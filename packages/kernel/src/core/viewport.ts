@@ -151,7 +151,7 @@ export function computeViewport(opts: ViewportInput): ViewportState {
   // the scrollable data region. Headers and the floating-filter row
   // (Cycle 7 / Task 1) ride here by default. A top-pinned totals
   // (Cycle 14 / Task 1) does too when its subgrid is stacked before
-  // the data subgrid in `cgrid.ts`.
+  // the data subgrid in `velocityGrid.ts`.
   for (const subgrid of preDataSubgrids) {
     const rows = subgrid.getRowCount();
     for (let local = 0; local < rows; local++) {

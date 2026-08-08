@@ -9,7 +9,7 @@ import type {
   IconRef,
   ResolvedFragment,
 } from './types';
-import { parse as parseExpr, compile as compileExpr, evaluate as evaluateExpr } from '@cgrid/expression';
+import { parse as parseExpr, compile as compileExpr, evaluate as evaluateExpr } from '@wellsfargo-starui/velocity-grid-expression';
 import { tokenize, type Token } from './tokenizer';
 import { parseExcel, type ExcelFormatTree } from './excel/parser';
 import { evaluateExcel } from './excel/evaluator';

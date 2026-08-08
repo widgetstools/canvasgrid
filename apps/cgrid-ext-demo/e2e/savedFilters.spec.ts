@@ -9,23 +9,23 @@ import { bootCustomizer } from './helpers/customizer';
 
 test.beforeEach(async ({ page }) => {
   await bootCustomizer(page);
-  await expect(page.locator('[data-testid="cgext-saved-filters"]')).toBeVisible();
+  await expect(page.locator('[data-testid="vgext-saved-filters"]')).toBeVisible();
 });
 
 function toolbar(page: Page) {
-  return page.locator('[data-testid="cgext-saved-filters"]');
+  return page.locator('[data-testid="vgext-saved-filters"]');
 }
 
 function pills(page: Page) {
-  return toolbar(page).locator('.cgext-sf-pill');
+  return toolbar(page).locator('.vgext-sf-pill');
 }
 
 function addBtn(page: Page) {
-  return toolbar(page).locator('.cgext-sf-add');
+  return toolbar(page).locator('.vgext-sf-add');
 }
 
 function clearBtn(page: Page) {
-  return toolbar(page).locator('.cgext-sf-clear');
+  return toolbar(page).locator('.vgext-sf-clear');
 }
 
 async function setCurrencyFilter(page: Page, value: string): Promise<void> {
@@ -85,15 +85,15 @@ test.describe('Saved filters (Markets parity)', () => {
 
     const pill = pills(page).first();
     await pill.hover();
-    await pill.locator('.cgext-sf-act[title="Rename"]').click();
-    const input = page.locator('.cgext-sf-rename-input');
+    await pill.locator('.vgext-sf-act[title="Rename"]').click();
+    const input = page.locator('.vgext-sf-rename-input');
     await expect(input).toBeVisible();
     await input.fill('USD only');
-    await page.locator('.cgext-sf-pop-save').click();
-    await expect(pill.locator('.cgext-sf-label')).toHaveText('USD only');
+    await page.locator('.vgext-sf-pop-save').click();
+    await expect(pill.locator('.vgext-sf-label')).toHaveText('USD only');
 
     await pill.hover();
-    await pill.locator('.cgext-sf-act[title="Delete"]').click();
+    await pill.locator('.vgext-sf-act[title="Delete"]').click();
     await expect(pills(page)).toHaveCount(0);
   });
 
@@ -146,7 +146,7 @@ test.describe('Saved filters (Markets parity)', () => {
     await setCurrencyFilter(page, 'JPY');
     await addBtn(page).click();
     await expect(pills(page)).toHaveCount(1);
-    const label = await pills(page).first().locator('.cgext-sf-label').innerText();
+    const label = await pills(page).first().locator('.vgext-sf-label').innerText();
 
     // Layout-tier modules land in the active layout via updateLayout (disk),
     // then ride persistState's debounced autosave into localStorage.
@@ -154,7 +154,7 @@ test.describe('Saved filters (Markets parity)', () => {
       (window as unknown as { __ext: { grid: { updateLayout: () => void } } }).__ext.grid.updateLayout();
     });
     await page.waitForFunction(() => {
-      const v = localStorage.getItem('cgrid:state:ext-demo') ?? '';
+      const v = localStorage.getItem('velocity-grid:state:ext-demo') ?? '';
       return v.includes('saved-filters') && v.includes('JPY');
     }, null, { timeout: 10_000 });
 
@@ -164,6 +164,6 @@ test.describe('Saved filters (Markets parity)', () => {
     });
     await expect(toolbar(page)).toBeVisible();
     await expect.poll(async () => pills(page).count(), { timeout: 15_000 }).toBe(1);
-    await expect(pills(page).first().locator('.cgext-sf-label')).toHaveText(label);
+    await expect(pills(page).first().locator('.vgext-sf-label')).toHaveText(label);
   });
 });

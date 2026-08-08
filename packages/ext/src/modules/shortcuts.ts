@@ -2,8 +2,8 @@
  * Shortcuts — Customize module (starui customizer-ui #07).
  * Module settings + shortcut list / editor (master-detail).
  */
-import type { ShortcutDefinition, ShortcutsSettings } from '@cgrid/edit';
-import type { SettingsModule, CgExtContext, ModuleInstance } from '../extension/types';
+import type { ShortcutDefinition, ShortcutsSettings } from '@wellsfargo-starui/velocity-grid-edit';
+import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import { leafColumns } from '../ui/gridSchema';
 import {
   band, caps, el, injectCockpitStyles, lucideSvg, numberInput, pillGroup, row, switchToggle, textInput,
@@ -49,7 +49,7 @@ export function shortcutsModule(): SettingsModule {
 
     init(): void { injectCockpitStyles(); },
 
-    mount(host: HTMLElement, ctx: CgExtContext): ModuleInstance {
+    mount(host: HTMLElement, ctx: VelocityGridExtContext): ModuleInstance {
       let settingsCommitted: ShortcutsSettings | null = null;
       let settingsDraft: ShortcutsSettings | null = null;
       let defs: ShortcutDefinition[] = [];

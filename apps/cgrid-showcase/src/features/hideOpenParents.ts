@@ -1,4 +1,4 @@
-import { CGrid } from '@cgrid/kernel';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
 import type { ShowcaseRow } from '../seedData';
 import type { Feature } from './index';
 import { makeRows } from '../seedData';
@@ -9,7 +9,7 @@ export const hideOpenParents: Feature = {
   description: 'groupHideOpenParents: true — expanding a group hides the parent row, showing only its children inline.',
 
   mount(gridHost, _controls, theme) {
-    const grid = new CGrid<ShowcaseRow>(gridHost, {
+    const grid = new VelocityGrid<ShowcaseRow>(gridHost, {
       getRowId: (r) => r.id,
       columnDefs: [
         { colId: 'ticker', field: 'ticker', headerName: 'Ticker', cellDataType: 'text', flex: 1 },

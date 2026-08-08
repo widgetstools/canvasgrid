@@ -1,18 +1,18 @@
 // Cycle 19 / Task 3 — owns the worker-coordination subsystem extracted from
-// CGrid: the WorkerClient instance + its handler wiring, the viewport-fetch
+// VelocityGrid: the WorkerClient instance + its handler wiring, the viewport-fetch
 // dispatch that ViewportManager forwards into (Task 2 deliberately left this
-// in CGrid as `handleViewportChunk` — Task 3 absorbs the worker-call half
+// in VelocityGrid as `handleViewportChunk` — Task 3 absorbs the worker-call half
 // here and surfaces the main-side chunk-reply mutation as the
 // `onViewportChunk` deps callback), and the worker-side method surface
 // (setRowData / applyTransaction / setSortModel / … pure pass-throughs).
 //
-// CGrid is the thin consumer: `this.workerCoord.requestViewport(...)` for
+// VelocityGrid is the thin consumer: `this.workerCoord.requestViewport(...)` for
 // the viewport seam, `this.workerCoord.applyTransaction(...)` for the
 // transaction queue interface, and the various model setters reach the
 // worker through this surface. Methods whose worker call is wrapped in
 // significant main-side logic (resolving heightsByRowId, updating the
 // rowDataById cache, recomputeAlwaysPass, recomputeViewport, persistent
-// selection rebuilds) stay in CGrid and call into the coordinator only
+// selection rebuilds) stay in VelocityGrid and call into the coordinator only
 // for the worker-side bit.
 //
 // The async-batch flushing timer (`asyncTransactionWaitMillis` /
@@ -33,7 +33,7 @@ import type { PivotModel } from '../worker/passes/pivotPass';
 export interface WorkerCoordinatorDeps {
   /** Worker pushed a `modelUpdated` (sync transaction, async-tx flush, set
    *  model swap, etc.). `groupKeys` is present when grouping is active so
-   *  CGrid's `expandedKeys` mirror stays in lockstep. */
+   *  VelocityGrid's `expandedKeys` mirror stays in lockstep. */
   onModelUpdated(visibleCount: number, groupKeys?: string[], expandedKeys?: string[] | null): void;
   /** Worker flushed a batch of async transactions; `results` carries one
    *  TransactionResult per buffered `applyTransactionAsync` call. */
@@ -54,12 +54,12 @@ export interface WorkerCoordinatorDeps {
    *  rowId order for `options.postSortRows` evaluation. Reply via
    *  `postSortRowsResult(callId, reordered)`. */
   onPostSortRowsCandidates(rowIds: string[], callId: number): void;
-  /** Worker-level error surface — logged by CGrid as `[cgrid] worker error: …`. */
+  /** Worker-level error surface — logged by VelocityGrid as `[velocity-grid] worker error: …`. */
   onError(message: string): void;
 
   /** Main-side chunk-reply handler — invoked after every successful
    *  `getViewport` round-trip the coordinator dispatched on behalf of
-   *  ViewportManager. CGrid does the column-state sync (pivot column
+   *  ViewportManager. VelocityGrid does the column-state sync (pivot column
    *  materialisation), flash registry ingest, row-height index refresh,
    *  recomputeViewport + repaint, a11y refresh, `aggregationChanged`
    *  emission, and the `firstDataRendered` latch here.
@@ -75,7 +75,7 @@ export interface WorkerCoordinatorDeps {
   ): void | Promise<void>;
 
   /** Destroy guard — coordinator skips its `console.error` of a late
-   *  worker rejection when CGrid is already torn down. */
+   *  worker rejection when VelocityGrid is already torn down. */
   isDestroyed(): boolean;
 }
 
@@ -84,10 +84,10 @@ export class WorkerCoordinator {
 
   constructor(worker: WorkerLike, deps: WorkerCoordinatorDeps) {
     this.deps = deps;
-    // Wire the worker handlers through CGrid's deps. The arrow functions
+    // Wire the worker handlers through VelocityGrid's deps. The arrow functions
     // capture `this.deps` not the closure-bound `deps` so a future swap (not
     // currently exposed) would light up; in practice deps is constructed
-    // once per CGrid and lives for the grid's lifetime.
+    // once per VelocityGrid and lives for the grid's lifetime.
     const handlers: WorkerClientHandlers = {
       onModelUpdated: (vc, gk, ek) => this.deps.onModelUpdated(vc, gk, ek),
       onAsyncTransactionsFlushed: (results) => this.deps.onAsyncTransactionsFlushed(results),
@@ -118,7 +118,7 @@ export class WorkerCoordinator {
   // ── Viewport dispatch ────────────────────────────────────────────────────
 
   /** Fire `getViewport` for the velocity-expanded range ViewportManager
-   *  computed and hand the resolved chunk + stickyAncestors back to CGrid
+   *  computed and hand the resolved chunk + stickyAncestors back to VelocityGrid
    *  via `deps.onViewportChunk`. Returned Promise resolves AFTER the
    *  main-side mutation in `onViewportChunk` settles so ViewportManager's
    *  coalescing flag releases at the right moment.
@@ -343,6 +343,6 @@ export class WorkerCoordinator {
 }
 
 // Re-export the shapes external callers need so they can be imported through
-// the coordinator module without reaching into ../worker/*. Keeps cgrid.ts'
+// the coordinator module without reaching into ../worker/*. Keeps velocityGrid.ts'
 // worker-protocol import surface narrow.
 export type { WorkerLike } from '../worker/client';

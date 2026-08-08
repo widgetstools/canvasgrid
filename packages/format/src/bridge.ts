@@ -1,7 +1,7 @@
 // Cycle 21c / Task 17 — the kernel bridge.
 //
-// `wireIntoKernel(grid, opts?)` registers @cgrid/format's capabilities
-// on a CGrid instance via kernel's PUBLIC registration APIs:
+// `wireIntoKernel(grid, opts?)` registers @wellsfargo-starui/velocity-grid-format's capabilities
+// on a VelocityGrid instance via kernel's PUBLIC registration APIs:
 //
 //   1. the format compiler (kernel's compileFormatSlots pass invokes it
 //      for string `valueFormatter`s and `type: 'composite'` ColDefs),
@@ -10,7 +10,7 @@
 //      apps at zero icon-bundle cost),
 //   3. any `opts.additionalIconSets` (registered synchronously).
 //
-// Kernel never runtime-imports @cgrid/format; this module is the single
+// Kernel never runtime-imports @wellsfargo-starui/velocity-grid-format; this module is the single
 // place where format reaches into kernel, and it does so only through
 // the grid surface passed in (plus a dynamic import for the icon
 // bundle). Idempotent per grid instance via a `__formatBridgeWired`
@@ -19,7 +19,7 @@
 import type { WireOptions, FormatSource, CompileFormatOptions } from './types';
 import { compileFormat } from './compile';
 
-/** Structural surface of the CGrid instance (or CGridApi) the bridge
+/** Structural surface of the VelocityGrid instance (or VelocityGridApi) the bridge
  *  registers against. Type-only — no runtime kernel import. */
 interface KernelGridSurface {
   registerFormatCompiler(
@@ -30,7 +30,7 @@ interface KernelGridSurface {
 }
 
 /**
- * Wire @cgrid/format into a CGrid instance. Idempotent — re-calling on
+ * Wire @wellsfargo-starui/velocity-grid-format into a VelocityGrid instance. Idempotent — re-calling on
  * an already-wired grid is a no-op.
  */
 export function wireIntoKernel(grid: unknown, opts?: WireOptions): void {
@@ -74,7 +74,7 @@ export function wireIntoKernel(grid: unknown, opts?: WireOptions): void {
 
 async function loadLucideBundle(): Promise<Record<string, string> | null> {
   try {
-    const mod = await import('@cgrid/kernel/icons/lucide.generated');
+    const mod = await import('@wellsfargo-starui/velocity-grid/icons/lucide.generated');
     return (mod as { lucideBundle: Record<string, string> }).lucideBundle;
   } catch {
     return null;

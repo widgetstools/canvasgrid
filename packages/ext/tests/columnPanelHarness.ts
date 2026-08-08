@@ -41,6 +41,6 @@ export function mountColumnPanel(cols: string[] = ['px'], grid = new FakeColumnG
   const host: ColumnPanelHost = { targetCols: () => cols, grid, onApplied: vi.fn() };
   const m = columnPanelMenu(anchor, host);
   m.toggle();
-  const panel = document.querySelector<HTMLElement>('.cgext-menu.cgext-col')!;
+  const panel = document.querySelector<HTMLElement>('.vgext-menu.vgext-col')!;
   return { anchor, host, grid, m, panel };
 }

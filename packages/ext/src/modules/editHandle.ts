@@ -1,5 +1,5 @@
-/** Shared accessor for the `@cgrid/edit` bridge attached by wireEditIntoKernel. */
-import type { EditBridgeHandle } from '@cgrid/edit';
+/** Shared accessor for the `@wellsfargo-starui/velocity-grid-edit` bridge attached by wireEditIntoKernel. */
+import type { EditBridgeHandle } from '@wellsfargo-starui/velocity-grid-edit';
 
 export function editHandle(grid: unknown): EditBridgeHandle | null {
   return (grid as { __editBridgeWired?: EditBridgeHandle }).__editBridgeWired ?? null;

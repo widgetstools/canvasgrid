@@ -2,7 +2,7 @@
  * Saved filter pills — title-bar strip that captures / toggles / persists
  * named filter models per layout (Markets Grid "quick filter buttons").
  */
-import type { CgExtContext, ToolbarItem, ToolbarItemInstance } from '../extension/types';
+import type { VelocityGridExtContext, ToolbarItem, ToolbarItemInstance } from '../extension/types';
 import { svg } from './ui';
 import {
   doesRowMatchFilterModel,
@@ -67,7 +67,7 @@ function validateFilters(raw: unknown): SavedFilter[] {
   return out;
 }
 
-function iconBtn(path: string, title: string, cls = 'cgext-sf-iconbtn', size = 14): HTMLButtonElement {
+function iconBtn(path: string, title: string, cls = 'vgext-sf-iconbtn', size = 14): HTMLButtonElement {
   const b = document.createElement('button');
   b.type = 'button';
   b.className = cls;
@@ -78,7 +78,7 @@ function iconBtn(path: string, title: string, cls = 'cgext-sf-iconbtn', size = 1
 }
 
 function ensureStyles(): void {
-  const ID = 'cgext-saved-filters-styles';
+  const ID = 'vgext-saved-filters-styles';
   if (document.getElementById(ID)) return;
   const style = document.createElement('style');
   style.id = ID;
@@ -101,22 +101,22 @@ export function savedFiltersItem(): ToolbarItem {
       let counts: Record<string, number> = {};
 
       const root = document.createElement('div');
-      root.className = 'cgext-sf';
-      root.setAttribute('data-testid', 'cgext-saved-filters');
+      root.className = 'vgext-sf';
+      root.setAttribute('data-testid', 'vgext-saved-filters');
 
       const scroller = document.createElement('div');
-      scroller.className = 'cgext-sf-scroll';
+      scroller.className = 'vgext-sf-scroll';
       const pillsEl = document.createElement('div');
-      pillsEl.className = 'cgext-sf-pills';
+      pillsEl.className = 'vgext-sf-pills';
       scroller.appendChild(pillsEl);
 
-      const prevBtn = iconBtn(I.chevronL, 'Scroll filters left', 'cgext-sf-nav');
-      const nextBtn = iconBtn(I.chevronR, 'Scroll filters right', 'cgext-sf-nav');
+      const prevBtn = iconBtn(I.chevronL, 'Scroll filters left', 'vgext-sf-nav');
+      const nextBtn = iconBtn(I.chevronR, 'Scroll filters right', 'vgext-sf-nav');
       prevBtn.hidden = true;
       nextBtn.hidden = true;
 
-      const clearBtn = iconBtn(I.filterX, 'Deactivate all filter pills', 'cgext-sf-iconbtn cgext-sf-clear');
-      const addBtn = iconBtn(I.plus, 'Save current filters as a pill', 'cgext-sf-iconbtn cgext-sf-add');
+      const clearBtn = iconBtn(I.filterX, 'Deactivate all filter pills', 'vgext-sf-iconbtn vgext-sf-clear');
+      const addBtn = iconBtn(I.plus, 'Save current filters as a pill', 'vgext-sf-iconbtn vgext-sf-add');
       addBtn.disabled = true;
 
       root.append(prevBtn, scroller, nextBtn, clearBtn, addBtn);
@@ -165,9 +165,9 @@ export function savedFiltersItem(): ToolbarItem {
       };
 
       const paintCounts = (): void => {
-        for (const pill of Array.from(pillsEl.querySelectorAll<HTMLElement>('.cgext-sf-pill'))) {
+        for (const pill of Array.from(pillsEl.querySelectorAll<HTMLElement>('.vgext-sf-pill'))) {
           const id = pill.dataset.id!;
-          const badge = pill.querySelector('.cgext-sf-count');
+          const badge = pill.querySelector('.vgext-sf-count');
           if (badge) badge.textContent = counts[id] != null ? String(counts[id]) : '–';
         }
       };
@@ -197,7 +197,7 @@ export function savedFiltersItem(): ToolbarItem {
       };
 
       const closeEditors = (): void => {
-        document.querySelectorAll('.cgext-sf-pop').forEach((el) => el.remove());
+        document.querySelectorAll('.vgext-sf-pop').forEach((el) => el.remove());
       };
 
       const placePop = (pop: HTMLElement, anchor: HTMLElement, preferH = 160): void => {
@@ -219,28 +219,28 @@ export function savedFiltersItem(): ToolbarItem {
       const openRenameEditor = (pill: SavedFilter, anchor: HTMLElement): void => {
         closeEditors();
         const pop = document.createElement('div');
-        pop.className = 'cgext-sf-pop cgext-sf-rename';
+        pop.className = 'vgext-sf-pop vgext-sf-rename';
         pop.setAttribute('role', 'dialog');
         pop.setAttribute('aria-label', 'Rename filter');
         const title = document.createElement('div');
-        title.className = 'cgext-sf-pop-title';
+        title.className = 'vgext-sf-pop-title';
         title.textContent = 'Rename filter';
         const input = document.createElement('input');
         input.type = 'text';
-        input.className = 'cgext-sf-rename-input';
+        input.className = 'vgext-sf-rename-input';
         input.value = pill.label;
         input.setAttribute('aria-label', 'Filter name');
         input.maxLength = 80;
         const foot = document.createElement('div');
-        foot.className = 'cgext-sf-pop-foot';
+        foot.className = 'vgext-sf-pop-foot';
         const cancel = document.createElement('button');
         cancel.type = 'button';
         cancel.textContent = 'Cancel';
-        cancel.className = 'cgext-sf-pop-cancel';
+        cancel.className = 'vgext-sf-pop-cancel';
         const save = document.createElement('button');
         save.type = 'button';
         save.textContent = 'Save';
-        save.className = 'cgext-sf-pop-save';
+        save.className = 'vgext-sf-pop-save';
         const syncSave = (): void => {
           const t = input.value.trim();
           save.disabled = !t || t === pill.label;
@@ -276,25 +276,25 @@ export function savedFiltersItem(): ToolbarItem {
       const openJsonEditor = (pill: SavedFilter, anchor: HTMLElement): void => {
         closeEditors();
         const pop = document.createElement('div');
-        pop.className = 'cgext-sf-pop cgext-sf-json';
+        pop.className = 'vgext-sf-pop vgext-sf-json';
         pop.setAttribute('role', 'dialog');
         pop.setAttribute('aria-label', 'Edit filter JSON');
         const title = document.createElement('div');
-        title.className = 'cgext-sf-pop-title';
+        title.className = 'vgext-sf-pop-title';
         title.textContent = pill.label;
         const ta = document.createElement('textarea');
         ta.value = JSON.stringify(pill.filterModel, null, 2);
         ta.spellcheck = false;
         const foot = document.createElement('div');
-        foot.className = 'cgext-sf-pop-foot';
+        foot.className = 'vgext-sf-pop-foot';
         const cancel = document.createElement('button');
         cancel.type = 'button';
         cancel.textContent = 'Cancel';
-        cancel.className = 'cgext-sf-pop-cancel';
+        cancel.className = 'vgext-sf-pop-cancel';
         const save = document.createElement('button');
         save.type = 'button';
         save.textContent = 'Save';
-        save.className = 'cgext-sf-pop-save';
+        save.className = 'vgext-sf-pop-save';
         save.disabled = true;
         foot.append(cancel, save);
         pop.append(title, ta, foot);
@@ -336,26 +336,26 @@ export function savedFiltersItem(): ToolbarItem {
         pillsEl.replaceChildren();
         for (const f of filters) {
           const pill = document.createElement('div');
-          pill.className = 'cgext-sf-pill' + (f.active ? ' is-active' : '');
+          pill.className = 'vgext-sf-pill' + (f.active ? ' is-active' : '');
           pill.dataset.id = f.id;
           pill.setAttribute('role', 'button');
           pill.tabIndex = 0;
           pill.title = f.active ? `Deactivate “${f.label}”` : `Apply “${f.label}”`;
 
           const label = document.createElement('span');
-          label.className = 'cgext-sf-label';
+          label.className = 'vgext-sf-label';
           label.textContent = f.label;
 
           const count = document.createElement('span');
-          count.className = 'cgext-sf-count';
+          count.className = 'vgext-sf-count';
           count.textContent = counts[f.id] != null ? String(counts[f.id]) : '–';
 
           const actions = document.createElement('span');
-          actions.className = 'cgext-sf-actions';
-          const renameBtn = iconBtn(I.pencil, 'Rename', 'cgext-sf-act', 12);
-          const delBtn = iconBtn(I.trash, 'Delete', 'cgext-sf-act', 12);
-          const moreBtn = iconBtn(I.more, 'Edit filter JSON', 'cgext-sf-act', 12);
-          moreBtn.setAttribute('data-testid', 'cgext-sf-edit-json');
+          actions.className = 'vgext-sf-actions';
+          const renameBtn = iconBtn(I.pencil, 'Rename', 'vgext-sf-act', 12);
+          const delBtn = iconBtn(I.trash, 'Delete', 'vgext-sf-act', 12);
+          const moreBtn = iconBtn(I.more, 'Edit filter JSON', 'vgext-sf-act', 12);
+          moreBtn.setAttribute('data-testid', 'vgext-sf-edit-json');
           actions.append(renameBtn, delBtn, moreBtn);
 
           pill.append(label, count, actions);
@@ -371,7 +371,7 @@ export function savedFiltersItem(): ToolbarItem {
             syncAddEnabled();
           };
           pill.addEventListener('click', (e) => {
-            if ((e.target as HTMLElement).closest('.cgext-sf-actions')) return;
+            if ((e.target as HTMLElement).closest('.vgext-sf-actions')) return;
             toggle();
           });
           pill.addEventListener('keydown', (e) => {
@@ -486,127 +486,127 @@ export function savedFiltersItem(): ToolbarItem {
 }
 
 const SAVED_FILTERS_CSS = `
-.cgext-sf {
+.vgext-sf {
   display: inline-flex; align-items: center; gap: 4px;
   min-width: 0; max-width: min(52vw, 720px);
   margin-left: 4px;
 }
-.cgext-sf-scroll {
+.vgext-sf-scroll {
   flex: 1 1 auto; min-width: 0; overflow-x: auto; overflow-y: hidden;
   scrollbar-width: none;
 }
-.cgext-sf-scroll::-webkit-scrollbar { display: none; }
-.cgext-sf-pills { display: inline-flex; align-items: center; gap: 6px; padding: 0 2px; }
-.cgext-sf-nav {
+.vgext-sf-scroll::-webkit-scrollbar { display: none; }
+.vgext-sf-pills { display: inline-flex; align-items: center; gap: 6px; padding: 0 2px; }
+.vgext-sf-nav {
   appearance: none; flex: 0 0 auto;
-  width: 22px; height: 22px; padding: 0; border: none; border-radius: var(--cg-radius, 2px);
-  background: transparent; color: var(--cg-muted-fg-color, #9aa4b6); cursor: pointer;
+  width: 22px; height: 22px; padding: 0; border: none; border-radius: var(--vg-radius, 2px);
+  background: transparent; color: var(--vg-muted-fg-color, #9aa4b6); cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
 }
-.cgext-sf-nav:hover:not(:disabled) { color: var(--cg-fg-color, #e5e9f0); background: var(--cg-control-bg, rgba(255,255,255,.06)); }
-.cgext-sf-nav:disabled { opacity: 0.3; cursor: default; }
-.cgext-sf-pill {
+.vgext-sf-nav:hover:not(:disabled) { color: var(--vg-fg-color, #e5e9f0); background: var(--vg-control-bg, rgba(255,255,255,.06)); }
+.vgext-sf-nav:disabled { opacity: 0.3; cursor: default; }
+.vgext-sf-pill {
   display: inline-flex; align-items: center; gap: 5px;
   height: 22px; padding: 0 6px 0 8px;
-  border: 1px solid var(--cg-accent-color, #4f9cf9);
+  border: 1px solid var(--vg-accent-color, #4f9cf9);
   border-radius: 999px;
   background: transparent;
-  color: var(--cg-fg-color, #e5e9f0);
+  color: var(--vg-fg-color, #e5e9f0);
   font: inherit; font-size: 11.5px; font-weight: 550;
   cursor: pointer; flex: 0 0 auto; white-space: nowrap;
   transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
 }
-.cgext-sf-pill:hover { background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 12%, transparent); }
-.cgext-sf-pill.is-active {
-  background: var(--cg-accent-color, #4f9cf9);
-  border-color: var(--cg-accent-color, #4f9cf9);
-  color: var(--cg-accent-fg, var(--cg-checkbox-checked-fg, #191c22));
+.vgext-sf-pill:hover { background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 12%, transparent); }
+.vgext-sf-pill.is-active {
+  background: var(--vg-accent-color, #4f9cf9);
+  border-color: var(--vg-accent-color, #4f9cf9);
+  color: var(--vg-accent-fg, var(--vg-checkbox-checked-fg, #191c22));
 }
-.cgext-sf-label { max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
-.cgext-sf-count {
+.vgext-sf-label { max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+.vgext-sf-count {
   min-width: 16px; height: 14px; padding: 0 4px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--cg-fg-color, #e5e9f0) 14%, transparent);
+  background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 14%, transparent);
   font-size: 9.5px; font-weight: 650; line-height: 14px; text-align: center;
   font-variant-numeric: tabular-nums;
 }
-.cgext-sf-pill.is-active .cgext-sf-count {
-  background: color-mix(in srgb, var(--cg-accent-fg, #191c22) 18%, transparent);
+.vgext-sf-pill.is-active .vgext-sf-count {
+  background: color-mix(in srgb, var(--vg-accent-fg, #191c22) 18%, transparent);
 }
-.cgext-sf-actions {
+.vgext-sf-actions {
   display: none; align-items: center; gap: 0; margin-left: 1px;
 }
-.cgext-sf-pill:hover .cgext-sf-actions,
-.cgext-sf-pill:focus-within .cgext-sf-actions { display: inline-flex; }
-.cgext-sf-act {
+.vgext-sf-pill:hover .vgext-sf-actions,
+.vgext-sf-pill:focus-within .vgext-sf-actions { display: inline-flex; }
+.vgext-sf-act {
   appearance: none; width: 16px; height: 16px; padding: 0; border: none; border-radius: 2px;
   background: transparent; color: inherit; opacity: 0.75; cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
 }
-.cgext-sf-act:hover { opacity: 1; background: color-mix(in srgb, var(--cg-fg-color, #fff) 12%, transparent); }
-.cgext-sf-iconbtn {
-  appearance: none; width: 28px; height: 28px; padding: 0; border: none; border-radius: var(--cg-radius, 2px);
-  background: transparent; color: var(--cg-muted-fg-color, #9aa4b6); cursor: pointer;
+.vgext-sf-act:hover { opacity: 1; background: color-mix(in srgb, var(--vg-fg-color, #fff) 12%, transparent); }
+.vgext-sf-iconbtn {
+  appearance: none; width: 28px; height: 28px; padding: 0; border: none; border-radius: var(--vg-radius, 2px);
+  background: transparent; color: var(--vg-muted-fg-color, #9aa4b6); cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
 }
-.cgext-sf-iconbtn:hover:not(:disabled) { color: var(--cg-fg-color, #e5e9f0); background: var(--cg-control-bg, rgba(255,255,255,.06)); }
-.cgext-sf-iconbtn:disabled { opacity: 0.35; cursor: default; }
-.cgext-sf-clear { color: color-mix(in srgb, var(--cg-neg-color, #e5646e) 85%, var(--cg-muted-fg-color, #9aa4b6)); }
-.cgext-sf-clear:hover:not(:disabled) { color: var(--cg-neg-color, #e5646e); }
-.cgext-sf-add:not(:disabled) { color: var(--cg-accent-color, #4f9cf9); }
-.cgext-sf-pop {
+.vgext-sf-iconbtn:hover:not(:disabled) { color: var(--vg-fg-color, #e5e9f0); background: var(--vg-control-bg, rgba(255,255,255,.06)); }
+.vgext-sf-iconbtn:disabled { opacity: 0.35; cursor: default; }
+.vgext-sf-clear { color: color-mix(in srgb, var(--vg-neg-color, #e5646e) 85%, var(--vg-muted-fg-color, #9aa4b6)); }
+.vgext-sf-clear:hover:not(:disabled) { color: var(--vg-neg-color, #e5646e); }
+.vgext-sf-add:not(:disabled) { color: var(--vg-accent-color, #4f9cf9); }
+.vgext-sf-pop {
   position: fixed; z-index: 80; width: 280px;
   display: flex; flex-direction: column; gap: 8px;
   padding: 10px;
-  background: var(--cg-popup-bg, var(--cg-bg-color, #1a1f2b));
-  border: 1px solid var(--cg-border-color, #2a3140);
-  border-radius: var(--cg-radius, 2px);
+  background: var(--vg-popup-bg, var(--vg-bg-color, #1a1f2b));
+  border: 1px solid var(--vg-border-color, #2a3140);
+  border-radius: var(--vg-radius, 2px);
   box-shadow: 0 12px 32px rgba(0,0,0,.45);
-  color: var(--cg-fg-color, #e5e9f0);
+  color: var(--vg-fg-color, #e5e9f0);
 }
-.cgext-sf-pop.cgext-sf-json { width: 320px; }
-.cgext-sf-pop-title {
+.vgext-sf-pop.vgext-sf-json { width: 320px; }
+.vgext-sf-pop-title {
   font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
-  color: var(--cg-muted-fg-color, #9aa4b6);
+  color: var(--vg-muted-fg-color, #9aa4b6);
 }
-.cgext-sf-rename-input {
+.vgext-sf-rename-input {
   width: 100%; height: 32px; box-sizing: border-box;
   padding: 0 10px;
-  border: 1px solid var(--cg-border-color, #2a3140);
-  border-radius: var(--cg-radius, 2px);
-  background: var(--cg-input-bg, rgba(0,0,0,.25));
+  border: 1px solid var(--vg-border-color, #2a3140);
+  border-radius: var(--vg-radius, 2px);
+  background: var(--vg-input-bg, rgba(0,0,0,.25));
   color: inherit; font: inherit; font-size: 13px; font-weight: 550;
 }
-.cgext-sf-rename-input:focus {
+.vgext-sf-rename-input:focus {
   outline: none;
-  border-color: var(--cg-accent-color, #4f9cf9);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 18%, transparent);
+  border-color: var(--vg-accent-color, #4f9cf9);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 18%, transparent);
 }
-.cgext-sf-json textarea {
+.vgext-sf-json textarea {
   width: 100%; height: 160px; box-sizing: border-box; resize: vertical;
-  padding: 8px; border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 2px);
-  background: var(--cg-input-bg, rgba(0,0,0,.25)); color: inherit;
+  padding: 8px; border: 1px solid var(--vg-border-color, #2a3140); border-radius: var(--vg-radius, 2px);
+  background: var(--vg-input-bg, rgba(0,0,0,.25)); color: inherit;
   font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
-.cgext-sf-json textarea:focus {
+.vgext-sf-json textarea:focus {
   outline: none;
-  border-color: var(--cg-accent-color, #4f9cf9);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 18%, transparent);
+  border-color: var(--vg-accent-color, #4f9cf9);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 18%, transparent);
 }
-.cgext-sf-pop-foot { display: flex; justify-content: flex-end; gap: 8px; }
-.cgext-sf-pop-cancel, .cgext-sf-pop-save {
-  appearance: none; height: 26px; padding: 0 12px; border-radius: var(--cg-radius, 2px);
+.vgext-sf-pop-foot { display: flex; justify-content: flex-end; gap: 8px; }
+.vgext-sf-pop-cancel, .vgext-sf-pop-save {
+  appearance: none; height: 26px; padding: 0 12px; border-radius: var(--vg-radius, 2px);
   font: inherit; font-size: 11px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase;
   cursor: pointer;
 }
-.cgext-sf-pop-cancel {
-  border: none; background: transparent; color: var(--cg-muted-fg-color, #9aa4b6);
+.vgext-sf-pop-cancel {
+  border: none; background: transparent; color: var(--vg-muted-fg-color, #9aa4b6);
 }
-.cgext-sf-pop-cancel:hover { color: var(--cg-fg-color, #e5e9f0); }
-.cgext-sf-pop-save {
-  border: 1px solid var(--cg-accent-color, #4f9cf9);
-  background: var(--cg-accent-color, #4f9cf9);
-  color: var(--cg-accent-fg, var(--cg-checkbox-checked-fg, #fff));
+.vgext-sf-pop-cancel:hover { color: var(--vg-fg-color, #e5e9f0); }
+.vgext-sf-pop-save {
+  border: 1px solid var(--vg-accent-color, #4f9cf9);
+  background: var(--vg-accent-color, #4f9cf9);
+  color: var(--vg-accent-fg, var(--vg-checkbox-checked-fg, #fff));
 }
-.cgext-sf-pop-save:disabled { opacity: 0.4; cursor: default; }
+.vgext-sf-pop-save:disabled { opacity: 0.4; cursor: default; }
 `;

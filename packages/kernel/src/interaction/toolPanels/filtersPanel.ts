@@ -43,7 +43,7 @@
  * order. The root container is never replaced, so scroll position
  * survives a refresh.
  */
-import type { CGridApi, CColumnState } from '../../types';
+import type { VelocityGridApi, CColumnState } from '../../types';
 import type {
   IToolPanelFiltersCompParams,
   ToolPanel,
@@ -73,7 +73,7 @@ interface PanelRow {
 
 export class FiltersToolPanel implements ToolPanel {
   private root!: HTMLElement;
-  private api!: CGridApi;
+  private api!: VelocityGridApi;
   private params: IToolPanelFiltersCompParams = {};
 
   /** Search input (null when suppressFilterSearch). */
@@ -94,11 +94,11 @@ export class FiltersToolPanel implements ToolPanel {
   private destroyed = false;
 
   init(p: ToolPanelParams): void {
-    this.api = p.api as CGridApi;
+    this.api = p.api as VelocityGridApi;
     this.params = (p.toolPanelParams as IToolPanelFiltersCompParams | undefined) ?? {};
 
     this.root = document.createElement('div');
-    this.root.className = 'cg-filters-panel';
+    this.root.className = 'vg-filters-panel';
 
     if (!this.params.suppressFilterSearch) {
       this.root.appendChild(this.buildSearchRow());
@@ -108,7 +108,7 @@ export class FiltersToolPanel implements ToolPanel {
     }
 
     this.listEl = document.createElement('div');
-    this.listEl.className = 'cg-filters-panel-list cg-scrollbar';
+    this.listEl.className = 'vg-filters-panel-list vg-scrollbar';
     this.root.appendChild(this.listEl);
     this.buildRows();
 
@@ -150,10 +150,10 @@ export class FiltersToolPanel implements ToolPanel {
 
   private buildSearchRow(): HTMLElement {
     const row = document.createElement('div');
-    row.className = 'cg-filters-panel-search';
+    row.className = 'vg-filters-panel-search';
 
     const icon = document.createElement('span');
-    icon.className = 'cg-filters-panel-search-icon';
+    icon.className = 'vg-filters-panel-search-icon';
     icon.textContent = '\u{1F50D}'; // 🔍
     icon.setAttribute('aria-hidden', 'true');
 
@@ -171,11 +171,11 @@ export class FiltersToolPanel implements ToolPanel {
 
   private buildExpandAllRow(): HTMLElement {
     const row = document.createElement('div');
-    row.className = 'cg-filters-panel-expand-all';
+    row.className = 'vg-filters-panel-expand-all';
 
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'cg-filters-panel-expand-all-btn';
+    btn.className = 'vg-filters-panel-expand-all-btn';
     btn.textContent = 'Expand All';
     btn.setAttribute('aria-label', 'Expand or collapse all filters');
     btn.addEventListener('click', () => this.toggleExpandAll());
@@ -199,23 +199,23 @@ export class FiltersToolPanel implements ToolPanel {
 
   private buildRow(colId: string): PanelRow {
     const el = document.createElement('div');
-    el.className = 'cg-filters-panel-row';
+    el.className = 'vg-filters-panel-row';
     el.dataset.colId = colId;
     el.dataset.expanded = 'false';
 
     const header = document.createElement('div');
-    header.className = 'cg-filters-panel-row-header';
+    header.className = 'vg-filters-panel-row-header';
     header.setAttribute('role', 'button');
     header.setAttribute('aria-expanded', 'false');
     header.tabIndex = 0;
 
     const chevron = document.createElement('span');
-    chevron.className = 'cg-filters-panel-row-chevron';
+    chevron.className = 'vg-filters-panel-row-chevron';
     chevron.textContent = CHEVRON_COLLAPSED;
     chevron.setAttribute('aria-hidden', 'true');
 
     const label = document.createElement('span');
-    label.className = 'cg-filters-panel-row-label';
+    label.className = 'vg-filters-panel-row-label';
     label.textContent = this.resolveLabel(colId);
 
     header.appendChild(chevron);
@@ -223,7 +223,7 @@ export class FiltersToolPanel implements ToolPanel {
     header.addEventListener('click', () => this.toggleRow(colId));
 
     const editorHost = document.createElement('div');
-    editorHost.className = 'cg-filters-panel-row-editor';
+    editorHost.className = 'vg-filters-panel-row-editor';
     editorHost.style.display = 'none';
 
     el.appendChild(header);
@@ -291,7 +291,7 @@ export class FiltersToolPanel implements ToolPanel {
       row.editorHost.appendChild(handle.gui);
       row.editorDestroy = () => handle.destroy();
     }).catch((err) => {
-      if (!this.destroyed) console.error('[cg-filters-panel] buildColumnFilterEditor:', err);
+      if (!this.destroyed) console.error('[vg-filters-panel] buildColumnFilterEditor:', err);
     });
   }
 
@@ -354,7 +354,7 @@ export class FiltersToolPanel implements ToolPanel {
       row.editorHost.appendChild(handle.gui);
       row.editorDestroy = () => handle.destroy();
     }).catch((err) => {
-      if (!this.destroyed) console.error('[cg-filters-panel] buildColumnFilterEditor:', err);
+      if (!this.destroyed) console.error('[vg-filters-panel] buildColumnFilterEditor:', err);
     });
   }
 
@@ -415,7 +415,7 @@ export class FiltersToolPanel implements ToolPanel {
     if (this.rows.size === 0) {
       if (!this.emptyEl) {
         this.emptyEl = document.createElement('div');
-        this.emptyEl.className = 'cg-filters-panel-empty';
+        this.emptyEl.className = 'vg-filters-panel-empty';
         this.emptyEl.textContent = 'No filterable columns';
       }
       if (!this.emptyEl.parentElement) this.listEl.appendChild(this.emptyEl);

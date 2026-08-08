@@ -25,10 +25,10 @@
 // cursor alone signals interactivity globally; the chevron glyph
 // itself signals it per cell.
 
-import { Feature, type CGridEventCtx } from '../feature';
+import { Feature, type VelocityGridEventCtx } from '../feature';
 
 export class GroupExpandFeature extends Feature {
-  override handleMouseMove(ctx: CGridEventCtx): void {
+  override handleMouseMove(ctx: VelocityGridEventCtx): void {
     // Cursor: pointer when over a sticky chevron, body chevron, OR checkbox.
     const sticky = ctx.grid.hitTestStickyChevron(ctx.point.x, ctx.point.y);
     const chevron = sticky === null
@@ -41,7 +41,7 @@ export class GroupExpandFeature extends Feature {
     super.handleMouseMove(ctx);
   }
 
-  override handleMouseDown(ctx: CGridEventCtx): void {
+  override handleMouseDown(ctx: VelocityGridEventCtx): void {
     // Only left-button presses toggle groups. Middle / right go to
     // their respective handlers via `super`.
     if (ctx.raw instanceof MouseEvent && ctx.raw.button !== 0) {
@@ -85,7 +85,7 @@ export class GroupExpandFeature extends Feature {
    *  expansion (matching `agGroupCellRenderer`'s default), unless
    *  `suppressDoubleClickExpand` is set. Consumed so the double-click
    *  neither opens an editor nor emits a spurious `cellDoubleClicked`. */
-  override handleDoubleClick(ctx: CGridEventCtx): void {
+  override handleDoubleClick(ctx: VelocityGridEventCtx): void {
     const hit = ctx.hit;
     if (
       hit !== null
@@ -102,7 +102,7 @@ export class GroupExpandFeature extends Feature {
     super.handleDoubleClick(ctx);
   }
 
-  override handleClick(ctx: CGridEventCtx): void {
+  override handleClick(ctx: VelocityGridEventCtx): void {
     // Consume trailing clicks on sticky chevrons, body chevrons, and
     // checkboxes so apps don't see a spurious `cellClicked`.
     const sticky = ctx.grid.hitTestStickyChevron(ctx.point.x, ctx.point.y);
@@ -130,7 +130,7 @@ export class GroupExpandFeature extends Feature {
    *  `cellRenderer: 'group'` resolved def). Passes through to super for
    *  any non-group-nav key (tab, alpha, digits, etc.) so the standard
    *  keyboard feature chain remains intact. */
-  override handleKeyDown(ctx: CGridEventCtx): void {
+  override handleKeyDown(ctx: VelocityGridEventCtx): void {
     const { focusedRowIndex, focusedColId } = ctx.grid.selection.state;
     if (focusedRowIndex === null || focusedColId === null) {
       super.handleKeyDown(ctx);

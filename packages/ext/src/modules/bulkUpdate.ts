@@ -1,8 +1,8 @@
 /**
  * Bulk Update — Customize sheet flat settings (starui customizer-ui #10).
  */
-import type { BulkUpdateSettings } from '@cgrid/edit';
-import type { SettingsModule, CgExtContext, ModuleInstance } from '../extension/types';
+import type { BulkUpdateSettings } from '@wellsfargo-starui/velocity-grid-edit';
+import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import {
   band, el, injectCockpitStyles, lucideSvg, numberInput, row, switchToggle,
 } from '../ui/cockpit';
@@ -18,7 +18,7 @@ export function bulkUpdateModule(): SettingsModule {
 
     init(): void { injectCockpitStyles(); },
 
-    mount(host: HTMLElement, ctx: CgExtContext): ModuleInstance {
+    mount(host: HTMLElement, ctx: VelocityGridExtContext): ModuleInstance {
       let committed: BulkUpdateSettings | null = null;
       let draft: BulkUpdateSettings | null = null;
       const root = el('div', 'ckp ckp-flat');

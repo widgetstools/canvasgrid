@@ -7,7 +7,7 @@
  * declared by `name === '---'` — the host renders it as an `<hr>` and skips
  * the click action.
  *
- * `GetContextMenuItemsParams` is what `CGridOptions.getContextMenuItems`
+ * `GetContextMenuItemsParams` is what `VelocityGridOptions.getContextMenuItems`
  * receives. It carries the hit-test result (`rowIndex` / `colId` are `null`
  * when the right-click landed outside a body cell — header, scrollbar, or
  * empty space), the current `SelectionModel.ranges` snapshot, and the
@@ -54,14 +54,14 @@ export interface GetContextMenuItemsParams {
   defaultItems: MenuItem[];
 }
 
-/** Resolution signature for `CGridOptions.getContextMenuItems`. Returning an
+/** Resolution signature for `VelocityGridOptions.getContextMenuItems`. Returning an
  *  empty array suppresses the menu (the host renders nothing + the native
  *  browser menu also stays suppressed because the feature already called
  *  `preventDefault`). */
 export type GetContextMenuItemsCallback =
   (params: GetContextMenuItemsParams) => MenuItem[];
 
-/** Params handed to `CGridOptions.getMainMenuItems`. The column menu has no
+/** Params handed to `VelocityGridOptions.getMainMenuItems`. The column menu has no
  *  row context (right-click landed in the header band, not a body cell), so
  *  `rowIndex` is dropped. `colId` is always populated — `getMainMenuItems`
  *  only fires when the hit kind is `header` or `headerGroup`. */
@@ -74,7 +74,7 @@ export interface GetMainMenuItemsParams {
   defaultItems: MenuItem[];
 }
 
-/** Resolution signature for `CGridOptions.getMainMenuItems`. Mirrors
+/** Resolution signature for `VelocityGridOptions.getMainMenuItems`. Mirrors
  *  ag-grid's split: cell right-clicks call `getContextMenuItems`, header
  *  right-clicks call `getMainMenuItems`. Returning an empty array
  *  suppresses the menu. */

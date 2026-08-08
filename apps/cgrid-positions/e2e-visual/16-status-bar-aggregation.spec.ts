@@ -11,7 +11,7 @@ import { gridReadyWithQuery, seedGrid, waitForFrames } from './_setup';
 // What regression this catches:
 //   - Separator regression: if the `·` lost its `padding: 0 0.5ch`,
 //     the stats would crash into one another and become unparseable.
-//     If the separator colour shifted off `--cg-status-bar-fg-muted`
+//     If the separator colour shifted off `--vg-status-bar-fg-muted`
 //     to the full-strength foreground, it would read as data instead
 //     of chrome.
 //   - Empty-state inversion broken: the spec stages a real selection
@@ -49,7 +49,7 @@ test('status bar — agAggregationComponent rendering 5 stats over a 10-row rang
   await waitForFrames(page, 12);
   await page.evaluate(() => {
     const g = (window as unknown as {
-      __cgrid: {
+      __velocity-grid: {
         addCellRange: (range: { rowStart: number; rowEnd: number; colIds: string[] }) => void;
       };
     }).__cgrid;

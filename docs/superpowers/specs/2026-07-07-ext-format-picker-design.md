@@ -1,4 +1,4 @@
-# CGridExt — Format Picker for the Formatting Ribbon (+ format-DSL extensions)
+# VelocityGridExt — Format Picker for the Formatting Ribbon (+ format-DSL extensions)
 
 - **Status:** Approved design; ready for implementation planning.
 - **Date:** 2026-07-07
@@ -17,10 +17,10 @@ reference sections). The `window.prompt` path is **deleted**.
 
 **Decisions locked with the user:**
 
-1. **Reach parity by extending `@cgrid/format` natively** (Phase A) so every
+1. **Reach parity by extending `@wellsfargo-starui/velocity-grid-format` natively** (Phase A) so every
    preset in the screenshots is expressible as a plain, serializable format-DSL
    string — ticks, scientific, and the ƒ(x) text/bps presets included. No JS
-   string is ever executed; ƒ(x) presets ride `@cgrid/expression`.
+   string is ever executed; ƒ(x) presets ride `@wellsfargo-starui/velocity-grid-expression`.
 2. **Column-scoped apply**: picking a format applies to every column touched by
    the current selection (the ribbon's existing `targetCols()` rule), via
    `editColumn` own-templates — same path as the $/%/decimals buttons, so
@@ -30,12 +30,12 @@ reference sections). The `window.prompt` path is **deleted**.
 
 Two phases, one feature:
 
-- **Phase A — `@cgrid/format` engine extensions.** Pure engine work; each
+- **Phase A — `@wellsfargo-starui/velocity-grid-format` engine extensions.** Pure engine work; each
   extension lands with its own unit tests before any UI exists.
-- **Phase B — the picker in `@cgrid/ext`.** Two new files:
+- **Phase B — the picker in `@wellsfargo-starui/velocity-grid-ext`.** Two new files:
   `toolbar/formatPresets.ts` (pure data + logic, no DOM) and
   `toolbar/formatPicker.ts` (plain-DOM panel; `menu()` helper from
-  `toolbar/ui.ts`, `cgext-fmt-` class prefix, `--cg-*` tokens). `ribbon.ts`
+  `toolbar/ui.ts`, `vgext-fmt-` class prefix, `--vg-*` tokens). `ribbon.ts`
   swaps the prompt handler for the panel. Lit stays customizer-only.
 
 Because Phase A makes every preset a DSL string, the ext side needs **no
@@ -51,7 +51,7 @@ Format strings `TICK32`, `TICK32+`, `TICK64`, `TICK128`, `TICK256` (whole
 section, case-sensitive) compile to tick formatters: integer handle + `-` +
 tick count in the given denominator (`101-16` for 101.5 in 32nds), `+` variant
 appends the half-tick marker (`101-16+`). The tick math is implemented inside
-`@cgrid/format` (generalized denominator; the kernel's `formatPrice32` is not
+`@wellsfargo-starui/velocity-grid-format` (generalized denominator; the kernel's `formatPrice32` is not
 imported — no kernel dependency from format — and stays untouched). Non-numeric
 values format to `''` like other numeric sections.
 
@@ -64,7 +64,7 @@ width; `E+` always signs, `E-` signs only negatives (Excel semantics).
 ### 3.3 `=expr` value-formatter form
 
 A format string beginning with `=` compiles the remainder with
-`@cgrid/expression` (the engine already inside compileFormat's tier-1
+`@wellsfargo-starui/velocity-grid-expression` (the engine already inside compileFormat's tier-1
 brackets); the expression's result, stringified, IS the formatted output.
 Eval context: `value` resolves to the cell's raw value; any other identifier
 resolves to the row's fields; `value` wins a collision. Compile errors follow
@@ -72,7 +72,7 @@ the existing format-compile error path. String concatenation uses `+` (the
 expression engine concatenates when both operands are strings — builtins below
 return strings, and the presets are written so every concat is string+string).
 
-**New expression builtins** (in `@cgrid/expression`, alongside UPPER/LOWER):
+**New expression builtins** (in `@wellsfargo-starui/velocity-grid-expression`, alongside UPPER/LOWER):
 `TRIM(s)`, `TITLE(s)` (Title Case), `CAMEL(s)` (camelCase), `CAP(s)`
 (capitalize first), `FIXED(n, dp)` (number → string with `dp` decimals, no
 grouping). All total functions: null/invalid input → `''` (formatters must
@@ -149,7 +149,7 @@ Pure data + logic, ported from starui and recast to DSL strings.
 
 ## 5. Phase B — panel UI (`toolbar/formatPicker.ts`)
 
-`menu()`-anchored under the `# Format` pill, width ~440px, `.cgext-fmt-*`
+`menu()`-anchored under the `# Format` pill, width ~440px, `.vgext-fmt-*`
 classes, tokens + neutral-dark fallbacks, Escape closes (same pattern as the
 layouts panel).
 
@@ -167,7 +167,7 @@ layouts panel).
   Custom tab when the current format matches no preset.
 - **Preset rows:** 2-col grid — left: bold label over mono code (the format
   string; `ƒ(x)` when it starts with `=`; `denom 32`-style text for ticks);
-  right: **live preview** = compile the format via `@cgrid/format` and run it
+  right: **live preview** = compile the format via `@wellsfargo-starui/velocity-grid-format` and run it
   on `preset.sample ?? defaultSampleFor(dataType)` (compile/run errors → `·`).
   Hover tooltip `label · preview`. Active row (string-equal to CURRENT) gets
   the accent treatment. Click → `applyFormat(preset.format)`; panel closes

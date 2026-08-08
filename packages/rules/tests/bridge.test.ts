@@ -317,7 +317,7 @@ describe('watchedColIdUnion', () => {
 // `templates`. RECONCILIATION: Grid Layouts spec §3.2's `ConditionalRule`
 // is realized by 21e's existing `StyleRule` — no second store, no second
 // parser (conditions still compile via `compileCondition` on the shared
-// @cgrid/expression AST). Tier is keyed off the module id in the kernel:
+// @wellsfargo-starui/velocity-grid-expression AST). Tier is keyed off the module id in the kernel:
 // `rules` is NOT in DEFAULT_GRID_LEVEL_MODULES → per-layout.
 describe('wireIntoKernel — Grid Layouts `rules` state module (Phase C / C1)', () => {
   function moduleOf(grid: ReturnType<typeof makeFakeGrid>, id: string): StateModuleShape {
@@ -408,7 +408,7 @@ describe('wireIntoKernel — Grid Layouts `rules` state module (Phase C / C1)', 
 
 // ─── Grid Layouts — Phase C / C3 ─────────────────────────────────────────
 // The rule-engine adapter (registered via grid.registerRuleEngine) also
-// exposes getRules/setRules so the kernel's CGridApi rule methods can drive
+// exposes getRules/setRules so the kernel's VelocityGridApi rule methods can drive
 // the engine's rule set imperatively (mirrors the calc provider's template
 // ops in B3). setRules re-seeds match counts (setRules zeroes them).
 describe('wireIntoKernel — rule-engine adapter CRUD surface (Phase C / C3)', () => {

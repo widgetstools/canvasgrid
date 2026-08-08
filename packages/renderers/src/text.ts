@@ -1,6 +1,6 @@
-// @cgrid/renderers — category 2: Text / identity. Catalog §3.2.
+// @wellsfargo-starui/velocity-grid-renderers — category 2: Text / identity. Catalog §3.2.
 
-import type { CellPaintConfig, CellPainter } from '@cgrid/kernel';
+import type { CellPaintConfig, CellPainter } from '@wellsfargo-starui/velocity-grid';
 import { withAlpha } from './paintUtils';
 import { SEMANTIC_COLORS } from './palette';
 import type {

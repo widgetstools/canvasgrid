@@ -1,6 +1,6 @@
 // Cycle 21d / Task 14 — the kernel bridge.
 //
-// `wireIntoKernel(grid, opts?)` wires @cgrid/calc's engine onto a CGrid
+// `wireIntoKernel(grid, opts?)` wires @wellsfargo-starui/velocity-grid-calc's engine onto a VelocityGrid
 // instance via kernel's PUBLIC registration API, mirroring
 // packages/rules/src/bridge.ts and packages/format/src/bridge.ts:
 //
@@ -15,7 +15,7 @@
 //      rebuild + program reship. The bridge therefore subscribes to
 //      ZERO grid events — calc has no push path (contrast rules).
 //
-// Kernel never runtime-imports @cgrid/calc; this module reaches into
+// Kernel never runtime-imports @wellsfargo-starui/velocity-grid-calc; this module reaches into
 // kernel only through the grid surface passed in (structural types —
 // zero static kernel imports). Idempotent per grid instance via a
 // `__calcBridgeWired` marker that stores — and re-returns — the SAME
@@ -58,7 +58,7 @@ interface CalcProviderShape {
   workerProgram(): unknown | null;
   onColumnsChanged(fn: () => void): () => void;
   // Grid Layouts / Phase B (B3) — template library CRUD the kernel's
-  // CGridApi template methods delegate to. The kernel stamps `now` (engine
+  // VelocityGridApi template methods delegate to. The kernel stamps `now` (engine
   // is Date-free).
   getTemplates(): ColumnTemplate[];
   saveTemplate(spec: {
@@ -82,7 +82,7 @@ interface StateModuleShape {
   set(data: unknown, version: number): void;
 }
 
-/** Structural surface of the CGrid instance (or CGridApi) the bridge
+/** Structural surface of the VelocityGrid instance (or VelocityGridApi) the bridge
  *  registers against. Type-only — no runtime kernel import. `registerCalcProvider`
  *  is required; `registerStateModule` is optional so a minimal grid surface
  *  (e.g. a pre-Phase-B kernel or a bare test double) still wires — it just
@@ -110,7 +110,7 @@ const SILENT_MUTATORS = [
 ] as const;
 
 /**
- * Wire @cgrid/calc into a CGrid instance. Idempotent — re-calling on
+ * Wire @wellsfargo-starui/velocity-grid-calc into a VelocityGrid instance. Idempotent — re-calling on
  * an already-wired grid returns the SAME `{ calc }` object.
  */
 export function wireIntoKernel(

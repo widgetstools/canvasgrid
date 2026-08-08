@@ -6,7 +6,7 @@
 
 **Architecture:** Reuse the existing cell machinery wholesale: `headerCell` calls the same `renderContentSlot` / `paintCellDecorators` the data painters use; `headerIcon` mirrors `cellIcon`'s slot-claim + padding-shift in `byRows.ts`; the ribbon writes through the existing `editColumn` own-template channel (`cellIcon`/`headerIcon` become templatable keys; decorators already ride `cellStyle`/`headerStyle`).
 
-**Tech Stack:** TypeScript, canvas 2D (Path2D + fillText), vitest, Playwright, Vite. Monorepo workspaces: `@cgrid/kernel`, `@cgrid/format`, `@cgrid/calc`, `@cgrid/ext`, demo app `apps/cgrid-ext-demo`.
+**Tech Stack:** TypeScript, canvas 2D (Path2D + fillText), vitest, Playwright, Vite. Monorepo workspaces: `@wellsfargo-starui/velocity-grid`, `@wellsfargo-starui/velocity-grid-format`, `@wellsfargo-starui/velocity-grid-calc`, `@wellsfargo-starui/velocity-grid-ext`, demo app `apps/cgrid-ext-demo`.
 
 **Spec:** `docs/superpowers/specs/2026-07-07-header-cell-icons-design.md`
 
@@ -67,7 +67,7 @@ Adapt helper names to what the file actually uses (it has inline setup, not `mak
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm --workspace @cgrid/kernel run test -- tests/byRowsCellIcon.test.ts`
+Run: `npm --workspace @wellsfargo-starui/velocity-grid run test -- tests/byRowsCellIcon.test.ts`
 Expected: FAIL — the new emoji test finds no `fillText('🔥', …)` call (current code requires `iconRef.name`).
 
 - [ ] **Step 3: Update `IconRef` in `packages/format/src/types.ts`**
@@ -162,12 +162,12 @@ Update the resolution block (currently `if (iconRef && iconRef.name) { const pat
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `npm --workspace @cgrid/kernel run test -- tests/byRowsCellIcon.test.ts`
+Run: `npm --workspace @wellsfargo-starui/velocity-grid run test -- tests/byRowsCellIcon.test.ts`
 Expected: PASS (all pre-existing cellIcon tests + 2 new).
 
 - [ ] **Step 6: Typecheck both packages**
 
-Run: `npm --workspace @cgrid/format run typecheck && npm --workspace @cgrid/kernel run typecheck`
+Run: `npm --workspace @wellsfargo-starui/velocity-grid-format run typecheck && npm --workspace @wellsfargo-starui/velocity-grid run typecheck`
 Expected: clean. (`IconRef.name` becoming optional may surface consumers assuming `string` — the composite renderer's `resolveIcon` in `packages/kernel/src/renderer/cellRenderers/composite.ts` reads `FragIcon` which has its own type; if any consumer errors, guard with `if (ref.name)` at the use site, preserving behavior.)
 
 - [ ] **Step 7: Commit**
@@ -299,7 +299,7 @@ describe('headerCell decorators', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm --workspace @cgrid/kernel run test -- tests/headerCellContentDecorators.test.ts`
+Run: `npm --workspace @wellsfargo-starui/velocity-grid run test -- tests/headerCellContentDecorators.test.ts`
 Expected: FAIL — content still renders `Price`, decorators never paint.
 
 - [ ] **Step 3: Implement in `headerCell.paint`**
@@ -346,12 +346,12 @@ Note the header-checkbox branch still `return`s early — decorators intentional
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `npm --workspace @cgrid/kernel run test -- tests/headerCellContentDecorators.test.ts`
+Run: `npm --workspace @wellsfargo-starui/velocity-grid run test -- tests/headerCellContentDecorators.test.ts`
 Expected: PASS (7 tests).
 
 - [ ] **Step 5: Run the full kernel suite (headers are hot-path — check nothing regressed)**
 
-Run: `npm --workspace @cgrid/kernel run test`
+Run: `npm --workspace @wellsfargo-starui/velocity-grid run test`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
@@ -416,7 +416,7 @@ Fill these in as real tests using the copied harness (the byRowsCellIcon tests s
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm --workspace @cgrid/kernel run test -- tests/byRowsHeaderIcon.test.ts`
+Run: `npm --workspace @wellsfargo-starui/velocity-grid run test -- tests/byRowsHeaderIcon.test.ts`
 Expected: FAIL — no icon strokes on header rows; TypeScript may already reject `headerIcon` (also a failure — fine).
 
 - [ ] **Step 3: Type + resolve changes**
@@ -439,19 +439,19 @@ Expected: FAIL — no icon strokes on header rows; TypeScript may already reject
 **(b)** `packages/kernel/src/core/propertyChain.ts` line 44 area (ResolvedColDef) — add below the existing `cellIcon` field:
 
 ```ts
-  headerIcon?: (params: { colId: string }) => import('@cgrid/format').IconRef | null;
+  headerIcon?: (params: { colId: string }) => import('@wellsfargo-starui/velocity-grid-format').IconRef | null;
 ```
 
 **(c)** compileFormatSlots (line ~1118): the format-derived `cellIcon` fn currently discards any static cellIcon whenever a format string compiles. Make the static form the fallback:
 
 ```ts
       cellIcon: (() => {
-        const staticRef: import('@cgrid/format').IconRef | null =
+        const staticRef: import('@wellsfargo-starui/velocity-grid-format').IconRef | null =
           typeof merged.cellIcon === 'string' ? { name: merged.cellIcon }
           : (merged.cellIcon !== undefined && typeof merged.cellIcon === 'object') ? merged.cellIcon
           : null;
         return (p: CValueFormatterParams<TRow, unknown>) =>
-          (evalFormatProgram(program, p).icon as import('@cgrid/format').IconRef | null) ?? staticRef;
+          (evalFormatProgram(program, p).icon as import('@wellsfargo-starui/velocity-grid-format').IconRef | null) ?? staticRef;
       })(),
 ```
 
@@ -477,8 +477,8 @@ function normalizeCellIcon<TRow>(
 }
 
 function normalizeHeaderIcon(
-  v: import('@cgrid/format').IconRef | ((params: { colId: string }) => import('@cgrid/format').IconRef | null) | undefined,
-): ((params: { colId: string }) => import('@cgrid/format').IconRef | null) | undefined {
+  v: import('@wellsfargo-starui/velocity-grid-format').IconRef | ((params: { colId: string }) => import('@wellsfargo-starui/velocity-grid-format').IconRef | null) | undefined,
+): ((params: { colId: string }) => import('@wellsfargo-starui/velocity-grid-format').IconRef | null) | undefined {
   if (v === undefined) return undefined;
   if (typeof v === 'function') return v;
   return () => v;
@@ -500,7 +500,7 @@ Directly after the existing data-cell cellIcon block (the one ending `config.pad
         && def.headerIcon !== undefined
         && config.headerCheckboxState === undefined
       ) {
-        let iconRef: import('@cgrid/format').IconRef | null = null;
+        let iconRef: import('@wellsfargo-starui/velocity-grid-format').IconRef | null = null;
         try {
           iconRef = def.headerIcon({ colId: col.colId });
         } catch {
@@ -556,13 +556,13 @@ In `packages/kernel/src/renderer/cellRenderers/registry.ts`, `headerCell.paint`:
 
 - [ ] **Step 6: Run tests**
 
-Run: `npm --workspace @cgrid/kernel run test -- tests/byRowsHeaderIcon.test.ts && npm --workspace @cgrid/kernel run test`
+Run: `npm --workspace @wellsfargo-starui/velocity-grid run test -- tests/byRowsHeaderIcon.test.ts && npm --workspace @wellsfargo-starui/velocity-grid run test`
 Expected: new file PASS; full suite PASS (existing header tests unaffected — no `padding` set means identical geometry).
 
 - [ ] **Step 7: Typecheck + commit**
 
 ```bash
-npm --workspace @cgrid/kernel run typecheck
+npm --workspace @wellsfargo-starui/velocity-grid run typecheck
 git add packages/kernel/src/types/column.ts packages/kernel/src/core/propertyChain.ts packages/kernel/src/renderer/painters/byRows.ts packages/kernel/src/renderer/cellRenderers/registry.ts packages/kernel/tests/byRowsHeaderIcon.test.ts
 git commit -m "feat(kernel): headerIcon leaf-header prefix/suffix icons + static cellIcon IconRef forms"
 ```
@@ -579,7 +579,7 @@ git commit -m "feat(kernel): headerIcon leaf-header prefix/suffix icons + static
 - Test: `packages/calc/tests/autoTemplateOnEdit.test.ts` (extend — it's the editColumn suite)
 
 **Interfaces:**
-- Consumes: nothing new from kernel (calc stays structurally typed — no `@cgrid/format` type import needed).
+- Consumes: nothing new from kernel (calc stays structurally typed — no `@wellsfargo-starui/velocity-grid-format` type import needed).
 - Produces: `ColumnOverride.cellIcon` / `.headerIcon` of type `IconOverride = { name?: string; emoji?: string; color?: string; position?: 'leading' | 'trailing' }`; `ColumnEditPatch` accepts them, with **`null` meaning "remove"**. `overrideToKernelPatch` emits `patch.cellIcon` / `patch.headerIcon` (plain objects) that land on the kernel `CColDef` static forms from Task 3. Task 6 calls `grid.editColumn(colId, { cellIcon: {...} | null })`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -626,7 +626,7 @@ it('a later template layer with cellIcon wins wholesale (no per-key merge)', () 
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `npm --workspace @cgrid/calc run test -- tests/autoTemplateOnEdit.test.ts`
+Run: `npm --workspace @wellsfargo-starui/velocity-grid-calc run test -- tests/autoTemplateOnEdit.test.ts`
 Expected: FAIL (TS: `cellIcon` not in ColumnEditPatch).
 
 - [ ] **Step 3: Implement**
@@ -635,7 +635,7 @@ Expected: FAIL (TS: `cellIcon` not in ColumnEditPatch).
 
 ```ts
 /** Static icon reference for cellIcon/headerIcon overrides — structural
- *  twin of @cgrid/format's IconRef (calc holds data, never draws). */
+ *  twin of @wellsfargo-starui/velocity-grid-format's IconRef (calc holds data, never draws). */
 export interface IconOverride {
   name?: string;
   emoji?: string;
@@ -702,20 +702,20 @@ In `editColumn`, after the headerStyle merge block:
 
 - [ ] **Step 4: Run tests**
 
-Run: `npm --workspace @cgrid/calc run test`
+Run: `npm --workspace @wellsfargo-starui/velocity-grid-calc run test`
 Expected: PASS (3 new + all existing; `saveTemplate`'s structuredClone already handles the new keys).
 
 - [ ] **Step 5: Typecheck + commit**
 
 ```bash
-npm --workspace @cgrid/calc run typecheck
+npm --workspace @wellsfargo-starui/velocity-grid-calc run typecheck
 git add packages/calc/src/types.ts packages/calc/src/templates.ts packages/calc/src/calcEngine.ts packages/calc/src/overrides.ts packages/calc/src/index.ts packages/calc/tests/autoTemplateOnEdit.test.ts
 git commit -m "feat(calc): cellIcon/headerIcon ride editColumn own-templates (null = remove)"
 ```
 
 ---
 
-### Task 5: icon + emoji catalogs for the picker (`@cgrid/ext`)
+### Task 5: icon + emoji catalogs for the picker (`@wellsfargo-starui/velocity-grid-ext`)
 
 **Files:**
 - Create: `packages/ext/src/toolbar/buildIconCatalog.ts` (generator script)
@@ -725,7 +725,7 @@ git commit -m "feat(calc): cellIcon/headerIcon ride editColumn own-templates (nu
 - Test: Create `packages/ext/tests/iconCatalog.test.ts`
 
 **Interfaces:**
-- Consumes: `lucideBundle` via the existing subpath export `@cgrid/kernel/icons/lucide.generated` (`Readonly<Record<string, string>>` name → SVG path data).
+- Consumes: `lucideBundle` via the existing subpath export `@wellsfargo-starui/velocity-grid/icons/lucide.generated` (`Readonly<Record<string, string>>` name → SVG path data).
 - Produces:
   - `iconCatalog.generated.ts`: `export const lucideCategories: ReadonlyArray<{ readonly category: string; readonly icons: readonly string[] }>` — names only; tiles get path data from `lucideBundle[name]` at render time.
   - `emojiCatalog.ts`: `export const emojiCategories: ReadonlyArray<{ readonly category: string; readonly emojis: readonly string[] }>`.
@@ -737,7 +737,7 @@ Create `packages/ext/tests/iconCatalog.test.ts`:
 
 ```ts
 import { describe, it, expect } from 'vitest';
-import { lucideBundle } from '@cgrid/kernel/icons/lucide.generated';
+import { lucideBundle } from '@wellsfargo-starui/velocity-grid/icons/lucide.generated';
 import { lucideCategories } from '../src/toolbar/iconCatalog.generated';
 import { emojiCategories } from '../src/toolbar/emojiCatalog';
 
@@ -774,7 +774,7 @@ describe('emoji catalog', () => {
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `npm --workspace @cgrid/ext run test -- tests/iconCatalog.test.ts`
+Run: `npm --workspace @wellsfargo-starui/velocity-grid-ext run test -- tests/iconCatalog.test.ts`
 Expected: FAIL — modules don't exist.
 
 - [ ] **Step 3: Write the generator**
@@ -784,7 +784,7 @@ Create `packages/ext/src/toolbar/buildIconCatalog.ts`:
 ```ts
 // Build script: categorize the kernel's Lucide bundle into picker sections.
 // Emits iconCatalog.generated.ts (committed). Regenerate via
-// `npm --workspace @cgrid/ext run prebuild-icon-catalog` after bumping
+// `npm --workspace @wellsfargo-starui/velocity-grid-ext run prebuild-icon-catalog` after bumping
 // lucide-static + regenerating the kernel bundle.
 //
 // Categorization is name-based (ordered first-match rules). The spec allows
@@ -794,7 +794,7 @@ Create `packages/ext/src/toolbar/buildIconCatalog.ts`:
 import { writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { lucideBundle } from '@cgrid/kernel/icons/lucide.generated';
+import { lucideBundle } from '@wellsfargo-starui/velocity-grid/icons/lucide.generated';
 
 const RULES: ReadonlyArray<readonly [string, RegExp]> = [
   ['Arrows & Direction', /arrow|chevron|move-|^move$|corner-|undo|redo|refresh|rotate|repeat|iteration|forward|reply|expand|shrink|maximize|minimize|navigation|compass|milestone|signpost/],
@@ -826,8 +826,8 @@ const categories = [...buckets.entries()]
 const __dirname = dirname(fileURLToPath(import.meta.url));
 writeFileSync(
   join(__dirname, 'iconCatalog.generated.ts'),
-  `// AUTO-GENERATED — do not edit. Regenerate via \`npm --workspace @cgrid/ext run prebuild-icon-catalog\`.
-// Categorizes @cgrid/kernel's Lucide bundle for the ribbon icon picker.
+  `// AUTO-GENERATED — do not edit. Regenerate via \`npm --workspace @wellsfargo-starui/velocity-grid-ext run prebuild-icon-catalog\`.
+// Categorizes @wellsfargo-starui/velocity-grid's Lucide bundle for the ribbon icon picker.
 export const lucideCategories: ReadonlyArray<{ readonly category: string; readonly icons: readonly string[] }> = ${JSON.stringify(categories, null, 2)} as const;
 `,
 );
@@ -844,7 +844,7 @@ Add to `packages/ext/package.json` scripts:
 
 - [ ] **Step 4: Generate**
 
-Run: `npm --workspace @cgrid/ext run prebuild-icon-catalog`
+Run: `npm --workspace @wellsfargo-starui/velocity-grid-ext run prebuild-icon-catalog`
 Expected: writes `iconCatalog.generated.ts`, logs ~15 categories / 1506 icons. If the 'Other' bucket exceeds 50%, extend `RULES` keywords until the Step 1 test's ratio holds.
 
 - [ ] **Step 5: Write the emoji catalog**
@@ -870,8 +870,8 @@ export const emojiCategories: ReadonlyArray<{ readonly category: string; readonl
 
 - [ ] **Step 6: Run tests**
 
-Run: `npm --workspace @cgrid/ext run test -- tests/iconCatalog.test.ts`
-Expected: PASS. (If the subpath import fails in vitest, add the alias the ext vitest config already uses for `@cgrid/kernel` — check `packages/ext/vitest.config.ts` / `vite.config.ts` `resolve.alias` and mirror the kernel entry with `@cgrid/kernel/icons/lucide.generated` → `packages/kernel/src/icons/lucide.generated.ts`.)
+Run: `npm --workspace @wellsfargo-starui/velocity-grid-ext run test -- tests/iconCatalog.test.ts`
+Expected: PASS. (If the subpath import fails in vitest, add the alias the ext vitest config already uses for `@wellsfargo-starui/velocity-grid` — check `packages/ext/vitest.config.ts` / `vite.config.ts` `resolve.alias` and mirror the kernel entry with `@wellsfargo-starui/velocity-grid/icons/lucide.generated` → `packages/kernel/src/icons/lucide.generated.ts`.)
 
 - [ ] **Step 7: Commit**
 
@@ -891,7 +891,7 @@ git commit -m "feat(ext): categorized Lucide + emoji catalogs for the ribbon ico
 
 **Interfaces:**
 - Consumes: `lucideCategories` / `emojiCategories` (Task 5), `lucideBundle` (kernel subpath), `grid.editColumn(colId, { cellIcon | headerIcon | cellStyle | headerStyle })` (Task 4 shapes; `null` clears prefix/suffix), `grid.getTemplates()`.
-- Produces: `createIconPicker(opts)` returning `{ button, panel, setPreview(sel), destroy() }`; ribbon section with stable E2E hooks `data-ip="open" | "search" | "place" | "color" | "clear"` and tiles `.cgext-ip-tile[data-icon="<name>"]` / `[data-emoji="<glyph>"]`. Placement menu items `[data-place="prefix|suffix|tl|tr|bl|br|ml|mr"]`.
+- Produces: `createIconPicker(opts)` returning `{ button, panel, setPreview(sel), destroy() }`; ribbon section with stable E2E hooks `data-ip="open" | "search" | "place" | "color" | "clear"` and tiles `.vgext-ip-tile[data-icon="<name>"]` / `[data-emoji="<glyph>"]`. Placement menu items `[data-place="prefix|suffix|tl|tr|bl|br|ml|mr"]`.
 
 - [ ] **Step 0: Read the frontend-design skill FIRST (hard gate — user's UI quality bar)**
 
@@ -912,9 +912,9 @@ describe('createIconPicker', () => {
     document.body.append(p.button, p.panel);
     p.button.click(); // open
     expect(p.panel.hidden).toBe(false);
-    const grids = p.panel.querySelectorAll('.cgext-ip-grid');
+    const grids = p.panel.querySelectorAll('.vgext-ip-grid');
     expect(grids.length).toBeGreaterThan(8); // lucide cats + 8 emoji cats
-    const tile = p.panel.querySelector('.cgext-ip-tile[data-icon="flame"]') as HTMLButtonElement;
+    const tile = p.panel.querySelector('.vgext-ip-tile[data-icon="flame"]') as HTMLButtonElement;
     expect(tile.querySelector('svg')).toBeTruthy();
     tile.click();
     expect(onSelect).toHaveBeenCalledWith({ name: 'flame' });
@@ -930,10 +930,10 @@ describe('createIconPicker', () => {
     const search = p.panel.querySelector('[data-ip="search"]') as HTMLInputElement;
     search.value = 'flame';
     search.dispatchEvent(new Event('input'));
-    expect(p.panel.querySelector('.cgext-ip-tile[data-icon="flame"]')).toBeTruthy();
-    expect(p.panel.querySelector('.cgext-ip-tile[data-icon="anchor"]')).toBeFalsy();
+    expect(p.panel.querySelector('.vgext-ip-tile[data-icon="flame"]')).toBeTruthy();
+    expect(p.panel.querySelector('.vgext-ip-tile[data-icon="anchor"]')).toBeFalsy();
     search.value = ''; search.dispatchEvent(new Event('input'));
-    (p.panel.querySelector('.cgext-ip-tile[data-emoji="🔥"]') as HTMLButtonElement).click();
+    (p.panel.querySelector('.vgext-ip-tile[data-emoji="🔥"]') as HTMLButtonElement).click();
     expect(onSelect).toHaveBeenLastCalledWith({ emoji: '🔥' });
     p.destroy();
   });
@@ -953,7 +953,7 @@ describe('createIconPicker', () => {
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `npm --workspace @cgrid/ext run test -- tests/iconPicker.test.ts`
+Run: `npm --workspace @wellsfargo-starui/velocity-grid-ext run test -- tests/iconPicker.test.ts`
 Expected: FAIL — module doesn't exist.
 
 - [ ] **Step 3: Implement `iconPicker.ts`**
@@ -970,7 +970,7 @@ Create `packages/ext/src/toolbar/iconPicker.ts`:
 // onSelect({emoji}) for an emoji tile, then closes. The caller owns all
 // apply semantics (placement slots, editColumn) — this module is pure UI.
 
-import { lucideBundle } from '@cgrid/kernel/icons/lucide.generated';
+import { lucideBundle } from '@wellsfargo-starui/velocity-grid/icons/lucide.generated';
 import { lucideCategories } from './iconCatalog.generated';
 import { emojiCategories } from './emojiCatalog';
 
@@ -994,14 +994,14 @@ function tileSvg(d: string): string {
 export function createIconPicker(opts: { onSelect: (sel: IconSelection) => void }): IconPickerHandle {
   const button = document.createElement('button');
   button.type = 'button';
-  button.className = 'cgext-rb-btn cgext-ip-open';
+  button.className = 'vgext-rb-btn vgext-ip-open';
   button.title = 'Pick icon or emoji';
   button.setAttribute('aria-label', 'Pick icon or emoji');
   button.dataset.ip = 'open';
   button.innerHTML = PLACEHOLDER_SVG;
 
   const panel = document.createElement('div');
-  panel.className = 'cgext-ip-panel';
+  panel.className = 'vgext-ip-panel';
   panel.hidden = true;
 
   let built = false;
@@ -1010,12 +1010,12 @@ export function createIconPicker(opts: { onSelect: (sel: IconSelection) => void 
     const search = document.createElement('input');
     search.type = 'search';
     search.placeholder = 'Search icons & emojis…';
-    search.className = 'cgext-rb-input cgext-ip-search';
+    search.className = 'vgext-rb-input vgext-ip-search';
     search.dataset.ip = 'search';
     const scroller = document.createElement('div');
-    scroller.className = 'cgext-ip-scroll';
+    scroller.className = 'vgext-ip-scroll';
     const empty = document.createElement('div');
-    empty.className = 'cgext-ip-empty';
+    empty.className = 'vgext-ip-empty';
     empty.textContent = 'No icons match';
     empty.hidden = true;
 
@@ -1027,17 +1027,17 @@ export function createIconPicker(opts: { onSelect: (sel: IconSelection) => void 
       entries: ReadonlyArray<{ key: string; sel: IconSelection; html?: string; text?: string }>,
     ): void => {
       const root = document.createElement('div');
-      root.className = 'cgext-ip-section';
+      root.className = 'vgext-ip-section';
       const label = document.createElement('div');
-      label.className = 'cgext-ip-cat';
+      label.className = 'vgext-ip-cat';
       label.textContent = title;
       const grid = document.createElement('div');
-      grid.className = 'cgext-ip-grid';
+      grid.className = 'vgext-ip-grid';
       const tiles: Section['tiles'] = [];
       for (const e of entries) {
         const t = document.createElement('button');
         t.type = 'button';
-        t.className = 'cgext-ip-tile';
+        t.className = 'vgext-ip-tile';
         t.title = e.key;
         if (e.sel.name) t.dataset.icon = e.sel.name;
         if (e.sel.emoji) t.dataset.emoji = e.sel.emoji;
@@ -1120,7 +1120,7 @@ export function createIconPicker(opts: { onSelect: (sel: IconSelection) => void 
 
 - [ ] **Step 4: Run picker tests**
 
-Run: `npm --workspace @cgrid/ext run test -- tests/iconPicker.test.ts`
+Run: `npm --workspace @wellsfargo-starui/velocity-grid-ext run test -- tests/iconPicker.test.ts`
 Expected: PASS.
 
 - [ ] **Step 5: Ribbon section + wiring**
@@ -1135,7 +1135,7 @@ In `packages/ext/src/toolbar/ribbon.ts`:
       let iconApply: (sel: { name?: string; emoji?: string }) => void = () => {};
       const iconColorBtn = iconBtn(I.paintText, 'Icon color');
       const iconColorInput = document.createElement('input');
-      iconColorInput.type = 'color'; iconColorInput.className = 'cgext-rb-colorinput'; iconColorInput.value = '#4f9cf9';
+      iconColorInput.type = 'color'; iconColorInput.className = 'vgext-rb-colorinput'; iconColorInput.value = '#4f9cf9';
       const iconPlacePill = pill('Prefix'); iconPlacePill.dataset.ip = 'place';
       const iconClear = iconBtn(I.eraser, 'Clear icon at this placement'); iconClear.dataset.ip = 'clear';
       document.body.append(picker.panel);
@@ -1226,10 +1226,10 @@ Pass them from render (`setIconApply: (fn) => { iconApply = fn; }`), import `cre
 
   // Placement menu on the pill (simple anchored list, click-away via one-shot listener)
   const placeMenu = document.createElement('div');
-  placeMenu.className = 'cgext-ip-placemenu'; placeMenu.hidden = true;
+  placeMenu.className = 'vgext-ip-placemenu'; placeMenu.hidden = true;
   for (const [value, label] of PLACEMENTS) {
     const item = document.createElement('button');
-    item.type = 'button'; item.className = 'cgext-ip-placeitem';
+    item.type = 'button'; item.className = 'vgext-ip-placeitem';
     item.dataset.place = value; item.textContent = label;
     item.addEventListener('click', () => {
       placement = value;
@@ -1281,48 +1281,48 @@ Pass them from render (`setIconApply: (fn) => { iconApply = fn; }`), import `cre
 **(e)** Append to `RIBBON_CSS`:
 
 ```css
-.cgext-ip-open { font-size: 14px; }
-.cgext-ip-panel {
+.vgext-ip-open { font-size: 14px; }
+.vgext-ip-panel {
   position: fixed; z-index: 1000; width: 340px; max-height: 420px;
   display: flex; flex-direction: column; overflow: hidden;
-  background: var(--cg-popup-bg, #161b26); border: 1px solid var(--cg-border-color, #2a3140);
+  background: var(--vg-popup-bg, #161b26); border: 1px solid var(--vg-border-color, #2a3140);
   border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,0.45); padding: 10px;
 }
-.cgext-ip-search { width: 100%; box-sizing: border-box; margin-bottom: 8px; }
-.cgext-ip-scroll { overflow-y: auto; flex: 1 1 auto; }
-.cgext-ip-cat {
+.vgext-ip-search { width: 100%; box-sizing: border-box; margin-bottom: 8px; }
+.vgext-ip-scroll { overflow-y: auto; flex: 1 1 auto; }
+.vgext-ip-cat {
   font-size: 10px; font-weight: 650; letter-spacing: 0.09em; text-transform: uppercase;
-  color: var(--cg-muted-fg-color, #7f8ba0); margin: 10px 2px 5px;
-  position: sticky; top: 0; background: var(--cg-popup-bg, #161b26); padding: 2px 0;
+  color: var(--vg-muted-fg-color, #7f8ba0); margin: 10px 2px 5px;
+  position: sticky; top: 0; background: var(--vg-popup-bg, #161b26); padding: 2px 0;
 }
-.cgext-ip-section:first-child .cgext-ip-cat { margin-top: 0; }
-.cgext-ip-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; }
-.cgext-ip-tile {
+.vgext-ip-section:first-child .vgext-ip-cat { margin-top: 0; }
+.vgext-ip-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; }
+.vgext-ip-tile {
   appearance: none; border: none; border-radius: 6px; background: transparent;
   width: 100%; aspect-ratio: 1; display: inline-flex; align-items: center; justify-content: center;
-  color: var(--cg-muted-fg-color, #9aa4b6); font-size: 15px; cursor: pointer;
+  color: var(--vg-muted-fg-color, #9aa4b6); font-size: 15px; cursor: pointer;
   transition: background 90ms ease, color 90ms ease, transform 90ms ease;
 }
-.cgext-ip-tile:hover { background: var(--cg-row-alt-bg, rgba(255,255,255,0.08)); color: var(--cg-fg-color, #e5e9f0); transform: scale(1.12); }
-.cgext-ip-tile:focus-visible { outline: 2px solid var(--cg-accent-color, #4f9cf9); outline-offset: -2px; }
-.cgext-ip-empty { padding: 24px 0; text-align: center; font-size: 12px; color: var(--cg-muted-fg-color, #7f8ba0); }
-.cgext-ip-placemenu {
+.vgext-ip-tile:hover { background: var(--vg-row-alt-bg, rgba(255,255,255,0.08)); color: var(--vg-fg-color, #e5e9f0); transform: scale(1.12); }
+.vgext-ip-tile:focus-visible { outline: 2px solid var(--vg-accent-color, #4f9cf9); outline-offset: -2px; }
+.vgext-ip-empty { padding: 24px 0; text-align: center; font-size: 12px; color: var(--vg-muted-fg-color, #7f8ba0); }
+.vgext-ip-placemenu {
   position: fixed; z-index: 1000; min-width: 140px; padding: 4px;
-  background: var(--cg-popup-bg, #161b26); border: 1px solid var(--cg-border-color, #2a3140);
+  background: var(--vg-popup-bg, #161b26); border: 1px solid var(--vg-border-color, #2a3140);
   border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.4);
   display: flex; flex-direction: column;
 }
-.cgext-ip-placeitem {
+.vgext-ip-placeitem {
   appearance: none; border: none; background: transparent; border-radius: 5px;
   padding: 6px 10px; text-align: left; font: inherit; font-size: 12px;
-  color: var(--cg-fg-color, #d6dce8); cursor: pointer;
+  color: var(--vg-fg-color, #d6dce8); cursor: pointer;
 }
-.cgext-ip-placeitem:hover { background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 18%, transparent); }
+.vgext-ip-placeitem:hover { background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 18%, transparent); }
 ```
 
 - [ ] **Step 6: Run all ext tests + typecheck**
 
-Run: `npm --workspace @cgrid/ext run test && npm --workspace @cgrid/ext run typecheck`
+Run: `npm --workspace @wellsfargo-starui/velocity-grid-ext run test && npm --workspace @wellsfargo-starui/velocity-grid-ext run typecheck`
 Expected: PASS (existing ribbon tests unaffected — new controls are additive).
 
 - [ ] **Step 7: Commit**
@@ -1357,20 +1357,20 @@ import { test, expect } from '@playwright/test';
 // pipeline plus visual smoke via screenshot).
 test('icons section: prefix icon, corner decorator, header emoji, clear', async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('.cgext-grid canvas')).toBeVisible();
+  await expect(page.locator('.vgext-grid canvas')).toBeVisible();
 
   // Focus a data cell so the toolbar resolves target columns.
-  await page.locator('.cgext-grid canvas').first().click({ position: { x: 120, y: 90 } });
-  await expect(page.locator('.cgext-rb-pill').first()).not.toHaveText(/Select a cell/);
+  await page.locator('.vgext-grid canvas').first().click({ position: { x: 120, y: 90 } });
+  await expect(page.locator('.vgext-rb-pill').first()).not.toHaveText(/Select a cell/);
 
   const ownTemplate = () => page.evaluate(() =>
     (window as any).__ext.grid.getTemplates().find((t: any) => t.id.startsWith('__cgridOwn:'))?.overrides);
 
   // 1. Prefix (default placement) — pick the flame icon.
   await page.locator('[data-ip="open"]').click();
-  await expect(page.locator('.cgext-ip-panel')).toBeVisible();
+  await expect(page.locator('.vgext-ip-panel')).toBeVisible();
   await page.locator('[data-ip="search"]').fill('flame');
-  await page.locator('.cgext-ip-tile[data-icon="flame"]').click();
+  await page.locator('.vgext-ip-tile[data-icon="flame"]').click();
   let ov = await ownTemplate();
   expect(ov.cellIcon).toMatchObject({ name: 'flame', position: 'leading' });
 
@@ -1378,7 +1378,7 @@ test('icons section: prefix icon, corner decorator, header emoji, clear', async 
   await page.locator('[data-ip="place"]').click();
   await page.locator('[data-place="tr"]').click();
   await page.locator('[data-ip="open"]').click();
-  await page.locator('.cgext-ip-tile[data-emoji="⚠️"]').click();
+  await page.locator('.vgext-ip-tile[data-emoji="⚠️"]').click();
   ov = await ownTemplate();
   expect(ov.cellStyle.decorators).toEqual([{ position: 'tr', kind: 'emoji', value: '⚠️' }]);
 
@@ -1387,7 +1387,7 @@ test('icons section: prefix icon, corner decorator, header emoji, clear', async 
   await page.locator('[data-ip="place"]').click();
   await page.locator('[data-place="suffix"]').click();
   await page.locator('[data-ip="open"]').click();
-  await page.locator('.cgext-ip-tile[data-emoji="🔥"]').click();
+  await page.locator('.vgext-ip-tile[data-emoji="🔥"]').click();
   ov = await ownTemplate();
   expect(ov.headerIcon).toMatchObject({ emoji: '🔥', position: 'trailing' });
 

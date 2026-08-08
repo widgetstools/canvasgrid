@@ -2,7 +2,7 @@
  * Shared checkbox glyph painting for canvas surfaces (boolean cells,
  * row-select, group tri-state, header select-all). One geometry so the
  * check and indeterminate dash stay optically centered in the box —
- * matching the DOM `.cg-checkbox` vocabulary.
+ * matching the DOM `.vg-checkbox` vocabulary.
  */
 import type { CachedContext2D } from '../gc';
 

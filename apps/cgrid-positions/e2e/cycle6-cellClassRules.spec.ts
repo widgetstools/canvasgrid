@@ -52,7 +52,7 @@ async function findRowByPnlSign(
   sign: 'positive' | 'negative',
 ): Promise<number> {
   return page.evaluate((sign) => {
-    const grid = (window as unknown as { __cgrid: GridRuntime }).__cgrid;
+    const grid = (window as unknown as { __velocity-grid: GridRuntime }).__cgrid;
     for (let i = 0; i < 30; i++) {
       const val = grid.getCellValue(i, 'pnl');
       const n = typeof val === 'number' ? val : Number(val);
@@ -79,18 +79,18 @@ test.describe('Cycle 6 / Task 7 — cellClassRules theme-driven variants', () =>
     test.skip(negRow === -1, 'No negative pnl row in first 30 rows');
 
     const posBg = await page.evaluate((row) => {
-      const grid = (window as unknown as { __cgrid: GridRuntime }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridRuntime }).__cgrid;
       return grid.getCellPaintedBg(row, 'pnl');
     }, posRow);
 
     const negBg = await page.evaluate((row) => {
-      const grid = (window as unknown as { __cgrid: GridRuntime }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridRuntime }).__cgrid;
       return grid.getCellPaintedBg(row, 'pnl');
     }, negRow);
 
     // The CSS variables declare:
-    //   --cg-cell-class-positive-bg: #e7f7ec
-    //   --cg-cell-class-negative-bg: #fde7e9
+    //   --vg-cell-class-positive-bg: #e7f7ec
+    //   --vg-cell-class-negative-bg: #fde7e9
     // getCellPaintedBg returns the literal string from the variant map,
     // which is the raw CSS variable value.
     expect(posBg).toBe('#e7f7ec');

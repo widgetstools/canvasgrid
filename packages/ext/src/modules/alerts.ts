@@ -3,7 +3,7 @@
  * Master-detail: rules rail + editor (trigger tabs, severity, message,
  * channels, debounce) with a collapsible global-settings band.
  *
- * Mutations ride the public alerts API attached by `@cgrid/rules`
+ * Mutations ride the public alerts API attached by `@wellsfargo-starui/velocity-grid-rules`
  * `wireIntoKernel` (`getAlertRules` / `addAlertRule` / …). Persistence is
  * the dedicated `alerts` state module (rules+settings; never history).
  */
@@ -13,9 +13,9 @@ import type {
   AlertSeverity,
   AlertTrigger,
   AlertsSettings,
-} from '@cgrid/rules';
-import { wireIntoKernel as wireRules, DEFAULT_ALERTS_SETTINGS } from '@cgrid/rules';
-import type { SettingsModule, CgExtContext, ModuleInstance } from '../extension/types';
+} from '@wellsfargo-starui/velocity-grid-rules';
+import { wireIntoKernel as wireRules, DEFAULT_ALERTS_SETTINGS } from '@wellsfargo-starui/velocity-grid-rules';
+import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import { ExpressionEditor } from '../ui/expressionEditor';
 import { editorColumns, leafColumns } from '../ui/gridSchema';
 import {
@@ -87,7 +87,7 @@ export function alertsModule(): SettingsModule {
       injectCockpitStyles();
     },
 
-    mount(host: HTMLElement, ctx: CgExtContext): ModuleInstance {
+    mount(host: HTMLElement, ctx: VelocityGridExtContext): ModuleInstance {
       // Ensure the rules/alerts engines are wired (idempotent).
       try { wireRules(ctx.grid); } catch { /* host may wire later */ }
       const grid = ctx.grid as AlertsGrid;

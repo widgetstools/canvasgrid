@@ -36,7 +36,7 @@ export type GroupSelectionState = 'none' | 'partial' | 'all';
  *  checkbox clicks AND to recompute a group's aggregate state for
  *  paint.
  *
- *  cgrid.ts implements this on top of a `groupKey → descendant rowIds`
+ *  velocityGrid.ts implements this on top of a `groupKey → descendant rowIds`
  *  map populated from the worker's `groupKeysSnapshot` reply. Tests
  *  stub it with a synthetic in-memory map.
  *
@@ -54,7 +54,7 @@ export class SelectionModel {
   };
   // ID-keyed shadow state. The API-driven setters populate this directly; the
   // UI-driven setters (selectSingle / toggleMulti / range) leave it empty.
-  // Persistent ids survive a re-sort: cgrid.ts re-asks the worker for fresh
+  // Persistent ids survive a re-sort: velocityGrid.ts re-asks the worker for fresh
   // indices on `modelUpdated` and calls `rebuildIndices` to refresh
   // `selectedRowIndices` + `focusedRowIndex`.
   private _selectedRowIds: Set<string> = new Set();
@@ -66,7 +66,7 @@ export class SelectionModel {
    *  the membership resolver. */
   private _groupSelectsChildren = false;
   /** Cycle 15 / Task 8 — main-thread descendant resolver. Non-null only
-   *  when cascading is enabled AND the host (cgrid.ts or a test) has
+   *  when cascading is enabled AND the host (velocityGrid.ts or a test) has
    *  supplied a resolver. */
   private _membership: GroupMembershipResolver | null = null;
 
@@ -381,7 +381,7 @@ export class SelectionModel {
   }
 
   /** Re-derive `selectedRowIndices` + `focusedRowIndex` from the persistent
-   *  id set, using a freshly-built rowId → index map. Called by cgrid.ts on
+   *  id set, using a freshly-built rowId → index map. Called by velocityGrid.ts on
    *  `modelUpdated` (after sort / transaction / column-defs change). Skips
    *  the emit when nothing actually changes so a steady-state model update
    *  doesn't churn paint.

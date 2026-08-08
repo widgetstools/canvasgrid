@@ -1,7 +1,7 @@
 // Cycle 21e / Task 15 — the kernel bridge.
 //
-// `wireIntoKernel(grid, opts?)` wires @cgrid/rules' engines onto a
-// CGrid instance via kernel's PUBLIC registration APIs, mirroring
+// `wireIntoKernel(grid, opts?)` wires @wellsfargo-starui/velocity-grid-rules' engines onto a
+// VelocityGrid instance via kernel's PUBLIC registration APIs, mirroring
 // packages/format/src/bridge.ts:
 //
 //   1. constructs RuleEngine + AlertsEngine (seeded from opts),
@@ -15,7 +15,7 @@
 //   4. seeds match counts from grid.forEachRow,
 //   5. repaints on activeDurationMs expiry via grid.refresh().
 //
-// Kernel never runtime-imports @cgrid/rules; this module reaches into
+// Kernel never runtime-imports @wellsfargo-starui/velocity-grid-rules; this module reaches into
 // kernel only through the grid surface passed in (structural types —
 // zero static kernel imports). Idempotent per grid instance via a
 // `__rulesBridgeWired` marker that stores — and re-returns — the SAME
@@ -49,7 +49,7 @@ interface CellValueChangedEvent {
   data?: Record<string, unknown>;
 }
 
-/** Structural surface of the CGrid instance (or CGridApi) the bridge
+/** Structural surface of the VelocityGrid instance (or VelocityGridApi) the bridge
  *  registers against. Type-only — no runtime kernel import; mirrors
  *  format's KernelGridSurface. NOTE: kernel's public repaint API is
  *  `refresh()` (types/api.ts:292) — there is no per-row refreshCells,
@@ -73,7 +73,7 @@ interface KernelGridSurface {
   notifyModuleStateChanged?(id: string): void;
   __rulesBridgeWired?: { rules: RuleEngine; alerts: AlertsEngine };
   // Public alerts CRUD (attached by wireIntoKernel — mirrors style-rule
-  // CGridApi surface without requiring a kernel bump for every host).
+  // VelocityGridApi surface without requiring a kernel bump for every host).
   getAlertRules?(): AlertRule[];
   addAlertRule?(rule: AlertRule): void;
   updateAlertRule?(id: string, patch: Partial<AlertRule>): void;
@@ -161,7 +161,7 @@ const defaultNow = (): number => performance.now();
 // ─── The bridge ────────────────────────────────────────────────────────
 
 /**
- * Wire @cgrid/rules into a CGrid instance. Idempotent — re-calling on
+ * Wire @wellsfargo-starui/velocity-grid-rules into a VelocityGrid instance. Idempotent — re-calling on
  * an already-wired grid returns the SAME `{ rules, alerts }` object.
  */
 export function wireIntoKernel(
@@ -196,7 +196,7 @@ export function wireIntoKernel(
 
   // setRules resets match counts and expects the caller to re-seed over the
   // current dataset — shared by the wire-time seed (step 4), the `rules`
-  // state-module restore (step 6, C1), and the CGridApi setRules op (C3).
+  // state-module restore (step 6, C1), and the VelocityGridApi setRules op (C3).
   const reseedCounts = (): void => {
     const seed: Array<{ rowId: string; row: Record<string, unknown> }> = [];
     g.forEachRow((rowId, row) => seed.push({ rowId, row }));
@@ -210,7 +210,7 @@ export function wireIntoKernel(
   //    remains only as a fallback for callers that omit theme. Shape
   //    mirrors kernel's structural RuleEngineShape (core/ruleEngineSlot.ts).
   //    Grid Layouts / Phase C (C3) — getRules/setRules let the kernel's
-  //    CGridApi rule methods drive the engine's rule set imperatively
+  //    VelocityGridApi rule methods drive the engine's rule set imperatively
   //    (mirrors the calc provider's template ops); setRules re-seeds counts.
   g.registerRuleEngine({
     evaluateCell: (ctx: { row: Record<string, unknown>; rowId: string; colId: string | null; theme?: 'light' | 'dark' }) =>

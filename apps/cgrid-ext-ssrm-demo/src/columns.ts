@@ -1,4 +1,4 @@
-import type { CColDef } from '@cgrid/kernel';
+import type { CColDef } from '@wellsfargo-starui/velocity-grid';
 import type { PositionRow } from './mockServer';
 
 /** Kernel-synthesized pinned grand-total row id (grandTotalRow: 'pinnedBottom'). */
@@ -33,7 +33,7 @@ export const COLUMNS: CColDef<PositionRow>[] = [
   },
   // `rowGroup`/`rowGroupIndex` are construction-time seeds the kernel reads
   // off the RAW defs (they are not part of the CColDef type — see
-  // computeInitialRowGroupColumns in cgrid.ts), hence the cast.
+  // computeInitialRowGroupColumns in velocityGrid.ts), hence the cast.
   { colId: 'desk', field: 'desk', headerName: 'Desk', cellDataType: 'text', width: 130, filter: 'text', enableRowGroup: true, rowGroup: true, rowGroupIndex: 0 } as CColDef<PositionRow>,
   { colId: 'region', field: 'region', headerName: 'Region', cellDataType: 'text', width: 110, filter: 'text', enableRowGroup: true, rowGroup: true, rowGroupIndex: 1 } as CColDef<PositionRow>,
   { colId: 'currency', field: 'currency', headerName: 'CCY', cellDataType: 'text', width: 90, filter: 'text', enableRowGroup: true },

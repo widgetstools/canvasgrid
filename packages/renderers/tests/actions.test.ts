@@ -1,7 +1,7 @@
-// @cgrid/renderers — action category tests (Cycle 21f / Task 12).
+// @wellsfargo-starui/velocity-grid-renderers — action category tests (Cycle 21f / Task 12).
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import type { CellPaintConfig } from '@cgrid/kernel';
+import type { CellPaintConfig } from '@wellsfargo-starui/velocity-grid';
 import { makeFakeGc } from './helpers/fakeGc';
 import type { FakeGc } from './helpers/fakeGc';
 import {

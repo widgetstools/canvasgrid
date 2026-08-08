@@ -3,7 +3,7 @@
 **Date:** 2026-08-06  
 **Status:** Research complete · ready for phased implementation  
 **Reference codebase:** `/Users/develop/wfh/stern-bak/packages` (Markets Grid / StarUI)  
-**Target codebase:** `/Users/develop/wfh/canvasgrid` (`@cgrid/ext`, `@cgrid/rules`, `@cgrid/edit`, `@cgrid/calc`, kernel)  
+**Target codebase:** `/Users/develop/wfh/canvasgrid` (`@wellsfargo-starui/velocity-grid-ext`, `@wellsfargo-starui/velocity-grid-rules`, `@wellsfargo-starui/velocity-grid-edit`, `@wellsfargo-starui/velocity-grid-calc`, kernel)  
 **Companion specs (already in-repo):**
 - Engine contract: [`docs/starui-customizer/`](../../starui-customizer/)
 - UI editor contract: [`docs/starui-customizer-ui/`](../../starui-customizer-ui/)
@@ -21,7 +21,7 @@ Markets Grid’s “Grid Customizer” is not one panel — it is a **modular pl
 3. **Editing toolbars** — Smart Edit, Bulk Update, Edit History undo/redo live outside the sheet.
 4. **Profiles** — per-module state snapshots; alert *history* and edit *journal stacks* are session-only.
 
-**canvasgrid already has most engines** (`@cgrid/edit` journal + smart/bulk/±/shortcuts; `@cgrid/rules` RuleEngine + AlertsEngine; `@cgrid/calc`; ext settings modules for Options / Groups / Column Settings / Style Rules / Calculated Columns). The missing work is primarily **Alerts UI + Edit History UI/tooling + Editing-module settings panels + sheet IA (menubar groups) + profile persistence for the new modules + E2E**.
+**canvasgrid already has most engines** (`@wellsfargo-starui/velocity-grid-edit` journal + smart/bulk/±/shortcuts; `@wellsfargo-starui/velocity-grid-rules` RuleEngine + AlertsEngine; `@wellsfargo-starui/velocity-grid-calc`; ext settings modules for Options / Groups / Column Settings / Style Rules / Calculated Columns). The missing work is primarily **Alerts UI + Edit History UI/tooling + Editing-module settings panels + sheet IA (menubar groups) + profile persistence for the new modules + E2E**.
 
 **Row-model requirement:** every customizer feature in this worklog must work on **both** client-side row model (`cgrid-ext-demo`) **and** sparse SSRM v2 (`cgrid-ext-ssrm-demo` / blotter). CSRM-only acceptance is insufficient. See §3a.
 
@@ -120,7 +120,7 @@ Legend for **canvasgrid status**:
 
 #### E. Shortcuts (`shortcuts`)
 - **Markets:** Letter-key numeric ops; ListPane/EditorPane for shortcut defs; `transformColumnDefs` + `activate`.
-- **canvasgrid:** **Engine solid** (`@cgrid/edit` shortcuts + bridge); **UI missing** settings module.
+- **canvasgrid:** **Engine solid** (`@wellsfargo-starui/velocity-grid-edit` shortcuts + bridge); **UI missing** settings module.
 - **Work:** Phase 3 settings panel + profile slice; ribbon already uses edit handle.
 
 ### 2.2 Columns group
@@ -157,7 +157,7 @@ Legend for **canvasgrid status**:
   - Priority, enabled, activeDurationMs
   - Runtime: cellClassRules / rowClassRules + CSS injection + header painter + timed activations
 - **Paths:** `conditional-styling/{index,runtime/*,ConditionalStylingPanel,*}`
-- **canvasgrid:** **Engine solid + UI partial** — `@cgrid/rules` RuleEngine wired; Customize Styling Rules tab with expression/style bands; flash/indicator depth may lag Markets.
+- **canvasgrid:** **Engine solid + UI partial** — `@wellsfargo-starui/velocity-grid-rules` RuleEngine wired; Customize Styling Rules tab with expression/style bands; flash/indicator depth may lag Markets.
 - **Gaps called out in gap analysis:** UI filters `kind === 'style'` so standalone `IndicatorRule` is not edited; aggregate/`PREV()` in rule conditions still reserved; no settings-sheet undo for rule CRUD (draft discard only).
 - **Work:** Audit flash + indicators + header painter vs Markets; decide whether IndicatorRule gets its own editor or stays style-embedded; expand E2E beyond expression/name/scope.
 
@@ -174,7 +174,7 @@ Legend for **canvasgrid status**:
 - **Paths:**  
   - Core: `core/engine/src/customizer/modules/alerts/state.ts`  
   - UI/runtime: `react-grid/.../customizer/modules/alerts/*`
-- **canvasgrid:** **Engine solid / UI missing** — `packages/rules/src/alerts/alertsEngine.ts` + types in `rules/src/types.ts`; `wireIntoKernel` constructs AlertsEngine; showcase demo has a feature sample. **No** Customize Alerts tab or badge in `@cgrid/ext`.
+- **canvasgrid:** **Engine solid / UI missing** — `packages/rules/src/alerts/alertsEngine.ts` + types in `rules/src/types.ts`; `wireIntoKernel` constructs AlertsEngine; showcase demo has a feature sample. **No** Customize Alerts tab or badge in `@wellsfargo-starui/velocity-grid-ext`.
 - **Critical persistence gap:** kernel `registerStateModule('rules')` snapshots **style rules only**. Alert rules + `AlertsSettings` are **not** in the profile/module envelope today — Phase 2 must register a dedicated `alerts` (or extended) state module, not assume they ride `rules`.
 - **Work:** Phase 2 (see §4) — full Alerts module + badge + **separate state-module persistence** + E2E.
 
@@ -187,12 +187,12 @@ Legend for **canvasgrid status**:
   - Toolbar **EditHistoryToolbarBody** — Undo / Redo / entry count
   - `activate` records cell-editor patches; wraps value setters; journal via editing-core
 - **Paths:** `data-change-history/*`, `editing/journalUndoRedo.ts`, core `EditJournal`
-- **canvasgrid:** **Engine solid / UI missing** — `@cgrid/edit` `EditJournal` + settings helpers (`shouldRecord`, etc.); demo wires `wireEditIntoKernel`; ribbon History already calls `journal.undo/redo`. **No** Customize “Edit History” panel / live monitor (#11). Format undo lives separately in `ext/src/toolbar/formatHistory.ts` (templates+overrides only — ignores rules/calc/alerts).
+- **canvasgrid:** **Engine solid / UI missing** — `@wellsfargo-starui/velocity-grid-edit` `EditJournal` + settings helpers (`shouldRecord`, etc.); demo wires `wireEditIntoKernel`; ribbon History already calls `journal.undo/redo`. **No** Customize “Edit History” panel / live monitor (#11). Format undo lives separately in `ext/src/toolbar/formatHistory.ts` (templates+overrides only — ignores rules/calc/alerts).
 - **Work:** Phase 1 — settings module + monitor + unifyUndo coordination; do **not** merge formatHistory into EditJournal.
 
 #### M. Smart Edit (`smart-edit`)
 - **Markets:** Settings (enabled, magnitude shortcuts, preview); toolbar body for ops on selection; records to journal.
-- **canvasgrid:** **Engine solid + UI partial** — bridge + ribbon wiring; Lit settings panel already exists in `@cgrid/customizer` (`packages/customizer/src/panels/smartEdit.ts`) but is **not** in the ext Customize sheet / `defaultBundle`.
+- **canvasgrid:** **Engine solid + UI partial** — bridge + ribbon wiring; Lit settings panel already exists in `@wellsfargo-starui/velocity-grid-customizer` (`packages/customizer/src/panels/smartEdit.ts`) but is **not** in the ext Customize sheet / `defaultBundle`.
 - **Work:** Phase 3 — either promote Lit panel into sheet IA or port cockpit equivalent; wire profile settings slice.
 
 #### N. Bulk Update (`bulk-update`)
@@ -291,8 +291,8 @@ Every new Customize module must:
 
 | Priority | Feature | Engine | Customize UI | Toolbar | Profile | E2E |
 |----------|---------|--------|--------------|---------|---------|-----|
-| P0 | Edit History + Undo/Redo | ✅ `@cgrid/edit` | ❌ | ⚠️ ribbon | settings only | ❌ |
-| P0 | Alerts rules + badge | ✅ `@cgrid/rules` | ❌ | ❌ | ❌ | ❌ |
+| P0 | Edit History + Undo/Redo | ✅ `@wellsfargo-starui/velocity-grid-edit` | ❌ | ⚠️ ribbon | settings only | ❌ |
+| P0 | Alerts rules + badge | ✅ `@wellsfargo-starui/velocity-grid-rules` | ❌ | ❌ | ❌ | ❌ |
 | P1 | Style Rules flash/indicators parity | ✅ | ⚠️ | n/a | ⚠️ | ⚠️ |
 | P1 | Sheet IA (menubar groups / more tabs) | n/a | ⚠️ tabs only | n/a | n/a | ⚠️ |
 | P2 | Smart Edit / Bulk / ± / Shortcuts settings | ✅ | ❌ | ⚠️ | ❌ | ❌ |
@@ -493,7 +493,7 @@ Copied from Markets — treat as acceptance criteria:
 | Layer | Scope |
 |-------|-------|
 | Unit | AlertsEngine triggers; EditJournal stacks; ext module serialize/deserialize |
-| Integration | wireEdit + wireRules on real CGrid **CSRM + SSRM**; mutate cells; undo; alert fire |
+| Integration | wireEdit + wireRules on real VelocityGrid **CSRM + SSRM**; mutate cells; undo; alert fire |
 | E2E CSRM | `apps/cgrid-ext-demo/e2e/customizer.spec.ts` (+ alerts/history) via `/?paintHarness` |
 | E2E SSRM | `apps/cgrid-ext-ssrm-demo/e2e/customizer-ssrm.spec.ts` — expand → edit → undo → alert/style (§3a.4) |
 | Smoke | Keep `cgrid-ext-ssrm-demo/scripts/smoke.mjs` green when chrome changes |
@@ -508,7 +508,7 @@ Reuse CSRM helpers in `apps/cgrid-ext-demo/e2e/helpers/customizer.ts`; SSRM twin
 - Full Markets “Custom Settings” as-of date blotter pipeline (host-specific).
 - OpenFin Notifications Center (badge/toast first; OpenFin bridge later).
 - Replacing canvasgrid ribbon with Markets PrimaryToolbar 1:1.
-- React port of SettingsSheet — stay on vanilla/cockpit in `@cgrid/ext`.
+- React port of SettingsSheet — stay on vanilla/cockpit in `@wellsfargo-starui/velocity-grid-ext`.
 - AG Grid Enterprise-only APIs that canvasgrid kernel does not implement.
 - **SSRM full-book** rule/alert evaluation over unloaded rows (not feasible client-side; document loaded-window semantics instead of faking counts).
 
@@ -559,10 +559,10 @@ When implementing a phase, open the matching `docs/starui-customizer-ui/NN-*.md`
 
 | Markets (stern-bak) | canvasgrid today |
 |---------------------|------------------|
-| `react-grid/.../SettingsSheet` + menubar | `@cgrid/ext` shell (flat icon tabs; needs groups) |
-| `react-grid/.../customizer/modules/*` | `@cgrid/ext/src/modules/*` (5 of ~17) |
-| Lit-less React panels | Mostly vanilla cockpit in ext; **partial** Lit in `@cgrid/customizer` (Smart Edit + Bulk Update only) |
-| `core/engine` EditJournal / alerts / CS | `@cgrid/edit`, `@cgrid/rules`, `@cgrid/calc` |
+| `react-grid/.../SettingsSheet` + menubar | `@wellsfargo-starui/velocity-grid-ext` shell (flat icon tabs; needs groups) |
+| `react-grid/.../customizer/modules/*` | `@wellsfargo-starui/velocity-grid-ext/src/modules/*` (5 of ~17) |
+| Lit-less React panels | Mostly vanilla cockpit in ext; **partial** Lit in `@wellsfargo-starui/velocity-grid-customizer` (Smart Edit + Bulk Update only) |
+| `core/engine` EditJournal / alerts / CS | `@wellsfargo-starui/velocity-grid-edit`, `@wellsfargo-starui/velocity-grid-rules`, `@wellsfargo-starui/velocity-grid-calc` |
 | Formatting Toolbar + HistoryStack | `ext` ribbon + `formatHistory.ts` |
 | ProfileManager + “layout” selector | `ext` profiles (wave-0) + title-bar **layouts** as primary switcher |
 | Showcase / OpenFin bridges | `apps/cgrid-showcase` alerts sample; OpenFin deferred |

@@ -8,10 +8,10 @@
 
 import { describe, it, expect } from 'vitest';
 import { AggFuncRegistry } from '../src/worker/aggFuncRegistry';
-import type { IAggFunc, IAggFuncParams, CGridOptions } from '../src/types';
+import type { IAggFunc, IAggFuncParams, VelocityGridOptions } from '../src/types';
 
 // ─── Helper: replicate totalsCellLookup extraction logic ─────────────────────
-// This mirrors the logic added to cgrid.ts totalsCellLookup so we can test
+// This mirrors the logic added to velocityGrid.ts totalsCellLookup so we can test
 // the object-field extraction without instantiating the full grid.
 
 function extractCellValue(raw: unknown, formatNum: (v: number) => string = String):
@@ -142,9 +142,9 @@ describe('AggFuncRegistry with object-returning custom funcs', () => {
 // ─── groupTotalRow / grandTotalRow option mapping ─────────────────────────────
 // Test that the aliasing logic produces the right groupIncludeFooter /
 // groupIncludeTotalFooter values. We test the pure mapping expression since
-// we can't instantiate CGrid in unit tests.
+// we can't instantiate VelocityGrid in unit tests.
 
-function resolveFooterFlags(opts: Partial<CGridOptions>): {
+function resolveFooterFlags(opts: Partial<VelocityGridOptions>): {
   groupIncludeFooter: boolean | undefined;
   groupIncludeTotalFooter: boolean | undefined;
 } {
@@ -210,28 +210,28 @@ describe('groupTotalRow / grandTotalRow aliases', () => {
   });
 });
 
-// ─── CGridOptions type: new fields present ─────────────────────────────────────
+// ─── VelocityGridOptions type: new fields present ─────────────────────────────────────
 
-describe('CGridOptions type: groupTotalRow / grandTotalRow fields', () => {
-  it('groupTotalRow: "bottom" compiles on CGridOptions', () => {
-    const opts: Partial<CGridOptions> = { groupTotalRow: 'bottom' };
+describe('VelocityGridOptions type: groupTotalRow / grandTotalRow fields', () => {
+  it('groupTotalRow: "bottom" compiles on VelocityGridOptions', () => {
+    const opts: Partial<VelocityGridOptions> = { groupTotalRow: 'bottom' };
     expect(opts.groupTotalRow).toBe('bottom');
   });
 
   it('groupTotalRow: "top" compiles', () => {
-    const opts: Partial<CGridOptions> = { groupTotalRow: 'top' };
+    const opts: Partial<VelocityGridOptions> = { groupTotalRow: 'top' };
     expect(opts.groupTotalRow).toBe('top');
   });
 
   it('groupTotalRow: null compiles', () => {
-    const opts: Partial<CGridOptions> = { groupTotalRow: null };
+    const opts: Partial<VelocityGridOptions> = { groupTotalRow: null };
     expect(opts.groupTotalRow).toBeNull();
   });
 
   it('grandTotalRow accepts "top" | "bottom" | null', () => {
-    const a: Partial<CGridOptions> = { grandTotalRow: 'top' };
-    const b: Partial<CGridOptions> = { grandTotalRow: 'bottom' };
-    const c: Partial<CGridOptions> = { grandTotalRow: null };
+    const a: Partial<VelocityGridOptions> = { grandTotalRow: 'top' };
+    const b: Partial<VelocityGridOptions> = { grandTotalRow: 'bottom' };
+    const c: Partial<VelocityGridOptions> = { grandTotalRow: null };
     expect([a.grandTotalRow, b.grandTotalRow, c.grandTotalRow]).toEqual(['top', 'bottom', null]);
   });
 });

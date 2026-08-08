@@ -1,4 +1,4 @@
-// @cgrid/edit — settings defaults, defensive merge, shouldRecord.
+// @wellsfargo-starui/velocity-grid-edit — settings defaults, defensive merge, shouldRecord.
 // Authoritative reference: docs/superpowers/specs/2026-07-02-cycle-21g-edit-design.md
 // §1.1.8 (merge discipline) + docs/superpowers/plans/notes/2026-07-02-cycle-21g-recon.md A.2 (shouldRecord).
 

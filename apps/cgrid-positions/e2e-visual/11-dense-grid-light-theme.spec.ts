@@ -5,7 +5,7 @@ import { setupGrid, waitForFrames } from './_setup';
 // dark-theme matrix to `colorScheme: 'dark'`; this spec opts a single
 // cell into `light` so a regression in light-mode theming (background
 // swap, gridline contrast, scrollbar mode) shows up. The Quartz light
-// theme is a distinct CSS class on the host (`cg-theme-quartz`), so
+// theme is a distinct CSS class on the host (`vg-theme-quartz`), so
 // the snapshot also gates the light-mode token table separately from
 // the dark one.
 test.use({ colorScheme: 'light' });
@@ -14,13 +14,13 @@ test('dense grid — 200 rows, Quartz light theme', async ({ page }) => {
   await setupGrid(page, 200);
   await page.evaluate(() => {
     const g = (window as unknown as {
-      __cgrid: { setTheme: (cls: string) => void };
+      __velocity-grid: { setTheme: (cls: string) => void };
     }).__cgrid;
-    g.setTheme('cg-theme-quartz');
+    g.setTheme('vg-theme-quartz');
     const host = document.getElementById('grid');
     if (host) {
-      host.classList.remove('cg-theme-quartz-dark');
-      host.classList.add('cg-theme-quartz');
+      host.classList.remove('vg-theme-quartz-dark');
+      host.classList.add('vg-theme-quartz');
     }
   });
   await waitForFrames(page, 8);

@@ -10,7 +10,7 @@
  * lights up end-to-end by scrolling notes into view and observing that
  * paint resolved against the wrap painter — if it hadn't, the per-cell
  * `cellRenderers.get('text-wrap')` would have thrown
- * `[cgrid] unknown cellRenderer 'text-wrap'` and `firstDataRendered` would
+ * `[velocity-grid] unknown cellRenderer 'text-wrap'` and `firstDataRendered` would
  * never fire.
  */
 import { test, expect } from '@playwright/test';
@@ -26,7 +26,7 @@ async function readBaselineRowHeight(page: import('@playwright/test').Page): Pro
   return page.evaluate(() => {
     const host = document.getElementById('grid');
     if (!host) return 30;
-    const v = parseFloat(getComputedStyle(host).getPropertyValue('--cg-row-height'));
+    const v = parseFloat(getComputedStyle(host).getPropertyValue('--vg-row-height'));
     return Number.isFinite(v) ? v : 30;
   });
 }
@@ -64,7 +64,7 @@ test.describe('wrapText column (Cycle 5 / Task 9)', () => {
   test('notes column paints without an unknown-renderer error', async ({ page }) => {
     // Reaching __cgridReady proves paint succeeded for every initial-visible
     // cell. If `'text-wrap'` weren't registered, the first paint of a
-    // wrapText column would throw `[cgrid] unknown cellRenderer 'text-wrap'`
+    // wrapText column would throw `[velocity-grid] unknown cellRenderer 'text-wrap'`
     // and the readiness flag would never flip. Belt-and-braces: also check
     // we captured no such error on the console bus.
     const wrapErrors = consoleErrors.filter((e) => e.includes('text-wrap'));
@@ -77,7 +77,7 @@ test.describe('wrapText column (Cycle 5 / Task 9)', () => {
     // Scroll the notes column into view so its cells enter the visible-cols
     // window and the wrap painter actually runs for them.
     await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       grid.ensureColumnVisible('notes', 'end');
     });
     // One repaint settle after the scroll.
@@ -90,7 +90,7 @@ test.describe('wrapText column (Cycle 5 / Task 9)', () => {
     );
 
     const sample = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       const out: { rowIndex: number; positionId: string; hasBounds: boolean; rowH: number }[] = [];
       for (let i = 0; i < 30; i++) {
         const id = grid.getCellValue(i, 'positionId');

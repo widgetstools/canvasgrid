@@ -248,13 +248,13 @@
 | 06 | getFullRowEditValidationErrors | Community | option | no | P2 | Validate full-row edit before commit |
 | 06 | undoRedoCellEditing | Community | option | no | P2 | Enable undo/redo stack for cell edits |
 | 06 | undoRedoCellEditingLimit | Community | option | no | P2 | Max depth of undo/redo stack |
-| 06 | ✅ agTextCellEditor (cgrid: 'text') | Community | option | no | P1 | Built-in plain text editor |
-| 06 | ✅ agLargeTextCellEditor (cgrid: 'largeText') | Community | option | no | P2 | Built-in textarea editor |
-| 06 | ✅ agSelectCellEditor (cgrid: 'select') | Community | option | no | P2 | Built-in native select editor |
-| 06 | ✅ agNumberCellEditor (cgrid: 'number') | Community | option | no | P1 | Built-in numeric input editor |
-| 06 | ✅ agDateCellEditor (cgrid: 'date') | Community | option | no | P2 | Built-in date picker editor |
-| 06 | ✅ agDateStringCellEditor (cgrid: 'dateString') | Community | option | no | P2 | Built-in date editor storing value as string |
-| 06 | ✅ agCheckboxCellEditor (cgrid: 'checkbox') | Community | option | no | P2 | Built-in checkbox editor |
+| 06 | ✅ agTextCellEditor (velocity-grid: 'text') | Community | option | no | P1 | Built-in plain text editor |
+| 06 | ✅ agLargeTextCellEditor (velocity-grid: 'largeText') | Community | option | no | P2 | Built-in textarea editor |
+| 06 | ✅ agSelectCellEditor (velocity-grid: 'select') | Community | option | no | P2 | Built-in native select editor |
+| 06 | ✅ agNumberCellEditor (velocity-grid: 'number') | Community | option | no | P1 | Built-in numeric input editor |
+| 06 | ✅ agDateCellEditor (velocity-grid: 'date') | Community | option | no | P2 | Built-in date picker editor |
+| 06 | ✅ agDateStringCellEditor (velocity-grid: 'dateString') | Community | option | no | P2 | Built-in date editor storing value as string |
+| 06 | ✅ agCheckboxCellEditor (velocity-grid: 'checkbox') | Community | option | no | P2 | Built-in checkbox editor |
 | 06 | agRichSelectCellEditor | Enterprise | option | no | P2 | Enterprise virtualised dropdown editor with search |
 | 06 | ✅ startEditingCell | Community | api | no | P1 | Programmatically start editing a cell |
 | 06 | ✅ stopEditing | Community | api | no | P1 | Stop any active edit; optionally cancel |
@@ -748,7 +748,7 @@
 | 21 | styleNonce | Community | config | no | P3 | CSP nonce for injected style elements |
 | 21 | themeStyleContainer | Community | config | no | P2 | Element to receive theme style tags; supports shadow DOM |
 | 21 | --ag-* CSS variables (spacing, accentColor, rowHeight, etc.) | Community | config | no | P1 | Low-level CSS variable overrides for theme params |
-| 21 | ✅ cellClass / cellClassRules / cellStyle | Community | config | yes | P1 | Per-cell styling; precedence order class→rules→style; canvas variant: theme-driven --cg-cell-class-* CSS vars resolve class names to ColCellOverrides patches |
+| 21 | ✅ cellClass / cellClassRules / cellStyle | Community | config | yes | P1 | Per-cell styling; precedence order class→rules→style; canvas variant: theme-driven --vg-cell-class-* CSS vars resolve class names to ColCellOverrides patches |
 | 21 | Dark mode via withParams({...}, 'dark') | Community | config | no | P2 | Conditional params for dark color scheme |
 | 21 | updateGridOptions({ theme }) | Community | api | no | P1 | Switch theme at runtime; updates style injection immediately |
 | 21 | refreshCells (re-evaluate cellClassRules) | Community | api | yes | P1 | Force re-draw and re-evaluation of cell style callbacks |

@@ -1,17 +1,17 @@
-import type { CgExtension, CgExtContext, SettingsModule, ToolbarItem } from './types';
+import type { VelocityGridExtension, VelocityGridExtContext, SettingsModule, ToolbarItem } from './types';
 import { isSettingsModule, isToolbarItem } from './types';
 
 /** How a consumer mutates the default bundle via `options.ext.extensions`. */
 export type ExtensionSpec =
-  | CgExtension
+  | VelocityGridExtension
   | { remove: string }
-  | { id: string; factory: () => CgExtension };
+  | { id: string; factory: () => VelocityGridExtension };
 
 export class ExtensionRegistry {
-  private map = new Map<string, CgExtension>();
+  private map = new Map<string, VelocityGridExtension>();
   private order: string[] = [];
 
-  register(ext: CgExtension): void {
+  register(ext: VelocityGridExtension): void {
     if (!this.map.has(ext.id)) this.order.push(ext.id);
     this.map.set(ext.id, ext);
   }
@@ -21,8 +21,8 @@ export class ExtensionRegistry {
   }
 
   has(id: string): boolean { return this.map.has(id); }
-  get(id: string): CgExtension | undefined { return this.map.get(id); }
-  all(): CgExtension[] { return this.order.map(id => this.map.get(id)!); }
+  get(id: string): VelocityGridExtension | undefined { return this.map.get(id); }
+  all(): VelocityGridExtension[] { return this.order.map(id => this.map.get(id)!); }
 
   settingsModules(): SettingsModule[] { return this.all().filter(isSettingsModule); }
   toolbarItems(): ToolbarItem[] { return this.all().filter(isToolbarItem); }
@@ -36,7 +36,7 @@ export class ExtensionRegistry {
     }
   }
 
-  initAll(ctx: CgExtContext): void { for (const e of this.all()) e.init(ctx); }
+  initAll(ctx: VelocityGridExtContext): void { for (const e of this.all()) e.init(ctx); }
   /** Tears down every registered extension. Each `dispose()` is isolated in
    *  its own try/catch — a throwing extension is logged and skipped so it
    *  can never abort teardown for the rest of the registry (and, upstream,
@@ -46,7 +46,7 @@ export class ExtensionRegistry {
       try {
         e.dispose?.();
       } catch (err) {
-        console.warn(`[cgrid-ext] extension "${e.id}" threw during dispose()`, err);
+        console.warn(`[velocity-grid-ext] extension "${e.id}" threw during dispose()`, err);
       }
     }
     this.map.clear();

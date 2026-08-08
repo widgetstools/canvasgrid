@@ -46,7 +46,7 @@ Nine decisions were made through discussion in this session:
 | L2 | **Multiple packages for modularity + efficiency** | Domain-oriented split across 10 packages (§3) |
 | L3 | **Turborepo, lockstep versioning** | Single version bump across all `@cgrid/*` packages; independent SemVer deferred until API stabilizes |
 | L4 | **Split BEFORE absorbing features** | Monorepo scaffold with correctly-shaped packages lands before any StarUI feature is implemented, so features never land in the wrong package |
-| L5 | **Expression-first, code path fully supported** | Every value/format/style/renderer/editable hook accepts field-path OR JS function OR expression string; expressions auto-compile via `@cgrid/expression` |
+| L5 | **Expression-first, code path fully supported** | Every value/format/style/renderer/editable hook accepts field-path OR JS function OR expression string; expressions auto-compile via `@wellsfargo-starui/velocity-grid-expression` |
 | L6 | **Unified formatting DSL** | Excel format codes at Tier 0, expression extensions at Tier 1, composite fragments at Tier 2 — one language, one parser, one docs page (§5) |
 | L7 | **Worker-only expression evaluation; main thread is a pure painter** | All expression/rule/aggregate evaluation happens on the worker; results ship in a compact style channel; main thread never evaluates expressions (§7) |
 | L8 | **Canvas Path2D icons from Lucide/Phosphor sources** | No emoji, no DOM overlays for common icon needs; icons participate in text metrics inline in format strings |
@@ -62,16 +62,16 @@ Ten packages, all in one turborepo. Under `packages/` at the repo root. Lockstep
 
 | Package | Responsibility | Runtime |
 |---|---|---|
-| `@cgrid/kernel` | Data model, columns, editing primitives, event system, module-scoped state API, mutation contract, canvas paint loop, painter primitives incl. Path2D icon registry, worker RPC plumbing, transactions, base cell renderers (text, number, boolean, checkbox, image, hyperlink, custom-registration) | main + worker |
-| `@cgrid/expression` | DSL parser, compiler (row-local + aggregate splitting), portable AST, evaluators | main + worker |
-| `@cgrid/format` | Unified formatting DSL parser (Excel format codes + expression extensions + composite fragments), Intl-backed number/date/currency formatters, formatter template registry, style resolution | main + worker |
-| `@cgrid/rules` | Rule engine (rule = condition + action), conditional-styling rules, alerts core (trigger evaluation, severity, message templating — channels stay in host), match-count tracking | worker (evaluation), main (result consumption) |
-| `@cgrid/calc` | Calculated columns, column customization / overrides, column templates, aggregate function registry, aggregate cache, delta-aware aggregation | worker |
-| `@cgrid/renderers` | 40 rich cell renderers for financial blotters — numeric (tick-aware), text/identity, indicators, badges/pills, bars/gauges, in-cell charts/sparklines, composite, action. Detailed in [cell renderer catalog doc](2026-07-01-canvasgrid-cell-renderer-catalog.md). | main + worker |
-| `@cgrid/edit` | EditJournal (undo/redo, cascade semantics, per-source recording), CellPatch data structure, smart-edit ops + magnitude parser (K/M/B), bulk-update ops, patch preview/commit, distinct-values RPC | main + worker |
-| `@cgrid/export` | Excel/CSV export with visual formatting (pulls resolved formatters + rule colors when visual mode on) | main |
-| `@cgrid/customizer` | 20 StarUI editor panels + toolbars, popout window primitive, template manager UI. Consumes everything else via public API only. | main |
-| `@cgrid/excel-pivot` | ExcelPivotGrid — Excel-native pivot data model + engine (Cycle 20). Uses kernel as rendering substrate. | main + worker |
+| `@wellsfargo-starui/velocity-grid` | Data model, columns, editing primitives, event system, module-scoped state API, mutation contract, canvas paint loop, painter primitives incl. Path2D icon registry, worker RPC plumbing, transactions, base cell renderers (text, number, boolean, checkbox, image, hyperlink, custom-registration) | main + worker |
+| `@wellsfargo-starui/velocity-grid-expression` | DSL parser, compiler (row-local + aggregate splitting), portable AST, evaluators | main + worker |
+| `@wellsfargo-starui/velocity-grid-format` | Unified formatting DSL parser (Excel format codes + expression extensions + composite fragments), Intl-backed number/date/currency formatters, formatter template registry, style resolution | main + worker |
+| `@wellsfargo-starui/velocity-grid-rules` | Rule engine (rule = condition + action), conditional-styling rules, alerts core (trigger evaluation, severity, message templating — channels stay in host), match-count tracking | worker (evaluation), main (result consumption) |
+| `@wellsfargo-starui/velocity-grid-calc` | Calculated columns, column customization / overrides, column templates, aggregate function registry, aggregate cache, delta-aware aggregation | worker |
+| `@wellsfargo-starui/velocity-grid-renderers` | 40 rich cell renderers for financial blotters — numeric (tick-aware), text/identity, indicators, badges/pills, bars/gauges, in-cell charts/sparklines, composite, action. Detailed in [cell renderer catalog doc](2026-07-01-canvasgrid-cell-renderer-catalog.md). | main + worker |
+| `@wellsfargo-starui/velocity-grid-edit` | EditJournal (undo/redo, cascade semantics, per-source recording), CellPatch data structure, smart-edit ops + magnitude parser (K/M/B), bulk-update ops, patch preview/commit, distinct-values RPC | main + worker |
+| `@wellsfargo-starui/velocity-grid-export` | Excel/CSV export with visual formatting (pulls resolved formatters + rule colors when visual mode on) | main |
+| `@wellsfargo-starui/velocity-grid-customizer` | 20 StarUI editor panels + toolbars, popout window primitive, template manager UI. Consumes everything else via public API only. | main |
+| `@wellsfargo-starui/velocity-grid-excel-pivot` | ExcelPivotGrid — Excel-native pivot data model + engine (Cycle 20). Uses kernel as rendering substrate. | main + worker |
 
 **Note on `@cgrid/platform`.** An earlier sketch included a `@cgrid/platform` package for data provider adapters, config manager storage, and notification channels. On reflection this is **host-app code, not shipped by cgrid** — it depends on host stack (STOMP, OpenFin, storage backends) that cgrid should not know about. Reference implementations may live in the customizer docs, but they are not a first-party package. The intrinsic hooks are what cgrid must expose; wiring them to a host stack stays in the host.
 
@@ -94,7 +94,7 @@ No cycles. `kernel` and `expression` are leaves — independently buildable, tes
 
 **Bundle-size implications** (rough, before we've built anything):
 
-- Plain grid consumer: `@cgrid/kernel` only. Comparable to today's `cgrid`. Base renderers (text, number, boolean, checkbox, image, hyperlink) included.
+- Plain grid consumer: `@wellsfargo-starui/velocity-grid` only. Comparable to today's `cgrid`. Base renderers (text, number, boolean, checkbox, image, hyperlink) included.
 - Grid + formatting only: kernel + expression + format. Bounded, no rules/calc/renderers.
 - Blotter consumer (finance-flavoured): kernel + expression + format + calc + rules + renderers. All 40 rich renderers, tick semantics, heat cells, sparklines, composite cells.
 - Full StarUI experience: everything.
@@ -106,7 +106,7 @@ No cycles. `kernel` and `expression` are leaves — independently buildable, tes
 
 Descriptive of the public surface each package exposes beyond what today's monolithic `cgrid` package offers. Not a task list. Anything not called out is presumed to stay as-is.
 
-### 4.1 `@cgrid/kernel`
+### 4.1 `@wellsfargo-starui/velocity-grid`
 
 - **Mutation contract** — every mutation to the grid is representable as a plain JSON `Mutation` object.
   - `grid.apply(mutation: Mutation): void`
@@ -130,7 +130,7 @@ Descriptive of the public surface each package exposes beyond what today's monol
 - **Column def accepts three forms on every hook** — `field`, `valueGetter`, `valueFormatter`, `cellStyle`, `cellClass`, `cellRenderer`, `editable`, `cellBackground` each accept:
   - a field-path string
   - a JS function
-  - an expression string (auto-compiled via `@cgrid/expression`)
+  - an expression string (auto-compiled via `@wellsfargo-starui/velocity-grid-expression`)
 - **Cell renderer registry** — string key → factory function drawing to canvas.
   - `grid.registerCellRenderer(name: string, factory: CellRendererFactory): void`
   - Built-in renderers: text, number, checkbox, indicator-badge, composite, formatted.
@@ -141,7 +141,7 @@ Descriptive of the public surface each package exposes beyond what today's monol
 - **Interactive overlay layer** — hover, selection, focus overlays composited over the worker-driven base style; overlays are stateless (no expression eval).
 - **Cell tooltip hook** — `grid.registerTooltipProvider(colId, fn)` — kernel invokes the provider on hover (after a debounce) with `(row, colId)` context, receives a tooltip payload (plain text or rich HTML). Composite cells use this to show full expanded content when ellipsis truncates.
 
-### 4.2 `@cgrid/expression`
+### 4.2 `@wellsfargo-starui/velocity-grid-expression`
 
 New package. Public surface:
 
@@ -160,7 +160,7 @@ New package. Public surface:
 - **Validation** — `validate(source, schema): { ok: boolean; errors: ValidationError[] }` — surfaces to customizer UI's expression editor.
 - **Transferable AST** — postMessage-serializable, so main thread can compile once and hand to worker (or vice versa).
 
-### 4.3 `@cgrid/format`
+### 4.3 `@wellsfargo-starui/velocity-grid-format`
 
 New package. Public surface:
 
@@ -191,19 +191,19 @@ New package. Public surface:
 - **Style resolution** — given a fragment and a row context, resolves style properties (colors, weights, background) into concrete values, including expression evaluation. Runs on worker.
 - **Compiled format program** — format strings compile once at column-def load, cached by string identity.
 
-### 4.4 `@cgrid/rules`
+### 4.4 `@wellsfargo-starui/velocity-grid-rules`
 
 New package. Public surface:
 
 - **Rule types** — `ConditionalStyleRule`, `AlertRule`, `IndicatorRule`; each has `id`, `condition` (expression), `scope` (columns / rows / cells), `action` (style / alert / indicator).
 - **Rule engine** — evaluates all rules against affected cells on worker; produces cell-level rule-context (which rules matched, in what order) and folds actions into the style channel.
 - **Live match count** — `rules.matchCount(ruleId): number` for customizer UI's "N cells match this rule" display.
-- **Cross-package integration** — `@cgrid/format` reads rule matches via a rule-context accessor when a fragment style references `'rule:<ruleId>'`.
+- **Cross-package integration** — `@wellsfargo-starui/velocity-grid-format` reads rule matches via a rule-context accessor when a fragment style references `'rule:<ruleId>'`.
 - **Alert triggers** — evaluate on transaction; produce alert events consumed by host.
   - `alerts.onAlert(fn: (alert: AlertEvent) => void): Unsubscribe`
   - Host decides how to route (toast, OS notification, OpenFin badge). Cgrid does not ship channels.
 
-### 4.5 `@cgrid/calc`
+### 4.5 `@wellsfargo-starui/velocity-grid-calc`
 
 New package. Public surface:
 
@@ -217,7 +217,7 @@ New package. Public surface:
 - **Aggregate cache** — keyed by `(fn, column, scope, dataVersion)`; incremental updates on tick.
 - **Distinct-values RPC** — `workerClient.getDistinctValues(colId, limit): Promise<Value[]>` for bulk-update toolbar dropdown (StarUI doc 15).
 
-### 4.6 `@cgrid/renderers`
+### 4.6 `@wellsfargo-starui/velocity-grid-renderers`
 
 New package. 40 rich cell renderers targeting financial blotter use cases (equities + fixed income), catalog fully specified in [2026-07-01-canvasgrid-cell-renderer-catalog.md](2026-07-01-canvasgrid-cell-renderer-catalog.md). Public surface:
 
@@ -226,9 +226,9 @@ New package. 40 rich cell renderers targeting financial blotter use cases (equit
 - **Themeable design tokens** — every renderer reads colour/motion/typography tokens from a shared theme registry so the aesthetic bar (§1 of the catalog doc) is consistent and swappable.
 - **Icon set consumption** — renderers use kernel's icon registry (Lucide default, Phosphor opt-in per Q10.6).
 - **Contextual data hooks** — renderers requiring column-wide statistics (HeatCell, BidirectionalBarCell, SpreadBarCell, VolumeBar) consume calc's aggregate cache; renderers requiring windowed history (sparklines, YieldCurveSparkline, KRDBarChart) consume expression-driven data windows.
-- **Composite renderer factory** — StackedValueCell, PriceQuoteCell, NBBOCell, BenchmarkSpreadCell, PriceChangeComposite are all configurations of the composite column type from `@cgrid/format` Tier 2.
+- **Composite renderer factory** — StackedValueCell, PriceQuoteCell, NBBOCell, BenchmarkSpreadCell, PriceChangeComposite are all configurations of the composite column type from `@wellsfargo-starui/velocity-grid-format` Tier 2.
 
-### 4.7 `@cgrid/edit`
+### 4.7 `@wellsfargo-starui/velocity-grid-edit`
 
 New package. Public surface:
 
@@ -241,7 +241,7 @@ New package. Public surface:
 - **Bulk-update ops** — `buildBulkUpdatePatches(value, scope): CellPatch[]`.
 - **Patch apply** — `applyPatches(patches: CellPatch[], options: { preview?: boolean; commit?: boolean }): PatchResult`; preview returns projected values without committing.
 
-### 4.8 `@cgrid/export`
+### 4.8 `@wellsfargo-starui/velocity-grid-export`
 
 New package. Public surface:
 
@@ -249,11 +249,11 @@ New package. Public surface:
   - Visual mode threads rule colors + resolved formatters into the XLSX cell styles.
 - `exportToCSV(options): string`
 
-### 4.9 `@cgrid/customizer`
+### 4.9 `@wellsfargo-starui/velocity-grid-customizer`
 
 New package. Not detailed here — this doc scopes intrinsic surface, and customizer is by definition non-intrinsic (it consumes everything via public API of the packages above). Package exists so the split respects L1 from day one — if customizer needs a new hook, we add it to the correct core package, not to the customizer.
 
-### 4.10 `@cgrid/excel-pivot`
+### 4.10 `@wellsfargo-starui/velocity-grid-excel-pivot`
 
 Detailed in Cycle 20 plan. Consumes kernel + expression + format + calc + edit + export. This doc unblocks that one by defining the packages it depends on.
 
@@ -499,7 +499,7 @@ One large PR does everything: sets up turborepo, moves current `cgrid/src/*` int
 
 ### Option B — Progressive scaffold
 
-A cycle moves current `cgrid` into `packages/kernel` only. Later cycles add each new package as its feature work begins (`@cgrid/expression` when calc columns start; `@cgrid/rules` when conditional styling starts; etc.).
+A cycle moves current `cgrid` into `packages/kernel` only. Later cycles add each new package as its feature work begins (`@wellsfargo-starui/velocity-grid-expression` when calc columns start; `@wellsfargo-starui/velocity-grid-rules` when conditional styling starts; etc.).
 
 - **Pros:** smaller PRs; incremental risk.
 - **Cons:** during the gap between kernel-move and other packages existing, new features naturally land in kernel and get moved out later. Exactly the retroactive-layering pattern L1 forbids.
@@ -510,7 +510,7 @@ A cycle moves current `cgrid` into `packages/kernel` only. Later cycles add each
 Cycle 21a lands the full monorepo scaffold in one PR:
 
 1. Sets up turborepo at repo root — migrates root `package.json` `workspaces` to include `packages/*`, adds `turbo.json` with task pipeline (`build`, `test`, `typecheck`, `lint`), dependency-aware ordering, per-package caching.
-2. Moves current `cgrid/src/*` → `packages/kernel/src/*`. Updates all imports across `apps/*`, tests, docs. Renames `cgrid/package.json` `"name": "cgrid"` to `"name": "@cgrid/kernel"` — direct rename, no meta-package, no aliasing (Q10.1 resolved: no existing external consumers).
+2. Moves current `cgrid/src/*` → `packages/kernel/src/*`. Updates all imports across `apps/*`, tests, docs. Renames `cgrid/package.json` `"name": "cgrid"` to `"name": "@wellsfargo-starui/velocity-grid"` — direct rename, no meta-package, no aliasing (Q10.1 resolved: no existing external consumers).
 3. Creates `packages/expression`, `packages/format`, `packages/rules`, `packages/calc`, `packages/edit`, `packages/export`, `packages/customizer`, `packages/excel-pivot` — each with `package.json` (locked version, dep declarations), `tsconfig.json`, `README.md`, minimal `src/index.ts` (empty exports or type stubs), test scaffold.
 4. Turborepo pipeline caches build/test/typecheck outputs per package; empty packages return instantly on rebuild.
 
@@ -528,18 +528,18 @@ The overall roadmap (locked 2026-07-01):
 
 **Phase 2. Cycle 21b–i — feature absorption into packages.** Dependency-ordered:
 
-1. **`@cgrid/expression`** — parser + compiler + evaluator + AST. Nothing else can start until this exists.
-2. **`@cgrid/format`** — DSL parser, formatter templates. Depends on expression.
-3. **`@cgrid/rules`** — rule engine + conditional styling + alerts core. Depends on expression, format.
-4. **`@cgrid/calc`** — calculated columns + column overrides + column templates + aggregate registry + delta-aware aggregation. Depends on expression, format.
-5. **`@cgrid/renderers`** — 40 rich cell renderers for financial blotters (numeric tick-aware, indicators, badges, bars, sparklines, composites). Depends on kernel, expression, format, calc, rules. Full spec: [cell renderer catalog](2026-07-01-canvasgrid-cell-renderer-catalog.md).
-6. **`@cgrid/edit`** — edit journal + smart-edit + bulk-update. Depends on kernel.
-7. **`@cgrid/export`** — Excel + CSV with visual formatting. Depends on kernel, calc, rules, format.
-8. **`@cgrid/customizer`** — 20 panels + toolbars. Depends on everything.
+1. **`@wellsfargo-starui/velocity-grid-expression`** — parser + compiler + evaluator + AST. Nothing else can start until this exists.
+2. **`@wellsfargo-starui/velocity-grid-format`** — DSL parser, formatter templates. Depends on expression.
+3. **`@wellsfargo-starui/velocity-grid-rules`** — rule engine + conditional styling + alerts core. Depends on expression, format.
+4. **`@wellsfargo-starui/velocity-grid-calc`** — calculated columns + column overrides + column templates + aggregate registry + delta-aware aggregation. Depends on expression, format.
+5. **`@wellsfargo-starui/velocity-grid-renderers`** — 40 rich cell renderers for financial blotters (numeric tick-aware, indicators, badges, bars, sparklines, composites). Depends on kernel, expression, format, calc, rules. Full spec: [cell renderer catalog](2026-07-01-canvasgrid-cell-renderer-catalog.md).
+6. **`@wellsfargo-starui/velocity-grid-edit`** — edit journal + smart-edit + bulk-update. Depends on kernel.
+7. **`@wellsfargo-starui/velocity-grid-export`** — Excel + CSV with visual formatting. Depends on kernel, calc, rules, format.
+8. **`@wellsfargo-starui/velocity-grid-customizer`** — 20 panels + toolbars. Depends on everything.
 
 Some can run in parallel once expression + format are up (rules + calc are peers; edit is independent). Renderers can partially start ahead of calc for the numeric/text/indicator/badge/action categories (~28 renderers); bars/gauges/sparklines/composites (~12 renderers) need calc + expression windowed data.
 
-**Phase 3. Cycle 20 — `@cgrid/excel-pivot` implementation.** Lands *after* Phase 2 completes — depends on kernel + expression + format + calc + edit + export, all of which must be stable first. Running Cycle 20 in parallel with feature absorption would force constant rebases against changing dependencies. Foundation first, then Excel-native pivot on top.
+**Phase 3. Cycle 20 — `@wellsfargo-starui/velocity-grid-excel-pivot` implementation.** Lands *after* Phase 2 completes — depends on kernel + expression + format + calc + edit + export, all of which must be stable first. Running Cycle 20 in parallel with feature absorption would force constant rebases against changing dependencies. Foundation first, then Excel-native pivot on top.
 
 Rough calendar estimate: 6–8 cycles across Phase 2, plus Cycle 20 as the capstone.
 
@@ -549,7 +549,7 @@ Rough calendar estimate: 6–8 cycles across Phase 2, plus Cycle 20 as the capst
 
 All eight questions closed in follow-up discussion this session.
 
-**Q1. `cgrid` package name post-split.** No existing external consumers → direct rename. `cgrid/src/*` moves to `packages/kernel/src/*`; `cgrid/package.json` `"name": "cgrid"` becomes `"name": "@cgrid/kernel"`. No meta-package, no aliasing, no deprecation cycle. Cleanest option.
+**Q1. `cgrid` package name post-split.** No existing external consumers → direct rename. `cgrid/src/*` moves to `packages/kernel/src/*`; `cgrid/package.json` `"name": "cgrid"` becomes `"name": "@wellsfargo-starui/velocity-grid"`. No meta-package, no aliasing, no deprecation cycle. Cleanest option.
 
 **Q2. Turborepo remote cache.** Local only for now. Vercel remote cache deferred — revisit if CI parallelism becomes a bottleneck or open-source contributors join.
 
@@ -559,11 +559,11 @@ All eight questions closed in follow-up discussion this session.
 
 **Q5. Percentile / MEDIAN approximation.** Hybrid strategy — sorted-array (exact, O(log n) delta) up to a per-scope threshold of ~10k rows; t-digest (approximate, bounded-memory, O(log n) delta) above that. Threshold configurable per-aggregate via `registerAggregate` options.
 
-**Q6. Icon set governance.** Lucide bundled as default (shipped inside `@cgrid/kernel`'s icon registry); Phosphor available as opt-in registration via `grid.registerIconSet('phosphor', phosphorPaths)`.
+**Q6. Icon set governance.** Lucide bundled as default (shipped inside `@wellsfargo-starui/velocity-grid`'s icon registry); Phosphor available as opt-in registration via `grid.registerIconSet('phosphor', phosphorPaths)`.
 
-**Q7. Cycle 19 / Cycle 20 sequencing.** Locked: Cycle 19 (refactor hygiene) must complete before Cycle 21a scaffold starts. Cycle 20 (Excel Pivot Grid implementation) lands *after* all Cycle 21 feature-absorption cycles complete — not in parallel. Full roadmap: Cycle 19 → Cycle 21a scaffold → Cycle 21b–i feature packages (including `@cgrid/renderers`) → Cycle 20 ExcelPivotGrid. See §9 Full sequencing.
+**Q7. Cycle 19 / Cycle 20 sequencing.** Locked: Cycle 19 (refactor hygiene) must complete before Cycle 21a scaffold starts. Cycle 20 (Excel Pivot Grid implementation) lands *after* all Cycle 21 feature-absorption cycles complete — not in parallel. Full roadmap: Cycle 19 → Cycle 21a scaffold → Cycle 21b–i feature packages (including `@wellsfargo-starui/velocity-grid-renderers`) → Cycle 20 ExcelPivotGrid. See §9 Full sequencing.
 
-**Q8. Selection / keyboard / clipboard package boundary.** Stays in `@cgrid/kernel`. Main-thread paint-adjacent concerns that never leave the grid substrate — no separate package.
+**Q8. Selection / keyboard / clipboard package boundary.** Stays in `@wellsfargo-starui/velocity-grid`. Main-thread paint-adjacent concerns that never leave the grid substrate — no separate package.
 
 ---
 
@@ -584,4 +584,4 @@ Explicitly out of scope for Cycle 21:
 
 Cycle 21 sets the intrinsic surface for cgrid to absorb the StarUI tooling as first-class features — not as add-ons requiring hooks. Nine packages under a turborepo scaffold, lockstep versioned, split before feature absorption to prevent retroactive layering. Expression evaluation, rule evaluation, format DSL parsing, and aggregate computation all live on the worker; main thread stays a pure painter. Path2D icons from Lucide give the sleek aesthetic without emoji/DOM tradeoffs. The unified formatting DSL layers Excel muscle memory (Tier 0), expressions (Tier 1), and composite fragments (Tier 2) into one language.
 
-Roadmap: complete in-flight **Cycle 19** (refactor hygiene, task 8c) → **Cycle 21a** lands the empty scaffold for 10 packages → **Cycles 21b–i** absorb features into their packages in dependency order (expression → format → rules / calc / renderers / edit → export → customizer). The `@cgrid/renderers` package delivers 40 rich cell renderers for financial blotters — full spec in [cell renderer catalog](2026-07-01-canvasgrid-cell-renderer-catalog.md). Finally **Cycle 20** ExcelPivotGrid implementation lands into `@cgrid/excel-pivot` on top of the completed package layer.
+Roadmap: complete in-flight **Cycle 19** (refactor hygiene, task 8c) → **Cycle 21a** lands the empty scaffold for 10 packages → **Cycles 21b–i** absorb features into their packages in dependency order (expression → format → rules / calc / renderers / edit → export → customizer). The `@wellsfargo-starui/velocity-grid-renderers` package delivers 40 rich cell renderers for financial blotters — full spec in [cell renderer catalog](2026-07-01-canvasgrid-cell-renderer-catalog.md). Finally **Cycle 20** ExcelPivotGrid implementation lands into `@wellsfargo-starui/velocity-grid-excel-pivot` on top of the completed package layer.

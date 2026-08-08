@@ -55,7 +55,7 @@ test.describe('Alerts (Markets parity)', () => {
   test('global settings band exposes frequency + channel toggles', async ({ page }) => {
     // Markets: v2-alerts — settings band exposes frequency + channels
     await openCustomizer(page, 'alerts');
-    await expect(page.locator('.cgext-sheet-title')).toHaveText('Alerts');
+    await expect(page.locator('.vgext-sheet-title')).toHaveText('Alerts');
     const globalHead = cockpit(page).locator('.ckp-global-head');
     await expect(globalHead).toBeVisible();
     // Expand if collapsed
@@ -73,7 +73,7 @@ test.describe('Alerts (Markets parity)', () => {
     await createPnlAlert(page, 'ParityAlert');
     await firePnlEdit(page, 88888);
 
-    await expect(page.locator('[data-testid="cgext-alerts-badge"]')).toBeVisible();
+    await expect(page.locator('[data-testid="vgext-alerts-badge"]')).toBeVisible();
     const unreadBefore = await page.evaluate(() =>
       (window as unknown as { __ext: { grid: { getAlertUnreadCount: () => number } } })
         .__ext.grid.getAlertUnreadCount());

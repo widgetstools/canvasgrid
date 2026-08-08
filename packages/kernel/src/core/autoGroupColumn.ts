@@ -17,7 +17,7 @@ import { resolveColDef, type ResolvedColDef } from './propertyChain';
  *     full-row strip in the body painter (`byRows.ts`). Synthesis returns
  *     an empty list.
  *   - `'custom'` — NO auto-group columns. Group rows defer to
- *     `CGridOptions.groupRowRenderer` (or fall back to the `'group'`
+ *     `VelocityGridOptions.groupRowRenderer` (or fall back to the `'group'`
  *     renderer in groupRows mode when the option is unset). Synthesis
  *     returns an empty list.
  *
@@ -75,7 +75,7 @@ export function autoGroupColumnDepthFromId(colId: string): number | null {
 }
 
 /** The cell renderer key the auto-group column uses by default. The
- *  `'group'` painter is registered in `cgrid.ts` alongside the other
+ *  `'group'` painter is registered in `velocityGrid.ts` alongside the other
  *  built-ins. */
 export const AUTO_GROUP_RENDERER = 'group';
 
@@ -98,7 +98,7 @@ export const AUTO_GROUP_MULTIPLE_DEFAULT_WIDTH = 140;
 
 export type GroupDisplayType = 'singleColumn' | 'multipleColumns' | 'groupRows' | 'custom';
 
-/** Resolved value for `CGridOptions.groupDisplayType`. Defaults to
+/** Resolved value for `VelocityGridOptions.groupDisplayType`. Defaults to
  *  `'singleColumn'` when undefined — matches ag-grid's default. */
 export function resolveGroupDisplayType(value: GroupDisplayType | undefined): GroupDisplayType {
   return value ?? 'singleColumn';

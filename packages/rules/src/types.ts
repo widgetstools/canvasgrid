@@ -1,9 +1,9 @@
-// @cgrid/rules — public types.
+// @wellsfargo-starui/velocity-grid-rules — public types.
 // Authoritative reference: docs/superpowers/specs/2026-07-01-cycle-21e-rules-design.md
 // §3.1 (rule shapes), §3.2 (alert shapes), §4.2 (engine contracts).
 
-import type { Loc } from '@cgrid/expression';
-import type { FormatProgram } from '@cgrid/format';
+import type { Loc } from '@wellsfargo-starui/velocity-grid-expression';
+import type { FormatProgram } from '@wellsfargo-starui/velocity-grid-format';
 
 export type ThemeKind = 'light' | 'dark';
 
@@ -87,7 +87,7 @@ export interface ConditionalStyleRule extends RuleBase {
   style: ThemeAwareStyle;
   flash?: FlashConfig;
   indicator?: RuleIndicator;
-  /** Format-DSL string (any tier @cgrid/format compiles); matching cells
+  /** Format-DSL string (any tier @wellsfargo-starui/velocity-grid-format compiles); matching cells
    *  render through this program instead of the ColDef formatter. */
   valueFormatter?: string;
   /** Auto-expire: the match stays active this long after activation, then
@@ -242,7 +242,7 @@ export interface WireRulesOptions {
   rules?: StyleRule[];
   alertRules?: AlertRule[];
   alertsSettings?: Partial<AlertsSettings>;
-  schema?: import('@cgrid/expression').Schema;
+  schema?: import('@wellsfargo-starui/velocity-grid-expression').Schema;
   /** Injectable clock for both engines. Default: `() => performance.now()`
    *  (the wall-clock wrap lives HERE, at the bridge layer — engines stay
    *  Date-free per the global constraint). */

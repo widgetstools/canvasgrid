@@ -40,7 +40,7 @@ describe('DateFilterPopup', () => {
     host.appendChild(gui);
     const selects = gui.querySelectorAll('select');
     expect(selects.length).toBe(1);
-    const primary = gui.querySelector('input[type="date"][data-cg-filter-input="primary"]');
+    const primary = gui.querySelector('input[type="date"][data-vg-filter-input="primary"]');
     expect(primary).not.toBeNull();
   });
 
@@ -109,7 +109,7 @@ describe('DateFilterPopup', () => {
     host.appendChild(gui);
     const primary = gui.querySelector('input[type="date"]') as HTMLInputElement;
     primary.value = '2026-06-25';
-    const applyBtn = gui.querySelector('button[data-cg-filter-action="apply"]') as HTMLButtonElement;
+    const applyBtn = gui.querySelector('button[data-vg-filter-action="apply"]') as HTMLButtonElement;
     applyBtn.click();
     expect(onApply).toHaveBeenCalledWith({
       filterType: 'date', type: 'equals', filter: '2026-06-25',
@@ -131,7 +131,7 @@ describe('DateFilterPopup', () => {
     const inputs = gui.querySelectorAll('input[type="date"]');
     (inputs[0] as HTMLInputElement).value = '2026-01-01';
     (inputs[1] as HTMLInputElement).value = '2026-12-31';
-    const applyBtn = gui.querySelector('button[data-cg-filter-action="apply"]') as HTMLButtonElement;
+    const applyBtn = gui.querySelector('button[data-vg-filter-action="apply"]') as HTMLButtonElement;
     applyBtn.click();
     expect(onApply).toHaveBeenCalledWith({
       filterType: 'date', type: 'inRange', filter: '2026-01-01', filterTo: '2026-12-31',
@@ -150,7 +150,7 @@ describe('DateFilterPopup', () => {
     const select = gui.querySelector('select') as HTMLSelectElement;
     select.value = 'blank';
     select.dispatchEvent(new Event('change', { bubbles: true }));
-    const applyBtn = gui.querySelector('button[data-cg-filter-action="apply"]') as HTMLButtonElement;
+    const applyBtn = gui.querySelector('button[data-vg-filter-action="apply"]') as HTMLButtonElement;
     applyBtn.click();
     expect(onApply).toHaveBeenCalledWith({
       filterType: 'date', type: 'blank',
@@ -166,7 +166,7 @@ describe('DateFilterPopup', () => {
     });
     const gui = popup.buildGui();
     host.appendChild(gui);
-    const applyBtn = gui.querySelector('button[data-cg-filter-action="apply"]') as HTMLButtonElement;
+    const applyBtn = gui.querySelector('button[data-vg-filter-action="apply"]') as HTMLButtonElement;
     applyBtn.click();
     expect(onApply).toHaveBeenCalledWith(null);
   });
@@ -183,7 +183,7 @@ describe('DateFilterPopup', () => {
     const inputs = gui.querySelectorAll('input[type="date"]');
     expect((inputs[0] as HTMLInputElement).value).toBe('2026-01-01');
     expect((inputs[1] as HTMLInputElement).value).toBe('2026-12-31');
-    const clearBtn = gui.querySelector('button[data-cg-filter-action="clear"]') as HTMLButtonElement;
+    const clearBtn = gui.querySelector('button[data-vg-filter-action="clear"]') as HTMLButtonElement;
     clearBtn.click();
     expect((inputs[0] as HTMLInputElement).value).toBe('');
     expect((inputs[1] as HTMLInputElement).value).toBe('');
@@ -199,7 +199,7 @@ describe('DateFilterPopup', () => {
     });
     const gui = popup.buildGui();
     host.appendChild(gui);
-    const resetBtn = gui.querySelector('button[data-cg-filter-action="reset"]') as HTMLButtonElement;
+    const resetBtn = gui.querySelector('button[data-vg-filter-action="reset"]') as HTMLButtonElement;
     resetBtn.click();
     const inputs = gui.querySelectorAll('input[type="date"]');
     expect((inputs[0] as HTMLInputElement).value).toBe('');
@@ -229,9 +229,9 @@ describe('DateFilterPopup', () => {
     });
     const gui = popup.buildGui();
     host.appendChild(gui);
-    expect(gui.querySelector('button[data-cg-filter-action="apply"]')).not.toBeNull();
-    expect(gui.querySelector('button[data-cg-filter-action="clear"]')).toBeNull();
-    expect(gui.querySelector('button[data-cg-filter-action="reset"]')).toBeNull();
+    expect(gui.querySelector('button[data-vg-filter-action="apply"]')).not.toBeNull();
+    expect(gui.querySelector('button[data-vg-filter-action="clear"]')).toBeNull();
+    expect(gui.querySelector('button[data-vg-filter-action="reset"]')).toBeNull();
   });
 
   it('closeOnApply: true triggers onClose after Apply', () => {
@@ -246,7 +246,7 @@ describe('DateFilterPopup', () => {
     host.appendChild(gui);
     const primary = gui.querySelector('input[type="date"]') as HTMLInputElement;
     primary.value = '2026-06-25';
-    const applyBtn = gui.querySelector('button[data-cg-filter-action="apply"]') as HTMLButtonElement;
+    const applyBtn = gui.querySelector('button[data-vg-filter-action="apply"]') as HTMLButtonElement;
     applyBtn.click();
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -262,7 +262,7 @@ describe('DateFilterPopup', () => {
     host.appendChild(gui);
     const primary = gui.querySelector('input[type="date"]') as HTMLInputElement;
     primary.value = '2026-06-25';
-    const applyBtn = gui.querySelector('button[data-cg-filter-action="apply"]') as HTMLButtonElement;
+    const applyBtn = gui.querySelector('button[data-vg-filter-action="apply"]') as HTMLButtonElement;
     applyBtn.click();
     expect(onClose).not.toHaveBeenCalled();
   });
@@ -278,7 +278,7 @@ describe('DateFilterPopup', () => {
     });
     const gui = popup.buildGui();
     host.appendChild(gui);
-    const cancelBtn = gui.querySelector('button[data-cg-filter-action="cancel"]') as HTMLButtonElement;
+    const cancelBtn = gui.querySelector('button[data-vg-filter-action="cancel"]') as HTMLButtonElement;
     cancelBtn.click();
     expect(onApply).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledTimes(1);

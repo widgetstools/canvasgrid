@@ -22,12 +22,12 @@
  *      resume.
  *
  * Probes the FlashRegistry directly via `window.__cgrid` (which IS
- * the CGrid instance, not just the API surface) — the painter draws
+ * the VelocityGrid instance, not just the API surface) — the painter draws
  * to canvas so per-pixel comparison in Playwright is fragile.
  */
 import { test, expect } from '@playwright/test';
 
-interface CGridInstance {
+interface VelocityGridInstance {
   flashRegistry: { size: () => number };
   flashCells: (params: { rowIds: string[]; colIds?: string[] }) => void;
   setGridOption: (k: string, v: unknown) => void;
@@ -53,7 +53,7 @@ async function gridReady(page: import('@playwright/test').Page): Promise<void> {
 async function rowIdAt(page: import('@playwright/test').Page, rowIndex: number): Promise<string> {
   const id = await page.evaluate(
     (idx) => {
-      const api = (window as unknown as { __cgrid: CGridInstance }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: VelocityGridInstance }).__cgrid;
       const v = api.getCellValue(idx, 'positionId');
       return typeof v === 'string' ? v : null;
     },
@@ -68,10 +68,10 @@ test.describe('Cycle 4 / Task 11 — cell flash', () => {
     await gridReady(page);
     const rowId = await rowIdAt(page, 0);
     const sizeBefore = await page.evaluate(
-      () => (window as unknown as { __cgrid: CGridInstance }).__cgrid.flashRegistry.size(),
+      () => (window as unknown as { __velocity-grid: VelocityGridInstance }).__cgrid.flashRegistry.size(),
     );
     await page.evaluate((id) => {
-      (window as unknown as { __cgrid: CGridInstance }).__cgrid
+      (window as unknown as { __velocity-grid: VelocityGridInstance }).__cgrid
         .flashCells({ rowIds: [id], colIds: ['ticker'] });
     }, rowId);
     // The flash actually lands on the next viewport chunk after the
@@ -79,7 +79,7 @@ test.describe('Cycle 4 / Task 11 — cell flash', () => {
     // baseline.
     await expect.poll(
       async () => page.evaluate(
-        () => (window as unknown as { __cgrid: CGridInstance }).__cgrid.flashRegistry.size(),
+        () => (window as unknown as { __velocity-grid: VelocityGridInstance }).__cgrid.flashRegistry.size(),
       ),
       { timeout: 5000, intervals: [100, 250, 500] },
     ).toBeGreaterThan(sizeBefore);
@@ -88,7 +88,7 @@ test.describe('Cycle 4 / Task 11 — cell flash', () => {
   test('setGridOption(enableCellChangeFlash=false) suppresses programmatic flashes', async ({ page }) => {
     await gridReady(page);
     await page.evaluate(() => {
-      (window as unknown as { __cgrid: CGridInstance }).__cgrid
+      (window as unknown as { __velocity-grid: VelocityGridInstance }).__cgrid
         .setGridOption('enableCellChangeFlash', false);
     });
     // Give the worker's `setEnableCellChangeFlash` round-trip a
@@ -97,13 +97,13 @@ test.describe('Cycle 4 / Task 11 — cell flash', () => {
     await page.waitForTimeout(2000);
     const rowId = await rowIdAt(page, 0);
     await page.evaluate((id) => {
-      (window as unknown as { __cgrid: CGridInstance }).__cgrid
+      (window as unknown as { __velocity-grid: VelocityGridInstance }).__cgrid
         .flashCells({ rowIds: [id], colIds: ['ticker'] });
     }, rowId);
     // Wait long enough for the chunk round-trip; size should stay 0.
     await page.waitForTimeout(500);
     const size = await page.evaluate(
-      () => (window as unknown as { __cgrid: CGridInstance }).__cgrid.flashRegistry.size(),
+      () => (window as unknown as { __velocity-grid: VelocityGridInstance }).__cgrid.flashRegistry.size(),
     );
     expect(size).toBe(0);
   });
@@ -112,23 +112,23 @@ test.describe('Cycle 4 / Task 11 — cell flash', () => {
     await gridReady(page);
     // Off, then back on.
     await page.evaluate(() => {
-      (window as unknown as { __cgrid: CGridInstance }).__cgrid
+      (window as unknown as { __velocity-grid: VelocityGridInstance }).__cgrid
         .setGridOption('enableCellChangeFlash', false);
     });
     await page.waitForTimeout(500);
     await page.evaluate(() => {
-      (window as unknown as { __cgrid: CGridInstance }).__cgrid
+      (window as unknown as { __velocity-grid: VelocityGridInstance }).__cgrid
         .setGridOption('enableCellChangeFlash', true);
     });
     await page.waitForTimeout(200);
     const rowId = await rowIdAt(page, 0);
     await page.evaluate((id) => {
-      (window as unknown as { __cgrid: CGridInstance }).__cgrid
+      (window as unknown as { __velocity-grid: VelocityGridInstance }).__cgrid
         .flashCells({ rowIds: [id], colIds: ['ticker'] });
     }, rowId);
     await expect.poll(
       async () => page.evaluate(
-        () => (window as unknown as { __cgrid: CGridInstance }).__cgrid.flashRegistry.size(),
+        () => (window as unknown as { __velocity-grid: VelocityGridInstance }).__cgrid.flashRegistry.size(),
       ),
       { timeout: 5000, intervals: [100, 250] },
     ).toBeGreaterThan(0);
@@ -139,14 +139,14 @@ test.describe('Cycle 4 / Task 11 — cell flash', () => {
     await gridReady(page);
     const rowId = await rowIdAt(page, 0);
     await page.evaluate((id) => {
-      (window as unknown as { __cgrid: CGridInstance }).__cgrid
+      (window as unknown as { __velocity-grid: VelocityGridInstance }).__cgrid
         .flashCells({ rowIds: [id], colIds: ['ticker'] });
     }, rowId);
     // Wait for the chunk round-trip — flashes would land within ~500ms
     // if not suppressed. Reduced-motion should keep size at 0.
     await page.waitForTimeout(1000);
     const size = await page.evaluate(
-      () => (window as unknown as { __cgrid: CGridInstance }).__cgrid.flashRegistry.size(),
+      () => (window as unknown as { __velocity-grid: VelocityGridInstance }).__cgrid.flashRegistry.size(),
     );
     expect(size).toBe(0);
   });

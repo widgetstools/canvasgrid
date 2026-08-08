@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 
 beforeAll(() => {
   // ── stubs copied from tests/cgrid.integration.test.ts ──
@@ -28,19 +28,19 @@ beforeAll(() => {
   })() as any;
 });
 
-function makeGrid(themeClass = 'cg-theme-quartz') {
+function makeGrid(themeClass = 'vg-theme-quartz') {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
   container.className = themeClass;
   document.body.appendChild(container);
-  return new CGrid<{ id: string; px: number }>(container, {
+  return new VelocityGrid<{ id: string; px: number }>(container, {
     columnDefs: [{ field: 'id' }, { field: 'px' }],
     getRowId: (r) => r.id,
     theme: themeClass,
   });
 }
 
-describe('CGrid rules-facing API (Cycle 21e / Task 10)', () => {
+describe('VelocityGrid rules-facing API (Cycle 21e / Task 10)', () => {
   it('forEachRow iterates the rowDataById mirror in insertion order', () => {
     const grid = makeGrid();
     grid.applyTransaction({ add: [{ id: 'a', px: 1 }, { id: 'b', px: 2 }] });
@@ -61,18 +61,18 @@ describe('CGrid rules-facing API (Cycle 21e / Task 10)', () => {
     grid.destroy();
   });
 
-  it('getThemeKind reads light from cg-theme-quartz and dark from cg-theme-quartz-dark', () => {
-    const light = makeGrid('cg-theme-quartz');
+  it('getThemeKind reads light from vg-theme-quartz and dark from vg-theme-quartz-dark', () => {
+    const light = makeGrid('vg-theme-quartz');
     expect(light.getThemeKind()).toBe('light');
     light.destroy();
-    const dark = makeGrid('cg-theme-quartz-dark');
+    const dark = makeGrid('vg-theme-quartz-dark');
     expect(dark.getThemeKind()).toBe('dark');
     dark.destroy();
   });
 
   it('setTheme flips getThemeKind at runtime', () => {
-    const grid = makeGrid('cg-theme-quartz');
-    grid.setTheme('cg-theme-quartz-dark');
+    const grid = makeGrid('vg-theme-quartz');
+    grid.setTheme('vg-theme-quartz-dark');
     expect(grid.getThemeKind()).toBe('dark');
     grid.destroy();
   });

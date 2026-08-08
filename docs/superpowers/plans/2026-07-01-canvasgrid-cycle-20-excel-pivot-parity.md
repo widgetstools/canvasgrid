@@ -14,10 +14,10 @@
 
 **What this means concretely:**
 
-- `@cgrid/excel-pivot` builds its own **Excel-native data model** from day one — `ExcelPivotCache`, `ExcelPivotModel`, `ExcelPivotEngine`, and a fresh Excel-native worker pipeline.
-- **CGrid becomes the rendering + interaction substrate**, not the pivot engine. ExcelPivotGrid feeds columns + rows into CGrid via CGrid's neutral public APIs (`setColumnTree`, `setRowData`, `applyTransaction`) — CGrid renders, handles selection/editing/keyboard/scroll/theming as usual.
-- The existing cgrid pivot (`PivotState`, `PivotEngine`, `PivotPass`, `PivotColumns`, the plz zone in the tool panel, the top-of-grid pivot strip) is **untouched**. Users who want AG-Grid-style pivots continue to use plain `CGrid` with `pivotMode: true`; users who want Excel semantics use `ExcelPivotGrid`. Two independent code paths.
-- New extension points on `CGrid` are **only** things that are genuinely renderer-shaped and useful even without Excel: worker-pass registration, custom cell projection, transaction interceptor hook. If a hook is only useful to force-fit Excel semantics into cgrid's pivot, it's the wrong hook — we build it on the Excel side instead.
+- `@wellsfargo-starui/velocity-grid-excel-pivot` builds its own **Excel-native data model** from day one — `ExcelPivotCache`, `ExcelPivotModel`, `ExcelPivotEngine`, and a fresh Excel-native worker pipeline.
+- **VelocityGrid becomes the rendering + interaction substrate**, not the pivot engine. ExcelPivotGrid feeds columns + rows into VelocityGrid via VelocityGrid's neutral public APIs (`setColumnTree`, `setRowData`, `applyTransaction`) — VelocityGrid renders, handles selection/editing/keyboard/scroll/theming as usual.
+- The existing cgrid pivot (`PivotState`, `PivotEngine`, `PivotPass`, `PivotColumns`, the plz zone in the tool panel, the top-of-grid pivot strip) is **untouched**. Users who want AG-Grid-style pivots continue to use plain `VelocityGrid` with `pivotMode: true`; users who want Excel semantics use `ExcelPivotGrid`. Two independent code paths.
+- New extension points on `VelocityGrid` are **only** things that are genuinely renderer-shaped and useful even without Excel: worker-pass registration, custom cell projection, transaction interceptor hook. If a hook is only useful to force-fit Excel semantics into cgrid's pivot, it's the wrong hook — we build it on the Excel side instead.
 
 **Why this direction:** if the Excel engine builds on top of the cgrid pivot, every AG-shaped assumption in the cgrid pivot becomes an assumption we have to work around later. Excel's field model (rich per-field metadata: display name, base field/item, number format, subtotal function ≠ summary function, custom name, sort order, item filter set, calculated flag) is broader than what the cgrid pivot exposes. Building fresh means no unwinding later.
 
@@ -31,11 +31,11 @@ Two orthogonal asks, both landed in one prompt:
 
 1. **Excel pivot feature parity** on top of the Cycle 18 pivot engine — the full "Show Values As" grid, calculated fields/items, date auto-hierarchy, per-field item filters, drill-through, etc.
 2. **Real-time ticking** — pivot must stay correct under sustained `applyTransaction({ update })` traffic (financial ticking snapshot use case), not just batch loads.
-3. **Sub-question:** should this ship as a new class `ExcelPivotGrid` that "extends" `CGrid`, or as another architecture?
+3. **Sub-question:** should this ship as a new class `ExcelPivotGrid` that "extends" `VelocityGrid`, or as another architecture?
 
 None of these are independent. Ticking constrains the algorithm choice for every Show-Values-As transform, calculated-field, and item-filter. The class shape decision constrains where the ticking logic lives.
 
-**What's usable from CGrid** (the substrate — everything under this is renderer/interaction/data-plumbing, not pivot logic):
+**What's usable from VelocityGrid** (the substrate — everything under this is renderer/interaction/data-plumbing, not pivot logic):
 
 - Row rendering, column rendering, header/footer bands, floating filters
 - Selection (range + row), fill handle, clipboard, keyboard shortcuts
@@ -47,7 +47,7 @@ None of these are independent. Ticking constrains the algorithm choice for every
 
 **What NOT to build on** (the existing cgrid pivot — historical reference only, ExcelPivotGrid does not use these):
 
-- ~~[pivotPass.ts](../../../cgrid/src/worker/passes/pivotPass.ts), [pivotColumns.ts](../../../cgrid/src/core/pivotColumns.ts), [pivotEngine.ts](../../../cgrid/src/core/pivotEngine.ts)~~ — AG-Grid parity engine, kept for users of plain `CGrid` with `pivotMode: true`.
+- ~~[pivotPass.ts](../../../cgrid/src/worker/passes/pivotPass.ts), [pivotColumns.ts](../../../cgrid/src/core/pivotColumns.ts), [pivotEngine.ts](../../../cgrid/src/core/pivotEngine.ts)~~ — AG-Grid parity engine, kept for users of plain `VelocityGrid` with `pivotMode: true`.
 - ~~PivotState, three-surface plz-zone sync, `pivotStateChanged` event~~ — same, AG-Grid-shaped.
 
 We can still *read* the Cycle 18 code as reference for how the delta-aware key discovery + per-prefix aggregation problem was solved in this codebase. But the Excel engine ships its own equivalents, designed around Excel's field model.
@@ -60,16 +60,16 @@ We can still *read* the Cycle 18 code as reference for how the delta-aware key d
 
 ---
 
-## 2. Architecture — how does `ExcelPivotGrid` relate to `CGrid`?
+## 2. Architecture — how does `ExcelPivotGrid` relate to `VelocityGrid`?
 
-**Decision (locked 2026-07-01):** Composition + fresh Excel-native engine. `ExcelPivotGrid` owns a `CGrid` instance and its own `ExcelPivotEngine`. CGrid is the rendering substrate; the Excel engine drives every pivot-shaped decision. Section §0 covers the *why*; this section covers the *shape*.
+**Decision (locked 2026-07-01):** Composition + fresh Excel-native engine. `ExcelPivotGrid` owns a `VelocityGrid` instance and its own `ExcelPivotEngine`. VelocityGrid is the rendering substrate; the Excel engine drives every pivot-shaped decision. Section §0 covers the *why*; this section covers the *shape*.
 
 The three options considered before landing here — subclass, composition-on-existing-pivot, feature-flags — are preserved below for record.
 
-### Option A — subclass (`class ExcelPivotGrid extends CGrid`)
+### Option A — subclass (`class ExcelPivotGrid extends VelocityGrid`)
 
 ```ts
-class ExcelPivotGrid<TRow> extends CGrid<TRow> {
+class ExcelPivotGrid<TRow> extends VelocityGrid<TRow> {
   private excelExtensions: ExcelExtensions<TRow>;
   constructor(container, options) {
     super(container, options);
@@ -82,20 +82,20 @@ class ExcelPivotGrid<TRow> extends CGrid<TRow> {
 ```
 
 **Pros:**
-- Familiar OO shape. `new ExcelPivotGrid(...)` is a drop-in for `new CGrid(...)`.
+- Familiar OO shape. `new ExcelPivotGrid(...)` is a drop-in for `new VelocityGrid(...)`.
 - All Excel-only surface area on one class = easy to find.
 
 **Cons:**
-- Fights the Cycle 19 direction. Cycle 19 spent 5 tasks *extracting* things out of `cgrid.ts` into coordinators (`WorkerCoordinator`, `ViewportManager`, `PivotEngine`, `ColumnStateManager`, `GroupingCoordinator`, `EditController`). Adding a subclass reverses that trend by piling behavior onto the leaf class instead of onto the graph of coordinators the leaf class already owns.
-- Subclass can't cleanly reach into worker-side pipeline. The pivot engine has two halves: main-thread [pivotEngine.ts](../../../cgrid/src/core/pivotEngine.ts) and worker-side [pivotPass.ts](../../../cgrid/src/worker/passes/pivotPass.ts). A subclass has no natural way to add a `CalculatedFieldsPass` to the worker pipeline — you'd need a factory hook on `CGrid` for that anyway, at which point the subclass is redundant.
-- Type gymnastics: every method on `CGrid` that returns `this` or takes generic `TRow` needs recheck under the subclass.
-- Testing: every Excel test now has to spin up a full `CGrid`. There's no way to unit-test the Excel-specific transforms without a canvas + worker.
+- Fights the Cycle 19 direction. Cycle 19 spent 5 tasks *extracting* things out of `velocityGrid.ts` into coordinators (`WorkerCoordinator`, `ViewportManager`, `PivotEngine`, `ColumnStateManager`, `GroupingCoordinator`, `EditController`). Adding a subclass reverses that trend by piling behavior onto the leaf class instead of onto the graph of coordinators the leaf class already owns.
+- Subclass can't cleanly reach into worker-side pipeline. The pivot engine has two halves: main-thread [pivotEngine.ts](../../../cgrid/src/core/pivotEngine.ts) and worker-side [pivotPass.ts](../../../cgrid/src/worker/passes/pivotPass.ts). A subclass has no natural way to add a `CalculatedFieldsPass` to the worker pipeline — you'd need a factory hook on `VelocityGrid` for that anyway, at which point the subclass is redundant.
+- Type gymnastics: every method on `VelocityGrid` that returns `this` or takes generic `TRow` needs recheck under the subclass.
+- Testing: every Excel test now has to spin up a full `VelocityGrid`. There's no way to unit-test the Excel-specific transforms without a canvas + worker.
 
-### Option B — composition (`ExcelPivotGrid` wraps `CGrid`) — **recommended**
+### Option B — composition (`ExcelPivotGrid` wraps `VelocityGrid`) — **recommended**
 
 ```ts
 class ExcelPivotGrid<TRow> {
-  private grid: CGrid<TRow>;
+  private grid: VelocityGrid<TRow>;
   private calculatedFields: CalculatedFieldsRegistry<TRow>;
   private valueTransforms: ValueTransformsRegistry;
   private dateHierarchies: DateHierarchyRegistry;
@@ -103,10 +103,10 @@ class ExcelPivotGrid<TRow> {
   // ...
 
   constructor(container, options: ExcelPivotGridOptions<TRow>) {
-    // 1. translate Excel-shaped options into CGrid options + extension registries
-    const cgridOptions = this.buildCGridOptions(options);
-    this.grid = new CGrid(container, cgridOptions);
-    // 2. install extensions via the extension-point hooks CGrid already exposes
+    // 1. translate Excel-shaped options into VelocityGrid options + extension registries
+    const cgridOptions = this.buildVelocityGridOptions(options);
+    this.grid = new VelocityGrid(container, cgridOptions);
+    // 2. install extensions via the extension-point hooks VelocityGrid already exposes
     //    (aggFuncs, processPivotResultColDef, transaction interceptors, etc.)
   }
 
@@ -115,7 +115,7 @@ class ExcelPivotGrid<TRow> {
   setShowValuesAs(colId, mode: ShowValuesAsMode) { ... }
   addDateHierarchy(fieldId, granularities: DateGranularity[]) { ... }
 
-  // Passthrough CGrid API — either explicit forwarding for the ~30 methods
+  // Passthrough VelocityGrid API — either explicit forwarding for the ~30 methods
   //   we want as public, or `Object.assign(this, this.grid.api)` in ctor.
   get api() { return this.grid.api; }
 }
@@ -123,28 +123,28 @@ class ExcelPivotGrid<TRow> {
 
 **Pros:**
 - Matches Cycle 19's trajectory. Extensions are just more coordinators.
-- Excel-specific worker passes register via a `CGrid` extension point (see §3.2), not inheritance. That extension point is generally useful even without Excel (custom AggFuncs already use one).
+- Excel-specific worker passes register via a `VelocityGrid` extension point (see §3.2), not inheritance. That extension point is generally useful even without Excel (custom AggFuncs already use one).
 - Each Excel feature (calculated fields, value transforms, date hierarchies, item filters) is a self-contained module with its own unit-tests, no canvas needed.
-- Clean surface separation. `CGrid` stays the general-purpose grid; `ExcelPivotGrid` is the Excel-flavored preset. Anyone who wants only *some* Excel features can install just those extensions on plain `CGrid`.
+- Clean surface separation. `VelocityGrid` stays the general-purpose grid; `ExcelPivotGrid` is the Excel-flavored preset. Anyone who wants only *some* Excel features can install just those extensions on plain `VelocityGrid`.
 
 **Cons:**
-- Requires opening up two or three extension points on `CGrid` (see §3.2) — a small refactor cost, but they'd be useful anyway.
+- Requires opening up two or three extension points on `VelocityGrid` (see §3.2) — a small refactor cost, but they'd be useful anyway.
 - Passthrough boilerplate for the ~30 methods we want re-exposed. Mitigate with a `get api()` accessor + a fluent facade.
 
-### Option C — feature flags on `CGrid` (`new CGrid({ excelPivot: true, calculatedFields: [...] })`)
+### Option C — feature flags on `VelocityGrid` (`new VelocityGrid({ excelPivot: true, calculatedFields: [...] })`)
 
 **Pros:** no new class.
-**Cons:** bloats `CGrid` with Excel-specific concerns most users don't want; every Excel feature increases tree-shake weight for non-Excel users; violates the Cycle 19 direction more thoroughly than Option A does.
+**Cons:** bloats `VelocityGrid` with Excel-specific concerns most users don't want; every Excel feature increases tree-shake weight for non-Excel users; violates the Cycle 19 direction more thoroughly than Option A does.
 
 ### Chosen: Option B, with a fresh Excel-native engine (per §0)
 
-**Package layout — `@cgrid/excel-pivot`, sibling to `cgrid`:**
+**Package layout — `@wellsfargo-starui/velocity-grid-excel-pivot`, sibling to `cgrid`:**
 
 ```
 cgrid/                                   (unchanged — general-purpose grid + AG-parity pivot)
-excel-pivot/                             (NEW PACKAGE — @cgrid/excel-pivot)
+excel-pivot/                             (NEW PACKAGE — @wellsfargo-starui/velocity-grid-excel-pivot)
 ├── src/
-│   ├── excelPivotGrid.ts                (facade: owns CGrid + ExcelPivotEngine)
+│   ├── excelPivotGrid.ts                (facade: owns VelocityGrid + ExcelPivotEngine)
 │   │
 │   ├── model/                           ── EXCEL DATA MODEL ──
 │   │   ├── excelPivotCache.ts           (normalized source view + derived-value shadow buffer)
@@ -155,8 +155,8 @@ excel-pivot/                             (NEW PACKAGE — @cgrid/excel-pivot)
 │   │   └── excelPivotItem.ts            (per-value item metadata: visible, custom label, order)
 │   │
 │   ├── engine/                          ── ORCHESTRATION ──
-│   │   ├── excelPivotEngine.ts          (main-thread; subscribes to CGrid transactions;
-│   │   │                                 pushes columns + rows back into CGrid)
+│   │   ├── excelPivotEngine.ts          (main-thread; subscribes to VelocityGrid transactions;
+│   │   │                                 pushes columns + rows back into VelocityGrid)
 │   │   ├── deltaCoalescer.ts            (tick-batch coalescing, RAF-debounced applyColumnTree)
 │   │   └── excelPivotState.ts           (save/restore state for the Excel model)
 │   │
@@ -198,10 +198,10 @@ excel-pivot/                             (NEW PACKAGE — @cgrid/excel-pivot)
 │   │   ├── itemFilterDropdown.ts        (per-field header dropdown)
 │   │   └── pivotContextMenu.ts          (Excel-shaped context menu, not cgrid's)
 │   │
-│   └── cgridBridge/                     ── THE ONLY COUPLING TO CGrid ──
-│       ├── columnTreeAdapter.ts         (Excel columns → CGrid CColGroupDef tree)
-│       ├── cellValueAdapter.ts          (Excel cell lookup → CGrid cellSpec / cellAt)
-│       └── transactionListener.ts       (CGrid applyTransaction → Excel cache updates)
+│   └── cgridBridge/                     ── THE ONLY COUPLING TO VelocityGrid ──
+│       ├── columnTreeAdapter.ts         (Excel columns → VelocityGrid CColGroupDef tree)
+│       ├── cellValueAdapter.ts          (Excel cell lookup → VelocityGrid cellSpec / cellAt)
+│       └── transactionListener.ts       (VelocityGrid applyTransaction → Excel cache updates)
 │
 ├── test/
 └── package.json                         (peerDependency: cgrid)
@@ -393,10 +393,10 @@ Phased so that each cycle delivers user-visible value on its own, and so that ti
 
 ### Cycle 20 — Excel-native pivot foundation (fresh engine, not a retrofit)
 
-- New package `@cgrid/excel-pivot` (peerDep cgrid), sibling to `cgrid/`
+- New package `@wellsfargo-starui/velocity-grid-excel-pivot` (peerDep cgrid), sibling to `cgrid/`
 - **Data model:** `ExcelPivotCache`, `ExcelPivotModel`, `ExcelPivotField`, `ExcelPivotItem` — Excel's real field model (rich per-field/per-item metadata)
-- **Engine:** `ExcelPivotEngine` (main-thread), subscribes to CGrid's `applyTransaction`, translates to Excel-model updates
-- **Extension points on CGrid** (minimum viable — only what's genuinely renderer-shaped): worker-pass registration; custom cell projection (`cellAt` override); transaction interceptor hook. Each is generally useful even without Excel.
+- **Engine:** `ExcelPivotEngine` (main-thread), subscribes to VelocityGrid's `applyTransaction`, translates to Excel-model updates
+- **Extension points on VelocityGrid** (minimum viable — only what's genuinely renderer-shaped): worker-pass registration; custom cell projection (`cellAt` override); transaction interceptor hook. Each is generally useful even without Excel.
 - **Worker pipeline** (Excel-native, delta-aware from day one): `filterPass` + `groupPass` + `aggregatePass` — Show Values As transforms + layout modes come in Cycle 22
 - **Delta protocol:** each pass has `batch(input)` and `delta(input, tick)` methods; `aggregatePass` supports a `deltaApply` protocol on `AggregatorRegistry` (Excel-namespaced, independent of cgrid's `AggFuncRegistry`)
 - **cgridBridge:** `columnTreeAdapter`, `cellValueAdapter`, `transactionListener` — the ONLY files that touch cgrid internals
@@ -444,7 +444,7 @@ Each is a full cycle. Slicers and Charts have the largest surface area and the l
 ## 6. Open questions for the user
 
 **Q1 — Is `ExcelPivotGrid` its own package, or a subtree inside cgrid?**
-- Separate package (`@cgrid/excel-pivot`) means clean opt-in, no tree-shake weight for non-Excel users, own version cadence.
+- Separate package (`@wellsfargo-starui/velocity-grid-excel-pivot`) means clean opt-in, no tree-shake weight for non-Excel users, own version cadence.
 - Same tree means one build, one test suite, easier internal refactor. Given the Cycle 19 trajectory, same tree is probably simpler until package-level customer demand appears.
 
 **Q2 — What's the realistic tick rate + row-count target?**
@@ -470,8 +470,8 @@ Each is a full cycle. Slicers and Charts have the largest surface area and the l
 
 **Locked in 2026-07-01:**
 
-1. ✅ **Architecture:** Option B — composition. `ExcelPivotGrid` owns a `CGrid` instance, not a subclass.
-2. ✅ **Package layout:** new package `@cgrid/excel-pivot` (separate from `cgrid`). Own build, own test suite, tree-shakeable for users who don't need Excel features.
+1. ✅ **Architecture:** Option B — composition. `ExcelPivotGrid` owns a `VelocityGrid` instance, not a subclass.
+2. ✅ **Package layout:** new package `@wellsfargo-starui/velocity-grid-excel-pivot` (separate from `cgrid`). Own build, own test suite, tree-shakeable for users who don't need Excel features.
 3. ✅ **Tick target:** **60Hz × 50k rows.** Requires Fenwick tree for Running Total, sorted multiset for Rank. Baseline for the Cycle 20 perf harness regression gate.
 4. ✅ **Retention policy:** **sticky.** Empty pivot keys stay in the column tree; layout never shifts under ticking. Match current non-strict mode behavior. (If unbounded growth becomes a real issue later, consider adding a `pivotKeyGC: 'on-idle' | 'never'` opt-in — not blocking for Cycle 20.)
 5. ✅ **Excel-native, not AG-Grid-plus-extensions** (see §0). Fresh Excel-shape data model + fresh worker pipeline. Existing cgrid pivot (Cycle 18) untouched; ExcelPivotGrid does not inherit its assumptions. Foundation cost grows from ~4 weeks to ~6–8 weeks; ceiling gets much higher.
@@ -482,4 +482,4 @@ Each is a full cycle. Slicers and Charts have the largest surface area and the l
 - Calculated Fields formula language: Excel-syntax / JS / mid-DSL? (§6 Q5)
 - Slicers + Pivot Charts scope? (§6 Q6)
 
-**Next step:** implementation plan for Cycle 20 (foundation-only cycle). Should specify the extension points needed on `CGrid`, the delta-aware PivotPass design, the `deltaApply` protocol for AggFuncRegistry, the perf harness spec, and the `ExcelPivotGrid` facade class shape.
+**Next step:** implementation plan for Cycle 20 (foundation-only cycle). Should specify the extension points needed on `VelocityGrid`, the delta-aware PivotPass design, the `deltaApply` protocol for AggFuncRegistry, the perf harness spec, and the `ExcelPivotGrid` facade class shape.

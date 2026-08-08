@@ -34,7 +34,7 @@ export function wireRibbonOverflow(opts: {
 
   // Hidden parking lot for overflowed nodes while the menu is closed.
   const stash = document.createElement('div');
-  stash.className = 'cgext-rb-overflow-stash';
+  stash.className = 'vgext-rb-overflow-stash';
   stash.hidden = true;
   // Keep stash in the tree (not display:contents) so nodes stay alive.
   (track.parentElement ?? track).appendChild(stash);
@@ -87,7 +87,7 @@ export function wireRibbonOverflow(opts: {
   const openPanel = (): void => {
     if (panel || stash.childElementCount === 0) return;
     panel = document.createElement('div');
-    panel.className = 'cgext-menu cgext-rb-overflow-panel';
+    panel.className = 'vgext-menu vgext-rb-overflow-panel';
     mirrorThemeClass(button, panel);
     while (stash.firstChild) panel.appendChild(stash.firstChild);
     document.body.appendChild(panel);
@@ -98,8 +98,8 @@ export function wireRibbonOverflow(opts: {
     let left = r.right - width;
     left = Math.max(margin, Math.min(left, window.innerWidth - width - margin));
     const top = Math.min(r.bottom + 6, window.innerHeight - margin - 40);
-    panel.style.setProperty('--cgext-menu-top', `${top}px`);
-    panel.style.setProperty('--cgext-menu-left', `${left}px`);
+    panel.style.setProperty('--vgext-menu-top', `${top}px`);
+    panel.style.setProperty('--vgext-menu-left', `${left}px`);
     panel.style.width = `${width}px`;
 
     document.addEventListener('pointerdown', onDoc, true);
@@ -139,7 +139,7 @@ export function wireRibbonOverflow(opts: {
   if (typeof ResizeObserver !== 'undefined') {
     ro = new ResizeObserver(() => schedule());
     ro.observe(track);
-    const band = track.closest('.cgext-ribbon-band, .cgext-edit-strip, .cgext-ribbon');
+    const band = track.closest('.vgext-ribbon-band, .vgext-edit-strip, .vgext-ribbon');
     if (band) ro.observe(band);
   } else {
     window.addEventListener('resize', schedule);

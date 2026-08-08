@@ -60,7 +60,7 @@ async function cellBounds(
 ): Promise<{ x: number; y: number; w: number; h: number }> {
   const b = await page.evaluate(
     ({ r, c }) =>
-      (window as unknown as { __cgrid: GridSurface }).__cgrid.getCellBoundsAt(r, c),
+      (window as unknown as { __velocity-grid: GridSurface }).__cgrid.getCellBoundsAt(r, c),
     { r: rowIndex, c: colId },
   );
   if (!b) throw new Error(`no cell bounds for (${rowIndex}, ${colId})`);
@@ -69,7 +69,7 @@ async function cellBounds(
 
 async function rangesNow(page: Page): Promise<SelectionRange[]> {
   return page.evaluate(
-    () => (window as unknown as { __cgrid: GridSurface }).__cgrid.selection.state.ranges
+    () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.selection.state.ranges
       .map((r) => ({ rowStart: r.rowStart, rowEnd: r.rowEnd, colIds: [...r.colIds] })),
   );
 }

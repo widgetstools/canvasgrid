@@ -15,7 +15,7 @@ import { test, expect, type Page } from '@playwright/test';
  * The grid is a <canvas>, so state goes through `window.__cgapi`.
  */
 
-const STORAGE_KEY = 'cgrid:state:customizer-demo';
+const STORAGE_KEY = 'velocity-grid:state:customizer-demo';
 
 async function waitForGridReady(page: Page): Promise<void> {
   await page.waitForFunction(
@@ -32,7 +32,7 @@ async function waitForGridReady(page: Page): Promise<void> {
 /** Click a Ticker-column cell (2nd column) well inside the data area and wait
  *  for the focus to land. Returns the focused rowId. */
 async function focusTickerCell(page: Page): Promise<string> {
-  const canvas = page.locator('.cg-grid canvas').first();
+  const canvas = page.locator('.vg-grid canvas').first();
   const box = await canvas.boundingBox();
   if (!box) throw new Error('no canvas');
   await page.mouse.click(box.x + 175, box.y + 220);
@@ -62,7 +62,7 @@ test('horizontal scroll is preserved when a sorted grid reorders (focused cell r
   // 3) Scroll horizontally to the far right — the focused Ticker column
   //    scrolls out of view.
   const scrolled = await page.evaluate(() => {
-    const s = document.querySelector('.cg-scroller') as HTMLElement;
+    const s = document.querySelector('.vg-scroller') as HTMLElement;
     s.scrollLeft = s.scrollWidth;
     s.dispatchEvent(new Event('scroll'));
     return { scrollLeft: s.scrollLeft, maxScroll: s.scrollWidth - s.clientWidth };
@@ -77,7 +77,7 @@ test('horizontal scroll is preserved when a sorted grid reorders (focused cell r
 
   // 5) The reorder must NOT have auto-scrolled the viewport back.
   const after = await page.evaluate(() => {
-    const s = document.querySelector('.cg-scroller') as HTMLElement;
+    const s = document.querySelector('.vg-scroller') as HTMLElement;
     return { scrollLeft: s.scrollLeft, focused: (window as any).__cgapi.getFocusedCell() };
   });
   expect(after.scrollLeft).toBe(scrolled.scrollLeft);         // horizontal scroll preserved
@@ -85,18 +85,18 @@ test('horizontal scroll is preserved when a sorted grid reorders (focused cell r
 });
 
 test('genuine column navigation still scrolls the focused column into view (no regression)', async ({ page }) => {
-  const canvas = page.locator('.cg-grid canvas').first();
+  const canvas = page.locator('.vg-grid canvas').first();
   const box = await canvas.boundingBox();
 
   // Focus a right-side cell while scrolled to the far right.
   await page.evaluate(() => {
-    const s = document.querySelector('.cg-scroller') as HTMLElement;
+    const s = document.querySelector('.vg-scroller') as HTMLElement;
     s.scrollLeft = s.scrollWidth;
     s.dispatchEvent(new Event('scroll'));
   });
   await page.mouse.click(box!.x + box!.width - 40, box!.y + 220);
   await page.waitForFunction(() => (window as any).__cgapi.getFocusedCell?.()?.rowId != null, { timeout: 5_000 });
-  const before = await page.evaluate(() => (document.querySelector('.cg-scroller') as HTMLElement).scrollLeft);
+  const before = await page.evaluate(() => (document.querySelector('.vg-scroller') as HTMLElement).scrollLeft);
 
   // Navigate focus left across several columns — the viewport SHOULD follow.
   for (let i = 0; i < 14; i++) {
@@ -104,6 +104,6 @@ test('genuine column navigation still scrolls the focused column into view (no r
     await page.waitForTimeout(30);
   }
   await page.waitForTimeout(150);
-  const after = await page.evaluate(() => (document.querySelector('.cg-scroller') as HTMLElement).scrollLeft);
+  const after = await page.evaluate(() => (document.querySelector('.vg-scroller') as HTMLElement).scrollLeft);
   expect(after).toBeLessThan(before);   // navigation-driven auto-scroll still works
 });

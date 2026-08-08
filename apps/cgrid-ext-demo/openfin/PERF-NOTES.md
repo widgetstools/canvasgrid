@@ -586,7 +586,7 @@ Strip-warmed scroll `layerRasterMs` EMA sat at 1.48–3.88ms (GPU) /
 ~3ms target. The prior cycle's deliberate `BUDGET_MS: 6` re-test made both
 phases worse (190/225ms worsts) because bigger synchronous drain slices pay
 more per call on OpenFin's slow canvas; nothing in this cycle's data
-contradicts that. `BUDGET_MS = 3` (cgrid.ts) stays; no retune.
+contradicts that. `BUDGET_MS = 3` (velocityGrid.ts) stays; no retune.
 
 ## Quiet-machine re-measure — Bars 1/2 final adjudication (2026-07-12, main post-closeout, runtime 41.134.102.3, dpr 2)
 

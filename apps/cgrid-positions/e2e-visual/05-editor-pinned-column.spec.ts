@@ -10,7 +10,7 @@ test('editor open on pinned-left column (cusip) — DOM input over pinned band',
   await setupGrid(page, 50);
   await page.evaluate(() => {
     const g = (window as unknown as {
-      __cgrid: { openEditor: (rowIndex: number, colId: string) => void };
+      __velocity-grid: { openEditor: (rowIndex: number, colId: string) => void };
     }).__cgrid;
     g.openEditor(3, 'cusip');
   });

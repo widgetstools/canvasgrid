@@ -41,7 +41,7 @@ test('group expand/collapse — every group collapsed via api.collapseAll()', as
   // sentinel). Drive collapseAll() through the imperative API the
   // chevron click also routes through and wait for the repaint.
   await page.evaluate(() => {
-    const w = window as unknown as { __cgrid: { collapseAll: () => void } };
+    const w = window as unknown as { __velocity-grid: { collapseAll: () => void } };
     w.__cgrid.collapseAll();
   });
   await waitForFrames(page, 12);

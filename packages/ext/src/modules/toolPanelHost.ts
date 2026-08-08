@@ -1,12 +1,12 @@
 /**
  * Shared helpers for wrapping a kernel `ToolPanel` as an ext settings
- * module. Panels code against `CGridApi`; CGrid exposes the same methods
+ * module. Panels code against `VelocityGridApi`; VelocityGrid exposes the same methods
  * on the class, so we pass `ctx.grid` with a thin Proxy that marks the
  * active profile dirty on writes.
  */
-import type { CGrid } from '@cgrid/kernel';
-import type { ToolPanel } from '@cgrid/kernel';
-import type { CgExtContext, ModuleInstance } from '../extension/types';
+import type { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
+import type { ToolPanel } from '@wellsfargo-starui/velocity-grid';
+import type { VelocityGridExtContext, ModuleInstance } from '../extension/types';
 
 const WRITE_METHODS = new Set([
   'setGridOption',
@@ -21,7 +21,7 @@ const WRITE_METHODS = new Set([
 ]);
 
 /** API object suitable for `ToolPanel.init({ api })`. */
-export function toolPanelApi(grid: CGrid, onDirty: () => void): unknown {
+export function toolPanelApi(grid: VelocityGrid, onDirty: () => void): unknown {
   return new Proxy(grid as object, {
     get(target, prop, receiver) {
       // makeApi-only helpers used by Grid Options density defaults.
@@ -50,10 +50,10 @@ export function toolPanelApi(grid: CGrid, onDirty: () => void): unknown {
 export function mountToolPanel(
   Panel: new () => ToolPanel,
   host: HTMLElement,
-  ctx: CgExtContext,
+  ctx: VelocityGridExtContext,
   toolPanelParams?: Record<string, unknown>,
 ): ModuleInstance {
-  host.classList.add('cgext-sheet-toolpanel');
+  host.classList.add('vgext-sheet-toolpanel');
   const panel = new Panel();
   panel.init({
     api: toolPanelApi(ctx.grid, () => ctx.profiles.markDirty()),
@@ -65,7 +65,7 @@ export function mountToolPanel(
     destroy() {
       panel.destroy();
       host.replaceChildren();
-      host.classList.remove('cgext-sheet-toolpanel');
+      host.classList.remove('vgext-sheet-toolpanel');
     },
     refresh() { panel.refresh?.(); },
   };

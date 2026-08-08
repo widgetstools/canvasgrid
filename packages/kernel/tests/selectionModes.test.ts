@@ -2,7 +2,7 @@
 //
 // Tests the three group-selects modes ('self', 'descendants',
 // 'filteredDescendants') plus the groupSelects/checkboxLocation wiring
-// in SelectionModel, independently of cgrid.ts.
+// in SelectionModel, independently of velocityGrid.ts.
 
 import { describe, it, expect } from 'vitest';
 import { SelectionModel, type GroupMembershipResolver } from '../src/interaction/selectionModel';

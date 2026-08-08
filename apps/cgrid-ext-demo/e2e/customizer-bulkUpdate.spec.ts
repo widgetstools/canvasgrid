@@ -27,7 +27,7 @@ test.describe('Bulk Update (Markets parity)', () => {
   test('settings sheet opens; Save toggles recordHistory', async ({ page }) => {
     // Markets: v2-bulk-update — settings sheet opens Bulk Update panel
     await openCustomizer(page, 'bulk-update');
-    await expect(page.locator('.cgext-sheet-title')).toHaveText('Bulk Update');
+    await expect(page.locator('.vgext-sheet-title')).toHaveText('Bulk Update');
     await expect(cockpit(page)).toContainText(/Record history/i);
 
     const before = await editSettings<boolean>(page, 'bulkUpdate.recordHistory');
@@ -97,10 +97,10 @@ test.describe('Bulk Update (Markets parity)', () => {
     const next = before === 'USD' ? 'CAD' : 'USD';
 
     await selectCells(page, { rowStart: 0, rowEnd: 0, colIds: ['currency'] });
-    const bulkInput = page.locator('.cgext-edit-strip input.cgext-rb-input[placeholder="New value"], .cgext-ribbon input.cgext-rb-input[placeholder="New value"]').first();
+    const bulkInput = page.locator('.vgext-edit-strip input.vgext-rb-input[placeholder="New value"], .vgext-ribbon input.vgext-rb-input[placeholder="New value"]').first();
     await expect(bulkInput).toBeVisible();
     await bulkInput.fill(String(next));
-    const apply = page.locator('.cgext-edit-strip button[title="Apply"], .cgext-ribbon button[title="Apply"]').first();
+    const apply = page.locator('.vgext-edit-strip button[title="Apply"], .vgext-ribbon button[title="Apply"]').first();
     await expect(apply).toBeEnabled({ timeout: 5_000 });
     await apply.click();
     await expect.poll(() => readField(page, r0.positionId, 'currency')).toBe(next);

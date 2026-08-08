@@ -62,7 +62,7 @@ async function focusCanvas(page: Page): Promise<void> {
 
 async function seedRange(page: Page, range: { rowStart: number; rowEnd: number; colIds: string[] }): Promise<void> {
   await page.evaluate((r) => {
-    const w = window as unknown as { __cgrid: GridSurface };
+    const w = window as unknown as { __velocity-grid: GridSurface };
     w.__cgrid.clearCellRanges();
     w.__cgrid.addCellRange(r);
   }, range);
@@ -73,12 +73,12 @@ async function seedRange(page: Page, range: { rowStart: number; rowEnd: number; 
  *  paste leg can re-paste through the focused cell. */
 async function anchorFocus(page: Page, rowIndex: number, colId: string): Promise<void> {
   await page.evaluate(
-    (id) => (window as unknown as { __cgrid: GridSurface }).__cgrid.ensureColumnVisible(id, 'start'),
+    (id) => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.ensureColumnVisible(id, 'start'),
     colId,
   );
   await waitForFrames(page, 4);
   const bounds = await page.evaluate(
-    ({ rowIndex, colId }) => (window as unknown as { __cgrid: GridSurface }).__cgrid.getCellBoundsAt(rowIndex, colId),
+    ({ rowIndex, colId }) => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.getCellBoundsAt(rowIndex, colId),
     { rowIndex, colId },
   );
   if (!bounds) throw new Error(`anchorFocus: no bounds for row=${rowIndex} col=${colId}`);
@@ -94,7 +94,7 @@ async function anchorFocus(page: Page, rowIndex: number, colId: string): Promise
   await page.mouse.click(cx, cy);
   await waitForFrames(page, 4);
   await page.evaluate(() => {
-    const w = window as unknown as { __cgrid: GridSurface };
+    const w = window as unknown as { __velocity-grid: GridSurface };
     w.__cgrid.stopEditing(true);
   });
   await waitForFrames(page, 2);
@@ -115,15 +115,15 @@ test.describe('Cycle 10 / Task 5 — clipboard cut', () => {
     await seedRange(page, { rowStart: 0, rowEnd: 1, colIds: ['notes'] });
 
     const beforeRow0 = await page.evaluate(
-      () => (window as unknown as { __cgrid: GridSurface }).__cgrid.getCellValue(0, 'notes'),
+      () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.getCellValue(0, 'notes'),
     );
     const beforeRow1 = await page.evaluate(
-      () => (window as unknown as { __cgrid: GridSurface }).__cgrid.getCellValue(1, 'notes'),
+      () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.getCellValue(1, 'notes'),
     );
     const expectedTsv = `${String(beforeRow0 ?? '')}\n${String(beforeRow1 ?? '')}`;
 
     await page.evaluate(
-      () => (window as unknown as { __cgrid: GridSurface }).__cgrid.cutSelectedRanges(),
+      () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.cutSelectedRanges(),
     );
     // Clipboard leg lands first; assert that early so a clear-update
     // hiccup is diagnosable.
@@ -136,13 +136,13 @@ test.describe('Cycle 10 / Task 5 — clipboard cut', () => {
     // the cells flip.
     await expect.poll(
       async () => page.evaluate(
-        () => (window as unknown as { __cgrid: GridSurface }).__cgrid.getCellValue(0, 'notes'),
+        () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.getCellValue(0, 'notes'),
       ),
       { timeout: 5_000 },
     ).toBe('');
     await expect.poll(
       async () => page.evaluate(
-        () => (window as unknown as { __cgrid: GridSurface }).__cgrid.getCellValue(1, 'notes'),
+        () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.getCellValue(1, 'notes'),
       ),
       { timeout: 5_000 },
     ).toBe('');
@@ -157,7 +157,7 @@ test.describe('Cycle 10 / Task 5 — clipboard cut', () => {
     await seedRange(page, { rowStart: 4, rowEnd: 4, colIds: ['notes'] });
 
     const before = await page.evaluate(
-      () => (window as unknown as { __cgrid: GridSurface }).__cgrid.getCellValue(4, 'notes'),
+      () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.getCellValue(4, 'notes'),
     );
 
     const mod = browserName === 'webkit' ? 'Meta' : 'Control';
@@ -173,7 +173,7 @@ test.describe('Cycle 10 / Task 5 — clipboard cut', () => {
     ).toBe(String(before ?? ''));
     await expect.poll(
       async () => page.evaluate(
-        () => (window as unknown as { __cgrid: GridSurface }).__cgrid.getCellValue(4, 'notes'),
+        () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.getCellValue(4, 'notes'),
       ),
       { timeout: 5_000 },
     ).toBe('');
@@ -185,17 +185,17 @@ test.describe('Cycle 10 / Task 5 — clipboard cut', () => {
 
     // Install a synthetic transform that wraps each value in <…>.
     await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: GridSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridSurface }).__cgrid;
       g.setGridOption('processCellForClipboard', (params: { value: unknown }) => `<${String(params.value ?? '')}>`);
     });
 
     await seedRange(page, { rowStart: 7, rowEnd: 7, colIds: ['notes'] });
     const raw = await page.evaluate(
-      () => (window as unknown as { __cgrid: GridSurface }).__cgrid.getCellValue(7, 'notes'),
+      () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.getCellValue(7, 'notes'),
     );
 
     await page.evaluate(
-      () => (window as unknown as { __cgrid: GridSurface }).__cgrid.copySelectedRangesToClipboard(),
+      () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.copySelectedRangesToClipboard(),
     );
 
     const tsv = await page.evaluate(() => navigator.clipboard.readText());
@@ -203,7 +203,7 @@ test.describe('Cycle 10 / Task 5 — clipboard cut', () => {
 
     // Restore the default so subsequent tests share a clean baseline.
     await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: GridSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridSurface }).__cgrid;
       g.setGridOption('processCellForClipboard', undefined);
     });
   });
@@ -216,7 +216,7 @@ test.describe('Cycle 10 / Task 5 — clipboard cut', () => {
     // with PARSED:. The clipboard payload is a single string; the
     // transform receives the parsed `value` per cell.
     await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: GridSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridSurface }).__cgrid;
       g.setGridOption(
         'processCellFromClipboard',
         (params: { value: string }) => `PARSED:${params.value}`,
@@ -225,18 +225,18 @@ test.describe('Cycle 10 / Task 5 — clipboard cut', () => {
 
     await page.evaluate(() => navigator.clipboard.writeText('raw-payload'));
     await page.evaluate(
-      () => (window as unknown as { __cgrid: GridSurface }).__cgrid.pasteFromClipboard(),
+      () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.pasteFromClipboard(),
     );
 
     await expect.poll(
       async () => page.evaluate(
-        () => (window as unknown as { __cgrid: GridSurface }).__cgrid.getCellValue(9, 'notes'),
+        () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.getCellValue(9, 'notes'),
       ),
       { timeout: 5_000 },
     ).toBe('PARSED:raw-payload');
 
     await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: GridSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridSurface }).__cgrid;
       g.setGridOption('processCellFromClipboard', undefined);
     });
   });
@@ -245,11 +245,11 @@ test.describe('Cycle 10 / Task 5 — clipboard cut', () => {
     await gridReady(page);
     await focusCanvas(page);
     await page.evaluate(
-      () => (window as unknown as { __cgrid: GridSurface }).__cgrid.clearCellRanges(),
+      () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.clearCellRanges(),
     );
 
     const rejected = await page.evaluate(
-      () => (window as unknown as { __cgrid: GridSurface }).__cgrid.cutSelectedRanges()
+      () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.cutSelectedRanges()
         .then(() => null, (err: Error) => err.message),
     );
     expect(rejected).toBe('no-ranges');

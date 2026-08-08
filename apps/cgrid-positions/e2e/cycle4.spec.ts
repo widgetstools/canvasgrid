@@ -10,9 +10,9 @@ import { test, expect, Page, Locator } from '@playwright/test';
 
 const GRID_SELECTOR = '#grid canvas';
 
-const GRID_LINE_COLOR_DARK = 'rgb(55,58,59)';   // --cg-grid-line-color (#373a3b)
-const BORDER_COLOR_DARK = 'rgb(69,69,69)';     // --cg-border-color (#454545)
-const HEADER_BG_DARK = 'rgb(37,37,38)';         // --cg-header-bg (#252526)
+const GRID_LINE_COLOR_DARK = 'rgb(55,58,59)';   // --vg-grid-line-color (#373a3b)
+const BORDER_COLOR_DARK = 'rgb(69,69,69)';     // --vg-border-color (#454545)
+const HEADER_BG_DARK = 'rgb(37,37,38)';         // --vg-header-bg (#252526)
 
 async function waitForGridPopulated(page: Page, canvas: Locator) {
   await expect
@@ -201,7 +201,7 @@ test('vertical-dominant wheel gesture does not horizontally scroll', async ({ pa
   // Read scrollLeft from the scroller element. A vertical-dominant gesture
   // must not shift columns horizontally, so scrollLeft must stay the same.
   const scrollLeftBefore = await page.evaluate(() => {
-    const el = document.querySelector('.cg-scroller') as HTMLElement | null;
+    const el = document.querySelector('.vg-scroller') as HTMLElement | null;
     return el?.scrollLeft ?? -1;
   });
 
@@ -214,7 +214,7 @@ test('vertical-dominant wheel gesture does not horizontally scroll', async ({ pa
   await page.waitForTimeout(300);
 
   const scrollLeftAfter = await page.evaluate(() => {
-    const el = document.querySelector('.cg-scroller') as HTMLElement | null;
+    const el = document.querySelector('.vg-scroller') as HTMLElement | null;
     return el?.scrollLeft ?? -1;
   });
   expect(scrollLeftAfter).toBe(scrollLeftBefore);
@@ -226,7 +226,7 @@ test('horizontal-dominant wheel gesture does not vertically scroll', async ({ pa
   // Read scrollTop from the scroller element. A horizontal-dominant gesture
   // must not shift rows vertically, so scrollTop must stay the same.
   const scrollTopBefore = await page.evaluate(() => {
-    const el = document.querySelector('.cg-scroller') as HTMLElement | null;
+    const el = document.querySelector('.vg-scroller') as HTMLElement | null;
     return el?.scrollTop ?? -1;
   });
 
@@ -239,7 +239,7 @@ test('horizontal-dominant wheel gesture does not vertically scroll', async ({ pa
   await page.waitForTimeout(300);
 
   const scrollTopAfter = await page.evaluate(() => {
-    const el = document.querySelector('.cg-scroller') as HTMLElement | null;
+    const el = document.querySelector('.vg-scroller') as HTMLElement | null;
     return el?.scrollTop ?? -1;
   });
   expect(scrollTopAfter).toBe(scrollTopBefore);

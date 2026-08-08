@@ -1,5 +1,5 @@
 /**
- * In-memory mock trading server for the CGridExt + SSRM demo.
+ * In-memory mock trading server for the VelocityGridExt + SSRM demo.
  *
  * Implements the sparse SSRM v2 contract (`IServerSideDatasourceV2`):
  * the KERNEL owns the group tree + flatten index; this "server" answers
@@ -19,7 +19,7 @@ import type {
   SkeletonGroup,
   SortModel,
   FilterModel,
-} from '@cgrid/kernel';
+} from '@wellsfargo-starui/velocity-grid';
 
 export interface PositionRow {
   positionId: string;

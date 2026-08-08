@@ -1,6 +1,6 @@
-// @cgrid/renderers — category 5: Bars / gauges. Catalog §3.5.
+// @wellsfargo-starui/velocity-grid-renderers — category 5: Bars / gauges. Catalog §3.5.
 
-import type { CellPaintConfig, CellPainter } from '@cgrid/kernel';
+import type { CellPaintConfig, CellPainter } from '@wellsfargo-starui/velocity-grid';
 import { dot, fragText, labInterpolate, miniBar, withAlpha } from './paintUtils';
 import { SEMANTIC_COLORS, STATUS_PILL_MAP } from './palette';
 import type {
@@ -98,7 +98,7 @@ function paletteColor(p: CellPaintConfig, key: keyof SemanticColorMap): string {
 
 function innerBarRect(p: CellPaintConfig): { x: number; y: number; w: number; h: number } {
   // Workstream A (2026-07-06 CSS styling model) — geometry-as-style:
-  // `--cg-bar-height` resolves into `RendererPalette.barHeight`; BAR_H
+  // `--vg-bar-height` resolves into `RendererPalette.barHeight`; BAR_H
   // (the pre-existing literal) is now only the byte-identical fallback.
   const barH = p.palette?.barHeight ?? BAR_H;
   return {

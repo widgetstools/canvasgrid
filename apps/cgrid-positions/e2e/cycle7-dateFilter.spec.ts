@@ -14,7 +14,7 @@
  * 5. Re-opening the popup and clicking Reset restores the original
  *    row count.
  * 6. Clicking outside the popup closes it.
- * 7. The `CGridApi.showColumnFilter` / `hideColumnFilter` round-trip
+ * 7. The `VelocityGridApi.showColumnFilter` / `hideColumnFilter` round-trip
  *    drives the date popup the same way it drives the number popup.
  */
 import { test, expect } from '@playwright/test';
@@ -45,7 +45,7 @@ async function gridReady(page: import('@playwright/test').Page): Promise<void> {
   // header bounds resolve to null when scrolled off-screen, which
   // short-circuits showColumnFilter. Scroll it into view first.
   await page.evaluate(
-    () => (window as unknown as { __cgrid: GridApiSurface }).__cgrid.ensureColumnVisible('tradeDate'),
+    () => (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.ensureColumnVisible('tradeDate'),
   );
   await page.evaluate(
     () => new Promise<void>((res) => {
@@ -70,10 +70,10 @@ async function waitForFrames(page: import('@playwright/test').Page, count = 6): 
 test.describe('Cycle 7 / Task 4 — date-filter popup', () => {
   test('clicking the expand button opens the popup', async ({ page }) => {
     await gridReady(page);
-    const expand = page.locator('button[data-cg-floating-filter-expand][data-cg-col-id="tradeDate"]');
+    const expand = page.locator('button[data-vg-floating-filter-expand][data-vg-col-id="tradeDate"]');
     await expect(expand).toHaveCount(1);
     await expand.click();
-    const popup = page.locator('.cg-filter-popup-date');
+    const popup = page.locator('.vg-filter-popup-date');
     await expect(popup).toHaveCount(1);
     const select = popup.locator('select');
     await expect(select).toHaveCount(1);
@@ -81,8 +81,8 @@ test.describe('Cycle 7 / Task 4 — date-filter popup', () => {
 
   test('operator select carries the nine date-filter options', async ({ page }) => {
     await gridReady(page);
-    await page.locator('button[data-cg-floating-filter-expand][data-cg-col-id="tradeDate"]').click();
-    const select = page.locator('.cg-filter-popup-date select');
+    await page.locator('button[data-vg-floating-filter-expand][data-vg-col-id="tradeDate"]').click();
+    const select = page.locator('.vg-filter-popup-date select');
     const values = await select.evaluate(
       (el) => Array.from((el as HTMLSelectElement).options).map((o) => o.value),
     );
@@ -97,26 +97,26 @@ test.describe('Cycle 7 / Task 4 — date-filter popup', () => {
 
   test('inRange reveals a second date input', async ({ page }) => {
     await gridReady(page);
-    await page.locator('button[data-cg-floating-filter-expand][data-cg-col-id="tradeDate"]').click();
-    const popup = page.locator('.cg-filter-popup-date');
+    await page.locator('button[data-vg-floating-filter-expand][data-vg-col-id="tradeDate"]').click();
+    const popup = page.locator('.vg-filter-popup-date');
     await popup.locator('select').selectOption('inRange');
-    await expect(popup.locator('input[data-cg-filter-input="primary"]')).toBeVisible();
-    await expect(popup.locator('input[data-cg-filter-input="secondary"]')).toBeVisible();
+    await expect(popup.locator('input[data-vg-filter-input="primary"]')).toBeVisible();
+    await expect(popup.locator('input[data-vg-filter-input="secondary"]')).toBeVisible();
   });
 
   test('notBlank + Apply reduces the displayed row count', async ({ page }) => {
     await gridReady(page);
     const before = await page.evaluate(
-      () => (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
+      () => (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
     );
     expect(before).toBeGreaterThan(10);
-    await page.locator('button[data-cg-floating-filter-expand][data-cg-col-id="tradeDate"]').click();
-    const popup = page.locator('.cg-filter-popup-date');
+    await page.locator('button[data-vg-floating-filter-expand][data-vg-col-id="tradeDate"]').click();
+    const popup = page.locator('.vg-filter-popup-date');
     await popup.locator('select').selectOption('notBlank');
-    await popup.locator('button[data-cg-filter-action="apply"]').click();
+    await popup.locator('button[data-vg-filter-action="apply"]').click();
     await waitForFrames(page);
     const after = await page.evaluate(
-      () => (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
+      () => (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
     );
     expect(after).toBeLessThan(before);
   });
@@ -124,46 +124,46 @@ test.describe('Cycle 7 / Task 4 — date-filter popup', () => {
   test('Reset returns the row count to the original', async ({ page }) => {
     await gridReady(page);
     const original = await page.evaluate(
-      () => (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
+      () => (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
     );
     expect(original).toBeGreaterThan(10);
-    await page.locator('button[data-cg-floating-filter-expand][data-cg-col-id="tradeDate"]').click();
-    const popup = page.locator('.cg-filter-popup-date');
+    await page.locator('button[data-vg-floating-filter-expand][data-vg-col-id="tradeDate"]').click();
+    const popup = page.locator('.vg-filter-popup-date');
     await popup.locator('select').selectOption('notBlank');
-    await popup.locator('button[data-cg-filter-action="apply"]').click();
+    await popup.locator('button[data-vg-filter-action="apply"]').click();
     await waitForFrames(page);
     const reduced = await page.evaluate(
-      () => (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
+      () => (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
     );
     expect(reduced).toBeLessThan(original);
     // closeOnApply: true so re-open before clicking Reset.
-    await page.locator('button[data-cg-floating-filter-expand][data-cg-col-id="tradeDate"]').click();
-    await page.locator('.cg-filter-popup-date button[data-cg-filter-action="reset"]').click();
+    await page.locator('button[data-vg-floating-filter-expand][data-vg-col-id="tradeDate"]').click();
+    await page.locator('.vg-filter-popup-date button[data-vg-filter-action="reset"]').click();
     await waitForFrames(page);
     const restored = await page.evaluate(
-      () => (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
+      () => (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getDisplayedRowCount(),
     );
     expect(restored).toBe(original);
   });
 
   test('clicking outside the popup closes it', async ({ page }) => {
     await gridReady(page);
-    await page.locator('button[data-cg-floating-filter-expand][data-cg-col-id="tradeDate"]').click();
-    const popup = page.locator('.cg-filter-popup-date');
+    await page.locator('button[data-vg-floating-filter-expand][data-vg-col-id="tradeDate"]').click();
+    const popup = page.locator('.vg-filter-popup-date');
     await expect(popup).toHaveCount(1);
     await page.locator('body').click({ position: { x: 5, y: 5 } });
     await expect(popup).toHaveCount(0);
   });
 
-  test('CGridApi.showColumnFilter / hideColumnFilter round-trip', async ({ page }) => {
+  test('VelocityGridApi.showColumnFilter / hideColumnFilter round-trip', async ({ page }) => {
     await gridReady(page);
     await page.evaluate(
-      () => (window as unknown as { __cgrid: GridApiSurface }).__cgrid.showColumnFilter('tradeDate'),
+      () => (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.showColumnFilter('tradeDate'),
     );
-    await expect(page.locator('.cg-filter-popup-date')).toHaveCount(1);
+    await expect(page.locator('.vg-filter-popup-date')).toHaveCount(1);
     await page.evaluate(
-      () => (window as unknown as { __cgrid: GridApiSurface }).__cgrid.hideColumnFilter(),
+      () => (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.hideColumnFilter(),
     );
-    await expect(page.locator('.cg-filter-popup-date')).toHaveCount(0);
+    await expect(page.locator('.vg-filter-popup-date')).toHaveCount(0);
   });
 });

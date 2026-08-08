@@ -2,36 +2,36 @@
  * Cycle 21i Phase 2 / T5 — LitElement → kernel ToolPanel adapter.
  *
  * The kernel's tool-panel registry accepts third-party panels through
- * `CGridOptions.components` + `SideBarDef.toolPanels` with the
+ * `VelocityGridOptions.components` + `SideBarDef.toolPanels` with the
  * `init/getGui/refresh/destroy` contract (zero kernel changes needed —
  * the recon confirmed attachment is NOT a gap). This adapter bridges
  * that imperative contract to a Lit element:
  *
  *   class SmartEditPanel extends CgcPanelElement { render() {...} }
  *   const SmartEditToolPanel = litToolPanel('cgc-smart-edit', SmartEditPanel);
- *   new CGrid(el, {
+ *   new VelocityGrid(el, {
  *     components: { smartEdit: SmartEditToolPanel },
  *     sideBar: { toolPanels: [..., { id: 'smartEdit', ... }] },
  *   });
  *
  * The grid api arrives via `@lit/context` (`gridApiContext`) — panel
  * elements consume it instead of threading it through every component.
- * Per the two-tier contract, panels code against `CGridApi` only.
+ * Per the two-tier contract, panels code against `VelocityGridApi` only.
  */
 import { LitElement } from 'lit';
 import { createContext, ContextProvider } from '@lit/context';
-import type { CGridApi, ToolPanel, ToolPanelParams } from '@cgrid/kernel';
+import type { VelocityGridApi, ToolPanel, ToolPanelParams } from '@wellsfargo-starui/velocity-grid';
 import { defineChromeComponents } from './components';
 
-/** Context handing the grid's `CGridApi` down the panel's Lit tree. */
-export const gridApiContext = createContext<CGridApi>(Symbol.for('cgrid.api'));
+/** Context handing the grid's `VelocityGridApi` down the panel's Lit tree. */
+export const gridApiContext = createContext<VelocityGridApi>(Symbol.for('cgrid.api'));
 
 /** Base class for customizer panel elements. Subclasses read
  *  `this.api` (set before first render) and override `refreshFromGrid`
  *  to re-read grid state when the kernel calls `refresh()`. */
 export class CgcPanelElement extends LitElement {
   /** The grid api — assigned by the adapter before mount. */
-  api!: CGridApi;
+  api!: VelocityGridApi;
 
   /** Kernel `refresh()` hook — re-read grid state + re-render. */
   refreshFromGrid(): void {
@@ -66,10 +66,10 @@ export function litToolPanel(
       this.gui = document.createElement('div');
       this.gui.className = 'cgc-toolpanel-host';
       this.element = document.createElement(tagName) as CgcPanelElement;
-      this.element.api = params.api as CGridApi;
+      this.element.api = params.api as VelocityGridApi;
       setup?.(this.element);
       // Provide the api via context for nested components.
-      new ContextProvider(this.element, { context: gridApiContext, initialValue: params.api as CGridApi });
+      new ContextProvider(this.element, { context: gridApiContext, initialValue: params.api as VelocityGridApi });
       this.gui.appendChild(this.element);
     }
 

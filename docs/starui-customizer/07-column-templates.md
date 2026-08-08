@@ -120,4 +120,4 @@ None in engine. Host renders:
 
 Direct fit — column-templates is pure config logic. No grid-side machinery needed. Build alongside or just after column-customization.
 
-One thing to verify in cgrid: the cell editor registration. Templates reference editors by name (`cellEditorName: 'currency'`). cgrid's `cellEditorRegistry` already supports this; just make sure the registry is exposed to the resolver.
+One thing to verify in velocity-grid: the cell editor registration. Templates reference editors by name (`cellEditorName: 'currency'`). cgrid's `cellEditorRegistry` already supports this; just make sure the registry is exposed to the resolver.

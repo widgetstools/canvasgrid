@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parse } from '@cgrid/expression';
-import type { Ast, AstNode, BinaryNode, CallNode, FieldNode, Schema } from '@cgrid/expression';
+import { parse } from '@wellsfargo-starui/velocity-grid-expression';
+import type { Ast, AstNode, BinaryNode, CallNode, FieldNode, Schema } from '@wellsfargo-starui/velocity-grid-expression';
 import {
   AGG_ROOT, PREV_ROOT, collectWatchedColIds, transformAggregates,
 } from '../src/aggTransform';

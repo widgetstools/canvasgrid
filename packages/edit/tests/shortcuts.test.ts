@@ -1,4 +1,4 @@
-// @cgrid/edit — shortcuts.test.ts
+// @wellsfargo-starui/velocity-grid-edit — shortcuts.test.ts
 // Covers collectShortcutKeys, matchShortcutForCell, buildShortcutPatches,
 // detectShortcutConflicts.
 // Spec: docs/superpowers/specs/2026-07-02-cycle-21g-edit-design.md §1.1.7.

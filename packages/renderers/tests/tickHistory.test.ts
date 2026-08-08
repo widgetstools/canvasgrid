@@ -2,7 +2,7 @@
  * TickHistory — bounded per-(rowId, colId) ring buffers. Spec §2.4b. Task 4.
  */
 import { describe, it, expect } from 'vitest';
-import type { CGridApi } from '../../kernel/src/types/api';
+import type { VelocityGridApi } from '../../kernel/src/types/api';
 import { TickHistory, DEFAULT_TICK_HISTORY_WINDOW } from '../src/tickHistory';
 import { makeLcg } from './helpers/lcg';
 
@@ -29,7 +29,7 @@ function makeFakeGrid<TRow>(seed?: Array<{ rowId: string; row: TRow }>) {
     removeEventListener(_type: string, _h: unknown) {
       handler = null;
     },
-  } as unknown as CGridApi<TRow>;
+  } as unknown as VelocityGridApi<TRow>;
 
   return {
     api,

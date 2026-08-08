@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, vi } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
 
 /**
@@ -37,7 +37,7 @@ beforeAll(() => {
   })) as unknown as typeof HTMLCanvasElement.prototype.getContext;
 });
 
-function buildWiredSparseSsrmGrid(): { grid: CGrid; restore: () => void } {
+function buildWiredSparseSsrmGrid(): { grid: VelocityGrid; restore: () => void } {
   const origWorker = (globalThis as { Worker?: unknown }).Worker;
   (globalThis as { Worker: unknown }).Worker = class FakeWorker {
     onmessage: ((e: MessageEvent) => void) | null = null;
@@ -57,7 +57,7 @@ function buildWiredSparseSsrmGrid(): { grid: CGrid; restore: () => void } {
   el.style.height = '400px';
   document.body.appendChild(el);
 
-  const grid = new CGrid(el, {
+  const grid = new VelocityGrid(el, {
     columnDefs: [
       { field: 'desk', enableRowGroup: true },
       { field: 'notional', type: 'number', aggFunc: 'sum' },

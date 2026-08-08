@@ -151,8 +151,8 @@ describe('compileFormatSlots — composite', () => {
 });
 
 // ─── Static cellStyle preservation through the format-compile pass ────────
-// Regression (CGridExt formatting toolbar): a STATIC cellStyle object —
-// authored, or folded in by @cgrid/calc's editColumn/template overrides —
+// Regression (VelocityGridExt formatting toolbar): a STATIC cellStyle object —
+// authored, or folded in by @wellsfargo-starui/velocity-grid-calc's editColumn/template overrides —
 // was silently dropped whenever the column also had a string valueFormatter
 // (both mergeCellStyle call sites passed `undefined` for non-function
 // styles), so "style this column" never painted on any formatted column.
@@ -196,7 +196,7 @@ describe('compileFormatSlots — static cellStyle survives format compile', () =
 });
 
 // ─── Static cellIcon preservation through the format-compile pass ─────────
-// Regression (CGridExt formatting toolbar): the pre-branch compileFormatSlots
+// Regression (VelocityGridExt formatting toolbar): the pre-branch compileFormatSlots
 // derived cellIcon purely from the format program, wiping any STATIC cellIcon
 // the moment a string valueFormatter compiled. So the toolbar sequence "set an
 // icon, then apply a currency format" silently dropped the icon. The fix keeps

@@ -10,12 +10,12 @@
  * target, and `commitDrop()` routes it through the T1 group-membership
  * mutation API (`moveColumnToGroup` / `moveColumnGroup`).
  *
- * Mounted on a REAL CGrid (mirrors `columnsPanelHierarchy.integration.test.ts`)
+ * Mounted on a REAL VelocityGrid (mirrors `columnsPanelHierarchy.integration.test.ts`)
  * so `getColumnGroupDefs()` / the T1 API are the exact production surface,
  * not a hand-rolled mock.
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import type { CColDef, CColGroupDef } from '../src/types';
 import type { ColumnVisibilityPanel } from '../src/interaction/toolPanels/columns/visibilityPanel';
 
@@ -45,20 +45,20 @@ beforeAll(() => {
   })() as any;
 });
 
-/** Mount a real CGrid with the Columns tool panel opened — verbatim
+/** Mount a real VelocityGrid with the Columns tool panel opened — verbatim
  *  harness from T2's `columnsPanelHierarchy.integration.test.ts`. */
 async function mountWithPanel(
   columnDefs: (CColDef | CColGroupDef)[],
-): Promise<CGrid<{ id: string }>> {
+): Promise<VelocityGrid<{ id: string }>> {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
 
-  const grid = new CGrid<{ id: string }>(container, {
+  const grid = new VelocityGrid<{ id: string }>(container, {
     columnDefs,
     getRowId: (r) => r.id,
-    theme: 'cg-theme-quartz',
+    theme: 'vg-theme-quartz',
     sideBar: { toolPanels: ['columns'] },
   });
 
@@ -66,8 +66,8 @@ async function mountWithPanel(
   w.listeners.forEach((cb: any) => cb({ data: { id: 1, type: 'ready' } }));
   await new Promise((r) => setTimeout(r, 0));
 
-  const bar = container.querySelector('.cg-side-bar') as HTMLElement;
-  const colsTab = bar.querySelector('.cg-side-bar-tab[data-id="agColumnsToolPanel"]') as HTMLButtonElement;
+  const bar = container.querySelector('.vg-side-bar') as HTMLElement;
+  const colsTab = bar.querySelector('.vg-side-bar-tab[data-id="agColumnsToolPanel"]') as HTMLButtonElement;
   colsTab.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
   const destroy = grid.destroy.bind(grid);
@@ -80,20 +80,20 @@ async function mountWithPanel(
 }
 
 /** Columns panel root for this grid (avoids stale panels left on `document.body`). */
-function panelRoot(grid: CGrid<{ id: string }>): HTMLElement {
-  return (grid as any).root.querySelector('.cg-columns-panel') as HTMLElement;
+function panelRoot(grid: VelocityGrid<{ id: string }>): HTMLElement {
+  return (grid as any).root.querySelector('.vg-columns-panel') as HTMLElement;
 }
 
 /** Reach into the mounted sidebar for the live `ColumnVisibilityPanel`
- *  instance — private fields on `CGrid`/`ColumnsToolPanel`, accessed via
+ *  instance — private fields on `VelocityGrid`/`ColumnsToolPanel`, accessed via
  *  `as any` exactly like `(grid as any).workerClient.worker` above; this
  *  is a test-only escape hatch, not a public surface. */
-function getPanelInstance(grid: CGrid<{ id: string }>): ColumnVisibilityPanel {
+function getPanelInstance(grid: VelocityGrid<{ id: string }>): ColumnVisibilityPanel {
   const shell = (grid as any).sideBar.getInstance('agColumnsToolPanel');
   return shell.visibilityPanel as ColumnVisibilityPanel;
 }
 
-/** Stub `getBoundingClientRect` on every rendered `.cg-columns-panel-row`
+/** Stub `getBoundingClientRect` on every rendered `.vg-columns-panel-row`
  *  (in DOM/render order) to stacked 30px-tall rows starting at `top0`, so
  *  `resolveDrop`'s Y-hit-testing has real geometry to work against.
  *  Returns a lookup of each row's `{top, bottom}` by its `data-col-id` /
@@ -108,10 +108,10 @@ function pinRowRects(
     x: 0, y: top, toJSON() { return {}; },
   }) as DOMRect;
 
-  const listEl = root.querySelector('.cg-columns-panel-list') as HTMLElement;
+  const listEl = root.querySelector('.vg-columns-panel-list') as HTMLElement;
   listEl.getBoundingClientRect = () => rectFor(top0, top0 + 1000);
 
-  const rows = Array.from(root.querySelectorAll<HTMLElement>('.cg-columns-panel-row'));
+  const rows = Array.from(root.querySelectorAll<HTMLElement>('.vg-columns-panel-row'));
   const positions = new Map<string, { top: number; bottom: number }>();
   rows.forEach((row, i) => {
     const top = top0 + i * rowHeight;
@@ -178,7 +178,7 @@ describe('Columns tool panel — group-aware drag (T3)', () => {
         { groupId: 'G', headerName: 'Grp', children: [{ field: 'a' }] },
       ]);
       const groupRow = document.querySelector('[data-group-id="G"]')!;
-      expect(groupRow.querySelector('.cg-columns-panel-row-handle')).toBeTruthy();
+      expect(groupRow.querySelector('.vg-columns-panel-row-handle')).toBeTruthy();
       grid.destroy();
     });
 
@@ -312,7 +312,7 @@ describe('Columns tool panel — group-aware drag (T3)', () => {
       const pos = pinRowRects(root);
       const spy = vi.spyOn(grid, 'moveColumnToGroup');
 
-      const handle = root.querySelector<HTMLElement>('[data-col-id="a"] .cg-columns-panel-row-handle')!;
+      const handle = root.querySelector<HTMLElement>('[data-col-id="a"] .vg-columns-panel-row-handle')!;
       const groupRect = pos.get('grp:G')!;
       // Middle third of the group row = nest into the group.
       const nestY = groupRect.top + (groupRect.bottom - groupRect.top) * 0.5;
@@ -333,7 +333,7 @@ describe('Columns tool panel — group-aware drag (T3)', () => {
       const pos = pinRowRects(root);
       const spy = vi.spyOn(grid, 'moveColumnGroup');
 
-      const handle = root.querySelector<HTMLElement>('[data-group-id="G1"] .cg-columns-panel-row-handle')!;
+      const handle = root.querySelector<HTMLElement>('[data-group-id="G1"] .vg-columns-panel-row-handle')!;
       const g2Rect = pos.get('grp:G2')!;
       const nestY = g2Rect.top + (g2Rect.bottom - g2Rect.top) * 0.5;
       handle.dispatchEvent(new MouseEvent('mousedown', { clientX: 10, clientY: pos.get('grp:G1')!.top + 2, bubbles: true }));
@@ -352,15 +352,15 @@ describe('Columns tool panel — group-aware drag (T3)', () => {
       const root = panelRoot(grid);
       const pos = pinRowRects(root);
 
-      const handle = root.querySelector<HTMLElement>('[data-col-id="a"] .cg-columns-panel-row-handle')!;
+      const handle = root.querySelector<HTMLElement>('[data-col-id="a"] .vg-columns-panel-row-handle')!;
       const groupRect = pos.get('grp:G')!;
       const nestY = groupRect.top + (groupRect.bottom - groupRect.top) * 0.5;
       handle.dispatchEvent(new MouseEvent('mousedown', { clientX: 10, clientY: pos.get('a')!.top + 2, bubbles: true }));
       window.dispatchEvent(new MouseEvent('mousemove', { clientX: 10, clientY: nestY }));
 
       const groupRow = root.querySelector('[data-group-id="G"]')!;
-      expect(groupRow.classList.contains('cg-columns-panel-row--drop-reject')).toBe(true);
-      expect(groupRow.classList.contains('cg-columns-panel-row--drop-target')).toBe(false);
+      expect(groupRow.classList.contains('vg-columns-panel-row--drop-reject')).toBe(true);
+      expect(groupRow.classList.contains('vg-columns-panel-row--drop-target')).toBe(false);
 
       window.dispatchEvent(new MouseEvent('mouseup', { clientX: 10, clientY: nestY }));
       // marryChildren rejected the re-parent — 'a' stays at top level.

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Launch the CGridExt demo in an OpenFin window from a manifest URL.
+ * Launch the VelocityGridExt demo in an OpenFin window from a manifest URL.
  *
  *   node apps/cgrid-ext-demo/openfin/launch.mjs [manifestUrl]
  *

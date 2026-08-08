@@ -1,6 +1,6 @@
 // Build script: categorize the kernel's Lucide bundle into picker sections.
 // Emits iconCatalog.generated.ts (committed). Regenerate via
-// `npm --workspace @cgrid/ext run prebuild-icon-catalog` after bumping
+// `npm --workspace @wellsfargo-starui/velocity-grid-ext run prebuild-icon-catalog` after bumping
 // lucide-static + regenerating the kernel bundle.
 //
 // Categorization is name-based (ordered first-match rules). The spec allows
@@ -10,7 +10,7 @@
 import { writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { lucideBundle } from '@cgrid/kernel/icons/lucide.generated';
+import { lucideBundle } from '@wellsfargo-starui/velocity-grid/icons/lucide.generated';
 
 const RULES: ReadonlyArray<readonly [string, RegExp]> = [
   ['Arrows & Direction', /arrow|chevron|move-|^move$|corner-|undo|redo|refresh|rotate|repeat|iteration|forward|reply|expand|shrink|maximize|minimize|navigation|compass|milestone|signpost/],
@@ -42,8 +42,8 @@ const categories = [...buckets.entries()]
 const __dirname = dirname(fileURLToPath(import.meta.url));
 writeFileSync(
   join(__dirname, 'iconCatalog.generated.ts'),
-  `// AUTO-GENERATED — do not edit. Regenerate via \`npm --workspace @cgrid/ext run prebuild-icon-catalog\`.
-// Categorizes @cgrid/kernel's Lucide bundle for the ribbon icon picker.
+  `// AUTO-GENERATED — do not edit. Regenerate via \`npm --workspace @wellsfargo-starui/velocity-grid-ext run prebuild-icon-catalog\`.
+// Categorizes @wellsfargo-starui/velocity-grid's Lucide bundle for the ribbon icon picker.
 export const lucideCategories: ReadonlyArray<{ readonly category: string; readonly icons: readonly string[] }> = ${JSON.stringify(categories, null, 2)} as const;
 `,
 );

@@ -13,7 +13,7 @@
 // aggFuncRegistry.ts:33-39). Closure captures surface as ReferenceError,
 // [native code] toString as SyntaxError — both reject with a message
 // pointing at the self-containment constraint. Built-ins skip the smoke
-// test at module load (keeps `import '@cgrid/calc'` eval-free on
+// test at module load (keeps `import '@wellsfargo-starui/velocity-grid-calc'` eval-free on
 // strict-CSP main threads; their round-trip is covered by tests).
 //
 // CSP caveat: worker reconstruction needs `new Function` — hosts with a

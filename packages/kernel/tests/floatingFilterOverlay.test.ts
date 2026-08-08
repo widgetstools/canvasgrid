@@ -62,10 +62,10 @@ describe('FloatingFilterOverlay', () => {
       { colId: 'b', index: 1, left: 100, right: 200, width: 100 },
     ]);
     overlay.repositionAll(vp);
-    const inputs = host.querySelectorAll('input[data-cg-floating-filter]');
+    const inputs = host.querySelectorAll('input[data-vg-floating-filter]');
     expect(inputs.length).toBe(2);
-    expect((inputs[0] as HTMLInputElement).getAttribute('data-cg-col-id')).toBe('a');
-    expect((inputs[1] as HTMLInputElement).getAttribute('data-cg-col-id')).toBe('b');
+    expect((inputs[0] as HTMLInputElement).getAttribute('data-vg-col-id')).toBe('a');
+    expect((inputs[1] as HTMLInputElement).getAttribute('data-vg-col-id')).toBe('b');
     overlay.destroy();
   });
 
@@ -76,8 +76,8 @@ describe('FloatingFilterOverlay', () => {
       { colId: 'b', index: 1, left: 100, right: 200, width: 100 },
     ]);
     overlay.repositionAll(vp);
-    const cellA = host.querySelector('div[data-cg-floating-filter-cell][data-cg-col-id="a"]') as HTMLElement;
-    const cellB = host.querySelector('div[data-cg-floating-filter-cell][data-cg-col-id="b"]') as HTMLElement;
+    const cellA = host.querySelector('div[data-vg-floating-filter-cell][data-vg-col-id="a"]') as HTMLElement;
+    const cellB = host.querySelector('div[data-vg-floating-filter-cell][data-vg-col-id="b"]') as HTMLElement;
     // Uses transform, not `left` (avoids layout reads on scroll path).
     // Cells are inset 6px horizontally / 4px vertically so the input's
     // border + padding fit cleanly inside the column rect.
@@ -91,14 +91,14 @@ describe('FloatingFilterOverlay', () => {
     overlay.destroy();
   });
 
-  it('applies the cg-floating-filter-input class for theming', () => {
+  it('applies the vg-floating-filter-input class for theming', () => {
     const overlay = new FloatingFilterOverlay(host, makeDeps());
     const vp = makeViewport([
       { colId: 'a', index: 0, left: 0, right: 100, width: 100 },
     ]);
     overlay.repositionAll(vp);
-    const input = host.querySelector('input[data-cg-col-id="a"]') as HTMLInputElement;
-    expect(input.classList.contains('cg-floating-filter-input')).toBe(true);
+    const input = host.querySelector('input[data-vg-col-id="a"]') as HTMLInputElement;
+    expect(input.classList.contains('vg-floating-filter-input')).toBe(true);
     overlay.destroy();
   });
 
@@ -117,17 +117,17 @@ describe('FloatingFilterOverlay', () => {
       { colId: 'price', index: 2, left: 200, right: 300, width: 100 },
     ]);
     overlay.repositionAll(vp);
-    const text   = host.querySelector('input[data-cg-col-id="name"]') as HTMLInputElement;
-    const qty    = host.querySelector('input[data-cg-col-id="qty"]') as HTMLInputElement;
-    const price  = host.querySelector('input[data-cg-col-id="price"]') as HTMLInputElement;
+    const text   = host.querySelector('input[data-vg-col-id="name"]') as HTMLInputElement;
+    const qty    = host.querySelector('input[data-vg-col-id="qty"]') as HTMLInputElement;
+    const price  = host.querySelector('input[data-vg-col-id="price"]') as HTMLInputElement;
     expect(text.placeholder).toBe('');
     // Explicit `filter: 'number'` lights up the placeholder.
     expect(qty.placeholder).toBe('>100, 1,2,3, 100..200');
     // `cellDataType: 'number'` is the fallback signal when `filter` is unset.
     expect(price.placeholder).toBe('>100, 1,2,3, 100..200');
     // Resolved filter type also lands as a data-* attribute.
-    expect(qty.getAttribute('data-cg-filter-type')).toBe('number');
-    expect(price.getAttribute('data-cg-filter-type')).toBe('number');
+    expect(qty.getAttribute('data-vg-filter-type')).toBe('number');
+    expect(price.getAttribute('data-vg-filter-type')).toBe('number');
     overlay.destroy();
   });
 
@@ -144,9 +144,9 @@ describe('FloatingFilterOverlay', () => {
       { colId: 'c', index: 2, left: 200, right: 300, width: 100 },
     ]);
     overlay.repositionAll(vp);
-    expect(host.querySelector('input[data-cg-col-id="a"]')).not.toBeNull();
-    expect(host.querySelector('input[data-cg-col-id="b"]')).toBeNull();
-    expect(host.querySelector('input[data-cg-col-id="c"]')).not.toBeNull();
+    expect(host.querySelector('input[data-vg-col-id="a"]')).not.toBeNull();
+    expect(host.querySelector('input[data-vg-col-id="b"]')).toBeNull();
+    expect(host.querySelector('input[data-vg-col-id="c"]')).not.toBeNull();
     overlay.destroy();
   });
 
@@ -156,8 +156,8 @@ describe('FloatingFilterOverlay', () => {
       { colId: 'a', index: 0, left: 0,   right: 100, width: 100 },
     ]);
     overlay.repositionAll(vp1);
-    const firstInput = host.querySelector('input[data-cg-col-id="a"]') as HTMLInputElement;
-    const firstCell  = host.querySelector('div[data-cg-floating-filter-cell][data-cg-col-id="a"]') as HTMLElement;
+    const firstInput = host.querySelector('input[data-vg-col-id="a"]') as HTMLInputElement;
+    const firstCell  = host.querySelector('div[data-vg-floating-filter-cell][data-vg-col-id="a"]') as HTMLElement;
     expect(firstInput).not.toBeNull();
     expect(firstCell).not.toBeNull();
     firstInput.dataset.testMarker = 'original';
@@ -165,8 +165,8 @@ describe('FloatingFilterOverlay', () => {
       { colId: 'a', index: 0, left: 50, right: 150, width: 100 },
     ]);
     overlay.repositionAll(vp2);
-    const secondInput = host.querySelector('input[data-cg-col-id="a"]') as HTMLInputElement;
-    const secondCell  = host.querySelector('div[data-cg-floating-filter-cell][data-cg-col-id="a"]') as HTMLElement;
+    const secondInput = host.querySelector('input[data-vg-col-id="a"]') as HTMLInputElement;
+    const secondCell  = host.querySelector('div[data-vg-floating-filter-cell][data-vg-col-id="a"]') as HTMLElement;
     expect(secondInput).toBe(firstInput);
     expect(secondCell).toBe(firstCell);
     expect(secondInput.dataset.testMarker).toBe('original');
@@ -182,16 +182,16 @@ describe('FloatingFilterOverlay', () => {
       { colId: 'b', index: 1, left: 100, right: 200, width: 100 },
     ]);
     overlay.repositionAll(vp1);
-    const inputB = host.querySelector('input[data-cg-col-id="b"]') as HTMLInputElement;
-    const cellB  = host.querySelector('div[data-cg-floating-filter-cell][data-cg-col-id="b"]') as HTMLElement;
+    const inputB = host.querySelector('input[data-vg-col-id="b"]') as HTMLInputElement;
+    const cellB  = host.querySelector('div[data-vg-floating-filter-cell][data-vg-col-id="b"]') as HTMLElement;
     inputB.value = 'typed-state';
     const vp2 = makeViewport([
       { colId: 'a', index: 0, left: 0, right: 100, width: 100 },
     ]);
     overlay.repositionAll(vp2);
     // Pool retains the cell + input.
-    const stillPresentInput = host.querySelector('input[data-cg-col-id="b"]') as HTMLInputElement | null;
-    const stillPresentCell  = host.querySelector('div[data-cg-floating-filter-cell][data-cg-col-id="b"]') as HTMLElement | null;
+    const stillPresentInput = host.querySelector('input[data-vg-col-id="b"]') as HTMLInputElement | null;
+    const stillPresentCell  = host.querySelector('div[data-vg-floating-filter-cell][data-vg-col-id="b"]') as HTMLElement | null;
     expect(stillPresentInput).toBe(inputB);
     expect(stillPresentCell).toBe(cellB);
     expect(stillPresentCell!.style.display).toBe('none');
@@ -207,7 +207,7 @@ describe('FloatingFilterOverlay', () => {
     ]);
     overlay.repositionAll(vp);
     overlay.syncInputValue('a', { filterType: 'text', type: 'contains', filter: 'POS' });
-    const input = host.querySelector('input[data-cg-col-id="a"]') as HTMLInputElement;
+    const input = host.querySelector('input[data-vg-col-id="a"]') as HTMLInputElement;
     expect(input.value).toBe('POS');
     overlay.destroy();
   });
@@ -218,7 +218,7 @@ describe('FloatingFilterOverlay', () => {
       { colId: 'a', index: 0, left: 0, right: 100, width: 100 },
     ]);
     overlay.repositionAll(vp);
-    const input = host.querySelector('input[data-cg-col-id="a"]') as HTMLInputElement;
+    const input = host.querySelector('input[data-vg-col-id="a"]') as HTMLInputElement;
     input.value = 'user-typed-unparseable';
     overlay.syncInputValue('a', null);
     expect(input.value).toBe('user-typed-unparseable');
@@ -231,7 +231,7 @@ describe('FloatingFilterOverlay', () => {
       { colId: 'a', index: 0, left: 0, right: 100, width: 100 },
     ]);
     overlay.repositionAll(vp);
-    const input = host.querySelector('input[data-cg-col-id="a"]') as HTMLInputElement;
+    const input = host.querySelector('input[data-vg-col-id="a"]') as HTMLInputElement;
     input.value = '>100 and <200';
     overlay.syncInputValue('a', {
       filterType: 'multi', operator: 'AND',
@@ -255,7 +255,7 @@ describe('FloatingFilterOverlay', () => {
       { colId: 'qty', index: 0, left: 0, right: 100, width: 100 },
     ]);
     overlay.repositionAll(vp);
-    const input = host.querySelector('input[data-cg-col-id="qty"]') as HTMLInputElement;
+    const input = host.querySelector('input[data-vg-col-id="qty"]') as HTMLInputElement;
     input.value = '>100';
     input.dispatchEvent(new Event('input', { bubbles: true }));
     vi.advanceTimersByTime(100);
@@ -276,7 +276,7 @@ describe('FloatingFilterOverlay', () => {
       { colId: 'qty', index: 0, left: 0, right: 100, width: 100 },
     ]);
     overlay.repositionAll(vp);
-    const input = host.querySelector('input[data-cg-col-id="qty"]') as HTMLInputElement;
+    const input = host.querySelector('input[data-vg-col-id="qty"]') as HTMLInputElement;
     input.value = '12,20,33';
     input.dispatchEvent(new Event('input', { bubbles: true }));
     vi.advanceTimersByTime(100);
@@ -302,7 +302,7 @@ describe('FloatingFilterOverlay', () => {
       { colId: 'qty', index: 0, left: 0, right: 100, width: 100 },
     ]);
     overlay.repositionAll(vp);
-    const input = host.querySelector('input[data-cg-col-id="qty"]') as HTMLInputElement;
+    const input = host.querySelector('input[data-vg-col-id="qty"]') as HTMLInputElement;
     input.value = 'not-a-number';
     input.dispatchEvent(new Event('input', { bubbles: true }));
     vi.advanceTimersByTime(100);
@@ -319,7 +319,7 @@ describe('FloatingFilterOverlay', () => {
       { colId: 'a', index: 0, left: 0, right: 100, width: 100 },
     ]);
     overlay.repositionAll(vp);
-    const input = host.querySelector('input[data-cg-col-id="a"]') as HTMLInputElement;
+    const input = host.querySelector('input[data-vg-col-id="a"]') as HTMLInputElement;
     input.value = 'POS-1';
     input.dispatchEvent(new Event('input', { bubbles: true }));
     // Debounce hasn't fired yet.
@@ -341,7 +341,7 @@ describe('FloatingFilterOverlay', () => {
       { colId: 'a', index: 0, left: 0, right: 100, width: 100 },
     ]);
     overlay.repositionAll(vp);
-    const input = host.querySelector('input[data-cg-col-id="a"]') as HTMLInputElement;
+    const input = host.querySelector('input[data-vg-col-id="a"]') as HTMLInputElement;
     input.value = '';
     input.dispatchEvent(new Event('input', { bubbles: true }));
     vi.advanceTimersByTime(100);
@@ -356,13 +356,13 @@ describe('FloatingFilterOverlay', () => {
       { colId: 'b', index: 1, left: 100, right: 200, width: 100 },
     ]);
     overlay.repositionAll(vp);
-    expect(host.querySelectorAll('input[data-cg-floating-filter]').length).toBe(2);
-    expect(host.querySelectorAll('div[data-cg-floating-filter-cell]').length).toBe(2);
-    expect(host.querySelectorAll('button[data-cg-floating-filter-clear]').length).toBe(2);
+    expect(host.querySelectorAll('input[data-vg-floating-filter]').length).toBe(2);
+    expect(host.querySelectorAll('div[data-vg-floating-filter-cell]').length).toBe(2);
+    expect(host.querySelectorAll('button[data-vg-floating-filter-clear]').length).toBe(2);
     overlay.destroy();
-    expect(host.querySelectorAll('div[data-cg-floating-filter-cell]').length).toBe(0);
-    expect(host.querySelectorAll('input[data-cg-floating-filter]').length).toBe(0);
-    expect(host.querySelectorAll('button[data-cg-floating-filter-clear]').length).toBe(0);
+    expect(host.querySelectorAll('div[data-vg-floating-filter-cell]').length).toBe(0);
+    expect(host.querySelectorAll('input[data-vg-floating-filter]').length).toBe(0);
+    expect(host.querySelectorAll('button[data-vg-floating-filter-clear]').length).toBe(0);
   });
 
   it('mounts a clear button alongside each input, hidden until the input has a value', () => {
@@ -371,9 +371,9 @@ describe('FloatingFilterOverlay', () => {
       { colId: 'a', index: 0, left: 0, right: 100, width: 100 },
     ]);
     overlay.repositionAll(vp);
-    const cell  = host.querySelector('div[data-cg-floating-filter-cell][data-cg-col-id="a"]') as HTMLElement;
-    const input = host.querySelector('input[data-cg-col-id="a"]') as HTMLInputElement;
-    const clear = host.querySelector('button[data-cg-floating-filter-clear][data-cg-col-id="a"]') as HTMLButtonElement;
+    const cell  = host.querySelector('div[data-vg-floating-filter-cell][data-vg-col-id="a"]') as HTMLElement;
+    const input = host.querySelector('input[data-vg-col-id="a"]') as HTMLInputElement;
+    const clear = host.querySelector('button[data-vg-floating-filter-clear][data-vg-col-id="a"]') as HTMLButtonElement;
     expect(clear).not.toBeNull();
     // No value yet — wrapper does NOT carry .has-value class.
     expect(cell.classList.contains('has-value')).toBe(false);
@@ -399,9 +399,9 @@ describe('FloatingFilterOverlay', () => {
       { colId: 'a', index: 0, left: 0, right: 100, width: 100 },
     ]);
     overlay.repositionAll(vp);
-    const cell  = host.querySelector('div[data-cg-floating-filter-cell][data-cg-col-id="a"]') as HTMLElement;
-    const input = host.querySelector('input[data-cg-col-id="a"]') as HTMLInputElement;
-    const clear = host.querySelector('button[data-cg-floating-filter-clear][data-cg-col-id="a"]') as HTMLButtonElement;
+    const cell  = host.querySelector('div[data-vg-floating-filter-cell][data-vg-col-id="a"]') as HTMLElement;
+    const input = host.querySelector('input[data-vg-col-id="a"]') as HTMLInputElement;
+    const clear = host.querySelector('button[data-vg-floating-filter-clear][data-vg-col-id="a"]') as HTMLButtonElement;
     input.value = 'POS';
     input.dispatchEvent(new Event('input', { bubbles: true }));
     expect(cell.classList.contains('has-value')).toBe(true);
@@ -426,8 +426,8 @@ describe('FloatingFilterOverlay', () => {
       { colId: 'a', index: 0, left: 0, right: 100, width: 100 },
     ]);
     overlay.repositionAll(vp);
-    const input = host.querySelector('input[data-cg-col-id="a"]') as HTMLInputElement;
-    const clear = host.querySelector('button[data-cg-floating-filter-clear][data-cg-col-id="a"]') as HTMLButtonElement;
+    const input = host.querySelector('input[data-vg-col-id="a"]') as HTMLInputElement;
+    const clear = host.querySelector('button[data-vg-floating-filter-clear][data-vg-col-id="a"]') as HTMLButtonElement;
     input.value = 'POS';
     input.dispatchEvent(new Event('input', { bubbles: true }));
     setColumnFilterModel.mockClear();
@@ -448,7 +448,7 @@ describe('FloatingFilterOverlay', () => {
       { colId: 'qty', index: 0, left: 0, right: 100, width: 100 },
     ]);
     overlay.repositionAll(vp);
-    const expand = host.querySelector('button[data-cg-floating-filter-expand][data-cg-col-id="qty"]');
+    const expand = host.querySelector('button[data-vg-floating-filter-expand][data-vg-col-id="qty"]');
     expect(expand).not.toBeNull();
     overlay.destroy();
   });
@@ -461,7 +461,7 @@ describe('FloatingFilterOverlay', () => {
       { colId: 'qty', index: 0, left: 0, right: 100, width: 100 },
     ]);
     overlay.repositionAll(vp);
-    const expand = host.querySelector('button[data-cg-floating-filter-expand][data-cg-col-id="qty"]');
+    const expand = host.querySelector('button[data-vg-floating-filter-expand][data-vg-col-id="qty"]');
     expect(expand).toBeNull();
     overlay.destroy();
   });
@@ -476,7 +476,7 @@ describe('FloatingFilterOverlay', () => {
       { colId: 'qty', index: 0, left: 0, right: 100, width: 100 },
     ]);
     overlay.repositionAll(vp);
-    const expand = host.querySelector('button[data-cg-floating-filter-expand][data-cg-col-id="qty"]') as HTMLButtonElement;
+    const expand = host.querySelector('button[data-vg-floating-filter-expand][data-vg-col-id="qty"]') as HTMLButtonElement;
     expand.click();
     expect(openColumnFilter).toHaveBeenCalledWith('qty');
     overlay.destroy();
@@ -488,7 +488,7 @@ describe('FloatingFilterOverlay', () => {
       { colId: 'a', index: 0, left: 0, right: 100, width: 100 },
     ]);
     overlay.repositionAll(vp);
-    const cell = host.querySelector('div[data-cg-floating-filter-cell][data-cg-col-id="a"]') as HTMLElement;
+    const cell = host.querySelector('div[data-vg-floating-filter-cell][data-vg-col-id="a"]') as HTMLElement;
     expect(cell.classList.contains('has-value')).toBe(false);
     overlay.syncInputValue('a', { filterType: 'text', type: 'contains', filter: 'POS' });
     expect(cell.classList.contains('has-value')).toBe(true);

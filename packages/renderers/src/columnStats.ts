@@ -1,4 +1,4 @@
-// @cgrid/renderers — main-side incremental column statistics. §2.4a.
+// @wellsfargo-starui/velocity-grid-renderers — main-side incremental column statistics. §2.4a.
 // Authoritative reference: docs/superpowers/specs/2026-07-02-cycle-21f-renderers-design.md §2.4a.
 //
 // Incremental min/max/maxAbs/sum/count per watched column over the full row
@@ -8,7 +8,7 @@
 // VolumeBar through their `stats` param (a plain `ColumnStatSnapshot` — the
 // bridge's builders wire `heatCell.params.stats = stats.for('pnl')`).
 
-import type { CGridApi } from '@cgrid/kernel';
+import type { VelocityGridApi } from '@wellsfargo-starui/velocity-grid';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -27,7 +27,7 @@ export interface ColumnStatSnapshot {
 // ---------------------------------------------------------------------------
 // Heap helpers — lazy-delete binary min-heap + live-count map.
 // Algorithm: packages/calc/src/aggregates/basic.ts:100-212 (reimplemented
-// locally; no @cgrid/calc dep this cycle per §2.1).
+// locally; no @wellsfargo-starui/velocity-grid-calc dep this cycle per §2.1).
 // ---------------------------------------------------------------------------
 
 interface HeapState {
@@ -191,17 +191,17 @@ const EMPTY_SNAPSHOT: Readonly<ColumnStatSnapshot> = Object.freeze({
  * `colId`s. Seeded from the full row set via `grid.forEachRow`, kept current
  * from the `rowsChanged` event. `for(colId)` is O(1).
  *
- * `CGridApi` is a peerDependency type-only import — erased at runtime.
+ * `VelocityGridApi` is a peerDependency type-only import — erased at runtime.
  */
 export class ColumnStats<TRow = unknown> {
   private readonly _accs: Map<string, ColAcc>;
   private readonly _colIds: readonly string[];
   private readonly _valueGetter: (row: TRow, colId: string) => unknown;
   private readonly _handler: (e: RowsChangedEvent<TRow>) => void;
-  private readonly _grid: CGridApi<TRow>;
+  private readonly _grid: VelocityGridApi<TRow>;
 
   constructor(
-    grid: CGridApi<TRow>,
+    grid: VelocityGridApi<TRow>,
     colIds: string[],
     opts?: { valueGetter?: (row: TRow, colId: string) => unknown },
   ) {

@@ -25,13 +25,13 @@ drops more than ~30 % below the threshold should fail review.
 | 1 — Bench harness | `npm run bench`, `bench/chunkFormat.bench.ts`, baselines + thresholds | `cgrid/bench/` |
 | 2 — Dict-coded text | `encodeTextDict` / `decodeTextDict`; chooses Uint8/16/32 indices by dict size | `cgrid/src/worker/chunkFormat.ts` |
 | 3 — Varint + delta numeric | `encodeVarintI32` / `encodeDeltaInts` (zigzag, 1–5 bytes per int) | `cgrid/src/worker/chunkFormat.ts` |
-| 4 — OffscreenCanvas option | `CGridOptions.paintMode`, `resolvePaintMode`, support detection | `cgrid/src/renderer/offscreenSupport.ts` |
+| 4 — OffscreenCanvas option | `VelocityGridOptions.paintMode`, `resolvePaintMode`, support detection | `cgrid/src/renderer/offscreenSupport.ts` |
 | 5 — Paint allocation audit | Removed `.map`+spread and triple `.filter` per paint in `byRows` and `gridLinesPainter` | `cgrid/src/renderer/painters/` |
 | 6 — Raw cell access | `rawNumericAt` / `rawTextAt` / `rawRowKindAt` + `RawTextDecoder` cache | `cgrid/src/core/rawCellAccess.ts` |
 | 7 — Flash alpha mask | `buildFlashAlphaMask` (flat `Float32Array(rows × cols)`, reusable buffer) | `cgrid/src/core/flashAlphaMask.ts` |
-| 8 — Velocity prefetch | `expandRangeForVelocity` + scroll-velocity sampling in `onScrollerScroll` | `cgrid/src/core/prefetchRange.ts`, `cgrid/src/cgrid.ts` |
+| 8 — Velocity prefetch | `expandRangeForVelocity` + scroll-velocity sampling in `onScrollerScroll` | `cgrid/src/core/prefetchRange.ts`, `cgrid/src/velocityGrid.ts` |
 | 9 — Worker message coalesce | Per-RAF collapse of `modelUpdated` / `heightsChanged` / `asyncTransactionsFlushed` | `cgrid/src/worker/client.ts` |
-| 10 — Memory budget | `CGridOptions.memoryBudgetMB`, `ChunkLRU` (WeakRef-backed) | `cgrid/src/core/memoryBudget.ts` |
+| 10 — Memory budget | `VelocityGridOptions.memoryBudgetMB`, `ChunkLRU` (WeakRef-backed) | `cgrid/src/core/memoryBudget.ts` |
 
 ### What's "foundation" vs "wired"
 

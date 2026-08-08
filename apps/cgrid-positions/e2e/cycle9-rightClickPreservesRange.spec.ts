@@ -72,7 +72,7 @@ async function canvasOffset(page: Page): Promise<{ x: number; y: number }> {
 
 async function cellBounds(page: Page, rowIndex: number, colId: string): Promise<{ x: number; y: number; w: number; h: number }> {
   const b = await page.evaluate(
-    ({ r, c }) => (window as unknown as { __cgrid: GridSurface }).__cgrid.getCellBoundsAt(r, c),
+    ({ r, c }) => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.getCellBoundsAt(r, c),
     { r: rowIndex, c: colId },
   );
   if (!b) throw new Error(`no cell bounds for (${rowIndex}, ${colId})`);
@@ -81,14 +81,14 @@ async function cellBounds(page: Page, rowIndex: number, colId: string): Promise<
 
 async function rangesNow(page: Page): Promise<SelectionRange[]> {
   return page.evaluate(
-    () => (window as unknown as { __cgrid: GridSurface }).__cgrid.selection.state.ranges
+    () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.selection.state.ranges
       .map((r) => ({ rowStart: r.rowStart, rowEnd: r.rowEnd, colIds: [...r.colIds] })),
   );
 }
 
 async function focusNow(page: Page): Promise<{ rowIndex: number | null; colId: string | null }> {
   return page.evaluate(() => {
-    const s = (window as unknown as { __cgrid: GridSurface }).__cgrid.selection.state;
+    const s = (window as unknown as { __velocity-grid: GridSurface }).__cgrid.selection.state;
     return { rowIndex: s.focusedRowIndex, colId: s.focusedColId };
   });
 }
@@ -96,7 +96,7 @@ async function focusNow(page: Page): Promise<{ rowIndex: number | null; colId: s
 async function seed(page: Page, range: SelectionRange, focusRow: number, focusCol: string): Promise<void> {
   await page.evaluate(
     ({ r, fr, fc }) => {
-      const g = (window as unknown as { __cgrid: GridSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridSurface }).__cgrid;
       g.clearCellRanges();
       g.addCellRange(r);
       g.selection.setFocus(fr, fc);
@@ -208,7 +208,7 @@ test.describe('Cycle 9 patch / Task 1 — right-click preserves cell range', () 
     const cy = off.y + b.y + b.h / 2;
     await page.mouse.move(cx, cy);
     await page.mouse.click(cx, cy, { button: 'right' });
-    await page.waitForSelector('.cg-context-menu', { state: 'visible' });
+    await page.waitForSelector('.vg-context-menu', { state: 'visible' });
 
     // The demo wires the default registry's "Copy" item. Clicking it
     // serialises the range to the clipboard as TSV. Selector targets the
@@ -216,8 +216,8 @@ test.describe('Cycle 9 patch / Task 1 — right-click preserves cell range', () 
     // Headers" does not (the menu row's full textContent is
     // "⎘CopyCtrl+C" / "⎘Copy with Headers", so `hasText` regexes on
     // the whole row don't disambiguate cleanly).
-    await page.locator('.cg-context-menu .cg-menu-item-label').getByText('Copy', { exact: true }).click();
-    await page.waitForSelector('.cg-context-menu', { state: 'detached' });
+    await page.locator('.vg-context-menu .vg-menu-item-label').getByText('Copy', { exact: true }).click();
+    await page.waitForSelector('.vg-context-menu', { state: 'detached' });
 
     // Clipboard now holds the 3×3 TSV — 3 lines, each with 3 tab-separated
     // values. We don't assert the exact data values (the demo's STOMP feed

@@ -1,4 +1,4 @@
-// @cgrid/edit — bridge.test.ts
+// @wellsfargo-starui/velocity-grid-edit — bridge.test.ts
 // Covers `wireEditIntoKernel` (spec §4): surface/idempotency/mirror (round A),
 // key router (round B, spec §3.1), commit pipeline + selection restore
 // (round C, spec §3.2/§3.3), journal feeds + facades (round D, spec §3.5/§4.2).
@@ -830,7 +830,7 @@ describe('wireEditIntoKernel — module-state persistence (Cycle 21i Phase 2 / T
   });
 });
 
-// ─── Editability resolution parity (CGridExt toolbar regression) ──────────
+// ─── Editability resolution parity (VelocityGridExt toolbar regression) ──────────
 // The kernel resolves `editable` against the RESOLVED colDef (defaultColDef
 // folded at construction); the bridge reads AUTHORED defs, so it must fold
 // defaultColDef itself — and prefer the kernel's own `isCellEditable` when

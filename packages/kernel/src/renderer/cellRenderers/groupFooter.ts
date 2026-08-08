@@ -25,7 +25,7 @@ import type { CellPainter, CellPaintConfig } from './registry';
 import { totalsCell } from './totals';
 
 const PADDING = 6;
-/** Mirrors the `'group'` cell renderer's indent unit (`--cg-group-indent`).
+/** Mirrors the `'group'` cell renderer's indent unit (`--vg-group-indent`).
  *  Falls back to the design-plan canonical 14 when `groupIndent` isn't
  *  threaded onto the config (defensive — should always be present). */
 const DEFAULT_INDENT_UNIT = 14;

@@ -21,7 +21,7 @@ import type {
   SettingsSelectOption,
 } from '../types/settingsSchema';
 
-/** Minimal option surface the schema needs (subset of CGridApi). */
+/** Minimal option surface the schema needs (subset of VelocityGridApi). */
 export interface GridOptionsAccessor {
   getGridOption(key: string): unknown;
   setGridOption(key: string, value: unknown): void;
@@ -55,13 +55,13 @@ interface ColorFieldSpec {
 
 /** Data-colour fields — these keep colour (unlike the monochrome chrome)
  *  and are user-configurable via the native color picker. Each maps to a
- *  `--cg-*` theme token applied live through `setThemeParams`. */
+ *  `--vg-*` theme token applied live through `setThemeParams`. */
 const COLOR_FIELDS: ColorFieldSpec[] = [
-  { token: '--cg-row-hover-bg', label: 'Row hover', hint: 'Hovered row background' },
-  { token: '--cg-row-selected-bg', label: 'Row selection', hint: 'Selected row background' },
-  { token: '--cg-range-fill-color', label: 'Cell range fill', hint: 'Range selection interior' },
-  { token: '--cg-range-border-color', label: 'Cell range border' },
-  { token: '--cg-flash-from-color', label: 'Cell flash', hint: 'Change-flash colour' },
+  { token: '--vg-row-hover-bg', label: 'Row hover', hint: 'Hovered row background' },
+  { token: '--vg-row-selected-bg', label: 'Row selection', hint: 'Selected row background' },
+  { token: '--vg-range-fill-color', label: 'Cell range fill', hint: 'Range selection interior' },
+  { token: '--vg-range-border-color', label: 'Cell range border' },
+  { token: '--vg-flash-from-color', label: 'Cell flash', hint: 'Change-flash colour' },
 ];
 
 /** Runtime options that deliberately do NOT appear in the panel. The drift

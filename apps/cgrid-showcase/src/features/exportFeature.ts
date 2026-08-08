@@ -1,4 +1,4 @@
-import { CGrid } from '@cgrid/kernel';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
 import type { ShowcaseRow } from '../seedData';
 import type { Feature } from './index';
 import { makeRows } from '../seedData';
@@ -19,7 +19,7 @@ import { makeRows } from '../seedData';
  *    (negatives in parens, no currency) so the user can see the
  *    callback registry firing through both formats.
  *  - Print preview → sets `domLayout: 'print'`, adds the
- *    `cg-theme-print` class, calls `window.print()`, then reverts.
+ *    `vg-theme-print` class, calls `window.print()`, then reverts.
  *    The print dialog shows the full grid (no virtualization).
  */
 export const exportFeature: Feature = {
@@ -29,7 +29,7 @@ export const exportFeature: Feature = {
     'Cycle 20 export demo: CSV + Excel download, preview, processCellCallback transform, onlySelected, and domLayout: print. Select rows in the grid before clicking "Only selected" to scope the export.',
 
   mount(gridHost, controls, theme) {
-    const grid = new CGrid<ShowcaseRow>(gridHost, {
+    const grid = new VelocityGrid<ShowcaseRow>(gridHost, {
       getRowId: (r) => r.id,
       columnDefs: [
         { colId: 'ticker',   field: 'ticker',   headerName: 'Ticker',   cellDataType: 'text',   flex: 1 },
@@ -122,9 +122,9 @@ export const exportFeature: Feature = {
     printBtn.textContent = 'Print preview';
     printBtn.setAttribute('data-testid', 'btn-print');
     printBtn.addEventListener('click', () => {
-      const root = gridHost.querySelector('.cg-grid') as HTMLElement | null;
+      const root = gridHost.querySelector('.vg-grid') as HTMLElement | null;
       grid.setGridOption('domLayout', 'print');
-      root?.classList.add('cg-theme-print');
+      root?.classList.add('vg-theme-print');
       // Give the canvas a frame to re-materialise every row before
       // the browser snapshots for print.
       requestAnimationFrame(() => {
@@ -133,7 +133,7 @@ export const exportFeature: Feature = {
         // full layout but the user returns to the virtualised view.
         setTimeout(() => {
           grid.setGridOption('domLayout', 'normal');
-          root?.classList.remove('cg-theme-print');
+          root?.classList.remove('vg-theme-print');
         }, 0);
       });
     });

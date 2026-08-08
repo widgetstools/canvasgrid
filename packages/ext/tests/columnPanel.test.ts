@@ -89,46 +89,46 @@ describe('aggFuncChoices', () => {
 describe('panel anatomy', () => {
   it('renders the four section headings and the empty state without targets', () => {
     const { panel } = mountColumnPanel();
-    const caps = Array.from(panel.querySelectorAll('.cgext-col-caps')).map((c) => c.textContent);
+    const caps = Array.from(panel.querySelectorAll('.vgext-col-caps')).map((c) => c.textContent);
     expect(caps).toEqual(['FILTER', 'GROUPING', 'AGGREGATION', 'BEHAVIOR']);
     document.body.replaceChildren();
     const { panel: empty } = mountColumnPanel([]);
-    expect(empty.querySelector('.cgext-fmt-empty')!.textContent).toContain('Select a cell or column');
-    expect(empty.querySelector('.cgext-col-row')).toBeNull();
+    expect(empty.querySelector('.vgext-fmt-empty')!.textContent).toContain('Select a cell or column');
+    expect(empty.querySelector('.vgext-col-row')).toBeNull();
   });
   it('switch rows expose aria-checked from effective state', () => {
     const { panel } = mountColumnPanel(['qty']);
-    const sw = panel.querySelector<HTMLElement>('.cgext-col-row[data-k="enableRowGroup"] .cgext-col-switch')!;
+    const sw = panel.querySelector<HTMLElement>('.vgext-col-row[data-k="enableRowGroup"] .vgext-col-switch')!;
     expect(sw.getAttribute('aria-checked')).toBe('true');
   });
   it('Escape closes; destroy cleans up', () => {
     const { panel, m } = mountColumnPanel();
     panel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    expect(document.querySelector('.cgext-menu.cgext-col')).toBeNull();
+    expect(document.querySelector('.vgext-menu.vgext-col')).toBeNull();
     m.destroy();
   });
 });
 
 describe('sections — state read + apply fan-out', () => {
-  const row = (panel: HTMLElement, k: string) => panel.querySelector<HTMLElement>(`.cgext-col-row[data-k="${k}"]`)!;
+  const row = (panel: HTMLElement, k: string) => panel.querySelector<HTMLElement>(`.vgext-col-row[data-k="${k}"]`)!;
 
   it('floating filter switch applies editColumn to every target', () => {
     const grid = new FakeColumnGrid();
     const { panel, host } = mountColumnPanel(['px', 'qty'], grid);
-    row(panel, 'floatingFilter').querySelector<HTMLElement>('.cgext-col-switch')!.click();
+    row(panel, 'floatingFilter').querySelector<HTMLElement>('.vgext-col-switch')!.click();
     // grid option floatingFilter=true → effective true → toggle writes false
     expect(grid.editColumn).toHaveBeenCalledWith('px', { floatingFilter: false });
     expect(grid.editColumn).toHaveBeenCalledWith('qty', { floatingFilter: false });
     expect(host.onApplied).toHaveBeenCalled();
-    expect(document.querySelector('.cgext-menu.cgext-col')).not.toBeNull(); // stays open
+    expect(document.querySelector('.vgext-menu.vgext-col')).not.toBeNull(); // stays open
   });
 
   it('filter type segment: Set writes filter:set, Auto writes filter:null', () => {
     const grid = new FakeColumnGrid();
     const { panel } = mountColumnPanel(['px'], grid);
-    row(panel, 'filter').querySelector<HTMLElement>('.cgext-col-seg button[data-v="set"]')!.click();
+    row(panel, 'filter').querySelector<HTMLElement>('.vgext-col-seg button[data-v="set"]')!.click();
     expect(grid.editColumn).toHaveBeenCalledWith('px', { filter: 'set' });
-    row(panel, 'filter').querySelector<HTMLElement>('.cgext-col-seg button[data-v="auto"]')!.click();
+    row(panel, 'filter').querySelector<HTMLElement>('.vgext-col-seg button[data-v="auto"]')!.click();
     expect(grid.editColumn).toHaveBeenCalledWith('px', { filter: null });
   });
 
@@ -149,12 +149,12 @@ describe('sections — state read + apply fan-out', () => {
   it('show-in-header switch writes the INVERSE suppress flag and is disabled without an agg', () => {
     const grid = new FakeColumnGrid();
     const { panel } = mountColumnPanel(['px'], grid);
-    const sw = row(panel, 'aggHeader').querySelector<HTMLButtonElement>('.cgext-col-switch')!;
+    const sw = row(panel, 'aggHeader').querySelector<HTMLButtonElement>('.vgext-col-switch')!;
     expect(sw.disabled).toBe(true); // no agg on px
     document.body.replaceChildren();
     grid.valueCols = [{ colId: 'px', aggFunc: 'sum' }];
     const { panel: p2 } = mountColumnPanel(['px'], grid);
-    const sw2 = row(p2, 'aggHeader').querySelector<HTMLButtonElement>('.cgext-col-switch')!;
+    const sw2 = row(p2, 'aggHeader').querySelector<HTMLButtonElement>('.vgext-col-switch')!;
     expect(sw2.disabled).toBe(false);
     expect(sw2.getAttribute('aria-checked')).toBe('true'); // suppress default false → shown
     sw2.click();
@@ -168,7 +168,7 @@ describe('sections — state read + apply fan-out', () => {
     expect(grid.setColumnsPinned).toHaveBeenCalledWith(['px', 'qty'], 'left');
     row(panel, 'pinned').querySelector<HTMLElement>('button[data-v="none"]')!.click();
     expect(grid.setColumnsPinned).toHaveBeenCalledWith(['px', 'qty'], null);
-    row(panel, 'hide').querySelector<HTMLElement>('.cgext-col-switch')!.click();
+    row(panel, 'hide').querySelector<HTMLElement>('.vgext-col-switch')!.click();
     expect(grid.editColumn).toHaveBeenCalledWith('px', { hide: true });
   });
 
@@ -177,7 +177,7 @@ describe('sections — state read + apply fan-out', () => {
     grid.editColumn('px', { sortable: false });
     grid.editColumn.mockClear();
     const { panel } = mountColumnPanel(['px', 'qty'], grid);
-    const sw = row(panel, 'sortable').querySelector<HTMLElement>('.cgext-col-switch')!;
+    const sw = row(panel, 'sortable').querySelector<HTMLElement>('.vgext-col-switch')!;
     expect(sw.classList.contains('is-mixed')).toBe(true);
     sw.click(); // mixed → true for ALL
     expect(grid.editColumn).toHaveBeenCalledWith('px', { sortable: true });
@@ -188,7 +188,7 @@ describe('sections — state read + apply fan-out', () => {
     const grid = new FakeColumnGrid();
     grid.editColumn.mockImplementationOnce(() => { throw new Error('nope'); });
     const { panel } = mountColumnPanel(['px'], grid);
-    row(panel, 'enableRowGroup').querySelector<HTMLElement>('.cgext-col-switch')!.click();
+    row(panel, 'enableRowGroup').querySelector<HTMLElement>('.vgext-col-switch')!.click();
     expect(row(panel, 'enableRowGroup').classList.contains('is-error')).toBe(true);
   });
 });

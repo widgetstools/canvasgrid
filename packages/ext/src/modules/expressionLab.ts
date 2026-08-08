@@ -2,11 +2,11 @@
  * Expressions — settings-sheet lab for the ExpressionEditor foundation.
  * Validates against leaf column fields from the live grid schema.
  */
-import { defineChromeComponents, defineExpressionEditor } from '@cgrid/customizer';
-import type { Schema } from '@cgrid/expression';
-import type { SettingsModule, CgExtContext, ModuleInstance } from '../extension/types';
+import { defineChromeComponents, defineExpressionEditor } from '@wellsfargo-starui/velocity-grid-customizer';
+import type { Schema } from '@wellsfargo-starui/velocity-grid-expression';
+import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 
-function schemaFromGrid(grid: CgExtContext['grid']): Schema {
+function schemaFromGrid(grid: VelocityGridExtContext['grid']): Schema {
   const fields: Schema['fields'] = {};
   const walk = (defs: readonly unknown[]): void => {
     for (const d of defs) {
@@ -40,12 +40,12 @@ export function expressionLabModule(): SettingsModule {
       defineExpressionEditor();
     },
 
-    mount(host: HTMLElement, ctx: CgExtContext): ModuleInstance {
+    mount(host: HTMLElement, ctx: VelocityGridExtContext): ModuleInstance {
       const band = document.createElement('cgc-band');
       band.setAttribute('band-title', 'Expression');
       const field = document.createElement('cgc-field');
       field.setAttribute('label', 'Formula');
-      field.setAttribute('hint', 'Uses @cgrid/expression — e.g. [pnl] > 0');
+      field.setAttribute('hint', 'Uses @wellsfargo-starui/velocity-grid-expression — e.g. [pnl] > 0');
 
       const editor = document.createElement('cgc-expression-editor') as HTMLElement & {
         schema: Schema;

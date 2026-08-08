@@ -42,38 +42,38 @@ data above.
 **Light theme `:root`:**
 | Token | Value | Why |
 |---|---|---|
-| `--cg-totals-bg` | `#f7f9fb` | 3% slate tint over body `#ffffff` — lifted, not different |
-| `--cg-totals-fg` | `#0f172a` | one stop darker than body fg `#1a1f24` |
-| `--cg-totals-border-top` | `#cbd5e1` | between gridline `#eceff2` and header border `#d5dbe0` |
-| `--cg-totals-fg-muted` | `#475569` | for the row label column (Task 5 renderer uses this) |
-| `--cg-totals-font-weight` | `500` | body is `400` — +1 stop only |
-| `--cg-totals-row-height` | `var(--cg-row-height)` | SAME as body. Do not inflate. |
+| `--vg-totals-bg` | `#f7f9fb` | 3% slate tint over body `#ffffff` — lifted, not different |
+| `--vg-totals-fg` | `#0f172a` | one stop darker than body fg `#1a1f24` |
+| `--vg-totals-border-top` | `#cbd5e1` | between gridline `#eceff2` and header border `#d5dbe0` |
+| `--vg-totals-fg-muted` | `#475569` | for the row label column (Task 5 renderer uses this) |
+| `--vg-totals-font-weight` | `500` | body is `400` — +1 stop only |
+| `--vg-totals-row-height` | `var(--vg-row-height)` | SAME as body. Do not inflate. |
 
-**Dark theme `.cg-theme-dark`:**
+**Dark theme `.vg-theme-dark`:**
 | Token | Value | Why |
 |---|---|---|
-| `--cg-totals-bg` | `#0f1d36` | 5% upward from body `#0a1428`, no temperature shift |
-| `--cg-totals-fg` | `#e2e8f0` | one stop brighter than body fg `#cbd5e1` |
-| `--cg-totals-border-top` | `#4a6391` | between gridline `#2b3a5c` and header border `#38507a` |
-| `--cg-totals-fg-muted` | `#94a3b8` |   |
+| `--vg-totals-bg` | `#0f1d36` | 5% upward from body `#0a1428`, no temperature shift |
+| `--vg-totals-fg` | `#e2e8f0` | one stop brighter than body fg `#cbd5e1` |
+| `--vg-totals-border-top` | `#4a6391` | between gridline `#2b3a5c` and header border `#38507a` |
+| `--vg-totals-fg-muted` | `#94a3b8` |   |
 
 **Placeholders:**
 ```css
-.cg-totals-row  { /* placeholder — Task 5 renderer reads tokens via cssReader */ }
-.cg-totals-cell { /* placeholder — per-cell polish lands in Task 5 */ }
+.vg-totals-row  { /* placeholder — Task 5 renderer reads tokens via cssReader */ }
+.vg-totals-cell { /* placeholder — per-cell polish lands in Task 5 */ }
 ```
 
 ### Layout
 
 | Property | Value | Rationale |
 |---|---|---|
-| Row height | `var(--cg-row-height)` (32px) | No inflation — body-consistent rhythm |
-| Top border | 1px solid `--cg-totals-border-top`, painted at `Math.round(row.top) - 1` | Same idiom as the existing bodyTop separator |
+| Row height | `var(--vg-row-height)` (32px) | No inflation — body-consistent rhythm |
+| Top border | 1px solid `--vg-totals-border-top`, painted at `Math.round(row.top) - 1` | Same idiom as the existing bodyTop separator |
 | Bottom border | None | Canvas edge / status-bar top border handles it — no double-border |
 | Cell padding | 6px (body PADDING) | Body alignment, not header alignment |
 | Per-cell halign | Inherits the column's halign | Right for numerics, left for text — matches the data column above |
-| Font family | `var(--cg-font-family)` | Same monospace stack as body |
-| Font size | `var(--cg-font-size)` (13px) | Same as body — doesn't shout |
+| Font family | `var(--vg-font-family)` | Same monospace stack as body |
+| Font size | `var(--vg-font-size)` (13px) | Same as body — doesn't shout |
 | Font weight numerics | 500 | +1 stop from body 400 |
 | Font weight label | 500 (matching numerics) | Uniform row — not bold |
 
@@ -136,9 +136,9 @@ stays body.**
   Cycle 14 grammar. Tasks 2 (`pinnedTopRowData`) and 4
   (`suppressAggFuncInHeader` header text) inherit it where they
   intersect the same body↔totals transition.
-- The `--cg-totals-*` token family is the single source for chrome
+- The `--vg-totals-*` token family is the single source for chrome
   decisions. Tasks 2–6 extend it as needed (Task 2 may add
-  `--cg-pinned-row-*` siblings; Task 5 may add `--cg-totals-fg-empty`
+  `--vg-pinned-row-*` siblings; Task 5 may add `--vg-totals-fg-empty`
   for the em-dash).
 
 ---
@@ -179,7 +179,7 @@ fake synthesis where none exists.
 
 **Same lift idiom, different tint hue, no weight bump.**
 
-- Same 1px structural border (single `--cg-totals-border-top` reused)
+- Same 1px structural border (single `--vg-totals-border-top` reused)
   — the boundary between "scrolling body" and "everything else" is one
   shape, one color, one source. Reusing the border preserves the
   cycle-14 grammar at the structural level.
@@ -202,34 +202,34 @@ fake synthesis where none exists.
 **Light theme `:root`:**
 | Token | Value | Why |
 |---|---|---|
-| `--cg-pinned-row-bg` | `#fbf8f3` | 3% warm cream tint over body `#ffffff` — same luminosity lift as `--cg-totals-bg` (`#f7f9fb`), opposite temperature |
-| `--cg-pinned-row-fg` | `var(--cg-fg)` | Inherit body fg — no synthesis emphasis |
-| `--cg-pinned-row-border` | `var(--cg-totals-border-top)` (`#cbd5e1`) | SAME color as totals border. Single source for "outside body" boundary |
-| `--cg-pinned-row-font-weight` | `400` | Inherit body weight. +1 stop is reserved for totals synthesis |
+| `--vg-pinned-row-bg` | `#fbf8f3` | 3% warm cream tint over body `#ffffff` — same luminosity lift as `--vg-totals-bg` (`#f7f9fb`), opposite temperature |
+| `--vg-pinned-row-fg` | `var(--vg-fg)` | Inherit body fg — no synthesis emphasis |
+| `--vg-pinned-row-border` | `var(--vg-totals-border-top)` (`#cbd5e1`) | SAME color as totals border. Single source for "outside body" boundary |
+| `--vg-pinned-row-font-weight` | `400` | Inherit body weight. +1 stop is reserved for totals synthesis |
 
-**Dark theme `.cg-theme-dark`:**
+**Dark theme `.vg-theme-dark`:**
 | Token | Value | Why |
 |---|---|---|
-| `--cg-pinned-row-bg` | `#241e16` | 5% upward from body `#0a1428` with an amber shift — warm cast survives the theme flip |
-| `--cg-pinned-row-fg` | `var(--cg-fg)` | Inherit |
-| `--cg-pinned-row-border` | `var(--cg-totals-border-top)` (`#4a6391`) | Same body-edge boundary |
+| `--vg-pinned-row-bg` | `#241e16` | 5% upward from body `#0a1428` with an amber shift — warm cast survives the theme flip |
+| `--vg-pinned-row-fg` | `var(--vg-fg)` | Inherit |
+| `--vg-pinned-row-border` | `var(--vg-totals-border-top)` (`#4a6391`) | Same body-edge boundary |
 
 **Placeholders:**
 ```css
-.cg-pinned-row  { /* placeholder — Task 5 polished renderer may extend */ }
-.cg-pinned-cell { /* placeholder — per-column override hook lands later */ }
+.vg-pinned-row  { /* placeholder — Task 5 polished renderer may extend */ }
+.vg-pinned-cell { /* placeholder — per-column override hook lands later */ }
 ```
 
 ### Layout — pinned vs totals comparison
 
 | Property | Pinned | Totals (Task 1) |
 |---|---|---|
-| Row height | `var(--cg-row-height)` (32px) | `var(--cg-row-height)` (32px) |
+| Row height | `var(--vg-row-height)` (32px) | `var(--vg-row-height)` (32px) |
 | BG tint | warm 3% / 5% | slate 3% / 5% |
 | FG | inherit body | one stop darker |
 | Font weight | 400 (body) | 500 (+1) |
-| Structural border (body-side edge) | 1px `--cg-pinned-row-border` | 1px `--cg-totals-border-top` (same color) |
-| Between-row divider (multi-pinned) | `--cg-gridline` (standard row divider) | N/A — totals is a single row |
+| Structural border (body-side edge) | 1px `--vg-pinned-row-border` | 1px `--vg-totals-border-top` (same color) |
+| Between-row divider (multi-pinned) | `--vg-gridline` (standard row divider) | N/A — totals is a single row |
 | Per-cell halign | inherit column | inherit column |
 | Cell renderer | column's default | column's default (Task 5 swaps in `'totals'` for the totals row only) |
 
@@ -244,7 +244,7 @@ A 3-row pinned-top stack paints as:
 [ pinned row 2 ]  ← warm tint
 [ gridline      ]  ← standard divider
 [ pinned row 3 ]  ← warm tint
-[ structural border ]  ← 1px --cg-pinned-row-border
+[ structural border ]  ← 1px --vg-pinned-row-border
 [ data band ]
 ```
 
@@ -256,9 +256,9 @@ legible via the standard gridline.
 ```
 [ data band ]
 [ pinned-bottom rows ]  ← warm tint
-[ structural border ]   ← 1px --cg-pinned-row-border (top edge of pinned stack)
+[ structural border ]   ← 1px --vg-pinned-row-border (top edge of pinned stack)
 [ totals row ]          ← slate tint
-[ structural border ]   ← 1px --cg-totals-border-top (top edge of totals)
+[ structural border ]   ← 1px --vg-totals-border-top (top edge of totals)
 ```
 
 Two distinct tints + two boundaries make "pinned" and "totals"
@@ -269,8 +269,8 @@ source) but each owns its position via the subgrid above it.
 
 1. `cssReader.ts` exposes `pinnedRowBg`, `pinnedRowFg`, and
    `pinnedRowBorder` on `ResolvedTheme`. The border value is read from
-   `--cg-pinned-row-border` which CSS-aliases to
-   `--cg-totals-border-top`; we expose it as a separate field so the
+   `--vg-pinned-row-border` which CSS-aliases to
+   `--vg-totals-border-top`; we expose it as a separate field so the
    painter doesn't reach across token families.
 2. `byRows.ts` row-bg pass paints `theme.pinnedRowBg` for `isPinned`
    rows (new flag on `Subgrid` mirroring `isTotals` / `isFloatingFilter`).
@@ -319,9 +319,9 @@ Stack reads as a unit, member rows readable via the standard gridline.**
 
 ### Vocabulary handed to subsequent tasks
 
-- The `--cg-pinned-row-*` family is committed and may be extended by
+- The `--vg-pinned-row-*` family is committed and may be extended by
   Task 5 if a per-column pinned override surfaces.
-- The structural border color `--cg-totals-border-top` is now a SHARED
+- The structural border color `--vg-totals-border-top` is now a SHARED
   token used by both pinned and totals chrome — treat it as a
   cycle-14 primitive.
 - The temperature contrast (slate = computed, cream = anchored) is
@@ -335,7 +335,7 @@ Stack reads as a unit, member rows readable via the standard gridline.**
 **Brief recap:** When a column carries `aggFunc: 'sum' | 'avg' | …` AND
 `suppressAggFuncInHeader` is `false` (the default), the header cell
 renders as `sum(Notional)` instead of `Notional`. The toggle flips
-per-grid (`CGridOptions.suppressAggFuncInHeader`) AND per-column
+per-grid (`VelocityGridOptions.suppressAggFuncInHeader`) AND per-column
 (`CColDef.suppressAggFuncInHeader`), the column override winning.
 When suppressed, the aggregated context lives only in the totals row.
 
@@ -383,7 +383,7 @@ the former.
 | 1 | Weight + color of the prefix | Same as the column name (headerFg, header font weight) | Single fillText pass per header. Parens carry the structural cue. Weight delta inside a 600 band reads as a font bug. |
 | 2 | Casing of the verb | Lowercase (`sum`, `avg`, `min`, `max`, `count`, `first`, `last`) | Matches ag-grid screenshot + trader's existing mental model. Allcaps shouts; small caps requires a font feature not always available. Function-call semantics demand lowercase. |
 | 3 | Whitespace | No space — `sum(Notional)` | Compact. Parens read as function-call. A space (`sum( Notional )`) breaks the function-call signal. |
-| 4 | Per-column override | `CColDef.suppressAggFuncInHeader: boolean` wins over `CGridOptions.suppressAggFuncInHeader`; per-column `undefined` defers to the grid-level flag (default `false`). | Column-level wins is the standard cgrid override pattern (matches `floatingFilter`, `cellRenderer`, etc.). |
+| 4 | Per-column override | `CColDef.suppressAggFuncInHeader: boolean` wins over `VelocityGridOptions.suppressAggFuncInHeader`; per-column `undefined` defers to the grid-level flag (default `false`). | Column-level wins is the standard cgrid override pattern (matches `floatingFilter`, `cellRenderer`, etc.). |
 | 5 | Truncation | Right-side ellipsification of the whole decorated string (no special verb-preserving logic). The verb sits on the LEFT so it survives naturally; the column name + closing paren on the RIGHT truncates first. | Per the screenshot (`sum(Noti...)`, `avg(...)`). No extra measurement code in the painter. |
 | 6 | Array-form aggFunc (`['sum', 'avg']`) | Use the FIRST entry as the visible prefix. Subsequent entries are fallback registry lookups (per `CColDef.aggFunc` spec), NOT visible alternates. | The header is a single label; showing `sum/avg(...)` would muddle the synthesis cue. |
 | 7 | Columns WITHOUT aggFunc | No decoration; render `headerName` raw. | The toggle is a no-op for columns where there's no agg to suppress. |
@@ -550,7 +550,7 @@ the boldness; the leaf does not add to them.
      gc.fillText(text, x, cy);
    }
    ```
-3. `cgrid.ts` registers the painter on construction:
+3. `velocityGrid.ts` registers the painter on construction:
    `this.cellRenderers.register('totals', totalsCell);`.
 4. `byRows.ts` renderer-resolution branch: for `row.subgrid.isTotals`
    rows, the renderer name defaults to `'totals'` UNLESS the column

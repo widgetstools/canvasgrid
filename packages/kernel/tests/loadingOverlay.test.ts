@@ -12,7 +12,7 @@ describe('LoadingOverlay', () => {
     host = document.createElement('div');
     document.body.appendChild(host);
     const overlay = new LoadingOverlay(host);
-    const el = host.querySelector('.cg-loading-overlay') as HTMLElement;
+    const el = host.querySelector('.vg-loading-overlay') as HTMLElement;
     expect(el).not.toBeNull();
     expect(el.hidden).toBe(true);
     expect(el.textContent).toContain('Loading');
@@ -26,15 +26,15 @@ describe('LoadingOverlay', () => {
     expect(el.getAttribute('aria-busy')).toBe('false');
 
     overlay.destroy();
-    expect(host.querySelector('.cg-loading-overlay')).toBeNull();
+    expect(host.querySelector('.vg-loading-overlay')).toBeNull();
   });
 
   it('updates message and progress detail', () => {
     host = document.createElement('div');
     document.body.appendChild(host);
     const overlay = new LoadingOverlay(host);
-    const label = host.querySelector('.cg-loading-overlay-label') as HTMLElement;
-    const detail = host.querySelector('.cg-loading-overlay-detail') as HTMLElement;
+    const label = host.querySelector('.vg-loading-overlay-label') as HTMLElement;
+    const detail = host.querySelector('.vg-loading-overlay-detail') as HTMLElement;
 
     overlay.setMessage('Loading snapshot…');
     expect(label.textContent).toBe('Loading snapshot…');

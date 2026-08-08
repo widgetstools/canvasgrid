@@ -1,4 +1,4 @@
-// @cgrid/edit - patch-first primitives reused by every op module.
+// @wellsfargo-starui/velocity-grid-edit - patch-first primitives reused by every op module.
 // Authoritative reference: docs/superpowers/specs/2026-07-02-cycle-21g-edit-design.md
 // section 1.1.2 (patch model), section 2.3 (Object.is no-op guard).
 // Recon: docs/superpowers/plans/notes/2026-07-02-cycle-21g-recon.md A.1.

@@ -61,7 +61,7 @@ async function gridReady(page: Page, qs: string): Promise<void> {
 /** Read the current group-row keys in their rendered order (post-sort). */
 async function readGroupKeyOrder(page: Page): Promise<string[]> {
   return page.evaluate(() => {
-    const g = (window as unknown as { __cgrid: unknown }).__cgrid as unknown as ChunkSurface;
+    const g = (window as unknown as { __velocity-grid: unknown }).__cgrid as unknown as ChunkSurface;
     const chunk = g.chunk;
     if (!chunk) return [];
     const kinds = chunk.rowKinds ?? new Uint8Array(0);
@@ -81,7 +81,7 @@ async function findPivotResultColId(
   page: Page, pivotKey: string, valueColId: string,
 ): Promise<string | null> {
   return page.evaluate(({ key, vc }) => {
-    const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+    const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
     // Synthesized colId encoding: `pivotcol<pivotKey><valueColId>`.
     const match = api.getColumnState()
       .map((c) => c.colId)
@@ -99,7 +99,7 @@ test.describe('Cycle 18 / Task 8d — sort secondary column sorts row groups', (
     await gridReady(page, '?pivotDemo=on');
     // Group rows by region (multi-valued in the demo data).
     await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       api.setRowGroupColumns(['region']);
     });
     await waitForFrames(page, 8);
@@ -109,14 +109,14 @@ test.describe('Cycle 18 / Task 8d — sort secondary column sorts row groups', (
     // pivot by region won't work since region is the row group.) Use a
     // single pivot dimension that has data: `currency`.
     await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       api.setPivotColumns(['currency']);
       api.addValueColumn('notionalAmount', 'sum');
       api.setPivotMode(true);
     });
     await waitForFrames(page, 12);
     await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       api.collapseAll();
     });
     await waitForFrames(page, 12);
@@ -126,7 +126,7 @@ test.describe('Cycle 18 / Task 8d — sort secondary column sorts row groups', (
     // PRIMARY cols under pivot mode post Cycle 18 / Task 9.
     const pivotColIds = await page.evaluate(() => {
       const grid = (window as unknown as {
-        __cgrid: { columnOrder: Array<{ colId: string }> };
+        __velocity-grid: { columnOrder: Array<{ colId: string }> };
       }).__cgrid;
       return (grid.columnOrder ?? []).map((c) => c.colId)
         .filter((id) => id.startsWith('pivotcol'));
@@ -136,7 +136,7 @@ test.describe('Cycle 18 / Task 8d — sort secondary column sorts row groups', (
 
     // Sort desc → record order.
     await page.evaluate((colId) => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       api.setSortModel([{ colId, direction: 'desc' }]);
     }, sortColId);
     await waitForFrames(page, 16);
@@ -145,7 +145,7 @@ test.describe('Cycle 18 / Task 8d — sort secondary column sorts row groups', (
 
     // Sort asc → record order.
     await page.evaluate((colId) => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       api.setSortModel([{ colId, direction: 'asc' }]);
     }, sortColId);
     await waitForFrames(page, 16);

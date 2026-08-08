@@ -14,7 +14,7 @@ import type { CellBitmapCache, RowStripCache } from '../rasterCache';
  * bitmaps must be rasterized at (must match the CTM scale of the context
  * they're blitted into — main canvas AND retained layer both run the same
  * `setTransform(dpr,0,0,dpr,0,0)`). `stats`, when present, receives the
- * per-cell hit/miss/bypass counters (CGrid passes its live `PaintStats`
+ * per-cell hit/miss/bypass counters (VelocityGrid passes its live `PaintStats`
  * object). Absent/null ⇒ every cell paints live, byte-identical to the
  * shipped pipeline.
  */
@@ -53,10 +53,10 @@ export interface RasterCellsCtx {
  *    the focused cell, no live flash on any of its cells, no active
  *    quick-filter terms, not a group/footer/totals/pinned/sticky row.
  *    Anything else paints live (a bypass is a perf miss; a stale strip
- *    is a bug). CGrid owns the implementation; the renderer only asks.
+ *    is a bug). VelocityGrid owns the implementation; the renderer only asks.
  *  - `rowVersionOf` / `stringRowIdAt` return `null` to force a bypass
  *    (row outside the chunk window, no real rowId).
- *  - `layoutEpoch()` is CGrid's monotonic column-geometry/theme/dpr/
+ *  - `layoutEpoch()` is VelocityGrid's monotonic column-geometry/theme/dpr/
  *    canvas-width/quick-filter/sort epoch — a strip captured under any
  *    other epoch never consumes.
  *
@@ -64,7 +64,7 @@ export interface RasterCellsCtx {
  * sized at this paint: captures copy DEVICE px out of the layer canvas
  * and consumes blit DEVICE px back in (untransformed, the
  * `PaintCacheLayer.shift` discipline). `stats`, when present, receives
- * the strip hit/miss/capture/patch counters (CGrid passes its live
+ * the strip hit/miss/capture/patch counters (VelocityGrid passes its live
  * `PaintStats`). Absent/null ⇒ the strip path is fully dormant and the
  * call sequence is byte-identical to the shipped pipeline.
  */
@@ -107,7 +107,7 @@ export interface PainterCtx {
     ranges: SelectionRange[];
   };
   /** Cycle 21i / Phase 1 — hovered data-row index (or null / absent).
-   *  When set, the byRows painter draws the `--cg-row-hover-bg` band on
+   *  When set, the byRows painter draws the `--vg-row-hover-bg` band on
    *  that row (below selection). Already gated by
    *  `suppressRowHoverHighlight` upstream. */
   hoveredRowIndex?: number | null;
@@ -148,7 +148,7 @@ export interface PainterCtx {
   /**
    * Cycle 9 / Task 5 — when true, the range painter draws a 6×6 fill
    * handle at the bottom-right of the LAST range. Sourced from
-   * `CGridOptions.enableFillHandle` at the start of each paint.
+   * `VelocityGridOptions.enableFillHandle` at the start of each paint.
    */
   showFillHandle: boolean;
   /**
@@ -163,7 +163,7 @@ export interface PainterCtx {
   suppressAggFuncInHeader: boolean;
   /** Returns visible (band-clipped) bounds for the cell, or null when
    *  the cell straddles or has scrolled out of its column's band.
-   *  Sourced from CGrid.getVisibleCellBounds (Cycle 12 / Task 1). */
+   *  Sourced from VelocityGrid.getVisibleCellBounds (Cycle 12 / Task 1). */
   getVisibleCellBounds: (rowIndex: number, colId: string) =>
     { x: number; y: number; w: number; h: number } | null;
   /**
@@ -180,8 +180,8 @@ export interface PainterCtx {
    *     right-pinned columns.
    *
    * `renderer` is the cellRenderer key the painter looks up via the
-   * registry — defaults to `'group'` from cgrid.ts; apps override via
-   * `CGridOptions.groupRowRenderer` for `'custom'` display type.
+   * registry — defaults to `'group'` from velocityGrid.ts; apps override via
+   * `VelocityGridOptions.groupRowRenderer` for `'custom'` display type.
    *
    * Design plan:
    *   `docs/superpowers/plans/notes/cycle-15-grouping-design.md` § Task 5.
@@ -212,7 +212,7 @@ export interface PainterCtx {
   /**
    * Cycle 15.5 / Task 4 — when `true`, the sticky group band is
    * suppressed (a hidden open parent can't be pinned). Sourced from
-   * `CGridOptions.groupHideOpenParents`. */
+   * `VelocityGridOptions.groupHideOpenParents`. */
   groupHideOpenParents?: boolean;
   /**
    * Cycle 15 / Task 16 — sticky group row ancestors above the current
@@ -236,7 +236,7 @@ export interface PainterCtx {
   /**
    * Cycle 15.5 — look up a formatted aggregate value for a sticky ancestor's
    * group key + colId. Returns null when the column has no aggFunc or the
-   * group key is unknown. Supplied by cgrid.ts via totalsCellLookup.
+   * group key is unknown. Supplied by velocityGrid.ts via totalsCellLookup.
    */
   getStickyGroupTotals?: (groupKey: string, colId: string) => { value: unknown; valueFormatted: string } | null;
   /**

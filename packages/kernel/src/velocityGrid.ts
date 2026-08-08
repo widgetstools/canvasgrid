@@ -8,7 +8,7 @@ import './theming/tokens.css';
 // import resolves to the compiled CSS text at build time.
 import tokensCssInline from './theming/tokens.css?inline';
 import type {
-  CGridOptions, CGridEvent, CGridApi, Tx, TransactionResult, SortModel, FilterModel,
+  VelocityGridOptions, VelocityGridEvent, VelocityGridApi, Tx, TransactionResult, SortModel, FilterModel,
   CFilterModelEntry, GroupModel, FlashCellsParams, SelectionRange,
   AggregationChangedSource, PaintStats,
 } from './types';
@@ -57,7 +57,7 @@ import { LayoutManager, type LayoutManagerHost, type SaveLayoutOptions } from '.
 import type { GridLayout, GridBaselineConfig, GridLayoutsBundle, TemplateSaveInput } from './types/layout';
 import { DEFAULT_GRID_LEVEL_MODULES } from './types/layout';
 import type { LayoutChangeSource, TemplateChangeSource, RuleChangeSource } from './types/event';
-import type { ColumnTemplate } from '@cgrid/calc';
+import type { ColumnTemplate } from '@wellsfargo-starui/velocity-grid-calc';
 import { StateUpdatedBus } from './core/stateUpdatedBus';
 import {
   flatten as flattenColumnGroups, project as projectColumnGroups,
@@ -100,7 +100,7 @@ import { ColumnsToolPanel } from './interaction/toolPanels/columnsPanel';
 import { FiltersToolPanel } from './interaction/toolPanels/filtersPanel';
 import { GridOptionsToolPanel } from './interaction/toolPanels/gridOptionsPanel';
 import { ColumnGroupsToolPanel } from './interaction/toolPanels/columnGroupsPanel';
-// Re-exported so CGridExt (and hosts) can mount these panels in a settings
+// Re-exported so VelocityGridExt (and hosts) can mount these panels in a settings
 // sheet without depending on kernel-internal paths.
 export { GridOptionsToolPanel } from './interaction/toolPanels/gridOptionsPanel';
 export { ColumnGroupsToolPanel } from './interaction/toolPanels/columnGroupsPanel';
@@ -144,7 +144,7 @@ import { DateFilterPopup } from './interaction/filters/dateFilter';
 import { TextFilterPopup, applyTrimInputToModel } from './interaction/filters/textFilter';
 import { SetFilterPopup } from './interaction/filters/setFilter';
 import { FlashRegistry } from './core/flashRegistry';
-import { CGridCanvas } from './core/canvas';
+import { VelocityGridCanvas } from './core/canvas';
 import { CssReader, type ResolvedTheme } from './theming/cssReader';
 import {
   setThemeParams as themeParamsSet,
@@ -227,10 +227,10 @@ import {
 } from './interaction/features/tooltipProvider';
 import { serializeToHtml, type RowExport } from './interaction/features/clipboardSerializer';
 
-export const CGRID_VERSION = '0.0.0';
+export const VELOCITY_GRID_VERSION = '0.0.0';
 
 export type {
-  CGridOptions, CColDef, CColGroupDef, CGridEvent, CGridApi, Tx, TransactionResult,
+  VelocityGridOptions, CColDef, CColGroupDef, VelocityGridEvent, VelocityGridApi, Tx, TransactionResult,
   SortModel, SortModelEntry, FilterModel, FilterModelEntry, FilterModelEntryLegacy,
   CFilterModelEntry, CTextFilterModel, CNumberFilterModel, CDateFilterModel,
   CMultiConditionFilterModel, CSetFilterModel,
@@ -271,7 +271,7 @@ export type {
   RuleChangeSource,
 } from './types';
 // Grid Layouts (Phase C / C3) — the opaque conditional-rule shape the
-// CGridApi rule methods accept/return.
+// VelocityGridApi rule methods accept/return.
 export type { ConditionalRuleShape } from './core/ruleEngineSlot';
 // Grid Layouts (Phase A) — public value exports (reserved id, tier default,
 // bundle version).
@@ -279,7 +279,7 @@ export { DEFAULT_LAYOUT_ID, DEFAULT_GRID_LEVEL_MODULES, LAYOUTS_BUNDLE_VERSION }
 export { SSRM_ROW_META_KEY, attachSsrmRowMeta, readSsrmRowMeta, isServerSideDatasourceV2 } from './types/ssrm';
 export type { CellPainter, CellPaintConfig, RegisterCellRendererOpts } from './renderer/cellRenderers/registry';
 // Workstream A (2026-07-06 CSS styling model) — renderer-palette bundle
-// type, so @cgrid/renderers (and follow-on structured-map work) can name
+// type, so @wellsfargo-starui/velocity-grid-renderers (and follow-on structured-map work) can name
 // the shape of `CellPaintConfig.palette` directly.
 export type { RendererPalette } from './theming/cssReader';
 // Theming Task 6/7 — programmatic `CgTheme` object public surface. `CgTheme`
@@ -388,7 +388,7 @@ export { registerIcon, registerIcons, hasIcon } from './renderer/icons';
 
 /**
  * Infer the row-ID field name from a `(row) => row.<field>` style accessor.
- * Exported as a top-level function so it can be unit-tested independently of CGrid.
+ * Exported as a top-level function so it can be unit-tested independently of VelocityGrid.
  *
  * Foundation cycle: only top-level single-property accessors are supported.
  * Nested paths like `row.meta.id` are rejected with a clear error — the RowStore
@@ -398,10 +398,10 @@ export function inferRowIdField<T>(getRowId: (row: T) => string): string {
   const src = getRowId.toString();
   const matches = Array.from(src.matchAll(/\.(\w+)/g));
   if (matches.length === 0) {
-    throw new Error('[cgrid] could not infer rowIdField from getRowId — Foundation cycle only supports `row => row.<field>` style');
+    throw new Error('[velocity-grid] could not infer rowIdField from getRowId — Foundation cycle only supports `row => row.<field>` style');
   }
   if (matches.length > 1) {
-    throw new Error('[cgrid] Foundation cycle only supports top-level `row => row.<field>` getRowId — nested accessors like `row.meta.id` are deferred to a follow-up cycle');
+    throw new Error('[velocity-grid] Foundation cycle only supports top-level `row => row.<field>` getRowId — nested accessors like `row.meta.id` are deferred to a follow-up cycle');
   }
   return matches[0]![1]!;
 }
@@ -409,7 +409,7 @@ export function inferRowIdField<T>(getRowId: (row: T) => string): string {
 /** Cycle 7 / Task 7 — default `quickFilterParser`. Splits on runs of
  *  whitespace and drops empty terms so leading / trailing / interior
  *  whitespace never produces a phantom `''` term that matches every row.
- *  Apps override via `CGridOptions.quickFilterParser`. */
+ *  Apps override via `VelocityGridOptions.quickFilterParser`. */
 function defaultQuickFilterParser(text: string): string[] {
   return text.split(/\s+/).filter((t) => t.length > 0);
 }
@@ -846,13 +846,13 @@ export function defaultFillExtrapolate(sourceValues: unknown[], targetIndex: num
  * should compile against when it's applied (construction, `setTheme`
  * swap, or the `prefers-color-scheme` listener re-evaluating). Priority:
  *
- *  1. An explicit `data-cg-theme-mode="light"|"dark"` attribute on
+ *  1. An explicit `data-vg-theme-mode="light"|"dark"` attribute on
  *     `probeHost` or any of its ancestors (`probeHost.closest(...)`) — an
  *     app-level override always wins over everything below.
  *  2. The theme's OWN declared background: `theme.compile('light')` is
  *     used purely as a probe (a `base`-layer `backgroundColor` applies to
  *     both modes identically, so probing with `'light'` is harmless) — if
- *     it declares `--cg-bg-color`, `isDarkColor` on that value decides.
+ *     it declares `--vg-bg-color`, `isDarkColor` on that value decides.
  *     This lets a theme built with e.g. `themeQuartz.withParams({
  *     backgroundColor: '#111827' })` self-select dark without the app
  *     needing to say so explicitly.
@@ -862,16 +862,16 @@ export function defaultFillExtrapolate(sourceValues: unknown[], targetIndex: num
  * `probeHost` is intentionally a parameter rather than always `this.root`:
  * at construction time `this.root` hasn't been appended into the app's
  * container yet, so an ancestor lookup from `this.root` would miss a
- * `data-cg-theme-mode` attribute the app set on (or above) that container.
+ * `data-vg-theme-mode` attribute the app set on (or above) that container.
  * Callers pass `container` at construction and `this.root` (already
  * attached by then) for every later swap.
  */
 function pickThemeMode(probeHost: Element, theme: CgTheme): ThemeMode {
-  const withAttr = probeHost.closest('[data-cg-theme-mode]');
-  const attr = withAttr?.getAttribute('data-cg-theme-mode');
+  const withAttr = probeHost.closest('[data-vg-theme-mode]');
+  const attr = withAttr?.getAttribute('data-vg-theme-mode');
   if (attr === 'light' || attr === 'dark') return attr;
 
-  const probeBg = theme.compile('light').vars['--cg-bg-color'];
+  const probeBg = theme.compile('light').vars['--vg-bg-color'];
   if (probeBg) return isDarkColor(probeBg) ? 'dark' : 'light';
 
   if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
@@ -880,8 +880,8 @@ function pickThemeMode(probeHost: Element, theme: CgTheme): ThemeMode {
   return 'light';
 }
 
-export class CGrid<TRow = any> {
-  private events = new TypedEventEmitter<CGridEvent<TRow>>();
+export class VelocityGrid<TRow = any> {
+  private events = new TypedEventEmitter<VelocityGridEvent<TRow>>();
   /** Cycle 21i Phase 2 / T2 — named, versioned engine-state slices that
    *  fold into `GridState.modules` (see `core/moduleState.ts`). The
    *  kernel registers its own `columnGroups` slice at construction;
@@ -1047,7 +1047,7 @@ export class CGrid<TRow = any> {
    *  given an object rather than a plain CSS class string. `undefined` for
    *  the (still 100%-backward-compatible) string/`undefined` theme path. */
   private themeObject: CgTheme | undefined;
-  /** Theming Task 6/7 — the `--cg-*` KEYS the active `themeObject` injected
+  /** Theming Task 6/7 — the `--vg-*` KEYS the active `themeObject` injected
    *  onto `this.root` (via the low-level `themeParamsSet`, NOT
    *  `this.setThemeParams`). Tracked separately from user-set overrides
    *  (which share the same underlying inline-style/WeakMap state via
@@ -1061,7 +1061,7 @@ export class CGrid<TRow = any> {
   private themeObjectStyleEl: HTMLStyleElement | null = null;
   /** Theming Task 6/7 — the live `prefers-color-scheme` query + its
    *  handler, installed only while an object theme is active AND no
-   *  `data-cg-theme-mode` attribute overrides the mode. Not routed through
+   *  `data-vg-theme-mode` attribute overrides the mode. Not routed through
    *  `DisposableRegistry` (which has no per-item removal) because it must
    *  be torn down and reinstalled independently on every theme swap /
    *  `setThemeMode` call — a single `disposables.add` in the constructor
@@ -1070,11 +1070,11 @@ export class CGrid<TRow = any> {
   private themeModeQueryHandler: ((e: MediaQueryListEvent) => void) | null = null;
   /** Cycle 19 / Task 2 — viewport subsystem: scroll state, the native
    *  scroll listener, `recompute` / `request` entry points, prefetch-range
-   *  expansion, and the `setScroll` / `ensure*Visible` helpers. CGrid keeps
+   *  expansion, and the `setScroll` / `ensure*Visible` helpers. VelocityGrid keeps
    *  delegating wrappers (`recomputeViewport`, `requestViewport`,
    *  `setScroll`, `ensureRowIndexVisible`, `ensureColIdVisible`) so the
    *  50+ internal callsites still compile unchanged. The chunk-processing
-   *  tail of `requestViewport` lives on CGrid as `handleViewportChunk`
+   *  tail of `requestViewport` lives on VelocityGrid as `handleViewportChunk`
    *  until cycle 19 / task 3 lands `WorkerCoordinator`. */
   private viewportManager!: ViewportManager;
   /** Cycle 25 / Task 10 — LRU of recently-fetched chunks keyed by
@@ -1120,7 +1120,7 @@ export class CGrid<TRow = any> {
   private shadowRoot: ShadowRoot | null = null;
   private scroller: HTMLDivElement;
   private sizer: HTMLDivElement;
-  private cgridCanvas!: CGridCanvas;
+  private cgridCanvas!: VelocityGridCanvas;
   private canvasBounds = { width: 0, height: 0 };
   /** DOM host shared with `EditController` (owner of the editor overlay +
    *  row-edit coordinator), floating-filter overlay, filter popup, context
@@ -1244,7 +1244,7 @@ export class CGrid<TRow = any> {
   private contextMenuHost: ContextMenuHost;
   /** Cycle 11 / Task 1 — tool-panel registry. Seeded with built-in IDs
    *  (`agColumnsToolPanel`, `agFiltersToolPanel`) and then merged with
-   *  any `CGridOptions.components` overrides so apps can replace the
+   *  any `VelocityGridOptions.components` overrides so apps can replace the
    *  built-ins or add new IDs that custom `SideBarDef.toolPanels`
    *  entries reference via `toolPanel`. The side-bar host (Task 2)
    *  reads this registry to instantiate panels on demand. */
@@ -1263,7 +1263,7 @@ export class CGrid<TRow = any> {
   private sideBarInsets = { left: 0, right: 0 };
   /** Cycle 13 / Task 1 — status-bar registry. Seeded with the canonical
    *  built-in keys (`agTotalRowCountComponent`, …) and then merged with
-   *  any `CGridOptions.components` overrides so apps can replace the
+   *  any `VelocityGridOptions.components` overrides so apps can replace the
    *  built-ins or add custom keys that `StatusBarDef.statusPanels`
    *  entries reference via `statusPanel`. The status bar host reads
    *  this registry to instantiate panels on demand. */
@@ -1362,14 +1362,14 @@ export class CGrid<TRow = any> {
   /** Cycle 19 / Task 4 — owns the cell-edit subsystem: editorContainer DOM
    *  host, EditorOverlay + RowEditCoordinator + CellEditorRegistry, the
    *  capture-phase keydown matrix, the Excel-mode mousedown flip, and the
-   *  `activeEdit` lifecycle state. CGrid routes the open/stop/sync/register
+   *  `activeEdit` lifecycle state. VelocityGrid routes the open/stop/sync/register
    *  primitives through this surface. */
   private editController!: EditController<TRow>;
   private a11y: A11yOverlay;
   /** Busy overlay driven by `options.loading`. */
   private loadingOverlay: LoadingOverlay;
   /** Cycle 19 / Task 3 — owns the WorkerClient + its handler wiring +
-   *  the viewport-fetch dispatch ViewportManager forwards into. CGrid
+   *  the viewport-fetch dispatch ViewportManager forwards into. VelocityGrid
    *  routes every worker call through this surface; the chunk-reply
    *  main-side mutation lives in `handleViewportChunk` (delivered via
    *  the `onViewportChunk` dep below). */
@@ -1405,7 +1405,7 @@ export class CGrid<TRow = any> {
    *  `initialColumnStateSnapshot` + `getColumnState` + `applyColumnState`
    *  + `resetColumnState` + `applyColumnStateInternal` +
    *  `applyRoleStateFromColumnState`. Late-initialised in the ctor so
-   *  the deps closures resolve after CGrid's own fields come online. */
+   *  the deps closures resolve after VelocityGrid's own fields come online. */
   private colStateManager!: ColumnStateManager<TRow>;
   /** Last bounds we emitted `gridSizeChanged` for. `null` until the initial
    *  setBounds lands — that first call records but does not emit, so external
@@ -1423,18 +1423,18 @@ export class CGrid<TRow = any> {
    *  `GroupModel` + the canonical `GroupingState` primitive the three
    *  grouping UIs subscribe to + the synthesized `autoGroupColumns` +
    *  the `groupRowStripCtx` the body painter reads. Every imperative
-   *  grouping API method on CGrid delegates here; the state-change
+   *  grouping API method on VelocityGrid delegates here; the state-change
    *  side effects (public event emission, worker round-trip, panel host
    *  fan-out, expansion mirror reset, auto-hide-on-group / restore-on-
    *  ungroup) all live inside the coordinator. Late-initialised in the
-   *  constructor so the deps closures resolve after CGrid's own fields
+   *  constructor so the deps closures resolve after VelocityGrid's own fields
    *  come online. */
   private grouping!: GroupingCoordinator<TRow>;
   /** Cycle 19 / Task 5a — pivot subsystem. Owns the canonical PivotState
    *  (pivotMode + pivotColumns + valueColumns) + the pivot-active flag
    *  + the saved primary column tree + the `cellSpecById` reverse index
    *  the body cell reader uses to address `chunk.pivotValues`. Every
-   *  imperative pivot API method on CGrid delegates here; the state-
+   *  imperative pivot API method on VelocityGrid delegates here; the state-
    *  change side effects (public event emission, worker round-trip,
    *  panel host fan-out, column tree swap) all live inside the engine.
    *  Late-initialised in the constructor after `workerCoord` +
@@ -1483,8 +1483,8 @@ export class CGrid<TRow = any> {
    *  `groupSelectsChildren` is off. */
   private groupDescendantsByKey: Map<string, readonly string[]> = new Map();
 
-  constructor(container: HTMLElement, private options: CGridOptions<TRow>) {
-    if (!options.getRowId) throw new Error('[cgrid] options.getRowId is required');
+  constructor(container: HTMLElement, private options: VelocityGridOptions<TRow>) {
+    if (!options.getRowId) throw new Error('[velocity-grid] options.getRowId is required');
 
     // No-GPU / software-raster profile — resolve `qualityMode` + auto
     // paintCache policy before any layer construction. Explicit
@@ -1503,20 +1503,20 @@ export class CGrid<TRow = any> {
     }
 
     // 1. DOM scaffold — scroller (with sized sizer child) provides native scrollbars;
-    // the canvas (created later by CGridCanvas) overlays the scroller's content area
+    // the canvas (created later by VelocityGridCanvas) overlays the scroller's content area
     // but is sized to scroller.clientWidth/Height so the scrollbar strips remain
     // interactive.
     this.root = document.createElement('div');
     this.root.style.cssText = 'position:relative; width:100%; height:100%; overflow:hidden;';
-    // Cycle 22 / Task 2 — `cg-grid` is the stable marker class for the
+    // Cycle 22 / Task 2 — `vg-grid` is the stable marker class for the
     // grid root. Density modes, print mode, and any future host-level
     // chrome layer their own class alongside it; the theme class then
     // contributes the token bundle.
-    this.root.classList.add('cg-grid');
+    this.root.classList.add('vg-grid');
     // Theming Task 6/7 — `applyThemeOption` MUST run before the first
     // `CssReader.read()` below (step 2) so the initial `ResolvedTheme`
-    // picks up any object-theme's injected `--cg-*` vars. `container` (not
-    // `this.root`) is the probe host for `data-cg-theme-mode` lookup: at
+    // picks up any object-theme's injected `--vg-*` vars. `container` (not
+    // `this.root`) is the probe host for `data-vg-theme-mode` lookup: at
     // this point `this.root` hasn't been appended into `container` yet
     // (that happens further down), so `this.root.closest(...)` couldn't see
     // an ancestor attribute — `container` is already wherever the app put
@@ -1528,11 +1528,11 @@ export class CGrid<TRow = any> {
     // theme change without touching this registration.
     this.disposables.add(() => this.teardownThemeModeListener());
     // Cycle 22 / Task 2 — density class on the root. Applied here so
-    // `--cg-row-height` / `--cg-header-height` / `--cg-cell-padding-x`
+    // `--vg-row-height` / `--vg-header-height` / `--vg-cell-padding-x`
     // resolve to the density-bundle's overrides before the first
     // `cssReader.read()`.
     if (options.density) {
-      this.root.classList.add(`cg-density-${options.density}`);
+      this.root.classList.add(`vg-density-${options.density}`);
     }
     // Cycle 22 / Task 5 — optional shadow-root encapsulation. The grid
     // attaches an open shadow root to `container` and mounts every
@@ -1545,7 +1545,7 @@ export class CGrid<TRow = any> {
     if (options.shadowRoot) {
       this.shadowRoot = container.attachShadow({ mode: 'open' });
       const styleEl = document.createElement('style');
-      styleEl.className = 'cg-shadow-tokens';
+      styleEl.className = 'vg-shadow-tokens';
       // Vite's `?inline` resolves to the compiled CSS at build time
       // (production); the test runtime returns an empty string, which
       // is fine — the test environment doesn't exercise visual paint,
@@ -1556,14 +1556,14 @@ export class CGrid<TRow = any> {
     }
 
     this.scroller = document.createElement('div');
-    this.scroller.className = 'cg-scroller cg-scrollbar';
+    this.scroller.className = 'vg-scroller vg-scrollbar';
     // overflow:scroll (not auto) so scrollbar gutters are reserved unconditionally —
     // macOS overlay scrollbars otherwise disappear when idle and the user can't
     // see they're scrollable. The webkit-scrollbar styles in tokens.css then
     // theme the persistent track + thumb.
     this.scroller.style.cssText = 'position:absolute; inset:0; overflow:auto;';
     this.sizer = document.createElement('div');
-    this.sizer.className = 'cg-sizer';
+    this.sizer.className = 'vg-sizer';
     this.sizer.style.cssText = 'width:1px; height:1px; pointer-events:none;';
     this.scroller.appendChild(this.sizer);
 
@@ -1787,7 +1787,7 @@ export class CGrid<TRow = any> {
     this.rebuildSubgridStack();
 
     // 5. Initial layout + viewport. The first measurement happens inside the
-    // CGridCanvas constructor below (via the setBounds callback), but
+    // VelocityGridCanvas constructor below (via the setBounds callback), but
     // recomputeViewport needs an initial layout so it doesn't crash on undefined.
     this.columnLayout = resolveColumnWidths(this.columnOrder, this.scroller.clientWidth || 800);
     // Cycle 19 / Task 2 — viewport subsystem. Constructed BEFORE the first
@@ -1967,7 +1967,7 @@ export class CGrid<TRow = any> {
       // `custom` display types. Returns `null` for singleColumn /
       // multipleColumns / no-grouping so the byRows painter skips the
       // strip code path with zero overhead. The renderer key defaults to
-      // `'group'`; apps override via `CGridOptions.groupRowRenderer` for
+      // `'group'`; apps override via `VelocityGridOptions.groupRowRenderer` for
       // `'custom'` mode.
       getGroupRowStrip: () => this.grouping.getGroupRowStripCtx(),
       // Cycle 15 / Task 12 — per-row kind probe. Lets the byRows
@@ -1995,7 +1995,7 @@ export class CGrid<TRow = any> {
       // painter restricts use to BRANCH pivot groups, so non-pivot
       // group headers (Cycle 4) never call into this lookup.
       getColumnGroupOpen: (groupId) => this.columnGroupState.isOpen(groupId),
-      // Task 5 — scroll self-blit source. `CGridCanvas` construction can
+      // Task 5 — scroll self-blit source. `VelocityGridCanvas` construction can
       // paint synchronously inside `resize()` BEFORE `this.cgridCanvas` is
       // assigned — optional-chain so that first paint skips the blit path.
       getCanvasElement: () => this.cgridCanvas?.canvas,
@@ -2035,7 +2035,7 @@ export class CGrid<TRow = any> {
     // resize() — BEFORE this.cgridCanvas is assigned — so the renderer must
     // read canvas dimensions from `canvasBounds` (which setBounds sets first),
     // not from this.cgridCanvas.bounds.
-    this.cgridCanvas = new CGridCanvas(this.root, {
+    this.cgridCanvas = new VelocityGridCanvas(this.root, {
       setBounds: (b) => {
         // Cycle 22 / Task 3 — layoutEpoch contract: canvas WIDTH change.
         // Strips span the layer's full backing-store width, so a width
@@ -2129,7 +2129,7 @@ export class CGrid<TRow = any> {
         // (below), reused by the present step further down. Read fresh
         // here (not via `this.cgridCanvas.devicePixelRatio`) because this
         // whole `paint` closure can run SYNCHRONOUSLY from inside
-        // `CGridCanvas`'s own constructor (its first `resize()` call) —
+        // `VelocityGridCanvas`'s own constructor (its first `resize()` call) —
         // `this.cgridCanvas` isn't assigned yet at that point (same
         // gotcha `getDevicePixelRatio`'s doc above already calls out for
         // the legacy scroll-blit wiring).
@@ -2528,12 +2528,12 @@ export class CGrid<TRow = any> {
       },
     });
     // Stack editorContainer above the canvas (canvas was appended to root
-    // by CGridCanvas, so editor goes on top).
+    // by VelocityGridCanvas, so editor goes on top).
     this.root.appendChild(this.editorContainer);
 
     // Theming — the constructor's first `cssReader.read()` can run before
     // an app-injected stylesheet (Vite dev `<link rel="stylesheet">`, lazy
-    // CSS chunk, etc.) has applied its `--cg-*` bundle. DOM chrome reads
+    // CSS chunk, etc.) has applied its `--vg-*` bundle. DOM chrome reads
     // live CSS vars on every frame, but canvas paint uses the cached
     // `ResolvedTheme` snapshot — re-read once styles land.
     this.scheduleThemeCssResync();
@@ -2543,7 +2543,7 @@ export class CGrid<TRow = any> {
     // configured afterwards via the imperative API / tool panels), the
     // pivot-active flag, the saved primary tree, and the cellSpecById
     // reverse index. Every pivot UI mutates the engine via delegating
-    // methods on CGrid; the engine owns the worker round-trip + panel
+    // methods on VelocityGrid; the engine owns the worker round-trip + panel
     // fan-out + column-tree swap. Constructed BEFORE the side bar +
     // status bar + pivot panel because their tool panels read
     // `pivotEngine.isPivotMode()` synchronously during init (e.g. the
@@ -2593,7 +2593,7 @@ export class CGrid<TRow = any> {
         setReservedSpace: (side, width) => this.reserveSideBarSpace(side, width),
         // Cycle 11 / Task 7 — fan side-bar lifecycle events into the
         // grid's typed event emitter. The host's payload shape is the
-        // same as the CGridEvent union members for `toolPanelVisibleChanged`
+        // same as the VelocityGridEvent union members for `toolPanelVisibleChanged`
         // and `sideBarVisibleChanged`, so this is a straight pass-through.
         emit: (event) => this.events.emit(event),
       };
@@ -2775,7 +2775,7 @@ export class CGrid<TRow = any> {
       },
       // Damage-region rendering (Task 4) — thin wrapper over the private
       // `repaintRows` helper so `OnHover` (hover) and future row-scoped
-      // features reach the ledger through `CGridLike` instead of a
+      // features reach the ledger through `VelocityGridLike` instead of a
       // blanket `canvas.requestRepaint()`.
       repaintRows: (rows) => this.repaintRows(rows),
       // Cycle 23 / Task 4 — cell keyboard events. The CellKeyboardEvents
@@ -3105,7 +3105,7 @@ export class CGrid<TRow = any> {
     const worker = new Worker(workerUrl as unknown as URL, { type: 'module' });
     // Cycle 19 / Task 3 — coordinator owns the WorkerClient + the viewport
     // dispatch. The handler closures route every worker push back into
-    // CGrid's existing state-mutation methods so behaviour is unchanged.
+    // VelocityGrid's existing state-mutation methods so behaviour is unchanged.
     this.workerCoord = new WorkerCoordinator(
       worker as unknown as import('./core/workerCoordinator').WorkerLike,
       {
@@ -3185,7 +3185,7 @@ export class CGrid<TRow = any> {
         // the cached row data and reply with the (possibly re-ordered)
         // array.
         onPostSortRowsCandidates: (rowIds, callId) => this.runPostSortRowsCandidates(rowIds, callId),
-        onError: (msg) => console.error('[cgrid] worker error:', msg),
+        onError: (msg) => console.error('[velocity-grid] worker error:', msg),
         onViewportChunk: (opts, chunk, stickyAncestors) =>
           this.handleViewportChunk(opts, chunk, stickyAncestors),
         isDestroyed: () => this.destroyed,
@@ -3201,7 +3201,7 @@ export class CGrid<TRow = any> {
     ) {
       warnedGroupDefaultExpandedMigration = true;
       console.warn(
-        `[cgrid] groupDefaultExpanded: ${options.groupDefaultExpanded} — semantics changed to AG-Grid levels-open: `
+        `[velocity-grid] groupDefaultExpanded: ${options.groupDefaultExpanded} — semantics changed to AG-Grid levels-open: `
         + '-1 now expands ALL groups (was: collapse all); 0 now collapses all (was: top level open); '
         + 'N >= 1 opens N levels. Use groupDefaultExpandedKeys: [] for an explicit all-collapsed start.',
       );
@@ -3300,7 +3300,7 @@ export class CGrid<TRow = any> {
         this.workerCoord
           .setPivotMaxGeneratedColumns(this.options.pivotMaxGeneratedColumns)
           .catch((err) => {
-            if (!this.destroyed) console.error('[cgrid] setPivotMaxGeneratedColumns:', err);
+            if (!this.destroyed) console.error('[velocity-grid] setPivotMaxGeneratedColumns:', err);
           });
       }
       // Cycle 18 / Task 8c — flip the worker's PivotPass to the
@@ -3313,7 +3313,7 @@ export class CGrid<TRow = any> {
       this.workerCoord
         .setStrictPivotColumnOrder(this.options.enableStrictPivotColumnOrder === true)
         .catch((err) => {
-          if (!this.destroyed) console.error('[cgrid] setStrictPivotColumnOrder:', err);
+          if (!this.destroyed) console.error('[velocity-grid] setStrictPivotColumnOrder:', err);
         });
       // Cycle 15 / Task 8 — when `groupSelectsChildren: true` is set
       // at construction, register the SelectionModel's membership
@@ -3394,7 +3394,7 @@ export class CGrid<TRow = any> {
       // emits can't clobber the saved snapshot.
       if (options.persistState) {
         if (!options.gridId) {
-          console.warn("[cgrid] persistState requires a 'gridId' — persistence disabled");
+          console.warn("[velocity-grid] persistState requires a 'gridId' — persistence disabled");
         } else {
           const { StatePersistenceController } = await import('./core/statePersistence');
           const persistOpts = options.persistState === true ? {} : options.persistState;
@@ -3412,7 +3412,7 @@ export class CGrid<TRow = any> {
           await this.statePersistence.restore();
         }
       }
-    }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
+    }).catch((err) => { if (!this.destroyed) console.error('[velocity-grid]', err); });
 
     // 10. Native scroll listener — Cycle 19 / Task 2: now owned by
     // `ViewportManager` (registered in its constructor at step 5).
@@ -3601,7 +3601,7 @@ export class CGrid<TRow = any> {
 
   setServerSideDatasource(ds: AnyServerSideDatasource<TRow> | null): void {
     if (!this.ssrm) {
-      console.warn('[cgrid] setServerSideDatasource requires rowModelType: \"serverSide\"');
+      console.warn('[velocity-grid] setServerSideDatasource requires rowModelType: \"serverSide\"');
       return;
     }
     this.installServerSideDatasource(ds);
@@ -3768,7 +3768,7 @@ export class CGrid<TRow = any> {
 
   applyServerSideTransaction(tx: ServerSideTransaction<TRow>): void {
     if (!this.ssrm) {
-      console.warn('[cgrid] applyServerSideTransaction requires rowModelType: \"serverSide\"');
+      console.warn('[velocity-grid] applyServerSideTransaction requires rowModelType: \"serverSide\"');
       return;
     }
     if (
@@ -3804,7 +3804,7 @@ export class CGrid<TRow = any> {
 
   setRowData(rows: TRow[]): void {
     if (this.ssrm) {
-      console.warn('[cgrid] setRowData is ignored in serverSide row model — use the datasource');
+      console.warn('[velocity-grid] setRowData is ignored in serverSide row model — use the datasource');
       return;
     }
     const heightsByRowId = this.resolveHeightsForRows(rows);
@@ -3848,7 +3848,7 @@ export class CGrid<TRow = any> {
       // the alwaysPass feature being opt-in (it's a no-op when no
       // predicate is set).
       this.recomputeAlwaysPass();
-    }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
+    }).catch((err) => { if (!this.destroyed) console.error('[velocity-grid]', err); });
   }
 
   applyTransaction(t: Tx<TRow>): TransactionResult {
@@ -3862,7 +3862,7 @@ export class CGrid<TRow = any> {
       async: false,
       heightsByRowId,
     }).then(() => this.recomputeAlwaysPass())
-      .catch((err) => { if (!this.destroyed) console.error('[cgrid] applyTransaction:', err); });
+      .catch((err) => { if (!this.destroyed) console.error('[velocity-grid] applyTransaction:', err); });
     return { add: [], update: [], remove: [] };
   }
 
@@ -3906,7 +3906,7 @@ export class CGrid<TRow = any> {
       async: true,
       heightsByRowId,
     }).then(() => this.recomputeAlwaysPass())
-      .catch((err) => { if (!this.destroyed) console.error('[cgrid] applyTransaction:', err); });
+      .catch((err) => { if (!this.destroyed) console.error('[velocity-grid] applyTransaction:', err); });
   }
 
   /** Merge deferred async txs (last-write-wins per row id) and dispatch. */
@@ -4059,7 +4059,7 @@ export class CGrid<TRow = any> {
       // Cycle 14 / Task 6 — alwaysPass evaluation is part of the filter
       // pipeline; tagging as `filterChanged` so listeners can correlate.
       this.requestViewport('filterChanged');
-    }).catch((err) => { if (!this.destroyed) console.error('[cgrid] alwaysPass:', err); });
+    }).catch((err) => { if (!this.destroyed) console.error('[velocity-grid] alwaysPass:', err); });
   }
 
   /** Cycle 7 / Task 8 — main-side reply to the worker's
@@ -4085,7 +4085,7 @@ export class CGrid<TRow = any> {
       } catch { /* predicate threw — drop the row */ }
     }
     this.workerCoord.externalFilterResult(callId, surviving).catch((err) => {
-      if (!this.destroyed) console.error('[cgrid] externalFilterResult:', err);
+      if (!this.destroyed) console.error('[velocity-grid] externalFilterResult:', err);
     });
   }
 
@@ -4117,11 +4117,11 @@ export class CGrid<TRow = any> {
         reordered = rowIds;
       }
     } catch (err) {
-      if (!this.destroyed) console.error('[cgrid] postSortRows hook threw:', err);
+      if (!this.destroyed) console.error('[velocity-grid] postSortRows hook threw:', err);
       reordered = rowIds;
     }
     this.workerCoord.postSortRowsResult(callId, reordered).catch((err) => {
-      if (!this.destroyed) console.error('[cgrid] postSortRowsResult:', err);
+      if (!this.destroyed) console.error('[velocity-grid] postSortRowsResult:', err);
     });
   }
 
@@ -4157,7 +4157,7 @@ export class CGrid<TRow = any> {
       this.events.emit({ type: 'filterChanged', filterModel: combined, source });
       // Cycle 14 / Task 6 — filter pipeline change → totals recompute.
       this.requestViewport('filterChanged');
-    }).catch((err) => { if (!this.destroyed) console.error('[cgrid] onFilterChanged:', err); });
+    }).catch((err) => { if (!this.destroyed) console.error('[velocity-grid] onFilterChanged:', err); });
   }
 
   /** Run the user-provided `getRowHeight` callback over `rows` and collect
@@ -4189,7 +4189,7 @@ export class CGrid<TRow = any> {
   }
 
   /** Cycle 8 / Task 4 — read the active sort model. Mirrors the api
-   *  object's `getSortModel` so callers that hold a CGrid reference (e.g.
+   *  object's `getSortModel` so callers that hold a VelocityGrid reference (e.g.
    *  app-side helpers driving a toolbar button) don't need to stash the
    *  api separately. Returns a copy so callers can mutate freely. */
   getSortModel(): SortModel {
@@ -4208,7 +4208,7 @@ export class CGrid<TRow = any> {
       const col = this.columnDefsMap.get(entry.colId);
       if (col && typeof col.comparator === 'function') {
         throw new Error(
-          `[cgrid] column '${entry.colId}' has an inline-closure comparator; ` +
+          `[velocity-grid] column '${entry.colId}' has an inline-closure comparator; ` +
           `sort runs worker-side and closures don't cross postMessage. ` +
           `Use api.registerComparator(name, fn) and set comparator: name on the col def.`,
         );
@@ -4241,11 +4241,11 @@ export class CGrid<TRow = any> {
       this.events.emit({ type: 'sortChanged', sortModel: s });
       this.cgridCanvas.requestRepaint();
       this.requestViewport();
-    }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
+    }).catch((err) => { if (!this.destroyed) console.error('[velocity-grid]', err); });
   }
 
   /** Cycle the sort state for a column. The cycle order is taken from
-   *  `CGridOptions.sortingOrder` (default `['asc', 'desc', null]`):
+   *  `VelocityGridOptions.sortingOrder` (default `['asc', 'desc', null]`):
    *  setting `['asc', 'desc']` skips the unsorted stage so the column is
    *  always sorted.
    *
@@ -4413,7 +4413,7 @@ export class CGrid<TRow = any> {
       if (updates.length === 0) return;
       this.applyTransaction({ update: updates });
     }).catch((err) => {
-      if (!this.destroyed) console.error('[cgrid] commitFill:', err);
+      if (!this.destroyed) console.error('[velocity-grid] commitFill:', err);
     });
   }
 
@@ -4487,13 +4487,13 @@ export class CGrid<TRow = any> {
       });
       // Cycle 14 / Task 6 — filter set replaced → totals recompute.
       this.requestViewport('filterChanged');
-    }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
+    }).catch((err) => { if (!this.destroyed) console.error('[velocity-grid]', err); });
   }
 
   /** Cycle 7 / Task 1 — return the v2 filter model entry for `colId`, or
    *  `null` when the column is unfiltered. Backs the floating-filter
    *  overlay's `getColumnFilterModel` dep. Tasks 3-6 + 9 surface this on
-   *  `CGridApi`. */
+   *  `VelocityGridApi`. */
   getColumnFilterModel(colId: string): CFilterModelEntry | null {
     return this.columnFilterModels.get(colId) ?? null;
   }
@@ -4564,11 +4564,11 @@ export class CGrid<TRow = any> {
       });
       // Cycle 14 / Task 6 — per-column filter changed → totals recompute.
       this.requestViewport('filterChanged');
-    }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
+    }).catch((err) => { if (!this.destroyed) console.error('[velocity-grid]', err); });
   }
 
   /** Cycle 7 / Task 9 — `true` when any filter source is active:
-   *  per-column, quick, external, or alwaysPass. Backs `CGridApi.isAnyFilterPresent`. */
+   *  per-column, quick, external, or alwaysPass. Backs `VelocityGridApi.isAnyFilterPresent`. */
   isAnyFilterPresent(): boolean {
     if (this.columnFilterModels.size > 0) return true;
     if ((this.options.quickFilterText ?? '') !== '') return true;
@@ -4579,7 +4579,7 @@ export class CGrid<TRow = any> {
 
   /** Cycle 7 / Task 9 — `true` when at least one per-column filter
    *  entry is set. Independent of quick / external state. Backs
-   *  `CGridApi.isColumnFilterPresent`. */
+   *  `VelocityGridApi.isColumnFilterPresent`. */
   isColumnFilterPresent(): boolean {
     return this.columnFilterModels.size > 0;
   }
@@ -4641,7 +4641,7 @@ export class CGrid<TRow = any> {
     if (this.options.quickFilterMatcher !== undefined && !this.warnedQuickFilterMatcher) {
       this.warnedQuickFilterMatcher = true;
       console.warn(
-        '[cgrid] quickFilterMatcher is shipped in Cycle 7 as API surface only; ' +
+        '[velocity-grid] quickFilterMatcher is shipped in Cycle 7 as API surface only; ' +
         'the worker uses the built-in case-insensitive matcher until Cycle 24 ' +
         'ships the worker-module loader.',
       );
@@ -4705,7 +4705,7 @@ export class CGrid<TRow = any> {
         // Cycle 14 / Task 6 — quick-filter changed → totals recompute.
         this.requestViewport('filterChanged');
       })
-      .catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
+      .catch((err) => { if (!this.destroyed) console.error('[velocity-grid]', err); });
   }
 
   /** One-shot warning latch for `quickFilterMatcher`. Cycle 7 / Task 7. */
@@ -4790,7 +4790,7 @@ export class CGrid<TRow = any> {
       this.filterPopupHost.open(colId, { cellBounds: anchorCell, viewportBounds }, popup);
       this.events.emit({ type: 'filterOpened', colId });
     }).catch((err) => {
-      if (!this.destroyed) console.error('[cgrid] showColumnFilter:', err);
+      if (!this.destroyed) console.error('[velocity-grid] showColumnFilter:', err);
     });
   }
 
@@ -4908,7 +4908,7 @@ export class CGrid<TRow = any> {
         caseSensitive: params.caseSensitive,
       });
     }).catch((err) => {
-      if (!this.destroyed) console.error('[cgrid] getDistinctValues:', err);
+      if (!this.destroyed) console.error('[velocity-grid] getDistinctValues:', err);
       return null;
     });
   }
@@ -4928,7 +4928,7 @@ export class CGrid<TRow = any> {
    *  first-seen row order (worker DistinctValuesPass; nulls dropped).
    *  `limit` truncates the reply; the worker cache keeps the full set so
    *  different limits share one derivation. Public surface for
-   *  @cgrid/calc's typed wrapper + apps. */
+   *  @wellsfargo-starui/velocity-grid-calc's typed wrapper + apps. */
   getDistinctValues(colId: string, limit?: number): Promise<string[]> {
     return this.workerCoord.getDistinctValues(colId, limit);
   }
@@ -5106,7 +5106,7 @@ export class CGrid<TRow = any> {
   /** Cycle 21e / Task 10 — iterate every row in the main-thread
    *  `rowDataById` mirror (setRowData + all transaction paths keep it in
    *  sync since Cycle 7 / Task 8). Insertion order. Used by
-   *  @cgrid/rules' wireIntoKernel to seed match counts. */
+   *  @wellsfargo-starui/velocity-grid-rules' wireIntoKernel to seed match counts. */
   forEachRow(fn: (rowId: string, row: TRow) => void): void {
     for (const [rowId, row] of this.rowDataById) fn(rowId, row);
   }
@@ -5299,7 +5299,7 @@ export class CGrid<TRow = any> {
   }
 
   /** Cycle 19 / Task 5a — PivotEngine deps bundle. Threaded into the
-   *  engine at construction so every reach into CGrid state is
+   *  engine at construction so every reach into VelocityGrid state is
    *  explicit + auditable. The panel / worker fields are read at
    *  call-time closures — the engine is constructed BEFORE both
    *  come online, but mutation-driven callbacks only fire after the
@@ -5353,7 +5353,7 @@ export class CGrid<TRow = any> {
 
   /** Cycle 19 / Task 5-Grouping — GroupingCoordinator deps bundle.
    *  Threaded into the coordinator at construction so every reach into
-   *  CGrid state is explicit + auditable. The panel field is read at
+   *  VelocityGrid state is explicit + auditable. The panel field is read at
    *  call-time closure — the coordinator is constructed BEFORE the row
    *  group panel comes online, but state-change callbacks only fire
    *  after the wiring lands. */
@@ -5595,7 +5595,7 @@ export class CGrid<TRow = any> {
         this.recomputeViewport();
         this.cgridCanvas.requestRepaint();
         this.requestViewport();
-      }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
+      }).catch((err) => { if (!this.destroyed) console.error('[velocity-grid]', err); });
       return;
     }
     this.workerCoord
@@ -5610,7 +5610,7 @@ export class CGrid<TRow = any> {
         this.cgridCanvas.requestRepaint();
         this.requestViewport();
       })
-      .catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
+      .catch((err) => { if (!this.destroyed) console.error('[velocity-grid]', err); });
   }
 
   /** Apply stashed `expandedRouteIds` from `setState` once grouping is
@@ -5656,7 +5656,7 @@ export class CGrid<TRow = any> {
         this.cgridCanvas?.requestRepaint();
       })
       .catch((err) => {
-        if (!this.destroyed) console.error('[cgrid] refreshGroupDescendantsCache:', err);
+        if (!this.destroyed) console.error('[velocity-grid] refreshGroupDescendantsCache:', err);
       });
   }
 
@@ -5710,7 +5710,7 @@ export class CGrid<TRow = any> {
       this.knownGroupKeys = groupKeys;
       this.updateGroupDescendantsCache(groupKeys, enabled ? groupDescendants : undefined);
     } catch (err) {
-      if (!this.destroyed) console.error('[cgrid] setEmitGroupDescendants:', err);
+      if (!this.destroyed) console.error('[velocity-grid] setEmitGroupDescendants:', err);
       return;
     }
     if (enabled) {
@@ -5815,7 +5815,7 @@ export class CGrid<TRow = any> {
   /** Cycle 18 / Task 7 — names of every aggregation the "Value:
    *  Aggregate `<col>`" submenu offers. The built-in subset
    *  (`sum / avg / min / max / count`) plus any names registered via
-   *  `CGridOptions.aggFuncs` / `setGridOption('aggFuncs', …)`. `first` /
+   *  `VelocityGridOptions.aggFuncs` / `setGridOption('aggFuncs', …)`. `first` /
    *  `last` are intentionally excluded — AG-Grid's value submenu omits
    *  them too (not aggregations, just array access). Read at menu-open
    *  time so a runtime `aggFuncs` swap takes effect on the next
@@ -5832,7 +5832,7 @@ export class CGrid<TRow = any> {
   }
 
   /** Cycle 15.5 / Task 2 (gap-fill) — expose the row-group-panel
-   *  hit-test on the public CGridApi so external drag sources (columns
+   *  hit-test on the public VelocityGridApi so external drag sources (columns
    *  tool panel column-list row drag) can route through the panel. */
   isPointInRowGroupPanel(clientX: number, clientY: number): boolean {
     return this.rowGroupPanel?.isPointInPanel(clientX, clientY) === true;
@@ -5875,7 +5875,7 @@ export class CGrid<TRow = any> {
 
   /** Cross-section pill drag routing — resolve the panel role at a
    *  viewport-coord point. Walks `elementFromPoint` upward for the
-   *  first `data-cg-pill-role` marker; returns `null` outside any
+   *  first `data-vg-pill-role` marker; returns `null` outside any
    *  panel. See `core/panelDragMove.ts`. */
   resolveDragTargetRole(clientX: number, clientY: number): PillPanelRole | null {
     if (this.destroyed) return null;
@@ -5969,7 +5969,7 @@ export class CGrid<TRow = any> {
     }
     if (!this.colDropInsertionLine) {
       const line = document.createElement('div');
-      line.className = 'cg-column-drag-insertion-line';
+      line.className = 'vg-column-drag-insertion-line';
       line.style.cssText = [
         'position:absolute',
         'pointer-events:none',
@@ -5977,7 +5977,7 @@ export class CGrid<TRow = any> {
         'left:0',
         'width:2px',
         'height:100%',
-        'background:var(--cg-selected-cell-color, #3b82f6)',
+        'background:var(--vg-selected-cell-color, #3b82f6)',
         'z-index:6',
         'will-change:transform',
       ].join(';');
@@ -6233,7 +6233,7 @@ export class CGrid<TRow = any> {
       }
       if (updates.length > 0) this.applyTransaction({ update: updates });
     }).catch((err) => {
-      if (!this.destroyed) console.error('[cgrid] clearSelectedCells:', err);
+      if (!this.destroyed) console.error('[velocity-grid] clearSelectedCells:', err);
     });
   }
 
@@ -6289,7 +6289,7 @@ export class CGrid<TRow = any> {
       const flat = batches.flat();
       if (flat.length > 0) this.applyTransaction({ update: flat });
     }).catch((err) => {
-      if (!this.destroyed) console.error('[cgrid] fillDown:', err);
+      if (!this.destroyed) console.error('[velocity-grid] fillDown:', err);
     });
   }
 
@@ -6326,7 +6326,7 @@ export class CGrid<TRow = any> {
     this.workerCoord.getRowIndicesForIds(ids).then((indices) => {
       if (this.destroyed) return;
       this.selection.setSelectedRowIds(ids, Array.from(indices));
-    }).catch((err) => { if (!this.destroyed) console.error('[cgrid] setSelectedRowIds:', err); });
+    }).catch((err) => { if (!this.destroyed) console.error('[velocity-grid] setSelectedRowIds:', err); });
   }
 
   getFocusedCell(): { rowId: string; colId: string } | null {
@@ -6355,7 +6355,7 @@ export class CGrid<TRow = any> {
       if (resolved >= 0) this.ensureRowIndexVisible(resolved);
       this.ensureColIdVisible(colId);
       this.selection.setFocusByRowId(rowId, colId, resolved);
-    }).catch((err) => { if (!this.destroyed) console.error('[cgrid] setFocusedCell:', err); });
+    }).catch((err) => { if (!this.destroyed) console.error('[velocity-grid] setFocusedCell:', err); });
   }
 
   /** Snapshot of the currently-selected cell ranges. Cycle 9 / Task 6. */
@@ -6476,7 +6476,7 @@ export class CGrid<TRow = any> {
   private serializeRangesViaCellAt(
     ranges: SelectionRange[],
     delimiter: string,
-    transform: CGridOptions<TRow>['processCellForClipboard'],
+    transform: VelocityGridOptions<TRow>['processCellForClipboard'],
   ): string {
     const rows: Array<Record<string, unknown> | undefined> = [];
     const colIds = new Set<string>();
@@ -6766,7 +6766,7 @@ export class CGrid<TRow = any> {
   private async serializeRangesMainSide(
     ranges: SelectionRange[],
     delimiter: string,
-    transform: NonNullable<CGridOptions<TRow>['processCellForClipboard']>,
+    transform: NonNullable<VelocityGridOptions<TRow>['processCellForClipboard']>,
   ): Promise<string> {
     // Collect every visible row index touched by any range; batch-fetch
     // the rows in one Promise.all to keep the worker round-trips parallel.
@@ -7003,7 +7003,7 @@ export class CGrid<TRow = any> {
   private warnClipboardSuppressed(method: string): void {
     if (this.clipboardSuppressedWarned.has(method)) return;
     this.clipboardSuppressedWarned.add(method);
-    console.warn(`[cgrid] ${method} suppressed by suppressClipboardApi`);
+    console.warn(`[velocity-grid] ${method} suppressed by suppressClipboardApi`);
   }
 
   /** Cycle 9 / Task 7 — fan `rangeSelectionChanged` out to listeners and
@@ -7254,7 +7254,7 @@ export class CGrid<TRow = any> {
    *    refinement that would re-enable patching for value-only programs.
    * Cheap: runs once per damage batch (not per span); the format scan is
    * O(visible columns), and all three slots are empty for grids that
-   * never wire @cgrid/format / @cgrid/calc / @cgrid/rules.
+   * never wire @wellsfargo-starui/velocity-grid-format / @wellsfargo-starui/velocity-grid-calc / @wellsfargo-starui/velocity-grid-rules.
    */
   private stripPatchCrossColumnSafe(): boolean {
     const engine = getRuleEngine();
@@ -7606,7 +7606,7 @@ export class CGrid<TRow = any> {
    *  panel is registered but not currently mounted (e.g. user hasn't
    *  opened the tab yet, or just closed it). Built-in IDs
    *  (`agColumnsToolPanel`, `agFiltersToolPanel`) and custom IDs from
-   *  `CGridOptions.components` are both reachable through this surface. */
+   *  `VelocityGridOptions.components` are both reachable through this surface. */
   getToolPanelInstance(id: string): ToolPanel | null {
     return this.sideBar?.getInstance(id) ?? null;
   }
@@ -7639,7 +7639,7 @@ export class CGrid<TRow = any> {
    *  no-op when no side bar is configured or `id` is unknown. Closes
    *  any previously-open panel first (one-at-a-time). Built-in ids
    *  (`agColumnsToolPanel`, `agFiltersToolPanel`) and custom ids from
-   *  `CGridOptions.components` both work. */
+   *  `VelocityGridOptions.components` both work. */
   openToolPanel(id: string): void {
     this.sideBar?.openPanel(id);
   }
@@ -7730,7 +7730,7 @@ export class CGrid<TRow = any> {
    *  host's `null` to `undefined` to match the public API surface
    *  (mirrors `getSideBar()`'s undefined-when-absent shape). Built-in
    *  keys (`agTotalRowCountComponent`, …) and custom keys registered
-   *  via `CGridOptions.components` are both reachable here. */
+   *  via `VelocityGridOptions.components` are both reachable here. */
   getStatusPanel<T extends IStatusPanelComp = IStatusPanelComp>(key: string): T | undefined {
     return (this.statusBar?.getInstance(key) as T | null | undefined) ?? undefined;
   }
@@ -7756,7 +7756,7 @@ export class CGrid<TRow = any> {
     // the backing store re-fits to the new clientWidth and the renderer
     // re-lays out columns + repaints in the same call. Skips when the
     // canvas hasn't been constructed yet (mount-time reservation that
-    // lands before CGridCanvas finishes — guarded so a sideBar
+    // lands before VelocityGridCanvas finishes — guarded so a sideBar
     // constructed pre-canvas doesn't crash). Cycle 13 / Task 1 — the
     // current status-bar bottom reservation flows through the same
     // setHostBounds call so a side-bar reflow can't drop the bar inset.
@@ -7901,15 +7901,15 @@ export class CGrid<TRow = any> {
     // Cycle 21i Phase 2 — and end above a bottom status bar, so panel
     // footers (Apply/Reset) stay visible + clickable.
     this.sideBar?.setBottomOffset(bottom);
-    const rgEl = this.root.querySelector('.cg-row-group-panel') as HTMLElement | null;
-    const pvEl = this.root.querySelector('.cg-pivot-panel') as HTMLElement | null;
+    const rgEl = this.root.querySelector('.vg-row-group-panel') as HTMLElement | null;
+    const pvEl = this.root.querySelector('.vg-pivot-panel') as HTMLElement | null;
     if (sharing) {
       // Both panels at the same vertical position; the split modifier
       // class drives their half-width via CSS so they sit side-by-side.
       if (this.pivotPanel) this.setPivotPanelTop(stripTop);
       if (this.rowGroupPanel) this.setRowGroupPanelTop(stripTop);
-      if (rgEl) rgEl.classList.add('cg-row-group-panel--split-left');
-      if (pvEl) pvEl.classList.add('cg-pivot-panel--split-right');
+      if (rgEl) rgEl.classList.add('vg-row-group-panel--split-left');
+      if (pvEl) pvEl.classList.add('vg-pivot-panel--split-right');
     } else {
       // Stacked: pivot panel just below the top status bar; row group
       // panel beneath the pivot panel.
@@ -7917,8 +7917,8 @@ export class CGrid<TRow = any> {
       if (this.rowGroupPanel) {
         this.setRowGroupPanelTop(stripTop + this.pivotPanelTopInset);
       }
-      if (rgEl) rgEl.classList.remove('cg-row-group-panel--split-left');
-      if (pvEl) pvEl.classList.remove('cg-pivot-panel--split-right');
+      if (rgEl) rgEl.classList.remove('vg-row-group-panel--split-left');
+      if (pvEl) pvEl.classList.remove('vg-pivot-panel--split-right');
     }
   }
 
@@ -7953,7 +7953,7 @@ export class CGrid<TRow = any> {
    *  bar's top inset changes (so the panel stays parked just below
    *  the top status bar) and once at construction. */
   private setRowGroupPanelTop(top: number): void {
-    const el = this.root.querySelector('.cg-row-group-panel') as HTMLElement | null;
+    const el = this.root.querySelector('.vg-row-group-panel') as HTMLElement | null;
     if (el) el.style.top = `${top}px`;
   }
 
@@ -7961,7 +7961,7 @@ export class CGrid<TRow = any> {
    *  Called from `applyVerticalInsets` whenever the status bar's
    *  top inset changes and once at construction. */
   private setPivotPanelTop(top: number): void {
-    const el = this.root.querySelector('.cg-pivot-panel') as HTMLElement | null;
+    const el = this.root.querySelector('.vg-pivot-panel') as HTMLElement | null;
     if (el) el.style.top = `${top}px`;
   }
 
@@ -8013,16 +8013,16 @@ export class CGrid<TRow = any> {
     for (const root of this.columnTree.roots) visit(root);
   }
 
-  /** Cycle 21c / Task 10 — register the @cgrid/format compiler into the
-   *  kernel DI slot. Invoked by wireIntoKernel(grid) in @cgrid/format;
+  /** Cycle 21c / Task 10 — register the @wellsfargo-starui/velocity-grid-format compiler into the
+   *  kernel DI slot. Invoked by wireIntoKernel(grid) in @wellsfargo-starui/velocity-grid-format;
    *  kernel's compileFormatSlots pass (Task 11) calls getFormatCompiler()
    *  to obtain it. Apps that never call this see no behavior change. */
   registerFormatCompiler(fn: FormatCompiler): void {
     slotRegisterFormatCompiler(fn);
   }
 
-  /** Cycle 21e / Task 10 — register the @cgrid/rules engine adapter into
-   *  the kernel DI slot. Invoked by wireIntoKernel(grid) in @cgrid/rules;
+  /** Cycle 21e / Task 10 — register the @wellsfargo-starui/velocity-grid-rules engine adapter into
+   *  the kernel DI slot. Invoked by wireIntoKernel(grid) in @wellsfargo-starui/velocity-grid-rules;
    *  kernel's applyCellProps fold (Task 11) calls getRuleEngine() to
    *  obtain it. Apps that never call this see no behavior change. */
   registerRuleEngine(engine: RuleEngineShape): void {
@@ -8035,8 +8035,8 @@ export class CGrid<TRow = any> {
     this.cgridCanvas?.requestRepaint();
   }
 
-  /** Cycle 21d / Task 9 — register the @cgrid/calc provider into the
-   *  kernel DI slot. Invoked by wireIntoKernel(grid) in @cgrid/calc.
+  /** Cycle 21d / Task 9 — register the @wellsfargo-starui/velocity-grid-calc provider into the
+   *  kernel DI slot. Invoked by wireIntoKernel(grid) in @wellsfargo-starui/velocity-grid-calc.
    *  Registration folds the provider's synthesized calc ColDefs +
    *  override patches into the column tree (rebuild + worker column
    *  reship) and re-folds on every provider-side column mutation.
@@ -8064,7 +8064,7 @@ export class CGrid<TRow = any> {
     this.notifyModuleStateChanged('calc');
     const provider = getCalcProvider();
     this.workerCoord.setCalcProgram((provider?.workerProgram() ?? null) as WorkerCalcProgram | null)
-      .catch((err) => { if (!this.destroyed) console.error('[cgrid] setCalcProgram:', err); });
+      .catch((err) => { if (!this.destroyed) console.error('[velocity-grid] setCalcProgram:', err); });
     this.workerCoord.updateColumns(this.workerColumns())
       .then(({ visibleCount }) => {
         this.rowCount = visibleCount;
@@ -8073,12 +8073,12 @@ export class CGrid<TRow = any> {
         this.events.emit({ type: 'displayedColumnsChanged', source: 'columnDefsChanged' });
         this.requestViewport('columnAggFuncChanged');
       })
-      .catch((err) => { if (!this.destroyed) console.error('[cgrid] calc updateColumns:', err); });
+      .catch((err) => { if (!this.destroyed) console.error('[velocity-grid] calc updateColumns:', err); });
   }
 
   /** Cycle 21e / Task 10 — binary light/dark kind of the active theme.
-   *  Derived from the root's `cg-theme-*` class (`-dark` suffix
-   *  convention), `matchMedia` for `cg-theme-auto`, or the resolved
+   *  Derived from the root's `vg-theme-*` class (`-dark` suffix
+   *  convention), `matchMedia` for `vg-theme-auto`, or the resolved
    *  `theme.bg` luminance for custom themes. */
   getThemeKind(): 'light' | 'dark' {
     return resolveThemeKind(Array.from(this.root.classList), this.theme.bg);
@@ -8121,7 +8121,7 @@ export class CGrid<TRow = any> {
   /** Re-read theme tokens once external stylesheets have applied. The
    *  constructor's initial `cssReader.read()` can capture literal
    *  fallbacks while DOM chrome (row-group panel, filters, status bar)
-   *  already resolves the live `--cg-*` bundle — leaving canvas rows
+   *  already resolves the live `--vg-*` bundle — leaving canvas rows
    *  painted light on a dark theme until the next explicit theme swap. */
   private scheduleThemeCssResync(): void {
     if (typeof requestAnimationFrame !== 'function') return;
@@ -8151,7 +8151,7 @@ export class CGrid<TRow = any> {
   }
 
   /** Cycle 22 / Task 3 — runtime per-token override. Apps tune
-   *  individual `--cg-*` variables without writing CSS; the patch
+   *  individual `--vg-*` variables without writing CSS; the patch
    *  lands as inline styles on the grid root so `getComputedStyle`
    *  resolves them ahead of the theme-class declarations. Pass `''`
    *  for a key to REMOVE the override (the token then falls back to
@@ -8177,7 +8177,7 @@ export class CGrid<TRow = any> {
   /** Cycle 22 / Task 3 — read the currently-set inline overrides. Returns
    *  ONLY the values set through `setThemeParams` — NOT the resolved
    *  tokens (call `getComputedStyle(grid.host)` for those). Theming Task
-   *  6/7 — also excludes any `--cg-*` keys the active `themeObject`
+   *  6/7 — also excludes any `--vg-*` keys the active `themeObject`
    *  injected (`this.themeObjectVars`), even though both share the same
    *  underlying inline-style state, so an object theme's own derived vars
    *  never masquerade as user overrides. */
@@ -8193,13 +8193,13 @@ export class CGrid<TRow = any> {
 
   /** Theming Task 6/7 — inject a `CgTheme`'s compiled `mode` output onto
    *  `this.root`: the structural base class (`theme.baseClass[mode]`), its
-   *  `--cg-*` vars (via the LOW-LEVEL `themeParamsSet` — NOT
+   *  `--vg-*` vars (via the LOW-LEVEL `themeParamsSet` — NOT
    *  `this.setThemeParams`, which also dirties the user `themeParams`
    *  GridState slice; object-derived vars must never persist as a user
    *  override), and any part-contributed CSS as a scoped `<style>`. Records
    *  `this.themeObject` + `this.themeObjectVars` for later blanking. Callers
    *  are responsible for having already removed any PRIOR theme's class +
-   *  vars (`clearThemeObjectInjection` + the `cg-theme-*` strip in
+   *  vars (`clearThemeObjectInjection` + the `vg-theme-*` strip in
    *  `setTheme`). */
   private injectThemeObject(theme: CgTheme, mode: ThemeMode): void {
     this.root.classList.add(theme.baseClass[mode]);
@@ -8208,7 +8208,7 @@ export class CGrid<TRow = any> {
     this.themeObjectVars = new Set(Object.keys(compiled.vars));
     if (compiled.css) {
       const styleEl = document.createElement('style');
-      styleEl.className = 'cg-theme-object-css';
+      styleEl.className = 'vg-theme-object-css';
       styleEl.textContent = compiled.css;
       this.root.appendChild(styleEl);
       this.themeObjectStyleEl = styleEl;
@@ -8216,7 +8216,7 @@ export class CGrid<TRow = any> {
     this.themeObject = theme;
   }
 
-  /** Theming Task 6/7 — blank every `--cg-*` var the active `themeObject`
+  /** Theming Task 6/7 — blank every `--vg-*` var the active `themeObject`
    *  injected (pass `''` through the low-level `setThemeParams`, which
    *  REMOVES the inline override — see `theming/themeParams.ts`) and
    *  remove its part-CSS `<style>` element, if any. Does NOT touch
@@ -8237,7 +8237,7 @@ export class CGrid<TRow = any> {
   }
 
   /** Theming Task 6/7 — apply `theme` (construction or after `setTheme` has
-   *  already stripped any prior `cg-theme-*` class) to `this.root`:
+   *  already stripped any prior `vg-theme-*` class) to `this.root`:
    *  `string | undefined` adds the class verbatim (100% backward-compatible
    *  legacy path, unchanged since before this feature); a `CgTheme` picks
    *  its mode (`pickThemeMode`), injects it (`injectThemeObject`), and
@@ -8247,7 +8247,7 @@ export class CGrid<TRow = any> {
       const mode = pickThemeMode(probeHost, theme);
       this.injectThemeObject(theme, mode);
     } else {
-      this.root.classList.add(theme ?? 'cg-theme-quartz');
+      this.root.classList.add(theme ?? 'vg-theme-quartz');
       this.themeObject = undefined;
     }
     this.refreshThemeModeListener(probeHost);
@@ -8265,15 +8265,15 @@ export class CGrid<TRow = any> {
 
   /** Theming Task 6/7 — (re)install the OS `prefers-color-scheme` listener
    *  for the CURRENTLY active `themeObject`, or ensure none is installed
-   *  (string theme, or an explicit `data-cg-theme-mode` override present —
+   *  (string theme, or an explicit `data-vg-theme-mode` override present —
    *  an app-level override should not be fought by OS changes). Always
    *  tears down any previous listener first so repeated calls (every theme
    *  swap) never leak a stale registration. */
   private refreshThemeModeListener(probeHost: Element): void {
     this.teardownThemeModeListener();
     if (!this.themeObject) return;
-    const withAttr = probeHost.closest('[data-cg-theme-mode]');
-    const attr = withAttr?.getAttribute('data-cg-theme-mode');
+    const withAttr = probeHost.closest('[data-vg-theme-mode]');
+    const attr = withAttr?.getAttribute('data-vg-theme-mode');
     if (attr === 'light' || attr === 'dark') return;
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
     const mql = window.matchMedia('(prefers-color-scheme: dark)');
@@ -8316,7 +8316,7 @@ export class CGrid<TRow = any> {
    *  `mode` (bypassing `pickThemeMode`'s attribute/OS inference — this IS
    *  the explicit override). No-op for the string/`undefined` theme path
    *  (there is no mode to pick for a plain CSS class). Does not touch the
-   *  `prefers-color-scheme` listener: without a `data-cg-theme-mode`
+   *  `prefers-color-scheme` listener: without a `data-vg-theme-mode`
    *  attribute, a later OS change still takes over, matching
    *  `pickThemeMode`'s own precedence. */
   setThemeMode(mode: ThemeMode): void {
@@ -8327,14 +8327,14 @@ export class CGrid<TRow = any> {
   /** `theme` overload: a plain CSS class name (unchanged legacy path) or a
    *  programmatic `CgTheme`. For a `CgTheme`, blanks the PRIOR object's
    *  vars/css (if any — swapping object→object or object→string) before
-   *  stripping the existing `cg-theme-*` class(es) and applying the new
+   *  stripping the existing `vg-theme-*` class(es) and applying the new
    *  theme via the same `applyThemeOption` construction uses. */
   setTheme(theme: string | CgTheme): void {
     if (this.themeObject) {
       this.clearThemeObjectInjection();
       this.themeObject = undefined;
     }
-    const current = Array.from(this.root.classList).filter((c) => c.startsWith('cg-theme-'));
+    const current = Array.from(this.root.classList).filter((c) => c.startsWith('vg-theme-'));
     current.forEach((c) => this.root.classList.remove(c));
     this.applyThemeOption(theme, this.root);
     this.theme = this.cssReader.read();
@@ -8352,14 +8352,14 @@ export class CGrid<TRow = any> {
    *  `null` / `undefined` removes any active density class entirely
    *  (back to the theme's native baseline). The CSS class flip is the
    *  only DOM mutation — `cssReader.read()` re-resolves the bundle's
-   *  `--cg-row-height` / `--cg-header-height` / `--cg-cell-padding-x`
+   *  `--vg-row-height` / `--vg-header-height` / `--vg-cell-padding-x`
    *  overrides, and `recomputeViewport` + `requestRepaint` line the new
    *  row geometry up on the next frame. No worker round-trip. */
   setDensity(density: 'compact' | 'normal' | 'comfortable' | null | undefined): void {
-    const current = Array.from(this.root.classList).filter((c) => c.startsWith('cg-density-'));
+    const current = Array.from(this.root.classList).filter((c) => c.startsWith('vg-density-'));
     current.forEach((c) => this.root.classList.remove(c));
     if (density) {
-      this.root.classList.add(`cg-density-${density}`);
+      this.root.classList.add(`vg-density-${density}`);
     }
     this.options.density = density ?? undefined;
     this.theme = this.cssReader.read();
@@ -8377,7 +8377,7 @@ export class CGrid<TRow = any> {
 
   /** Read any grid option (runtime or initial). Mirrors ag-grid's
    *  `getGridOption` — useful for app code that needs to round-trip a setting. */
-  getGridOption<K extends keyof CGridOptions<TRow>>(key: K): CGridOptions<TRow>[K] | undefined {
+  getGridOption<K extends keyof VelocityGridOptions<TRow>>(key: K): VelocityGridOptions<TRow>[K] | undefined {
     return this.options[key];
   }
 
@@ -8397,15 +8397,15 @@ export class CGrid<TRow = any> {
    *  `INITIAL_ONLY_OPTIONS` (e.g. `columnDefs`, `getRowId`, `worker`). The
    *  `columnDefs` mutation surface lives on `updateGridOptions` because it
    *  needs a coupled tree-rebuild + worker column-metadata swap. */
-  setGridOption<K extends keyof CGridOptions<TRow>>(key: K, value: CGridOptions<TRow>[K]): void {
-    if (INITIAL_ONLY_OPTIONS.has(key as keyof CGridOptions<any>)) {
+  setGridOption<K extends keyof VelocityGridOptions<TRow>>(key: K, value: VelocityGridOptions<TRow>[K]): void {
+    if (INITIAL_ONLY_OPTIONS.has(key as keyof VelocityGridOptions<any>)) {
       throw new Error(
-        `[cgrid] '${String(key)}' is initial-only and cannot be changed at runtime` +
+        `[velocity-grid] '${String(key)}' is initial-only and cannot be changed at runtime` +
         (key === 'columnDefs' ? "; use api.updateGridOptions({ columnDefs }) instead" : ''),
       );
     }
     if (!isRuntimeOption(key as string)) {
-      throw new Error(`[cgrid] '${String(key)}' is not a recognised runtime option`);
+      throw new Error(`[velocity-grid] '${String(key)}' is not a recognised runtime option`);
     }
     // Grid Layouts (A3) — remember the pre-change value as this option's
     // baseline the first time it's touched, so a layout switch can reset
@@ -8437,7 +8437,7 @@ export class CGrid<TRow = any> {
     const projected = projectColumnGroups(rehydrated);
     this.applyingPendingColumnGroups = true;
     try {
-      this.updateGridOptions({ columnDefs: projected as CGridOptions<TRow>['columnDefs'] });
+      this.updateGridOptions({ columnDefs: projected as VelocityGridOptions<TRow>['columnDefs'] });
     } finally {
       this.applyingPendingColumnGroups = false;
     }
@@ -8455,7 +8455,7 @@ export class CGrid<TRow = any> {
   /** Batch-update grid options. `columnDefs` is honored only via this
    *  entrypoint and rebuilds the column tree, refreshes the worker's column
    *  metadata, and preserves group state for IDs that survive the swap. */
-  updateGridOptions(partial: Partial<CGridOptions<TRow>>): void {
+  updateGridOptions(partial: Partial<VelocityGridOptions<TRow>>): void {
     // Special-case columnDefs first so the tree rebuild happens once even when
     // both columnDefs AND defaultColDef change in the same call.
     if ('columnDefs' in partial && partial.columnDefs) {
@@ -8510,9 +8510,9 @@ export class CGrid<TRow = any> {
           // route through dedicated APIs that pass `null` instead).
           this.requestViewport('columnAggFuncChanged');
         })
-        .catch((err) => { if (!this.destroyed) console.error('[cgrid] updateColumns:', err); });
+        .catch((err) => { if (!this.destroyed) console.error('[velocity-grid] updateColumns:', err); });
     }
-    for (const k of Object.keys(partial) as (keyof CGridOptions<TRow>)[]) {
+    for (const k of Object.keys(partial) as (keyof VelocityGridOptions<TRow>)[]) {
       if (k === 'columnDefs') continue;
       // defaultColDef was already applied as part of the columnDefs path
       // (when both were provided) — skip a redundant rebuild.
@@ -8523,7 +8523,7 @@ export class CGrid<TRow = any> {
         }
         continue;
       }
-      this.setGridOption(k, partial[k] as CGridOptions<TRow>[typeof k]);
+      this.setGridOption(k, partial[k] as VelocityGridOptions<TRow>[typeof k]);
     }
   }
 
@@ -8550,7 +8550,7 @@ export class CGrid<TRow = any> {
         // the worker. Fire-and-forget; the resolve just signals the
         // worker acked the toggle, no main-side state to update.
         this.workerCoord.setEnableCellChangeFlash(enabled).catch((err) => {
-          if (!this.destroyed) console.error('[cgrid] setEnableCellChangeFlash:', err);
+          if (!this.destroyed) console.error('[velocity-grid] setEnableCellChangeFlash:', err);
         });
       },
       forwardAsyncTransactionOptions: () => {
@@ -8559,7 +8559,7 @@ export class CGrid<TRow = any> {
           conflate: this.options.asyncTransactionConflate,
           throttleMillis: this.resolveAsyncThrottleMillis(),
         }).catch((err) => {
-          if (!this.destroyed) console.error('[cgrid] setAsyncTransactionOptions:', err);
+          if (!this.destroyed) console.error('[velocity-grid] setAsyncTransactionOptions:', err);
         });
       },
       rebuildSubgrids: () => {
@@ -8639,7 +8639,7 @@ export class CGrid<TRow = any> {
     const entries = serializeAggFuncsMap(funcs);
     const promise = this.workerCoord.setAggFuncs(entries);
     promise.catch((err) => {
-      if (!this.destroyed) console.error('[cgrid] setAggFuncs:', err);
+      if (!this.destroyed) console.error('[velocity-grid] setAggFuncs:', err);
     });
     // Cycle 14 / Task 6 — when the swap arrives via `setGridOption`
     // / `updateGridOptions` at runtime, kick a viewport refresh so the
@@ -8859,7 +8859,7 @@ export class CGrid<TRow = any> {
    *  entry in `pinnedTopRowData` / `pinnedBottomRowData` becomes one
    *  non-scrolling row at the matching body edge. The row height
    *  inherits the grid's body row height (per the Task 2 design notes —
-   *  "Row height: var(--cg-row-height) — Cycle-wide constraint"). The
+   *  "Row height: var(--vg-row-height) — Cycle-wide constraint"). The
    *  cell lookup resolves `row[field ?? colId]` and runs the column's
    *  `valueFormatter` so a moneyFormatter-decorated column reads the
    *  same in a pinned reference row and a data row. */
@@ -9172,7 +9172,7 @@ export class CGrid<TRow = any> {
     this.stateUpdatedBus?.destroy();
     // Cycle 23 / Task 3 — the `bodyScrollEnd` debounce cleanup is now owned
     // by `ViewportManager`'s disposer (Cycle 19 / Task 2).
-    // Cycle 22 / Task 3 — explicit cleanup of any inline `--cg-*`
+    // Cycle 22 / Task 3 — explicit cleanup of any inline `--vg-*`
     // overrides so the WeakMap state doesn't leak past destroy. The
     // root element gets removed below, but apps that re-parent / re-
     // use the host expect the inline styles cleared.
@@ -9183,7 +9183,7 @@ export class CGrid<TRow = any> {
 
   // --- Internals ------------------------------------------------------------
 
-  private makeApi(): CGridApi<TRow> {
+  private makeApi(): VelocityGridApi<TRow> {
     return {
       setRowData: (r) => this.setRowData(r),
       applyTransaction: (t) => this.applyTransaction(t),
@@ -9286,7 +9286,7 @@ export class CGrid<TRow = any> {
       forEachRow: (fn) => this.forEachRow(fn),
       getThemeKind: () => this.getThemeKind(),
       // Cycle 21i Phase 2 / T3 — Tier B widening: these existed
-      // class-only; customizer panels code against CGridApi, so the
+      // class-only; customizer panels code against VelocityGridApi, so the
       // aggregate reads + state round-trip belong here.
       getSortModel: () => this.getSortModel(),
       getFilterModel: () => this.getFilterModel(),
@@ -9387,7 +9387,7 @@ export class CGrid<TRow = any> {
       isPointInColumnHeaderBand: (x, y) => this.isPointInColumnHeaderBand(x, y),
       setColumnHeaderDragHover: (colId, x, y) => this.setColumnHeaderDragHover(colId, x, y),
       commitColumnHeaderDrop: (colId, x) => this.commitColumnHeaderDrop(colId, x),
-    } as CGridApi<TRow>;
+    } as VelocityGridApi<TRow>;
   }
 
   private toggleColumnGroup(groupId: string): void {
@@ -9477,7 +9477,7 @@ export class CGrid<TRow = any> {
             this.recomputeViewport();
             this.requestViewport();
           })
-          .catch((err) => { if (!this.destroyed) console.error('[cgrid] columnGroup updateColumns:', err); });
+          .catch((err) => { if (!this.destroyed) console.error('[velocity-grid] columnGroup updateColumns:', err); });
       }
     });
   }
@@ -9758,7 +9758,7 @@ export class CGrid<TRow = any> {
     });
   }
 
-  /** AG parity — mirrors `CGridOptions.suppressDoubleClickExpand` for the
+  /** AG parity — mirrors `VelocityGridOptions.suppressDoubleClickExpand` for the
    *  GroupExpandFeature's double-click handler. */
   isGroupDoubleClickExpandSuppressed(): boolean {
     return this.options.suppressDoubleClickExpand === true;
@@ -10399,7 +10399,7 @@ export class CGrid<TRow = any> {
    *  under the new CTM would scale/blur, the C1 lesson's cousin). Reads
    *  `window.devicePixelRatio` fresh (NOT `cgridCanvas.devicePixelRatio`)
    *  because the paint closure can run synchronously from inside
-   *  `CGridCanvas`'s own constructor, before `this.cgridCanvas` exists —
+   *  `VelocityGridCanvas`'s own constructor, before `this.cgridCanvas` exists —
    *  the same gotcha the layer's own dpr read documents. */
   private getRasterCellsCtx(): RasterCellsCtx | null {
     const cache = this.rasterCells;
@@ -10808,7 +10808,7 @@ export class CGrid<TRow = any> {
       const map = new Map<string, number>();
       for (let i = 0; i < allIds.length; i++) map.set(allIds[i]!, indices[i]!);
       this.rebuildIndicesWithoutAutoScroll(map);
-    }).catch((err) => { if (!this.destroyed) console.error('[cgrid] rebuildSelectionFromPersistentIds:', err); });
+    }).catch((err) => { if (!this.destroyed) console.error('[velocity-grid] rebuildSelectionFromPersistentIds:', err); });
   }
 
   /** Walk the column tree to collect the ancestor groupIds (root → parent)
@@ -11293,7 +11293,7 @@ export class CGrid<TRow = any> {
         // or other natural trigger.
         this.requestViewport();
       })
-      .catch((err) => { if (!this.destroyed) console.error('[cgrid] flashCells:', err); });
+      .catch((err) => { if (!this.destroyed) console.error('[velocity-grid] flashCells:', err); });
   }
 
   /** Damage-region rendering — snapshot of cumulative paint telemetry. See
@@ -11506,7 +11506,7 @@ export class CGrid<TRow = any> {
    *  (cellClicked, cellDoubleClicked, cellKeyDown/Press, cellMouseOver/Out,
    *  rowMouseOver/Out) fed into its payload. The paint pipeline, meanwhile,
    *  already had the REAL string rowId via `stringRowIdAt` (chunk's
-   *  `stringRowIds` mirror) — @cgrid/renderers keys its hit regions on that
+   *  `stringRowIds` mirror) — @wellsfargo-starui/velocity-grid-renderers keys its hit regions on that
    *  real id. Result: hit regions registered under 'r1' while clicks
    *  resolved 'row-0', so action callbacks (onAction/onOpen) could never
    *  correlate a click back to its row.
@@ -11656,7 +11656,7 @@ export class CGrid<TRow = any> {
     const formatted = def?.valueFormatter
       ? def.valueFormatter({ value, colId, data: undefined as unknown as TRow })
       : value.toString();
-    if (entry.cache.size >= CGrid.FORMAT_MEMO_CAP) entry.cache.clear();
+    if (entry.cache.size >= VelocityGrid.FORMAT_MEMO_CAP) entry.cache.clear();
     entry.cache.set(value, formatted);
     return formatted;
   }
@@ -11676,7 +11676,7 @@ export class CGrid<TRow = any> {
     try {
       formatted = String(def.valueFormatter({ value, colId, data: undefined as unknown as TRow }));
     } catch { formatted = value; }
-    if (entry.cache.size >= CGrid.FORMAT_MEMO_CAP) entry.cache.clear();
+    if (entry.cache.size >= VelocityGrid.FORMAT_MEMO_CAP) entry.cache.clear();
     entry.cache.set(value, formatted);
     return formatted;
   }
@@ -11845,7 +11845,7 @@ export class CGrid<TRow = any> {
         this.events.emit({ type: 'displayedColumnsChanged', source: 'columnMoved' });
         this.requestViewport();
       })
-      .catch((err) => { if (!this.destroyed) console.error('[cgrid] reorderColumn:', err); });
+      .catch((err) => { if (!this.destroyed) console.error('[velocity-grid] reorderColumn:', err); });
     this.events.emit({ type: 'columnMoved', toIndex: legalTarget, colIds: [colId], source });
   }
 
@@ -11948,9 +11948,9 @@ export class CGrid<TRow = any> {
     if (migrated.gridOptions) {
       for (const [key, value] of Object.entries(migrated.gridOptions)) {
         try {
-          this.setGridOption(key as keyof CGridOptions<TRow>, value as never);
+          this.setGridOption(key as keyof VelocityGridOptions<TRow>, value as never);
         } catch (err) {
-          console.warn(`[cgrid] setState: skipped gridOptions['${key}']`, err);
+          console.warn(`[velocity-grid] setState: skipped gridOptions['${key}']`, err);
         }
       }
     }
@@ -12103,14 +12103,14 @@ export class CGrid<TRow = any> {
   /** The grid's complete configuration in one object: the full live options
    *  (columnDefs, defaultColDef, callbacks, and every runtime-updated option)
    *  with the current runtime + view state embedded as `initialState`. Pass
-   *  it straight to `new CGrid(host, grid.getConfig())` to reconstruct the
+   *  it straight to `new VelocityGrid(host, grid.getConfig())` to reconstruct the
    *  grid exactly, or to `setConfig` to apply it to a live grid.
    *
    *  This is a SHALLOW copy — `columnDefs` / `defaultColDef` and any function
    *  options are shared by reference (so the result is not pure-JSON; use
    *  `getState()` for the serialisable view-state slice). Treat it as
    *  read-only or clone before mutating. */
-  getConfig(): CGridOptions<TRow> {
+  getConfig(): VelocityGridOptions<TRow> {
     return { ...this.options, initialState: this.getState() };
   }
 
@@ -12120,13 +12120,13 @@ export class CGrid<TRow = any> {
    *  (`gridId`, `getRowId`, `worker`, …) and any non-runtime keys can't
    *  change on a live grid, so they're skipped — construct a new grid from
    *  `getConfig()` when you need those to differ. */
-  setConfig(config: CGridOptions<TRow>): void {
+  setConfig(config: VelocityGridOptions<TRow>): void {
     const initialState = config.initialState;
     const src = config as unknown as Record<string, unknown>;
     const applicable: Record<string, unknown> = {};
     for (const k of Object.keys(src)) {
       if (k === 'initialState') continue;
-      if (INITIAL_ONLY_OPTIONS.has(k as keyof CGridOptions<any>)) continue;
+      if (INITIAL_ONLY_OPTIONS.has(k as keyof VelocityGridOptions<any>)) continue;
       // Only columnDefs (handled specially by updateGridOptions) and known
       // runtime options can apply mid-session; everything else (callbacks,
       // construction-time flags) would be rejected by setGridOption.
@@ -12134,7 +12134,7 @@ export class CGrid<TRow = any> {
         applicable[k] = src[k];
       }
     }
-    this.updateGridOptions(applicable as Partial<CGridOptions<TRow>>);
+    this.updateGridOptions(applicable as Partial<VelocityGridOptions<TRow>>);
     if (initialState) this.setState(initialState);
   }
 
@@ -12142,7 +12142,7 @@ export class CGrid<TRow = any> {
   //
   // Thin delegation to the LayoutManager (core/layoutManager.ts), which
   // owns the registry / active id / Default invariants / tier filtering.
-  // CGrid supplies the live-grid seam (capture = getState, apply =
+  // VelocityGrid supplies the live-grid seam (capture = getState, apply =
   // reset-options-then-setState) and fans a `layoutChanged` event.
 
   /** Build the LayoutManager on first use, capturing the as-constructed
@@ -12184,9 +12184,9 @@ export class CGrid<TRow = any> {
     for (const key of [...this.runtimeTouchedOptions.keys()]) {
       if (key in targetOptions) continue;
       try {
-        this.setGridOption(key as keyof CGridOptions<TRow>, this.optionBaselines.get(key) as never);
+        this.setGridOption(key as keyof VelocityGridOptions<TRow>, this.optionBaselines.get(key) as never);
       } catch (err) {
-        console.warn(`[cgrid] layout apply: could not reset gridOptions['${key}']`, err);
+        console.warn(`[velocity-grid] layout apply: could not reset gridOptions['${key}']`, err);
       }
       // `setGridOption` re-records the touch; un-record so a value equal to
       // baseline is no longer treated as an override on the next capture.
@@ -12294,13 +12294,13 @@ export class CGrid<TRow = any> {
     if (config.gridOptions) {
       for (const [key, value] of Object.entries(config.gridOptions)) {
         try {
-          this.setGridOption(key as keyof CGridOptions<TRow>, value as never);
+          this.setGridOption(key as keyof VelocityGridOptions<TRow>, value as never);
           // Clone so a later mutation of a caller's object-valued option
           // (e.g. defaultColDef) can't corrupt the stored baseline.
           this.optionBaselines.set(key, structuredClone(value)); // new baseline
           this.runtimeTouchedOptions.delete(key);                 // baseline ≠ override
         } catch (err) {
-          console.warn(`[cgrid] setGridConfig: skipped gridOptions['${key}']`, err);
+          console.warn(`[velocity-grid] setGridConfig: skipped gridOptions['${key}']`, err);
         }
       }
     }
@@ -12379,7 +12379,7 @@ export class CGrid<TRow = any> {
 
   // ── Styling templates (Phase B / B3) ────────────────────────────────
   // The shared styling-template library, routed to the calc provider
-  // (registered by @cgrid/calc's wireIntoKernel). No provider (calc not
+  // (registered by @wellsfargo-starui/velocity-grid-calc's wireIntoKernel). No provider (calc not
   // wired) → `getTemplates` returns `[]` and the mutators no-op without an
   // event. The engine is Date-free, so save/rename stamp `Date.now()` here.
   // Mutations that change a column's resolved def (save/apply/remove) trigger
@@ -12437,7 +12437,7 @@ export class CGrid<TRow = any> {
    *  into its OWN template (forking from any shared template). Fires
    *  `templatesChanged` (source `'save'` — it writes the column's own
    *  template). No-op without a calc engine. */
-  editColumn(colId: string, patch: import('@cgrid/calc').ColumnEditPatch): void {
+  editColumn(colId: string, patch: import('@wellsfargo-starui/velocity-grid-calc').ColumnEditPatch): void {
     const provider = getCalcProvider();
     if (!provider?.editColumn) return;
     // Gate the event on the engine's result — a rejected edit (e.g. a
@@ -12448,8 +12448,8 @@ export class CGrid<TRow = any> {
   }
 
   // ── Conditional styling rules (Phase C / C3) ────────────────────────────
-  // The active layout's conditional-rule set, routed to the @cgrid/rules
-  // RuleEngine via the rule-engine provider (registered by @cgrid/rules'
+  // The active layout's conditional-rule set, routed to the @wellsfargo-starui/velocity-grid-rules
+  // RuleEngine via the rule-engine provider (registered by @wellsfargo-starui/velocity-grid-rules'
   // wireIntoKernel). No engine wired → `getRules` returns `[]` and the
   // mutators no-op without an event. The kernel owns the CRUD semantics as
   // pure array transforms over getRules()/setRules() (like LayoutManager owns
@@ -12464,7 +12464,7 @@ export class CGrid<TRow = any> {
     // changes matching cells' resolved fg/bg/indicator with NO data change,
     // column rebuild, or geometry change — rowVersionByRowId and the strip
     // keys all stand still, so retained strips would keep serving pre-rule
-    // pixels at rest. All five CGridApi rule mutators route through here.
+    // pixels at rest. All five VelocityGridApi rule mutators route through here.
     // (Tier 1 is safe without this: rule-resolved styles and ruleIndicator
     // are cellStyleSignature fields, so the key itself changes.)
     if (this.rasterStrips !== null) this.stripLayoutEpochBump();
@@ -12756,7 +12756,7 @@ export class CGrid<TRow = any> {
       }
       await Promise.all(jobs);
     } catch (err) {
-      if (!this.destroyed) console.error('[cgrid] autoSizeColumns:', err);
+      if (!this.destroyed) console.error('[velocity-grid] autoSizeColumns:', err);
       return;
     }
     if (this.destroyed) return;
@@ -12952,7 +12952,7 @@ export class CGrid<TRow = any> {
         this.events.emit({ type: 'displayedColumnsChanged', source: 'columnVisible' });
         this.requestViewport();
       })
-      .catch((err) => { if (!this.destroyed) console.error('[cgrid] setColumnsVisible:', err); });
+      .catch((err) => { if (!this.destroyed) console.error('[velocity-grid] setColumnsVisible:', err); });
   }
 
   /** Cycle 6 / Task 5 — set pinning on every listed leaf in a batch.
@@ -13046,7 +13046,7 @@ export class CGrid<TRow = any> {
         this.events.emit({ type: 'displayedColumnsChanged', source: 'columnMoved' });
         this.requestViewport();
       })
-      .catch((err) => { if (!this.destroyed) console.error('[cgrid] moveColumns:', err); });
+      .catch((err) => { if (!this.destroyed) console.error('[velocity-grid] moveColumns:', err); });
     for (const colId of validKeys) {
       const newIdx = finalOrder.indexOf(colId);
       if (newIdx < 0) continue;
@@ -13058,7 +13058,7 @@ export class CGrid<TRow = any> {
   }
 
   /** The raw, authored `columnDefs` tree (groups + leaves), unresolved.
-   *  Backs the `CGridApi.getColumnGroupDefs` closure and the Task 1
+   *  Backs the `VelocityGridApi.getColumnGroupDefs` closure and the Task 1
    *  hierarchy mutators below — kept as a real class method (rather than
    *  an inline `makeApi` closure) so both call sites share one
    *  definition. */
@@ -13135,7 +13135,7 @@ export class CGrid<TRow = any> {
     return cache;
   }
 
-  /** Grid Layouts / column-group-drag feature (Task 1) — `CGridLike`
+  /** Grid Layouts / column-group-drag feature (Task 1) — `VelocityGridLike`
    *  accessor: ancestor group ids of `colId`, root→parent. `[]` for an
    *  unknown or ungrouped colId. */
   private getColGroupPath(colId: string): string[] {
@@ -13143,7 +13143,7 @@ export class CGrid<TRow = any> {
     return this.colGroupPathCache.get(colId) ?? [];
   }
 
-  /** Grid Layouts / column-group-drag feature (Task 1) — `CGridLike`
+  /** Grid Layouts / column-group-drag feature (Task 1) — `VelocityGridLike`
    *  accessor: `groupId` plus every descendant group's id (depth-first).
    *  `[groupId]` alone when `groupId` has no sub-groups; `[]` when
    *  `groupId` is unknown. */
@@ -13182,7 +13182,7 @@ export class CGrid<TRow = any> {
 
   /** Cycle 19 / Task 5-ColState — ColumnStateManager deps bundle.
    *  Threaded into the manager at construction so every reach into
-   *  CGrid state is explicit + auditable. The worker / pivot / grouping
+   *  VelocityGrid state is explicit + auditable. The worker / pivot / grouping
    *  closures resolve at call-time, matching the PivotEngine /
    *  GroupingCoordinator pattern. */
   private makeColStateManagerDeps(): ColumnStateManagerDeps<TRow> {
@@ -13261,9 +13261,9 @@ export class CGrid<TRow = any> {
 
   /** Cycle 19 / Task 4 — delegating wrapper. Predicate resolution +
    *  static-bool/function dispatch lives in `EditController.isCellEditable`.
-   *  PUBLIC (CGridExt toolbars): resolves against the RESOLVED colDef
+   *  PUBLIC (VelocityGridExt toolbars): resolves against the RESOLVED colDef
    *  (defaultColDef/columnTypes folded) and carries the pivot-mode read-only
-   *  gate — engine bridges (`@cgrid/edit`) delegate here instead of
+   *  gate — engine bridges (`@wellsfargo-starui/velocity-grid-edit`) delegate here instead of
    *  replicating the predicate against authored defs. */
   isCellEditable(rowIndex: number, colId: string): boolean {
     return this.editController.isCellEditable(rowIndex, colId);
@@ -13338,30 +13338,30 @@ export class CGrid<TRow = any> {
   }
 
   /** Subscribe to a typed grid event. Returns an unsubscribe. */
-  on<E extends CGridEvent<TRow>['type']>(
+  on<E extends VelocityGridEvent<TRow>['type']>(
     type: E,
-    handler: (e: Extract<CGridEvent<TRow>, { type: E }>) => void,
+    handler: (e: Extract<VelocityGridEvent<TRow>, { type: E }>) => void,
   ): () => void {
     return this.events.on(type, handler);
   }
   /** Remove a previously-registered listener. */
-  off<E extends CGridEvent<TRow>['type']>(
+  off<E extends VelocityGridEvent<TRow>['type']>(
     type: E,
-    handler: (e: Extract<CGridEvent<TRow>, { type: E }>) => void,
+    handler: (e: Extract<VelocityGridEvent<TRow>, { type: E }>) => void,
   ): void {
     this.events.off(type, handler);
   }
   /** Alias for `on`, present for ag-grid API parity. */
-  addEventListener<E extends CGridEvent<TRow>['type']>(
+  addEventListener<E extends VelocityGridEvent<TRow>['type']>(
     type: E,
-    handler: (e: Extract<CGridEvent<TRow>, { type: E }>) => void,
+    handler: (e: Extract<VelocityGridEvent<TRow>, { type: E }>) => void,
   ): () => void {
     return this.on(type, handler);
   }
   /** Alias for `off`, present for ag-grid API parity. */
-  removeEventListener<E extends CGridEvent<TRow>['type']>(
+  removeEventListener<E extends VelocityGridEvent<TRow>['type']>(
     type: E,
-    handler: (e: Extract<CGridEvent<TRow>, { type: E }>) => void,
+    handler: (e: Extract<VelocityGridEvent<TRow>, { type: E }>) => void,
   ): void {
     this.off(type, handler);
   }

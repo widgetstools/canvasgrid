@@ -8,7 +8,7 @@ import {
 import { TypedEventEmitter } from '../src/core/eventEmitter';
 import { ColumnGroupState } from '../src/core/columnGroupState';
 import { resolveColumnTree, type ColumnTree } from '../src/core/columnTree';
-import type { CGridEvent } from '../src/types';
+import type { VelocityGridEvent } from '../src/types';
 import type { ResolvedColDef } from '../src/core/propertyChain';
 import type { ColumnLayout } from '../src/core/layout';
 import type { ViewportChunk } from '../src/worker/protocol';
@@ -78,8 +78,8 @@ function makePrimaryTree(): ColumnTree {
 
 interface Harness {
   engine: PivotEngine;
-  events: TypedEventEmitter<CGridEvent>;
-  seen: CGridEvent[];
+  events: TypedEventEmitter<VelocityGridEvent>;
+  seen: VelocityGridEvent[];
   destroyed: { value: boolean };
   options: PivotEngineOptions;
   panel: {
@@ -114,8 +114,8 @@ function makeHarness(opts: {
   options?: PivotEngineOptions;
   computeVisibleOrder?: () => ResolvedColDef[];
 } = {}): Harness {
-  const events = new TypedEventEmitter<CGridEvent>();
-  const seen: CGridEvent[] = [];
+  const events = new TypedEventEmitter<VelocityGridEvent>();
+  const seen: VelocityGridEvent[] = [];
   events.on('pivotStateChanged', (e) => seen.push(e));
   const destroyed = { value: false };
   const options: PivotEngineOptions = opts.options ?? {};
@@ -154,7 +154,7 @@ function makeHarness(opts: {
   const applyVerticalInsets = vi.fn();
   // Task 5b — the harness models `setColumnsVisible` as a direct
   // mutation of the tracked column tree's leaves, matching what
-  // CGrid does. The engine's `applyPivotModeVisibility` snapshots
+  // VelocityGrid does. The engine's `applyPivotModeVisibility` snapshots
   // the tree BEFORE the call, so the mutation lands after the
   // snapshot and the toShow/toHide diff comes out right.
   const setColumnsVisible = vi.fn((colIds: string[], visible: boolean) => {
@@ -270,7 +270,7 @@ describe('PivotEngine — state delegates', () => {
     h.engine.setPivotMode(true);
     expect(h.engine.isPivotMode()).toBe(true);
     const modeEvents = h.seen.filter(
-      (e): e is Extract<CGridEvent, { type: 'pivotStateChanged' }> => e.type === 'pivotStateChanged',
+      (e): e is Extract<VelocityGridEvent, { type: 'pivotStateChanged' }> => e.type === 'pivotStateChanged',
     );
     expect(modeEvents.at(-1)?.source).toBe('mode');
     expect(modeEvents.at(-1)?.pivotMode).toBe(true);
@@ -497,7 +497,7 @@ describe('PivotEngine — lifecycle + destroyed guard', () => {
     expect(h.updateWorkerColumns).not.toHaveBeenCalled();
     expect(h.setWorkerPivotMaxGeneratedColumns).not.toHaveBeenCalled();
     expect(h.setWorkerStrictPivotColumnOrder).not.toHaveBeenCalled();
-    // updateTotalsOption bails out early before touching CGrid.
+    // updateTotalsOption bails out early before touching VelocityGrid.
     expect(h.rebuildSubgridStack).not.toHaveBeenCalled();
   });
 

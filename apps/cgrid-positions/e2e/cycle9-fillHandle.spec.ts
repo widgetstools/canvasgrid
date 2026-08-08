@@ -61,7 +61,7 @@ async function cellBounds(
 ): Promise<{ x: number; y: number; w: number; h: number }> {
   const b = await page.evaluate(
     ({ r, c }) =>
-      (window as unknown as { __cgrid: GridSurface }).__cgrid.getCellBoundsAt(r, c),
+      (window as unknown as { __velocity-grid: GridSurface }).__cgrid.getCellBoundsAt(r, c),
     { r: rowIndex, c: colId },
   );
   if (!b) throw new Error(`no cell bounds for (${rowIndex}, ${colId})`);
@@ -70,7 +70,7 @@ async function cellBounds(
 
 async function rangesNow(page: Page): Promise<SelectionRange[]> {
   return page.evaluate(
-    () => (window as unknown as { __cgrid: GridSurface }).__cgrid.selection.state.ranges
+    () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.selection.state.ranges
       .map((r) => ({ rowStart: r.rowStart, rowEnd: r.rowEnd, colIds: [...r.colIds] })),
   );
 }
@@ -78,7 +78,7 @@ async function rangesNow(page: Page): Promise<SelectionRange[]> {
 async function cellValue(page: Page, rowIndex: number, colId: string): Promise<unknown> {
   return page.evaluate(
     ({ r, c }) =>
-      (window as unknown as { __cgrid: GridSurface }).__cgrid.getCellValue(r, c),
+      (window as unknown as { __velocity-grid: GridSurface }).__cgrid.getCellValue(r, c),
     { r: rowIndex, c: colId },
   );
 }
@@ -166,7 +166,7 @@ test.describe('Cycle 9 / Task 5 — fill handle', () => {
   test('enableFillHandle:false suppresses the handle — the same drag becomes a fresh range select', async ({ page }) => {
     await gridReady(page);
     await page.evaluate(
-      () => (window as unknown as { __cgrid: GridSurface }).__cgrid.setGridOption('enableFillHandle', false),
+      () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.setGridOption('enableFillHandle', false),
     );
     await waitForFrames(page, 4);
 

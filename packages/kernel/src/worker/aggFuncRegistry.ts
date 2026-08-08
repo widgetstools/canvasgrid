@@ -124,7 +124,7 @@ export class AggFuncRegistry {
   /** Wholesale replace the custom layer. Keeps built-ins intact. Called
    *  by the worker handler on `setAggFuncs` so a runtime
    *  `setGridOption('aggFuncs', { ... })` matches the "replaces previous
-   *  map" semantics documented in `CGridOptions.aggFuncs`. */
+   *  map" semantics documented in `VelocityGridOptions.aggFuncs`. */
   replaceCustom(funcs: Record<string, IAggFunc>): void {
     this.custom = new Map(Object.entries(funcs));
   }

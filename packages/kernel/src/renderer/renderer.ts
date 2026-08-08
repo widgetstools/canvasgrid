@@ -40,9 +40,9 @@ export interface RendererOpts {
   /** Total visible row count after filter/sort. Used by the header
    *  painter for the row-select header tri-state checkbox. */
   getTotalRowCount?: () => number;
-  /** Total drawable width in CSS px (matches CGridCanvas.bounds.width). */
+  /** Total drawable width in CSS px (matches VelocityGridCanvas.bounds.width). */
   getCanvasWidth: () => number;
-  /** Total drawable height in CSS px (matches CGridCanvas.bounds.height). */
+  /** Total drawable height in CSS px (matches VelocityGridCanvas.bounds.height). */
   getCanvasHeight: () => number;
   /**
    * Synchronous row snapshot — keyed by colId. Forwarded into `PainterCtx`
@@ -67,7 +67,7 @@ export interface RendererOpts {
   /**
    * Cycle 9 / Task 5 — when true, the range overlay painter draws a 6×6
    * fill handle at the bottom-right of the last range. Sourced from
-   * `CGridOptions.enableFillHandle` per paint so a runtime
+   * `VelocityGridOptions.enableFillHandle` per paint so a runtime
    * `setGridOption('enableFillHandle', true)` lights up immediately.
    */
   getShowFillHandle: () => boolean;
@@ -83,14 +83,14 @@ export interface RendererOpts {
    * overlay painter. Returns `null` whenever the cell straddles or has
    * scrolled outside its column's band, so painters never need to
    * reimplement the band-clip math. Backed by
-   * `CGrid.getVisibleCellBounds`.
+   * `VelocityGrid.getVisibleCellBounds`.
    *
    * Task 4 (paint-cache layer) — optional 3rd `vs` argument: when supplied,
    * bounds resolve against THAT `ViewportState` instead of the live real
    * viewport. `paintLayer` wires this to `layerVs` so `paintOverlay` /
    * `paintRangeOverlay` (baked into the retained layer) resolve focus-ring
    * bounds against the layer's own (possibly off-screen) coverage, not the
-   * narrower on-screen body — the public `CGrid.getVisibleCellBounds()` API
+   * narrower on-screen body — the public `VelocityGrid.getVisibleCellBounds()` API
    * is unaffected (always resolves against the real viewport).
    */
   getVisibleCellBounds: (rowIndex: number, colId: string, vs?: ViewportState) =>
@@ -105,7 +105,7 @@ export interface RendererOpts {
    * returns the `GroupCellValue` payload on a group row, `null` on a
    * data row. The `renderer` is the cellRenderer key the painter looks
    * up via the registry — defaults to `'group'`; apps override via
-   * `CGridOptions.groupRowRenderer` for `'custom'` display type.
+   * `VelocityGridOptions.groupRowRenderer` for `'custom'` display type.
    */
   getGroupRowStrip: () => {
     renderer: string;
@@ -167,7 +167,7 @@ export interface RendererOpts {
   /**
    * Cycle 22 / Task 2 — Tier-1 cell-bitmap cache handle for the byRows
    * cell-paint seam (see `PainterCtx.rasterCells`). Read fresh per paint
-   * (dpr can change; CGrid gates on `rasterCache` + availability). Absent
+   * (dpr can change; VelocityGrid gates on `rasterCache` + availability). Absent
    * or returning `null` ⇒ every cell paints live, byte-identical to the
    * shipped pipeline — this is the `rasterCache: false` escape hatch.
    */
@@ -175,7 +175,7 @@ export interface RendererOpts {
   /**
    * Cycle 22 / Task 3 — Tier-2 row-strip cache handle for the retained
    * layer's band raster (see `RasterStripsCtx`). Read fresh per
-   * `paintLayer` call (CGrid gates on `rasterCache` + availability and
+   * `paintLayer` call (VelocityGrid gates on `rasterCache` + availability and
    * owns the eligibility/version/epoch closures). Absent or returning
    * `null` ⇒ the strip path is fully dormant — the call sequence stays
    * byte-identical to the shipped pipeline. Only `paintLayer` consults
@@ -184,7 +184,7 @@ export interface RendererOpts {
   getRasterStrips?: () => RasterStripsCtx | null;
   /**
    * C1 fix — the live `devicePixelRatio` the canvas's backing store was
-   * sized at (`CGridCanvas.devicePixelRatio`), used by the scroll blit to
+   * sized at (`VelocityGridCanvas.devicePixelRatio`), used by the scroll blit to
    * convert between device px (source rect — `drawImage` addresses the
    * backing store directly, CTM-independent) and CSS px (destination
    * rect — goes through the canvas's persistent `setTransform(dpr, 0, 0,
@@ -422,7 +422,7 @@ export class Renderer {
       // backing store is sized to `round(cssPx * dpr)` device px, NOT CSS
       // px; we draw in CSS px here because `gc`'s persistent CTM
       // (`setTransform(dpr, 0, 0, dpr, 0, 0)`, installed by
-      // `CGridCanvas.resize`) scales every CSS-px call up to the device
+      // `VelocityGridCanvas.resize`) scales every CSS-px call up to the device
       // backing store automatically.
       gc.cache.fillStyle = pctx.theme.bg;
       gc.fillRect(0, 0, w, h);
@@ -540,12 +540,12 @@ export class Renderer {
    * Task 4 — layer raster pass (spec §3 step 2). Paints DATA-subgrid
    * content ONLY — header/floatingFilter/totals/pinned bands are chrome,
    * painted by `paintChrome` instead — into the retained layer's OWN `gc`,
-   * against `layerVs` (`CGrid.buildLayerViewport`'s synthetic widened
+   * against `layerVs` (`VelocityGrid.buildLayerViewport`'s synthetic widened
    * viewport). Overlays/focus-ring/range-selection BAKE in here (spec §1)
    * because they run against the SAME `layerVs`/translated `gc` as the
    * cell paints.
    *
-   * The caller (CGrid's paint closure) is responsible for the
+   * The caller (VelocityGrid's paint closure) is responsible for the
    * `ctx.translate(0, -bodyTop)` that lands `layerVs`'s row/column
    * coordinates at the correct LAYER-local y (`contentY - layerTop`, per
    * `PaintCacheLayer.contentToLayerY`) BEFORE calling this method — kept
@@ -706,7 +706,7 @@ export class Renderer {
    * Closeout M-1 fix — `imageSmoothingEnabled = false` is scoped to this
    * call via `gc.cache.save()`/`.restore()` (the cache-aware pair, so both
    * the real ctx state AND the JS `values` cache roll back together —
-   * same discipline `cgrid.ts`'s layer raster pass already uses). Before
+   * same discipline `velocityGrid.ts`'s layer raster pass already uses). Before
    * this fix the flag was set and never restored, leaking `false` to
    * every subsequent painter on the MAIN context for the rest of the
    * grid's life — latent (no painter currently draws a scaled bitmap on

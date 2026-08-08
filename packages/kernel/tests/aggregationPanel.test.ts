@@ -27,12 +27,12 @@ import {
   readRangeValues,
 } from '../src/interaction/statusBar/panels/aggregation';
 import { StatusPanelRegistry, BUILT_IN_STATUS_PANEL_KEYS } from '../src/interaction/statusBar/registry';
-import type { CGridEvent, SelectionRange } from '../src/types';
+import type { VelocityGridEvent, SelectionRange } from '../src/types';
 
-type EventType = CGridEvent['type'];
-type AnyHandler = (event: CGridEvent) => void;
+type EventType = VelocityGridEvent['type'];
+type AnyHandler = (event: VelocityGridEvent) => void;
 
-/** Minimal CGridApi mock for the agg panel. Lets the test drive
+/** Minimal VelocityGridApi mock for the agg panel. Lets the test drive
  *  selection state + emit events synchronously, asserting both the
  *  render output and the listener-bookkeeping contract. */
 class FakeApi {
@@ -52,7 +52,7 @@ class FakeApi {
   }
   addEventListener<K extends EventType>(
     type: K,
-    handler: (event: Extract<CGridEvent, { type: K }>) => void,
+    handler: (event: Extract<VelocityGridEvent, { type: K }>) => void,
   ): () => void {
     let bucket = this.listeners.get(type);
     if (!bucket) {
@@ -64,7 +64,7 @@ class FakeApi {
       this.listeners.get(type)?.delete(handler as AnyHandler);
     };
   }
-  emit(event: CGridEvent): void {
+  emit(event: VelocityGridEvent): void {
     const bucket = this.listeners.get(event.type);
     if (!bucket) return;
     for (const h of Array.from(bucket)) h(event);
@@ -79,9 +79,9 @@ class FakeApi {
  *  the canonical ordering and the per-stat text in one shape. */
 function getStats(root: HTMLElement): Array<{ label: string; value: string }> {
   const stats: Array<{ label: string; value: string }> = [];
-  for (const statEl of Array.from(root.querySelectorAll('.cg-status-panel-agg-stat'))) {
-    const label = statEl.querySelector('.cg-status-panel-agg-label')?.textContent ?? '';
-    const value = statEl.querySelector('.cg-status-panel-agg-value')?.textContent ?? '';
+  for (const statEl of Array.from(root.querySelectorAll('.vg-status-panel-agg-stat'))) {
+    const label = statEl.querySelector('.vg-status-panel-agg-label')?.textContent ?? '';
+    const value = statEl.querySelector('.vg-status-panel-agg-value')?.textContent ?? '';
     stats.push({ label, value });
   }
   return stats;
@@ -216,9 +216,9 @@ describe('AgAggregationPanel render path', () => {
       { label: 'Avg:', value: '30' },
     ]);
     // 4 separators between 5 stats.
-    expect(gui.querySelectorAll('.cg-status-panel-agg-separator').length).toBe(4);
-    expect(gui.querySelector('.cg-status-panel-agg-separator')?.textContent).toBe('·');
-    expect(gui.querySelector('.cg-status-panel-agg-separator')?.getAttribute('aria-hidden')).toBe('true');
+    expect(gui.querySelectorAll('.vg-status-panel-agg-separator').length).toBe(4);
+    expect(gui.querySelector('.vg-status-panel-agg-separator')?.textContent).toBe('·');
+    expect(gui.querySelector('.vg-status-panel-agg-separator')?.getAttribute('aria-hidden')).toBe('true');
     panel.destroy();
   });
 
@@ -270,7 +270,7 @@ describe('AgAggregationPanel render path', () => {
       { label: 'Avg:', value: '12.5' },
     ]);
     // 2 stats → 1 separator.
-    expect(panel.getGui().querySelectorAll('.cg-status-panel-agg-separator').length).toBe(1);
+    expect(panel.getGui().querySelectorAll('.vg-status-panel-agg-separator').length).toBe(1);
     panel.destroy();
   });
 

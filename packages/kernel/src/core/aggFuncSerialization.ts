@@ -1,7 +1,7 @@
 /**
  * Cycle 14 / Task 3 — serialise custom `aggFuncs` for the worker.
  *
- * Lifted out of `cgrid.ts` so the closure-detection / `new Function`
+ * Lifted out of `velocityGrid.ts` so the closure-detection / `new Function`
  * round-trip lives in one place. Apps MUST treat `aggFunc` sources as
  * trusted code: reconstruction uses `new Function` on both main and
  * worker. Do not feed untrusted function source strings.
@@ -21,14 +21,14 @@ export function serializeAggFunc(name: string, fn: IAggFunc): string {
     rebuilt = new Function(`"use strict"; return (${source});`)() as IAggFunc;
   } catch (e) {
     throw new Error(
-      `[cgrid] aggFunc '${name}' failed to serialise (syntax error in toString output): ${
+      `[velocity-grid] aggFunc '${name}' failed to serialise (syntax error in toString output): ${
         String((e as Error).message ?? e)
       }. Custom aggFuncs MUST be plain function expressions or arrows — no class methods.`,
     );
   }
   if (typeof rebuilt !== 'function') {
     throw new Error(
-      `[cgrid] aggFunc '${name}' did not deserialise to a function — check the function shape`,
+      `[velocity-grid] aggFunc '${name}' did not deserialise to a function — check the function shape`,
     );
   }
   const probe: IAggFuncParams = { values: [1, 2], colId: '__cgrid_probe__' };
@@ -40,7 +40,7 @@ export function serializeAggFunc(name: string, fn: IAggFunc): string {
   try { rebuiltRes = rebuilt(probe); } catch (e) { rebuiltErr = e as Error; }
   if (rebuiltErr && !originalThrew) {
     throw new Error(
-      `[cgrid] aggFunc '${name}' closes over outer scope ` +
+      `[velocity-grid] aggFunc '${name}' closes over outer scope ` +
       `(rebuilt copy threw '${rebuiltErr.message}' when invoked). ` +
       `Custom aggFuncs MUST be pure — no references to variables, ` +
       `imports, or this-bound state from the surrounding closure. ` +
@@ -50,7 +50,7 @@ export function serializeAggFunc(name: string, fn: IAggFunc): string {
   }
   if (!rebuiltErr && !originalThrew && !Object.is(originalRes, rebuiltRes)) {
     throw new Error(
-      `[cgrid] aggFunc '${name}' produced different results pre- and post-serialisation ` +
+      `[velocity-grid] aggFunc '${name}' produced different results pre- and post-serialisation ` +
       `(probably closes over outer scope). Custom aggFuncs MUST be pure.`,
     );
   }
@@ -66,7 +66,7 @@ export function serializeAggFuncsMap(
   for (const [name, fn] of Object.entries(funcs)) {
     if (typeof fn !== 'function') {
       throw new Error(
-        `[cgrid] aggFuncs.${name} is not a function — ` +
+        `[velocity-grid] aggFuncs.${name} is not a function — ` +
         `entries must be IAggFunc callables (received ${typeof fn})`,
       );
     }

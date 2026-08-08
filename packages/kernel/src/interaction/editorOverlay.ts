@@ -23,7 +23,7 @@ export interface EditorAttachOpts<TRow = unknown, TValue = unknown> {
    *  popup mode is active. */
   viewportBounds?: { width: number; height: number };
   /** Excel-style edit sub-mode. When set, the editor wrapper carries a
-   *  `cg-editor--enter` / `cg-editor--edit` class so the border can signal
+   *  `vg-editor--enter` / `vg-editor--edit` class so the border can signal
    *  which mode is active (enter = quick-entry, arrows commit; edit =
    *  caret navigation). Undefined leaves the wrapper unmarked. */
   modeClass?: 'enter' | 'edit';
@@ -59,8 +59,8 @@ export class EditorOverlay {
   setMode(mode: 'enter' | 'edit'): void {
     const frame = this.frame();
     if (!frame) return;
-    frame.classList.remove('cg-editor--enter', 'cg-editor--edit');
-    frame.classList.add(`cg-editor--${mode}`);
+    frame.classList.remove('vg-editor--enter', 'vg-editor--edit');
+    frame.classList.add(`vg-editor--${mode}`);
   }
 
   open(opts: EditorAttachOpts): void {
@@ -94,7 +94,7 @@ export class EditorOverlay {
       const popup = new PopupHost(this.host);
       popup.mount(gui, { cellBounds: opts.cellBounds, position, viewportBounds });
       this.current = { kind: 'popup', editor, opts, popup, gui };
-      if (opts.modeClass) gui.classList.add(`cg-editor--${opts.modeClass}`);
+      if (opts.modeClass) gui.classList.add(`vg-editor--${opts.modeClass}`);
       editor.afterGuiAttached?.();
       return;
     }
@@ -102,8 +102,8 @@ export class EditorOverlay {
     // Inline mode — wrap the editor body in an absolutely-positioned container
     // so the editor itself can size to 100%/100% without absolute math.
     const wrapper = document.createElement('div');
-    wrapper.className = 'cg-editor-overlay';
-    if (opts.modeClass) wrapper.classList.add(`cg-editor--${opts.modeClass}`);
+    wrapper.className = 'vg-editor-overlay';
+    if (opts.modeClass) wrapper.classList.add(`vg-editor--${opts.modeClass}`);
     wrapper.style.cssText =
       `position:absolute; left:${opts.cellBounds.x}px; top:${opts.cellBounds.y}px;` +
       ` width:${opts.cellBounds.w}px; height:${opts.cellBounds.h}px; z-index:10; pointer-events:auto;`;
@@ -132,7 +132,7 @@ export class EditorOverlay {
   }
 
   /** Read getValue from the editor and dispatch onCommit. Host is responsible
-   *  for routing through valueParser / valueSetter (cgrid.ts does that). */
+   *  for routing through valueParser / valueSetter (velocityGrid.ts does that). */
   commit(): void {
     if (!this.current) return;
     const { editor, opts } = this.current;
@@ -140,10 +140,10 @@ export class EditorOverlay {
     // editor open and flag it (Excel behaviour: a bad entry doesn't commit
     // or navigate away). The flag clears on the next successful commit path.
     if (editor.isValid?.() === false) {
-      this.frame()?.classList.add('cg-editor--invalid');
+      this.frame()?.classList.add('vg-editor--invalid');
       return;
     }
-    this.frame()?.classList.remove('cg-editor--invalid');
+    this.frame()?.classList.remove('vg-editor--invalid');
     if (editor.isCancelAfterEnd?.()) { this.cancel(); return; }
     const newValue = editor.getValue();
     // Tear down DOM + clear `current` BEFORE calling onCommit so listeners

@@ -437,17 +437,17 @@ cgrid should **not** ship a config manager. The host owns ConfigManager (or what
 ```ts
 // In cgrid/src/api.ts:
 
-export interface CGridState {
+export interface VelocityGridState {
   // Opaque JSON-serializable state snapshot
   [moduleId: string]: { version: number; data: unknown };
 }
 
-export interface CGridStateAPI {
+export interface VelocityGridStateAPI {
   /** Capture the grid's full state as a JSON-serializable snapshot. */
-  getState(): CGridState;
+  getState(): VelocityGridState;
 
   /** Restore from a JSON snapshot. Handles per-module migration. */
-  setState(state: CGridState): Promise<void>;
+  setState(state: VelocityGridState): Promise<void>;
 
   /** Fire when the user (or programmatic edit) mutates state. Returns unsubscribe. */
   onStateChange(fn: () => void): () => void;
@@ -457,7 +457,7 @@ export interface CGridStateAPI {
 ### Recommended contract (full)
 
 ```ts
-export interface CGridConfig extends CGridStateAPI {
+export interface VelocityGridConfig extends VelocityGridStateAPI {
   /** Component identity for the host's component registry / profile bundling */
   readonly componentType: string;     // e.g., 'cgrid'
   readonly componentSubType: string;  // e.g., 'markets'
@@ -485,7 +485,7 @@ export interface CGridConfig extends CGridStateAPI {
 // In the host app:
 
 // 1. Construct grid
-const grid = new CGrid({ /* initial options */ });
+const grid = new VelocityGrid({ /* initial options */ });
 
 // 2. Load profile bundle
 const profiles = await configManager.profiles.list({ instanceId: 'my-grid' });
@@ -530,7 +530,7 @@ saveButton.onclick = async () => {
 
 ### What the customizer addon needs
 
-The `@cgrid/customizer` addon does NOT talk to the host config manager directly. It reads/writes through cgrid's API:
+The `@wellsfargo-starui/velocity-grid-customizer` addon does NOT talk to the host config manager directly. It reads/writes through cgrid's API:
 
 - `grid.getModuleState(moduleId)` — to load the editor's working state
 - `grid.setModuleState(moduleId, state)` — to commit the editor's draft

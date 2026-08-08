@@ -5,7 +5,7 @@
 // label reads `aggFunc(headerName)` — e.g. `sum(Gold)` — mirroring
 // the agg-decorated column-header convention.
 
-import type { CGridApi } from '../../../types';
+import type { VelocityGridApi } from '../../../types';
 import {
   DEFAULT_VALUE_AGG_FUNC,
   VALUES_PLACEHOLDER,
@@ -24,7 +24,7 @@ interface ValuePill {
 }
 
 export interface ValuesZonePanelDeps {
-  api: CGridApi;
+  api: VelocityGridApi;
   resolveLabel(colId: string): string;
   rootHost: HTMLElement;
   isColumnValueable(colId: string): boolean;
@@ -34,7 +34,7 @@ export interface ValuesZonePanelDeps {
  *  on the Values zone. Prefers the colDef's declared `aggFunc`, falls
  *  back to `'sum'`. The api method is optional on the mock surface;
  *  tests stub it via `getColumnDefaultAggFunc`. */
-export function resolveDefaultAggFunc(api: CGridApi, colId: string): string {
+export function resolveDefaultAggFunc(api: VelocityGridApi, colId: string): string {
   const apiAny = api as unknown as { getColumnDefaultAggFunc?: (colId: string) => string | undefined };
   const declared = apiAny.getColumnDefaultAggFunc?.(colId);
   return (typeof declared === 'string' && declared.length > 0) ? declared : DEFAULT_VALUE_AGG_FUNC;
@@ -55,13 +55,13 @@ export class ValuesZonePanel {
       iconName: 'sigma',
       headerText: 'Values',
       ariaLabel: 'Aggregate value columns',
-      zoneClass: 'cg-columns-panel-valz',
-      contentClass: 'cg-columns-panel-valz-content',
+      zoneClass: 'vg-columns-panel-valz',
+      contentClass: 'vg-columns-panel-valz-content',
     });
     this.section = handles.section;
     this.dropZone = handles.dropZone;
     this.content = handles.content;
-    this.dropZone.setAttribute('data-cg-pill-role', 'value');
+    this.dropZone.setAttribute('data-vg-pill-role', 'value');
     this.refresh();
     this.unsubs.push(
       this.deps.api.addEventListener('pivotStateChanged', () => this.refresh()),

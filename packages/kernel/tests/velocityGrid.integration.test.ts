@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid, inferRowIdField } from '../src/cgrid';
+import { VelocityGrid, inferRowIdField } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
 
-// Stub Worker for happy-dom env. CGrid accepts options.worker.url; in tests we inject a fake.
+// Stub Worker for happy-dom env. VelocityGrid accepts options.worker.url; in tests we inject a fake.
 beforeAll(() => {
   (globalThis as any).Worker = class {
     listeners: Array<(e: { data: any }) => void> = [];
@@ -34,17 +34,17 @@ beforeAll(() => {
   })() as any;
 });
 
-describe('CGrid integration', () => {
+describe('VelocityGrid integration', () => {
   it('constructs and emits gridReady', async () => {
     const container = document.createElement('div');
     container.style.cssText = 'width:800px; height:600px;';
-    container.className = 'cg-theme-quartz';
+    container.className = 'vg-theme-quartz';
     document.body.appendChild(container);
     const events: any[] = [];
-    const grid = new CGrid<{ id: string; name: string }>(container, {
+    const grid = new VelocityGrid<{ id: string; name: string }>(container, {
       columnDefs: [{ field: 'id' }, { field: 'name' }],
       getRowId: (r) => r.id,
-      theme: 'cg-theme-quartz',
+      theme: 'vg-theme-quartz',
     });
     grid.on('gridReady', (e) => events.push(e));
     // Simulate worker 'ready' response so the integration completes.
@@ -58,9 +58,9 @@ describe('CGrid integration', () => {
   it('ensureColumnVisible is a no-op for pinned columns and unknown IDs', async () => {
     const container = document.createElement('div');
     container.style.cssText = 'width:800px; height:600px;';
-    container.className = 'cg-theme-quartz';
+    container.className = 'vg-theme-quartz';
     document.body.appendChild(container);
-    const grid = new CGrid<{ id: string; a: number; b: number }>(container, {
+    const grid = new VelocityGrid<{ id: string; a: number; b: number }>(container, {
       columnDefs: [
         { field: 'id', width: 80, pinned: 'left' },
         { field: 'a',  width: 200 },
@@ -80,9 +80,9 @@ describe('CGrid integration', () => {
   it('ensureColumnGroupVisible opens ancestor groups before scrolling to the first leaf', async () => {
     const container = document.createElement('div');
     container.style.cssText = 'width:800px; height:600px;';
-    container.className = 'cg-theme-quartz';
+    container.className = 'vg-theme-quartz';
     document.body.appendChild(container);
-    const grid = new CGrid<{ id: string; a: number; b: number; c: number }>(container, {
+    const grid = new VelocityGrid<{ id: string; a: number; b: number; c: number }>(container, {
       columnDefs: [
         { field: 'id', width: 80 },
         {
@@ -122,7 +122,7 @@ describe('CGrid integration', () => {
     function buildWiredGrid<T extends { id: string }>(rows: T[], cols: any[]) {
       const container = document.createElement('div');
       container.style.cssText = 'width:800px; height:600px;';
-      container.className = 'cg-theme-quartz';
+      container.className = 'vg-theme-quartz';
       document.body.appendChild(container);
       const prevWorker = (globalThis as any).Worker;
       (globalThis as any).Worker = class {
@@ -136,7 +136,7 @@ describe('CGrid integration', () => {
         addEventListener(_: string, cb: (e: { data: any }) => void) { this.listeners.push(cb); }
         terminate() {}
       };
-      const grid = new CGrid<T>(container, {
+      const grid = new VelocityGrid<T>(container, {
         columnDefs: cols,
         getRowId: (r) => r.id,
         rowSelection: 'multiple',
@@ -319,9 +319,9 @@ describe('CGrid integration', () => {
     function buildBareGrid<T extends { id: string }>(rows: T[], cols: any[]) {
       const container = document.createElement('div');
       container.style.cssText = 'width:800px; height:600px;';
-      container.className = 'cg-theme-quartz';
+      container.className = 'vg-theme-quartz';
       document.body.appendChild(container);
-      const grid = new CGrid<T>(container, {
+      const grid = new VelocityGrid<T>(container, {
         columnDefs: cols,
         getRowId: (r) => r.id,
         rowData: rows,
@@ -607,7 +607,7 @@ describe('CGrid integration', () => {
 
     it('save snapshot survives a fresh grid instance (simulates page reload)', () => {
       // The demo's persistence path: getColumnState → JSON.stringify →
-      // localStorage. On reload, a brand-new CGrid is constructed from
+      // localStorage. On reload, a brand-new VelocityGrid is constructed from
       // the original CColDefs, then applyColumnState replays the saved
       // snapshot. This test exercises that exact shape.
       const cols = [
@@ -686,9 +686,9 @@ describe('CGrid integration', () => {
     function buildBareGrid<T extends { id: string }>(rows: T[], cols: any[]) {
       const container = document.createElement('div');
       container.style.cssText = 'width:800px; height:600px;';
-      container.className = 'cg-theme-quartz';
+      container.className = 'vg-theme-quartz';
       document.body.appendChild(container);
-      const grid = new CGrid<T>(container, {
+      const grid = new VelocityGrid<T>(container, {
         columnDefs: cols,
         getRowId: (r) => r.id,
         rowData: rows,
@@ -935,9 +935,9 @@ describe('CGrid integration', () => {
   it('accepts a CColGroupDef in columnDefs and resolves leaves in declaration order', async () => {
     const container = document.createElement('div');
     container.style.cssText = 'width:800px; height:600px;';
-    container.className = 'cg-theme-quartz';
+    container.className = 'vg-theme-quartz';
     document.body.appendChild(container);
-    const grid = new CGrid<{ id: string; a: number; b: number; c: number }>(container, {
+    const grid = new VelocityGrid<{ id: string; a: number; b: number; c: number }>(container, {
       columnDefs: [
         { field: 'id', width: 80 },
         {
@@ -963,9 +963,9 @@ describe('CGrid integration', () => {
     it('puts pinned-right columns AFTER all center columns', () => {
       const container = document.createElement('div');
       container.style.cssText = 'width:800px; height:600px;';
-      container.className = 'cg-theme-quartz';
+      container.className = 'vg-theme-quartz';
       document.body.appendChild(container);
-      const grid = new CGrid<{ id: string }>(container, {
+      const grid = new VelocityGrid<{ id: string }>(container, {
         columnDefs: [
           { field: 'positionId', pinned: 'left' },
           { field: 'cusip', pinned: 'left' },
@@ -991,9 +991,9 @@ describe('CGrid integration', () => {
     it('returns the same array when nothing is pinned (no behavioural regression for plain grids)', () => {
       const container = document.createElement('div');
       container.style.cssText = 'width:800px; height:600px;';
-      container.className = 'cg-theme-quartz';
+      container.className = 'vg-theme-quartz';
       document.body.appendChild(container);
-      const grid = new CGrid<{ id: string }>(container, {
+      const grid = new VelocityGrid<{ id: string }>(container, {
         columnDefs: [
           { field: 'a' },
           { field: 'b' },
@@ -1012,7 +1012,7 @@ describe('CGrid integration', () => {
   // Both methods reach through the SideBarHost. The built-in Columns +
   // Filters panel ctors expect a full ResolvedColDef map at init, which
   // construction-time tests don't have set up cleanly — instead these
-  // tests override the built-ins via `CGridOptions.components` with a
+  // tests override the built-ins via `VelocityGridOptions.components` with a
   // recording stub that just bumps a refresh counter on each call. That
   // also doubles as the custom-panel test: registering `'demoPanel'`
   // and `'agColumnsToolPanel'` in the same `components` map exercises
@@ -1023,7 +1023,7 @@ describe('CGrid integration', () => {
       refreshCount = 0;
       destroyCount = 0;
       readonly gui = document.createElement('div');
-      init(): void { this.gui.className = 'cg-recording-panel'; }
+      init(): void { this.gui.className = 'vg-recording-panel'; }
       getGui(): HTMLElement { return this.gui; }
       refresh(): void { this.refreshCount += 1; }
       destroy(): void { this.destroyCount += 1; }
@@ -1032,9 +1032,9 @@ describe('CGrid integration', () => {
     function makeGrid() {
       const container = document.createElement('div');
       container.style.cssText = 'width:800px; height:600px;';
-      container.className = 'cg-theme-quartz';
+      container.className = 'vg-theme-quartz';
       document.body.appendChild(container);
-      const grid = new CGrid<{ id: string; a: number }>(container, {
+      const grid = new VelocityGrid<{ id: string; a: number }>(container, {
         columnDefs: [{ field: 'id' }, { field: 'a' }],
         getRowId: (r) => r.id,
         components: {
@@ -1122,7 +1122,7 @@ describe('CGrid integration', () => {
       (grid as any).sideBar.openPanel('agFiltersToolPanel');
       const live = api.getToolPanelInstance('agFiltersToolPanel') as RecordingPanel;
       expect(live).not.toBeNull();
-      expect(live.gui.className).toBe('cg-recording-panel');
+      expect(live.gui.className).toBe('vg-recording-panel');
       // Close — host calls destroy() and drops the reference. The next
       // lookup returns null even though the slot is still registered.
       (grid as any).sideBar.closePanel();
@@ -1134,12 +1134,12 @@ describe('CGrid integration', () => {
     it('both methods are silent no-ops when no side bar is configured', () => {
       const container = document.createElement('div');
       container.style.cssText = 'width:800px; height:600px;';
-      container.className = 'cg-theme-quartz';
+      container.className = 'vg-theme-quartz';
       document.body.appendChild(container);
-      const grid = new CGrid<{ id: string }>(container, {
+      const grid = new VelocityGrid<{ id: string }>(container, {
         columnDefs: [{ field: 'id' }],
         getRowId: (r) => r.id,
-        // No `sideBar` option — `this.sideBar` stays null on CGrid.
+        // No `sideBar` option — `this.sideBar` stays null on VelocityGrid.
       });
       const api = (grid as any).makeApi();
       expect(() => api.refreshToolPanel('agColumnsToolPanel')).not.toThrow();
@@ -1150,7 +1150,7 @@ describe('CGrid integration', () => {
 
   // Cycle 11 / Task 6 — Side bar state API.
   //
-  // Seven CGridApi methods that wrap the live SideBarHost so apps can
+  // Seven VelocityGridApi methods that wrap the live SideBarHost so apps can
   // drive the side bar without poking at the host directly. Every method
   // must (a) match the SideBarHost behaviour 1:1 when a side bar is
   // configured AND (b) be a silent no-op (or a sensible default) when no
@@ -1159,7 +1159,7 @@ describe('CGrid integration', () => {
   describe('side bar state API (Cycle 11 / Task 6)', () => {
     class RecordingPanel {
       readonly gui = document.createElement('div');
-      init(): void { this.gui.className = 'cg-recording-panel'; }
+      init(): void { this.gui.className = 'vg-recording-panel'; }
       getGui(): HTMLElement { return this.gui; }
       refresh(): void {}
       destroy(): void {}
@@ -1168,9 +1168,9 @@ describe('CGrid integration', () => {
     function makeGrid(extra?: { hiddenByDefault?: boolean; defaultToolPanel?: string; position?: 'left' | 'right' }) {
       const container = document.createElement('div');
       container.style.cssText = 'width:800px; height:600px;';
-      container.className = 'cg-theme-quartz';
+      container.className = 'vg-theme-quartz';
       document.body.appendChild(container);
-      const grid = new CGrid<{ id: string; a: number }>(container, {
+      const grid = new VelocityGrid<{ id: string; a: number }>(container, {
         columnDefs: [{ field: 'id' }, { field: 'a' }],
         getRowId: (r) => r.id,
         components: {
@@ -1193,9 +1193,9 @@ describe('CGrid integration', () => {
     function makeGridNoSideBar() {
       const container = document.createElement('div');
       container.style.cssText = 'width:800px; height:600px;';
-      container.className = 'cg-theme-quartz';
+      container.className = 'vg-theme-quartz';
       document.body.appendChild(container);
-      const grid = new CGrid<{ id: string }>(container, {
+      const grid = new VelocityGrid<{ id: string }>(container, {
         columnDefs: [{ field: 'id' }],
         getRowId: (r) => r.id,
       });
@@ -1275,9 +1275,9 @@ describe('CGrid integration', () => {
     it('getSideBar() returns the resolved SideBarDef (string shortcuts expanded, position defaulted)', () => {
       const container = document.createElement('div');
       container.style.cssText = 'width:800px; height:600px;';
-      container.className = 'cg-theme-quartz';
+      container.className = 'vg-theme-quartz';
       document.body.appendChild(container);
-      const grid = new CGrid<{ id: string }>(container, {
+      const grid = new VelocityGrid<{ id: string }>(container, {
         columnDefs: [{ field: 'id' }],
         getRowId: (r) => r.id,
         components: {
@@ -1338,17 +1338,17 @@ describe('CGrid integration', () => {
     });
   });
 
-  // Cycle 11 / Task 7 — Side bar events at the CGrid surface. Verifies
+  // Cycle 11 / Task 7 — Side bar events at the VelocityGrid surface. Verifies
   // that SideBarHost lifecycle events are forwarded into the grid's
   // typed event emitter so apps can `grid.on('toolPanelVisibleChanged',
   // ...)` like any other event. The host-level test in
   // `tests/sideBarEvents.test.ts` pins the emit callback directly; this
-  // suite proves the CGrid wiring (constructor `ctx.emit` → `events.emit`)
+  // suite proves the VelocityGrid wiring (constructor `ctx.emit` → `events.emit`)
   // is in place end-to-end through the public `grid.on` API.
   describe('side bar events (Cycle 11 / Task 7)', () => {
     class RecordingPanel {
       readonly gui = document.createElement('div');
-      init(): void { this.gui.className = 'cg-recording-panel'; }
+      init(): void { this.gui.className = 'vg-recording-panel'; }
       getGui(): HTMLElement { return this.gui; }
       refresh(): void {}
       destroy(): void {}
@@ -1357,9 +1357,9 @@ describe('CGrid integration', () => {
     function makeGrid(extra?: { defaultToolPanel?: string; hiddenByDefault?: boolean }) {
       const container = document.createElement('div');
       container.style.cssText = 'width:800px; height:600px;';
-      container.className = 'cg-theme-quartz';
+      container.className = 'vg-theme-quartz';
       document.body.appendChild(container);
-      const grid = new CGrid<{ id: string }>(container, {
+      const grid = new VelocityGrid<{ id: string }>(container, {
         columnDefs: [{ field: 'id' }],
         getRowId: (r) => r.id,
         components: {
@@ -1419,7 +1419,7 @@ describe('CGrid integration', () => {
       // events on an inline harness by hooking the host's emit directly.
       //
       // Simpler harness: subscribe BEFORE the host emits by patching the
-      // grid's event emitter before constructing. Since the CGrid
+      // grid's event emitter before constructing. Since the VelocityGrid
       // constructor builds the host synchronously, we need a different
       // path — capture via a `grid.on` listener AFTER the fact and
       // confirm that `getOpenedToolPanel()` reflects the panel without
@@ -1482,9 +1482,9 @@ describe('CGrid integration', () => {
     it('no events fire when no side bar is configured', () => {
       const container = document.createElement('div');
       container.style.cssText = 'width:800px; height:600px;';
-      container.className = 'cg-theme-quartz';
+      container.className = 'vg-theme-quartz';
       document.body.appendChild(container);
-      const grid = new CGrid<{ id: string }>(container, {
+      const grid = new VelocityGrid<{ id: string }>(container, {
         columnDefs: [{ field: 'id' }],
         getRowId: (r) => r.id,
       });

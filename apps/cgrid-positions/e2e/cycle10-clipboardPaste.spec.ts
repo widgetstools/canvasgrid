@@ -81,12 +81,12 @@ async function anchorFocus(
   // past the viewport's right edge at 1400 × 900; without a scroll
   // `getCellBoundsAt` returns null.
   await page.evaluate(
-    (id) => (window as unknown as { __cgrid: GridSurface }).__cgrid.ensureColumnVisible(id, 'start'),
+    (id) => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.ensureColumnVisible(id, 'start'),
     colId,
   );
   await waitForFrames(page, 4);
   const bounds = await page.evaluate(
-    ({ rowIndex, colId }) => (window as unknown as { __cgrid: GridSurface }).__cgrid.getCellBoundsAt(rowIndex, colId),
+    ({ rowIndex, colId }) => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.getCellBoundsAt(rowIndex, colId),
     { rowIndex, colId },
   );
   if (!bounds) throw new Error(`anchorFocus: no bounds for row=${rowIndex} col=${colId}`);
@@ -107,7 +107,7 @@ async function anchorFocus(
   // <textarea>/<input> instead of the canvas. Cancel any open editor so
   // Ctrl+V / `pasteFromClipboard` reaches the canvas-level handler.
   await page.evaluate(() => {
-    const w = window as unknown as { __cgrid: GridSurface };
+    const w = window as unknown as { __velocity-grid: GridSurface };
     w.__cgrid.stopEditing(true);
   });
   await waitForFrames(page, 2);
@@ -131,11 +131,11 @@ test.describe('Cycle 10 / Task 4 — clipboard paste', () => {
     // at (0, tradeDate) → (1, expiryDate).
     await seedClipboard(page, 'TD_X\tEX_X\nTD_Y\tEX_Y');
 
-    await page.evaluate(() => (window as unknown as { __cgrid: GridSurface }).__cgrid.pasteFromClipboard());
+    await page.evaluate(() => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.pasteFromClipboard());
     await waitForFrames(page, 8);
 
     const after = await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: GridSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridSurface }).__cgrid;
       return {
         a: g.getCellValue(0, 'tradeDate'),
         b: g.getCellValue(0, 'expiryDate'),
@@ -165,7 +165,7 @@ test.describe('Cycle 10 / Task 4 — clipboard paste', () => {
     // synchronously.
     await expect.poll(
       async () => page.evaluate(
-        () => (window as unknown as { __cgrid: GridSurface }).__cgrid.getCellValue(3, 'tradeDate'),
+        () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.getCellValue(3, 'tradeDate'),
       ),
       { timeout: 5_000 },
     ).toBe('TD_KEY');
@@ -179,11 +179,11 @@ test.describe('Cycle 10 / Task 4 — clipboard paste', () => {
     // out of Excel produces for cells containing the delimiter / quote
     // / newline. Verifies the worker's `deserializeTsv` unwraps each.
     await seedClipboard(page, '"line1\nline2"\t"a""b"\n"has\ttab"\tplain');
-    await page.evaluate(() => (window as unknown as { __cgrid: GridSurface }).__cgrid.pasteFromClipboard());
+    await page.evaluate(() => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.pasteFromClipboard());
     await waitForFrames(page, 8);
 
     const after = await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: GridSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridSurface }).__cgrid;
       return {
         a: g.getCellValue(5, 'tradeDate'),
         b: g.getCellValue(5, 'expiryDate'),
@@ -203,12 +203,12 @@ test.describe('Cycle 10 / Task 4 — clipboard paste', () => {
     await focusCanvas(page);
     await seedClipboard(page, 'SHOULD_NOT_LAND');
     const before = await page.evaluate(
-      () => (window as unknown as { __cgrid: GridSurface }).__cgrid.getCellValue(0, 'tradeDate'),
+      () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.getCellValue(0, 'tradeDate'),
     );
-    await page.evaluate(() => (window as unknown as { __cgrid: GridSurface }).__cgrid.pasteFromClipboard());
+    await page.evaluate(() => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.pasteFromClipboard());
     await waitForFrames(page, 4);
     const after = await page.evaluate(
-      () => (window as unknown as { __cgrid: GridSurface }).__cgrid.getCellValue(0, 'tradeDate'),
+      () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.getCellValue(0, 'tradeDate'),
     );
     expect(after).toBe(before);
   });

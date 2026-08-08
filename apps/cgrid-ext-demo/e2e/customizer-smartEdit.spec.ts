@@ -27,7 +27,7 @@ test.describe('Smart Edit (Markets parity)', () => {
   test('settings Save toggles recordHistory', async ({ page }) => {
     // Markets: v2-smart-edit — settings sheet opens Smart Edit panel
     await openCustomizer(page, 'smart-edit');
-    await expect(page.locator('.cgext-sheet-title')).toHaveText('Smart Edit');
+    await expect(page.locator('.vgext-sheet-title')).toHaveText('Smart Edit');
 
     const before = await editSettings<boolean>(page, 'smartEdit.recordHistory');
     await cockpit(page).locator('.ckp-switch').last().click();

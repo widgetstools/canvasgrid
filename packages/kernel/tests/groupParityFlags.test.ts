@@ -78,7 +78,7 @@ describe('GroupCellValue.innerRenderer field', () => {
 });
 
 // ─── suppressGroupChangesColumnVisibility logic ───────────────────────────
-// This mirrors the cgrid.ts gate logic. We test the pure boolean resolution
+// This mirrors the velocityGrid.ts gate logic. We test the pure boolean resolution
 // without instantiating the full grid.
 
 type SuppressVis = boolean | 'suppressHideOnGroup' | 'suppressShowOnUngroup' | undefined;
@@ -119,20 +119,20 @@ describe('suppressGroupChangesColumnVisibility logic', () => {
   });
 });
 
-// ─── CGridOptions field presence ──────────────────────────────────────────
+// ─── VelocityGridOptions field presence ──────────────────────────────────────────
 // Verify the new options fields are present on the type (compile-time check
 // via runtime key inspection on a partial options object).
 
-import type { CGridOptions } from '../src/types';
+import type { VelocityGridOptions } from '../src/types';
 
-describe('CGridOptions new fields', () => {
-  it('suppressCount field exists on CGridOptions type', () => {
-    const opts: Partial<CGridOptions> = { suppressCount: true };
+describe('VelocityGridOptions new fields', () => {
+  it('suppressCount field exists on VelocityGridOptions type', () => {
+    const opts: Partial<VelocityGridOptions> = { suppressCount: true };
     expect(opts.suppressCount).toBe(true);
   });
 
-  it('groupRowRendererParams field exists on CGridOptions type', () => {
-    const opts: Partial<CGridOptions> = {
+  it('groupRowRendererParams field exists on VelocityGridOptions type', () => {
+    const opts: Partial<VelocityGridOptions> = {
       groupRowRendererParams: { innerRenderer: 'myGroup', suppressCount: true },
     };
     expect(opts.groupRowRendererParams?.innerRenderer).toBe('myGroup');
@@ -140,9 +140,9 @@ describe('CGridOptions new fields', () => {
   });
 
   it('suppressGroupChangesColumnVisibility accepts all three shapes', () => {
-    const opt1: Partial<CGridOptions> = { suppressGroupChangesColumnVisibility: true };
-    const opt2: Partial<CGridOptions> = { suppressGroupChangesColumnVisibility: 'suppressHideOnGroup' };
-    const opt3: Partial<CGridOptions> = { suppressGroupChangesColumnVisibility: 'suppressShowOnUngroup' };
+    const opt1: Partial<VelocityGridOptions> = { suppressGroupChangesColumnVisibility: true };
+    const opt2: Partial<VelocityGridOptions> = { suppressGroupChangesColumnVisibility: 'suppressHideOnGroup' };
+    const opt3: Partial<VelocityGridOptions> = { suppressGroupChangesColumnVisibility: 'suppressShowOnUngroup' };
     expect(opt1.suppressGroupChangesColumnVisibility).toBe(true);
     expect(opt2.suppressGroupChangesColumnVisibility).toBe('suppressHideOnGroup');
     expect(opt3.suppressGroupChangesColumnVisibility).toBe('suppressShowOnUngroup');

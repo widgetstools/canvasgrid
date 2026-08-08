@@ -1,4 +1,4 @@
-// CGridOptions — the kitchen-sink constructor option bag plus the small
+// VelocityGridOptions — the kitchen-sink constructor option bag plus the small
 // option-shaped helper types that only appear inside it
 // (CCellSelectionOptions). Depends on column.ts (CColDef, CColGroupDef,
 // GetRowHeightParams, FillOperationParams), group.ts (IAggFunc),
@@ -52,7 +52,7 @@ export interface CCellSelectionOptions {
   suppressDrag?: boolean;
 }
 
-export interface CGridOptions<TRow = any> {
+export interface VelocityGridOptions<TRow = any> {
   columnDefs: (CColDef<TRow> | CColGroupDef<TRow>)[];
   defaultColDef?: Partial<CColDef<TRow>>;
   /**
@@ -181,9 +181,9 @@ export interface CGridOptions<TRow = any> {
    */
   deferAsyncTransactionsWhileScrolling?: boolean;
   /**
-   * A CSS class name (`'cg-theme-quartz'`, the default) OR a programmatic
+   * A CSS class name (`'vg-theme-quartz'`, the default) OR a programmatic
    * `CgTheme` object (`themeQuartz.withParams({ accentColor: '#2f7bc4' })`).
-   * The object form compiles to an inline `--cg-*` var patch on the grid
+   * The object form compiles to an inline `--vg-*` var patch on the grid
    * root PLUS its structural base class, resolved light/dark per
    * `pickMode()`; the string form is unchanged (adds the class verbatim).
    * Always in `NON_PERSISTABLE_RUNTIME_OPTIONS` — object themes aren't
@@ -192,10 +192,10 @@ export interface CGridOptions<TRow = any> {
   theme?: string | CgTheme;
   /**
    * Cycle 22 / Task 2 — density-mode preset. Toggling the value swaps
-   * one CSS class on the grid root (`.cg-density-compact` /
-   * `.cg-density-normal` / `.cg-density-comfortable`); each class
-   * overrides `--cg-row-height`, `--cg-header-height`, and
-   * `--cg-cell-padding-x`. Omitting the option (`undefined`) skips
+   * one CSS class on the grid root (`.vg-density-compact` /
+   * `.vg-density-normal` / `.vg-density-comfortable`); each class
+   * overrides `--vg-row-height`, `--vg-header-height`, and
+   * `--vg-cell-padding-x`. Omitting the option (`undefined`) skips
    * the class entirely so the active theme's native row/header
    * dimensions apply.
    *
@@ -242,7 +242,7 @@ export interface CGridOptions<TRow = any> {
   initialState?: import('../core/stateSnapshot').GridState;
   /**
    * Cycle 21i / Phase 1 — unique identity for this grid instance.
-   * Namespaces persisted state (`cgrid:state:<gridId>` under the default
+   * Namespaces persisted state (`velocity-grid:state:<gridId>` under the default
    * localStorage adapter) so several grids on one page — or one grid
    * across sessions — keep their configuration separate. Required for
    * `persistState`; has no effect on its own.
@@ -305,7 +305,7 @@ export interface CGridOptions<TRow = any> {
   animateRows?: boolean;
   /**
    * Cycle 21i / Phase 1 — when `true`, disables the row-hover highlight
-   * (the `--cg-row-hover-bg` band the painter draws under the pointer's
+   * (the `--vg-row-hover-bg` band the painter draws under the pointer's
    * data row). Default `false` (hover highlight ON). Runtime-mutable.
    * AG-Grid parity name.
    */
@@ -801,7 +801,7 @@ export interface CGridOptions<TRow = any> {
    *  pure: no closures over external scope, no calls to main-thread
    *  globals. **Trust boundary:** treat aggFunc sources as trusted
    *  application code — never feed untrusted / user-authored function
-   *  strings into this map (use `@cgrid/expression` for sandboxed
+   *  strings into this map (use `@wellsfargo-starui/velocity-grid-expression` for sandboxed
    *  formulas). Closure capture is detected at registration time (the
    *  function is rebuilt + invoked against a probe input on the main
    *  thread; a mismatch / throw rejects the registration with an error
@@ -858,7 +858,7 @@ export interface CGridOptions<TRow = any> {
    *    blank cells in that column.
    *  - `'groupRows'`: NO auto-group columns. Group rows render as a
    *    full-row strip (chevron + indent + value + count spanning every
-   *    visible band) on top of a subtle `--cg-group-row-bg` shift.
+   *    visible band) on top of a subtle `--vg-group-row-bg` shift.
    *  - `'custom'`: same full-row strip allocation as `'groupRows'` but
    *    the strip's painter is the renderer named in
    *    `groupRowRenderer`. The app owns every pixel inside the strip
@@ -1057,7 +1057,7 @@ export interface CGridOptions<TRow = any> {
    *    every depth starts expanded. Equivalent to the Task 7 / Task 8
    *    behaviour shipped before this option existed.
    *  AG-Grid levels-open semantics (BEHAVIOR CHANGE 2026-07 — see the
-   *  migration warning in cgrid.ts):
+   *  migration warning in velocityGrid.ts):
    *  - `N` where `N >= 0` — the NUMBER of levels open. `0` starts
    *    everything collapsed; `1` opens the first level (depth 0); `2`
    *    opens two levels; etc. (Previously `depth <= N`, so `0` opened
@@ -1132,7 +1132,7 @@ export interface CGridOptions<TRow = any> {
   /** Cycle 15 / Task 12 — when `true` AND grouping is active, the
    *  worker emits a per-group footer row at the bottom of every
    *  expanded group. Each footer row renders the same totals signature
-   *  the grand-total row uses (`--cg-totals-*` / `--cg-group-footer-*`
+   *  the grand-total row uses (`--vg-totals-*` / `--vg-group-footer-*`
    *  tokens — see the design notes for the override family) and shows
    *  `Total ${groupValue}` in the auto-group cell aligned to the parent
    *  group's depth indent. Per-group totals come from the same

@@ -94,7 +94,7 @@ export class ModalHost {
     this.closeOnEscape = options?.closeOnEscape !== false;
 
     this.backdrop = document.createElement('div');
-    this.backdrop.className = 'cg-modal-backdrop';
+    this.backdrop.className = 'vg-modal-backdrop';
     if (options?.closeOnBackdrop !== false) {
       this.backdrop.addEventListener('mousedown', (e) => {
         if (e.target === this.backdrop) this.close('backdrop');
@@ -102,7 +102,7 @@ export class ModalHost {
     }
 
     this.dialog = document.createElement('div');
-    this.dialog.className = 'cg-modal';
+    this.dialog.className = 'vg-modal';
     this.dialog.setAttribute('role', 'dialog');
     this.dialog.setAttribute('aria-modal', 'true');
     this.dialog.tabIndex = -1;
@@ -111,13 +111,13 @@ export class ModalHost {
     if (options?.title) {
       this.dialog.setAttribute('aria-label', options.title);
       const header = document.createElement('div');
-      header.className = 'cg-modal-header';
+      header.className = 'vg-modal-header';
       const title = document.createElement('div');
-      title.className = 'cg-modal-title';
+      title.className = 'vg-modal-title';
       title.textContent = options.title;
       const closeBtn = document.createElement('button');
       closeBtn.type = 'button';
-      closeBtn.className = 'cg-modal-close';
+      closeBtn.className = 'vg-modal-close';
       closeBtn.setAttribute('aria-label', 'Close dialog');
       closeBtn.textContent = '✕';
       closeBtn.addEventListener('click', () => this.close('closeButton'));
@@ -127,7 +127,7 @@ export class ModalHost {
     }
 
     const body = document.createElement('div');
-    body.className = 'cg-modal-body';
+    body.className = 'vg-modal-body';
     body.appendChild(content);
     this.dialog.appendChild(body);
 

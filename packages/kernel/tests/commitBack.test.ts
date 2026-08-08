@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
 
 // happy-dom shims: Worker + canvas 2D context.
@@ -34,7 +34,7 @@ beforeAll(() => {
 function buildWiredGrid<T extends { id: string }>(rows: T[], cols: any[]) {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
   const prevWorker = (globalThis as any).Worker;
   (globalThis as any).Worker = class {
@@ -47,7 +47,7 @@ function buildWiredGrid<T extends { id: string }>(rows: T[], cols: any[]) {
     addEventListener(_: string, cb: (e: { data: any }) => void) { this.listeners.push(cb); }
     terminate() {}
   };
-  const grid = new CGrid<T>(container, {
+  const grid = new VelocityGrid<T>(container, {
     columnDefs: cols,
     getRowId: (r) => r.id,
     rowData: rows,
@@ -82,7 +82,7 @@ describe('editor commit-back (Task 9)', () => {
     await new Promise((r) => setTimeout(r, 50));
     (grid as any).openEditor(0, 'price');
     // Editor input is now in the DOM.
-    const input = document.querySelector('.cg-editor-overlay input') as HTMLInputElement;
+    const input = document.querySelector('.vg-editor-overlay input') as HTMLInputElement;
     expect(input).toBeTruthy();
     input.value = '50';
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
@@ -130,7 +130,7 @@ describe('editor commit-back (Task 9)', () => {
 
     await new Promise((r) => setTimeout(r, 50));
     (grid as any).openEditor(0, 'name');
-    const input = document.querySelector('.cg-editor-overlay input') as HTMLInputElement;
+    const input = document.querySelector('.vg-editor-overlay input') as HTMLInputElement;
     input.value = 'beta';
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await new Promise((r) => setTimeout(r, 80));
@@ -160,7 +160,7 @@ describe('editor commit-back (Task 9)', () => {
 
     await new Promise((r) => setTimeout(r, 50));
     (grid as any).openEditor(0, 'qty');
-    const input = document.querySelector('.cg-editor-overlay input') as HTMLInputElement;
+    const input = document.querySelector('.vg-editor-overlay input') as HTMLInputElement;
     input.value = '7';
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await new Promise((r) => setTimeout(r, 80));

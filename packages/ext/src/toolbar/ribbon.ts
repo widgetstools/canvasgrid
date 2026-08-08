@@ -1,7 +1,7 @@
 /**
- * Formatting / editing ribbon for CGridExt — the dense multi-row toolbar
+ * Formatting / editing ribbon for VelocityGridExt — the dense multi-row toolbar
  * from the MarketsGrid reference. It renders as one strip in the shell's
- * `.cgext-ribbon` host, organised into labelled sections:
+ * `.vgext-ribbon` host, organised into labelled sections:
  *
  *   HISTORY · SMART · BULK        (edit ops on the current selection)
  *   SCOPE · type · B I U · align · size
@@ -11,7 +11,7 @@
  *
  * Structural signature: each section leads with a small UPPERCASE label,
  * the way the reference encodes "what this cluster acts on". Colour comes
- * entirely from the grid's `--cg-*` theme tokens.
+ * entirely from the grid's `--vg-*` theme tokens.
  *
  * This pass ships the full chrome (every section + control, themed and
  * laid out to match the reference) with the History undo/redo wired to the
@@ -20,10 +20,10 @@
  * rules) as those module waves land — no control is faked to look enabled
  * when it isn't.
  */
-import type { CgExtension, CgExtContext, ToolbarItem, ToolbarItemInstance, Unsub } from '../extension/types';
+import type { VelocityGridExtension, VelocityGridExtContext, ToolbarItem, ToolbarItemInstance, Unsub } from '../extension/types';
 import { menu } from './ui';
 import { injectTitleBarStyles } from './titleBar';
-import type { EditBridgeHandle, SmartEditOp } from '@cgrid/edit';
+import type { EditBridgeHandle, SmartEditOp } from '@wellsfargo-starui/velocity-grid-edit';
 import { createIconPicker, type IconPickerHandle, type IconSelection } from './iconPicker';
 import { formatPickerMenu, type FormatPickerHost } from './formatPicker';
 import { findPresetByFormat, type FormatDataType } from './formatPresets';
@@ -36,7 +36,7 @@ import {
   type TemplateManagerHost,
 } from './templateManager';
 import { createFormatHistory, type FormatHistoryGrid } from './formatHistory';
-import { isOwnTemplateId } from '@cgrid/calc';
+import { isOwnTemplateId } from '@wellsfargo-starui/velocity-grid-calc';
 import {
   ribbonColorSwatch,
   syncRibbonColor,
@@ -54,7 +54,7 @@ const FILTER_TYPE_OPTIONS = [
   { v: 'set', text: 'Set', menu: 'Set' },
 ] as const;
 
-/** Lazily supplies the `@cgrid/edit` handle — the demo/consumer wires the
+/** Lazily supplies the `@wellsfargo-starui/velocity-grid-edit` handle — the demo/consumer wires the
  *  edit engine after the grid is constructed, so the ribbon reads it on
  *  demand rather than capturing it at build time. */
 export type EditHandleGetter = () => EditBridgeHandle | undefined;
@@ -112,7 +112,7 @@ function stateToggle(opts: {
 }): { el: HTMLButtonElement; paint: (isA: boolean) => void } {
   const el = document.createElement('button');
   el.type = 'button';
-  el.className = 'cgext-rb-targettoggle';
+  el.className = 'vgext-rb-targettoggle';
   el.dataset.rb = opts.rb;
   const paint = (isA: boolean): void => {
     const s = isA ? opts.a : opts.b;
@@ -128,7 +128,7 @@ function stateToggle(opts: {
 
 /** Build the ribbon extension (one item at `ribbon.main`). Compose into
  *  `ext.extensions`. Toggle visibility via the `toggle-ribbon` ext event. */
-export function ribbonExtensions(opts: { edit?: EditHandleGetter } = {}): CgExtension[] {
+export function ribbonExtensions(opts: { edit?: EditHandleGetter } = {}): VelocityGridExtension[] {
   injectRibbonStyles();
   return [ribbonItem(opts.edit)];
 }
@@ -142,19 +142,19 @@ function h(cls: string, html?: string): HTMLDivElement {
 }
 /** One horizontal run of small controls inside a group's deck. */
 function mini(...children: HTMLElement[]): HTMLDivElement {
-  const r = h('cgext-rb-mini'); r.append(...children); return r;
+  const r = h('vgext-rb-mini'); r.append(...children); return r;
 }
 /** Excel-ribbon group: stacked mini-rows with the group name centered
  *  underneath, hairline-separated from its neighbours. */
 function grp(name: string, ...rows: HTMLElement[]): HTMLDivElement {
-  const g = h('cgext-rb-grp');
-  const deck = h('cgext-rb-deck'); deck.append(...rows);
-  g.append(deck, h('cgext-rb-grp-name', name));
+  const g = h('vgext-rb-grp');
+  const deck = h('vgext-rb-deck'); deck.append(...rows);
+  g.append(deck, h('vgext-rb-grp-name', name));
   return g;
 }
 function iconBtn(icon: string, title: string): HTMLButtonElement {
   const b = document.createElement('button');
-  b.type = 'button'; b.className = 'cgext-rb-btn'; b.title = title;
+  b.type = 'button'; b.className = 'vgext-rb-btn'; b.title = title;
   b.setAttribute('aria-label', title); b.innerHTML = svg(icon);
   return b;
 }
@@ -168,7 +168,7 @@ function decimalIcon(kind: 'fewer' | 'more'): string {
   const digit = (x: number, y: number, s: string) =>
     `<text x="${x}" y="${y}" fill="currentColor" font-size="10" font-weight="700">${s}</text>`;
   const arrow = (d: string) =>
-    `<path d="${d}" fill="none" stroke="var(--cg-accent-color, #4f9cf9)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
+    `<path d="${d}" fill="none" stroke="var(--vg-accent-color, #4f9cf9)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
   const rows = kind === 'fewer'
     ? arrow('M9.5 4H1.5M4.5 1l-3 3 3 3') + digit(11.5, 7.5, '0') + digit(0.5, 17.5, '.00')
     : digit(0.5, 7.5, '.00') + arrow('M1.5 14h8M6.5 11l3 3-3 3') + digit(11.5, 17.5, '0');
@@ -176,22 +176,22 @@ function decimalIcon(kind: 'fewer' | 'more'): string {
 }
 function decimalBtn(kind: 'fewer' | 'more', title: string): HTMLButtonElement {
   const b = document.createElement('button');
-  b.type = 'button'; b.className = 'cgext-rb-btn'; b.title = title;
+  b.type = 'button'; b.className = 'vgext-rb-btn'; b.title = title;
   b.setAttribute('aria-label', title); b.innerHTML = decimalIcon(kind);
   return b;
 }
 function toggleBtn(icon: string, title: string): HTMLButtonElement {
-  const b = iconBtn(icon, title); b.classList.add('cgext-rb-toggle'); return b;
+  const b = iconBtn(icon, title); b.classList.add('vgext-rb-toggle'); return b;
 }
 function pill(text: string, caret = true): HTMLButtonElement {
   const b = document.createElement('button');
-  b.type = 'button'; b.className = 'cgext-rb-pill';
+  b.type = 'button'; b.className = 'vgext-rb-pill';
   b.innerHTML = `<span>${text}</span>` + (caret ? svg('M6 9l6 6 6-6', 12) : '');
   return b;
 }
 function textInput(placeholder: string, size: 'sm' | 'md' = 'sm'): HTMLInputElement {
   const i = document.createElement('input');
-  i.type = 'text'; i.className = `cgext-rb-input cgext-rb-input--${size}`; i.placeholder = placeholder;
+  i.type = 'text'; i.className = `vgext-rb-input vgext-rb-input--${size}`; i.placeholder = placeholder;
   return i;
 }
 // Colour-picker defaults — the swatch a picker shows when the focused
@@ -200,15 +200,15 @@ function textInput(placeholder: string, size: 'sm' | 'md' = 'sm'): HTMLInputElem
 const DEFAULT_FILL_COLOR = '#12333a';
 const DEFAULT_ICON_COLOR = '#4f9cf9';
 
-/** Resolve `--cg-fg-color` to a `#rrggbb` the native color input can hold. */
+/** Resolve `--vg-fg-color` to a `#rrggbb` the native color input can hold. */
 function defaultForeColor(anchor?: HTMLElement | null): string {
   const fallback = '#e5e9f0';
   try {
     const root =
-      anchor?.closest<HTMLElement>('.cgext-root')
-      ?? document.querySelector<HTMLElement>('.cgext-root')
+      anchor?.closest<HTMLElement>('.vgext-root')
+      ?? document.querySelector<HTMLElement>('.vgext-root')
       ?? document.body;
-    const raw = getComputedStyle(root).getPropertyValue('--cg-fg-color').trim() || fallback;
+    const raw = getComputedStyle(root).getPropertyValue('--vg-fg-color').trim() || fallback;
     if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw.toLowerCase();
     if (/^#[0-9a-fA-F]{3}$/.test(raw)) {
       const r = raw[1]!, g = raw[2]!, b = raw[3]!;
@@ -241,7 +241,7 @@ const BORDER_EDGE_PATHS: Record<BorderSideKey, string> = {
 function borderSideBtn(side: BorderSideKey): HTMLButtonElement {
   const b = document.createElement('button');
   b.type = 'button';
-  b.className = 'cgext-rb-toggle cgext-rb-bside';
+  b.className = 'vgext-rb-toggle vgext-rb-bside';
   b.dataset.side = side;
   b.title = side === 'all' ? 'All borders' : `${side.charAt(0).toUpperCase()}${side.slice(1)} border`;
   b.innerHTML =
@@ -252,21 +252,21 @@ function borderSideBtn(side: BorderSideKey): HTMLButtonElement {
 }
 
 function stat(text: string): HTMLSpanElement {
-  const s = document.createElement('span'); s.className = 'cgext-rb-stat'; s.textContent = text; return s;
+  const s = document.createElement('span'); s.className = 'vgext-rb-stat'; s.textContent = text; return s;
 }
 
 function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
   return {
     id: 'ribbon', kind: 'toolbar-item', slot: 'ribbon.main', init() {},
-    render(host: HTMLElement, ctx: CgExtContext): ToolbarItemInstance {
+    render(host: HTMLElement, ctx: VelocityGridExtContext): ToolbarItemInstance {
       // Excel-ribbon band: ONE horizontal strip of hairline-separated groups,
       // each a stacked deck of mini-rows with the group's name centered
       // underneath. Controls are captured by reference so the wire fns can
       // bind them to their engines (edit journal, calc editColumn).
-      // Title-bar styles carry the shared `.cgext-menu*` popup rules the
+      // Title-bar styles carry the shared `.vgext-menu*` popup rules the
       // border style/width dropdowns ride — inject for standalone ribbons.
       injectTitleBarStyles();
-      const root = h('cgext-ribbon-band');
+      const root = h('vgext-ribbon-band');
 
       // Editing cluster — HISTORY · SMART · BULK.
       const undo = iconBtn(I.undo, 'Undo');
@@ -316,7 +316,7 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
         left: borderSideBtn('left'),
         right: borderSideBtn('right'),
       };
-      const borderPreview = h('cgext-rb-bpreview');
+      const borderPreview = h('vgext-rb-bpreview');
       borderPreview.title = 'Current borders';
       const borderColor = ribbonColorSwatch(
         'M4 4h16v16H4zM12 12h.01', 'Border color', defaultForeColor());
@@ -328,16 +328,16 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       // AB — header-caption case toggle (uppercase ⇄ original), all columns.
       const headerCase = document.createElement('button');
       headerCase.type = 'button';
-      headerCase.className = 'cgext-rb-toggle cgext-rb-ab';
+      headerCase.className = 'vgext-rb-toggle vgext-rb-ab';
       headerCase.textContent = 'AB';
       const alignL = toggleBtn(I.alignLeft, 'Align left');
       const alignC = toggleBtn(I.alignCenter, 'Align center');
       const alignR = toggleBtn(I.alignRight, 'Align right');
       const sizeVal = document.createElement('span'); sizeVal.textContent = '12px';
-      const sizeUp = document.createElement('button'); sizeUp.type = 'button'; sizeUp.className = 'cgext-rb-step'; sizeUp.title = 'Larger font'; sizeUp.innerHTML = svg('M6 15l6-6 6 6', 11);
-      const sizeDn = document.createElement('button'); sizeDn.type = 'button'; sizeDn.className = 'cgext-rb-step'; sizeDn.title = 'Smaller font'; sizeDn.innerHTML = svg('M6 9l6 6 6-6', 11);
-      const sizeWrap = h('cgext-rb-stepper');
-      const sizeStack = h('cgext-rb-step-stack'); sizeStack.append(sizeUp, sizeDn);
+      const sizeUp = document.createElement('button'); sizeUp.type = 'button'; sizeUp.className = 'vgext-rb-step'; sizeUp.title = 'Larger font'; sizeUp.innerHTML = svg('M6 15l6-6 6 6', 11);
+      const sizeDn = document.createElement('button'); sizeDn.type = 'button'; sizeDn.className = 'vgext-rb-step'; sizeDn.title = 'Smaller font'; sizeDn.innerHTML = svg('M6 9l6 6 6-6', 11);
+      const sizeWrap = h('vgext-rb-stepper');
+      const sizeStack = h('vgext-rb-step-stack'); sizeStack.append(sizeUp, sizeDn);
       sizeWrap.append(sizeVal, sizeStack);
 
       // Paint — fg/bg colour pickers (share Formatting row A with Type/Icons).
@@ -390,7 +390,7 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       // Column group — quick per-column configuration (spec 2026-07-08).
       const colOpen = document.createElement('button');
       colOpen.type = 'button';
-      colOpen.className = 'cgext-ip-open'; // labeled-control chrome (well-less variant)
+      colOpen.className = 'vgext-ip-open'; // labeled-control chrome (well-less variant)
       colOpen.dataset.col = 'open';
       colOpen.innerHTML =
         `${svg(I.settings, 14)}<span>Column</span>` +
@@ -417,12 +417,12 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       // so the edit-engine wiring below is unchanged; the
       // `[data-toolbar="editing"]` hook stays so the title-bar overflow
       // toggle keeps addressing it.
-      const editStrip = h('cgext-edit-strip');
+      const editStrip = h('vgext-edit-strip');
       editStrip.dataset.toolbar = 'editing';
       const seg = (label: string, ...controls: HTMLElement[]): HTMLElement => {
-        const s = h('cgext-es-seg');
+        const s = h('vgext-es-seg');
         const l = document.createElement('span');
-        l.className = 'cgext-es-label';
+        l.className = 'vgext-es-label';
         l.textContent = label;
         s.append(l, ...controls);
         return s;
@@ -430,20 +430,20 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       const histSeg = seg('History', undo, redo, histCount);
       const smartSeg = seg('Smart edit', operand, opMul, opDiv, opAdd, opSub, setBtn, smartCount);
       const bulkSeg = seg('Bulk', bulkValue, bulkApply, bulkCount);
-      const editBody = h('cgext-es-body');
+      const editBody = h('vgext-es-body');
       editBody.append(histSeg, smartSeg, bulkSeg);
       const editOverflow = iconBtn(I.more, 'More editing tools');
       editOverflow.dataset.tb = 'edit-overflow';
       editOverflow.hidden = true;
       const editClose = iconBtn(I.close, 'Hide editing toolbar');
       editClose.dataset.tb = 'close-edit';
-      editClose.classList.add('cgext-es-close');
+      editClose.classList.add('vgext-es-close');
       editClose.addEventListener('click', () => {
         if (!editStrip.hidden) ctx.events.emit({ type: 'toggle-ribbon', section: 'edit' });
       });
       editStrip.append(editBody, editOverflow, editClose);
 
-      const formatting = h('cgext-rb-cluster'); formatting.dataset.toolbar = 'formatting';
+      const formatting = h('vgext-rb-cluster'); formatting.dataset.toolbar = 'formatting';
       const gTarget = grp('Target', mini(selPill), mini(targetToggle, scopeToggle));
       const gFont = grp('Font', mini(bold, italic, underline, strike, sizeWrap), mini(textColorBtn, textColor.host, fillColorBtn, fillColor.host, headerCase));
       const gAlign = grp('Alignment', mini(alignL, alignC, alignR));
@@ -466,7 +466,7 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
         if (!formatting.hidden) ctx.events.emit({ type: 'toggle-ribbon', section: 'format' });
       });
 
-      const spacer = h('cgext-rb-spacer');
+      const spacer = h('vgext-rb-spacer');
       root.append(formatting, fmtOverflow, spacer, fmtClose);
       host.append(editStrip, root);
 
@@ -501,7 +501,7 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       // band still hosts a flex spacer + close button after the
       // formatting cluster is hidden — that left an empty bar above the
       // row-group panel. Hide spacer/close with formatting, and hide the
-      // whole `.cgext-ribbon` when BOTH toolbars are off.
+      // whole `.vgext-ribbon` when BOTH toolbars are off.
       const syncRibbonChrome = () => {
         const formatOff = formatting.hidden;
         const editOff = editStrip.hidden;
@@ -518,7 +518,7 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
         } else {
           editOverflowHandle.reflow();
         }
-        const ribbonHost = host.closest('.cgext-ribbon');
+        const ribbonHost = host.closest('.vgext-ribbon');
         if (ribbonHost instanceof HTMLElement) {
           ribbonHost.hidden = formatOff && editOff;
         }
@@ -577,30 +577,30 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
 }
 
 function stepper(value: string): HTMLDivElement {
-  const wrap = h('cgext-rb-stepper');
+  const wrap = h('vgext-rb-stepper');
   const val = document.createElement('span'); val.textContent = value;
-  const up = document.createElement('button'); up.type = 'button'; up.className = 'cgext-rb-step'; up.innerHTML = svg('M6 15l6-6 6 6', 11);
-  const dn = document.createElement('button'); dn.type = 'button'; dn.className = 'cgext-rb-step'; dn.innerHTML = svg('M6 9l6 6 6-6', 11);
-  const stack = h('cgext-rb-step-stack'); stack.append(up, dn);
+  const up = document.createElement('button'); up.type = 'button'; up.className = 'vgext-rb-step'; up.innerHTML = svg('M6 15l6-6 6 6', 11);
+  const dn = document.createElement('button'); dn.type = 'button'; dn.className = 'vgext-rb-step'; dn.innerHTML = svg('M6 9l6 6 6-6', 11);
+  const stack = h('vgext-rb-step-stack'); stack.append(up, dn);
   wrap.append(val, stack);
   return wrap;
 }
 function dangerIcon(icon: string, title: string): HTMLButtonElement {
-  const b = iconBtn(icon, title); b.classList.add('cgext-rb-danger-btn'); return b;
+  const b = iconBtn(icon, title); b.classList.add('vgext-rb-danger-btn'); return b;
 }
 
-// ── Editing-toolbar wiring (@cgrid/edit bridge) ──────────────────────────
+// ── Editing-toolbar wiring (@wellsfargo-starui/velocity-grid-edit bridge) ──────────────────────────
 interface EditingRefs {
   undo: HTMLButtonElement; redo: HTMLButtonElement; histCount: HTMLElement;
   operand: HTMLInputElement; ops: Record<SmartEditOp, HTMLButtonElement>;
   smartCount: HTMLElement; bulkValue: HTMLInputElement; bulkApply: HTMLButtonElement; bulkCount: HTMLElement;
 }
 
-/** Bind the History / Smart / Bulk controls to the live `@cgrid/edit` handle:
+/** Bind the History / Smart / Bulk controls to the live `@wellsfargo-starui/velocity-grid-edit` handle:
  *  undo/redo through the journal (with reactive count + enablement), numeric
  *  ops and set-value across the current cell selection, and bulk set-value.
  *  Returns a disposer. */
-function wireEditingToolbar(ctx: CgExtContext, getEdit: EditHandleGetter, r: EditingRefs): () => void {
+function wireEditingToolbar(ctx: VelocityGridExtContext, getEdit: EditHandleGetter, r: EditingRefs): () => void {
   const disposers: Array<() => void> = [];
   const onGrid = (type: string, fn: () => void) =>
     disposers.push((ctx.grid.addEventListener as any)(type, fn) as Unsub);
@@ -666,7 +666,7 @@ function wireEditingToolbar(ctx: CgExtContext, getEdit: EditHandleGetter, r: Edi
   return () => { for (const d of disposers) { try { d(); } catch { /* ignore */ } } };
 }
 
-// ── Formatting-toolbar wiring (column styling via @cgrid/calc editColumn) ──
+// ── Formatting-toolbar wiring (column styling via @wellsfargo-starui/velocity-grid-calc editColumn) ──
 interface FormattingRefs {
   targetToggle: HTMLButtonElement; scopeToggle: HTMLButtonElement; selPill: HTMLButtonElement;
   paintTargetToggle: (isCell: boolean) => void; paintScopeToggle: (isSelected: boolean) => void;
@@ -704,7 +704,7 @@ interface FormattingRefs {
  *  Toggle states reflect the first target column's own-template overrides
  *  (`__cgridOwn:<colId>` from `getTemplates()` — the public read surface).
  *  Returns a disposer. */
-function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void {
+function wireFormattingToolbar(ctx: VelocityGridExtContext, r: FormattingRefs): () => void {
   const disposers: Array<() => void> = [];
   const grid = ctx.grid as unknown as {
     getCellRanges(): Array<{ colIds: string[] }>;
@@ -1136,17 +1136,17 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
   };
   const placeMenu = menu(r.iconPlacePill, (close) => {
     const list = document.createElement('div');
-    list.className = 'cgext-ip-placemenu';
+    list.className = 'vgext-ip-placemenu';
     list.setAttribute('role', 'menu');
     for (const [heading, entries] of PLACE_GROUPS) {
       const head = document.createElement('div');
-      head.className = 'cgext-ip-placehead';
+      head.className = 'vgext-ip-placehead';
       head.textContent = heading;
       list.append(head);
       for (const [value, itemLabel] of entries) {
         const item = document.createElement('button');
         item.type = 'button';
-        item.className = 'cgext-ip-placeitem' + (value === placement ? ' is-active' : '');
+        item.className = 'vgext-ip-placeitem' + (value === placement ? ' is-active' : '');
         item.dataset.place = value;
         item.textContent = itemLabel;
         item.setAttribute('role', 'menuitemradio');
@@ -1328,9 +1328,9 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
   ): HTMLButtonElement => {
     const it = document.createElement('button');
     it.type = 'button';
-    it.className = 'cgext-menu-item';
+    it.className = 'vgext-menu-item';
     const sampleEl = document.createElement('span');
-    sampleEl.className = 'cgext-rb-linesample';
+    sampleEl.className = 'vgext-rb-linesample';
     if (sample.style) sampleEl.dataset.lineStyle = sample.style;
     if (sample.width != null) sampleEl.dataset.lineWidth = String(sample.width);
     const lab = document.createElement('span');
@@ -1340,7 +1340,7 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
     return it;
   };
   const borderStyleMenu = menu(r.borderStylePill, (close) => {
-    const list = h('cgext-menu-list');
+    const list = h('vgext-menu-list');
     for (const styleOpt of ['solid', 'dashed', 'dotted'] as const) {
       list.appendChild(lineSampleItem(
         styleOpt.charAt(0).toUpperCase() + styleOpt.slice(1),
@@ -1353,7 +1353,7 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
   r.borderStylePill.addEventListener('click', () => borderStyleMenu.toggle());
   disposers.push(() => borderStyleMenu.destroy());
   const borderWidthMenu = menu(r.borderWidthPill, (close) => {
-    const list = h('cgext-menu-list');
+    const list = h('vgext-menu-list');
     for (const w of [1, 2, 3, 4]) {
       list.appendChild(lineSampleItem(`${w} px`, { width: w },
         () => { borderWidthVal = w; applyBorderEdit(); close(); }));
@@ -1401,11 +1401,11 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
     try { return colGrid.getValueColumns().find((v) => v.colId === c)?.aggFunc; } catch { return undefined; }
   };
   const aggMenu = menu(r.aggPill, (close) => {
-    const list = h('cgext-menu-list');
+    const list = h('vgext-menu-list');
     for (const v of ['none', ...aggFuncChoices(colGrid)]) {
       const it = document.createElement('button');
       it.type = 'button';
-      it.className = 'cgext-menu-item' + ((aggOfFirst() ?? 'none') === v ? ' is-active' : '');
+      it.className = 'vgext-menu-item' + ((aggOfFirst() ?? 'none') === v ? ' is-active' : '');
       it.textContent = v === 'none' ? 'None' : v;
       it.addEventListener('click', () => {
         for (const colId of targetCols()) {
@@ -1451,12 +1451,12 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
     return (typeof raw === 'string' && raw.length > 0) ? raw : 'auto';
   };
   const filterTypeMenu = menu(r.filterTypePill, (close) => {
-    const list = h('cgext-menu-list');
+    const list = h('vgext-menu-list');
     const current = filterTypeOfFirst();
     for (const opt of FILTER_TYPE_OPTIONS) {
       const it = document.createElement('button');
       it.type = 'button';
-      it.className = 'cgext-menu-item' + (current === opt.v ? ' is-active' : '');
+      it.className = 'vgext-menu-item' + (current === opt.v ? ' is-active' : '');
       it.textContent = opt.menu;
       it.addEventListener('click', () => {
         withHistory(() => {
@@ -1505,29 +1505,29 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
 // ── styles ──────────────────────────────────────────────────────────────
 export function injectRibbonStyles(): void {
   if (typeof document === 'undefined') return;
-  let style = document.getElementById('cgext-ribbon-styles') as HTMLStyleElement | null;
+  let style = document.getElementById('vgext-ribbon-styles') as HTMLStyleElement | null;
   if (!style) {
     style = document.createElement('style');
-    style.id = 'cgext-ribbon-styles';
+    style.id = 'vgext-ribbon-styles';
     document.head.appendChild(style);
   }
   style.textContent = RIBBON_CSS;
 }
 
 const RIBBON_CSS = `
-.cgext-ribbon {
+.vgext-ribbon {
   flex: 0 0 auto;
   min-width: 0;
   width: 100%;
-  background: var(--cg-header-bg, var(--cg-popup-bg, #141922));
-  border-bottom: 1px solid var(--cg-border-color, #2a3140);
+  background: var(--vg-header-bg, var(--vg-popup-bg, #141922));
+  border-bottom: 1px solid var(--vg-border-color, #2a3140);
 }
-.cgext-ribbon:empty,
-.cgext-ribbon[hidden] { display: none; }
+.vgext-ribbon:empty,
+.vgext-ribbon[hidden] { display: none; }
 /* ONE font size for every element in the bar (user request): controls,
    labels, stats, and captions all read at 12px. */
-.cgext-ribbon-band, .cgext-edit-strip { font-size: 12px; }
-.cgext-ribbon-band {
+.vgext-ribbon-band, .vgext-edit-strip { font-size: 12px; }
+.vgext-ribbon-band {
   display: flex;
   align-items: flex-start;
   padding: 4px 8px 2px;
@@ -1535,8 +1535,8 @@ const RIBBON_CSS = `
   gap: 2px;
   min-width: 0;
 }
-.cgext-ribbon-band[hidden] { display: none; }
-.cgext-rb-cluster {
+.vgext-ribbon-band[hidden] { display: none; }
+.vgext-rb-cluster {
   display: flex;
   flex-wrap: wrap;
   align-items: stretch;
@@ -1546,25 +1546,25 @@ const RIBBON_CSS = `
   row-gap: 2px;
   column-gap: 0;
 }
-.cgext-rb-cluster[hidden] { display: none; }
+.vgext-rb-cluster[hidden] { display: none; }
 
 /* The ribbon item renders TWO stacked strips (edit strip above the band);
    the shell's generic toolbar-item host is inline-flex ROW, so re-scope it
    to a column inside the ribbon slot. */
-.cgext-ribbon .cgext-toolbar-item { display: flex; flex-direction: column; align-items: stretch; min-width: 0; }
+.vgext-ribbon .vgext-toolbar-item { display: flex; flex-direction: column; align-items: stretch; min-width: 0; }
 
 /* Editing strip — standalone toolbar ABOVE the ribbon band; wraps + overflow. */
-.cgext-edit-strip {
+.vgext-edit-strip {
   display: flex;
   align-items: flex-start;
   gap: 2px;
   min-height: 32px;
   padding: 4px 8px;
-  border-bottom: 1px solid color-mix(in srgb, var(--cg-border-color, #2a3140) 70%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--vg-border-color, #2a3140) 70%, transparent);
   min-width: 0;
 }
-.cgext-edit-strip[hidden] { display: none; }
-.cgext-es-body {
+.vgext-edit-strip[hidden] { display: none; }
+.vgext-es-body {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1573,56 +1573,56 @@ const RIBBON_CSS = `
   row-gap: 4px;
   column-gap: 0;
 }
-.cgext-es-seg { display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto; }
-.cgext-es-seg + .cgext-es-seg {
+.vgext-es-seg { display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto; }
+.vgext-es-seg + .vgext-es-seg {
   margin-left: 10px; padding-left: 10px;
-  border-left: 1px solid color-mix(in srgb, var(--cg-border-color, #2a3140) 70%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--vg-border-color, #2a3140) 70%, transparent);
 }
-.cgext-es-label {
+.vgext-es-label {
   font-size: 10.5px; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase;
-  color: var(--cg-muted-fg-color, #7f8ba0); margin-right: 6px; white-space: nowrap;
+  color: var(--vg-muted-fg-color, #7f8ba0); margin-right: 6px; white-space: nowrap;
 }
-.cgext-es-seg > .cgext-rb-stat { margin-left: 4px; }
-.cgext-es-close,
-.cgext-rb-btn[data-tb="edit-overflow"],
-.cgext-rb-btn[data-tb="format-overflow"],
-.cgext-rb-btn[data-tb="close-format"] {
+.vgext-es-seg > .vgext-rb-stat { margin-left: 4px; }
+.vgext-es-close,
+.vgext-rb-btn[data-tb="edit-overflow"],
+.vgext-rb-btn[data-tb="format-overflow"],
+.vgext-rb-btn[data-tb="close-format"] {
   flex: 0 0 auto;
   align-self: flex-start;
   margin-top: 2px;
-  color: var(--cg-muted-fg-color, #7f8ba0);
+  color: var(--vg-muted-fg-color, #7f8ba0);
 }
-.cgext-es-close { margin-left: 0; }
-.cgext-es-close:hover,
-.cgext-rb-btn[data-tb="edit-overflow"]:hover,
-.cgext-rb-btn[data-tb="format-overflow"]:hover,
-.cgext-rb-btn[data-tb="close-format"]:hover { color: var(--cg-fg-color, #e5e9f0); }
-.cgext-rb-btn[data-tb="edit-overflow"].is-open,
-.cgext-rb-btn[data-tb="format-overflow"].is-open,
-.cgext-rb-btn[data-tb="edit-overflow"].has-items,
-.cgext-rb-btn[data-tb="format-overflow"].has-items {
-  color: var(--cg-accent-color, #4f9cf9);
+.vgext-es-close { margin-left: 0; }
+.vgext-es-close:hover,
+.vgext-rb-btn[data-tb="edit-overflow"]:hover,
+.vgext-rb-btn[data-tb="format-overflow"]:hover,
+.vgext-rb-btn[data-tb="close-format"]:hover { color: var(--vg-fg-color, #e5e9f0); }
+.vgext-rb-btn[data-tb="edit-overflow"].is-open,
+.vgext-rb-btn[data-tb="format-overflow"].is-open,
+.vgext-rb-btn[data-tb="edit-overflow"].has-items,
+.vgext-rb-btn[data-tb="format-overflow"].has-items {
+  color: var(--vg-accent-color, #4f9cf9);
 }
-.cgext-rb-grp {
+.vgext-rb-grp {
   display: flex; flex-direction: column; padding: 0 6px;
-  border-right: 1px solid color-mix(in srgb, var(--cg-border-color, #2a3140) 70%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--vg-border-color, #2a3140) 70%, transparent);
   flex: 0 0 auto;
   max-width: 100%;
 }
-.cgext-rb-cluster > .cgext-rb-grp:first-child { padding-left: 2px; }
-.cgext-rb-cluster[data-toolbar="formatting"] > .cgext-rb-grp:last-child { border-right: none; }
-.cgext-rb-deck { display: flex; flex-direction: column; gap: 3px; justify-content: center; flex: 1 1 auto; }
-.cgext-rb-mini { display: flex; align-items: center; gap: 2px; flex-wrap: nowrap; }
-.cgext-rb-mini > .cgext-rb-pill:first-child:last-child { flex: 1 1 auto; min-width: 0; }
-.cgext-rb-grp-name {
+.vgext-rb-cluster > .vgext-rb-grp:first-child { padding-left: 2px; }
+.vgext-rb-cluster[data-toolbar="formatting"] > .vgext-rb-grp:last-child { border-right: none; }
+.vgext-rb-deck { display: flex; flex-direction: column; gap: 3px; justify-content: center; flex: 1 1 auto; }
+.vgext-rb-mini { display: flex; align-items: center; gap: 2px; flex-wrap: nowrap; }
+.vgext-rb-mini > .vgext-rb-pill:first-child:last-child { flex: 1 1 auto; min-width: 0; }
+.vgext-rb-grp-name {
   padding: 2px 0 0; text-align: center;
   font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
-  color: var(--cg-muted-fg-color, #7f8ba0);
+  color: var(--vg-muted-fg-color, #7f8ba0);
   white-space: nowrap;
 }
-.cgext-rb-spacer { flex: 1 1 auto; min-width: 4px; }
-.cgext-rb-overflow-stash { display: none !important; }
-.cgext-menu.cgext-rb-overflow-panel {
+.vgext-rb-spacer { flex: 1 1 auto; min-width: 4px; }
+.vgext-rb-overflow-stash { display: none !important; }
+.vgext-menu.vgext-rb-overflow-panel {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1631,290 +1631,290 @@ const RIBBON_CSS = `
   overflow: auto;
   scrollbar-width: thin;
 }
-.cgext-rb-overflow-panel > .cgext-rb-grp,
-.cgext-rb-overflow-panel > .cgext-es-seg {
+.vgext-rb-overflow-panel > .vgext-rb-grp,
+.vgext-rb-overflow-panel > .vgext-es-seg {
   border-right: none;
   margin: 0;
   padding: 6px 8px;
-  border: 1px solid color-mix(in srgb, var(--cg-border-color, #2a3140) 80%, transparent);
-  border-radius: var(--cg-radius, 2px);
-  background: color-mix(in srgb, var(--cg-fg-color, #e5e9f0) 3%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vg-border-color, #2a3140) 80%, transparent);
+  border-radius: var(--vg-radius, 2px);
+  background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 3%, transparent);
 }
-.cgext-rb-overflow-panel > .cgext-es-seg + .cgext-es-seg {
+.vgext-rb-overflow-panel > .vgext-es-seg + .vgext-es-seg {
   margin-left: 0;
   padding-left: 8px;
-  border-left: 1px solid color-mix(in srgb, var(--cg-border-color, #2a3140) 80%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--vg-border-color, #2a3140) 80%, transparent);
 }
-.cgext-rb-overflow-panel > .cgext-rb-grp .cgext-rb-grp-name { text-align: left; padding-top: 4px; }
-.cgext-rb-overflow-empty {
+.vgext-rb-overflow-panel > .vgext-rb-grp .vgext-rb-grp-name { text-align: left; padding-top: 4px; }
+.vgext-rb-overflow-empty {
   padding: 8px 10px;
-  color: var(--cg-muted-fg-color, #7f8ba0);
+  color: var(--vg-muted-fg-color, #7f8ba0);
   font-size: 12px;
 }
 
 /* Borders group — side segments with a "has border" dot, live preview chip,
    line-sample dropdown rows. */
-.cgext-rb-bside { position: relative; }
-.cgext-rb-bside.has-border::after {
+.vgext-rb-bside { position: relative; }
+.vgext-rb-bside.has-border::after {
   content: ''; position: absolute; right: 2px; top: 2px; width: 4px; height: 4px;
-  border-radius: 50%; background: var(--cg-accent-color, #4f9cf9);
+  border-radius: 50%; background: var(--vg-accent-color, #4f9cf9);
 }
-.cgext-rb-bpreview {
+.vgext-rb-bpreview {
   width: 20px; height: 20px; margin-left: 4px; border-radius: 2px; align-self: center;
-  border: 1px dashed color-mix(in srgb, var(--cg-muted-fg-color, #7f8ba0) 55%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--vg-muted-fg-color, #7f8ba0) 55%, transparent);
   box-sizing: border-box;
 }
-.cgext-rb-linesample {
+.vgext-rb-linesample {
   display: inline-block; width: 26px; height: 0;
   border-top: 1px solid currentColor; flex: 0 0 auto;
 }
-.cgext-rb-linesample[data-line-style="solid"] { border-top-style: solid; }
-.cgext-rb-linesample[data-line-style="dashed"] { border-top-style: dashed; }
-.cgext-rb-linesample[data-line-style="dotted"] { border-top-style: dotted; }
-.cgext-rb-linesample[data-line-width="1"] { border-top-width: 1px; }
-.cgext-rb-linesample[data-line-width="2"] { border-top-width: 2px; }
-.cgext-rb-linesample[data-line-width="3"] { border-top-width: 3px; }
-.cgext-rb-linesample[data-line-width="4"] { border-top-width: 4px; }
+.vgext-rb-linesample[data-line-style="solid"] { border-top-style: solid; }
+.vgext-rb-linesample[data-line-style="dashed"] { border-top-style: dashed; }
+.vgext-rb-linesample[data-line-style="dotted"] { border-top-style: dotted; }
+.vgext-rb-linesample[data-line-width="1"] { border-top-width: 1px; }
+.vgext-rb-linesample[data-line-width="2"] { border-top-width: 2px; }
+.vgext-rb-linesample[data-line-width="3"] { border-top-width: 3px; }
+.vgext-rb-linesample[data-line-width="4"] { border-top-width: 4px; }
 
 /* AB — header-caption uppercase toggle (text glyph, not an icon path). */
-.cgext-rb-ab {
+.vgext-rb-ab {
   width: auto; padding: 0 6px;
   font-size: 12px; font-weight: 700; letter-spacing: 0.04em;
 }
-.cgext-rb-ab:disabled { opacity: 0.45; cursor: default; }
+.vgext-rb-ab:disabled { opacity: 0.45; cursor: default; }
 
 /* Cell↔header target toggle — the face shows the ACTIVE target, the
    trailing swap arrows signal "click to switch". */
-.cgext-rb-targettoggle {
+.vgext-rb-targettoggle {
   appearance: none; -webkit-appearance: none;
   display: inline-flex; align-items: center; gap: 6px;
   height: 24px; padding: 0 8px; box-sizing: border-box;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 2px;
-  background: transparent; color: var(--cg-fg-color, #d3dbe7);
+  border: 1px solid var(--vg-border-color, #2a3140); border-radius: 2px;
+  background: transparent; color: var(--vg-fg-color, #d3dbe7);
   font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
   transition: border-color 110ms ease, background 110ms ease;
 }
-.cgext-rb-targettoggle:hover { border-color: var(--cg-accent-color, #4f9cf9); }
-.cgext-rb-targettoggle:focus-visible { outline: 2px solid var(--cg-accent-color, #4f9cf9); outline-offset: 1px; }
-.cgext-rb-targettoggle > svg:first-child { color: var(--cg-accent-color, #4f9cf9); }
-.cgext-rb-targettoggle > svg:last-child { color: var(--cg-muted-fg-color, #7f8ba0); }
-.cgext-rb-targettoggle.is-header {
-  background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 10%, transparent);
+.vgext-rb-targettoggle:hover { border-color: var(--vg-accent-color, #4f9cf9); }
+.vgext-rb-targettoggle:focus-visible { outline: 2px solid var(--vg-accent-color, #4f9cf9); outline-offset: 1px; }
+.vgext-rb-targettoggle > svg:first-child { color: var(--vg-accent-color, #4f9cf9); }
+.vgext-rb-targettoggle > svg:last-child { color: var(--vg-muted-fg-color, #7f8ba0); }
+.vgext-rb-targettoggle.is-header {
+  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 10%, transparent);
 }
-.cgext-ribbon-band > .cgext-rb-btn { align-self: flex-start; margin-top: 2px; }
+.vgext-ribbon-band > .vgext-rb-btn { align-self: flex-start; margin-top: 2px; }
 
-.cgext-rb-btn, .cgext-rb-toggle {
+.vgext-rb-btn, .vgext-rb-toggle {
   appearance: none; -webkit-appearance: none;
   width: 24px; height: 24px;
   display: inline-flex; align-items: center; justify-content: center;
   border: none; border-radius: 2px; background: transparent;
-  color: var(--cg-fg-color, #d3dbe7); cursor: pointer;
+  color: var(--vg-fg-color, #d3dbe7); cursor: pointer;
   transition: background 110ms ease, color 110ms ease;
 }
-.cgext-rb-btn:hover, .cgext-rb-toggle:hover { background: var(--cg-row-alt-bg, rgba(255,255,255,0.07)); color: var(--cg-accent-color, #4f9cf9); }
-.cgext-rb-btn:disabled, .cgext-rb-toggle:disabled { color: var(--cg-muted-fg-color, #9aa4b6); opacity: 0.45; cursor: default; }
-.cgext-rb-btn:disabled:hover, .cgext-rb-toggle:disabled:hover { background: transparent; }
+.vgext-rb-btn:hover, .vgext-rb-toggle:hover { background: var(--vg-row-alt-bg, rgba(255,255,255,0.07)); color: var(--vg-accent-color, #4f9cf9); }
+.vgext-rb-btn:disabled, .vgext-rb-toggle:disabled { color: var(--vg-muted-fg-color, #9aa4b6); opacity: 0.45; cursor: default; }
+.vgext-rb-btn:disabled:hover, .vgext-rb-toggle:disabled:hover { background: transparent; }
 
-.cgext-rb-swatch { position: relative; }
-.cgext-rb-swatch svg { transform: translateY(-1.5px); }
-.cgext-rb-swatchbar {
+.vgext-rb-swatch { position: relative; }
+.vgext-rb-swatch svg { transform: translateY(-1.5px); }
+.vgext-rb-swatchbar {
   position: absolute; left: 5px; right: 5px; bottom: 3px; height: 3px;
   border-radius: 1.5px; pointer-events: none;
-  background: var(--cgext-swatch, currentColor);
+  background: var(--vgext-swatch, currentColor);
   box-shadow: inset 0 0 0 0.5px rgba(255,255,255,0.18);
 }
-.cgext-rb-btn:focus-visible, .cgext-rb-toggle:focus-visible { outline: 2px solid var(--cg-accent-color, #4f9cf9); outline-offset: 1px; }
-.cgext-rb-toggle.is-on { background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 22%, transparent); color: var(--cg-accent-color, #4f9cf9); }
+.vgext-rb-btn:focus-visible, .vgext-rb-toggle:focus-visible { outline: 2px solid var(--vg-accent-color, #4f9cf9); outline-offset: 1px; }
+.vgext-rb-toggle.is-on { background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 22%, transparent); color: var(--vg-accent-color, #4f9cf9); }
 
-.cgext-rb-pill {
+.vgext-rb-pill {
   appearance: none; -webkit-appearance: none;
   display: inline-flex; align-items: center; gap: 4px;
   height: 24px; padding: 0 8px; box-sizing: border-box;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 2px;
-  background: var(--cg-control-bg, rgba(255,255,255,0.04));
-  color: var(--cg-fg-color, #d6dce8); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap;
+  border: 1px solid var(--vg-border-color, #2a3140); border-radius: 2px;
+  background: var(--vg-control-bg, rgba(255,255,255,0.04));
+  color: var(--vg-fg-color, #d6dce8); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap;
 }
-/* Author display on .cgext-rb-pill otherwise overrides the UA [hidden]
+/* Author display on .vgext-rb-pill otherwise overrides the UA [hidden]
  * rule — the filter-type pill is gated with hidden while floating filter is off. */
-.cgext-rb-pill[hidden] { display: none; }
-.cgext-rb-pill:hover { border-color: var(--cg-accent-color, #4f9cf9); }
-.cgext-rb-pill svg { color: var(--cg-muted-fg-color, #9aa4b6); }
-.cgext-rb-pill.cgext-rb-danger { color: var(--cg-neg-color, #e5646e); border-color: color-mix(in srgb, var(--cg-neg-color, #e5646e) 45%, var(--cg-border-color, #2a3140)); }
-.cgext-rb-pill.is-set { color: var(--cg-accent-color, #4f9cf9); }
+.vgext-rb-pill[hidden] { display: none; }
+.vgext-rb-pill:hover { border-color: var(--vg-accent-color, #4f9cf9); }
+.vgext-rb-pill svg { color: var(--vg-muted-fg-color, #9aa4b6); }
+.vgext-rb-pill.vgext-rb-danger { color: var(--vg-neg-color, #e5646e); border-color: color-mix(in srgb, var(--vg-neg-color, #e5646e) 45%, var(--vg-border-color, #2a3140)); }
+.vgext-rb-pill.is-set { color: var(--vg-accent-color, #4f9cf9); }
 
-.cgext-rb-input {
+.vgext-rb-input {
   appearance: none; -webkit-appearance: none;
   height: 24px; padding: 0 8px; box-sizing: border-box;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 2px;
-  background: var(--cg-control-bg, rgba(0,0,0,0.25)); color: var(--cg-fg-color, #e5e9f0); font: inherit; font-size: 12px;
+  border: 1px solid var(--vg-border-color, #2a3140); border-radius: 2px;
+  background: var(--vg-control-bg, rgba(0,0,0,0.25)); color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: 12px;
 }
-.cgext-rb-input--sm { width: 44px; }
-.cgext-rb-input--md { width: 96px; }
-.cgext-rb-input:focus { outline: none; border-color: var(--cg-accent-color, #4f9cf9); }
+.vgext-rb-input--sm { width: 44px; }
+.vgext-rb-input--md { width: 96px; }
+.vgext-rb-input:focus { outline: none; border-color: var(--vg-accent-color, #4f9cf9); }
 
-.cgext-rb-stat { font-size: 12px; color: var(--cg-muted-fg-color, #7f8ba0); font-variant-numeric: tabular-nums; }
+.vgext-rb-stat { font-size: 12px; color: var(--vg-muted-fg-color, #7f8ba0); font-variant-numeric: tabular-nums; }
 
-.cgext-rb-stepper {
+.vgext-rb-stepper {
   display: inline-flex; align-items: center; gap: 5px;
   height: 24px; padding: 0 4px 0 8px; box-sizing: border-box;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 2px;
-  background: var(--cg-control-bg, rgba(255,255,255,0.04)); font-size: 12px; color: var(--cg-fg-color, #d6dce8);
+  border: 1px solid var(--vg-border-color, #2a3140); border-radius: 2px;
+  background: var(--vg-control-bg, rgba(255,255,255,0.04)); font-size: 12px; color: var(--vg-fg-color, #d6dce8);
 }
-.cgext-rb-step-stack { display: flex; flex-direction: column; }
-.cgext-rb-step { appearance: none; -webkit-appearance: none; border: none; background: transparent; color: var(--cg-muted-fg-color, #9aa4b6); cursor: pointer; height: 10px; display: flex; align-items: center; padding: 0; }
-.cgext-rb-step:hover { color: var(--cg-fg-color, #e5e9f0); }
+.vgext-rb-step-stack { display: flex; flex-direction: column; }
+.vgext-rb-step { appearance: none; -webkit-appearance: none; border: none; background: transparent; color: var(--vg-muted-fg-color, #9aa4b6); cursor: pointer; height: 10px; display: flex; align-items: center; padding: 0; }
+.vgext-rb-step:hover { color: var(--vg-fg-color, #e5e9f0); }
 
-.cgext-rb-colorinput { width: 0; height: 0; padding: 0; border: none; opacity: 0; position: absolute; pointer-events: none; }
-.cgext-rb-colorpicker-host {
+.vgext-rb-colorinput { width: 0; height: 0; padding: 0; border: none; opacity: 0; position: absolute; pointer-events: none; }
+.vgext-rb-colorpicker-host {
   position: absolute; width: 0; height: 0; overflow: hidden;
   margin: 0; padding: 0; border: none; pointer-events: none;
 }
 
-.cgext-rb-danger-btn { color: var(--cg-neg-color, #e5646e); }
-.cgext-rb-danger-btn:hover { background: color-mix(in srgb, var(--cg-neg-color, #e5646e) 16%, transparent); color: var(--cg-neg-color, #e5646e); }
+.vgext-rb-danger-btn { color: var(--vg-neg-color, #e5646e); }
+.vgext-rb-danger-btn:hover { background: color-mix(in srgb, var(--vg-neg-color, #e5646e) 16%, transparent); color: var(--vg-neg-color, #e5646e); }
 
 /* ── Icons section — tile picker · placement slot menu ─────────────────── */
 /* Labeled trigger (target-toggle chrome): preview well + label + caret —
    the picker is a first-class control now, not an easy-to-miss glyph. */
-.cgext-ip-open {
+.vgext-ip-open {
   appearance: none; -webkit-appearance: none;
   display: inline-flex; align-items: center; gap: 6px;
   height: 24px; padding: 0 7px 0 3px; box-sizing: border-box;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 2px;
-  background: transparent; color: var(--cg-fg-color, #d3dbe7);
+  border: 1px solid var(--vg-border-color, #2a3140); border-radius: 2px;
+  background: transparent; color: var(--vg-fg-color, #d3dbe7);
   font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
   transition: border-color 110ms ease, background 110ms ease;
 }
-.cgext-ip-open:hover:not(:disabled) { border-color: var(--cg-accent-color, #4f9cf9); }
-.cgext-ip-open:focus-visible { outline: 2px solid var(--cg-accent-color, #4f9cf9); outline-offset: 1px; }
-.cgext-ip-open > svg:last-child { color: var(--cg-muted-fg-color, #7f8ba0); flex: 0 0 auto; }
-.cgext-ip-well {
+.vgext-ip-open:hover:not(:disabled) { border-color: var(--vg-accent-color, #4f9cf9); }
+.vgext-ip-open:focus-visible { outline: 2px solid var(--vg-accent-color, #4f9cf9); outline-offset: 1px; }
+.vgext-ip-open > svg:last-child { color: var(--vg-muted-fg-color, #7f8ba0); flex: 0 0 auto; }
+.vgext-ip-well {
   width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center;
   border-radius: 2px; font-size: 12px; line-height: 1;
-  color: var(--cg-muted-fg-color, #7f8ba0);
-  background: color-mix(in srgb, var(--cg-muted-fg-color, #7f8ba0) 10%, transparent);
+  color: var(--vg-muted-fg-color, #7f8ba0);
+  background: color-mix(in srgb, var(--vg-muted-fg-color, #7f8ba0) 10%, transparent);
 }
-.cgext-ip-well.has-icon {
-  color: var(--cg-accent-color, #4f9cf9);
-  background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 14%, transparent);
+.vgext-ip-well.has-icon {
+  color: var(--vg-accent-color, #4f9cf9);
+  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 14%, transparent);
 }
-.cgext-ip-open.is-open { border-color: var(--cg-accent-color, #4f9cf9); background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 12%, transparent); }
-.cgext-ip-open:disabled,
-.cgext-rb-pill[data-ip="place"]:disabled,
-.cgext-rb-btn[data-ip="color"]:disabled,
-.cgext-rb-btn[data-ip="clear"]:disabled { opacity: 0.38; cursor: default; }
-.cgext-ip-open:disabled:hover,
-.cgext-rb-btn[data-ip="color"]:disabled:hover,
-.cgext-rb-btn[data-ip="clear"]:disabled:hover { background: transparent; color: var(--cg-muted-fg-color, #9aa4b6); }
-.cgext-rb-pill[data-ip="place"]:disabled:hover { border-color: var(--cg-border-color, #2a3140); }
+.vgext-ip-open.is-open { border-color: var(--vg-accent-color, #4f9cf9); background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 12%, transparent); }
+.vgext-ip-open:disabled,
+.vgext-rb-pill[data-ip="place"]:disabled,
+.vgext-rb-btn[data-ip="color"]:disabled,
+.vgext-rb-btn[data-ip="clear"]:disabled { opacity: 0.38; cursor: default; }
+.vgext-ip-open:disabled:hover,
+.vgext-rb-btn[data-ip="color"]:disabled:hover,
+.vgext-rb-btn[data-ip="clear"]:disabled:hover { background: transparent; color: var(--vg-muted-fg-color, #9aa4b6); }
+.vgext-rb-pill[data-ip="place"]:disabled:hover { border-color: var(--vg-border-color, #2a3140); }
 
-.cgext-ip-panel {
+.vgext-ip-panel {
   /* Body-mounted popup — declare the Inter stack explicitly (no inherited
      shell font out here; the browser default serif leaked through). */
-  font-family: var(--cg-font-family, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif);
+  font-family: var(--vg-font-family, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif);
   position: fixed; z-index: 1000; width: 340px; max-height: 428px;
-  top: var(--cgext-menu-top, 0);
-  left: var(--cgext-menu-left, 0);
+  top: var(--vgext-menu-top, 0);
+  left: var(--vgext-menu-left, 0);
   display: flex; flex-direction: column; overflow: hidden;
-  background: var(--cg-popup-bg, #161b26); border: 1px solid var(--cg-border-color, #2a3140);
-  border-radius: var(--cg-radius, 12px); box-shadow: 0 16px 40px rgba(0,0,0,0.5); padding: 10px;
+  background: var(--vg-popup-bg, #161b26); border: 1px solid var(--vg-border-color, #2a3140);
+  border-radius: var(--vg-radius, 12px); box-shadow: 0 16px 40px rgba(0,0,0,0.5); padding: 10px;
 }
-.cgext-ip-panel[hidden] { display: none; }
+.vgext-ip-panel[hidden] { display: none; }
 
-.cgext-ip-searchwrap { position: relative; display: flex; align-items: center; margin-bottom: 8px; color: var(--cg-muted-fg-color, #7f8ba0); }
-.cgext-ip-searchwrap > svg { position: absolute; left: 9px; pointer-events: none; }
-.cgext-ip-search {
+.vgext-ip-searchwrap { position: relative; display: flex; align-items: center; margin-bottom: 8px; color: var(--vg-muted-fg-color, #7f8ba0); }
+.vgext-ip-searchwrap > svg { position: absolute; left: 9px; pointer-events: none; }
+.vgext-ip-search {
   appearance: none; -webkit-appearance: none;
   width: 100%; box-sizing: border-box; height: 30px; padding: 0 10px 0 30px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 2px;
-  background: var(--cg-control-bg, rgba(0,0,0,0.25)); color: var(--cg-fg-color, #e5e9f0);
+  border: 1px solid var(--vg-border-color, #2a3140); border-radius: 2px;
+  background: var(--vg-control-bg, rgba(0,0,0,0.25)); color: var(--vg-fg-color, #e5e9f0);
   font: inherit; font-size: 12.5px; transition: border-color 120ms ease, box-shadow 120ms ease;
 }
-.cgext-ip-search::placeholder { color: var(--cg-muted-fg-color, #7f8ba0); }
-.cgext-ip-search:focus {
-  outline: none; border-color: var(--cg-accent-color, #4f9cf9);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 20%, transparent);
+.vgext-ip-search::placeholder { color: var(--vg-muted-fg-color, #7f8ba0); }
+.vgext-ip-search:focus {
+  outline: none; border-color: var(--vg-accent-color, #4f9cf9);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 20%, transparent);
 }
-.cgext-ip-search::-webkit-search-cancel-button { appearance: none; }
+.vgext-ip-search::-webkit-search-cancel-button { appearance: none; }
 
-.cgext-ip-scroll { overflow-y: auto; flex: 1 1 auto; margin: 0 -4px; padding: 0 4px;
+.vgext-ip-scroll { overflow-y: auto; flex: 1 1 auto; margin: 0 -4px; padding: 0 4px;
   /* Theme-aware scrollbar (Firefox) — muted thumb over a transparent track
      in both modes; the raw browser default painted a glaring white rail on
      dark themes. */
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--cg-muted-fg-color, #7f8ba0) 55%, transparent) transparent;
+  scrollbar-color: color-mix(in srgb, var(--vg-muted-fg-color, #7f8ba0) 55%, transparent) transparent;
 }
 /* Theme-aware scrollbar (WebKit/Chromium). */
-.cgext-ip-scroll::-webkit-scrollbar { width: 10px; }
-.cgext-ip-scroll::-webkit-scrollbar-track { background: transparent; }
-.cgext-ip-scroll::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--cg-muted-fg-color, #7f8ba0) 45%, transparent);
-  border-radius: var(--cg-radius, 5px);
+.vgext-ip-scroll::-webkit-scrollbar { width: 10px; }
+.vgext-ip-scroll::-webkit-scrollbar-track { background: transparent; }
+.vgext-ip-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--vg-muted-fg-color, #7f8ba0) 45%, transparent);
+  border-radius: var(--vg-radius, 5px);
   border: 2px solid transparent;
   background-clip: padding-box;
 }
-.cgext-ip-scroll::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--cg-muted-fg-color, #7f8ba0) 70%, transparent);
+.vgext-ip-scroll::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--vg-muted-fg-color, #7f8ba0) 70%, transparent);
   border: 2px solid transparent;
   background-clip: padding-box;
 }
-.cgext-ip-cat {
+.vgext-ip-cat {
   font-size: 10px; font-weight: 650; letter-spacing: 0.09em; text-transform: uppercase;
-  color: var(--cg-muted-fg-color, #7f8ba0); margin: 12px 2px 6px;
+  color: var(--vg-muted-fg-color, #7f8ba0); margin: 12px 2px 6px;
   position: sticky; top: 0; z-index: 1;
-  background: linear-gradient(var(--cg-popup-bg, #161b26) 78%, transparent); padding: 3px 0 4px;
+  background: linear-gradient(var(--vg-popup-bg, #161b26) 78%, transparent); padding: 3px 0 4px;
 }
-.cgext-ip-section:first-child .cgext-ip-cat { margin-top: 0; }
+.vgext-ip-section:first-child .vgext-ip-cat { margin-top: 0; }
 
-.cgext-ip-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; }
-.cgext-ip-tile {
+.vgext-ip-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; }
+.vgext-ip-tile {
   appearance: none; -webkit-appearance: none; border: none; border-radius: 2px; background: transparent;
   width: 100%; aspect-ratio: 1; display: inline-flex; align-items: center; justify-content: center;
-  color: var(--cg-muted-fg-color, #9aa4b6); font-size: 15px; line-height: 1; cursor: pointer;
+  color: var(--vg-muted-fg-color, #9aa4b6); font-size: 15px; line-height: 1; cursor: pointer;
   transition: background 90ms ease, color 90ms ease, transform 90ms ease;
 }
-.cgext-ip-tile:hover { background: var(--cg-row-alt-bg, rgba(255,255,255,0.08)); color: var(--cg-fg-color, #e5e9f0); transform: scale(1.14); }
-.cgext-ip-tile:active { transform: scale(0.96); }
-.cgext-ip-tile:focus-visible { outline: 2px solid var(--cg-accent-color, #4f9cf9); outline-offset: -2px; }
+.vgext-ip-tile:hover { background: var(--vg-row-alt-bg, rgba(255,255,255,0.08)); color: var(--vg-fg-color, #e5e9f0); transform: scale(1.14); }
+.vgext-ip-tile:active { transform: scale(0.96); }
+.vgext-ip-tile:focus-visible { outline: 2px solid var(--vg-accent-color, #4f9cf9); outline-offset: -2px; }
 
-.cgext-ip-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 34px 0 30px; color: var(--cg-muted-fg-color, #7f8ba0); }
-.cgext-ip-empty[hidden] { display: none; }
-.cgext-ip-empty > svg { width: 22px; height: 22px; opacity: 0.55; }
-.cgext-ip-empty-msg { font-size: 12px; }
+.vgext-ip-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 34px 0 30px; color: var(--vg-muted-fg-color, #7f8ba0); }
+.vgext-ip-empty[hidden] { display: none; }
+.vgext-ip-empty > svg { width: 22px; height: 22px; opacity: 0.55; }
+.vgext-ip-empty-msg { font-size: 12px; }
 
-/* Positioning/away/theming come from the shared .cgext-menu popup shell
+/* Positioning/away/theming come from the shared .vgext-menu popup shell
    (ui.ts menu()); this class only adds the placemenu's own shape. */
-.cgext-ip-placemenu {
+.vgext-ip-placemenu {
   font-size: 12px; min-width: 158px;
   display: flex; flex-direction: column;
 }
-.cgext-ip-placehead {
+.vgext-ip-placehead {
   font-size: 9.5px; font-weight: 650; letter-spacing: 0.09em; text-transform: uppercase;
-  color: var(--cg-muted-fg-color, #7f8ba0); padding: 7px 8px 3px;
+  color: var(--vg-muted-fg-color, #7f8ba0); padding: 7px 8px 3px;
 }
-.cgext-ip-placehead:first-child { padding-top: 3px; }
-.cgext-ip-placeitem {
+.vgext-ip-placehead:first-child { padding-top: 3px; }
+.vgext-ip-placeitem {
   appearance: none; -webkit-appearance: none; border: none; background: transparent; border-radius: 2px;
   padding: 6px 10px; text-align: left; font: inherit; font-size: 12px;
-  color: var(--cg-fg-color, #d6dce8); cursor: pointer;
+  color: var(--vg-fg-color, #d6dce8); cursor: pointer;
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   transition: background 90ms ease, color 90ms ease;
 }
-.cgext-ip-placeitem:hover { background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 18%, transparent); }
-.cgext-ip-placeitem.is-active { color: var(--cg-accent-color, #4f9cf9); background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 12%, transparent); }
-.cgext-ip-placeitem.is-active::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--cg-accent-color, #4f9cf9); flex: 0 0 auto; }
+.vgext-ip-placeitem:hover { background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 18%, transparent); }
+.vgext-ip-placeitem.is-active { color: var(--vg-accent-color, #4f9cf9); background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 12%, transparent); }
+.vgext-ip-placeitem.is-active::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--vg-accent-color, #4f9cf9); flex: 0 0 auto; }
 
 /* Flat 2px chrome — beat UA button/input rounding on Windows/Chromium. */
-.cgext-ribbon .cgext-rb-pill,
-.cgext-ribbon .cgext-rb-input,
-.cgext-ribbon .cgext-rb-stepper,
-.cgext-ribbon .cgext-rb-targettoggle,
-.cgext-ribbon .cgext-rb-btn,
-.cgext-ribbon .cgext-rb-toggle,
-.cgext-ribbon .cgext-ip-open,
-.cgext-edit-strip .cgext-rb-pill,
-.cgext-edit-strip .cgext-rb-input,
-.cgext-edit-strip .cgext-rb-stepper {
+.vgext-ribbon .vgext-rb-pill,
+.vgext-ribbon .vgext-rb-input,
+.vgext-ribbon .vgext-rb-stepper,
+.vgext-ribbon .vgext-rb-targettoggle,
+.vgext-ribbon .vgext-rb-btn,
+.vgext-ribbon .vgext-rb-toggle,
+.vgext-ribbon .vgext-ip-open,
+.vgext-edit-strip .vgext-rb-pill,
+.vgext-edit-strip .vgext-rb-input,
+.vgext-edit-strip .vgext-rb-stepper {
   border-radius: 2px !important;
 }
 `;

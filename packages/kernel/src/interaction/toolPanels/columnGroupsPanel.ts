@@ -16,7 +16,7 @@ import {
   setGroupStyle, setColumnGroupShow,
   type Node, type GroupNode, type ColumnNode,
 } from '../columnGroups/model';
-import type { CGridApi } from '../../types';
+import type { VelocityGridApi } from '../../types';
 import { ColorPickerControl, parseColor } from '../settingsForm/colorPicker';
 import type { BorderSpec, BorderStyle } from '../../types/cell';
 import { cloneDefsTree } from '../../core/columnTree';
@@ -100,7 +100,7 @@ function svgEl<K extends keyof SVGElementTagNameMap>(
 }
 function icon(...children: SVGElement[]): SVGSVGElement {
   const svg = svgEl('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' });
-  svg.setAttribute('class', 'cg-colgroups-ic');
+  svg.setAttribute('class', 'vg-colgroups-ic');
   children.forEach((c) => svg.appendChild(c));
   return svg;
 }
@@ -122,7 +122,7 @@ function iconClose(): SVGSVGElement { return icon(svgEl('path', { d: 'M18 6 6 18
 function iconChevronUp(): SVGSVGElement { return icon(svgEl('path', { d: 'M18 15l-6-6-6 6', ...strokeAttrs })); }
 function iconChevronDown(): SVGSVGElement { return icon(svgEl('path', { d: 'M6 9l6 6 6-6', ...strokeAttrs })); }
 
-/** Optional factory (from `@cgrid/ext`) that mounts Font / Alignment /
+/** Optional factory (from `@wellsfargo-starui/velocity-grid-ext`) that mounts Font / Alignment /
  *  Borders chrome into the style band — keeps kernel free of an ext dep. */
 export type MountGroupStyleChrome = (
   host: HTMLElement,
@@ -150,7 +150,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
   private selectedEdge: BorderEdge = 'all';
   private applyBtn!: HTMLButtonElement;
   private resetBtn!: HTMLButtonElement;
-  private api!: Pick<CGridApi, 'getColumnGroupDefs' | 'updateGridOptions'>;
+  private api!: Pick<VelocityGridApi, 'getColumnGroupDefs' | 'updateGridOptions'>;
   private nodes: Node[] = [];
   /** Canonical JSON of the last-applied projected tree — comparing against
    *  `project(nodes)` (also projected) makes seed→dirty reliably false even
@@ -168,8 +168,8 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     this.mountStyleChrome = typeof factory === 'function'
       ? (factory as MountGroupStyleChrome)
       : null;
-    this.root = el('div', 'cg-colgroups-panel');
-    const body = el('div', 'cg-colgroups-body');
+    this.root = el('div', 'vg-colgroups-panel');
+    const body = el('div', 'vg-colgroups-body');
     body.append(this.buildListPane(), this.buildEditorPane());
     this.root.appendChild(body);
     this.root.appendChild(this.buildFooter());
@@ -293,27 +293,27 @@ export class ColumnGroupsToolPanel implements ToolPanel {
   // ── List pane ──────────────────────────────────────────────────────
 
   private buildListPane(): HTMLElement {
-    this.list = el('div', 'cg-colgroups-list');
-    const head = el('div', 'cg-colgroups-list-header');
-    const title = el('span', 'cg-colgroups-list-title');
+    this.list = el('div', 'vg-colgroups-list');
+    const head = el('div', 'vg-colgroups-list-header');
+    const title = el('span', 'vg-colgroups-list-title');
     title.textContent = 'Groups';
-    this.listCount = el('span', 'cg-colgroups-list-count');
+    this.listCount = el('span', 'vg-colgroups-list-count');
     const add = document.createElement('button');
     add.type = 'button';
-    add.className = 'cg-colgroups-action';
+    add.className = 'vg-colgroups-action';
     add.appendChild(iconPlus());
     add.title = 'Add group';
     add.setAttribute('aria-label', 'Add group');
-    add.setAttribute('data-cg-add-group', '');
+    add.setAttribute('data-vg-add-group', '');
     add.onclick = () => this.addGroup();
     head.append(title, this.listCount, add);
-    this.listBody = el('div', 'cg-colgroups-list-body cg-scrollbar');
+    this.listBody = el('div', 'vg-colgroups-list-body vg-scrollbar');
     this.list.append(head, this.listBody);
     return this.list;
   }
 
   private buildEditorPane(): HTMLElement {
-    this.editor = el('div', 'cg-colgroups-editor cg-scrollbar');
+    this.editor = el('div', 'vg-colgroups-editor vg-scrollbar');
     return this.editor;
   }
 
@@ -323,7 +323,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     this.listCount.textContent = String(groups.length);
 
     if (groups.length === 0) {
-      const empty = el('div', 'cg-colgroups-empty');
+      const empty = el('div', 'vg-colgroups-empty');
       empty.textContent = 'No groups yet. Click + to create one.';
       this.listBody.appendChild(empty);
       return;
@@ -342,8 +342,8 @@ export class ColumnGroupsToolPanel implements ToolPanel {
   }
 
   private listRow(g: GroupNode, depth: number): HTMLElement {
-    const row = el('div', 'cg-colgroups-row');
-    row.setAttribute('data-cg-node', g.id);
+    const row = el('div', 'vg-colgroups-row');
+    row.setAttribute('data-vg-node', g.id);
     row.setAttribute('data-kind', 'group');
     row.style.paddingInlineStart = `calc(10px + ${depth} * 14px)`;
     if (this.selectedId === g.id) row.setAttribute('data-selected', '');
@@ -351,11 +351,11 @@ export class ColumnGroupsToolPanel implements ToolPanel {
 
     const selectBtn = document.createElement('button');
     selectBtn.type = 'button';
-    selectBtn.className = 'cg-colgroups-list-item';
-    selectBtn.setAttribute('data-cg-select', '');
+    selectBtn.className = 'vg-colgroups-list-item';
+    selectBtn.setAttribute('data-vg-select', '');
     selectBtn.setAttribute('aria-pressed', String(this.selectedId === g.id));
     selectBtn.setAttribute('aria-label', `Select group ${g.headerName || g.id}`);
-    const name = el('span', 'cg-colgroups-list-name');
+    const name = el('span', 'vg-colgroups-list-name');
     name.textContent = g.headerName || g.id;
     selectBtn.appendChild(name);
     selectBtn.addEventListener('click', (e) => {
@@ -363,12 +363,12 @@ export class ColumnGroupsToolPanel implements ToolPanel {
       this.selectGroup(g.id);
     });
 
-    const errorEl = el('span', 'cg-colgroups-error');
-    errorEl.setAttribute('data-cg-error', g.id);
+    const errorEl = el('span', 'vg-colgroups-error');
+    errorEl.setAttribute('data-vg-error', g.id);
 
     const del = document.createElement('button');
     del.type = 'button';
-    del.className = 'cg-colgroups-action';
+    del.className = 'vg-colgroups-action';
     del.appendChild(iconClose());
     del.title = 'Delete group';
     del.setAttribute('aria-label', 'Delete group');
@@ -393,14 +393,14 @@ export class ColumnGroupsToolPanel implements ToolPanel {
   }
 
   private buildFooter(): HTMLElement {
-    const footer = el('div', 'cg-colgroups-footer');
-    this.applyBtn = el('button', 'cg-btn cg-btn-primary') as HTMLButtonElement;
+    const footer = el('div', 'vg-colgroups-footer');
+    this.applyBtn = el('button', 'vg-btn vg-btn-primary') as HTMLButtonElement;
     this.applyBtn.type = 'button';
-    this.applyBtn.textContent = 'Save'; this.applyBtn.setAttribute('data-cg-apply', '');
+    this.applyBtn.textContent = 'Save'; this.applyBtn.setAttribute('data-vg-apply', '');
     this.applyBtn.disabled = true; this.applyBtn.onclick = () => this.onApply();
-    this.resetBtn = el('button', 'cg-btn') as HTMLButtonElement;
+    this.resetBtn = el('button', 'vg-btn') as HTMLButtonElement;
     this.resetBtn.type = 'button';
-    this.resetBtn.textContent = 'Reset'; this.resetBtn.setAttribute('data-cg-reset', '');
+    this.resetBtn.textContent = 'Reset'; this.resetBtn.setAttribute('data-vg-reset', '');
     this.resetBtn.onclick = () => this.seed();
     footer.append(this.resetBtn, this.applyBtn);
     return footer;
@@ -415,7 +415,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     this.editor.replaceChildren();
 
     if (!this.selectedId) {
-      const empty = el('div', 'cg-colgroups-editor-empty');
+      const empty = el('div', 'vg-colgroups-editor-empty');
       empty.textContent = 'Select a group to edit its columns and style.';
       this.editor.appendChild(empty);
       return;
@@ -426,7 +426,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
       | undefined;
     if (!node) {
       this.selectedId = null;
-      const empty = el('div', 'cg-colgroups-editor-empty');
+      const empty = el('div', 'vg-colgroups-editor-empty');
       empty.textContent = 'Select a group to edit its columns and style.';
       this.editor.appendChild(empty);
       return;
@@ -436,10 +436,10 @@ export class ColumnGroupsToolPanel implements ToolPanel {
   }
 
   private renderGroupEditor(g: GroupNode): void {
-    const title = el('div', 'cg-colgroups-editor-title');
+    const title = el('div', 'vg-colgroups-editor-title');
     const nameInput = document.createElement('input');
     nameInput.type = 'text';
-    nameInput.className = 'cg-settings-input cg-colgroups-rename';
+    nameInput.className = 'vg-settings-input vg-colgroups-rename';
     nameInput.value = g.headerName;
     nameInput.setAttribute('aria-label', 'Group name');
     nameInput.addEventListener('change', () => {
@@ -448,27 +448,27 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     title.appendChild(nameInput);
     this.editor.appendChild(title);
 
-    const actions = el('div', 'cg-colgroups-editor-actions');
-    const hint = el('span', 'cg-colgroups-nest-hint');
+    const actions = el('div', 'vg-colgroups-editor-actions');
+    const hint = el('span', 'vg-colgroups-nest-hint');
     hint.textContent = 'Use the Columns side panel to show/hide columns and drag columns or groups into or out of a group.';
     actions.appendChild(hint);
 
     const moveUp = document.createElement('button');
     moveUp.type = 'button';
-    moveUp.className = 'cg-colgroups-action';
+    moveUp.className = 'vg-colgroups-action';
     moveUp.appendChild(iconChevronUp());
     moveUp.title = 'Move up';
     moveUp.setAttribute('aria-label', 'Move group up');
-    moveUp.setAttribute('data-cg-move-up', '');
+    moveUp.setAttribute('data-vg-move-up', '');
     moveUp.onclick = () => this.moveGroupAmongSiblings(g.id, -1);
 
     const moveDown = document.createElement('button');
     moveDown.type = 'button';
-    moveDown.className = 'cg-colgroups-action';
+    moveDown.className = 'vg-colgroups-action';
     moveDown.appendChild(iconChevronDown());
     moveDown.title = 'Move down';
     moveDown.setAttribute('aria-label', 'Move group down');
-    moveDown.setAttribute('data-cg-move-down', '');
+    moveDown.setAttribute('data-vg-move-down', '');
     moveDown.onclick = () => this.moveGroupAmongSiblings(g.id, 1);
 
     const groupSibs = this.nodes
@@ -482,8 +482,8 @@ export class ColumnGroupsToolPanel implements ToolPanel {
 
     this.editor.appendChild(this.buildColumnsBand(g));
 
-    const section = el('div', 'cg-colgroups-style');
-    section.setAttribute('data-cg-style', '');
+    const section = el('div', 'vg-colgroups-style');
+    section.setAttribute('data-vg-style', '');
     section.setAttribute('data-for', g.id);
     this.editor.appendChild(section);
 
@@ -529,10 +529,10 @@ export class ColumnGroupsToolPanel implements ToolPanel {
   }
 
   private buildColumnsBand(g: GroupNode): HTMLElement {
-    const cluster = el('div', 'cg-colgroups-cluster cg-colgroups-columns');
-    cluster.appendChild(eyebrow('Columns', 'cg-colgroups-cluster-eyebrow'));
+    const cluster = el('div', 'vg-colgroups-cluster vg-colgroups-columns');
+    cluster.appendChild(eyebrow('Columns', 'vg-colgroups-cluster-eyebrow'));
 
-    const chips = el('div', 'cg-colgroups-chips');
+    const chips = el('div', 'vg-colgroups-chips');
     const cols = this.nodes
       .filter((n): n is ColumnNode => n.kind === 'column' && n.parentId === g.id)
       .sort((a, b) => a.order - b.order);
@@ -540,7 +540,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
       chips.appendChild(this.columnChip(col));
     }
     if (cols.length === 0) {
-      const none = el('div', 'cg-colgroups-chips-empty');
+      const none = el('div', 'vg-colgroups-chips-empty');
       none.textContent = 'No columns in this group.';
       chips.appendChild(none);
     }
@@ -560,19 +560,19 @@ export class ColumnGroupsToolPanel implements ToolPanel {
    * popups ignore dark/light tokens on Windows/Chromium.
    */
   private buildAddColumnPicker(groupId: string, unassigned: ColumnNode[]): HTMLElement {
-    const wrap = el('div', 'cg-colgroups-add-col');
-    wrap.setAttribute('data-cg-add-col', '');
+    const wrap = el('div', 'vg-colgroups-add-col');
+    wrap.setAttribute('data-vg-add-col', '');
 
     const trigger = document.createElement('button');
     trigger.type = 'button';
-    trigger.className = 'cg-colgroups-add-col-trigger';
+    trigger.className = 'vg-colgroups-add-col-trigger';
     trigger.setAttribute('aria-haspopup', 'listbox');
     trigger.setAttribute('aria-expanded', 'false');
     trigger.setAttribute('aria-label', 'Add columns to group');
     trigger.textContent = '+ Columns…';
     trigger.disabled = unassigned.length === 0;
 
-    const panel = el('div', 'cg-colgroups-add-col-panel');
+    const panel = el('div', 'vg-colgroups-add-col-panel');
     panel.setAttribute('role', 'listbox');
     panel.setAttribute('aria-multiselectable', 'true');
     panel.setAttribute('aria-label', 'Unassigned columns');
@@ -580,32 +580,32 @@ export class ColumnGroupsToolPanel implements ToolPanel {
 
     const search = document.createElement('input');
     search.type = 'search';
-    search.className = 'cg-colgroups-add-col-search';
+    search.className = 'vg-colgroups-add-col-search';
     search.placeholder = 'Search columns…';
     search.setAttribute('aria-label', 'Search columns');
     search.autocomplete = 'off';
 
-    const toolbar = el('div', 'cg-colgroups-add-col-toolbar');
+    const toolbar = el('div', 'vg-colgroups-add-col-toolbar');
     const selectAllLabel = document.createElement('label');
-    selectAllLabel.className = 'cg-colgroups-add-col-select-all';
+    selectAllLabel.className = 'vg-colgroups-add-col-select-all';
     const selectAll = document.createElement('input');
     selectAll.type = 'checkbox';
-    selectAll.className = 'cg-checkbox cg-colgroups-checkbox';
-    selectAll.setAttribute('data-cg-add-col-select-all', '');
+    selectAll.className = 'vg-checkbox vg-colgroups-checkbox';
+    selectAll.setAttribute('data-vg-add-col-select-all', '');
     selectAll.setAttribute('aria-label', 'Select all visible columns');
-    const selectAllText = el('span', 'cg-colgroups-add-col-select-all-text');
+    const selectAllText = el('span', 'vg-colgroups-add-col-select-all-text');
     selectAllText.textContent = 'Select all';
     selectAllLabel.append(selectAll, selectAllText);
 
     const addBtn = document.createElement('button');
     addBtn.type = 'button';
-    addBtn.className = 'cg-btn cg-btn-primary cg-colgroups-add-col-commit';
-    addBtn.setAttribute('data-cg-add-col-commit', '');
+    addBtn.className = 'vg-btn vg-btn-primary vg-colgroups-add-col-commit';
+    addBtn.setAttribute('data-vg-add-col-commit', '');
     addBtn.textContent = 'Add selected';
     addBtn.disabled = true;
     toolbar.append(selectAllLabel, addBtn);
 
-    const list = el('div', 'cg-colgroups-add-col-list cg-scrollbar');
+    const list = el('div', 'vg-colgroups-add-col-list vg-scrollbar');
     const picked = new Set<string>();
     let visibleIds: string[] = [];
 
@@ -628,7 +628,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
       visibleIds = filtered.map((c) => c.colId);
       list.replaceChildren();
       if (filtered.length === 0) {
-        const empty = el('div', 'cg-colgroups-add-col-empty');
+        const empty = el('div', 'vg-colgroups-add-col-empty');
         empty.textContent = unassigned.length === 0 ? 'No unassigned columns.' : 'No matches.';
         list.appendChild(empty);
         syncChrome();
@@ -636,14 +636,14 @@ export class ColumnGroupsToolPanel implements ToolPanel {
       }
       for (const col of filtered) {
         const row = document.createElement('label');
-        row.className = 'cg-colgroups-add-col-option';
+        row.className = 'vg-colgroups-add-col-option';
         row.setAttribute('role', 'option');
         row.setAttribute('aria-selected', String(picked.has(col.colId)));
-        row.setAttribute('data-cg-add-col-id', col.colId);
+        row.setAttribute('data-vg-add-col-id', col.colId);
 
         const cb = document.createElement('input');
         cb.type = 'checkbox';
-        cb.className = 'cg-checkbox cg-colgroups-checkbox';
+        cb.className = 'vg-checkbox vg-colgroups-checkbox';
         cb.checked = picked.has(col.colId);
         cb.setAttribute('aria-label', `Select ${col.headerName}`);
         cb.addEventListener('change', (e) => {
@@ -655,7 +655,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
         });
         cb.addEventListener('click', (e) => e.stopPropagation());
 
-        const name = el('span', 'cg-colgroups-add-col-option-name');
+        const name = el('span', 'vg-colgroups-add-col-option-name');
         name.textContent = col.headerName;
         name.title = col.colId !== col.headerName ? col.colId : col.headerName;
         row.append(cb, name);
@@ -692,10 +692,10 @@ export class ColumnGroupsToolPanel implements ToolPanel {
       e.stopPropagation();
       if (selectAll.checked) visibleIds.forEach((id) => picked.add(id));
       else visibleIds.forEach((id) => picked.delete(id));
-      list.querySelectorAll<HTMLInputElement>('.cg-colgroups-add-col-option input[type="checkbox"]')
+      list.querySelectorAll<HTMLInputElement>('.vg-colgroups-add-col-option input[type="checkbox"]')
         .forEach((cb) => {
-          const row = cb.closest('[data-cg-add-col-id]');
-          const id = row?.getAttribute('data-cg-add-col-id');
+          const row = cb.closest('[data-vg-add-col-id]');
+          const id = row?.getAttribute('data-vg-add-col-id');
           if (!id) return;
           cb.checked = picked.has(id);
           row?.setAttribute('aria-selected', String(cb.checked));
@@ -730,18 +730,18 @@ export class ColumnGroupsToolPanel implements ToolPanel {
   }
 
   private columnChip(col: ColumnNode): HTMLElement {
-    const chip = el('div', 'cg-colgroups-chip');
-    chip.setAttribute('data-cg-chip', col.colId);
+    const chip = el('div', 'vg-colgroups-chip');
+    chip.setAttribute('data-vg-chip', col.colId);
 
-    const name = el('span', 'cg-colgroups-chip-name');
+    const name = el('span', 'vg-colgroups-chip-name');
     name.textContent = col.headerName;
     chip.appendChild(name);
 
     const kind = showKind(col.columnGroupShow);
     const showBtn = document.createElement('button');
     showBtn.type = 'button';
-    showBtn.className = 'cg-colgroups-chip-show';
-    showBtn.setAttribute('data-cg-groupshow', '');
+    showBtn.className = 'vg-colgroups-chip-show';
+    showBtn.setAttribute('data-vg-groupshow', '');
     showBtn.setAttribute('data-value', kind === 'always' ? '' : kind);
     showBtn.setAttribute('aria-pressed', 'true');
     showBtn.setAttribute('aria-label', showLabel(kind));
@@ -756,11 +756,11 @@ export class ColumnGroupsToolPanel implements ToolPanel {
 
     const remove = document.createElement('button');
     remove.type = 'button';
-    remove.className = 'cg-colgroups-chip-remove';
+    remove.className = 'vg-colgroups-chip-remove';
     remove.appendChild(iconClose());
     remove.title = 'Remove from group';
     remove.setAttribute('aria-label', `Remove ${col.headerName} from group`);
-    remove.setAttribute('data-cg-remove-col', '');
+    remove.setAttribute('data-vg-remove-col', '');
     remove.addEventListener('click', (e) => {
       e.stopPropagation();
       this.removeColumnFromGroup(col.colId);
@@ -783,7 +783,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
       | GroupNode
       | undefined;
     if (!g) return;
-    const preview = this.editor.querySelector('.cg-colgroups-border-preview') as HTMLElement | null;
+    const preview = this.editor.querySelector('.vg-colgroups-border-preview') as HTMLElement | null;
     if (!preview) return;
     const border = g.headerStyle?.border;
     preview.style.borderTop = borderSideToCss(effectiveBorderSide(border, 'top'));
@@ -798,8 +798,8 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     g: GroupNode,
     patchStyle: (facet: Partial<NonNullable<GroupNode['headerStyle']>>) => void,
   ): HTMLElement {
-    const cluster = el('div', 'cg-colgroups-cluster');
-    cluster.appendChild(eyebrow('Fill & text', 'cg-colgroups-cluster-eyebrow'));
+    const cluster = el('div', 'vg-colgroups-cluster');
+    cluster.appendChild(eyebrow('Fill & text', 'vg-colgroups-cluster-eyebrow'));
 
     const patchStyleLive = (facet: Partial<NonNullable<GroupNode['headerStyle']>>) =>
       this.commitStyleLive((ns) => {
@@ -807,31 +807,31 @@ export class ColumnGroupsToolPanel implements ToolPanel {
         return setGroupStyle(ns, g.id, { headerStyle: { ...cur?.headerStyle, ...facet } });
       });
 
-    const colorRow = el('div', 'cg-colgroups-field-row');
+    const colorRow = el('div', 'vg-colgroups-field-row');
     colorRow.appendChild(this.colorField('bg', 'Fill', g.headerStyle?.bg,
       (rgba) => patchStyleLive({ bg: rgba }), 'Background colour'));
     colorRow.appendChild(this.colorField('fg', 'Text', g.headerStyle?.fg,
       (rgba) => patchStyleLive({ fg: rgba }), 'Text colour'));
     cluster.appendChild(colorRow);
 
-    const styleRow = el('div', 'cg-colgroups-field-row');
+    const styleRow = el('div', 'vg-colgroups-field-row');
 
-    const biu = el('div', 'cg-colgroups-seg');
+    const biu = el('div', 'vg-colgroups-seg');
     biu.setAttribute('role', 'group');
     biu.setAttribute('aria-label', 'Text style');
-    biu.appendChild(this.toggleSegBtn('fontWeight', 'B', 'Bold', 'cg-colgroups-seg-bold',
+    biu.appendChild(this.toggleSegBtn('fontWeight', 'B', 'Bold', 'vg-colgroups-seg-bold',
       g.headerStyle?.fontWeight === 'bold',
       (on) => patchStyle({ fontWeight: on ? 'bold' : undefined })));
-    biu.appendChild(this.toggleSegBtn('fontStyle', 'I', 'Italic', 'cg-colgroups-seg-italic',
+    biu.appendChild(this.toggleSegBtn('fontStyle', 'I', 'Italic', 'vg-colgroups-seg-italic',
       g.headerStyle?.fontStyle === 'italic',
       (on) => patchStyle({ fontStyle: on ? 'italic' : undefined })));
-    biu.appendChild(this.toggleSegBtn('textDecoration', 'U', 'Underline', 'cg-colgroups-seg-underline',
+    biu.appendChild(this.toggleSegBtn('textDecoration', 'U', 'Underline', 'vg-colgroups-seg-underline',
       g.headerStyle?.textDecoration === 'underline',
       (on) => patchStyle({ textDecoration: on ? 'underline' : undefined })));
     styleRow.appendChild(biu);
 
-    const align = el('div', 'cg-colgroups-seg');
-    align.setAttribute('data-cg-field', 'halign');
+    const align = el('div', 'vg-colgroups-seg');
+    align.setAttribute('data-vg-field', 'halign');
     align.setAttribute('role', 'group');
     align.setAttribute('aria-label', 'Alignment');
     const cur = g.headerStyle?.halign ?? 'left';
@@ -842,7 +842,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     ] as const).forEach(([value, label, svg]) => {
       const b = document.createElement('button');
       b.type = 'button';
-      b.className = 'cg-colgroups-seg-btn cg-colgroups-seg-icon';
+      b.className = 'vg-colgroups-seg-btn vg-colgroups-seg-icon';
       b.setAttribute('data-align', value);
       b.setAttribute('aria-label', label);
       b.title = label;
@@ -853,11 +853,11 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     });
     styleRow.appendChild(align);
 
-    const sizeWrap = el('div', 'cg-colgroups-field cg-colgroups-size');
-    sizeWrap.setAttribute('data-cg-field', 'fontSize');
+    const sizeWrap = el('div', 'vg-colgroups-field vg-colgroups-size');
+    sizeWrap.setAttribute('data-vg-field', 'fontSize');
     const sizeInput = document.createElement('input');
     sizeInput.type = 'number';
-    sizeInput.className = 'cg-settings-input cg-settings-input-number';
+    sizeInput.className = 'vg-settings-input vg-settings-input-number';
     sizeInput.min = '8'; sizeInput.max = '32';
     sizeInput.setAttribute('aria-label', 'Font size');
     sizeInput.placeholder = 'auto';
@@ -878,16 +878,16 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     patch: (p: Partial<Pick<GroupNode, 'headerStyle'>>) => void,
   ): HTMLElement {
     void patch;
-    const cluster = el('div', 'cg-colgroups-cluster');
-    cluster.appendChild(eyebrow('Border', 'cg-colgroups-cluster-eyebrow'));
+    const cluster = el('div', 'vg-colgroups-cluster');
+    cluster.appendChild(eyebrow('Border', 'vg-colgroups-cluster-eyebrow'));
 
-    const editor = el('div', 'cg-colgroups-border');
-    editor.setAttribute('data-cg-border', '');
+    const editor = el('div', 'vg-colgroups-border');
+    editor.setAttribute('data-vg-border', '');
     const border = g.headerStyle?.border;
 
-    const head = el('div', 'cg-colgroups-border-head');
+    const head = el('div', 'vg-colgroups-border-head');
 
-    const preview = el('div', 'cg-colgroups-border-preview');
+    const preview = el('div', 'vg-colgroups-border-preview');
     preview.setAttribute('aria-hidden', 'true');
     preview.style.borderTop = borderSideToCss(effectiveBorderSide(border, 'top'));
     preview.style.borderRight = borderSideToCss(effectiveBorderSide(border, 'right'));
@@ -895,12 +895,12 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     preview.style.borderLeft = borderSideToCss(effectiveBorderSide(border, 'left'));
     head.appendChild(preview);
 
-    const sideWrap = el('div', 'cg-colgroups-field cg-colgroups-border-side');
-    const sideLabel = labelEl('cg-colgroups-field-label');
+    const sideWrap = el('div', 'vg-colgroups-field vg-colgroups-border-side');
+    const sideLabel = labelEl('vg-colgroups-field-label');
     sideLabel.textContent = 'Side';
     const sideSel = document.createElement('select');
-    sideSel.className = 'cg-settings-input cg-settings-select';
-    sideSel.setAttribute('data-cg-border-side', '');
+    sideSel.className = 'vg-settings-input vg-settings-select';
+    sideSel.setAttribute('data-vg-border-side', '');
     sideSel.setAttribute('aria-label', 'Border side');
     ([
       ['all', 'All'], ['top', 'Top'], ['right', 'Right'], ['bottom', 'Bottom'], ['left', 'Left'],
@@ -940,7 +940,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
       });
     };
 
-    const fields = el('div', 'cg-colgroups-border-fields');
+    const fields = el('div', 'vg-colgroups-border-fields');
 
     fields.appendChild(this.numberField(
       'borderWidth', 'Width', side?.width, `${cap(edge)} border width`, 0, 8, '0',
@@ -948,12 +948,12 @@ export class ColumnGroupsToolPanel implements ToolPanel {
       (n) => writeSide('width', n),
     ));
 
-    const styleWrap = el('div', 'cg-colgroups-field');
-    styleWrap.setAttribute('data-cg-field', 'borderStyle');
-    const styleLabel = labelEl('cg-colgroups-field-label');
+    const styleWrap = el('div', 'vg-colgroups-field');
+    styleWrap.setAttribute('data-vg-field', 'borderStyle');
+    const styleLabel = labelEl('vg-colgroups-field-label');
     styleLabel.textContent = 'Style';
     const styleSel = document.createElement('select');
-    styleSel.className = 'cg-settings-input cg-settings-select';
+    styleSel.className = 'vg-settings-input vg-settings-select';
     styleSel.setAttribute('aria-label', `${cap(edge)} border style`);
     (['solid', 'dashed', 'dotted', 'double'] as const).forEach((v) => {
       const o = document.createElement('option');
@@ -978,8 +978,8 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     g: GroupNode,
     patch: (p: Partial<Pick<GroupNode, 'openByDefault' | 'marryChildren'>>) => void,
   ): HTMLElement {
-    const cluster = el('div', 'cg-colgroups-cluster');
-    cluster.appendChild(eyebrow('Behavior', 'cg-colgroups-cluster-eyebrow'));
+    const cluster = el('div', 'vg-colgroups-cluster');
+    cluster.appendChild(eyebrow('Behavior', 'vg-colgroups-cluster-eyebrow'));
     cluster.appendChild(this.switchRow('marryChildren', 'Keep columns together',
       g.marryChildren === true, (on) => patch({ marryChildren: on })));
     cluster.appendChild(this.switchRow('openByDefault', 'Expanded by default',
@@ -996,20 +996,20 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     onChange: (rgba: string) => void,
     swatchAriaLabel?: string,
   ): HTMLElement {
-    const wrap = el('div', 'cg-colgroups-field cg-colgroups-field-color');
-    wrap.setAttribute('data-cg-field', key);
-    const lbl = el('span', 'cg-colgroups-field-label');
+    const wrap = el('div', 'vg-colgroups-field vg-colgroups-field-color');
+    wrap.setAttribute('data-vg-field', key);
+    const lbl = el('span', 'vg-colgroups-field-label');
     lbl.textContent = label;
 
-    const pill = el('div', 'cg-colgroups-colorfield');
-    const valueEl = el('span', 'cg-colgroups-colorfield-value');
+    const pill = el('div', 'vg-colgroups-colorfield');
+    const valueEl = el('span', 'vg-colgroups-colorfield-value');
     const setLabel = (hex: string): void => {
       if (hex) {
         valueEl.textContent = hex;
-        valueEl.classList.remove('cg-colgroups-colorfield-empty');
+        valueEl.classList.remove('vg-colgroups-colorfield-empty');
       } else {
         valueEl.textContent = 'Default';
-        valueEl.classList.add('cg-colgroups-colorfield-empty');
+        valueEl.classList.add('vg-colgroups-colorfield-empty');
       }
     };
     setLabel(toHexLabel(value));
@@ -1020,7 +1020,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     });
     this.stylePickers.push(picker);
     if (swatchAriaLabel) {
-      picker.el.querySelector('.cg-colorpicker-swatch')?.setAttribute('aria-label', swatchAriaLabel);
+      picker.el.querySelector('.vg-colorpicker-swatch')?.setAttribute('aria-label', swatchAriaLabel);
     }
     pill.append(picker.el, valueEl);
     wrap.append(lbl, pill);
@@ -1038,13 +1038,13 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     normalize: (n: number) => number | undefined,
     onCommit: (n: number | undefined) => void,
   ): HTMLElement {
-    const wrap = el('div', 'cg-colgroups-field');
-    wrap.setAttribute('data-cg-field', key);
-    const lbl = labelEl('cg-colgroups-field-label');
+    const wrap = el('div', 'vg-colgroups-field');
+    wrap.setAttribute('data-vg-field', key);
+    const lbl = labelEl('vg-colgroups-field-label');
     lbl.textContent = label;
     const input = document.createElement('input');
     input.type = 'number';
-    input.className = 'cg-settings-input cg-settings-input-number';
+    input.className = 'vg-settings-input vg-settings-input-number';
     input.min = String(min); input.max = String(max);
     input.setAttribute('aria-label', ariaLabel);
     input.value = typeof value === 'number' ? String(value) : '';
@@ -1068,8 +1068,8 @@ export class ColumnGroupsToolPanel implements ToolPanel {
   ): HTMLButtonElement {
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = `cg-colgroups-seg-btn ${extraClass}`;
-    b.setAttribute('data-cg-field', key);
+    b.className = `vg-colgroups-seg-btn ${extraClass}`;
+    b.setAttribute('data-vg-field', key);
     b.textContent = glyph;
     b.title = label;
     b.setAttribute('aria-label', label);
@@ -1084,16 +1084,16 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     active: boolean,
     onToggle: (on: boolean) => void,
   ): HTMLElement {
-    const row = el('div', 'cg-colgroups-switch-row');
-    row.setAttribute('data-cg-field', key);
-    const lbl = labelEl('cg-colgroups-switch-label');
+    const row = el('div', 'vg-colgroups-switch-row');
+    row.setAttribute('data-vg-field', key);
+    const lbl = labelEl('vg-colgroups-switch-label');
     lbl.textContent = label;
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'cg-settings-toggle';
+    btn.className = 'vg-settings-toggle';
     btn.setAttribute('aria-label', label);
     btn.setAttribute('aria-pressed', String(active));
-    const knob = el('span', 'cg-settings-toggle-knob');
+    const knob = el('span', 'vg-settings-toggle-knob');
     btn.appendChild(knob);
     btn.addEventListener('click', () => {
       const next = btn.getAttribute('aria-pressed') !== 'true';
@@ -1106,7 +1106,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
   }
 
   private flagGroup(groupId: string, message: string): void {
-    const errorEl = this.listBody.querySelector(`[data-cg-error="${cssEscape(groupId)}"]`);
+    const errorEl = this.listBody.querySelector(`[data-vg-error="${cssEscape(groupId)}"]`);
     if (errorEl) errorEl.textContent = message;
   }
 }
@@ -1115,14 +1115,14 @@ function el(tag: string, cls: string): HTMLElement { const e = document.createEl
 
 function labelEl(cls: string): HTMLLabelElement { const e = document.createElement('label'); e.className = cls; return e; }
 
-function eyebrow(text: string, cls = 'cg-colgroups-eyebrow'): HTMLElement {
+function eyebrow(text: string, cls = 'vg-colgroups-eyebrow'): HTMLElement {
   const e = el('div', cls);
   e.textContent = text;
   return e;
 }
 
 let controlSeq = 0;
-const uid = (): string => `cg-colgroups-ctl-${++controlSeq}`;
+const uid = (): string => `vg-colgroups-ctl-${++controlSeq}`;
 
 const cap = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
 

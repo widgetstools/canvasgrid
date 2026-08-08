@@ -1,4 +1,4 @@
-import '@cgrid/kernel/style.css';
+import '@wellsfargo-starui/velocity-grid/style.css';
 import './styles.css';
 
 import {
@@ -8,12 +8,12 @@ import {
   type PositionRow,
   type PspFilter,
   type ViewSpec,
-} from '@cgrid/perspective';
+} from '@wellsfargo-starui/velocity-grid-perspective';
 import { validatePhase1 } from './perspective/validatePhase1';
 import { renderVisualizer } from './ui/visualizer';
 import { mountBlotter, type BlotterMount } from './ui/blotterHost';
 
-const THEME = 'cg-theme-starui-dark';
+const THEME = 'vg-theme-starui-dark';
 const ENGINE = 'perspective' as const;
 /** Default `seed` — starui STOMP is optional via `?feed=stomp`. */
 const FEED =

@@ -1,4 +1,4 @@
-// @cgrid/edit — K/M/B magnitude suffix parser + valueParser colDef transform.
+// @wellsfargo-starui/velocity-grid-edit — K/M/B magnitude suffix parser + valueParser colDef transform.
 // Authoritative reference: docs/superpowers/specs/2026-07-02-cycle-21g-edit-design.md
 // section 2.3 (Date-free + null-on-failure), section 4.2.5 (magnitude shortcuts,
 // gated by magnitudeShortcutsEnabled).
@@ -39,7 +39,7 @@ export function parseMagnitudeSuffix(raw: string): number | null {
 }
 
 /** Structural shape of the kernel's `CValueParserParams` (recon C.9) — kept
- *  local and type-only so this package never imports from @cgrid/kernel. */
+ *  local and type-only so this package never imports from @wellsfargo-starui/velocity-grid. */
 interface MagnitudeValueParserParams {
   newValue: unknown;
   oldValue?: unknown;

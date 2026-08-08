@@ -6,7 +6,7 @@
 // Scope-key semantics mirror packages/calc/src/scopeKey.ts's
 // `scopeKeyOf` / `DataVersionMap` — reimplemented natively here per the
 // coordinator decision (no SCOPE_KEY_SOURCE/DATA_VERSION_MAP_SOURCE
-// shipping; zero runtime @cgrid/calc imports in the kernel).
+// shipping; zero runtime @wellsfargo-starui/velocity-grid-calc imports in the kernel).
 
 import { describe, it, expect } from 'vitest';
 import { RowStore } from '../src/worker/dataPipeline';
@@ -842,7 +842,7 @@ describe('worker host — CalcPass Stage B end-to-end', () => {
 // PERCENTILE program threw 'unresolved aggregate function' and killed
 // `ensureStageB` (and therefore `buildVisibleAsync`) end-to-end.
 
-/** PERCENTILE(p) factory source — same shape @cgrid/calc ships
+/** PERCENTILE(p) factory source — same shape @wellsfargo-starui/velocity-grid-calc ships
  *  (packages/calc/src/aggregates/stats.ts's makePercentile): a
  *  1-arg factory using PERCENTILE.INC linear interpolation. */
 const PERCENTILE_FACTORY = `(function makePercentile(p) {
@@ -944,7 +944,7 @@ describe('CalcPass Stage B — Fix 1: parameterized aggregate fn resolution (PER
       ],
       interpreterSource: SLOT_INTERP,
       // aggregateSources ships the BASE name only — mirrors the real
-      // @cgrid/calc bridge (registry.ts serializeAggregates()).
+      // @wellsfargo-starui/velocity-grid-calc bridge (registry.ts serializeAggregates()).
       aggregateSources: [{ name: 'PERCENTILE', source: PERCENTILE_FACTORY }],
     };
 

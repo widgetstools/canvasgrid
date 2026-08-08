@@ -1,11 +1,11 @@
 /**
- * Cycle 21i Phase 2 / T5 — shared chrome styles for @cgrid/customizer
+ * Cycle 21i Phase 2 / T5 — shared chrome styles for @wellsfargo-starui/velocity-grid-customizer
  * Lit components.
  *
- * Every value is a verbatim port of the kernel's `.cg-settings-*` rules
+ * Every value is a verbatim port of the kernel's `.vg-settings-*` rules
  * (packages/kernel/src/theming/tokens.css) — the G2 quality bar is that
  * a customizer panel is visually indistinguishable from the kernel's
- * native Grid Options chrome. Colors route through the same `--cg-*`
+ * native Grid Options chrome. Colors route through the same `--vg-*`
  * custom properties, which inherit across shadow boundaries, so light /
  * dark / high-contrast theming comes free; only the RULES are cloned
  * (kernel stylesheets can't pierce shadow DOM).
@@ -18,10 +18,10 @@ import { css } from 'lit';
 /** Base typography + color inheritance every component starts from. */
 export const chromeBase = css`
   :host {
-    font-family: var(--cg-font-family);
-    font-size: var(--cg-font-size);
-    color: var(--cg-fg-color);
-    --cgc-accent: var(--cg-settings-accent, var(--cg-focus-ring-color));
+    font-family: var(--vg-font-family);
+    font-size: var(--vg-font-size);
+    color: var(--vg-fg-color);
+    --cgc-accent: var(--vg-settings-accent, var(--vg-focus-ring-color));
   }
   *,
   *::before,
@@ -30,11 +30,11 @@ export const chromeBase = css`
   }
 `;
 
-/** Collapsible section band — mirrors .cg-settings-band*. */
+/** Collapsible section band — mirrors .vg-settings-band*. */
 export const bandStyles = css`
   :host {
     display: block;
-    border-bottom: 1px solid color-mix(in srgb, var(--cg-border-color) 60%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--vg-border-color) 60%, transparent);
   }
   .header {
     display: flex;
@@ -42,19 +42,19 @@ export const bandStyles = css`
     gap: 6px;
     width: 100%;
     padding: 8px 10px 6px;
-    font-family: var(--cg-font-family);
+    font-family: var(--vg-font-family);
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: color-mix(in srgb, var(--cg-fg-color) 62%, transparent);
+    color: color-mix(in srgb, var(--vg-fg-color) 62%, transparent);
     background: transparent;
     border: none;
     cursor: pointer;
     text-align: left;
   }
   .header:hover {
-    color: var(--cg-fg-color);
+    color: var(--vg-fg-color);
   }
   .chevron {
     flex: 0 0 auto;
@@ -78,7 +78,7 @@ export const bandStyles = css`
   }
 `;
 
-/** Field row — mirrors .cg-settings-row*. */
+/** Field row — mirrors .vg-settings-row*. */
 export const rowStyles = css`
   :host {
     position: relative;
@@ -88,7 +88,7 @@ export const rowStyles = css`
     padding: 5px 10px 5px 12px;
   }
   :host(:hover) {
-    background: var(--cg-row-hover-bg);
+    background: var(--vg-row-hover-bg);
   }
   :host([modified])::before {
     content: '';
@@ -108,7 +108,7 @@ export const rowStyles = css`
     gap: 1px;
   }
   .label-text {
-    font-size: var(--cg-font-size-sm);
+    font-size: var(--vg-font-size-sm);
     line-height: 1.35;
     cursor: default;
     overflow: hidden;
@@ -118,7 +118,7 @@ export const rowStyles = css`
   .hint {
     font-size: 10px;
     line-height: 1.3;
-    color: color-mix(in srgb, var(--cg-fg-color) 50%, transparent);
+    color: color-mix(in srgb, var(--vg-fg-color) 50%, transparent);
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
@@ -131,7 +131,7 @@ export const rowStyles = css`
   }
 `;
 
-/** Toggle switch — mirrors .cg-settings-toggle*. */
+/** Toggle switch — mirrors .vg-settings-toggle*. */
 export const switchStyles = css`
   :host {
     display: inline-flex;
@@ -141,7 +141,7 @@ export const switchStyles = css`
     width: 28px;
     height: 16px;
     border-radius: 8px;
-    background: color-mix(in srgb, var(--cg-fg-color) 30%, transparent);
+    background: color-mix(in srgb, var(--vg-fg-color) 30%, transparent);
     border: none;
     cursor: pointer;
     padding: 0;
@@ -152,7 +152,7 @@ export const switchStyles = css`
     background: var(--cgc-accent);
   }
   button:focus-visible {
-    outline: 2px solid var(--cg-focus-ring-color);
+    outline: 2px solid var(--vg-focus-ring-color);
     outline-offset: 1px;
   }
   .knob {
@@ -162,7 +162,7 @@ export const switchStyles = css`
     width: 12px;
     height: 12px;
     border-radius: 50%;
-    background: var(--cg-bg-color);
+    background: var(--vg-bg-color);
     transition: transform 120ms ease;
   }
   button[aria-checked='true'] .knob {
@@ -176,15 +176,15 @@ export const switchStyles = css`
   }
 `;
 
-/** Text-ish inputs (select / number) — mirrors .cg-settings-input*. */
+/** Text-ish inputs (select / number) — mirrors .vg-settings-input*. */
 export const inputStyles = css`
   select,
   input {
     padding: 3px 6px;
-    font-size: var(--cg-font-size-sm);
-    color: var(--cg-fg-color);
-    background: color-mix(in srgb, var(--cg-fg-color) 5%, transparent);
-    border: 1px solid var(--cg-border-color);
+    font-size: var(--vg-font-size-sm);
+    color: var(--vg-fg-color);
+    background: color-mix(in srgb, var(--vg-fg-color) 5%, transparent);
+    border: 1px solid var(--vg-border-color);
     border-radius: 2px;
     outline: none;
   }
@@ -199,7 +199,7 @@ export const inputStyles = css`
   }
   input[type='number'] {
     width: 72px;
-    font-family: var(--cg-cell-font-family);
+    font-family: var(--vg-cell-font-family);
     text-align: right;
   }
 `;

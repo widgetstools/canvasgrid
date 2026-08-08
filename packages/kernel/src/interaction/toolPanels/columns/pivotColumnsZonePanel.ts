@@ -6,7 +6,7 @@
 // exists in the DOM (so refs / refresh stay valid) but its `display` is
 // toggled when pivotMode flips.
 
-import type { CGridApi } from '../../../types';
+import type { VelocityGridApi } from '../../../types';
 import {
   PIVOT_PLACEHOLDER,
   buildDropZoneSection,
@@ -23,7 +23,7 @@ interface PivotPill {
 }
 
 export interface PivotColumnsZonePanelDeps {
-  api: CGridApi;
+  api: VelocityGridApi;
   resolveLabel(colId: string): string;
   rootHost: HTMLElement;
   isColumnPivotable(colId: string): boolean;
@@ -44,13 +44,13 @@ export class PivotColumnsZonePanel {
       iconName: 'columns-3',
       headerText: 'Column Labels',
       ariaLabel: 'Pivot column labels',
-      zoneClass: 'cg-columns-panel-plz',
-      contentClass: 'cg-columns-panel-plz-content',
+      zoneClass: 'vg-columns-panel-plz',
+      contentClass: 'vg-columns-panel-plz-content',
     });
     this.section = handles.section;
     this.dropZone = handles.dropZone;
     this.content = handles.content;
-    this.dropZone.setAttribute('data-cg-pill-role', 'pivot');
+    this.dropZone.setAttribute('data-vg-pill-role', 'pivot');
     this.refresh();
     this.syncVisibility();
     // Column Labels ALWAYS subscribes — the zone IS a mirror by design.

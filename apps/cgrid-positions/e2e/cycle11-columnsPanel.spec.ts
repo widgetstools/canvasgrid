@@ -23,9 +23,9 @@
 import { test, expect, Page } from '@playwright/test';
 
 const GRID_SELECTOR = '#grid canvas';
-const TAB_SELECTOR = '.cg-side-bar-tab';
+const TAB_SELECTOR = '.vg-side-bar-tab';
 const COLUMNS_TAB = `${TAB_SELECTOR}[data-id="agColumnsToolPanel"]`;
-const PANEL = '.cg-columns-panel';
+const PANEL = '.vg-columns-panel';
 
 async function waitForFrames(page: Page, n = 6): Promise<void> {
   await page.evaluate(
@@ -61,8 +61,8 @@ test.describe('Cycle 11 / Task 3 — Columns tool panel', () => {
     await openColumnsPanel(page);
 
     await expect(page.locator(PANEL)).toBeVisible();
-    await expect(page.locator(`${PANEL} .cg-columns-panel-pivot-mode`)).toHaveCount(1);
-    await expect(page.locator(`${PANEL} .cg-columns-panel-search input[type="search"]`)).toBeVisible();
+    await expect(page.locator(`${PANEL} .vg-columns-panel-pivot-mode`)).toHaveCount(1);
+    await expect(page.locator(`${PANEL} .vg-columns-panel-search input[type="search"]`)).toBeVisible();
     // Section headers + drop zones. Cycle 18 / Task 9 follow-up
     // reverted the original Cycle 18 / Task 5 ordering to AG-Grid
     // parity: Row Groups → Values → Column Labels (rows-first matches
@@ -70,11 +70,11 @@ test.describe('Cycle 11 / Task 3 — Columns tool panel', () => {
     // entirely when pivot mode is OFF (since cycle 18 follow-ups);
     // this test runs with pivot mode OFF, so only two headers/zones
     // are visible.
-    const headers = page.locator(`${PANEL} .cg-columns-panel-section-header:visible`);
+    const headers = page.locator(`${PANEL} .vg-columns-panel-section-header:visible`);
     await expect(headers).toHaveCount(2);
     await expect(headers.nth(0)).toHaveText('Row Groups');
     await expect(headers.nth(1)).toHaveText('Values');
-    const dropZones = page.locator(`${PANEL} .cg-columns-panel-drop-zone:visible`);
+    const dropZones = page.locator(`${PANEL} .vg-columns-panel-drop-zone:visible`);
     await expect(dropZones).toHaveCount(2);
     await expect(dropZones.nth(0)).toHaveText('Drag here to set row groups');
     await expect(dropZones.nth(1)).toHaveText('Drag here to aggregate');
@@ -82,7 +82,7 @@ test.describe('Cycle 11 / Task 3 — Columns tool panel', () => {
     // Demo grid carries 17 leaf columns at present — assert at least the
     // first five render with their headerNames (sanity check on
     // `getColumnHeaderName`).
-    const labels = page.locator(`${PANEL} .cg-columns-panel-row-label`);
+    const labels = page.locator(`${PANEL} .vg-columns-panel-row-label`);
     await expect(labels.nth(0)).toHaveText('Position ID');
     await expect(labels.nth(1)).toHaveText('CUSIP');
     await expect(labels.nth(2)).toHaveText('Ticker');
@@ -92,7 +92,7 @@ test.describe('Cycle 11 / Task 3 — Columns tool panel', () => {
     await gridReady(page);
     await openColumnsPanel(page);
 
-    const tickerRow = page.locator(`${PANEL} .cg-columns-panel-row[data-col-id="ticker"]`);
+    const tickerRow = page.locator(`${PANEL} .vg-columns-panel-row[data-col-id="ticker"]`);
     const tickerCheckbox = tickerRow.locator('input[type="checkbox"]');
     await expect(tickerCheckbox).toBeChecked();
 
@@ -127,10 +127,10 @@ test.describe('Cycle 11 / Task 3 — Columns tool panel', () => {
     await gridReady(page);
     await openColumnsPanel(page);
 
-    const search = page.locator(`${PANEL} .cg-columns-panel-search input[type="search"]`);
+    const search = page.locator(`${PANEL} .vg-columns-panel-search input[type="search"]`);
     await search.fill('pri');
     await waitForFrames(page, 3);
-    const visibleRows = page.locator(`${PANEL} .cg-columns-panel-row:not([style*="display: none"])`);
+    const visibleRows = page.locator(`${PANEL} .vg-columns-panel-row:not([style*="display: none"])`);
     // The demo grid has 'currentPrice' (headerName 'Price') as the only
     // match for 'pri'.
     await expect(visibleRows).toHaveCount(1);
@@ -139,8 +139,8 @@ test.describe('Cycle 11 / Task 3 — Columns tool panel', () => {
     // Clear search — every row returns.
     await search.fill('');
     await waitForFrames(page, 3);
-    const allRows = await page.locator(`${PANEL} .cg-columns-panel-row`).count();
-    const restored = await page.locator(`${PANEL} .cg-columns-panel-row:not([style*="display: none"])`).count();
+    const allRows = await page.locator(`${PANEL} .vg-columns-panel-row`).count();
+    const restored = await page.locator(`${PANEL} .vg-columns-panel-row:not([style*="display: none"])`).count();
     expect(restored).toBe(allRows);
   });
 
@@ -148,7 +148,7 @@ test.describe('Cycle 11 / Task 3 — Columns tool panel', () => {
     await gridReady(page);
     await openColumnsPanel(page);
 
-    const toggle = page.locator(`${PANEL} .cg-columns-panel-pivot-mode button`);
+    const toggle = page.locator(`${PANEL} .vg-columns-panel-pivot-mode button`);
     await expect(toggle).toHaveAttribute('aria-pressed', 'false');
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-pressed', 'true');
@@ -172,7 +172,7 @@ test.describe('Cycle 11 / Task 3 — Columns tool panel', () => {
     await gridReady(page);
     await openColumnsPanel(page);
 
-    const tickerCheckbox = page.locator(`${PANEL} .cg-columns-panel-row[data-col-id="ticker"] input[type="checkbox"]`);
+    const tickerCheckbox = page.locator(`${PANEL} .vg-columns-panel-row[data-col-id="ticker"] input[type="checkbox"]`);
     await expect(tickerCheckbox).toBeChecked();
 
     // Drive the visibility change from OUTSIDE the panel via the public

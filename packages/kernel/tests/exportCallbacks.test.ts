@@ -6,7 +6,7 @@
 // construction time keyed by name and reference them by name in
 // export params:
 //
-//   const grid = new CGrid(host, {
+//   const grid = new VelocityGrid(host, {
 //     exportCallbacks: {
 //       formatPrice: ({ value }) => Number(value).toFixed(4),
 //     },
@@ -19,7 +19,7 @@
 // Cycle 8 comparator-registry + Cycle 14 aggFunc-registry pattern.
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
 
 beforeEach(() => {
@@ -67,7 +67,7 @@ const ROWS: Row[] = [
 function buildGrid(opts: Record<string, unknown> = {}) {
   const container = document.createElement('div');
   container.style.cssText = 'width:600px; height:400px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
   const prevWorker = (globalThis as { Worker?: unknown }).Worker;
   (globalThis as { Worker?: unknown }).Worker = class {
@@ -80,7 +80,7 @@ function buildGrid(opts: Record<string, unknown> = {}) {
     addEventListener(_: string, cb: (e: { data: unknown }) => void) { this.listeners.push(cb); }
     terminate() {}
   };
-  const grid = new CGrid<Row>(container, {
+  const grid = new VelocityGrid<Row>(container, {
     columnDefs: [
       { field: 'desk', headerName: 'Desk', cellDataType: 'text' },
       { field: 'pnl', headerName: 'PnL', cellDataType: 'number' },

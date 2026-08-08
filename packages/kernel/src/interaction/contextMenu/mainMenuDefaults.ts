@@ -47,7 +47,7 @@
  */
 import type { GetMainMenuItemsParams, MenuItem } from './types';
 
-/** Slice of the CGrid surface the main-menu registry needs. Deliberately
+/** Slice of the VelocityGrid surface the main-menu registry needs. Deliberately
  *  narrow so tests can stub it with `vi.fn()` per slot, and so the next
  *  cycle's extensions (hide column, etc.) extend this interface rather
  *  than the broader `DefaultMenuGrid`. */
@@ -114,7 +114,7 @@ export interface DefaultMainMenuGrid {
   getValueColumns?(): Array<{ colId: string; aggFunc: string }>;
   /** Names of every registered aggFunc — built-in subset (`sum` / `avg`
    *  / `min` / `max` / `count`) plus any app-registered customs from
-   *  `CGridOptions.aggFuncs`. Read at menu-open time so a runtime
+   *  `VelocityGridOptions.aggFuncs`. Read at menu-open time so a runtime
    *  `setGridOption('aggFuncs', …)` takes effect on the next right-click. */
   getRegisteredAggFuncNames?(): string[];
   /** Append `colId` to the ordered pivot column list. Routes through

@@ -4,8 +4,8 @@
  * trailing rule, summary chips, toggle switches, pill groups, Lucide icon
  * tiles, caps micro-labels. One injected stylesheet.
  */
-import { ColorPickerControl, parseColor, rgbaToString } from '@cgrid/kernel';
-import { lucideBundle } from '@cgrid/kernel/icons/lucide.generated';
+import { ColorPickerControl, parseColor, rgbaToString } from '@wellsfargo-starui/velocity-grid';
+import { lucideBundle } from '@wellsfargo-starui/velocity-grid/icons/lucide.generated';
 
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -218,16 +218,16 @@ export function injectCockpitStyles(): void {
   style.textContent = `
 /* The drawer body stops scrolling as a whole and hands scrolling to the
    two panes: the list rail and the editor pane scroll INDEPENDENTLY. */
-.cgext-sheet-body:has(> .ckp) { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.vgext-sheet-body:has(> .ckp) { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
 .ckp {
   flex: 1 1 auto; display: grid; grid-template-columns: 228px 1fr; height: 100%; min-height: 0;
   font-size: 12.5px; line-height: 1.4;
-  color: var(--cg-fg-color, #e5e9f0);
-  --ckp-accent: var(--cg-accent-color, #4f9cf9);
-  --ckp-muted: var(--cg-muted-fg-color, #8a93a6);
-  --ckp-border: color-mix(in srgb, var(--cg-border-color, #2a3140) 92%, transparent);
-  --ckp-surface: color-mix(in srgb, var(--cg-fg-color, #e5e9f0) 3.5%, transparent);
-  --ckp-surface-2: color-mix(in srgb, var(--cg-fg-color, #e5e9f0) 5.5%, transparent);
+  color: var(--vg-fg-color, #e5e9f0);
+  --ckp-accent: var(--vg-accent-color, #4f9cf9);
+  --ckp-muted: var(--vg-muted-fg-color, #8a93a6);
+  --ckp-border: color-mix(in srgb, var(--vg-border-color, #2a3140) 92%, transparent);
+  --ckp-surface: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 3.5%, transparent);
+  --ckp-surface-2: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 5.5%, transparent);
 }
 /* Flat settings panels (no list rail) — single column with real gutters.
    Master-detail modules keep the 2-col grid above; flat modules MUST add
@@ -273,11 +273,11 @@ export function injectCockpitStyles(): void {
   border-right: 1px solid var(--ckp-border);
   padding: 16px 14px 20px;
   overflow-y: auto; min-height: 0;
-  background: color-mix(in srgb, var(--cg-fg-color, #e5e9f0) 1.5%, transparent);
+  background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 1.5%, transparent);
   scrollbar-width: thin;
 }
 .ckp-rail-head { display: flex; align-items: center; gap: 8px; padding: 0 4px 14px; }
-.ckp-rail-head .ckp-caps { flex: 1 1 auto; color: var(--cg-fg-color, #e5e9f0); letter-spacing: 0.1em; }
+.ckp-rail-head .ckp-caps { flex: 1 1 auto; color: var(--vg-fg-color, #e5e9f0); letter-spacing: 0.1em; }
 .ckp-count {
   font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 10.5px;
   color: var(--ckp-muted); font-variant-numeric: tabular-nums;
@@ -286,14 +286,14 @@ export function injectCockpitStyles(): void {
   width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center;
   background: color-mix(in srgb, var(--ckp-accent) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--ckp-accent) 45%, transparent);
-  color: var(--ckp-accent); border-radius: var(--cg-radius, 2px);
+  color: var(--ckp-accent); border-radius: var(--vg-radius, 2px);
   font-size: 14px; line-height: 1; cursor: pointer; padding: 0;
   transition: background 120ms ease, border-color 120ms ease;
 }
 .ckp-addbtn:hover { background: color-mix(in srgb, var(--ckp-accent) 20%, transparent); }
 .ckp-rail-row {
   display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin: 1px 0;
-  cursor: pointer; border-radius: var(--cg-radius, 2px);
+  cursor: pointer; border-radius: var(--vg-radius, 2px);
   border: 1px solid transparent;
   transition: background 120ms ease, border-color 120ms ease;
 }
@@ -308,9 +308,9 @@ export function injectCockpitStyles(): void {
 .ckp-mini {
   background: transparent; border: none; color: var(--ckp-muted); cursor: pointer;
   padding: 2px; font: inherit; display: inline-flex; align-items: center;
-  border-radius: var(--cg-radius, 2px);
+  border-radius: var(--vg-radius, 2px);
 }
-.ckp-mini:hover { color: var(--cg-fg-color, #e5e9f0); background: var(--ckp-surface); }
+.ckp-mini:hover { color: var(--vg-fg-color, #e5e9f0); background: var(--ckp-surface); }
 /* pane */
 .ckp-pane { min-width: 0; min-height: 0; overflow-y: auto; padding: 18px 22px 32px; scrollbar-width: thin; }
 .ckp-pane-head {
@@ -319,25 +319,25 @@ export function injectCockpitStyles(): void {
 }
 .ckp-title {
   flex: 1 1 auto; font-size: 14px; font-weight: 600; letter-spacing: -0.015em;
-  color: var(--cg-fg-color, #e5e9f0);
+  color: var(--vg-fg-color, #e5e9f0);
 }
 .ckp-actbtn {
   display: inline-flex; gap: 6px; align-items: center;
   background: transparent; border: 1px solid transparent;
   color: var(--ckp-muted); font-size: 10.5px; font-weight: 650;
   letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer;
-  padding: 6px 10px; border-radius: var(--cg-radius, 2px);
+  padding: 6px 10px; border-radius: var(--vg-radius, 2px);
   transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
 }
 .ckp-actbtn:hover:not(:disabled) {
-  color: var(--cg-fg-color, #e5e9f0);
+  color: var(--vg-fg-color, #e5e9f0);
   background: var(--ckp-surface);
   border-color: var(--ckp-border);
 }
 .ckp-actbtn:disabled { opacity: 0.4; cursor: default; }
 .ckp-actbtn[data-primary],
 .ckp-pane-head .ckp-actbtn:last-of-type:not(:disabled) {
-  color: var(--cg-fg-color, #e5e9f0);
+  color: var(--vg-fg-color, #e5e9f0);
   background: color-mix(in srgb, var(--ckp-accent) 16%, transparent);
   border-color: color-mix(in srgb, var(--ckp-accent) 40%, transparent);
 }
@@ -349,7 +349,7 @@ export function injectCockpitStyles(): void {
 .ckp-chips-strip { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .ckp-chip {
   display: inline-flex; gap: 6px; align-items: center;
-  border: 1px solid var(--ckp-border); border-radius: var(--cg-radius, 2px);
+  border: 1px solid var(--ckp-border); border-radius: var(--vg-radius, 2px);
   padding: 3px 9px; font-size: 10px; letter-spacing: 0.06em;
   background: var(--ckp-surface);
 }
@@ -377,7 +377,7 @@ export function injectCockpitStyles(): void {
   color: color-mix(in srgb, var(--ckp-accent) 75%, var(--ckp-muted));
   font-variant-numeric: tabular-nums;
 }
-.ckp-band-title { font-size: 10.5px; font-weight: 650; letter-spacing: 0.12em; text-transform: uppercase; color: var(--cg-fg-color, #e5e9f0); }
+.ckp-band-title { font-size: 10.5px; font-weight: 650; letter-spacing: 0.12em; text-transform: uppercase; color: var(--vg-fg-color, #e5e9f0); }
 .ckp-band-rule { flex: 1 1 auto; height: 1px; background: var(--ckp-border); }
 .ckp-band-body { padding-left: 0; max-width: 560px; }
 /* rows + inputs — fixed label column so toggles/inputs share one vertical axis */
@@ -392,7 +392,7 @@ export function injectCockpitStyles(): void {
 .ckp-row-main { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
 .ckp-input {
   background: var(--ckp-surface); color: inherit;
-  border: 1px solid var(--ckp-border); border-radius: var(--cg-radius, 2px);
+  border: 1px solid var(--ckp-border); border-radius: var(--vg-radius, 2px);
   padding: 7px 10px; font: inherit; width: 100%;
   transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
 }
@@ -434,7 +434,7 @@ export function injectCockpitStyles(): void {
 .ckp-switch.on .ckp-switch-knob { left: 18px; background: var(--ckp-accent); }
 /* pills */
 .ckp-pills {
-  display: inline-flex; border: 1px solid var(--ckp-border); border-radius: var(--cg-radius, 2px);
+  display: inline-flex; border: 1px solid var(--ckp-border); border-radius: var(--vg-radius, 2px);
   overflow: hidden; background: var(--ckp-surface);
 }
 .ckp-pill {
@@ -444,17 +444,17 @@ export function injectCockpitStyles(): void {
   transition: color 120ms ease, background 120ms ease;
 }
 .ckp-pill:last-child { border-right: none; }
-.ckp-pill:hover { color: var(--cg-fg-color, #e5e9f0); }
+.ckp-pill:hover { color: var(--vg-fg-color, #e5e9f0); }
 .ckp-pill.on {
   background: color-mix(in srgb, var(--ckp-accent) 18%, transparent);
-  color: var(--cg-fg-color, #e5e9f0);
+  color: var(--vg-fg-color, #e5e9f0);
 }
 /* icon tiles */
 .ckp-tilegrid { display: flex; flex-wrap: wrap; gap: 5px; margin: 4px 0 10px; }
 .ckp-tile {
   width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center;
-  background: var(--ckp-surface); border: 1px solid var(--ckp-border); border-radius: var(--cg-radius, 2px);
-  color: var(--cg-fg-color, #cfd8e3); cursor: pointer; padding: 0;
+  background: var(--ckp-surface); border: 1px solid var(--ckp-border); border-radius: var(--vg-radius, 2px);
+  color: var(--vg-fg-color, #cfd8e3); cursor: pointer; padding: 0;
   transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
 }
 .ckp-tile:hover { border-color: color-mix(in srgb, var(--ckp-muted) 55%, transparent); }
@@ -465,23 +465,23 @@ export function injectCockpitStyles(): void {
 /* color field */
 .ckp-colorfield {
   display: flex; align-items: center; gap: 0;
-  border: 1px solid var(--ckp-border); border-radius: var(--cg-radius, 2px);
+  border: 1px solid var(--ckp-border); border-radius: var(--vg-radius, 2px);
   overflow: hidden; background: var(--ckp-surface);
 }
-.ckp-colorfield .cg-colorpicker { flex: 0 0 auto; margin: 2px 0 2px 2px; }
+.ckp-colorfield .vg-colorpicker { flex: 0 0 auto; margin: 2px 0 2px 2px; }
 .ckp-colorfield .ckp-hex {
   border: none; border-radius: 0; flex: 1 1 auto; min-width: 0;
-  padding: 0 8px; font-size: 11px; color: var(--cg-fg-color, #e5e9f0);
+  padding: 0 8px; font-size: 11px; color: var(--vg-fg-color, #e5e9f0);
   opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .ckp-colorfield.unset .ckp-hex::before { content: attr(data-placeholder); opacity: 0.45; }
 .ckp-colorfield .ckp-mini { padding: 0 8px; }
-.ckp-colorfield.unset .cg-colorpicker-swatch { opacity: 0.35; }
+.ckp-colorfield.unset .vg-colorpicker-swatch { opacity: 0.35; }
 /* type toggles (B/I/U/S) */
 .ckp-typebar { display: flex; gap: 8px; align-items: center; }
 .ckp-toggle {
   width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
-  background: var(--ckp-surface); border: 1px solid var(--ckp-border); border-radius: var(--cg-radius, 2px);
+  background: var(--ckp-surface); border: 1px solid var(--ckp-border); border-radius: var(--vg-radius, 2px);
   color: var(--ckp-muted); cursor: pointer; font-size: 12px; padding: 0;
   transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
 }
@@ -496,27 +496,27 @@ export function injectCockpitStyles(): void {
   display: inline-flex; gap: 4px; align-items: center;
   background: color-mix(in srgb, var(--ckp-accent) 10%, transparent);
   border: 1px solid color-mix(in srgb, var(--ckp-accent) 35%, transparent);
-  border-radius: var(--cg-radius, 2px); padding: 3px 4px 3px 8px; font-size: 11px;
+  border-radius: var(--vg-radius, 2px); padding: 3px 4px 3px 8px; font-size: 11px;
 }
 .ckp-warn { color: #f5b432; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 650; }
 /* expression + errors */
-.ckp-editor .cm-editor { width: 100%; border-radius: var(--cg-radius, 2px); overflow: hidden; }
+.ckp-editor .cm-editor { width: 100%; border-radius: var(--vg-radius, 2px); overflow: hidden; }
 .ckp-error {
   margin-top: 8px; padding: 8px 10px;
   border: 1px solid color-mix(in srgb, #e2695f 45%, transparent);
-  border-radius: var(--cg-radius, 2px); color: #e2695f;
+  border-radius: var(--vg-radius, 2px); color: #e2695f;
   background: color-mix(in srgb, #e2695f 8%, transparent);
   font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; white-space: pre-wrap;
 }
 .ckp-empty { color: var(--ckp-muted); padding: 36px 24px; text-align: center; line-height: 1.5; }
 /* style chrome (ribbon Font/Borders cluster) embedded in the rules pane */
-.ckp-stylechrome .cgext-rb-stepper { display: none; }
-.ckp-stylechrome .cgext-rb-grp:has([data-cg-field='halign']) { display: none; }
-.ckp-stylechrome .cgext-rb-cluster { flex-wrap: wrap; }
+.ckp-stylechrome .vgext-rb-stepper { display: none; }
+.ckp-stylechrome .vgext-rb-grp:has([data-vg-field='halign']) { display: none; }
+.ckp-stylechrome .vgext-rb-cluster { flex-wrap: wrap; }
 /* format anchor */
 .ckp-fmtbtn {
   display: inline-flex; gap: 7px; align-items: center;
-  background: var(--ckp-surface); border: 1px solid var(--ckp-border); border-radius: var(--cg-radius, 2px);
+  background: var(--ckp-surface); border: 1px solid var(--ckp-border); border-radius: var(--vg-radius, 2px);
   color: inherit; font: inherit; font-size: 12px; font-weight: 500;
   padding: 7px 12px; cursor: pointer;
   transition: border-color 120ms ease, background 120ms ease;

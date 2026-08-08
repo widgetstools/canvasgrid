@@ -1,5 +1,5 @@
-import { CGrid } from '@cgrid/kernel';
-import type { CColDef } from '@cgrid/kernel';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
+import type { CColDef } from '@wellsfargo-starui/velocity-grid';
 import type { Feature } from './index';
 import { wireShowcaseRenderers } from './renderersWire';
 
@@ -7,7 +7,7 @@ import { wireShowcaseRenderers } from './renderersWire';
  * Cycle 21f / Task 14 — Rich blotter renderer demo.
  *
  * Numeric, text, indicator, badge, and action painters over a ticking
- * positions blotter. Column defs come from @cgrid/renderers colDef
+ * positions blotter. Column defs come from @wellsfargo-starui/velocity-grid-renderers colDef
  * builders; the bridge registers all 51 painters and exposes
  * window.__cgridRenderers for E2E probes.
  */
@@ -97,12 +97,12 @@ export const rendererBlotter: Feature = {
   id: 'renderer-blotter',
   label: 'Renderer Blotter',
   description:
-    'Cycle 21f — @cgrid/renderers numeric/text/indicator/badge/action painters ' +
+    'Cycle 21f — @wellsfargo-starui/velocity-grid-renderers numeric/text/indicator/badge/action painters ' +
     'on a ticking fixed-income blotter. Resolved renderer names are probeable ' +
     'via columnDefsMap; canvas cells paint via the wired bridge.',
 
   mount(gridHost, controls, theme) {
-    const grid = new CGrid<BlotterRow>(gridHost, {
+    const grid = new VelocityGrid<BlotterRow>(gridHost, {
       getRowId: (r) => r.id,
       columnDefs: [],
       theme,

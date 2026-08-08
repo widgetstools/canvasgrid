@@ -1,16 +1,32 @@
 /**
- * @cgrid/perspective — Perspective-WASM data provider for CGrid SSRM.
+ * @wellsfargo-starui/velocity-grid-perspective — Perspective-WASM data provider for VelocityGrid SSRM.
  *
  * High-level entry: `StompPerspectiveProvider` (engine + shared book +
  * feed leadership + datasource + live wiring in one class). The lower
  * layers stay exported for hosts that need custom orchestration (the
  * cgrid-ssrm-demo stress app drives them directly).
+ *
+ * AppData (`{{name.key}}`) lives in `@wellsfargo-starui/velocity-grid-appdata` and is re-exported
+ * here so SSRM hosts can take a single import.
  */
 export {
   StompPerspectiveProvider,
+  resolveProviderConfig,
   type StompPerspectiveProviderConfig,
   type AttachableGrid,
 } from './provider';
+
+export {
+  AppDataStore,
+  resolveTemplate,
+  resolveCfg,
+  collectTemplateRefs,
+  findUnresolvedAppDataTokens,
+  assertAppDataResolved,
+  toAppDataLookup,
+  type AppDataLookup,
+  type AppDataChange,
+} from '@wellsfargo-starui/velocity-grid-appdata';
 export {
   PerspectiveBook,
   type BookFeed,

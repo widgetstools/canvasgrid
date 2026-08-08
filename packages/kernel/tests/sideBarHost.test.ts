@@ -25,7 +25,7 @@ class RecordingPanel implements ToolPanel {
   receivedParams: ToolPanelParams | null = null;
   readonly gui = document.createElement('div');
   constructor() {
-    this.gui.className = 'cg-tool-panel-recording';
+    this.gui.className = 'vg-tool-panel-recording';
   }
   init(params: ToolPanelParams): void {
     this.initCount += 1;
@@ -70,40 +70,40 @@ describe('SideBarHost', () => {
     root.parentElement?.removeChild(root);
   });
 
-  it('constructor mounts a .cg-side-bar inside root with one tab per panel', () => {
+  it('constructor mounts a .vg-side-bar inside root with one tab per panel', () => {
     const ctx = makeContext();
     const host = new SideBarHost(root, ctx, { toolPanels: ['columns', 'filters'], position: 'right' });
-    const bar = root.querySelector('.cg-side-bar') as HTMLElement | null;
+    const bar = root.querySelector('.vg-side-bar') as HTMLElement | null;
     expect(bar).not.toBeNull();
-    const tabs = bar!.querySelectorAll('.cg-side-bar-tab');
+    const tabs = bar!.querySelectorAll('.vg-side-bar-tab');
     expect(tabs.length).toBe(2);
     // Labels mirror the built-in defaults.
     const labels = Array.from(tabs).map((t) => t.getAttribute('aria-label'));
     expect(labels).toEqual(['Columns', 'Filters']);
     // No panel is open yet — no aria-pressed=true.
-    expect(bar!.querySelector('.cg-side-bar-tab[aria-pressed="true"]')).toBeNull();
+    expect(bar!.querySelector('.vg-side-bar-tab[aria-pressed="true"]')).toBeNull();
     host.destroy();
   });
 
   it('position defaults to "right" and sets data-position on the root element', () => {
     const ctx = makeContext();
     const host = new SideBarHost(root, ctx, { toolPanels: ['columns'] });
-    const bar = root.querySelector('.cg-side-bar') as HTMLElement;
+    const bar = root.querySelector('.vg-side-bar') as HTMLElement;
     expect(bar.dataset.position).toBe('right');
     host.destroy();
   });
 
-  it('openPanel marks the matching tab aria-pressed and mounts panel GUI inside .cg-side-bar-panel', () => {
+  it('openPanel marks the matching tab aria-pressed and mounts panel GUI inside .vg-side-bar-panel', () => {
     const ctx = makeContext();
     const host = new SideBarHost(root, ctx, { toolPanels: ['columns', 'filters'] });
     host.openPanel('agColumnsToolPanel');
-    const bar = root.querySelector('.cg-side-bar') as HTMLElement;
-    const pressed = bar.querySelectorAll('.cg-side-bar-tab[aria-pressed="true"]');
+    const bar = root.querySelector('.vg-side-bar') as HTMLElement;
+    const pressed = bar.querySelectorAll('.vg-side-bar-tab[aria-pressed="true"]');
     expect(pressed.length).toBe(1);
     expect((pressed[0] as HTMLElement).getAttribute('aria-label')).toBe('Columns');
     // The panel's getGui() lives inside the panel host.
-    const panelHost = bar.querySelector('.cg-side-bar-panel') as HTMLElement;
-    expect(panelHost.querySelector('.cg-tool-panel-recording')).not.toBeNull();
+    const panelHost = bar.querySelector('.vg-side-bar-panel') as HTMLElement;
+    expect(panelHost.querySelector('.vg-tool-panel-recording')).not.toBeNull();
     expect(host.getOpenedToolPanelId()).toBe('agColumnsToolPanel');
     host.destroy();
   });
@@ -134,9 +134,9 @@ describe('SideBarHost', () => {
     const inst = host.getInstance('agColumnsToolPanel') as ColumnsRecorder;
     expect(inst.destroyCount).toBe(0);
     host.closePanel();
-    const bar = root.querySelector('.cg-side-bar') as HTMLElement;
-    expect(bar.querySelector('.cg-tool-panel-recording')).toBeNull();
-    expect(bar.querySelector('.cg-side-bar-tab[aria-pressed="true"]')).toBeNull();
+    const bar = root.querySelector('.vg-side-bar') as HTMLElement;
+    expect(bar.querySelector('.vg-tool-panel-recording')).toBeNull();
+    expect(bar.querySelector('.vg-side-bar-tab[aria-pressed="true"]')).toBeNull();
     expect(inst.destroyCount).toBe(1);
     expect(host.getOpenedToolPanelId()).toBeNull();
     expect(host.getInstance('agColumnsToolPanel')).toBeNull();
@@ -146,8 +146,8 @@ describe('SideBarHost', () => {
   it('clicking a tab opens the panel; clicking it again closes it (toggle)', () => {
     const ctx = makeContext();
     const host = new SideBarHost(root, ctx, { toolPanels: ['columns', 'filters'] });
-    const bar = root.querySelector('.cg-side-bar') as HTMLElement;
-    const colsTab = bar.querySelectorAll('.cg-side-bar-tab')[0] as HTMLElement;
+    const bar = root.querySelector('.vg-side-bar') as HTMLElement;
+    const colsTab = bar.querySelectorAll('.vg-side-bar-tab')[0] as HTMLElement;
     colsTab.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(host.getOpenedToolPanelId()).toBe('agColumnsToolPanel');
     colsTab.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -171,7 +171,7 @@ describe('SideBarHost', () => {
   it('setPosition re-mounts on the opposite edge (data-position flips)', () => {
     const ctx = makeContext();
     const host = new SideBarHost(root, ctx, { toolPanels: ['columns'], position: 'right' });
-    const bar = root.querySelector('.cg-side-bar') as HTMLElement;
+    const bar = root.querySelector('.vg-side-bar') as HTMLElement;
     expect(bar.dataset.position).toBe('right');
     host.setPosition('left');
     expect(bar.dataset.position).toBe('left');
@@ -185,7 +185,7 @@ describe('SideBarHost', () => {
     const ctx = makeContext();
     const host = new SideBarHost(root, ctx, { toolPanels: ['columns'] });
     host.setVisible(false);
-    const bar = root.querySelector('.cg-side-bar') as HTMLElement;
+    const bar = root.querySelector('.vg-side-bar') as HTMLElement;
     expect(bar.style.display).toBe('none');
     expect(host.isVisible()).toBe(false);
     const lastReserved = ctx.reserveCalls[ctx.reserveCalls.length - 1];
@@ -203,7 +203,7 @@ describe('SideBarHost', () => {
       hiddenByDefault: true,
       defaultToolPanel: 'agColumnsToolPanel',
     });
-    const bar = root.querySelector('.cg-side-bar') as HTMLElement;
+    const bar = root.querySelector('.vg-side-bar') as HTMLElement;
     expect(bar.style.display).toBe('none');
     expect(host.isVisible()).toBe(false);
     // Even with defaultToolPanel, the panel is not mounted when hiddenByDefault.
@@ -237,8 +237,8 @@ describe('SideBarHost', () => {
       }],
       defaultToolPanel: 'agColumnsToolPanel',
     });
-    const bar = root.querySelector('.cg-side-bar') as HTMLElement;
-    const handle = bar.querySelector('.cg-side-bar-resize') as HTMLElement;
+    const bar = root.querySelector('.vg-side-bar') as HTMLElement;
+    const handle = bar.querySelector('.vg-side-bar-resize') as HTMLElement;
     expect(handle).not.toBeNull();
     // Initial reserved width is panelWidth (280) + tab-strip width (28).
     expect(host.getReservedWidth()).toBeGreaterThanOrEqual(280);
@@ -265,8 +265,8 @@ describe('SideBarHost', () => {
       }],
       defaultToolPanel: 'agColumnsToolPanel',
     });
-    const bar = root.querySelector('.cg-side-bar') as HTMLElement;
-    const handle = bar.querySelector('.cg-side-bar-resize') as HTMLElement;
+    const bar = root.querySelector('.vg-side-bar') as HTMLElement;
+    const handle = bar.querySelector('.vg-side-bar-resize') as HTMLElement;
     // Drag a huge amount RIGHT (shrink, clamped at minWidth).
     handle.dispatchEvent(new MouseEvent('mousedown', { clientX: 500, bubbles: true }));
     window.dispatchEvent(new MouseEvent('mousemove', { clientX: 9999, bubbles: true }));
@@ -306,13 +306,13 @@ describe('SideBarHost', () => {
     host.destroy();
   });
 
-  it('destroy removes the .cg-side-bar element and destroys mounted instances', () => {
+  it('destroy removes the .vg-side-bar element and destroys mounted instances', () => {
     const ctx = makeContext();
     const host = new SideBarHost(root, ctx, { toolPanels: ['columns'] });
     host.openPanel('agColumnsToolPanel');
     const inst = host.getInstance('agColumnsToolPanel') as ColumnsRecorder;
     host.destroy();
-    expect(root.querySelector('.cg-side-bar')).toBeNull();
+    expect(root.querySelector('.vg-side-bar')).toBeNull();
     expect(inst.destroyCount).toBe(1);
   });
 
@@ -322,8 +322,8 @@ describe('SideBarHost', () => {
       toolPanels: ['columns', 'filters'],
       hideButtons: true,
     });
-    const bar = root.querySelector('.cg-side-bar') as HTMLElement;
-    const tabs = bar.querySelector('.cg-side-bar-tabs') as HTMLElement;
+    const bar = root.querySelector('.vg-side-bar') as HTMLElement;
+    const tabs = bar.querySelector('.vg-side-bar-tabs') as HTMLElement;
     expect(tabs.style.display).toBe('none');
     host.destroy();
   });

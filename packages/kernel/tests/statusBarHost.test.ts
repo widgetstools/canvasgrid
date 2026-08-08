@@ -27,7 +27,7 @@ class RecordingPanel implements IStatusPanelComp {
   receivedParams: StatusPanelParams | null = null;
   readonly gui: HTMLDivElement = document.createElement('div');
   constructor() {
-    this.gui.className = 'cg-status-panel-recording';
+    this.gui.className = 'vg-status-panel-recording';
   }
   init(params: StatusPanelParams): void {
     this.initCount += 1;
@@ -40,7 +40,7 @@ class RecordingPanel implements IStatusPanelComp {
 
 class ThrowingRefreshPanel implements IStatusPanelComp {
   readonly gui: HTMLDivElement = document.createElement('div');
-  init(_p: StatusPanelParams): void { this.gui.className = 'cg-status-panel-thrower'; }
+  init(_p: StatusPanelParams): void { this.gui.className = 'vg-status-panel-thrower'; }
   getGui(): HTMLElement { return this.gui; }
   refresh(): void { throw new Error('panel refresh blew up'); }
   destroy(): void {}
@@ -76,13 +76,13 @@ describe('StatusBarHost', () => {
     root.parentElement?.removeChild(root);
   });
 
-  it('constructor mounts a .cg-status-bar with three zones and data-position default "bottom"', () => {
+  it('constructor mounts a .vg-status-bar with three zones and data-position default "bottom"', () => {
     const ctx = makeContext();
     const host = new StatusBarHost(root, ctx, { statusPanels: [] });
-    const bar = root.querySelector('.cg-status-bar') as HTMLElement | null;
+    const bar = root.querySelector('.vg-status-bar') as HTMLElement | null;
     expect(bar).not.toBeNull();
     expect(bar!.dataset.position).toBe('bottom');
-    const zones = bar!.querySelectorAll('.cg-status-bar-zone');
+    const zones = bar!.querySelectorAll('.vg-status-bar-zone');
     expect(zones.length).toBe(3);
     const zoneOrder = Array.from(zones).map((z) => (z as HTMLElement).dataset.zone);
     expect(zoneOrder).toEqual(['left', 'center', 'right']);
@@ -93,11 +93,11 @@ describe('StatusBarHost', () => {
     const ctx = makeContext();
     ctx.reserveCalls.length = 0;
     const host = new StatusBarHost(root, ctx, { statusPanels: [] });
-    const bar = root.querySelector('.cg-status-bar') as HTMLElement;
+    const bar = root.querySelector('.vg-status-bar') as HTMLElement;
     // Every zone exists but holds no children — the empty-bar acceptance
     // criterion in the design notes ("the chrome alone must read as
     // intentional").
-    const allZones = bar.querySelectorAll('.cg-status-bar-zone');
+    const allZones = bar.querySelectorAll('.vg-status-bar-zone');
     expect(allZones.length).toBe(3);
     for (const zone of Array.from(allZones)) {
       expect(zone.children.length).toBe(0);
@@ -123,10 +123,10 @@ describe('StatusBarHost', () => {
         { key: 'agSelectedRowCountComponent', statusPanel: 'rangePanel' },
       ],
     });
-    const bar = root.querySelector('.cg-status-bar') as HTMLElement;
-    const leftZone = bar.querySelector('.cg-status-bar-zone--left') as HTMLElement;
-    const centerZone = bar.querySelector('.cg-status-bar-zone--center') as HTMLElement;
-    const rightZone = bar.querySelector('.cg-status-bar-zone--right') as HTMLElement;
+    const bar = root.querySelector('.vg-status-bar') as HTMLElement;
+    const leftZone = bar.querySelector('.vg-status-bar-zone--left') as HTMLElement;
+    const centerZone = bar.querySelector('.vg-status-bar-zone--center') as HTMLElement;
+    const rightZone = bar.querySelector('.vg-status-bar-zone--right') as HTMLElement;
     expect(leftZone.children.length).toBe(1);
     expect(centerZone.children.length).toBe(1);
     // Two panels with no explicit align both default to right and stack
@@ -145,7 +145,7 @@ describe('StatusBarHost', () => {
       init(params: StatusPanelParams): void {
         const tag = (params.statusPanelParams?.tag as string) ?? '';
         this.gui.dataset.tag = tag;
-        this.gui.className = 'cg-status-panel-tagging';
+        this.gui.className = 'vg-status-panel-tagging';
       }
       getGui(): HTMLElement { return this.gui; }
       refresh(): void {}
@@ -159,7 +159,7 @@ describe('StatusBarHost', () => {
         { key: 'c', statusPanel: 'taggingPanel', align: 'left', statusPanelParams: { tag: 'c' } },
       ],
     });
-    const leftZone = root.querySelector('.cg-status-bar-zone--left') as HTMLElement;
+    const leftZone = root.querySelector('.vg-status-bar-zone--left') as HTMLElement;
     const tags = Array.from(leftZone.children).map((c) => (c as HTMLElement).dataset.tag);
     expect(tags).toEqual(['a', 'b', 'c']);
     host.destroy();
@@ -221,7 +221,7 @@ describe('StatusBarHost', () => {
     const ctx = makeContext();
     const host = new StatusBarHost(root, ctx, { statusPanels: [] });
     host.setVisible(false);
-    const bar = root.querySelector('.cg-status-bar') as HTMLElement;
+    const bar = root.querySelector('.vg-status-bar') as HTMLElement;
     expect(bar.style.display).toBe('none');
     expect(host.isVisible()).toBe(false);
     const last = ctx.reserveCalls[ctx.reserveCalls.length - 1];
@@ -238,7 +238,7 @@ describe('StatusBarHost', () => {
       statusPanels: [{ key: 'a', statusPanel: 'countPanel' }],
       hiddenByDefault: true,
     });
-    const bar = root.querySelector('.cg-status-bar') as HTMLElement;
+    const bar = root.querySelector('.vg-status-bar') as HTMLElement;
     expect(bar.style.display).toBe('none');
     expect(host.isVisible()).toBe(false);
     // Panel instance still mounts (the bar's contents are intact); the
@@ -254,7 +254,7 @@ describe('StatusBarHost', () => {
     const host = new StatusBarHost(root, ctx, { statusPanels: [], position: 'bottom' });
     ctx.reserveCalls.length = 0;
     host.setPosition('top');
-    const bar = root.querySelector('.cg-status-bar') as HTMLElement;
+    const bar = root.querySelector('.vg-status-bar') as HTMLElement;
     expect(bar.dataset.position).toBe('top');
     // setPosition releases the old edge first, then reserves on the new.
     expect(ctx.reserveCalls.length).toBe(2);
@@ -288,7 +288,7 @@ describe('StatusBarHost', () => {
     expect(host.getInstance('old2')).toBeNull();
     // New instance mounted into the center zone.
     expect(host.getInstance('new1')).not.toBeNull();
-    const centerZone = root.querySelector('.cg-status-bar-zone--center') as HTMLElement;
+    const centerZone = root.querySelector('.vg-status-bar-zone--center') as HTMLElement;
     expect(centerZone.children.length).toBe(1);
     host.destroy();
   });
@@ -306,7 +306,7 @@ describe('StatusBarHost', () => {
     host.destroy();
   });
 
-  it('destroy removes the .cg-status-bar element and destroys mounted instances', () => {
+  it('destroy removes the .vg-status-bar element and destroys mounted instances', () => {
     const ctx = makeContext();
     const host = new StatusBarHost(root, ctx, {
       statusPanels: [{ key: 'a', statusPanel: 'countPanel' }],
@@ -314,7 +314,7 @@ describe('StatusBarHost', () => {
     const inst = host.getInstance('a') as RecordingPanel;
     expect(inst.destroyCount).toBe(0);
     host.destroy();
-    expect(root.querySelector('.cg-status-bar')).toBeNull();
+    expect(root.querySelector('.vg-status-bar')).toBeNull();
     expect(inst.destroyCount).toBe(1);
     // Final reserveCalls entry is height 0 — the canvas regains the inset.
     const last = ctx.reserveCalls[ctx.reserveCalls.length - 1];

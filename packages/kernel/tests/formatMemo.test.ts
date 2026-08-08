@@ -9,9 +9,9 @@
  * identity change.
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
-import type { CGridOptions } from '../src/types/options';
+import type { VelocityGridOptions } from '../src/types/options';
 
 beforeAll(() => {
   (globalThis as any).Worker = class {
@@ -53,7 +53,7 @@ beforeAll(() => {
 function buildWiredGrid(cols: unknown[]) {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
   const prevWorker = (globalThis as any).Worker;
   (globalThis as any).Worker = class {
@@ -69,11 +69,11 @@ function buildWiredGrid(cols: unknown[]) {
   const rows = Array.from({ length: 20 }, (_, i) => ({
     id: `r${i}`, px: 101.25, name: 'ACME',
   }));
-  const grid = new CGrid(container, {
-    columnDefs: cols as CGridOptions<{ id: string; px: number; name: string }>['columnDefs'],
+  const grid = new VelocityGrid(container, {
+    columnDefs: cols as VelocityGridOptions<{ id: string; px: number; name: string }>['columnDefs'],
     getRowId: (r) => r.id,
     rowData: rows,
-  } as CGridOptions<{ id: string; px: number; name: string }>);
+  } as VelocityGridOptions<{ id: string; px: number; name: string }>);
   const restore = () => { (globalThis as any).Worker = prevWorker; container.remove(); };
   return { grid, g: grid as any, restore };
 }

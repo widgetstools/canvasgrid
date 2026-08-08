@@ -1,5 +1,5 @@
-import { CGrid } from '@cgrid/kernel';
-import type { CColDef, GridState } from '@cgrid/kernel';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
+import type { CColDef, GridState } from '@wellsfargo-starui/velocity-grid';
 import type { Feature } from './index';
 import type { ShowcaseRow } from '../seedData';
 import { makeRows } from '../seedData';
@@ -23,7 +23,7 @@ import { makeRows } from '../seedData';
  * last layout.
  */
 
-const STORAGE_KEY = 'cgrid:showcase:events-state:snapshot';
+const STORAGE_KEY = 'velocity-grid:showcase:events-state:snapshot';
 
 const COLUMNS: CColDef<ShowcaseRow>[] = [
   { colId: 'ticker', field: 'ticker', headerName: 'Ticker', cellDataType: 'text', width: 110, filter: 'text' },
@@ -63,7 +63,7 @@ export const eventsState: Feature = {
     'to see the auto-restore via the initialState constructor option.',
 
   mount(gridHost, controls, theme) {
-    const grid = new CGrid<ShowcaseRow>(gridHost, {
+    const grid = new VelocityGrid<ShowcaseRow>(gridHost, {
       getRowId: (r) => r.id,
       columnDefs: COLUMNS,
       theme,
@@ -122,9 +122,9 @@ export const eventsState: Feature = {
     logHost.style.cssText = [
       'position:absolute', 'top:8px', 'right:8px', 'width:280px',
       'max-height:50vh', 'overflow:auto', 'padding:8px 10px',
-      'background:var(--cg-popup-bg, rgba(0,0,0,0.85))',
-      'color:var(--cg-popup-fg, #f3f4f6)',
-      'border:1px solid var(--cg-popup-border, rgba(255,255,255,0.1))',
+      'background:var(--vg-popup-bg, rgba(0,0,0,0.85))',
+      'color:var(--vg-popup-fg, #f3f4f6)',
+      'border:1px solid var(--vg-popup-border, rgba(255,255,255,0.1))',
       'border-radius:6px', 'font: 11px/1.45 ui-monospace, monospace',
       'pointer-events:none', 'z-index:50',
     ].join(';');

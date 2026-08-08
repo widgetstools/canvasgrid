@@ -21,7 +21,7 @@ test.describe('Cell editing — text editor (Cycle 5 / Task 1)', () => {
 
   test('double-click cusip cell opens text editor; Enter commits typed value', async ({ page }) => {
     const bounds = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: { getCellBoundsAt: (r: number, c: string) => { x: number; y: number; w: number; h: number } | null } }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: { getCellBoundsAt: (r: number, c: string) => { x: number; y: number; w: number; h: number } | null } }).__cgrid;
       return grid.getCellBoundsAt(0, 'cusip');
     });
     expect(bounds).not.toBeNull();
@@ -31,7 +31,7 @@ test.describe('Cell editing — text editor (Cycle 5 / Task 1)', () => {
     const clickY = canvasRect!.y + bounds!.y + bounds!.h / 2;
     await page.mouse.dblclick(clickX, clickY);
 
-    const input = page.locator('input.cg-cell-editor--text');
+    const input = page.locator('input.vg-cell-editor--text');
     await expect(input).toBeVisible();
     await input.fill('CHANGED');
     await input.press('Enter');
@@ -42,7 +42,7 @@ test.describe('Cell editing — text editor (Cycle 5 / Task 1)', () => {
     // 'CHANGED'. Poll instead of a one-shot read.
     await expect.poll(
       () => page.evaluate(() => {
-        const g = (window as unknown as { __cgrid: { getCellValue: (r: number, c: string) => unknown } }).__cgrid;
+        const g = (window as unknown as { __velocity-grid: { getCellValue: (r: number, c: string) => unknown } }).__cgrid;
         return g.getCellValue(0, 'cusip');
       }),
       { timeout: 5_000 },
@@ -51,11 +51,11 @@ test.describe('Cell editing — text editor (Cycle 5 / Task 1)', () => {
 
   test('Escape cancels without writing', async ({ page }) => {
     const original = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: { getCellValue: (r: number, c: string) => unknown } }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: { getCellValue: (r: number, c: string) => unknown } }).__cgrid;
       return grid.getCellValue(0, 'cusip');
     });
     const bounds = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: { getCellBoundsAt: (r: number, c: string) => { x: number; y: number; w: number; h: number } | null } }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: { getCellBoundsAt: (r: number, c: string) => { x: number; y: number; w: number; h: number } | null } }).__cgrid;
       return grid.getCellBoundsAt(0, 'cusip');
     });
     const canvasRect = await page.locator('#grid canvas').boundingBox();
@@ -63,14 +63,14 @@ test.describe('Cell editing — text editor (Cycle 5 / Task 1)', () => {
     const clickY = canvasRect!.y + bounds!.y + bounds!.h / 2;
     await page.mouse.dblclick(clickX, clickY);
 
-    const input = page.locator('input.cg-cell-editor--text');
+    const input = page.locator('input.vg-cell-editor--text');
     await expect(input).toBeVisible();
     await input.fill('TYPED');
     await input.press('Escape');
     await expect(input).toHaveCount(0);
 
     const after = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: { getCellValue: (r: number, c: string) => unknown } }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: { getCellValue: (r: number, c: string) => unknown } }).__cgrid;
       return grid.getCellValue(0, 'cusip');
     });
     expect(after).toBe(original);

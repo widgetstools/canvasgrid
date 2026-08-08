@@ -22,12 +22,12 @@ import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { ViewportManager, type ViewportManagerDeps } from '../src/core/viewportManager';
 import { DisposableRegistry } from '../src/core/disposable';
 import { TypedEventEmitter } from '../src/core/eventEmitter';
-import type { CGridEvent } from '../src/types';
+import type { VelocityGridEvent } from '../src/types';
 import type { Subgrid } from '../src/core/subgrid';
 import type { ColumnLayout } from '../src/core/layout';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
-import type { CGridOptions } from '../src/types/options';
+import type { VelocityGridOptions } from '../src/types/options';
 
 // ─── ViewportManager harness (columnFetchWindow + throttle bypass) ───────────
 
@@ -77,7 +77,7 @@ function makeHarness(opts: {
     rowHeight: 30,
     destroyed: false,
   };
-  const events = new TypedEventEmitter<CGridEvent>();
+  const events = new TypedEventEmitter<VelocityGridEvent>();
   const dispatch = vi.fn(() => Promise.resolve());
   const deps: ViewportManagerDeps = {
     disposables: new DisposableRegistry(),
@@ -175,7 +175,7 @@ describe('scroll-throttle bypass covers columns', () => {
   });
 });
 
-// ─── cellAt mirror fallback (wired CGrid) ────────────────────────────────────
+// ─── cellAt mirror fallback (wired VelocityGrid) ────────────────────────────────────
 
 beforeAll(() => {
   (globalThis as any).Worker = class {
@@ -220,7 +220,7 @@ describe('cellAt — mirror fallback for columns missing from the chunk', () => 
   function buildWiredGrid() {
     const container = document.createElement('div');
     container.style.cssText = 'width:400px; height:600px;';
-    container.className = 'cg-theme-quartz';
+    container.className = 'vg-theme-quartz';
     document.body.appendChild(container);
     const prevWorker = (globalThis as any).Worker;
     (globalThis as any).Worker = class {
@@ -236,7 +236,7 @@ describe('cellAt — mirror fallback for columns missing from the chunk', () => 
     const rows = Array.from({ length: 50 }, (_, i) => ({
       id: `r${i}`, a: `A${i}`, far: 1000 + i, gettered: i,
     }));
-    const grid = new CGrid(container, {
+    const grid = new VelocityGrid(container, {
       columnDefs: [
         { field: 'id' },
         { field: 'a' },
@@ -245,10 +245,10 @@ describe('cellAt — mirror fallback for columns missing from the chunk', () => 
           valueFormatter: ({ value }: { value: number }) => `#${value}`,
         },
         { colId: 'g', field: 'gettered', valueGetter: () => 'computed' },
-      ] as CGridOptions<Record<string, unknown>>['columnDefs'],
+      ] as VelocityGridOptions<Record<string, unknown>>['columnDefs'],
       getRowId: (r: { id: string }) => r.id,
       rowData: rows,
-    } as CGridOptions<Record<string, unknown>>);
+    } as VelocityGridOptions<Record<string, unknown>>);
     const g = grid as any;
     Object.defineProperty(g.scroller, 'clientWidth', { value: 400, configurable: true });
     Object.defineProperty(g.scroller, 'clientHeight', { value: 600, configurable: true });

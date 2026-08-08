@@ -23,7 +23,7 @@
 
 import type {
   AggregateNode, Ast, AstNode, CallNode, FieldNode, Loc, PrevNode, Schema,
-} from '@cgrid/expression';
+} from '@wellsfargo-starui/velocity-grid-expression';
 import { expandShareAggregates, isShareAggregateName } from './aggregates/share';
 import type { AggScope, AggSpec, CalcValidationError } from './types';
 
@@ -32,7 +32,7 @@ export const AGG_ROOT = '__cgridAgg';
 /** Synthetic injection root for tick-scoped PREV reads. */
 export const PREV_ROOT = '__cgridPrev';
 
-// @cgrid/expression does not export AGGREGATE_NAMES from its index, and
+// @wellsfargo-starui/velocity-grid-expression does not export AGGREGATE_NAMES from its index, and
 // calc's vocabulary is a superset anyway (statistical + share families) —
 // calc owns the authoritative calc-DSL lists.
 

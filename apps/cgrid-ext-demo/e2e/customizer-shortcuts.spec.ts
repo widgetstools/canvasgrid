@@ -28,7 +28,7 @@ test.describe('Shortcuts (Markets parity)', () => {
   test('Add + Save registers a letter binding', async ({ page }) => {
     // Markets: v2-shortcuts — settings sheet opens Shortcuts panel
     await openCustomizer(page, 'shortcuts');
-    await expect(page.locator('.cgext-sheet-title')).toHaveText('Shortcuts');
+    await expect(page.locator('.vgext-sheet-title')).toHaveText('Shortcuts');
     await page.locator('.ckp-addbtn').click();
     await saveCard(page);
     await expect.poll(async () =>

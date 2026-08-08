@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
-// The app persists both kernel state (`cgrid:state:ext-demo`) and ext profiles
-// (`cgrid-ext:profiles`) to localStorage, so a leftover profile from a prior
+// The app persists both kernel state (`velocity-grid:state:ext-demo`) and ext profiles
+// (`velocity-grid-ext:profiles`) to localStorage, so a leftover profile from a prior
 // run would leak icons into this test. Clear storage ONCE — on the very first
 // document of this tab — but NOT on the mid-test reload (which must observe the
 // saved profile). `window.name` survives same-tab navigations including
@@ -9,9 +9,9 @@ import { test, expect } from '@playwright/test';
 // itself can't erase.
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
-    if (!window.name.includes('cg-e2e-icons-booted')) {
+    if (!window.name.includes('vg-e2e-icons-booted')) {
       try { localStorage.clear(); } catch { /* storage may be unavailable pre-nav */ }
-      window.name = `${window.name} cg-e2e-icons-booted`;
+      window.name = `${window.name} vg-e2e-icons-booted`;
     }
   });
 });
@@ -27,7 +27,7 @@ test.beforeEach(async ({ page }) => {
 // pinned first column whose floating-filter buttons overlay the canvas).
 // The picker button flips from disabled→enabled the instant the toolbar
 // resolves a target column, so its `enabled` state is the reliable
-// "a cell is focused" signal (the ribbon has several `.cgext-rb-pill`
+// "a cell is focused" signal (the ribbon has several `.vgext-rb-pill`
 // nodes — e.g. the Smart "Set…" button — so a `.first()` pill match is not
 // the selection pill).
 test('icons section: prefix icon, corner decorator, header emoji, clear', async ({ page }) => {
@@ -36,7 +36,7 @@ test('icons section: prefix icon, corner decorator, header emoji, clear', async 
   // seconds after reload).
   test.setTimeout(60_000);
   await page.goto('/');
-  await expect(page.locator('.cgext-grid canvas').first()).toBeVisible();
+  await expect(page.locator('.vgext-grid canvas').first()).toBeVisible();
 
   // Wait for the STOMP snapshot to populate the grid.
   await page.waitForFunction(() => {
@@ -48,7 +48,7 @@ test('icons section: prefix icon, corner decorator, header emoji, clear', async 
   const search = page.locator('[data-ip="search"]');
 
   // Focus a data cell so the toolbar resolves the target column.
-  await page.locator('.cgext-grid canvas').first().click({ position: { x: 400, y: 180 } });
+  await page.locator('.vgext-grid canvas').first().click({ position: { x: 400, y: 180 } });
   await expect(openBtn).toBeEnabled();
 
   const ownTemplate = () => page.evaluate(() =>
@@ -56,9 +56,9 @@ test('icons section: prefix icon, corner decorator, header emoji, clear', async 
 
   // 1. Prefix (default placement) — pick the flame icon.
   await openBtn.click();
-  await expect(page.locator('.cgext-ip-panel')).toBeVisible();
+  await expect(page.locator('.vgext-ip-panel')).toBeVisible();
   await search.fill('flame');
-  await page.locator('.cgext-ip-tile[data-icon="flame"]').click();
+  await page.locator('.vgext-ip-tile[data-icon="flame"]').click();
   let ov = await ownTemplate();
   expect(ov.cellIcon).toMatchObject({ name: 'flame', position: 'leading' });
 
@@ -71,19 +71,19 @@ test('icons section: prefix icon, corner decorator, header emoji, clear', async 
   await page.locator('[data-place="tr"]').click({ modifiers: ['Alt'] });
   await openBtn.click();
   await search.fill('');
-  await page.locator('.cgext-ip-tile[data-emoji="⚠️"]').click();
+  await page.locator('.vgext-ip-tile[data-emoji="⚠️"]').click();
   ov = await ownTemplate();
   expect(ov.cellStyle.decorators).toEqual([{ position: 'tr', kind: 'emoji', value: '⚠️' }]);
 
   // 3. Header target + suffix emoji → headerIcon. The single cell↔header
   // target toggle flips Cells → Header on one click.
-  await page.locator('.cgext-rb-targettoggle[data-rb="target"]').click();
-  await expect(page.locator('.cgext-rb-targettoggle[data-rb="target"]')).toContainText('Header');
+  await page.locator('.vgext-rb-targettoggle[data-rb="target"]').click();
+  await expect(page.locator('.vgext-rb-targettoggle[data-rb="target"]')).toContainText('Header');
   await page.locator('[data-ip="place"]').click();
   await page.locator('[data-place="suffix"]').click();
   await openBtn.click();
   await search.fill('');
-  await page.locator('.cgext-ip-tile[data-emoji="🔥"]').click();
+  await page.locator('.vgext-ip-tile[data-emoji="🔥"]').click();
   ov = await ownTemplate();
   expect(ov.headerIcon).toMatchObject({ emoji: '🔥', position: 'trailing' });
 
@@ -96,7 +96,7 @@ test('icons section: prefix icon, corner decorator, header emoji, clear', async 
   // 4b. Plain-click placement MOVES the current icon to an empty slot and
   // back — "change the icon's location" (cell target again; the tr slot
   // still holds the ⚠️ decorator, so switching there would only select).
-  await page.locator('.cgext-rb-targettoggle[data-rb="target"]').click(); // header → cells
+  await page.locator('.vgext-rb-targettoggle[data-rb="target"]').click(); // header → cells
   await page.locator('[data-ip="place"]').click();
   await page.locator('[data-place="prefix"]').click({ modifiers: ['Alt'] }); // navigate to the flame's slot
   await page.locator('[data-ip="place"]').click();
@@ -125,10 +125,10 @@ test('icons section: prefix icon, corner decorator, header emoji, clear', async 
   //    losing icons on reload).
   await page.locator('[data-item-id="layout-save"] button').click();
   // Let the debounced persistState autosave (500ms) flush before navigating
-  // away — the reload's restore reads the persisted `cgrid:state:ext-demo`.
+  // away — the reload's restore reads the persisted `velocity-grid:state:ext-demo`.
   await page.waitForTimeout(800);
   await page.reload();
-  await expect(page.locator('.cgext-grid canvas').first()).toBeVisible();
+  await expect(page.locator('.vgext-grid canvas').first()).toBeVisible();
   await page.waitForFunction(() => {
     const g = (window as any).__ext?.grid;
     try { return (g?.getDisplayedRowCount?.() ?? 0) > 0; } catch { return false; }

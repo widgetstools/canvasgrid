@@ -21,10 +21,10 @@
  * flip lights up on the next interaction without re-wiring.
  */
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { RightClick } from '../src/interaction/features/rightClick';
 import { KeyboardShortcuts } from '../src/interaction/features/keyboardShortcuts';
-import { Feature, type CGridEventCtx, type CGridLike } from '../src/interaction/feature';
+import { Feature, type VelocityGridEventCtx, type VelocityGridLike } from '../src/interaction/feature';
 import type { Hit } from '../src/interaction/hitTester';
 import { buildDefaultMenuItems, type DefaultMenuGrid } from '../src/interaction/contextMenu/defaults';
 import type { GetContextMenuItemsParams, MenuItem } from '../src/interaction/contextMenu/types';
@@ -60,18 +60,18 @@ beforeAll(() => {
 
 interface Row { id: string; a: number; b: number }
 function build(
-  options: Partial<Parameters<typeof CGrid>[1]> = {},
-): { grid: CGrid<Row>; container: HTMLDivElement } {
+  options: Partial<Parameters<typeof VelocityGrid>[1]> = {},
+): { grid: VelocityGrid<Row>; container: HTMLDivElement } {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
   const rows: Row[] = [
     { id: '1', a: 1, b: 2 },
     { id: '2', a: 3, b: 4 },
     { id: '3', a: 5, b: 6 },
   ];
-  const grid = new CGrid<Row>(container, {
+  const grid = new VelocityGrid<Row>(container, {
     columnDefs: [{ field: 'id' }, { field: 'a' }, { field: 'b' }],
     getRowId: (r) => r.id,
     rowData: rows,
@@ -84,7 +84,7 @@ function build(
 }
 
 // ---------------------------------------------------------------------------
-// Feature-level mock grid — covers the slice of CGridLike that
+// Feature-level mock grid — covers the slice of VelocityGridLike that
 // RightClick / KeyboardShortcuts touch in Task 6.
 // ---------------------------------------------------------------------------
 interface FeatureMockOptions {
@@ -105,7 +105,7 @@ interface FeatureMockOptions {
 }
 
 interface FeatureMock {
-  grid: CGridLike;
+  grid: VelocityGridLike;
   resolveSpy: ReturnType<typeof vi.fn>;
   openContextMenuSpy: ReturnType<typeof vi.fn>;
   closeContextMenuSpy: ReturnType<typeof vi.fn>;
@@ -140,11 +140,11 @@ function makeFeatureMock(opts: FeatureMockOptions = {}): FeatureMock {
     copySelectedRangesToClipboard: copySpy,
     pasteFromClipboard: pasteSpy,
     cutSelectedRanges: cutSpy,
-  } as unknown as CGridLike;
+  } as unknown as VelocityGridLike;
   return { grid, resolveSpy, openContextMenuSpy, closeContextMenuSpy, copySpy, pasteSpy, cutSpy };
 }
 
-function ctxFor(grid: CGridLike, raw: MouseEvent | KeyboardEvent, hit: Hit = { kind: 'cell', rowIndex: 0, colId: 'a' }): CGridEventCtx {
+function ctxFor(grid: VelocityGridLike, raw: MouseEvent | KeyboardEvent, hit: Hit = { kind: 'cell', rowIndex: 0, colId: 'a' }): VelocityGridEventCtx {
   return { grid, hit, point: { x: 0, y: 0 }, raw };
 }
 
@@ -314,9 +314,9 @@ describe('KeyboardShortcuts + suppressClipboardPaste (Cycle 10 / Task 6)', () =>
 });
 
 // ---------------------------------------------------------------------------
-// 4. CGrid API — copy / paste / cut short-circuits + warn-once.
+// 4. VelocityGrid API — copy / paste / cut short-circuits + warn-once.
 // ---------------------------------------------------------------------------
-describe('CGrid clipboard API + suppress flags (Cycle 10 / Task 6)', () => {
+describe('VelocityGrid clipboard API + suppress flags (Cycle 10 / Task 6)', () => {
   let warnSpy: ReturnType<typeof vi.spyOn>;
   beforeEach(() => { warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {}); });
   afterEach(() => { warnSpy.mockRestore(); });

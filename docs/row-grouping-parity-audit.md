@@ -24,8 +24,8 @@ Columns: **CSRM** = worker GroupPass path. **SSRM v2** = sparse skeleton path
 | Per-chip group sort (panel chevron) + per-level sort | `groupingState.ts:127-263`, `sortPass.ts:397-497` | ✅ tested | server-owned (Perspective sort) — behavior differs, see §4 |
 | `groupDefaultExpanded` (numeric / all) | `options.ts:1066`, `groupPass.ts:296-329` | ✅ tested | **`0` only** (design gap, phase 4) |
 | `isGroupOpenByDefault` | `options.ts:1184` | ✅ (params shape differs: `{key, route}` vs AG `{rowNode, field, key, level, rowGroupColumn}`) | ❌ |
-| `expandAll` / `collapseAll` / `setExpanded` / `resetRowGroupExpansion` | `cgrid.ts:5311-5378` | ✅ | ✅ (exact via skeleton `setGroupKeys`) |
-| Events: `rowGroupOpened`, `expandOrCollapseAll`, `columnRowGroupChanged` | `cgrid.ts` | ✅ (payload: key-based, not node-based) | ✅ |
+| `expandAll` / `collapseAll` / `setExpanded` / `resetRowGroupExpansion` | `velocityGrid.ts:5311-5378` | ✅ | ✅ (exact via skeleton `setGroupKeys`) |
+| Events: `rowGroupOpened`, `expandOrCollapseAll`, `columnRowGroupChanged` | `velocityGrid.ts` | ✅ (payload: key-based, not node-based) | ✅ |
 | Sticky group rows | `renderer/painters/stickyGroups.ts`, worker `computeStickyAncestors` / `computeSsrmStickyAncestors` | ✅ | ✅ (fixed 2026-07-20; `ssrmStickyWorker.test.ts`) |
 | Group footers + grand total (`groupTotalRow`/`grandTotalRow` top\|bottom; legacy `groupIncludeFooter` pair) | `options.ts:1125,1139,1218,1225`, `groupPass.ts:471-510` | ✅ tested (`groupFooter.test.ts`) | ❌ (phase 4; demo hand-rolls grand total as a pinned row) |
 | `showOpenedGroup` | `options.ts:1112`, `viewportSlicer.ts:219-289` | ✅ | ❌ (GroupPass feature) |
@@ -37,14 +37,14 @@ Columns: **CSRM** = worker GroupPass path. **SSRM v2** = sparse skeleton path
 | Filters re-group (Filter → Group → Sort pipeline); aggregates over filtered rows (AG default) | `groupPass.ts`, `aggPass.ts:67-206` | ✅ | server-owned ✅ |
 | Agg built-ins (sum/avg/min/max/count/first/last) + custom registry + `suppressAggFuncInHeader` | `aggFuncRegistry.ts`, `options.ts:834` | ✅ | skeleton `aggregates` field ✅ |
 | `suppressGroupChangesColumnVisibility` 3-way (matches v33 API) | `options.ts:1210`, `groupingCoordinator.ts:372-377` | ✅ tested | ✅ |
-| API: `setRowGroupColumns`, `moveRowGroupColumn`, `getRowGroupColumns`, `setGroupModel` | `cgrid.ts:5571-5586,5002` | ✅ | ✅ (`ssrmV2GroupLifecycle.test.ts`) |
+| API: `setRowGroupColumns`, `moveRowGroupColumn`, `getRowGroupColumns`, `setGroupModel` | `velocityGrid.ts:5571-5586,5002` | ✅ | ✅ (`ssrmV2GroupLifecycle.test.ts`) |
 | Grouping in grid state save/restore | statePersistence / initialState | ✅ | partial (expansion keys restore untested on sparse) |
 
 **cgrid extensions beyond AG:** `groupDefaultExpandedKeys`, `setRowGroupColumnSort`, `sortGroupRowsByKey`, sort-groups-by-aggregate.
 
 ## 2. Implemented with deviations (correctness/semantics differ from AG)
 
-1. **`groupDefaultExpanded: -1`** — AG: expand ALL. cgrid: negative = collapse-all, with a separate `'all'` sentinel. An AG user passing `-1` gets the opposite behavior. **Should accept `-1` as expand-all.**
+1. **`groupDefaultExpanded: -1`** — AG: expand ALL. velocity-grid: negative = collapse-all, with a separate `'all'` sentinel. An AG user passing `-1` gets the opposite behavior. **Should accept `-1` as expand-all.**
 2. **`'custom'` display type** — AG drives it via `colDef.showRowGroup`; cgrid via `groupRowRenderer`. `showRowGroup` is absent, so AG-style custom group columns can't be expressed.
 3. **`colDef.rowGroup` / `rowGroupIndex`** — declared in `types/column.ts:664` but marked "reserved", consumed only via column-state role slots — construction-time `rowGroup: true` on a plain colDef needs verification; AG treats it as the primary grouping entry point.
 4. **API naming (v33)** — cgrid has singular `addRowGroupColumn`/`removeRowGroupColumn`; AG removed singular in favor of plural. `setRowNodeExpanded(node,…)` → cgrid `setExpanded(key,…)` (key-addressed; no `expandParents`). Migration shims worth adding.

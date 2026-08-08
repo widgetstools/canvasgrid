@@ -12,7 +12,7 @@
 // tick. Mouseup → grid.commitFill(source, currentLast); the cgrid host
 // handles row fetch, extrapolation, and the single applyTransaction.
 //
-// Direction modes (`CGridOptions.fillHandleDirection`):
+// Direction modes (`VelocityGridOptions.fillHandleDirection`):
 //   - `'y'` (default) — only `rowEnd` grows; colIds stay fixed.
 //   - `'x'`           — only colIds grow rightward; rows stay fixed.
 //   - `'xy'`          — the axis with the larger pointer delta from the
@@ -27,7 +27,7 @@
 // fill notifications listen for the existing `cellValueChanged` events
 // emitted by the transaction commit.
 
-import { Feature, type CGridEventCtx } from '../feature';
+import { Feature, type VelocityGridEventCtx } from '../feature';
 import type { SelectionRange } from '../../types';
 
 /** Half-side of the square hit zone — pointer must be within ±3 px of the
@@ -52,7 +52,7 @@ interface DragState {
 export class FillHandle extends Feature {
   private state: DragState | null = null;
 
-  override handleMouseDown(ctx: CGridEventCtx): void {
+  override handleMouseDown(ctx: VelocityGridEventCtx): void {
     if (ctx.hit.kind !== 'cell') {
       super.handleMouseDown(ctx);
       return;
@@ -95,7 +95,7 @@ export class FillHandle extends Feature {
     // fresh range anchor.
   }
 
-  override handleMouseDrag(ctx: CGridEventCtx): void {
+  override handleMouseDrag(ctx: VelocityGridEventCtx): void {
     if (this.state === null) {
       super.handleMouseDrag(ctx);
       return;
@@ -131,7 +131,7 @@ export class FillHandle extends Feature {
   /** Cycle 9 / Task 7 — first drag tick fires the start of the range-
    *  selection event stream (started:true, finished:false); every
    *  subsequent tick fires a mid (started:false, finished:false). */
-  private emitDragTick(ctx: CGridEventCtx): void {
+  private emitDragTick(ctx: VelocityGridEventCtx): void {
     const state = this.state!;
     if (state.emittedStart) {
       ctx.grid.emitRangeSelectionChanged(false, false);
@@ -141,7 +141,7 @@ export class FillHandle extends Feature {
     ctx.grid.emitRangeSelectionChanged(true, false);
   }
 
-  override handleMouseUp(ctx: CGridEventCtx): void {
+  override handleMouseUp(ctx: VelocityGridEventCtx): void {
     const state = this.state;
     this.state = null;
     if (state === null) {

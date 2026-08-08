@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { installGridTestEnv } from './setup';
-import { CGridExt } from '../src/cgridExt';
-import { wireEditIntoKernel } from '@cgrid/edit';
+import { VelocityGridExt } from '../src/velocityGridExt';
+import { wireEditIntoKernel } from '@wellsfargo-starui/velocity-grid-edit';
 import { LocalStorageProfileStore } from '../src/profiles/localStorageStore';
 
 beforeAll(() => installGridTestEnv());
@@ -11,7 +11,7 @@ describe('dataChangeHistoryModule', () => {
   it('registers Edit History in the default settings sheet', () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const ext = new CGridExt(host, {
+    const ext = new VelocityGridExt(host, {
       getRowId: (r: { a: string }) => r.a,
       columnDefs: [{ colId: 'a', field: 'a', editable: true }],
       rowData: [{ a: '1' }],
@@ -19,7 +19,7 @@ describe('dataChangeHistoryModule', () => {
 
     wireEditIntoKernel(ext.grid);
     ext.openSettings('data-change-history');
-    expect(host.querySelector('.cgext-sheet-title')?.textContent).toBe('Edit History');
+    expect(host.querySelector('.vgext-sheet-title')?.textContent).toBe('Edit History');
     expect(host.querySelector('.ckp')).toBeTruthy();
     expect(host.textContent).toContain('Record Sources');
     expect(host.textContent).toContain('Monitor');
@@ -30,7 +30,7 @@ describe('dataChangeHistoryModule', () => {
   it('Save commits history settings through the edit handle', () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const ext = new CGridExt(host, {
+    const ext = new VelocityGridExt(host, {
       getRowId: (r: { a: string }) => r.a,
       columnDefs: [{ colId: 'a', field: 'a', editable: true }],
       rowData: [{ a: '1' }],
@@ -56,7 +56,7 @@ describe('dataChangeHistoryModule', () => {
   it('Suspended toggle applies live without Save', () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const ext = new CGridExt(host, {
+    const ext = new VelocityGridExt(host, {
       getRowId: (r: { a: string }) => r.a,
       columnDefs: [{ colId: 'a', field: 'a', editable: true }],
       rowData: [{ a: '1' }],
@@ -73,7 +73,7 @@ describe('dataChangeHistoryModule', () => {
   });
 });
 
-describe('CGridExt.reapplyActiveProfile', () => {
+describe('VelocityGridExt.reapplyActiveProfile', () => {
   it('restores editSettings after wireEdit when profile was saved with non-defaults', async () => {
     const store = new LocalStorageProfileStore('reapply-test');
 
@@ -81,7 +81,7 @@ describe('CGridExt.reapplyActiveProfile', () => {
     {
       const host = document.createElement('div');
       document.body.appendChild(host);
-      const ext = new CGridExt(host, {
+      const ext = new VelocityGridExt(host, {
         getRowId: (r: { a: string }) => r.a,
         columnDefs: [{ colId: 'a', field: 'a' }],
         rowData: [{ a: '1' }],
@@ -103,7 +103,7 @@ describe('CGridExt.reapplyActiveProfile', () => {
     {
       const host = document.createElement('div');
       document.body.appendChild(host);
-      const ext = new CGridExt(host, {
+      const ext = new VelocityGridExt(host, {
         getRowId: (r: { a: string }) => r.a,
         columnDefs: [{ colId: 'a', field: 'a' }],
         rowData: [{ a: '1' }],

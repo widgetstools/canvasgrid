@@ -1,14 +1,14 @@
 /**
  * Cycle 11 / Task 5 — custom panel API E2E.
  *
- * Two methods on `CGridApi`:
+ * Two methods on `VelocityGridApi`:
  *  - `refreshToolPanel(id)` calls `refresh()` on the live `ToolPanel`
  *    instance for `id`, silent no-op when the panel is not mounted.
  *  - `getToolPanelInstance(id)` returns the live instance (or `null`).
  *
  * Both must work for built-in panels (`agColumnsToolPanel`,
  * `agFiltersToolPanel`) AND for custom panels registered via
- * `CGridOptions.components`. The positions demo opts into the custom
+ * `VelocityGridOptions.components`. The positions demo opts into the custom
  * path via `?customPanel=1`, which registers `DemoCustomPanel` and
  * appends a third tab ("Demo") to the side bar. `DemoCustomPanel`
  * records every lifecycle call as `data-init-count` /
@@ -18,9 +18,9 @@
 import { test, expect, Page } from '@playwright/test';
 
 const GRID_SELECTOR = '#grid canvas';
-const TAB_SELECTOR = '.cg-side-bar-tab';
-const PANEL_SELECTOR = '.cg-side-bar-panel';
-const CUSTOM_PANEL_SELECTOR = '.cg-demo-custom-panel';
+const TAB_SELECTOR = '.vg-side-bar-tab';
+const PANEL_SELECTOR = '.vg-side-bar-panel';
+const CUSTOM_PANEL_SELECTOR = '.vg-demo-custom-panel';
 
 async function waitForFrames(page: Page, n = 6): Promise<void> {
   await page.evaluate(
@@ -47,19 +47,19 @@ async function gridReady(page: Page): Promise<void> {
   await waitForFrames(page, 6);
 }
 
-/** Call a CGridApi method on the live demo grid and return the result.
+/** Call a VelocityGridApi method on the live demo grid and return the result.
  *  Casts through `any` since the public types aren't loaded in
  *  page-eval scope; the spec asserts the result shape directly. */
 async function callApi<T>(page: Page, fn: (api: any) => T): Promise<T> {
   return page.evaluate((src) => {
-    const api = (window as unknown as { __cgrid: any }).__cgrid;
+    const api = (window as unknown as { __velocity-grid: any }).__cgrid;
     // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
     return new Function('api', `return (${src})(api);`)(api);
   }, fn.toString()) as Promise<T>;
 }
 
 test.describe('Cycle 11 / Task 5 — refreshToolPanel + getToolPanelInstance', () => {
-  test('the demo registers a third tool panel ("Demo") via CGridOptions.components when ?customPanel=1', async ({ page }) => {
+  test('the demo registers a third tool panel ("Demo") via VelocityGridOptions.components when ?customPanel=1', async ({ page }) => {
     await gridReady(page);
     const tabs = page.locator(TAB_SELECTOR);
     await expect(tabs).toHaveCount(3);
@@ -105,7 +105,7 @@ test.describe('Cycle 11 / Task 5 — refreshToolPanel + getToolPanelInstance', (
     await gridReady(page);
 
     // Open the Demo tab — the custom panel's `init` fires + the GUI
-    // mounts inside .cg-side-bar-panel.
+    // mounts inside .vg-side-bar-panel.
     const demoTab = page.locator(`${TAB_SELECTOR}[data-id="demoCustomPanel"]`);
     await demoTab.click();
     await waitForFrames(page, 3);
@@ -142,7 +142,7 @@ test.describe('Cycle 11 / Task 5 — refreshToolPanel + getToolPanelInstance', (
     const columnsTab = page.locator(`${TAB_SELECTOR}[data-id="agColumnsToolPanel"]`);
     await columnsTab.click();
     await waitForFrames(page, 3);
-    await expect(page.locator(`${PANEL_SELECTOR} .cg-columns-panel`)).toHaveCount(1);
+    await expect(page.locator(`${PANEL_SELECTOR} .vg-columns-panel`)).toHaveCount(1);
 
     const result = await callApi<string>(page, (api) => {
       try {
@@ -153,7 +153,7 @@ test.describe('Cycle 11 / Task 5 — refreshToolPanel + getToolPanelInstance', (
       }
     });
     expect(result).toBe('ok');
-    await expect(page.locator(`${PANEL_SELECTOR} .cg-columns-panel`)).toHaveCount(1);
+    await expect(page.locator(`${PANEL_SELECTOR} .vg-columns-panel`)).toHaveCount(1);
   });
 
   test('getToolPanelInstance(id) returns null again after the user closes the tab', async ({ page }) => {

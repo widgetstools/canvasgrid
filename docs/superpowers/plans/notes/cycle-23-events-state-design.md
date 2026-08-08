@@ -43,7 +43,7 @@ getState() returns:               setState(snapshot) restores in:
 
 ## Task 1 — Remaining events audit
 
-**Goal:** Audit cgrid's `CGridEvent` union against ag-grid's event
+**Goal:** Audit cgrid's `VelocityGridEvent` union against ag-grid's event
 list. Identify missing events; wire each.
 
 **Likely missing (per master plan):**
@@ -101,7 +101,7 @@ canvas.addEventListener('scroll', () => {
 });
 ```
 
-**File:** `cgrid.ts`.
+**File:** `velocityGrid.ts`.
 
 ---
 
@@ -145,7 +145,7 @@ interface GridState {
   rangeSelection?: SelectionRange[];
 }
 
-class CGridApi {
+class VelocityGridApi {
   getState(): GridState;
 }
 ```
@@ -162,7 +162,7 @@ class CGridApi {
 mental model section above.
 
 ```typescript
-class CGridApi {
+class VelocityGridApi {
   setState(snapshot: GridState): void;
   resetState(): void;  // back to initial-options state
 }
@@ -172,7 +172,7 @@ class CGridApi {
 run a migration chain. The migration registry lives in
 `core/stateMigrations.ts` — each entry is `(state: vN) => vN+1`.
 
-**Initial state on construction:** `CGridOptions.initialState?:
+**Initial state on construction:** `VelocityGridOptions.initialState?:
 GridState` lets apps pass a saved state at construction time;
 applied AFTER initial options resolve but BEFORE first paint.
 

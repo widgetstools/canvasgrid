@@ -117,9 +117,9 @@ export class ContextMenuHost {
    *  right edge). */
   private renderLevel(items: MenuItem[], params: MenuItemActionParams): HTMLElement {
     const root = document.createElement('div');
-    root.className = 'cg-context-menu';
+    root.className = 'vg-context-menu';
     root.setAttribute('role', 'menu');
-    root.setAttribute('data-cg-context-menu-root', '');
+    root.setAttribute('data-vg-context-menu-root', '');
     // editorContainer (the typical host) carries `pointer-events: none`
     // so the canvas under it stays interactive — children must opt back
     // in or clicks fall through to the canvas.
@@ -128,7 +128,7 @@ export class ContextMenuHost {
     for (const item of items) {
       if (item.name === '---') {
         const hr = document.createElement('hr');
-        hr.className = 'cg-menu-separator';
+        hr.className = 'vg-menu-separator';
         root.appendChild(hr);
         continue;
       }
@@ -139,27 +139,27 @@ export class ContextMenuHost {
 
   private renderRow(item: MenuItem, params: MenuItemActionParams): HTMLElement {
     const row = document.createElement('div');
-    row.className = 'cg-menu-item';
+    row.className = 'vg-menu-item';
     row.setAttribute('role', 'menuitem');
     row.setAttribute('tabindex', '-1');
     if (item.disabled) row.setAttribute('aria-disabled', 'true');
     if (item.subMenu && item.subMenu.length > 0) row.setAttribute('aria-haspopup', 'menu');
 
     const iconSlot = document.createElement('span');
-    iconSlot.className = 'cg-menu-item-icon';
+    iconSlot.className = 'vg-menu-item-icon';
     if (item.icon) iconSlot.innerHTML = sanitizeIconHtml(item.icon);
     row.appendChild(iconSlot);
 
     const label = document.createElement('span');
-    label.className = 'cg-menu-item-label';
+    label.className = 'vg-menu-item-label';
     label.textContent = item.name;
     row.appendChild(label);
 
     const tail = document.createElement('span');
-    tail.className = 'cg-menu-item-tail';
+    tail.className = 'vg-menu-item-tail';
     if (item.subMenu && item.subMenu.length > 0) {
       tail.textContent = '▶';
-      tail.classList.add('cg-menu-item-chevron');
+      tail.classList.add('vg-menu-item-chevron');
     } else if (item.shortcut) {
       tail.textContent = item.shortcut;
     }

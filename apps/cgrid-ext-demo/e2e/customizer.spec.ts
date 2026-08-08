@@ -31,9 +31,9 @@ test.beforeEach(async ({ page }) => {
 test.describe('Customizer shell', () => {
   test('opens from overflow Settings, shows all tabs, closes via Done and Esc', async ({ page }) => {
     await openCustomizer(page);
-    await expect(page.locator('.cgext-sheet-eyebrow')).toHaveText('Customize');
-    await expect(page.locator('.cgext-sheet-title')).toHaveText('Options');
-    await expect(page.locator('.cgext-sheet-nav-item')).toHaveCount(11);
+    await expect(page.locator('.vgext-sheet-eyebrow')).toHaveText('Customize');
+    await expect(page.locator('.vgext-sheet-title')).toHaveText('Options');
+    await expect(page.locator('.vgext-sheet-nav-item')).toHaveCount(11);
     for (const title of [
       'Options',
       'Column Groups',
@@ -47,11 +47,11 @@ test.describe('Customizer shell', () => {
       'Shortcuts',
       'Edit History',
     ]) {
-      await expect(page.locator('.cgext-sheet-nav-item', { hasText: title })).toBeVisible();
+      await expect(page.locator('.vgext-sheet-nav-item', { hasText: title })).toBeVisible();
     }
-    await expect(page.locator('.cgext-sheet-footer')).toBeVisible();
-    await expect(page.locator('[data-testid="cgext-sheet-done"]')).toBeVisible();
-    await expect(page.locator('.cgext-sheet-footbtn.ghost', { hasText: 'Discard' })).toBeVisible();
+    await expect(page.locator('.vgext-sheet-footer')).toBeVisible();
+    await expect(page.locator('[data-testid="vgext-sheet-done"]')).toBeVisible();
+    await expect(page.locator('.vgext-sheet-footbtn.ghost', { hasText: 'Discard' })).toBeVisible();
 
     await closeViaDone(page);
 
@@ -62,10 +62,10 @@ test.describe('Customizer shell', () => {
 
   test('tab navigation switches every module panel', async ({ page }) => {
     await openCustomizer(page, 'grid-options');
-    await expect(page.locator('.cg-settings-panel')).toBeVisible();
+    await expect(page.locator('.vg-settings-panel')).toBeVisible();
 
     await switchTab(page, 'Column Groups');
-    await expect(page.locator('.cg-colgroups-panel')).toBeVisible();
+    await expect(page.locator('.vg-colgroups-panel')).toBeVisible();
 
     await switchTab(page, 'Column Settings');
     await expect(cockpit(page)).toBeVisible();
@@ -78,7 +78,7 @@ test.describe('Customizer shell', () => {
     await expect(page.locator('.ckp-rail-head', { hasText: 'Columns' })).toBeVisible();
 
     await switchTab(page, 'Options');
-    await expect(page.locator('.cg-settings-panel')).toBeVisible();
+    await expect(page.locator('.vg-settings-panel')).toBeVisible();
   });
 });
 
@@ -87,7 +87,7 @@ test.describe('Customizer shell', () => {
 test.describe('Options tab', () => {
   test('search filters settings rows', async ({ page }) => {
     await openCustomizer(page, 'grid-options');
-    const search = page.locator('.cg-settings-search');
+    const search = page.locator('.vg-settings-search');
     await expect(search).toBeVisible();
     await search.fill('row height');
     await expect(page.locator('[data-field-key="rowHeight"]')).toBeVisible();
@@ -101,7 +101,7 @@ test.describe('Options tab', () => {
     await openCustomizer(page, 'grid-options');
     const row = page.locator('[data-field-key="rowHeight"]');
     await expect(row).toBeVisible();
-    const input = row.locator('input.cg-settings-input-number');
+    const input = row.locator('input.vg-settings-input-number');
     await input.fill('40');
     await input.blur();
     await expect.poll(() => gridOption<number>(page, 'rowHeight')).toBe(40);
@@ -111,9 +111,9 @@ test.describe('Options tab', () => {
     await openCustomizer(page, 'grid-options');
     const before = await gridOption<boolean>(page, 'animateRows');
     const row = page.locator('[data-field-key="animateRows"]');
-    await row.locator('.cg-settings-toggle').click();
+    await row.locator('.vg-settings-toggle').click();
     await expect.poll(() => gridOption<boolean>(page, 'animateRows')).toBe(!before);
-    await expect(page.locator('.cg-settings-panel')).toContainText(/Modified/i);
+    await expect(page.locator('.vg-settings-panel')).toContainText(/Modified/i);
   });
 
   test('floating filters toggle applies to grid option', async ({ page }) => {
@@ -121,7 +121,7 @@ test.describe('Options tab', () => {
     const row = page.locator('[data-field-key="floatingFilter"]');
     await expect(row).toBeVisible();
     // Default is on (undefined/true). Turn off.
-    const toggle = row.locator('.cg-settings-toggle');
+    const toggle = row.locator('.vg-settings-toggle');
     const wasOn = await toggle.getAttribute('aria-checked');
     if (wasOn !== 'false') await toggle.click();
     await expect.poll(async () => {
@@ -133,12 +133,12 @@ test.describe('Options tab', () => {
   test('per-row reset restores a modified numeric field', async ({ page }) => {
     await openCustomizer(page, 'grid-options');
     const row = page.locator('[data-field-key="headerHeight"]');
-    const input = row.locator('input.cg-settings-input-number');
+    const input = row.locator('input.vg-settings-input-number');
     const original = await input.inputValue();
     await input.fill('60');
     await input.blur();
     await expect.poll(() => gridOption<number>(page, 'headerHeight')).toBe(60);
-    const reset = row.locator('.cg-settings-row-reset');
+    const reset = row.locator('.vg-settings-row-reset');
     await expect(reset).toBeVisible();
     await reset.click();
     await expect.poll(async () => {
@@ -157,35 +157,35 @@ test.describe('Options tab', () => {
 test.describe('Column Groups tab', () => {
   test('seeds existing groups and Save stays disabled until dirty', async ({ page }) => {
     await openCustomizer(page, 'column-groups');
-    const panel = page.locator('.cg-colgroups-panel');
+    const panel = page.locator('.vg-colgroups-panel');
     await expect(panel).toBeVisible();
-    await expect(page.locator('[data-cg-node="trade"][data-kind="group"]')).toBeVisible();
-    await expect(page.locator('[data-cg-apply]')).toBeDisabled();
+    await expect(page.locator('[data-vg-node="trade"][data-kind="group"]')).toBeVisible();
+    await expect(page.locator('[data-vg-apply]')).toBeDisabled();
   });
 
   test('create group, add leaf via picker, Save writes columnDefs', async ({ page }) => {
     await openCustomizer(page, 'column-groups');
-    await page.locator('[data-cg-add-group]').click();
-    const newRow = page.locator('[data-cg-node][data-kind="group"]').last();
+    await page.locator('[data-vg-add-group]').click();
+    const newRow = page.locator('[data-vg-node][data-kind="group"]').last();
     await expect(newRow).toBeVisible();
-    const customId = await newRow.getAttribute('data-cg-node');
+    const customId = await newRow.getAttribute('data-vg-node');
     expect(customId).toBeTruthy();
 
-    await newRow.locator('[data-cg-select]').click();
-    const editorName = page.locator('.cg-colgroups-rename, .cg-colgroups-editor input[aria-label="Group name"]');
+    await newRow.locator('[data-vg-select]').click();
+    const editorName = page.locator('.vg-colgroups-rename, .vg-colgroups-editor input[aria-label="Group name"]');
     await expect(editorName).toBeVisible();
     await editorName.fill('E2E Group');
     await editorName.blur();
 
     // Leaf columns live in the editor "Add columns" picker (list shows groups only).
-    await page.locator('[data-cg-add-col] .cg-colgroups-add-col-trigger').click();
-    const cusipOpt = page.locator('[data-cg-add-col-id="cusip"]');
+    await page.locator('[data-vg-add-col] .vg-colgroups-add-col-trigger').click();
+    const cusipOpt = page.locator('[data-vg-add-col-id="cusip"]');
     await expect(cusipOpt).toBeVisible();
     await cusipOpt.click();
-    await page.locator('[data-cg-add-col-commit]').click();
-    await expect(page.locator('.cg-colgroups-chips')).toContainText(/CUSIP|cusip/i);
+    await page.locator('[data-vg-add-col-commit]').click();
+    await expect(page.locator('.vg-colgroups-chips')).toContainText(/CUSIP|cusip/i);
 
-    const saveBtn = page.locator('[data-cg-apply]');
+    const saveBtn = page.locator('[data-vg-apply]');
     await expect(saveBtn).toBeEnabled();
     await saveBtn.click();
 
@@ -211,10 +211,10 @@ test.describe('Column Groups tab', () => {
 
   test('Reset discards unapplied draft edits', async ({ page }) => {
     await openCustomizer(page, 'column-groups');
-    await page.locator('[data-cg-add-group]').click();
-    await expect(page.locator('[data-cg-apply]')).toBeEnabled();
-    await page.locator('[data-cg-reset]').click();
-    await expect(page.locator('[data-cg-apply]')).toBeDisabled();
+    await page.locator('[data-vg-add-group]').click();
+    await expect(page.locator('[data-vg-apply]')).toBeEnabled();
+    await page.locator('[data-vg-reset]').click();
+    await expect(page.locator('[data-vg-apply]')).toBeDisabled();
   });
 });
 
@@ -494,7 +494,7 @@ test.describe('Persistence', () => {
     // Confirm the snapshot landed in localStorage before we reload.
     await expect.poll(async () =>
       page.evaluate(() => {
-        const raw = localStorage.getItem('cgrid-ext:profiles') ?? '';
+        const raw = localStorage.getItem('velocity-grid-ext:profiles') ?? '';
         return raw.includes('PersistRule') && raw.includes('vcol_');
       }),
     ).toBe(true);
@@ -503,7 +503,7 @@ test.describe('Persistence', () => {
     await page.waitForFunction(() => !!(window as unknown as { __ext?: { grid?: unknown } }).__ext?.grid, null, {
       timeout: 30_000,
     });
-    // Demo wires rules/calc AFTER CGridExt construction; bootstrap can race
+    // Demo wires rules/calc AFTER VelocityGridExt construction; bootstrap can race
     // ahead of module registration. reapplyActiveProfile reloads the snapshot
     // once engines have registered their state modules.
     await page.evaluate(async () => {
@@ -529,7 +529,7 @@ test.describe('Persistence', () => {
 test.describe('Edit History tab', () => {
   test('panel opens; Suspended is live; stream toggle Saves', async ({ page }) => {
     await openCustomizer(page, 'data-change-history');
-    await expect(page.locator('.cgext-sheet-title')).toHaveText('Edit History');
+    await expect(page.locator('.vgext-sheet-title')).toHaveText('Edit History');
     await expect(cockpit(page)).toContainText('Record Sources');
     await expect(cockpit(page)).toContainText('Monitor');
 
@@ -612,7 +612,7 @@ test.describe('Edit History tab', () => {
     await expect(cockpit(page).locator('.ckp-monitor-row').first()).toBeVisible();
     await closeViaDone(page);
 
-    await page.locator('.cgext-ribbon button[title="Undo"]').click();
+    await page.locator('.vgext-ribbon button[title="Undo"]').click();
     await expect.poll(async () =>
       page.evaluate((rowId) => {
         const edit = (window as unknown as { __edit: { journal: { canUndo: () => boolean } } }).__edit;
@@ -632,7 +632,7 @@ test.describe('Edit History tab', () => {
 test.describe('Alerts tab', () => {
   test('creates a dataChange alert; edit fires toast + badge history', async ({ page }) => {
     await openCustomizer(page, 'alerts');
-    await expect(page.locator('.cgext-sheet-title')).toHaveText('Alerts');
+    await expect(page.locator('.vgext-sheet-title')).toHaveText('Alerts');
     await page.locator('.ckp-addbtn').click();
     await page.fill('.ckp .ckp-title', 'PnlAlert');
     await typeInCm(page, '[pnl] != null');
@@ -679,7 +679,7 @@ test.describe('Alerts tab', () => {
     expect(fired.history).toBeGreaterThan(0);
     expect(fired.unread).toBeGreaterThan(0);
 
-    await expect(page.locator('[data-testid="cgext-alerts-badge"]')).toBeVisible();
+    await expect(page.locator('[data-testid="vgext-alerts-badge"]')).toBeVisible();
   });
 });
 
@@ -688,7 +688,7 @@ test.describe('Alerts tab', () => {
 test.describe('Editing settings tabs', () => {
   test('Smart Edit Save toggles recordHistory; Edit History source stays in sync', async ({ page }) => {
     await openCustomizer(page, 'smart-edit');
-    await expect(page.locator('.cgext-sheet-title')).toHaveText('Smart Edit');
+    await expect(page.locator('.vgext-sheet-title')).toHaveText('Smart Edit');
     // Last switch = Record history
     await cockpit(page).locator('.ckp-switch').last().click();
     await saveCard(page);

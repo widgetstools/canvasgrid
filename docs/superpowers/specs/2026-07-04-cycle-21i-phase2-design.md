@@ -8,12 +8,12 @@ engine, Grid Options panel. Column Groups editor merged separately (#101).
 ## 0. Decisions (locked 2026-07-04 with user)
 
 - **D1 — No layering.** Engine capabilities land intrinsically in their
-  owning packages; editor UI lands in `@cgrid/customizer` — a lockstep
+  owning packages; editor UI lands in `@wellsfargo-starui/velocity-grid-customizer` — a lockstep
   monorepo member with class-tier access, NOT an external addon over
   public hooks. Reaffirms Cycle 21 locked decision #1.
-- **D2 — Lit in customizer only.** `@cgrid/customizer` adopts Lit +
+- **D2 — Lit in customizer only.** `@wellsfargo-starui/velocity-grid-customizer` adopts Lit +
   `@lit/context` (per the StarUI docs' prescribed stack) for editor
-  surfaces. `@cgrid/kernel` chrome stays vanilla DOM + `tokens.css`
+  surfaces. `@wellsfargo-starui/velocity-grid` chrome stays vanilla DOM + `tokens.css`
   vars, zero new dependencies. Monaco/SortableJS/lit-virtualizer enter
   customizer only, lazy where the docs say lazy.
 - **D3 — Grandfathered panels.** Grid Options (#08) and Column Groups
@@ -28,7 +28,7 @@ engine, Grid Options panel. Column Groups editor merged separately (#101).
   (`toolbar: false` opt-out), intrinsic save icon button + business-date
   picker pinned at the right edge.
 - **D5 — Phase 2 scope.** Foundations (engine gaps every editor needs)
-  + toolbar redo + `@cgrid/customizer` bootstrap + lightest panels
+  + toolbar redo + `@wellsfargo-starui/velocity-grid-customizer` bootstrap + lightest panels
   (#09 Smart Edit settings, #10 Bulk Update settings) as the first Lit
   panels exercising the bridge end-to-end.
 
@@ -36,7 +36,7 @@ engine, Grid Options panel. Column Groups editor merged separately (#101).
 
 - **Phase 3 — shared heavyweight editors** (customizer): ExpressionEditor
   (Monaco lazy, input fallback), StyleEditor, FormatterPicker (+ engine:
-  per-column compiled-format read-back in `@cgrid/format`), TemplateManager
+  per-column compiled-format read-back in `@wellsfargo-starui/velocity-grid-format`), TemplateManager
   (consumes Phase 2 module-state registry). ColorPicker reused from kernel.
 - **Phase 4 — master-detail editors** (customizer): #01 Column Settings,
   #03 Calculated Columns, #04 Conditional Styling, #05 Alerts (+ bell
@@ -61,12 +61,12 @@ engine, Grid Options panel. Column Groups editor merged separately (#101).
   vertical space at the VERY top of the grid (above top status bar →
   pivot panel → row group panel → headers) via a new `toolbarInset`
   folded into the existing inset chain (`applyInsets` path,
-  cgrid.ts:5116-5161 vicinity).
+  velocityGrid.ts:5116-5161 vicinity).
 - Options: `toolbar?: boolean` (default true — intrinsic, opt-out),
   `toolbarHeight?: number` (default 40). No subgrid, no canvas row.
 - Intrinsic end-zone controls (right edge): business-date picker
   (native `<input type="date">`, defaults to today, themed via
-  `--cg-input-*` tokens, native popup obeys theme `color-scheme`) and
+  `--vg-input-*` tokens, native popup obeys theme `color-scheme`) and
   save icon button (Lucide Path2D-source SVG glyph, `currentColor`).
 - Start-zone app API on the host (returned by `grid.getToolbar()`):
   `addButton`, `addIconButton`, `addDivider`, `addSpacer`, `addContent`,
@@ -101,19 +101,19 @@ engine, Grid Options panel. Column Groups editor merged separately (#101).
   children — the recon's missing `forEachNode`-style walk, scoped to
   column groups which is what editors need).
 - Document the two-tier contract: customizer panels code against
-  `CGridApi` (now sufficient), class-tier reach requires justification.
+  `VelocityGridApi` (now sufficient), class-tier reach requires justification.
 
 ### T4 — Kernel: modal/sheet primitive (vanilla)
 - Generic host-managed modal surface (`interaction/modalHost.ts`):
-  open/close, focus trap, ESC + backdrop dismiss, `--cg-*` themed,
+  open/close, focus trap, ESC + backdrop dismiss, `--vg-*` themed,
   z-order above side bar/status bar, `prefers-reduced-motion` respected.
 - Consumed later by #18 Column Selector and the Settings Sheet chrome;
   Phase 2 ships the primitive + a demo-app smoke usage only.
 
-### T5 — `@cgrid/customizer` package bootstrap (D2)
+### T5 — `@wellsfargo-starui/velocity-grid-customizer` package bootstrap (D2)
 - Fill the empty scaffold: Lit + `@lit/context` deps, vite lib build,
-  lockstep versioning, `@cgrid/kernel` peer.
-- Theming bridge: customizer components consume `--cg-*` tokens
+  lockstep versioning, `@wellsfargo-starui/velocity-grid` peer.
+- Theming bridge: customizer components consume `--vg-*` tokens
   directly (no parallel `--ds-*` system; the StarUI token names map in
   a single bridge stylesheet).
 - Settings-chrome subset needed by flat panels only (panel section,
@@ -122,11 +122,11 @@ engine, Grid Options panel. Column Groups editor merged separately (#101).
   grows in Phases 3-4 as consumers arrive, not speculatively).
 - Panel registration proof: a customizer-exported Lit panel registers
   through the existing kernel tool-panel registry
-  (`CGridOptions.components` + `SideBarDef.toolPanels`) with zero kernel
+  (`VelocityGridOptions.components` + `SideBarDef.toolPanels`) with zero kernel
   changes.
 
 ### T6 — Customizer: #09 Smart Edit settings panel (Lit)
-- Flat settings panel over `@cgrid/edit` smart-edit options, schema
+- Flat settings panel over `@wellsfargo-starui/velocity-grid-edit` smart-edit options, schema
   content per `docs/starui-customizer-ui/09-smart-edit.md`; draft-free
   immediate apply (Phase 1 convention); state persists via T2 registry.
 

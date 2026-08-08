@@ -29,14 +29,14 @@ test.describe('Cycle 24 — accessibility + keyboard demo', () => {
     expect(text).toMatch(/sorted by p&l|sorted by pnl|sorted by/i);
   });
 
-  test('high-contrast theme swaps the cg-theme-* class on the root', async ({ page }) => {
+  test('high-contrast theme swaps the vg-theme-* class on the root', async ({ page }) => {
     await gotoFeature(page, 'a11y');
     await page.getByTestId('btn-a11y-theme-high-contrast').click();
     const rootClass = await page.evaluate(() => {
-      const root = document.querySelector('.cg-grid') as HTMLElement;
+      const root = document.querySelector('.vg-grid') as HTMLElement;
       return root.className;
     });
-    expect(rootClass).toContain('cg-theme-high-contrast');
+    expect(rootClass).toContain('vg-theme-high-contrast');
   });
 
   test('tab-exits toggle flips the wrap behavior', async ({ page }) => {
@@ -95,7 +95,7 @@ test.describe('Cycle 24 — accessibility + keyboard demo', () => {
     // can't probe canvas pixels (the high-contrast theme covers
     // that contract).
     const results = await new AxeBuilder({ page })
-      .include('.cg-grid')
+      .include('.vg-grid')
       .disableRules(['color-contrast'])
       .analyze();
     expect(results.violations).toEqual([]);
@@ -111,7 +111,7 @@ test.describe('Cycle 24 — accessibility + keyboard demo', () => {
     // can't probe canvas pixels (the high-contrast theme covers
     // that contract).
     const results = await new AxeBuilder({ page })
-      .include('.cg-grid')
+      .include('.vg-grid')
       .disableRules(['color-contrast'])
       .analyze();
     expect(results.violations).toEqual([]);

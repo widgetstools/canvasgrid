@@ -75,7 +75,7 @@ export async function gridReadyWithQuery(page: Page, query: string): Promise<voi
 export async function seedGrid(page: Page, rowCount: number): Promise<void> {
   await page.waitForFunction(() => (window as unknown as { __cgrid?: unknown }).__cgrid != null);
   await page.evaluate((count) => {
-    const w = window as unknown as { __cgrid: { setRowData: (rows: unknown[]) => void } };
+    const w = window as unknown as { __velocity-grid: { setRowData: (rows: unknown[]) => void } };
     const TICKERS = [
       'AAPL', 'MSFT', 'GOOG', 'AMZN', 'META', 'NVDA', 'TSLA', 'BRK', 'JPM', 'XOM',
       'JNJ',  'WMT',  'V',    'UNH',  'MA',   'HD',   'PG',   'KO',  'BAC', 'PFE',
@@ -153,7 +153,7 @@ export async function setupGrid(page: Page, rowCount: number, settleFrames = 12)
 export async function scrollTo(page: Page, scrollLeft: number, scrollTop: number): Promise<void> {
   await page.evaluate(
     ({ x, y }) => {
-      const g = (window as unknown as { __cgrid: VisualGridSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: VisualGridSurface }).__cgrid;
       const s = g.getScroller();
       s.scrollLeft = x;
       s.scrollTop = y;

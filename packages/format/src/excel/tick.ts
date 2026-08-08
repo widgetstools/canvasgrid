@@ -2,7 +2,7 @@
  * Fixed-income tick formatting — bond prices quoted in 32nds with the
  * sub-32nd remainder as an eighths digit (market "101-162" convention;
  * the half-32nd renders as `+` in the TICK32+ style). The math is owned
- * here, NOT imported from the kernel's price32 editor — @cgrid/format
+ * here, NOT imported from the kernel's price32 editor — @wellsfargo-starui/velocity-grid-format
  * has no kernel dependency.
  */
 export function formatTick(

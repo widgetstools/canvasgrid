@@ -1,4 +1,4 @@
-import type { Loc } from '@cgrid/expression';
+import type { Loc } from '@wellsfargo-starui/velocity-grid-expression';
 import type { RuleRefNode } from '../types';
 
 export interface SugarResult {

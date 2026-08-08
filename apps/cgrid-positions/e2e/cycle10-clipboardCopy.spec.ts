@@ -63,7 +63,7 @@ async function focusCanvas(page: Page): Promise<void> {
 
 async function seedRange(page: Page, range: { rowStart: number; rowEnd: number; colIds: string[] }): Promise<void> {
   await page.evaluate((r) => {
-    const w = window as unknown as { __cgrid: GridSurface };
+    const w = window as unknown as { __velocity-grid: GridSurface };
     w.__cgrid.clearCellRanges();
     w.__cgrid.addCellRange(r);
   }, range);
@@ -80,7 +80,7 @@ test.describe('Cycle 10 / Task 3 — clipboard copy', () => {
     await gridReady(page);
     // Sanity check that the demo has the columns the spec assumes.
     const value0 = await page.evaluate(
-      () => (window as unknown as { __cgrid: GridSurface }).__cgrid.getCellValue(0, 'ticker'),
+      () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.getCellValue(0, 'ticker'),
     );
     expect(value0).not.toBeNull();
 
@@ -93,13 +93,13 @@ test.describe('Cycle 10 / Task 3 — clipboard copy', () => {
     // permission grant short-circuits the gesture requirement anyway.
     // We still cover the Ctrl+C keypath in the next test.
     await page.evaluate(
-      () => (window as unknown as { __cgrid: GridSurface }).__cgrid.copySelectedRangesToClipboard(),
+      () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.copySelectedRangesToClipboard(),
     );
 
     const tsv = await page.evaluate(() => navigator.clipboard.readText());
     // 2 rows, 2 cols, tab-delimited.
     const expected = await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: GridSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridSurface }).__cgrid;
       const a = String(g.getCellValue(0, 'ticker') ?? '');
       const b = String(g.getCellValue(0, 'cusip') ?? '');
       const c = String(g.getCellValue(1, 'ticker') ?? '');
@@ -131,7 +131,7 @@ test.describe('Cycle 10 / Task 3 — clipboard copy', () => {
 
     const tsv = await page.evaluate(() => navigator.clipboard.readText());
     const expected = await page.evaluate(
-      () => String((window as unknown as { __cgrid: GridSurface }).__cgrid.getCellValue(2, 'ticker') ?? ''),
+      () => String((window as unknown as { __velocity-grid: GridSurface }).__cgrid.getCellValue(2, 'ticker') ?? ''),
     );
     expect(tsv).toBe(expected);
   });
@@ -139,25 +139,25 @@ test.describe('Cycle 10 / Task 3 — clipboard copy', () => {
   test('clipboardDelimiter: ","  produces CSV (single-row 2 cols)', async ({ page }) => {
     await gridReady(page);
     await page.evaluate(() => {
-      (window as unknown as { __cgrid: GridSurface }).__cgrid.setGridOption('clipboardDelimiter', ',');
+      (window as unknown as { __velocity-grid: GridSurface }).__cgrid.setGridOption('clipboardDelimiter', ',');
     });
     await focusCanvas(page);
     await seedRange(page, { rowStart: 0, rowEnd: 0, colIds: ['ticker', 'cusip'] });
 
     await page.evaluate(
-      () => (window as unknown as { __cgrid: GridSurface }).__cgrid.copySelectedRangesToClipboard(),
+      () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.copySelectedRangesToClipboard(),
     );
 
     const csv = await page.evaluate(() => navigator.clipboard.readText());
     const expected = await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: GridSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridSurface }).__cgrid;
       return `${String(g.getCellValue(0, 'ticker') ?? '')},${String(g.getCellValue(0, 'cusip') ?? '')}`;
     });
     expect(csv).toBe(expected);
 
     // Restore the default so the next test's beforeEach doesn't inherit.
     await page.evaluate(() => {
-      (window as unknown as { __cgrid: GridSurface }).__cgrid.setGridOption('clipboardDelimiter', '\t');
+      (window as unknown as { __velocity-grid: GridSurface }).__cgrid.setGridOption('clipboardDelimiter', '\t');
     });
   });
 });

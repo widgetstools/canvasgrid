@@ -1,4 +1,4 @@
-import type { CGrid, GridState } from '@cgrid/kernel';
+import type { VelocityGrid, GridState } from '@wellsfargo-starui/velocity-grid';
 import type {
   ProfileController, ProfileStore, ProfileMeta, Unsub,
 } from '../extension/types';
@@ -17,7 +17,7 @@ export class ProfilesController implements ProfileController {
   private bootPromise: Promise<void> | null = null;
 
   constructor(
-    private grid: CGrid,
+    private grid: VelocityGrid,
     private store: ProfileStore,
     private opts: ProfilesOptions = {},
   ) {

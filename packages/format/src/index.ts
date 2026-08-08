@@ -1,4 +1,4 @@
-// @cgrid/format — public re-exports.
+// @wellsfargo-starui/velocity-grid-format — public re-exports.
 // See docs/superpowers/specs/2026-07-01-cycle-21c-format-design.md §4.1
 // for the authoritative reference.
 

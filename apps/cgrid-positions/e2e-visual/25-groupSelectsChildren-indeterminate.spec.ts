@@ -29,7 +29,7 @@ import { gridReadyWithQuery, seedGrid, waitForFrames } from './_setup';
 //     would render AAPL as 'none' (empty box, no dash) — the
 //     baseline catches that too.
 //   - Token bind regression: the indeterminate dash colour resolves
-//     from `--cg-group-checkbox-indeterminate-color`. If the
+//     from `--vg-group-checkbox-indeterminate-color`. If the
 //     painter started reaching into the theme directly instead of
 //     via CellPaintConfig, theme overrides would silently no-op —
 //     the baseline catches a single-pixel colour shift.
@@ -49,7 +49,7 @@ test('groupSelectsChildren — AAPL group shows indeterminate dash after partial
   // Other groups stay at 'none' — empty boxes.
   await page.evaluate(() => {
     const w = window as unknown as {
-      __cgrid: { setSelectedRowIds: (ids: string[]) => void };
+      __velocity-grid: { setSelectedRowIds: (ids: string[]) => void };
     };
     w.__cgrid.setSelectedRowIds(['POS-000000']);
   });

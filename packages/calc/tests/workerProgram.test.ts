@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { compile, evaluate, parse, EvalError } from '@cgrid/expression';
-import type { Ast } from '@cgrid/expression';
+import { compile, evaluate, parse, EvalError } from '@wellsfargo-starui/velocity-grid-expression';
+import type { Ast } from '@wellsfargo-starui/velocity-grid-expression';
 import { AGG_ROOT, PREV_ROOT } from '../src/aggTransform';
 import { compileCalc } from '../src/compile';
 import {

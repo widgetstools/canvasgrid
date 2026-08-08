@@ -55,10 +55,10 @@ docs, bundle, FM verification, CHANGELOG, release tagging.
 docs/api/
 ├── index.html       (overview)
 ├── classes/
-│   ├── CGrid.html
-│   └── CGridApi.html
+│   ├── VelocityGrid.html
+│   └── VelocityGridApi.html
 ├── interfaces/
-│   ├── CGridOptions.html
+│   ├── VelocityGridOptions.html
 │   ├── CColDef.html
 │   └── ... (per public type)
 ├── modules/         (worker protocol types)
@@ -70,7 +70,7 @@ committed but built in CI for GitHub Pages).
 
 **Custom TypeDoc plugin:** A small plugin that auto-links each type
 to its FM row in `docs/catalog/FEATURE_MATRIX.md`, so readers can
-click from `CGridOptions.rowGroupCols` → "Area 09 row #N".
+click from `VelocityGridOptions.rowGroupCols` → "Area 09 row #N".
 
 ---
 
@@ -85,7 +85,7 @@ cheatsheet, the breaking-shape examples, the perf gains.
 2. **API rename cheatsheet** — One table mapping every ag-grid type /
    option / event / method to its cgrid equivalent.
    - `ColDef` → `CColDef`
-   - `GridOptions` → `CGridOptions`
+   - `GridOptions` → `VelocityGridOptions`
    - `'agTextCellEditor'` → `'text'`
    - `RowNode` → `node`  
    - … etc.

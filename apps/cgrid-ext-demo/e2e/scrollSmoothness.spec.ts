@@ -123,8 +123,8 @@ async function measure(page: Page): Promise<SmoothReport> {
         });
 
       const wheelScroll = async (ms: number, intervalMs: number, deltaY: number) => {
-        const canvas = document.querySelector('.cg-canvas') as HTMLElement | null;
-        if (!canvas) throw new Error('no .cg-canvas');
+        const canvas = document.querySelector('.vg-canvas') as HTMLElement | null;
+        if (!canvas) throw new Error('no .vg-canvas');
         const r = canvas.getBoundingClientRect();
         let dir = 1;
         let sent = 0;

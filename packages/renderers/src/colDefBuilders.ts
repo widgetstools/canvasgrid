@@ -1,4 +1,4 @@
-// @cgrid/renderers — typed ColDef builders for wireRenderersIntoKernel. §2.3 / §2.5.
+// @wellsfargo-starui/velocity-grid-renderers — typed ColDef builders for wireRenderersIntoKernel. §2.3 / §2.5.
 
 import type { ColumnStatSnapshot } from './columnStats';
 import type { RendererName } from './types';

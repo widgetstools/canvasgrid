@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest';
 import { CssReader } from '../src/theming/cssReader';
 
-// Stub Worker + canvas 2D context for happy-dom so CGrid can construct.
+// Stub Worker + canvas 2D context for happy-dom so VelocityGrid can construct.
 // Mirrors the setup in cgrid.integration.test.ts.
 beforeAll(() => {
   (globalThis as any).Worker = class {
@@ -48,13 +48,13 @@ function makeContainer(tokens: Record<string, string> = {}): HTMLElement {
 describe('Cycle 22 / Task 1 — input tokens', () => {
   beforeEach(() => { document.body.innerHTML = ''; });
 
-  it('reads --cg-input-bg / -fg / -border / -focus-border / -disabled-bg', () => {
+  it('reads --vg-input-bg / -fg / -border / -focus-border / -disabled-bg', () => {
     const c = makeContainer({
-      '--cg-input-bg': '#ffffff',
-      '--cg-input-fg': '#111827',
-      '--cg-input-border': '#d1d5db',
-      '--cg-input-focus-border': '#2563eb',
-      '--cg-input-disabled-bg': '#f3f4f6',
+      '--vg-input-bg': '#ffffff',
+      '--vg-input-fg': '#111827',
+      '--vg-input-border': '#d1d5db',
+      '--vg-input-focus-border': '#2563eb',
+      '--vg-input-disabled-bg': '#f3f4f6',
     });
     const r = new CssReader(c).read();
     expect(r.inputBg).toBe('#ffffff');
@@ -66,10 +66,10 @@ describe('Cycle 22 / Task 1 — input tokens', () => {
 
   it('falls back to body fg/bg + border when input tokens are undeclared', () => {
     const c = makeContainer({
-      '--cg-fg-color': '#1a1f24',
-      '--cg-bg-color': '#ffffff',
-      '--cg-border-color': '#d5dbe0',
-      '--cg-focus-ring-color': '#3b82f6',
+      '--vg-fg-color': '#1a1f24',
+      '--vg-bg-color': '#ffffff',
+      '--vg-border-color': '#d5dbe0',
+      '--vg-focus-ring-color': '#3b82f6',
     });
     const r = new CssReader(c).read();
     expect(r.inputBg).toBe('#ffffff');
@@ -82,11 +82,11 @@ describe('Cycle 22 / Task 1 — input tokens', () => {
 describe('Cycle 22 / Task 1 — tooltip tokens', () => {
   beforeEach(() => { document.body.innerHTML = ''; });
 
-  it('reads --cg-tooltip-bg / -fg / -border', () => {
+  it('reads --vg-tooltip-bg / -fg / -border', () => {
     const c = makeContainer({
-      '--cg-tooltip-bg': 'rgba(15,23,42,0.95)',
-      '--cg-tooltip-fg': '#ffffff',
-      '--cg-tooltip-border': 'rgba(255,255,255,0.1)',
+      '--vg-tooltip-bg': 'rgba(15,23,42,0.95)',
+      '--vg-tooltip-fg': '#ffffff',
+      '--vg-tooltip-border': 'rgba(255,255,255,0.1)',
     });
     const r = new CssReader(c).read();
     expect(r.tooltipBg).toBe('rgba(15,23,42,0.95)');
@@ -98,10 +98,10 @@ describe('Cycle 22 / Task 1 — tooltip tokens', () => {
 describe('Cycle 22 / Task 1 — checkbox accent tokens', () => {
   beforeEach(() => { document.body.innerHTML = ''; });
 
-  it('reads --cg-checkbox-checked-bg / -checked-fg', () => {
+  it('reads --vg-checkbox-checked-bg / -checked-fg', () => {
     const c = makeContainer({
-      '--cg-checkbox-checked-bg': '#2563eb',
-      '--cg-checkbox-checked-fg': '#ffffff',
+      '--vg-checkbox-checked-bg': '#2563eb',
+      '--vg-checkbox-checked-fg': '#ffffff',
     });
     const r = new CssReader(c).read();
     expect(r.checkboxCheckedBg).toBe('#2563eb');
@@ -176,66 +176,66 @@ describe('Cycle 22 / Task 1 — checkbox painter accent wiring', () => {
 describe('Cycle 22 / Task 2 — density modes', () => {
   beforeEach(() => { document.body.innerHTML = ''; });
 
-  it('applies the cg-density-<mode> class on construction when density is set', async () => {
-    const { CGrid } = await import('../src/cgrid');
+  it('applies the vg-density-<mode> class on construction when density is set', async () => {
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
-      theme: 'cg-theme-quartz',
+      theme: 'vg-theme-quartz',
       density: 'compact',
     } as any);
-    const root = host.querySelector('.cg-grid') as HTMLElement | null;
+    const root = host.querySelector('.vg-grid') as HTMLElement | null;
     expect(root).not.toBeNull();
-    expect(root!.classList.contains('cg-density-compact')).toBe(true);
+    expect(root!.classList.contains('vg-density-compact')).toBe(true);
     grid.destroy();
   });
 
   it('omits density classes entirely when no density is specified', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
-      theme: 'cg-theme-quartz',
+      theme: 'vg-theme-quartz',
     } as any);
-    const cls = (host.querySelector('.cg-grid') as HTMLElement).className;
-    expect(cls).not.toContain('cg-density-');
+    const cls = (host.querySelector('.vg-grid') as HTMLElement).className;
+    expect(cls).not.toContain('vg-density-');
     grid.destroy();
   });
 
   it('swaps the density class via setGridOption("density", ...)', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
-      theme: 'cg-theme-quartz',
+      theme: 'vg-theme-quartz',
       density: 'normal',
     } as any);
     grid.setGridOption('density', 'comfortable');
-    const root = host.querySelector('.cg-grid') as HTMLElement;
-    expect(root.classList.contains('cg-density-comfortable')).toBe(true);
-    expect(root.classList.contains('cg-density-normal')).toBe(false);
+    const root = host.querySelector('.vg-grid') as HTMLElement;
+    expect(root.classList.contains('vg-density-comfortable')).toBe(true);
+    expect(root.classList.contains('vg-density-normal')).toBe(false);
     grid.destroy();
   });
 
   it('clears the density class when set to undefined', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
-      theme: 'cg-theme-quartz',
+      theme: 'vg-theme-quartz',
       density: 'compact',
     } as any);
     grid.setGridOption('density', undefined);
-    const root = host.querySelector('.cg-grid') as HTMLElement;
-    expect(root.className).not.toContain('cg-density-');
+    const root = host.querySelector('.vg-grid') as HTMLElement;
+    expect(root.className).not.toContain('vg-density-');
     grid.destroy();
   });
 });
@@ -244,72 +244,72 @@ describe('Cycle 22 / Task 3 — setThemeParams API', () => {
   beforeEach(() => { document.body.innerHTML = ''; });
 
   it('writes inline CSS custom properties onto the grid root', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
-      theme: 'cg-theme-quartz',
+      theme: 'vg-theme-quartz',
     } as any);
     grid.setThemeParams({
-      '--cg-row-height': '36px',
-      '--cg-header-bg': '#0f172a',
+      '--vg-row-height': '36px',
+      '--vg-header-bg': '#0f172a',
     });
-    const root = host.querySelector('.cg-grid') as HTMLElement;
-    expect(root.style.getPropertyValue('--cg-row-height')).toBe('36px');
-    expect(root.style.getPropertyValue('--cg-header-bg')).toBe('#0f172a');
+    const root = host.querySelector('.vg-grid') as HTMLElement;
+    expect(root.style.getPropertyValue('--vg-row-height')).toBe('36px');
+    expect(root.style.getPropertyValue('--vg-header-bg')).toBe('#0f172a');
     grid.destroy();
   });
 
   it('round-trips the params through getThemeParams', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
-      theme: 'cg-theme-quartz',
+      theme: 'vg-theme-quartz',
     } as any);
-    grid.setThemeParams({ '--cg-row-height': '36px' });
-    expect(grid.getThemeParams()).toEqual({ '--cg-row-height': '36px' });
-    grid.setThemeParams({ '--cg-header-bg': '#000' });
+    grid.setThemeParams({ '--vg-row-height': '36px' });
+    expect(grid.getThemeParams()).toEqual({ '--vg-row-height': '36px' });
+    grid.setThemeParams({ '--vg-header-bg': '#000' });
     // Merge — both keys present.
     expect(grid.getThemeParams()).toEqual({
-      '--cg-row-height': '36px',
-      '--cg-header-bg': '#000',
+      '--vg-row-height': '36px',
+      '--vg-header-bg': '#000',
     });
     grid.destroy();
   });
 
   it('removes a token when its value is the empty string', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
-      theme: 'cg-theme-quartz',
+      theme: 'vg-theme-quartz',
     } as any);
-    grid.setThemeParams({ '--cg-row-height': '36px' });
-    grid.setThemeParams({ '--cg-row-height': '' });
-    const root = host.querySelector('.cg-grid') as HTMLElement;
-    expect(root.style.getPropertyValue('--cg-row-height')).toBe('');
-    expect(grid.getThemeParams()['--cg-row-height']).toBeUndefined();
+    grid.setThemeParams({ '--vg-row-height': '36px' });
+    grid.setThemeParams({ '--vg-row-height': '' });
+    const root = host.querySelector('.vg-grid') as HTMLElement;
+    expect(root.style.getPropertyValue('--vg-row-height')).toBe('');
+    expect(grid.getThemeParams()['--vg-row-height']).toBeUndefined();
     grid.destroy();
   });
 
   it('re-reads the theme so cssReader picks up the override on the next paint', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
-      theme: 'cg-theme-quartz',
+      theme: 'vg-theme-quartz',
     } as any);
     const before = (grid as any).theme.headerBg;
-    grid.setThemeParams({ '--cg-header-bg': '#000000' });
+    grid.setThemeParams({ '--vg-header-bg': '#000000' });
     const after = (grid as any).theme.headerBg;
     expect(after).not.toBe(before);
     expect(after).toBe('#000000');
@@ -317,11 +317,11 @@ describe('Cycle 22 / Task 3 — setThemeParams API', () => {
   });
 });
 
-describe('Cycle 22 / Task 4 — cg-theme-auto class', () => {
+describe('Cycle 22 / Task 4 — vg-theme-auto class', () => {
   // happy-dom doesn't honor CSS imports at module-load time, so a
   // standard `document.styleSheets` walk returns empty. Read the
   // source as text and assert against the declarations — covers both
-  // the `.cg-theme-auto` selector AND the `@media (prefers-color-
+  // the `.vg-theme-auto` selector AND the `@media (prefers-color-
   // scheme: dark)` rule it ships paired with.
   let cssSource: string;
   beforeAll(async () => {
@@ -331,22 +331,22 @@ describe('Cycle 22 / Task 4 — cg-theme-auto class', () => {
     cssSource = fs.readFileSync(file, 'utf-8');
   });
 
-  it('declares a .cg-theme-auto selector in tokens.css', () => {
-    expect(cssSource).toMatch(/\.cg-theme-auto\b/);
+  it('declares a .vg-theme-auto selector in tokens.css', () => {
+    expect(cssSource).toMatch(/\.vg-theme-auto\b/);
   });
 
   it('pairs the auto selector with a @media (prefers-color-scheme: dark) override', () => {
     expect(cssSource).toMatch(/@media\s*\(\s*prefers-color-scheme:\s*dark\s*\)/);
   });
 
-  it('the dark @media block sets a dark-tone --cg-bg-color (sanity check the dark bundle landed)', () => {
+  it('the dark @media block sets a dark-tone --vg-bg-color (sanity check the dark bundle landed)', () => {
     // Pluck the dark media block and confirm it sets bg-color to a value
     // distinct from the light theme's #ffffff.
     const match = cssSource.match(
       /@media[^{]*prefers-color-scheme:\s*dark[^{]*\{([\s\S]*?)\}\s*\}/,
     );
     expect(match).not.toBeNull();
-    expect(match![1]).toMatch(/--cg-bg-color\s*:\s*#1e1e1e/);
+    expect(match![1]).toMatch(/--vg-bg-color\s*:\s*#1e1e1e/);
   });
 });
 
@@ -354,28 +354,28 @@ describe('Cycle 22 / Task 5 — shadow-root option', () => {
   beforeEach(() => { document.body.innerHTML = ''; });
 
   it('attaches a shadow root to the container when shadowRoot is true', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
-      theme: 'cg-theme-quartz',
+      theme: 'vg-theme-quartz',
       shadowRoot: true,
     } as any);
     expect(host.shadowRoot).not.toBeNull();
-    expect(host.shadowRoot!.querySelector('.cg-grid')).not.toBeNull();
+    expect(host.shadowRoot!.querySelector('.vg-grid')).not.toBeNull();
     grid.destroy();
   });
 
   it('injects a <style> element inside the shadow root for tokens.css', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
-      theme: 'cg-theme-quartz',
+      theme: 'vg-theme-quartz',
       shadowRoot: true,
     } as any);
     // The element MUST exist so production builds (where Vite's
@@ -384,40 +384,40 @@ describe('Cycle 22 / Task 5 — shadow-root option', () => {
     // pipeline returns an empty string, so we only assert the element
     // attaches — the content assertion is covered by the prod
     // production bundle test (verified by the showcase build target).
-    const styleEl = host.shadowRoot!.querySelector('style.cg-shadow-tokens');
+    const styleEl = host.shadowRoot!.querySelector('style.vg-shadow-tokens');
     expect(styleEl).not.toBeNull();
     grid.destroy();
   });
 
   it('does NOT attach a shadow root when shadowRoot is unset or false (default)', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
-      theme: 'cg-theme-quartz',
+      theme: 'vg-theme-quartz',
     } as any);
     expect(host.shadowRoot).toBeNull();
-    expect(host.querySelector('.cg-grid')).not.toBeNull();
+    expect(host.querySelector('.vg-grid')).not.toBeNull();
     grid.destroy();
   });
 
   it('setThemeParams writes onto the root inside the shadow tree, not the light DOM', async () => {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = new CGrid(host, {
+    const grid = new VelocityGrid(host, {
       getRowId: (r: any) => r.id,
       columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
-      theme: 'cg-theme-quartz',
+      theme: 'vg-theme-quartz',
       shadowRoot: true,
     } as any);
-    grid.setThemeParams({ '--cg-row-height': '42px' });
-    const rootInShadow = host.shadowRoot!.querySelector('.cg-grid') as HTMLElement;
-    expect(rootInShadow.style.getPropertyValue('--cg-row-height')).toBe('42px');
+    grid.setThemeParams({ '--vg-row-height': '42px' });
+    const rootInShadow = host.shadowRoot!.querySelector('.vg-grid') as HTMLElement;
+    expect(rootInShadow.style.getPropertyValue('--vg-row-height')).toBe('42px');
     // No leak into the light DOM.
-    expect((host as HTMLElement).style.getPropertyValue('--cg-row-height')).toBe('');
+    expect((host as HTMLElement).style.getPropertyValue('--vg-row-height')).toBe('');
     grid.destroy();
   });
 });
@@ -425,21 +425,21 @@ describe('Cycle 22 / Task 5 — shadow-root option', () => {
 describe('Cycle 22 / Task 1 — inter-column rule + popup/menu tokens', () => {
   beforeEach(() => { document.body.innerHTML = ''; });
 
-  it('reads --cg-cell-horizontal-border-color and defaults to "transparent"', () => {
+  it('reads --vg-cell-horizontal-border-color and defaults to "transparent"', () => {
     const c = makeContainer({});
     const r = new CssReader(c).read();
     expect(r.cellHorizontalBorderColor).toBe('transparent');
 
-    const c2 = makeContainer({ '--cg-cell-horizontal-border-color': '#e5e7eb' });
+    const c2 = makeContainer({ '--vg-cell-horizontal-border-color': '#e5e7eb' });
     const r2 = new CssReader(c2).read();
     expect(r2.cellHorizontalBorderColor).toBe('#e5e7eb');
   });
 
-  it('reads --cg-popup-bg / -popup-border / -menu-hover-bg', () => {
+  it('reads --vg-popup-bg / -popup-border / -menu-hover-bg', () => {
     const c = makeContainer({
-      '--cg-popup-bg': '#ffffff',
-      '--cg-popup-border': '#d1d5db',
-      '--cg-menu-hover-bg': '#f3f4f6',
+      '--vg-popup-bg': '#ffffff',
+      '--vg-popup-border': '#d1d5db',
+      '--vg-menu-hover-bg': '#f3f4f6',
     });
     const r = new CssReader(c).read();
     expect(r.popupBg).toBe('#ffffff');

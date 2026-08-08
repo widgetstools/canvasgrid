@@ -27,12 +27,12 @@ describe('formatPickerMenu fitTo container', () => {
     disposers.push(() => m.destroy());
     m.toggle();
 
-    const panel = document.querySelector<HTMLElement>('.cgext-menu.cgext-fmt')!;
+    const panel = document.querySelector<HTMLElement>('.vgext-menu.vgext-fmt')!;
     expect(panel).toBeTruthy();
     expect(panel.classList.contains('is-compact')).toBe(true);
     // 320px pane − 16px margins = 304px max
     expect(parseFloat(panel.style.width)).toBeLessThanOrEqual(304);
-    const left = parseFloat(panel.style.getPropertyValue('--cgext-menu-left'));
+    const left = parseFloat(panel.style.getPropertyValue('--vgext-menu-left'));
     expect(left).toBeGreaterThanOrEqual(108); // pane.left + 8
     expect(left + parseFloat(panel.style.width)).toBeLessThanOrEqual(412); // pane.right − 8
   });
@@ -50,7 +50,7 @@ describe('formatPickerMenu fitTo container', () => {
     const m = formatPickerMenu(anchor, host);
     disposers.push(() => m.destroy());
     m.toggle();
-    const panel = document.querySelector<HTMLElement>('.cgext-menu.cgext-fmt')!;
+    const panel = document.querySelector<HTMLElement>('.vgext-menu.vgext-fmt')!;
     expect(panel.classList.contains('is-compact')).toBe(false);
     expect(parseFloat(panel.style.width)).toBe(456);
   });

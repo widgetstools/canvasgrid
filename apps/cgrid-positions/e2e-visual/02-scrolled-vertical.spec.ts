@@ -13,7 +13,7 @@ test('vertically scrolled grid — focus + body scroll past anchor row', async (
   await setupGrid(page, 200);
   await page.evaluate(() => {
     const g = (window as unknown as {
-      __cgrid: { setFocusedCell: (rowId: string, colId: string) => void };
+      __velocity-grid: { setFocusedCell: (rowId: string, colId: string) => void };
     }).__cgrid;
     g.setFocusedCell('POS-000002', 'currentPrice');
   });

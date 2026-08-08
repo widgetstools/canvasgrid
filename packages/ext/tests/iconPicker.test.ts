@@ -8,9 +8,9 @@ describe('createIconPicker', () => {
     document.body.append(p.button, p.panel);
     p.button.click(); // open
     expect(p.panel.hidden).toBe(false);
-    const grids = p.panel.querySelectorAll('.cgext-ip-grid');
+    const grids = p.panel.querySelectorAll('.vgext-ip-grid');
     expect(grids.length).toBeGreaterThan(8); // lucide cats + 8 emoji cats
-    const tile = p.panel.querySelector('.cgext-ip-tile[data-icon="flame"]') as HTMLButtonElement;
+    const tile = p.panel.querySelector('.vgext-ip-tile[data-icon="flame"]') as HTMLButtonElement;
     expect(tile.querySelector('svg')).toBeTruthy();
     tile.click();
     expect(onSelect).toHaveBeenCalledWith({ name: 'flame' });
@@ -26,10 +26,10 @@ describe('createIconPicker', () => {
     const search = p.panel.querySelector('[data-ip="search"]') as HTMLInputElement;
     search.value = 'flame';
     search.dispatchEvent(new Event('input'));
-    expect(p.panel.querySelector('.cgext-ip-tile[data-icon="flame"]')).toBeTruthy();
-    expect(p.panel.querySelector('.cgext-ip-tile[data-icon="anchor"]')).toBeFalsy();
+    expect(p.panel.querySelector('.vgext-ip-tile[data-icon="flame"]')).toBeTruthy();
+    expect(p.panel.querySelector('.vgext-ip-tile[data-icon="anchor"]')).toBeFalsy();
     search.value = ''; search.dispatchEvent(new Event('input'));
-    (p.panel.querySelector('.cgext-ip-tile[data-emoji="🔥"]') as HTMLButtonElement).click();
+    (p.panel.querySelector('.vgext-ip-tile[data-emoji="🔥"]') as HTMLButtonElement).click();
     expect(onSelect).toHaveBeenLastCalledWith({ emoji: '🔥' });
     p.destroy();
   });
@@ -43,7 +43,7 @@ describe('createIconPicker', () => {
     // Typing a word — not the glyph — must reveal the 🔥 tile.
     search.value = 'fire';
     search.dispatchEvent(new Event('input'));
-    const flame = p.panel.querySelector('.cgext-ip-tile[data-emoji="🔥"]') as HTMLButtonElement;
+    const flame = p.panel.querySelector('.vgext-ip-tile[data-emoji="🔥"]') as HTMLButtonElement;
     expect(flame).toBeTruthy();
     // and the tile still selects with the glyph payload the caller expects.
     flame.click();

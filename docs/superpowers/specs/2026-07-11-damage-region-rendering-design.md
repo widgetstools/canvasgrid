@@ -20,7 +20,7 @@ paint, never what.
 
 ## 2. Current state (audited 2026-07-11)
 
-One global boolean (`CGridCanvas.dirty`, core/canvas.ts:103). Every event
+One global boolean (`VelocityGridCanvas.dirty`, core/canvas.ts:103). Every event
 funnels into `requestRepaint()` (≈40 call sites), and `Renderer.paint`
 (renderer/renderer.ts:153) repaints the full surface in six phases:
 full-canvas background fill (:187), `paintCellsByRows`, `paintGridLines`,
@@ -73,7 +73,7 @@ viewport resolve to nothing (they're off-screen). Unknown ⇒ full.
 
 ### 3b. Damage-aware paint (`Renderer.paint(gc, damage)`)
 
-`CGridCanvas` keeps its boolean dirty + RAF gating exactly as today; the
+`VelocityGridCanvas` keeps its boolean dirty + RAF gating exactly as today; the
 ledger rides beside it. `paintNow()` passes `ledger.takeResolved(vs)` into
 `Renderer.paint`. When `damage.full`, behavior is byte-identical to today.
 Otherwise:
@@ -90,7 +90,7 @@ Otherwise:
 
 ### 3c. Damage sources (rewiring the ≈40 `requestRepaint()` sites)
 
-`CGrid` gains three private helpers that both add damage and call
+`VelocityGrid` gains three private helpers that both add damage and call
 `requestRepaint()`: `repaintFull()`, `repaintRows(indices)`,
 `repaintCells(cells)`. Call sites migrate by category; **anything not
 explicitly migrated keeps full-damage semantics** (correctness default —
@@ -98,11 +98,11 @@ a stale full repaint is never wrong, only slow).
 
 | Source | Today | Becomes |
 |---|---|---|
-| Worker chunk after tick (`handleViewportChunk`, cgrid.ts:7615) | full | `rows(touchedRows)` from the chunk (§3d); full when chunk is a fresh window (scroll fetch/first load) |
-| Flash tick loop (flashRegistry.ts:177, cgrid.ts:7725) | full/frame | `cells(active flash keys)` + group-flash cells |
+| Worker chunk after tick (`handleViewportChunk`, velocityGrid.ts:7615) | full | `rows(touchedRows)` from the chunk (§3d); full when chunk is a fresh window (scroll fetch/first load) |
+| Flash tick loop (flashRegistry.ts:177, velocityGrid.ts:7725) | full/frame | `cells(active flash keys)` + group-flash cells |
 | Hover move/reset (onHover.ts:39,74) | full | `rows([oldHovered, newHovered])` |
-| Selection/focus change (cgrid.ts:2324) | full | `rows(affected)` for row selection; `cells`/`rect` for focus + cell ranges (old ∪ new range rects; fill handle rides the range rect + bleed) |
-| Scroll (cgrid.ts:1332) | full | Phase B blit (§5); Phase A keeps full |
+| Selection/focus change (velocityGrid.ts:2324) | full | `rows(affected)` for row selection; `cells`/`rect` for focus + cell ranges (old ∪ new range rects; fill handle rides the range rect + bleed) |
+| Scroll (velocityGrid.ts:1332) | full | Phase B blit (§5); Phase A keeps full |
 | Theme/resize/state/column ops/pivot/group/quick filter/editor/etc. | full | full (unchanged) |
 
 ### 3d. Worker: ship the touched set (protocol addition)
@@ -244,6 +244,6 @@ for full paints).
 - Worker-side OffscreenCanvas rendering, glyph-atlas GPU text — endgame
   options; not needed for the current bar.
 - Per-cell (sub-row) tick damage — row granularity chosen deliberately (§3d).
-- The `cgrid.ts` NUL-byte anomaly (~offset 127773) that makes plain grep
+- The `velocityGrid.ts` NUL-byte anomaly (~offset 127773) that makes plain grep
   treat the file as binary — worth fixing opportunistically, tracked here
   so the implementer greps with `rg -a` / `grep -a`.

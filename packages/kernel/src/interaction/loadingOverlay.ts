@@ -1,5 +1,5 @@
 /**
- * Full-grid busy / loading overlay controlled by `CGridOptions.loading`.
+ * Full-grid busy / loading overlay controlled by `VelocityGridOptions.loading`.
  * Mounts over the grid root (above the canvas, below popups that append
  * to `document.body`) and blocks pointer interaction while shown.
  * Optional `loadingMessage` drives the label (e.g. row-load progress).
@@ -13,21 +13,21 @@ export class LoadingOverlay {
 
   constructor(private readonly host: HTMLElement) {
     this.el = document.createElement('div');
-    this.el.className = 'cg-loading-overlay';
+    this.el.className = 'vg-loading-overlay';
     this.el.setAttribute('role', 'status');
     this.el.setAttribute('aria-live', 'polite');
     this.el.hidden = true;
 
     const card = document.createElement('div');
-    card.className = 'cg-loading-overlay-card';
+    card.className = 'vg-loading-overlay-card';
     const spinner = document.createElement('div');
-    spinner.className = 'cg-loading-spinner';
+    spinner.className = 'vg-loading-spinner';
     spinner.setAttribute('aria-hidden', 'true');
     this.labelEl = document.createElement('div');
-    this.labelEl.className = 'cg-loading-overlay-label';
+    this.labelEl.className = 'vg-loading-overlay-label';
     this.labelEl.textContent = 'Loading…';
     this.detailEl = document.createElement('div');
-    this.detailEl.className = 'cg-loading-overlay-detail';
+    this.detailEl.className = 'vg-loading-overlay-detail';
     this.detailEl.hidden = true;
     card.append(spinner, this.labelEl, this.detailEl);
     this.el.appendChild(card);

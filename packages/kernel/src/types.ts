@@ -1,4 +1,4 @@
-// Public types for @cgrid/kernel. Re-exported from src/cgrid.ts.
+// Public types for @wellsfargo-starui/velocity-grid. Re-exported from src/velocityGrid.ts.
 // See docs/superpowers/specs/2026-06-23-canvasgrid-foundation-design.md §9.
 //
 // Cycle 19 / Task 1 — this file is now a thin re-export façade. The
@@ -8,13 +8,13 @@
 // keeps working through these re-exports.
 
 // External module re-exports — the public surface keeps exporting these
-// from `@cgrid/kernel` so app code can `import { ICellEditor } from '@cgrid/kernel'`
+// from `@wellsfargo-starui/velocity-grid` so app code can `import { ICellEditor } from '@wellsfargo-starui/velocity-grid'`
 // without reaching into interaction/*. These don't belong to any single
 // domain file because they're not OUR types; they're the contracts the
 // interaction subsystems own.
 export type { ICellEditor, ICellEditorParams, CellEditorCtor } from './interaction/editors/iCellEditor';
 // Cycle 10 / Task 1 — public context-menu surface. Re-exported from the
-// @cgrid/kernel root index alongside the rest of the public API.
+// @wellsfargo-starui/velocity-grid root index alongside the rest of the public API.
 export type {
   MenuItem,
   GetContextMenuItemsParams,
@@ -144,13 +144,13 @@ export type {
   RowValueChangedEvent,
   AggregationChangedSource,
   AggregationChangedEvent,
-  CGridEvent,
+  VelocityGridEvent,
 } from './types/event';
 
 export type {
-  // options.ts — CGridOptions + CCellSelectionOptions
+  // options.ts — VelocityGridOptions + CCellSelectionOptions
   CCellSelectionOptions,
-  CGridOptions,
+  VelocityGridOptions,
 } from './types/options';
 export { MIN_ROW_HEIGHT_PX, clampRowHeight } from './types/options';
 
@@ -181,10 +181,10 @@ export {
 } from './types/ssrm';
 
 export type {
-  // api.ts — CGridApi + transaction shapes
+  // api.ts — VelocityGridApi + transaction shapes
   Tx,
   TransactionResult,
-  CGridApi,
+  VelocityGridApi,
   // Cycle 21i Phase 2 / T3 — forEachColumnGroup visit-node shape
   ColumnGroupWalkNode,
   // Damage-region rendering — paint telemetry shape for getPaintStats()

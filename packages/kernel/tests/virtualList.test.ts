@@ -28,7 +28,7 @@ function row(text: string): HTMLElement {
 }
 
 function mountedRows(host: HTMLElement): HTMLElement[] {
-  return Array.from(host.querySelectorAll<HTMLElement>('[data-cg-vlist-row]'));
+  return Array.from(host.querySelectorAll<HTMLElement>('[data-vg-vlist-row]'));
 }
 
 describe('VirtualList', () => {
@@ -58,7 +58,7 @@ describe('VirtualList', () => {
       renderRow: (item) => row(item),
     });
     vlist.setItems(items);
-    const sizer = host.querySelector('[data-cg-vlist-sizer]') as HTMLElement;
+    const sizer = host.querySelector('[data-vg-vlist-sizer]') as HTMLElement;
     expect(sizer).not.toBeNull();
     expect(sizer.style.height).toBe(`${500 * 24}px`);
     vlist.destroy();
@@ -92,7 +92,7 @@ describe('VirtualList', () => {
     expect(range.first).toBeLessThanOrEqual(500);
     expect(range.last).toBeGreaterThanOrEqual(500);
     const mounted = mountedRows(host);
-    const indices = mounted.map((el) => Number(el.getAttribute('data-cg-vlist-index')));
+    const indices = mounted.map((el) => Number(el.getAttribute('data-vg-vlist-index')));
     expect(indices).toContain(500);
     vlist.destroy();
     host.remove();
@@ -108,15 +108,15 @@ describe('VirtualList', () => {
     vlist.setItems(items);
     // After initial mount, index 999 is not in the DOM at all.
     expect(
-      host.querySelector('[data-cg-vlist-row][data-cg-vlist-index="999"]'),
+      host.querySelector('[data-vg-vlist-row][data-vg-vlist-index="999"]'),
     ).toBeNull();
     vlist.scrollToIndex(999);
     // After scrolling, index 999 IS in the DOM and index 0 is gone.
     expect(
-      host.querySelector('[data-cg-vlist-row][data-cg-vlist-index="999"]'),
+      host.querySelector('[data-vg-vlist-row][data-vg-vlist-index="999"]'),
     ).not.toBeNull();
     expect(
-      host.querySelector('[data-cg-vlist-row][data-cg-vlist-index="0"]'),
+      host.querySelector('[data-vg-vlist-row][data-vg-vlist-index="0"]'),
     ).toBeNull();
     vlist.destroy();
     host.remove();
@@ -132,7 +132,7 @@ describe('VirtualList', () => {
     vlist.setItems(items);
     // Capture element identity for index 5 before the scroll.
     const before = host.querySelector(
-      '[data-cg-vlist-row][data-cg-vlist-index="5"]',
+      '[data-vg-vlist-row][data-vg-vlist-index="5"]',
     ) as HTMLElement | null;
     expect(before).not.toBeNull();
     // Scroll by one row (24px). Index 5 stays in the mounted window — pool
@@ -140,7 +140,7 @@ describe('VirtualList', () => {
     host.scrollTop = 24;
     host.dispatchEvent(new Event('scroll'));
     const after = host.querySelector(
-      '[data-cg-vlist-row][data-cg-vlist-index="5"]',
+      '[data-vg-vlist-row][data-vg-vlist-index="5"]',
     ) as HTMLElement | null;
     expect(after).toBe(before);
     vlist.destroy();
@@ -247,7 +247,7 @@ describe('VirtualList', () => {
     });
     vlist.setItems(items);
     const indices = mountedRows(host).map(
-      (el) => Number(el.getAttribute('data-cg-vlist-index')),
+      (el) => Number(el.getAttribute('data-vg-vlist-index')),
     );
     // Index 0 contributes no row; the rest still mount.
     expect(indices).not.toContain(0);

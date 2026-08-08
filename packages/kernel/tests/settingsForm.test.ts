@@ -60,10 +60,10 @@ describe('SettingsForm', () => {
     const onChange = vi.fn();
     const form = new SettingsForm(section, onChange);
 
-    expect(form.root.querySelectorAll('.cg-settings-band')).toHaveLength(2);
-    expect(form.root.querySelectorAll('.cg-settings-row')).toHaveLength(3);
+    expect(form.root.querySelectorAll('.vg-settings-band')).toHaveLength(2);
+    expect(form.root.querySelectorAll('.vg-settings-row')).toHaveLength(3);
 
-    const toggle = q<HTMLButtonElement>(form.root, '[data-field-key="alpha"] .cg-settings-toggle');
+    const toggle = q<HTMLButtonElement>(form.root, '[data-field-key="alpha"] .vg-settings-toggle');
     toggle.click();
     expect(store.alpha).toBe(true);
     expect(onChange).toHaveBeenCalled();
@@ -76,15 +76,15 @@ describe('SettingsForm', () => {
     const row = q<HTMLElement>(form.root, '[data-field-key="alpha"]');
     expect(row.hasAttribute('data-modified')).toBe(false);
 
-    q<HTMLButtonElement>(row, '.cg-settings-toggle').click();
+    q<HTMLButtonElement>(row, '.vg-settings-toggle').click();
     expect(row.hasAttribute('data-modified')).toBe(true);
     expect(form.modifiedCount()).toBe(1);
 
-    const chip = q<HTMLElement>(form.root, '[data-band-id="b1"] .cg-settings-band-chip');
+    const chip = q<HTMLElement>(form.root, '[data-band-id="b1"] .vg-settings-band-chip');
     expect(chip.hidden).toBe(false);
     expect(chip.textContent).toBe('1');
 
-    const reset = q<HTMLButtonElement>(row, '.cg-settings-row-reset');
+    const reset = q<HTMLButtonElement>(row, '.vg-settings-row-reset');
     expect(reset.getAttribute('data-visible')).toBe('true');
     reset.click();
     expect(store.alpha).toBe(false);
@@ -119,7 +119,7 @@ describe('SettingsForm', () => {
     const { section } = makeSection();
     const form = new SettingsForm(section);
 
-    q<HTMLButtonElement>(form.root, '[data-field-key="alpha"] .cg-settings-toggle').click();
+    q<HTMLButtonElement>(form.root, '[data-field-key="alpha"] .vg-settings-toggle').click();
     form.setModifiedOnly(true);
     expect(q<HTMLElement>(form.root, '[data-field-key="alpha"]').hidden).toBe(false);
     expect(q<HTMLElement>(form.root, '[data-field-key="beta"]').hidden).toBe(true);
@@ -129,8 +129,8 @@ describe('SettingsForm', () => {
   it('band header collapses / expands its body', () => {
     const { section } = makeSection();
     const form = new SettingsForm(section);
-    const header = q<HTMLButtonElement>(form.root, '[data-band-id="b1"] .cg-settings-band-header');
-    const body = q<HTMLElement>(form.root, '[data-band-id="b1"] .cg-settings-band-body');
+    const header = q<HTMLButtonElement>(form.root, '[data-band-id="b1"] .vg-settings-band-header');
+    const body = q<HTMLElement>(form.root, '[data-band-id="b1"] .vg-settings-band-body');
 
     expect(body.hidden).toBe(false);
     header.click();

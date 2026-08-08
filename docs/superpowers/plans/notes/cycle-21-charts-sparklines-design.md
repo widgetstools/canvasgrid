@@ -85,10 +85,10 @@ stroke width, fill, etc.
 
 | Token | Light | Dark | Where |
 |---|---|---|---|
-| `--cg-sparkline-line` | `#2563eb` | `#60a5fa` | Default line stroke |
-| `--cg-sparkline-fill` | `rgba(37,99,235,0.15)` | `rgba(96,165,250,0.2)` | Area fill, column fill |
-| `--cg-sparkline-marker` | `#1d4ed8` | `#3b82f6` | High/low data point markers |
-| `--cg-sparkline-axis` | `transparent` | `transparent` | Sparklines have NO axis chrome by default — they're glance targets |
+| `--vg-sparkline-line` | `#2563eb` | `#60a5fa` | Default line stroke |
+| `--vg-sparkline-fill` | `rgba(37,99,235,0.15)` | `rgba(96,165,250,0.2)` | Area fill, column fill |
+| `--vg-sparkline-marker` | `#1d4ed8` | `#3b82f6` | High/low data point markers |
+| `--vg-sparkline-axis` | `transparent` | `transparent` | Sparklines have NO axis chrome by default — they're glance targets |
 
 ---
 
@@ -120,7 +120,7 @@ AG Charts and passes it to cgrid; cgrid wires the bridge.
 ```typescript
 import * as agCharts from 'ag-charts-community';
 
-const grid = new CGrid(host, {
+const grid = new VelocityGrid(host, {
   chartingDependencies: { agCharts },
   // … enables Cycle-21 charts API
 });
@@ -149,7 +149,7 @@ interface RangeChartParams {
   aggFunc?: string;
 }
 
-interface CGridApi {
+interface VelocityGridApi {
   createRangeChart(params: RangeChartParams): ChartRef | null;
   getChartModels(): ChartModel[];
   getChartRef(chartId: string): ChartRef | null;

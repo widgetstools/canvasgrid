@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CellPainter } from '@cgrid/kernel';
+import type { CellPainter } from '@wellsfargo-starui/velocity-grid';
 import {
   RENDERER_NAMES,
   SEMANTIC_COLORS,

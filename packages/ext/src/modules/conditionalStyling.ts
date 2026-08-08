@@ -6,7 +6,7 @@
  * formatter), CodeMirror 6 expression editor with live validation.
  *
  * Mutations ride the kernel rule API (`addRule` / `updateRule` /
- * `deleteRule` / `setRuleEnabled`); the @cgrid/rules bridge persists the
+ * `deleteRule` / `setRuleEnabled`); the @wellsfargo-starui/velocity-grid-rules bridge persists the
  * set in the grid config (layout-tier 'rules' state module) and repaints.
  */
 import {
@@ -15,8 +15,8 @@ import {
   type ConditionalStyleRule,
   type RuleBorderSpec,
   type StyleSlice,
-} from '@cgrid/rules';
-import type { SettingsModule, CgExtContext, ModuleInstance } from '../extension/types';
+} from '@wellsfargo-starui/velocity-grid-rules';
+import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import { mountFormatterStyleChrome } from '../toolbar/styleChrome';
 import { ExpressionEditor } from '../ui/expressionEditor';
 import { editorColumns, leafColumns, schemaFromGrid } from '../ui/gridSchema';
@@ -26,7 +26,7 @@ import {
 } from '../ui/cockpit';
 import { formatPickerMenu, previewFormat } from '../toolbar/formatPicker';
 import type { FormatDataType } from '../toolbar/formatPresets';
-import { lucideBundle } from '@cgrid/kernel/icons/lucide.generated';
+import { lucideBundle } from '@wellsfargo-starui/velocity-grid/icons/lucide.generated';
 
 interface RulesGrid {
   getRules(): ConditionalStyleRule[];
@@ -76,7 +76,7 @@ export function conditionalStylingModule(): SettingsModule {
       injectCockpitStyles();
     },
 
-    mount(host: HTMLElement, ctx: CgExtContext): ModuleInstance {
+    mount(host: HTMLElement, ctx: VelocityGridExtContext): ModuleInstance {
       const grid = asRulesGrid(ctx.grid);
       const schema = () => schemaFromGrid(ctx.grid);
 

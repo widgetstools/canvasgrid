@@ -57,7 +57,7 @@ test.describe('sparkline feature', () => {
     // Sparkline column starts at x ≈ ticker(100) + last(100) + change(110) = 310.
     // Hover roughly in the middle of the first data row.
     await page.mouse.move(box!.x + 410, box!.y + 60);
-    const tooltip = page.locator('.cg-sparkline-tooltip');
+    const tooltip = page.locator('.vg-sparkline-tooltip');
     await expect(tooltip).toBeVisible();
     await expect(tooltip).toContainText(/\d+/);
   });

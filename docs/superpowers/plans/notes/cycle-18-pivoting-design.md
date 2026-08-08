@@ -90,7 +90,7 @@ mode.
 **Column id convention:**
 `pivot_<level1Val>_<level2Val>_…_<aggFunc>_<aggCol>`
 
-**Main-thread integration:** `cgrid.ts` keeps a flag `pivotMode:
+**Main-thread integration:** `velocityGrid.ts` keeps a flag `pivotMode:
 boolean`. While true, the user's original `columnDefs` are HIDDEN
 (`hide: true` applied) and the synthesized pivot columns are
 APPENDED. The auto-group column (Cycle 15) STAYS visible —
@@ -132,7 +132,7 @@ interface CColDef<TRow> {
   aggFunc?: string | string[] | AggFunc;  // existing (Cycle 14)
 }
 
-interface CGridOptions {
+interface VelocityGridOptions {
   pivotMode?: boolean;
   pivotPanelShow?: 'always' | 'onlyWhenPivoting' | 'never';
   pivotRowTotals?: 'before' | 'after' | null;
@@ -229,10 +229,10 @@ would synthesize millions of columns — a DoS for the renderer.
 ## Visual chrome reuse
 
 Pivot mode brings NO new tokens. Synthesized column headers use the
-same `--cg-header-bg` / `--cg-header-fg` as user-defined columns;
+same `--vg-header-bg` / `--vg-header-fg` as user-defined columns;
 their depth is rendered via Cycle 4's `HeaderGroupSubgrid`. Totals
 cells (Task 5) reuse Cycle 14's totals signature
-(`--cg-totals-bg`, hairline lift, +1 weight stop). One vocabulary
+(`--vg-totals-bg`, hairline lift, +1 weight stop). One vocabulary
 across grouping / pivoting / totals.
 
 ---

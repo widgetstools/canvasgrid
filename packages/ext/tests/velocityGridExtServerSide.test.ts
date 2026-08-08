@@ -1,15 +1,15 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { installGridTestEnv } from './setup';
-import { CGridExt } from '../src/cgridExt';
-// Test-only cross-package import: the real worker host, so CGrid's async
+import { VelocityGridExt } from '../src/velocityGridExt';
+// Test-only cross-package import: the real worker host, so VelocityGrid's async
 // init actually completes and the SSRM controller mounts. `installGridTestEnv`'s
 // no-op Worker never replies, which would hang init before the mount.
 import { createWorkerHost } from '../../kernel/src/worker/worker';
-import type { IServerSideDatasourceV2 } from '@cgrid/kernel';
+import type { IServerSideDatasourceV2 } from '@wellsfargo-starui/velocity-grid';
 
-// Proves the SSRM blotter grid works when wrapped in CGridExt. CGridExt
-// is a thin shell over CGrid — it spreads every non-`ext` option into
-// `new CGrid(...)` — so `rowModelType: 'serverSide'` + a datasource +
+// Proves the SSRM blotter grid works when wrapped in VelocityGridExt. VelocityGridExt
+// is a thin shell over VelocityGrid — it spreads every non-`ext` option into
+// `new VelocityGrid(...)` — so `rowModelType: 'serverSide'` + a datasource +
 // grouping / grandTotalRow / autoGroupColumnDef must flow straight
 // through and mount + drive the SSRM controller, exactly as the
 // standalone blotterHost does.
@@ -118,18 +118,18 @@ function ssrmOptions(datasource: unknown) {
   } as never;
 }
 
-describe('CGridExt — server-side (SSRM) blotter grid', () => {
+describe('VelocityGridExt — server-side (SSRM) blotter grid', () => {
   it('mounts + drives the v2 SSRM controller through the shell wrapper', async () => {
     const host = document.createElement('div');
     host.style.width = '800px'; host.style.height = '400px';
     document.body.appendChild(host);
     let flat = 0; const skel: string[][] = [];
-    const ext = new CGridExt<Row>(host, ssrmOptions(
+    const ext = new VelocityGridExt<Row>(host, ssrmOptions(
       v2Datasource({ flat: () => { flat++; }, skeleton: (c) => skel.push(c) }),
     ));
 
     // Shell + grid are live.
-    expect(host.querySelector('.cgext-grid')).toBeTruthy();
+    expect(host.querySelector('.vgext-grid')).toBeTruthy();
     expect(ext.grid).toBeTruthy();
 
     // serverSide flowed through, mounted the controller, and drove the
@@ -151,7 +151,7 @@ describe('CGridExt — server-side (SSRM) blotter grid', () => {
     let flat = 0;
     const ds = v1Datasource();
     const spied = { ...ds, getRows: (p: any) => { flat++; return (ds.getRows as any)(p); } };
-    const ext = new CGridExt<Row>(host, ssrmOptions(spied));
+    const ext = new VelocityGridExt<Row>(host, ssrmOptions(spied));
     await waitFor(() => flat > 0, 'v1 controller mounted');
     expect((ext.grid as any).ssrmV2).toBe(false);
     ext.destroy();
@@ -162,7 +162,7 @@ describe('CGridExt — server-side (SSRM) blotter grid', () => {
     host.style.width = '800px'; host.style.height = '400px';
     document.body.appendChild(host);
     let flat = 0; const skel: string[][] = [];
-    const ext = new CGridExt<Row>(host, ssrmOptions(
+    const ext = new VelocityGridExt<Row>(host, ssrmOptions(
       v2Datasource({ flat: () => { flat++; }, skeleton: (c) => skel.push(c) }),
     ));
     await waitFor(() => flat > 0, 'controller mounted');

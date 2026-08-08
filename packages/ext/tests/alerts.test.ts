@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { installGridTestEnv } from './setup';
-import { CGridExt } from '../src/cgridExt';
-import { wireIntoKernel as wireRules } from '@cgrid/rules';
+import { VelocityGridExt } from '../src/velocityGridExt';
+import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid-rules';
 
 beforeAll(() => installGridTestEnv());
 beforeEach(() => localStorage.clear());
@@ -10,14 +10,14 @@ describe('alertsModule', () => {
   it('registers Alerts in the default settings sheet', () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const ext = new CGridExt(host, {
+    const ext = new VelocityGridExt(host, {
       getRowId: (r: { a: string }) => r.a,
       columnDefs: [{ colId: 'a', field: 'a', editable: true }],
       rowData: [{ a: '1' }],
     } as never);
     wireRules(ext.grid);
     ext.openSettings('alerts');
-    expect(host.querySelector('.cgext-sheet-title')?.textContent).toBe('Alerts');
+    expect(host.querySelector('.vgext-sheet-title')?.textContent).toBe('Alerts');
     expect(host.textContent).toContain('Alert rules');
     expect(host.textContent).toContain('Global settings');
     ext.destroy();
@@ -27,7 +27,7 @@ describe('alertsModule', () => {
   it('Save adds a dataChange alert via the public grid API', () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const ext = new CGridExt(host, {
+    const ext = new VelocityGridExt(host, {
       getRowId: (r: { a: string }) => r.a,
       columnDefs: [{ colId: 'pnl', field: 'pnl', editable: true }],
       rowData: [{ a: '1', pnl: -1 }],

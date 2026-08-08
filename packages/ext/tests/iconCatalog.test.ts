@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { lucideBundle } from '@cgrid/kernel/icons/lucide.generated';
+import { lucideBundle } from '@wellsfargo-starui/velocity-grid/icons/lucide.generated';
 import { lucideCategories } from '../src/toolbar/iconCatalog.generated';
 import { emojiCategories } from '../src/toolbar/emojiCatalog';
 

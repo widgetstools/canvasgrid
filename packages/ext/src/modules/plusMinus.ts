@@ -2,8 +2,8 @@
  * Plus / Minus — Customize module (starui customizer-ui #06).
  * Module settings + nudge list / editor (master-detail).
  */
-import type { PlusMinusNudge, PlusMinusSettings } from '@cgrid/edit';
-import type { SettingsModule, CgExtContext, ModuleInstance } from '../extension/types';
+import type { PlusMinusNudge, PlusMinusSettings } from '@wellsfargo-starui/velocity-grid-edit';
+import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import { ExpressionEditor } from '../ui/expressionEditor';
 import { editorColumns } from '../ui/gridSchema';
 import {
@@ -39,7 +39,7 @@ export function plusMinusModule(): SettingsModule {
 
     init(): void { injectCockpitStyles(); },
 
-    mount(host: HTMLElement, ctx: CgExtContext): ModuleInstance {
+    mount(host: HTMLElement, ctx: VelocityGridExtContext): ModuleInstance {
       let settingsCommitted: PlusMinusSettings | null = null;
       let settingsDraft: PlusMinusSettings | null = null;
       let nudges: PlusMinusNudge[] = [];

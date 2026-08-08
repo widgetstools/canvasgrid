@@ -54,7 +54,7 @@ function h(cls: string, html?: string): HTMLDivElement {
 function iconBtn(icon: string, title: string): HTMLButtonElement {
   const b = document.createElement('button');
   b.type = 'button';
-  b.className = 'cgext-rb-btn';
+  b.className = 'vgext-rb-btn';
   b.title = title;
   b.setAttribute('aria-label', title);
   b.innerHTML = svg(icon);
@@ -63,14 +63,14 @@ function iconBtn(icon: string, title: string): HTMLButtonElement {
 
 function toggleBtn(icon: string, title: string): HTMLButtonElement {
   const b = iconBtn(icon, title);
-  b.classList.add('cgext-rb-toggle');
+  b.classList.add('vgext-rb-toggle');
   return b;
 }
 
 function pill(text: string): HTMLButtonElement {
   const b = document.createElement('button');
   b.type = 'button';
-  b.className = 'cgext-rb-pill';
+  b.className = 'vgext-rb-pill';
   b.innerHTML = `<span>${text}</span>${svg('M6 9l6 6 6-6', 12)}`;
   return b;
 }
@@ -78,7 +78,7 @@ function pill(text: string): HTMLButtonElement {
 function borderSideBtn(side: BorderSideKey): HTMLButtonElement {
   const b = document.createElement('button');
   b.type = 'button';
-  b.className = 'cgext-rb-toggle cgext-rb-bside';
+  b.className = 'vgext-rb-toggle vgext-rb-bside';
   b.dataset.side = side;
   b.title = side === 'all' ? 'All borders' : `${side.charAt(0).toUpperCase()}${side.slice(1)} border`;
   b.setAttribute('aria-label', b.title);
@@ -90,21 +90,21 @@ function borderSideBtn(side: BorderSideKey): HTMLButtonElement {
 }
 
 function mini(...children: HTMLElement[]): HTMLDivElement {
-  const r = h('cgext-rb-mini');
+  const r = h('vgext-rb-mini');
   r.append(...children);
   return r;
 }
 
 function grp(name: string, ...rows: HTMLElement[]): HTMLDivElement {
-  const g = h('cgext-rb-grp');
-  const deck = h('cgext-rb-deck');
+  const g = h('vgext-rb-grp');
+  const deck = h('vgext-rb-deck');
   deck.append(...rows);
-  g.append(deck, h('cgext-rb-grp-name', name));
+  g.append(deck, h('vgext-rb-grp-name', name));
   return g;
 }
 
 /**
- * Mount Font / Alignment / Borders into `host` (typically `[data-cg-style]`).
+ * Mount Font / Alignment / Borders into `host` (typically `[data-vg-style]`).
  * Returns a disposer for menus + listeners.
  */
 export function mountFormatterStyleChrome(
@@ -117,35 +117,35 @@ export function mountFormatterStyleChrome(
 
   const disposers: Array<() => void> = [];
   const bold = toggleBtn(I.bold, 'Bold');
-  bold.setAttribute('data-cg-field', 'fontWeight');
+  bold.setAttribute('data-vg-field', 'fontWeight');
   const italic = toggleBtn(I.italic, 'Italic');
-  italic.setAttribute('data-cg-field', 'fontStyle');
+  italic.setAttribute('data-vg-field', 'fontStyle');
   const underline = toggleBtn(I.underline, 'Underline');
-  underline.setAttribute('data-cg-field', 'textDecoration');
+  underline.setAttribute('data-vg-field', 'textDecoration');
   const strike = toggleBtn(I.strikethrough, 'Strikethrough');
 
   const sizeVal = document.createElement('span');
   sizeVal.textContent = '12px';
-  sizeVal.setAttribute('data-cg-field', 'fontSize');
+  sizeVal.setAttribute('data-vg-field', 'fontSize');
   const sizeUp = document.createElement('button');
   sizeUp.type = 'button';
-  sizeUp.className = 'cgext-rb-step';
+  sizeUp.className = 'vgext-rb-step';
   sizeUp.title = 'Larger font';
   sizeUp.innerHTML = svg('M6 15l6-6 6 6', 11);
   const sizeDn = document.createElement('button');
   sizeDn.type = 'button';
-  sizeDn.className = 'cgext-rb-step';
+  sizeDn.className = 'vgext-rb-step';
   sizeDn.title = 'Smaller font';
   sizeDn.innerHTML = svg('M6 9l6 6 6-6', 11);
-  const sizeWrap = h('cgext-rb-stepper');
-  const sizeStack = h('cgext-rb-step-stack');
+  const sizeWrap = h('vgext-rb-stepper');
+  const sizeStack = h('vgext-rb-step-stack');
   sizeStack.append(sizeUp, sizeDn);
   sizeWrap.append(sizeVal, sizeStack);
 
   const textColor = ribbonColorSwatch(I.paintText, 'Text color', DEFAULT_TEXT);
-  textColor.button.setAttribute('data-cg-field', 'fg');
+  textColor.button.setAttribute('data-vg-field', 'fg');
   const fillColor = ribbonColorSwatch(I.fill, 'Fill color', DEFAULT_FILL);
-  fillColor.button.setAttribute('data-cg-field', 'bg');
+  fillColor.button.setAttribute('data-vg-field', 'bg');
 
   const alignL = toggleBtn(I.alignLeft, 'Align left');
   alignL.dataset.align = 'left';
@@ -154,7 +154,7 @@ export function mountFormatterStyleChrome(
   const alignR = toggleBtn(I.alignRight, 'Align right');
   alignR.dataset.align = 'right';
   const alignWrap = mini(alignL, alignC, alignR);
-  alignWrap.setAttribute('data-cg-field', 'halign');
+  alignWrap.setAttribute('data-vg-field', 'halign');
 
   const borderSideBtns: Record<BorderSideKey, HTMLButtonElement> = {
     all: borderSideBtn('all'),
@@ -163,18 +163,18 @@ export function mountFormatterStyleChrome(
     left: borderSideBtn('left'),
     right: borderSideBtn('right'),
   };
-  const borderPreview = h('cgext-rb-bpreview');
+  const borderPreview = h('vgext-rb-bpreview');
   borderPreview.title = 'Current borders';
   const borderColor = ribbonColorSwatch('M4 4h16v16H4zM12 12h.01', 'Border color', DEFAULT_BORDER);
-  borderColor.button.setAttribute('data-cg-field', 'borderColor');
+  borderColor.button.setAttribute('data-vg-field', 'borderColor');
   const borderStylePill = pill('Solid');
-  borderStylePill.setAttribute('data-cg-field', 'borderStyle');
+  borderStylePill.setAttribute('data-vg-field', 'borderStyle');
   const borderWidthPill = pill('1 px');
-  borderWidthPill.setAttribute('data-cg-field', 'borderWidth');
+  borderWidthPill.setAttribute('data-vg-field', 'borderWidth');
   const borderClear = iconBtn(I.eraser, 'Remove the border at this side');
 
-  const cluster = h('cgext-rb-cluster');
-  cluster.classList.add('cgext-style-chrome');
+  const cluster = h('vgext-rb-cluster');
+  cluster.classList.add('vgext-style-chrome');
   cluster.dataset.toolbar = 'group-style';
   cluster.append(
     grp('Font', mini(bold, italic, underline, strike, sizeWrap), mini(textColor.button, textColor.host, fillColor.button, fillColor.host)),
@@ -283,9 +283,9 @@ export function mountFormatterStyleChrome(
   ): HTMLButtonElement => {
     const it = document.createElement('button');
     it.type = 'button';
-    it.className = 'cgext-menu-item';
+    it.className = 'vgext-menu-item';
     const sampleEl = document.createElement('span');
-    sampleEl.className = 'cgext-rb-linesample';
+    sampleEl.className = 'vgext-rb-linesample';
     if (sample.style) sampleEl.dataset.lineStyle = sample.style;
     if (sample.width != null) sampleEl.dataset.lineWidth = String(sample.width);
     const lab = document.createElement('span');
@@ -295,7 +295,7 @@ export function mountFormatterStyleChrome(
     return it;
   };
   const borderStyleMenu = menu(borderStylePill, (close) => {
-    const list = h('cgext-menu-list');
+    const list = h('vgext-menu-list');
     for (const styleOpt of ['solid', 'dashed', 'dotted'] as const) {
       list.appendChild(lineSampleItem(
         styleOpt.charAt(0).toUpperCase() + styleOpt.slice(1),
@@ -308,7 +308,7 @@ export function mountFormatterStyleChrome(
   borderStylePill.addEventListener('click', () => borderStyleMenu.toggle());
   disposers.push(() => borderStyleMenu.destroy());
   const borderWidthMenu = menu(borderWidthPill, (close) => {
-    const list = h('cgext-menu-list');
+    const list = h('vgext-menu-list');
     for (const w of [1, 2, 3, 4]) {
       list.appendChild(lineSampleItem(`${w} px`, { width: w },
         () => { borderWidthVal = w; applyBorderEdit(); close(); }));
@@ -335,22 +335,22 @@ export function mountFormatterStyleChrome(
 
 function injectStyleChromeHostCss(): void {
   if (typeof document === 'undefined') return;
-  if (document.getElementById('cgext-style-chrome-styles')) return;
+  if (document.getElementById('vgext-style-chrome-styles')) return;
   const style = document.createElement('style');
-  style.id = 'cgext-style-chrome-styles';
+  style.id = 'vgext-style-chrome-styles';
   style.textContent = `
-.cgext-style-chrome {
+.vgext-style-chrome {
   flex-wrap: wrap;
   gap: 0;
   font-size: 12px;
   margin: 0 0 8px;
   padding: 4px 0 2px;
-  border-bottom: 1px solid color-mix(in srgb, var(--cg-border-color, #2a3140) 70%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--vg-border-color, #2a3140) 70%, transparent);
 }
-.cgext-rb-cluster[data-toolbar="group-style"] > .cgext-rb-grp:last-child {
+.vgext-rb-cluster[data-toolbar="group-style"] > .vgext-rb-grp:last-child {
   border-right: none;
 }
-.cg-colgroups-style .cgext-style-chrome {
+.vg-colgroups-style .vgext-style-chrome {
   width: 100%;
 }
 `;

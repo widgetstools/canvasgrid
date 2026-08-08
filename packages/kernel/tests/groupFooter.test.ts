@@ -409,13 +409,13 @@ describe('totalsCellLookup — per-group lookup never serves the grand total', (
   // Deferred import type-dance: pull the class lazily so this file keeps
   // its worker-only imports lean for the other suites.
   async function lookupOn(chunk: unknown): Promise<(colId: string, groupKey?: string) => unknown> {
-    const { CGrid } = await import('../src/cgrid');
+    const { VelocityGrid } = await import('../src/velocityGrid');
     const fakeThis = {
       chunk,
       pivotEngine: { isPivotActive: () => false },
       formatNumber: (_colId: string, v: number) => String(v),
     };
-    const fn = (CGrid.prototype as unknown as {
+    const fn = (VelocityGrid.prototype as unknown as {
       totalsCellLookup: (colId: string, parentGroupKey?: string) => unknown;
     }).totalsCellLookup;
     return (colId, groupKey) => fn.call(fakeThis, colId, groupKey);

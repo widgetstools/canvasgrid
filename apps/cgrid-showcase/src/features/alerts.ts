@@ -1,7 +1,7 @@
-import { CGrid } from '@cgrid/kernel';
-import type { CColDef } from '@cgrid/kernel';
-import { wireIntoKernel as wireRules } from '@cgrid/rules';
-import type { AlertRule, AlertSeverity, AlertsEngine } from '@cgrid/rules';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
+import type { CColDef } from '@wellsfargo-starui/velocity-grid';
+import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid-rules';
+import type { AlertRule, AlertSeverity, AlertsEngine } from '@wellsfargo-starui/velocity-grid-rules';
 import type { Feature } from './index';
 
 /**
@@ -73,7 +73,7 @@ export const alertsFeature: Feature = {
   id: 'alerts',
   label: 'Alerts',
   description:
-    'Cycle 21e — @cgrid/rules alerts core. Three trigger kinds ' +
+    'Cycle 21e — @wellsfargo-starui/velocity-grid-rules alerts core. Three trigger kinds ' +
     '(relativeChange 1% price moves with 1.5s debounce, dataChange ' +
     'deep-loss on [pnl], rowChange on adds), severity chips, message ' +
     'templating, unread badge with mark-all-read, and an evaluation ' +
@@ -81,7 +81,7 @@ export const alertsFeature: Feature = {
     'stays in the host — this log IS the host surface.',
 
   mount(gridHost, controls, theme) {
-    const grid = new CGrid<BlotterRow>(gridHost, {
+    const grid = new VelocityGrid<BlotterRow>(gridHost, {
       getRowId: (r) => r.symbol,
       columnDefs: COLUMNS,
       theme,

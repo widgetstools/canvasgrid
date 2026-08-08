@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeAll, vi } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { GroupPass, RowStore } from '../src/worker/dataPipeline';
 import type { WorkerColumn } from '../src/worker/protocol';
 import { createWorkerHost } from '../src/worker/worker';
-import type { CGridOptions } from '../src/types';
+import type { VelocityGridOptions } from '../src/types';
 
 /**
  * Cycle 15 / Task 9 — `groupDefaultExpanded` + `groupDefaultExpandedKeys`.
@@ -98,11 +98,11 @@ const WIRED_COLS = [
 function buildWiredGrid(
   rows: Row[],
   cols: Array<Record<string, unknown>>,
-  extraOptions: Partial<CGridOptions<Row>> = {},
+  extraOptions: Partial<VelocityGridOptions<Row>> = {},
 ) {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
   const prevWorker = (globalThis as { Worker?: unknown }).Worker;
   (globalThis as { Worker?: unknown }).Worker = class {
@@ -115,8 +115,8 @@ function buildWiredGrid(
     addEventListener(_: string, cb: (e: { data: unknown }) => void) { this.listeners.push(cb); }
     terminate() {}
   };
-  const grid = new CGrid<Row>(container, {
-    columnDefs: cols as Parameters<typeof CGrid<Row>>[1]['columnDefs'],
+  const grid = new VelocityGrid<Row>(container, {
+    columnDefs: cols as Parameters<typeof VelocityGrid<Row>>[1]['columnDefs'],
     getRowId: (r) => r.id,
     rowData: rows,
     ...extraOptions,
@@ -184,7 +184,7 @@ describe('GroupPass.computeDefaultExpandedKeys', () => {
 
 // ----- Wired-grid cases -----
 
-describe('CGrid — groupDefaultExpanded option', () => {
+describe('VelocityGrid — groupDefaultExpanded option', () => {
   // 4 — Option absent → every group expanded after the first
   // `setGroupModel`. Regression guard that the Task 9 reply field
   // doesn't accidentally collapse the existing pre-Task-9 behaviour

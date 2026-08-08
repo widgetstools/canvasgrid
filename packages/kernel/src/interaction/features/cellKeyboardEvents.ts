@@ -14,10 +14,10 @@
  * by design — global hotkey hooks belong on the host element, not
  * the grid.
  */
-import { Feature, type CGridEventCtx } from '../feature';
+import { Feature, type VelocityGridEventCtx } from '../feature';
 
 export class CellKeyboardEvents extends Feature {
-  override handleKeyDown(ctx: CGridEventCtx): void {
+  override handleKeyDown(ctx: VelocityGridEventCtx): void {
     const e = ctx.raw as KeyboardEvent;
     const sel = ctx.grid.selection;
     const fr = sel.state.focusedRowIndex;

@@ -12,12 +12,12 @@
   },
   "dependencies": {
     "@stomp/stompjs": "^7.1.1",
-    "@cgrid/format": "*",
-    "@cgrid/kernel": "*",
-    "@cgrid/edit": "*",
-    "@cgrid/calc": "*",
-    "@cgrid/rules": "*",
-    "@cgrid/customizer": "*"
+    "@wellsfargo-starui/velocity-grid-format": "*",
+    "@wellsfargo-starui/velocity-grid": "*",
+    "@wellsfargo-starui/velocity-grid-edit": "*",
+    "@wellsfargo-starui/velocity-grid-calc": "*",
+    "@wellsfargo-starui/velocity-grid-rules": "*",
+    "@wellsfargo-starui/velocity-grid-customizer": "*"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",

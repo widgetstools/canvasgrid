@@ -22,7 +22,7 @@
 // Authoritative reference:
 // docs/superpowers/specs/2026-07-02-cycle-21d-calc-design.md §2.3 + §5.
 
-import type { Ast } from '@cgrid/expression';
+import type { Ast } from '@wellsfargo-starui/velocity-grid-expression';
 import type { AggSpec, CellDataType } from './types';
 
 /** One calc column as shipped to the kernel worker (plain JSON). */

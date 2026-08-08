@@ -1,5 +1,5 @@
 /**
- * @cgrid/customizer — the customizer editor surfaces (Cycle 21i).
+ * @wellsfargo-starui/velocity-grid-customizer — the customizer editor surfaces (Cycle 21i).
  *
  * Lit chrome + Smart Edit / Bulk Update panels + ExpressionEditor foundation.
  * CodeMirror can replace the textarea later; Monaco is not the locked path.

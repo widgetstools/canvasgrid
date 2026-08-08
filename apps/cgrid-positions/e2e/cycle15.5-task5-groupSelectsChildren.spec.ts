@@ -67,7 +67,7 @@ async function gridReady(page: Page): Promise<void> {
 async function seedTwoGroups(page: Page): Promise<string[]> {
   // Seed rows and return AAPL row IDs.
   const aaplIds = await page.evaluate(() => {
-    const g = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+    const g = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
     const rows: Array<Record<string, unknown>> = [];
     const TICKERS = ['AAPL', 'MSFT'];
     const ids: string[] = [];
@@ -109,7 +109,7 @@ async function seedTwoGroups(page: Page): Promise<string[]> {
   // setRowData alone doesn't trigger a descendants round-trip, so this is the
   // reliable way to seed the cache after seeding rows.
   await page.evaluate(() => {
-    (window as unknown as { __cgrid: GridApiSurface }).__cgrid.resetRowGroupExpansion();
+    (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.resetRowGroupExpansion();
   });
   await waitForFrames(page, 16);
   return aaplIds;
@@ -122,7 +122,7 @@ test.describe('Cycle 15.5 / Task 5 — groupSelectsChildren cascade selection st
 
     // Row 0 = AAPL group row. Initially no selection.
     const stateBefore = await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       const v = api.getCellValue(0, 'ag-Grid-AutoColumn') as GroupCellValue;
       return v?.selectionState;
     });
@@ -130,12 +130,12 @@ test.describe('Cycle 15.5 / Task 5 — groupSelectsChildren cascade selection st
 
     // Select ALL 5 AAPL leaf rows → group state becomes 'all'.
     await page.evaluate((ids) => {
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.setSelectedRowIds(ids);
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.setSelectedRowIds(ids);
     }, aaplIds);
     await waitForFrames(page, 12);
 
     const stateAll = await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       const v = api.getCellValue(0, 'ag-Grid-AutoColumn') as GroupCellValue;
       return v?.selectionState;
     });
@@ -143,12 +143,12 @@ test.describe('Cycle 15.5 / Task 5 — groupSelectsChildren cascade selection st
 
     // Select only 2 of 5 AAPL rows → group state becomes 'partial'.
     await page.evaluate((ids) => {
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.setSelectedRowIds(ids.slice(0, 2));
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.setSelectedRowIds(ids.slice(0, 2));
     }, aaplIds);
     await waitForFrames(page, 12);
 
     const statePartial = await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       const v = api.getCellValue(0, 'ag-Grid-AutoColumn') as GroupCellValue;
       return v?.selectionState;
     });
@@ -156,12 +156,12 @@ test.describe('Cycle 15.5 / Task 5 — groupSelectsChildren cascade selection st
 
     // Deselect all → group state returns to 'none'.
     await page.evaluate(() => {
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.setSelectedRowIds([]);
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.setSelectedRowIds([]);
     });
     await waitForFrames(page, 12);
 
     const stateAfterDeselect = await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       const v = api.getCellValue(0, 'ag-Grid-AutoColumn') as GroupCellValue;
       return v?.selectionState;
     });

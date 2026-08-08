@@ -7,7 +7,7 @@
  * baseline across switches (spec §6); runtime-touched grid options are
  * pulled OUT of the view state into `overrides.gridOptions` (spec §7) and
  * re-layered on apply. The reset-to-baseline half of §7 is the host's job
- * (see `LayoutManagerHost.applyState` doc) — proven at the CGrid seam in
+ * (see `LayoutManagerHost.applyState` doc) — proven at the VelocityGrid seam in
  * A3; here the mock host records what the manager hands it.
  *
  * Reference: spec §§4, 6, 7, 10; worklog A2.

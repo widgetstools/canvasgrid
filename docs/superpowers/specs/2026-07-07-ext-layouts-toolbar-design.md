@@ -1,4 +1,4 @@
-# CGridExt — Layout Management UI on the Title Bar
+# VelocityGridExt — Layout Management UI on the Title Bar
 
 - **Status:** Approved design; ready for implementation planning.
 - **Date:** 2026-07-07
@@ -12,10 +12,10 @@
 
 ## 1. Goal
 
-Replace the Wave-0 placeholder profiles button and profile-save disk in the CGridExt
+Replace the Wave-0 placeholder profiles button and profile-save disk in the VelocityGridExt
 title bar with a full layout-management dropdown driven by the kernel's shipped Grid
 Layouts API. Every affordance in the wireframe maps 1:1 onto existing public
-`CGrid`/`CGridApi` methods — this feature is **UI only**; no kernel changes are in
+`VelocityGrid`/`VelocityGridApi` methods — this feature is **UI only**; no kernel changes are in
 scope.
 
 **Decisions locked with the user:**
@@ -25,7 +25,7 @@ scope.
    `exportLayout` / `exportLayouts` / `importLayout` / `importLayouts` /
    `getActiveLayout`, `layoutChanged` event). The dropdown **replaces** the
    placeholder `profiles` toolbar item. `ProfilesController` and the `ProfileStore`
-   plumbing stay untouched in `CgExtContext` for a future profiles wave.
+   plumbing stay untouched in `VelocityGridExtContext` for a future profiles wave.
 2. **Disk button = `updateLayout()`** — recapture the current view into the active
    layout, dirty-aware. It replaces the Wave-0 profile-save disk.
 
@@ -53,7 +53,7 @@ Plain DOM + injected CSS (Lit stays customizer-only per the 21i decision). Reuse
 All state lives in the kernel; the UI re-reads `getLayouts()` /
 `getActiveLayout()` on every open and re-syncs on every `layoutChanged`.
 
-The extensions talk to `ctx.grid` (the kernel `CGrid`), same as every other title-bar
+The extensions talk to `ctx.grid` (the kernel `VelocityGrid`), same as every other title-bar
 item. No new context surface is needed.
 
 ## 3. Trigger button (`layouts`)
@@ -69,7 +69,7 @@ muted caret — the wireframe deliberately matches it). Content:
 ## 4. Panel anatomy
 
 Anchored under the trigger via `menu()`, right-aligned, fixed width ~300px, themed
-entirely from `--cg-*` tokens with the title bar's neutral-dark fallbacks.
+entirely from `--vg-*` tokens with the title bar's neutral-dark fallbacks.
 
 ### 4.1 Header
 
@@ -82,7 +82,7 @@ Scrollable (`max-height: ~320px; overflow-y: auto`). One row per
 `getLayouts()` entry, in kernel order. Row anatomy:
 
 - **Active row** (id === `getActiveLayoutId()`): 2px accent left bar, accent
-  check icon, `--cg-row-alt-bg`-tinted background, name in `--cg-fg-color`.
+  check icon, `--vg-row-alt-bg`-tinted background, name in `--vg-fg-color`.
 - **Inactive row:** small muted dot where the check sits; hover tints the row.
 - **Row body click** → `loadLayout(id)`, then the panel **closes** (selection
   is a dismissal gesture, like a native select; clicking the already-active
@@ -135,7 +135,7 @@ Two equal-width buttons:
   guarantee).
 
 Inline errors render in a single slim message strip above the footer (13px,
-`--cg-neg-color`), cleared on the next successful action or panel reopen.
+`--vg-neg-color`), cleared on the next successful action or panel reopen.
 
 ## 5. Save button (`layout-save`) + dirty tracking
 
@@ -163,10 +163,10 @@ the disk is specifically "fold my current view into the active layout", not
 ## 6. Styling
 
 - New CSS appended via `injectLayoutsMenuStyles()` (id-gated `<style>`, same
-  pattern as `injectTitleBarStyles()`); class prefix `cgext-layouts-`.
-- Tokens only: `--cg-popup-bg`, `--cg-border-color`, `--cg-fg-color`,
-  `--cg-muted-fg-color`, `--cg-accent-color`, `--cg-row-alt-bg`,
-  `--cg-control-bg`, `--cg-warning-color`, `--cg-neg-color` — with the same
+  pattern as `injectTitleBarStyles()`); class prefix `vgext-layouts-`.
+- Tokens only: `--vg-popup-bg`, `--vg-border-color`, `--vg-fg-color`,
+  `--vg-muted-fg-color`, `--vg-accent-color`, `--vg-row-alt-bg`,
+  `--vg-control-bg`, `--vg-warning-color`, `--vg-neg-color` — with the same
   fallbacks the title bar uses, so light + dark themes both read correctly.
 - 12px control type / 11px header type floor (ribbon precedent); 30px trigger
   height matching the existing right-cluster controls.

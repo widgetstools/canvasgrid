@@ -1,10 +1,10 @@
 import { vi } from 'vitest';
-import type { CgExtContext, ToolbarItem, ToolbarItemInstance } from '../src/extension/types';
+import type { VelocityGridExtContext, ToolbarItem, ToolbarItemInstance } from '../src/extension/types';
 
 export interface FakeLayout { id: string; name: string; state: Record<string, unknown> }
 
 /** Structural stand-in for the kernel layout API + event emitter. Mutators
- *  emit `layoutChanged` exactly like the real CGrid so the UI's single
+ *  emit `layoutChanged` exactly like the real VelocityGrid so the UI's single
  *  re-sync path is exercised. */
 export class FakeGrid {
   layouts: FakeLayout[] = [{ id: 'default', name: 'Default', state: {} }];
@@ -74,12 +74,12 @@ export class FakeGrid {
 /** Mounts a toolbar item over a FakeGrid; caller must clean the DOM
  *  (tests use afterEach(() => { document.body.replaceChildren(); })). */
 export function mountItem(item: ToolbarItem, grid = new FakeGrid()): {
-  host: HTMLElement; grid: FakeGrid; inst: ToolbarItemInstance; ctx: CgExtContext;
+  host: HTMLElement; grid: FakeGrid; inst: ToolbarItemInstance; ctx: VelocityGridExtContext;
 } {
   const host = document.createElement('div');
   host.dataset.itemId = item.id;
   document.body.appendChild(host);
-  const ctx = { grid } as unknown as CgExtContext;
+  const ctx = { grid } as unknown as VelocityGridExtContext;
   const inst = item.render(host, ctx);
   return { host, grid, inst, ctx };
 }

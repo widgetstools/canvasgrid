@@ -1,4 +1,4 @@
-// @cgrid/edit — numeric arithmetic for smart-edit (multiply/divide/add/subtract/
+// @wellsfargo-starui/velocity-grid-edit — numeric arithmetic for smart-edit (multiply/divide/add/subtract/
 // set) and cell-data-type numeric detection, centralized here so plus/minus
 // (Task 8) and shortcuts (Task 9) share one implementation.
 // Authoritative reference: docs/superpowers/specs/2026-07-02-cycle-21g-edit-design.md

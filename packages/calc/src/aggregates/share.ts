@@ -34,7 +34,7 @@
 // CallNode out; AggregateNode in → AggregateNode out) so callers never
 // see a kind they didn't hand in.
 
-import type { AstNode, BinaryNode } from '@cgrid/expression';
+import type { AstNode, BinaryNode } from '@wellsfargo-starui/velocity-grid-expression';
 import type { CalcValidationError } from '../types';
 
 export const SHARE_AGGREGATE_NAMES: readonly string[] = [

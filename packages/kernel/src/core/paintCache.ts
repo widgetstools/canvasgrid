@@ -10,7 +10,7 @@
  * scroll jump bigger than the layer's own coverage).
  *
  * `PaintCacheLayer` owns the retained offscreen canvas + lifecycle around
- * that decision: sizing (`ensureSize`, mirrors `CGridCanvas.resize`'s dpr
+ * that decision: sizing (`ensureSize`, mirrors `VelocityGridCanvas.resize`'s dpr
  * discipline — `core/canvas.ts:196-214`), self-blit (`shift`), content↔
  * layer/screen coordinate mapping, and disposal. All canvas-API access is
  * behind an injected canvas factory so tests (this module's own, and later
@@ -137,7 +137,7 @@ export type PaintCacheCanvasFactory = () => PaintCacheCanvasLike | null;
  *  (`renderer/offscreenSupport.ts`), else a detached `HTMLCanvasElement`.
  *  Never throws — any construction failure just returns `null`, which
  *  `PaintCacheLayer` turns into `available = false`. Exported (Cycle 22 /
- *  Task 2) so CGrid hands the SAME platform-canvas policy to the
+ *  Task 2) so VelocityGrid hands the SAME platform-canvas policy to the
  *  raster-cache stores (`CellBitmapCache` / `RowStripCache`). */
 export function defaultCanvasFactory(): PaintCacheCanvasLike | null {
   if (isOffscreenCanvasSupported()) {
@@ -210,7 +210,7 @@ export class PaintCacheLayer {
     return this.canvas;
   }
 
-  /** Mirrors `CGridCanvas.resize`'s dpr discipline (`core/canvas.ts:196-
+  /** Mirrors `VelocityGridCanvas.resize`'s dpr discipline (`core/canvas.ts:196-
    *  214`): backing store = `round(css * dpr)`, `setTransform(dpr, 0, 0,
    *  dpr, 0, 0)` right after a REAL reallocation, and skips the assignment
    *  entirely when the size + dpr already match — assigning
@@ -315,7 +315,7 @@ export class PaintCacheLayer {
   // design exists specifically to avoid. The fix: `shift()`'s newly-exposed
   // band (and a full-damage frame's un-rastered overscan margins) become
   // PENDING instead of being rastered inline; a hard present-time
-  // sync-fill (`takePendingIntersecting`, called by the CGrid paint
+  // sync-fill (`takePendingIntersecting`, called by the VelocityGrid paint
   // closure immediately before `presentLayer`) guarantees unrastered
   // content is architecturally impossible to present, while a small
   // per-frame time budget (`takePendingNearest`, called after present +

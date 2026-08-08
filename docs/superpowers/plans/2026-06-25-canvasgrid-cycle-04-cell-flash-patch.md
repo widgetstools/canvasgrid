@@ -14,7 +14,7 @@
 visibly flash on receive. Adds the producer side (worker diffs row data and
 ships `flashMask`; main feeds the mask into a `FlashRegistry`; rAF tick
 drives per-frame `flashAlpha` into the existing painter blend path);
-exposes `CGridApi.flashCells({rowIds, colIds, ...})` for programmatic
+exposes `VelocityGridApi.flashCells({rowIds, colIds, ...})` for programmatic
 flashing; flips the painter's hard-coded color to the theme variable so
 light / dark themes both render correctly.
 
@@ -45,7 +45,7 @@ producer side fits between two existing seams:
 
 The painter at [registry.ts:65-71](cgrid/src/renderer/cellRenderers/registry.ts#L65-L71)
 currently hard-codes `'#fef3c7'`. Task replaces that with
-`theme.flashFromColor` (read from `--cg-flash-from-color` at theme-resolve
+`theme.flashFromColor` (read from `--vg-flash-from-color` at theme-resolve
 time and cached on the resolved-theme record so the paint loop avoids a
 per-cell `getComputedStyle`).
 
@@ -64,16 +64,16 @@ its buffer.
 - `cgrid/src/core/propertyChain.ts:177,243` — `ApplyCellPropsInput.flashAlpha` already plumbed
 - `cgrid/src/worker/protocol.ts` — `ViewportChunk.flashMask?: Uint8Array` slot + `collectViewportTransferables` already handles its buffer
 - `cgrid/src/worker/dataPipeline.ts` — `RowStore.apply(update)` (extension point for the diff)
-- `cgrid/src/theming/tokens.css:36-37,65-66` — `--cg-flash-from-color` / `--cg-flash-to-color` for both light + dark themes
+- `cgrid/src/theming/tokens.css:36-37,65-66` — `--vg-flash-from-color` / `--vg-flash-to-color` for both light + dark themes
 - `cgrid/src/core/runtimeOptions.ts:125-146` — `enableCellChangeFlash` / `cellFlashDuration` / `cellFadeDuration` already runtime-mutable
 
 ## Global Constraints
 
 Extend the Cycle 4 constraints. New ones marked **NEW**.
 
-- **Additive API only.** `CGridOptions` already carries
+- **Additive API only.** `VelocityGridOptions` already carries
   `enableCellChangeFlash` / `cellFlashDuration` / `cellFadeDuration`; do not
-  rename. The new `flashCells` method is the only `CGridApi` addition.
+  rename. The new `flashCells` method is the only `VelocityGridApi` addition.
 - **No protocol breakage.** `ViewportChunk.flashMask` already exists as
   `Uint8Array?` and `collectViewportTransferables` already handles its
   buffer. Worker just starts populating it; main starts reading it.
@@ -104,7 +104,7 @@ flips for Area 04 + Area 23).
 
 | # | Task | Primary user-visible win | Files touched |
 |---|---|---|---|
-| 11 | Cell flash — FlashRegistry + worker flashMask + `api.flashCells` + theme color | STOMP live updates visibly flash; `enableCellChangeFlash` works end-to-end | `core/flashRegistry.ts` (new), `worker/dataPipeline.ts`, `worker/worker.ts`, `worker/protocol.ts` (already has the slot), `cgrid.ts`, `theming/cssReader.ts`, `renderer/cellRenderers/registry.ts`, `renderer/cellRenderers/wrapText.ts`, `types.ts`, `apps/cgrid-positions/src/positionsGrid.ts`, tests + E2E |
+| 11 | Cell flash — FlashRegistry + worker flashMask + `api.flashCells` + theme color | STOMP live updates visibly flash; `enableCellChangeFlash` works end-to-end | `core/flashRegistry.ts` (new), `worker/dataPipeline.ts`, `worker/worker.ts`, `worker/protocol.ts` (already has the slot), `velocityGrid.ts`, `theming/cssReader.ts`, `renderer/cellRenderers/registry.ts`, `renderer/cellRenderers/wrapText.ts`, `types.ts`, `apps/cgrid-positions/src/positionsGrid.ts`, tests + E2E |
 
 ---
 
@@ -127,7 +127,7 @@ flips for Area 04 + Area 23).
 - `cgrid/src/worker/dataPipeline.ts` `RowStore.apply` — diff hook
 - `cgrid/src/worker/dataPipeline.ts` `ViewportSlicer.slice` — chunk
   emit; flashMask packs alongside `rowIds`
-- `cgrid/src/theming/cssReader.ts` — `--cg-flash-from-color` already
+- `cgrid/src/theming/cssReader.ts` — `--vg-flash-from-color` already
   read from CSS vars; just needs forwarding through `ResolvedTheme`
 
 **Files:**
@@ -145,15 +145,15 @@ flips for Area 04 + Area 23).
 - Modify: `cgrid/src/worker/client.ts` — surface a setter for the
   enable flag so runtime `setGridOption('enableCellChangeFlash', true)`
   flows through
-- Modify: `cgrid/src/theming/cssReader.ts` — read `--cg-flash-from-color`
-  / `--cg-flash-to-color` into `ResolvedTheme.flashFromColor` /
+- Modify: `cgrid/src/theming/cssReader.ts` — read `--vg-flash-from-color`
+  / `--vg-flash-to-color` into `ResolvedTheme.flashFromColor` /
   `flashToColor`
 - Modify: `cgrid/src/renderer/cellRenderers/registry.ts` — replace
   hard-coded `'#fef3c7'` with `theme.flashFromColor` (threaded via
   `CellPaintConfig`)
 - Modify: `cgrid/src/renderer/cellRenderers/wrapText.ts` — same fix as
   registry.ts
-- Modify: `cgrid/src/cgrid.ts` —
+- Modify: `cgrid/src/velocityGrid.ts` —
   - Instantiate `FlashRegistry`
   - On `setRowData` / `applyTransaction*`, no-op (worker handles diff)
   - On chunk receive: feed `chunk.flashMask` into the registry
@@ -162,7 +162,7 @@ flips for Area 04 + Area 23).
   - byRows `cellData` callback reads `registry.getAlpha(rowId, colId, now)`
   - Add `api.flashCells(opts)` method that calls `registry.flashMany(...)`
   - Wire `matchMedia('(prefers-reduced-motion: reduce)')` to suppress
-- Modify: `cgrid/src/types.ts` — add `CGridApi.flashCells` signature +
+- Modify: `cgrid/src/types.ts` — add `VelocityGridApi.flashCells` signature +
   `FlashCellsParams` type
 - Update: `apps/cgrid-positions/src/positionsGrid.ts` — set
   `enableCellChangeFlash: true` so the live STOMP stream flashes
@@ -194,7 +194,7 @@ export interface FlashRegistryDeps {
   /** Live read; same rationale. */
   getFadeDuration: () => number;
   /** Honors `prefers-reduced-motion: reduce` — wired to
-   *  `matchMedia` in cgrid.ts. When true, every `flash()` call is
+   *  `matchMedia` in velocityGrid.ts. When true, every `flash()` call is
    *  a no-op. */
   getReducedMotion: () => boolean;
   /** Schedule a repaint of the union of currently-flashing cells.
@@ -223,7 +223,7 @@ export class FlashRegistry {
   destroy(): void;
 }
 
-// cgrid/src/types.ts (CGridApi addition)
+// cgrid/src/types.ts (VelocityGridApi addition)
 
 export interface FlashCellsParams {
   /** Row IDs to flash. Required (must be non-empty). */
@@ -237,7 +237,7 @@ export interface FlashCellsParams {
   fadeDuration?: number;
 }
 
-export interface CGridApi<TRow = any> {
+export interface VelocityGridApi<TRow = any> {
   // … existing methods …
   /** Programmatic cell flash. Useful for app-driven highlights
    *  (validation pulse, row-just-loaded). No-op when
@@ -285,12 +285,12 @@ export interface CGridApi<TRow = any> {
       `setGridOption('enableCellChangeFlash', true)` flips it
       mid-flight.
 - [ ] **Step 7: Theme color forwarding** — extend `CssReader` to read
-      `--cg-flash-from-color` + `--cg-flash-to-color` into
+      `--vg-flash-from-color` + `--vg-flash-to-color` into
       `ResolvedTheme`. Replace the hard-coded `'#fef3c7'` in
       `registry.ts` + `wrapText.ts` with `p.theme.flashFromColor` (thread
       via the existing `CellPaintConfig` — `theme` reference is already
       there, just expose the new fields).
-- [ ] **Step 8: Wire FlashRegistry in cgrid.ts** —
+- [ ] **Step 8: Wire FlashRegistry in velocityGrid.ts** —
       - Instantiate at constructor with deps reading `options.*` live
         through the existing `getGridOption` getter
       - `matchMedia('(prefers-reduced-motion: reduce)').addEventListener`
@@ -348,9 +348,9 @@ getAlpha(rowId, colId, now) for the painter's existing flashAlpha
 slot. Per-rAF tick prunes expired entries; the registry adds zero
 allocation per paint when no flashes are active. Honors
 prefers-reduced-motion via matchMedia. Theme color reads from
---cg-flash-from-color (was hard-coded #fef3c7).
+--vg-flash-from-color (was hard-coded #fef3c7).
 
-CGridApi.flashCells({rowIds, colIds, flashDuration?, fadeDuration?})
+VelocityGridApi.flashCells({rowIds, colIds, flashDuration?, fadeDuration?})
 lets apps trigger programmatic flashes (validation pulses, row-just-
 loaded highlights).
 
@@ -368,8 +368,8 @@ EOF
       - **Area 04:** `enableCellChangeFlash`, `cellFlashDuration`,
         `cellFadeDuration`.
       - **Area 23:** `flashCells`.
-      - **Area 21 (theming):** `--cg-flash-from-color` /
-        `--cg-flash-to-color` rows (if present in the matrix; otherwise
+      - **Area 21 (theming):** `--vg-flash-from-color` /
+        `--vg-flash-to-color` rows (if present in the matrix; otherwise
         skip).
 
 - [ ] Append to this worklog under "Shipped":
@@ -416,7 +416,7 @@ main: batch/cycle-4-cell-flash-patch-<YYYY-MM-DD>. Open a single PR
 to main when the task + exit ritual commits land.
 
 Operational gotchas from the Cycle 7 sessions that apply here:
-- cgrid/dist/cgrid.d.ts is stale unless you `npm --workspace=cgrid run
+- cgrid/dist/velocity-grid.d.ts is stale unless you `npm --workspace=cgrid run
   build` after editing types.ts. The cgrid-positions typecheck reads
   from dist, not src.
 - Vite dev server caches worker.js. If your E2E doesn't reflect a
@@ -445,7 +445,7 @@ Operational gotchas from the Cycle 7 sessions that apply here:
 - Worker hooks: `enableCellChangeFlash` init flag, `setEnableCellChangeFlash`
   + `flashCells` request envelopes, `pendingFlashes` state, sync +
   async `applyTransaction` diff producer, `setRowData` reset.
-- `CGridApi.flashCells({rowIds, colIds, ...})` — programmatic flash;
+- `VelocityGridApi.flashCells({rowIds, colIds, ...})` — programmatic flash;
   routes through the worker so the worker's string→numeric rowId map
   resolves authoritatively; flash actually lands on the next viewport
   chunk reply.
@@ -487,7 +487,7 @@ Acceptance criteria:
 - [x] `prefers-reduced-motion: reduce` suppresses every flash (E2E
       green).
 - [x] Light + dark themes both flash in their declared colors
-      (resolved from `--cg-flash-from-color`).
+      (resolved from `--vg-flash-from-color`).
 - [x] FM Area 01 (`cellFlashDuration` / `cellFadeDuration`), Area 02
       (`enableCellChangeFlash`), Area 04 (`enableCellChangeFlash` /
       `cellFlashDuration` / `cellFadeDuration` / `flashCells` /

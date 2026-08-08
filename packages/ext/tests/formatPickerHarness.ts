@@ -18,6 +18,6 @@ export function mountPicker(host = new FakeFormatHost()) {
   document.body.appendChild(anchor);
   const m = formatPickerMenu(anchor, host);
   m.toggle();
-  const panel = document.querySelector<HTMLElement>('.cgext-menu.cgext-fmt')!;
+  const panel = document.querySelector<HTMLElement>('.vgext-menu.vgext-fmt')!;
   return { anchor, host, m, panel };
 }

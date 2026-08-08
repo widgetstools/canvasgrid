@@ -21,7 +21,7 @@
 //   - plain drag → start (mousedown), mid (each move tick), end (mouseup)
 //   - shift-click / ctrl-click → a single started+finished event
 //   - mouseup with no drag in flight → no event (forwarded only)
-// The CGrid emitter handles the `cellSelectionChanged` debounce on top.
+// The VelocityGrid emitter handles the `cellSelectionChanged` debounce on top.
 //
 // Cycle 9 patch / Task 2 — auto-scroll while the pointer is in the body's
 // edge zone. When `handleMouseDrag` fires with a point inside ±EDGE_PX of
@@ -36,7 +36,7 @@
 // lets us claim the range first, then forward via `super.handleMouseDown`
 // so focus + row selection still happen on the same press.
 
-import { Feature, type CGridEventCtx } from '../feature';
+import { Feature, type VelocityGridEventCtx } from '../feature';
 import type { Hit } from '../hitTester';
 
 interface DragState {
@@ -110,9 +110,9 @@ export class RangeSelection extends Feature {
    *  reads `point` + `grid` from here and synthesises a fresh hit-test at
    *  the same canvas-local point after the scroll, so the range follows
    *  the newly-revealed cells. */
-  private lastDragCtx: CGridEventCtx | null = null;
+  private lastDragCtx: VelocityGridEventCtx | null = null;
 
-  override handleMouseDown(ctx: CGridEventCtx): void {
+  override handleMouseDown(ctx: VelocityGridEventCtx): void {
     if (ctx.hit.kind !== 'cell') {
       super.handleMouseDown(ctx);
       return;
@@ -212,7 +212,7 @@ export class RangeSelection extends Feature {
     super.handleMouseDown(ctx);
   }
 
-  override handleMouseDrag(ctx: CGridEventCtx): void {
+  override handleMouseDrag(ctx: VelocityGridEventCtx): void {
     if (this.state === null) {
       super.handleMouseDrag(ctx);
       return;
@@ -249,7 +249,7 @@ export class RangeSelection extends Feature {
     }
   }
 
-  override handleMouseUp(ctx: CGridEventCtx): void {
+  override handleMouseUp(ctx: VelocityGridEventCtx): void {
     // Always kill the auto-scroll loop on mouseup — even if the drag never
     // entered an edge zone, the conditional handles `state === null` below
     // and a degenerate `lastDragCtx` reset here keeps invariants tidy.
@@ -270,7 +270,7 @@ export class RangeSelection extends Feature {
   /** Extract the range-extension body so the rAF tick can call it with a
    *  freshly-synthesised hit at the same canvas-local point as the last
    *  in-zone drag, picking up the newly-revealed cells after the scroll. */
-  private extendRangeToHit(ctx: CGridEventCtx): void {
+  private extendRangeToHit(ctx: VelocityGridEventCtx): void {
     // Drag tick outside the data area (pointer drifted into the header
     // band, scrollbar gutter, or off the canvas) — keep the last range
     // instead of clobbering it.
@@ -290,7 +290,7 @@ export class RangeSelection extends Feature {
 
     ctx.grid.selection.setRanges([{ rowStart, rowEnd, colIds }]);
     // Mid-drag ping — started:false, finished:false. The
-    // cellSelectionChanged debounce inside CGrid drops this; only the
+    // cellSelectionChanged debounce inside VelocityGrid drops this; only the
     // raw rangeSelectionChanged listener sees it.
     ctx.grid.emitRangeSelectionChanged(false, false);
   }
@@ -340,7 +340,7 @@ export class RangeSelection extends Feature {
    *  first overshooting drag tick still extends the range to the edge
    *  visible cell) and by `tickAutoScroll` (so each rAF tick after the
    *  scroll picks up the newly-revealed cell). */
-  private withClampedHit(ctx: CGridEventCtx): CGridEventCtx {
+  private withClampedHit(ctx: VelocityGridEventCtx): VelocityGridEventCtx {
     if (ctx.hit.kind === 'cell') return ctx;
     const body = ctx.grid.getBodyRect();
     if (body.right <= body.left || body.bottom <= body.top) return ctx;

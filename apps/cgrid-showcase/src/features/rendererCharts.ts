@@ -1,5 +1,5 @@
-import { CGrid } from '@cgrid/kernel';
-import type { CColDef } from '@cgrid/kernel';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
+import type { CColDef } from '@wellsfargo-starui/velocity-grid';
 import type { Feature } from './index';
 import { wireShowcaseRenderers } from './renderersWire';
 
@@ -80,11 +80,11 @@ export const rendererCharts: Feature = {
   id: 'renderer-charts',
   label: 'Renderer Charts',
   description:
-    'Cycle 21f — @cgrid/renderers bar/chart/composite painters with ' +
+    'Cycle 21f — @wellsfargo-starui/velocity-grid-renderers bar/chart/composite painters with ' +
     'ColumnStats heat scaling and TickHistory spread bands over ticking data.',
 
   mount(gridHost, controls, theme) {
-    const grid = new CGrid<ChartRow>(gridHost, {
+    const grid = new VelocityGrid<ChartRow>(gridHost, {
       getRowId: (r) => r.id,
       columnDefs: [],
       theme,

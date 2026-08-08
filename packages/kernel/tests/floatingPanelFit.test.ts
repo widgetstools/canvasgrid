@@ -37,8 +37,8 @@ describe('FloatingPanelHost.fitContentHeight', () => {
     const content = document.createElement('div');
     setH(content, 240);
     body.appendChild(content);
-    setH(root.querySelector('.cg-floating-panel-titlebar')!, 40);
-    const frame = root.querySelector('.cg-floating-panel')!;
+    setH(root.querySelector('.vg-floating-panel-titlebar')!, 40);
+    const frame = root.querySelector('.vg-floating-panel')!;
     setH(frame, 520, 518); // 2px of top+bottom border chrome
 
     host.fitContentHeight();
@@ -60,8 +60,8 @@ describe('FloatingPanelHost.fitContentHeight', () => {
     const content = document.createElement('div');
     setH(content, 20); // tiny content
     body.appendChild(content);
-    setH(root.querySelector('.cg-floating-panel-titlebar')!, 40);
-    const frame = root.querySelector('.cg-floating-panel')!;
+    setH(root.querySelector('.vg-floating-panel-titlebar')!, 40);
+    const frame = root.querySelector('.vg-floating-panel')!;
     setH(frame, 400, 398);
 
     host.fitContentHeight();

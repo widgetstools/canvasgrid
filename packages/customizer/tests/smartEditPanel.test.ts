@@ -6,7 +6,7 @@
  * (real `mergeEditSettings` semantics) stands in for the engine.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { mergeEditSettings, type EditBridgeHandle, type EditSettings } from '@cgrid/edit';
+import { mergeEditSettings, type EditBridgeHandle, type EditSettings } from '@wellsfargo-starui/velocity-grid-edit';
 import { smartEditToolPanel } from '../src/panels/smartEdit';
 
 function makeHandle() {

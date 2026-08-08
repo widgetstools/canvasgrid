@@ -43,7 +43,7 @@ export interface DropZoneSpec {
   commit(colId: string): void;
 }
 
-/** Zone identifier suffixed onto CSS class names (`cg-columns-panel-${zone}-…`).
+/** Zone identifier suffixed onto CSS class names (`vg-columns-panel-${zone}-…`).
  *  `rgz` = Row Groups, `plz` = Column Labels (pivot), `valz` = Values. */
 export type ZoneKind = 'rgz' | 'plz' | 'valz';
 
@@ -66,19 +66,19 @@ export function buildDropZoneSection(opts: {
   contentClass: string;
 }): DropZoneSectionHandles {
   const section = document.createElement('div');
-  section.className = 'cg-columns-panel-section';
+  section.className = 'vg-columns-panel-section';
   section.dataset.kind = opts.kind;
 
   const header = document.createElement('div');
-  header.className = `cg-columns-panel-section-header cg-columns-panel-section-header--${opts.kind}`;
+  header.className = `vg-columns-panel-section-header vg-columns-panel-section-header--${opts.kind}`;
   const iconWrap = document.createElement('span');
-  iconWrap.className = 'cg-columns-panel-section-header-icon';
+  iconWrap.className = 'vg-columns-panel-section-header-icon';
   iconWrap.appendChild(iconSvg(opts.iconName, 13));
   header.appendChild(iconWrap);
   header.appendChild(document.createTextNode(opts.headerText));
 
   const dropZone = document.createElement('div');
-  dropZone.className = `cg-columns-panel-drop-zone ${opts.zoneClass}`;
+  dropZone.className = `vg-columns-panel-drop-zone ${opts.zoneClass}`;
   dropZone.setAttribute('role', 'list');
   dropZone.setAttribute('aria-label', opts.ariaLabel);
 
@@ -94,7 +94,7 @@ export function buildDropZoneSection(opts: {
 /** Empty-state element for a zone. */
 export function buildEmpty(zone: ZoneKind, placeholder: string): HTMLElement {
   const empty = document.createElement('div');
-  empty.className = `cg-columns-panel-${zone}-empty`;
+  empty.className = `vg-columns-panel-${zone}-empty`;
   empty.textContent = placeholder;
   return empty;
 }
@@ -113,27 +113,27 @@ export interface BuildPillOptions {
 
 /** Build one pill: drag-handle + label + ✕ remove. `zone` is the CSS
  *  prefix that scopes the pill's classes so per-zone selectors in tests
- *  (e.g. `.cg-columns-panel-plz-pill`) still uniquely identify the
+ *  (e.g. `.vg-columns-panel-plz-pill`) still uniquely identify the
  *  right pill kind. */
 export function buildPill(opts: BuildPillOptions): HTMLElement {
   const pill = document.createElement('div');
-  pill.className = `cg-columns-panel-${opts.zone}-pill cg-columns-panel-pill`;
+  pill.className = `vg-columns-panel-${opts.zone}-pill vg-columns-panel-pill`;
   pill.setAttribute('role', 'listitem');
   pill.dataset.colId = opts.colId;
 
   const handle = document.createElement('span');
-  handle.className = `cg-columns-panel-${opts.zone}-pill-handle cg-columns-panel-pill-handle`;
+  handle.className = `vg-columns-panel-${opts.zone}-pill-handle vg-columns-panel-pill-handle`;
   handle.setAttribute('aria-hidden', 'true');
   pill.appendChild(handle);
 
   const label = document.createElement('span');
-  label.className = `cg-columns-panel-${opts.zone}-pill-label cg-columns-panel-pill-label`;
+  label.className = `vg-columns-panel-${opts.zone}-pill-label vg-columns-panel-pill-label`;
   label.textContent = opts.label;
   pill.appendChild(label);
 
   const remove = document.createElement('button');
   remove.type = 'button';
-  remove.className = `cg-columns-panel-${opts.zone}-pill-remove cg-columns-panel-pill-remove`;
+  remove.className = `vg-columns-panel-${opts.zone}-pill-remove vg-columns-panel-pill-remove`;
   remove.setAttribute('aria-label', opts.removeAriaLabel);
   remove.textContent = '✕';
   remove.addEventListener('click', (e) => {
@@ -143,7 +143,7 @@ export function buildPill(opts: BuildPillOptions): HTMLElement {
   pill.appendChild(remove);
 
   pill.addEventListener('mousedown', (e) => {
-    if (e.target instanceof Element && e.target.closest(`.cg-columns-panel-${opts.zone}-pill-remove`)) {
+    if (e.target instanceof Element && e.target.closest(`.vg-columns-panel-${opts.zone}-pill-remove`)) {
       return;
     }
     opts.onMouseDown(e);
@@ -194,20 +194,20 @@ export function makeDragGhost(rootHost: HTMLElement, label: string): DragGhost {
     mount(clientX, clientY) {
       if (typeof document === 'undefined') return;
       const el = document.createElement('div');
-      el.className = 'cg-col-drag-ghost';
+      el.className = 'vg-col-drag-ghost';
       const icon = document.createElement('span');
-      icon.className = 'cg-col-drag-ghost-icon';
+      icon.className = 'vg-col-drag-ghost-icon';
       icon.setAttribute('aria-hidden', 'true');
       const lbl = document.createElement('span');
-      lbl.className = 'cg-col-drag-ghost-label';
+      lbl.className = 'vg-col-drag-ghost-label';
       lbl.textContent = label;
       el.appendChild(icon);
       el.appendChild(lbl);
       ghost = el;
       el.style.transform = `translate(${Math.round(clientX)}px,${Math.round(clientY - 14)}px)`;
-      const themeHost = rootHost.closest<HTMLElement>('[class*="cg-theme"]') ?? document.body;
+      const themeHost = rootHost.closest<HTMLElement>('[class*="vg-theme"]') ?? document.body;
       themeHost.appendChild(el);
-      requestAnimationFrame(() => el.classList.add('cg-col-drag-ghost--visible'));
+      requestAnimationFrame(() => el.classList.add('vg-col-drag-ghost--visible'));
     },
     position(clientX, clientY) {
       if (!ghost) return;

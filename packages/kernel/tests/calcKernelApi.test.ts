@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { _resetCalcProvider_forTests, type CalcProviderShape } from '../src/core/calcSlot';
 
 beforeAll(() => {
@@ -32,12 +32,12 @@ beforeAll(() => {
 function makeGrid() {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
-  return new CGrid<{ id: string; px: number }>(container, {
+  return new VelocityGrid<{ id: string; px: number }>(container, {
     columnDefs: [{ field: 'id' }, { field: 'px' }],
     getRowId: (r) => r.id,
-    theme: 'cg-theme-quartz',
+    theme: 'vg-theme-quartz',
   });
 }
 
@@ -51,7 +51,7 @@ function makeProvider(overrides: Partial<CalcProviderShape> = {}): CalcProviderS
   };
 }
 
-describe('CGrid calc-facing API (Cycle 21d / Task 9)', () => {
+describe('VelocityGrid calc-facing API (Cycle 21d / Task 9)', () => {
   afterEach(() => _resetCalcProvider_forTests());
 
   it('registerCalcProvider folds a synthesized calc column into the resolved column tree', () => {

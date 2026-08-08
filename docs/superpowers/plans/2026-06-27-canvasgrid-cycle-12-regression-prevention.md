@@ -42,7 +42,7 @@ faster because the gate catches their regressions.
 
 **Architecture:**
 
-- **`getVisibleCellBounds`** lives on `CGrid` as a sibling of the
+- **`getVisibleCellBounds`** lives on `VelocityGrid` as a sibling of the
   existing `getCellBoundsAt`. The new method returns `null` for any of:
   cell not in `visibleRows/Columns`, cell's vertical band exits
   `[bodyTop, bodyBottom]`, cell's horizontal extent exits its column's
@@ -57,7 +57,7 @@ faster because the gate catches their regressions.
   - `cgrid/src/renderer/painters/overlayPainter.ts` — focus ring
   - `cgrid/src/renderer/painters/rangeOverlayPainter.ts` — range fill
     + border + fill handle
-  - `cgrid/src/cgrid.ts` `syncOpenEditorPosition` — DOM editor close
+  - `cgrid/src/velocityGrid.ts` `syncOpenEditorPosition` — DOM editor close
     rule
   - `cgrid/src/interaction/floatingFilterOverlay.ts` `repositionAll`
     — input hide rule
@@ -98,7 +98,7 @@ absence doesn't matter.
     focused column's band
   - `82bd786` hide floating-filter inputs whose column scrolled into
     a foreign band
-- `cgrid/src/cgrid.ts` `getCellBoundsAt` (line ~4582) — the looser
+- `cgrid/src/velocityGrid.ts` `getCellBoundsAt` (line ~4582) — the looser
   primitive whose returned bounds the new helper will filter.
 - `cgrid/src/core/viewport.ts` `ViewportState` — `bodyTop`,
   `bodyBottom`, `bodyLeft`, `bodyRight`, `visibleRows`,
@@ -129,9 +129,9 @@ absence doesn't matter.
 
 | # | Title | Files touched | Verification |
 |---|-------|---------------|--------------|
-| 1 | `getVisibleCellBounds` helper + unit tests | `cgrid/src/cgrid.ts`, `cgrid/tests/visibleCellBounds.test.ts` | 12 unit cases (all 4 bands × cell-in-band / cell-straddling-band / cell-fully-out) |
+| 1 | `getVisibleCellBounds` helper + unit tests | `cgrid/src/velocityGrid.ts`, `cgrid/tests/visibleCellBounds.test.ts` | 12 unit cases (all 4 bands × cell-in-band / cell-straddling-band / cell-fully-out) |
 | 2 | Refactor focus ring + range overlay to use the helper | `cgrid/src/renderer/painters/overlayPainter.ts`, `rangeOverlayPainter.ts`, related tests | All existing painter tests pass; focus ring + range bounds delegated to helper |
-| 3 | Refactor DOM editor + floating-filter overlay to use the helper | `cgrid/src/cgrid.ts` `syncOpenEditorPosition`, `cgrid/src/interaction/floatingFilterOverlay.ts` `repositionAll` | Existing editor + floating-filter tests pass; band logic removed from both files |
+| 3 | Refactor DOM editor + floating-filter overlay to use the helper | `cgrid/src/velocityGrid.ts` `syncOpenEditorPosition`, `cgrid/src/interaction/floatingFilterOverlay.ts` `repositionAll` | Existing editor + floating-filter tests pass; band logic removed from both files |
 | 4 | Playwright visual-regression infrastructure | `apps/cgrid-positions/playwright-visual.config.ts`, `apps/cgrid-positions/e2e-visual/_setup.ts`, `package.json` script, `.gitattributes` (PNG = binary) | `npm run test:visual` runs an empty suite green |
 | 5 | Visual regression matrix (12 canonical snapshots) | `apps/cgrid-positions/e2e-visual/*.spec.ts`, `apps/cgrid-positions/e2e-visual/__snapshots__/*.png` | All 12 snapshots baselined + diff-clean on a fresh CI run |
 | 6 | Cycle 12 exit ritual | Worklog close-out, README mention of new `npm run test:visual`, no FM flips (this is infra) | All cycle 12 PRs merged; full suite passes |
@@ -142,7 +142,7 @@ absence doesn't matter.
 
 **Read first:**
 - This worklog's "Architecture" + "Global Constraints" sections.
-- `cgrid/src/cgrid.ts` lines 4579–4600 — existing `getCellBoundsAt`
+- `cgrid/src/velocityGrid.ts` lines 4579–4600 — existing `getCellBoundsAt`
   shape and JSDoc; the new helper mirrors the return type.
 - `cgrid/src/core/viewport.ts` lines 28–58 — `ViewportState` fields
   the band check reads (`bodyTop`, `bodyBottom`, `bodyLeft`,
@@ -152,7 +152,7 @@ absence doesn't matter.
   condition the new helper must catch.
 
 **Files:**
-- `cgrid/src/cgrid.ts` — add `getVisibleCellBounds(rowIndex, colId)`
+- `cgrid/src/velocityGrid.ts` — add `getVisibleCellBounds(rowIndex, colId)`
   immediately under `getCellBoundsAt`. Do NOT modify `getCellBoundsAt`.
 - `cgrid/tests/visibleCellBounds.test.ts` — new file, 12 cases below.
 - `cgrid/src/types.ts` — re-export `getVisibleCellBounds` type if
@@ -181,7 +181,7 @@ getVisibleCellBounds(rowIndex: number, colId: string):
 
 **Steps:**
 
-1. Open `cgrid/src/cgrid.ts`. Find the existing `getCellBoundsAt`
+1. Open `cgrid/src/velocityGrid.ts`. Find the existing `getCellBoundsAt`
    method (≈ line 4582). Add the new method directly below it,
    keeping the JSDoc shown above.
 2. Implementation:
@@ -205,7 +205,7 @@ getVisibleCellBounds(rowIndex: number, colId: string):
    ```
 3. Write `cgrid/tests/visibleCellBounds.test.ts`. Use the existing
    `tests/cgridApi.integration.test.ts` (or similar) as a template
-   for constructing a real `CGrid` in happy-dom with a small dataset.
+   for constructing a real `VelocityGrid` in happy-dom with a small dataset.
    The 12 cases:
    - **center column**: in viewport / cell fully in body band → returns bounds
    - **center column**: cell scrolled past `bodyLeft` (column straddles pinned-left edge) → returns null
@@ -226,7 +226,7 @@ getVisibleCellBounds(rowIndex: number, colId: string):
 6. Run `npx vitest run` (full suite) — 1056 + 12 = 1068 pass.
 
 **Acceptance:**
-- New file `cgrid/src/cgrid.ts` has `getVisibleCellBounds` directly
+- New file `cgrid/src/velocityGrid.ts` has `getVisibleCellBounds` directly
   under `getCellBoundsAt`, with the JSDoc above verbatim.
 - `cgrid/tests/visibleCellBounds.test.ts` exists with 12 cases, all
   passing.
@@ -251,14 +251,14 @@ getVisibleCellBounds(rowIndex: number, colId: string):
 - `cgrid/src/renderer/painters/types.ts` — `PainterCtx`. The helper
   call needs to be reachable from a painter; the cleanest path is to
   pass the cell-bounds *resolver* through `PainterCtx` rather than the
-  whole `CGrid` instance.
+  whole `VelocityGrid` instance.
 
 **Files:**
 - `cgrid/src/renderer/painters/types.ts` — add to `PainterCtx`:
   ```ts
   /** Returns visible (band-clipped) bounds for the cell, or null when
    *  the cell straddles or has scrolled out of its column's band.
-   *  Sourced from CGrid.getVisibleCellBounds (Cycle 12 / Task 1). */
+   *  Sourced from VelocityGrid.getVisibleCellBounds (Cycle 12 / Task 1). */
   getVisibleCellBounds: (rowIndex: number, colId: string) =>
     { x: number; y: number; w: number; h: number } | null;
   ```
@@ -292,13 +292,13 @@ getVisibleCellBounds(rowIndex: number, colId: string):
 1. Add `getVisibleCellBounds` to `PainterCtx` in `types.ts`.
 2. In `renderer.ts` `paint()`, supply the field. Source it from
    the same `opts` channel the other resolvers use (`opts.getSelection`,
-   `opts.cellData`, …). If the renderer doesn't yet hold a CGrid
+   `opts.cellData`, …). If the renderer doesn't yet hold a VelocityGrid
    reference, accept the resolver function in `RendererOpts`:
    ```ts
    getVisibleCellBounds: (r: number, c: string) =>
      { x: number; y: number; w: number; h: number } | null;
    ```
-   and wire it from `cgrid.ts` where `Renderer` is constructed.
+   and wire it from `velocityGrid.ts` where `Renderer` is constructed.
 3. Rewrite `overlayPainter.ts` per the Files section above.
 4. Rewrite `rangeOverlayPainter.ts` per the Files section above. The
    per-range visibility check is:
@@ -338,14 +338,14 @@ getVisibleCellBounds(rowIndex: number, colId: string):
 
 **Read first:**
 - This worklog's Task 1.
-- `cgrid/src/cgrid.ts` `syncOpenEditorPosition` (search for the name;
+- `cgrid/src/velocityGrid.ts` `syncOpenEditorPosition` (search for the name;
   it's the rule that closes the editor when the cell exits its band).
 - `cgrid/src/interaction/floatingFilterOverlay.ts` `repositionAll`.
 - Commits `d302071`, `d06d703`, `82bd786` — the band-clip math
   currently inlined in both files.
 
 **Files:**
-- `cgrid/src/cgrid.ts` — rewrite `syncOpenEditorPosition`:
+- `cgrid/src/velocityGrid.ts` — rewrite `syncOpenEditorPosition`:
   ```ts
   private syncOpenEditorPosition(): void {
     if (!this.activeEdit) return;
@@ -376,7 +376,7 @@ getVisibleCellBounds(rowIndex: number, colId: string):
   still works because the band check is column-based AND the helper's
   vertical check uses the cell's resolved top, not a hard-coded
   data-row position.
-- `cgrid/src/cgrid.ts` (constructor that builds
+- `cgrid/src/velocityGrid.ts` (constructor that builds
   `FloatingFilterOverlay`) — pass `this.getVisibleCellBounds.bind(this)`
   as the new dep.
 - `cgrid/tests/floatingFilterOverlay.test.ts` — update setup to stub
@@ -396,7 +396,7 @@ getVisibleCellBounds(rowIndex: number, colId: string):
    feels heavy, keep the existing inline check for the floating-filter
    case AND document why in a comment — pragmatism wins over
    ideology). Pick one approach and own it in the commit message.
-4. Update `cgrid.ts` constructor to inject the new dep.
+4. Update `velocityGrid.ts` constructor to inject the new dep.
 5. Update tests.
 6. Run `npx vitest run` — clean.
 7. Smoke in the demo: open editor on center column, scroll horizontally
@@ -599,7 +599,7 @@ getVisibleCellBounds(rowIndex: number, colId: string):
 
 ## Shipped
 
-**`getVisibleCellBounds` helper.** A new public method on `CGrid`
+**`getVisibleCellBounds` helper.** A new public method on `VelocityGrid`
 returns the cell's pixel bounds *only* when the cell is fully inside
 both its column's band (center → `[bodyLeft, bodyRight]`, pinned-left
 → `[0, bodyLeft]`, pinned-right → `[bodyRight, +∞)`) AND the vertical
@@ -609,7 +609,7 @@ header / footer edge, or the column scrolled into a foreign band. The
 looser `getCellBoundsAt` keeps its semantics for callers that need
 bounds whenever the cell is in the viewport at all (programmatic
 scroll math, hit-test). The helper sits directly under
-`getCellBoundsAt` in `cgrid/src/cgrid.ts` and is covered by 12 unit
+`getCellBoundsAt` in `cgrid/src/velocityGrid.ts` and is covered by 12 unit
 cases (`cgrid/tests/visibleCellBounds.test.ts`) — all four bands ×
 cell-in-band / cell-straddling-band / cell-fully-out — plus the
 off-viewport-row and unknown-colId guards.
@@ -625,14 +625,14 @@ slices the fill / border / fill-handle into per-band sub-rectangles via
 ranges that span the center + pinned bands paint two clean rectangles
 instead of one rectangle that bleeds across the band gutter. The
 resolver enters `PainterCtx` as a typed callback so painters never
-hold a `CGrid` reference. All existing painter tests pass with the
+hold a `VelocityGrid` reference. All existing painter tests pass with the
 stubbed resolver; the regression that shipped fixes for in commits
 `01fb141` (focus ring over header) + `d06d703` (focus ring leaking
 into pinned band) is now structurally impossible because both sites
 ask the same primitive that those commits taught.
 
 **Editor + floating-filter overlay refactor.** `syncOpenEditorPosition`
-in `cgrid.ts` collapses to a 7-line helper: ask
+in `velocityGrid.ts` collapses to a 7-line helper: ask
 `getVisibleCellBounds(row, colId)`, `commit()` the editor on `null`,
 `reposition(bounds)` otherwise. All the body-band + horizontal-band
 inline checks delete. `floatingFilterOverlay.ts` `repositionAll` does
@@ -641,7 +641,7 @@ when its column slides into a foreign band, and re-appears (with
 fresh top / left / width from the helper) when the column scrolls
 back into its native band. The `FloatingFilterOverlayDeps` interface
 takes `getVisibleCellBounds` as a constructor-injected dependency so
-the overlay never holds a `CGrid` reference. The shared regression
+the overlay never holds a `VelocityGrid` reference. The shared regression
 source from commits `d302071` (editor floating over header),
 `d06d703` (editor leaking into pinned band), and `82bd786` (floating
 filter bleeding into CUSIP) collapses to one call site each.

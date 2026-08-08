@@ -6,7 +6,7 @@
 
 **Architecture:** Phase A (Task 1-2) plumbs seven def-level flags through calc's own-template pipeline (`ColumnEditPatch` → `EDITABLE_SCALAR_KEYS` → fold `SCALAR_KEYS` → `overrideToKernelPatch`) so they persist via templates/layouts exactly like `editable`/`hide`/`width`. Aggregation and pinning use the kernel's existing runtime APIs (value columns / `setColumnsPinned`), which already persist via grid state. Phase B (Tasks 3-5) builds the popover + ribbon group in ext from the shared control factories. Task 6 is the E2E gate.
 
-**Tech Stack:** TypeScript; vitest (calc/kernel/ext); plain DOM + `--cg-*` tokens in ext (factories from `toolbar/ui.ts`); Playwright E2E in `apps/cgrid-ext-demo`.
+**Tech Stack:** TypeScript; vitest (calc/kernel/ext); plain DOM + `--vg-*` tokens in ext (factories from `toolbar/ui.ts`); Playwright E2E in `apps/cgrid-ext-demo`.
 
 **Spec:** `docs/superpowers/specs/2026-07-08-ribbon-column-config-design.md`
 
@@ -15,7 +15,7 @@
 - Def-level flags ride calc own-templates; NO `updateGridOptions({ columnDefs })` def-churn anywhere in this feature.
 - Aggregation uses `getValueColumns` / `addValueColumn` / `setValueColumnAggFunc` / `removeValueColumn` (never templates); pinned uses `setColumnsPinned`; hidden uses `editColumn({ hide })`.
 - `filter: null` removes the stored key (same convention as `format`/`cellIcon`); stored templates never hold `null`.
-- All ext controls built from the shared factories — `menu()` for the popover (never hand-rolled positioning/click-away), the labeled-trigger chrome for the ⚙ button; `cgext-col-` class prefix; `--cg-*` tokens with neutral-dark fallbacks; 12px font (bar-uniform rule).
+- All ext controls built from the shared factories — `menu()` for the popover (never hand-rolled positioning/click-away), the labeled-trigger chrome for the ⚙ button; `vgext-col-` class prefix; `--vg-*` tokens with neutral-dark fallbacks; 12px font (bar-uniform rule).
 - Apply per `targetCols()` (Selected/All scope fans out); popover stays open across edits; Escape closes; no selection → hint row + disabled quick controls.
 - Kernel throws surface non-fatally (row error tint + title), never crash the panel.
 - Working branch: `cgridext/ribbon-density`. Commit after every task.
@@ -169,7 +169,7 @@ const SCALAR_KEYS = [
 - [ ] **Step 4: Verify green + full suites**
 
 Run: `cd packages/calc && npx vitest run && npx tsc --noEmit && cd ../kernel && npx vitest run 2>&1 | tail -3 && npx tsc --noEmit`
-Expected: calc green (new file + existing), kernel green (patch type flows into `CGridApi.editColumn`).
+Expected: calc green (new file + existing), kernel green (patch type flows into `VelocityGridApi.editColumn`).
 
 - [ ] **Step 5: Commit**
 
@@ -186,7 +186,7 @@ git commit -m "feat(calc): column-config def flags ride own-templates — floati
 - Test: `packages/kernel/tests/columnConfigFlags.integration.test.ts` (new)
 
 **Interfaces:**
-- Consumes: Task 1's patch keys via the public `grid.editColumn`; `@cgrid/calc`'s `wireIntoKernel` (kernel devDeps already include sibling packages — precedent: `conditionalRuleRender.integration.test.ts` wires `@cgrid/rules`).
+- Consumes: Task 1's patch keys via the public `grid.editColumn`; `@wellsfargo-starui/velocity-grid-calc`'s `wireIntoKernel` (kernel devDeps already include sibling packages — precedent: `conditionalRuleRender.integration.test.ts` wires `@wellsfargo-starui/velocity-grid-rules`).
 - Produces: proof the flags flow template → calcSlot → resolved colDef; Task 6's E2E builds on the same behaviors in a real browser.
 
 - [ ] **Step 1: Write the failing test**
@@ -194,7 +194,7 @@ git commit -m "feat(calc): column-config def flags ride own-templates — floati
 ```ts
 // packages/kernel/tests/columnConfigFlags.integration.test.ts
 import { describe, it, expect } from 'vitest';
-import { wireIntoKernel as wireCalc } from '@cgrid/calc';
+import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid-calc';
 
 // Reuse the wired-grid harness idiom from cgrid.integration.test.ts
 // (buildWiredGrid with the fake Worker routed through createWorkerHost) —
@@ -274,7 +274,7 @@ git add packages/kernel/tests/columnConfigFlags.integration.test.ts packages/ker
 git commit -m "test(kernel): column-config flags — template-borne def flags reach resolved defs + state round-trip"
 ```
 
-(Include package.json only if `@cgrid/calc` had to be added to devDependencies.)
+(Include package.json only if `@wellsfargo-starui/velocity-grid-calc` had to be added to devDependencies.)
 
 ---
 
@@ -314,7 +314,7 @@ export function effectiveFlag(grid: ColumnConfigGrid, colId: string, key: FlagKe
 export function mixedValue(grid: ColumnConfigGrid, cols: string[], key: FlagKey): { value: unknown; mixed: boolean };
 ```
 
-DOM contract: panel root `.cgext-menu.cgext-col` (~300px); section heading `.cgext-col-caps`; rows `.cgext-col-row[data-k]` with `.cgext-col-label` + control; switch control `button.cgext-col-switch[aria-checked]` (adds `.is-mixed` when indeterminate); segmented control `.cgext-col-seg` with `button[data-v]`; empty state `.cgext-fmt-empty` (reuse the format-picker class + copy "Select a cell or column first.").
+DOM contract: panel root `.vgext-menu.vgext-col` (~300px); section heading `.vgext-col-caps`; rows `.vgext-col-row[data-k]` with `.vgext-col-label` + control; switch control `button.vgext-col-switch[aria-checked]` (adds `.is-mixed` when indeterminate); segmented control `.vgext-col-seg` with `button[data-v]`; empty state `.vgext-fmt-empty` (reuse the format-picker class + copy "Select a cell or column first.").
 
 `effectiveFlag` resolution order: own template override (`getTemplates()` `__cgridOwn:<colId>` → `overrides[key]`) → base colDef (walk `getGridOption('columnDefs')` tree by colId) → per-key default: `sortable`/`resizable` → true; `floatingFilter` → `!!getGridOption('floatingFilter')`... the demo enables the filter row grid-wide, so the grid-level option is the fallback; `enableRowGroup`/`enablePivot`/`hide`/`suppressAggFuncInHeader` → false; `editable` → base def ?? `!!defaultColDef.editable` (read `getGridOption('defaultColDef')`); `filter` → undefined (= Auto).
 
@@ -367,7 +367,7 @@ export function mountColumnPanel(cols: string[] = ['px'], grid = new FakeColumnG
   const { columnPanelMenu } = require('../src/toolbar/columnPanel') as typeof import('../src/toolbar/columnPanel');
   const m = columnPanelMenu(anchor, host);
   m.toggle();
-  const panel = document.querySelector<HTMLElement>('.cgext-menu.cgext-col')!;
+  const panel = document.querySelector<HTMLElement>('.vgext-menu.vgext-col')!;
   return { anchor, host, grid, m, panel };
 }
 ```
@@ -405,22 +405,22 @@ describe('effectiveFlag resolution', () => {
 describe('panel anatomy', () => {
   it('renders the four section headings and the empty state without targets', () => {
     const { panel } = mountColumnPanel();
-    const caps = [...panel.querySelectorAll('.cgext-col-caps')].map((c) => c.textContent);
+    const caps = [...panel.querySelectorAll('.vgext-col-caps')].map((c) => c.textContent);
     expect(caps).toEqual(['FILTER', 'GROUPING', 'AGGREGATION', 'BEHAVIOR']);
     document.body.replaceChildren();
     const { panel: empty } = mountColumnPanel([]);
-    expect(empty.querySelector('.cgext-fmt-empty')!.textContent).toContain('Select a cell or column');
-    expect(empty.querySelector('.cgext-col-row')).toBeNull();
+    expect(empty.querySelector('.vgext-fmt-empty')!.textContent).toContain('Select a cell or column');
+    expect(empty.querySelector('.vgext-col-row')).toBeNull();
   });
   it('switch rows expose aria-checked from effective state', () => {
     const { panel } = mountColumnPanel(['qty']);
-    const sw = panel.querySelector<HTMLElement>('.cgext-col-row[data-k="enableRowGroup"] .cgext-col-switch')!;
+    const sw = panel.querySelector<HTMLElement>('.vgext-col-row[data-k="enableRowGroup"] .vgext-col-switch')!;
     expect(sw.getAttribute('aria-checked')).toBe('true');
   });
   it('Escape closes; destroy cleans up', () => {
     const { panel, m } = mountColumnPanel();
     panel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    expect(document.querySelector('.cgext-menu.cgext-col')).toBeNull();
+    expect(document.querySelector('.vgext-menu.vgext-col')).toBeNull();
     m.destroy();
   });
 });
@@ -518,10 +518,10 @@ export function columnPanelMenu(anchor: HTMLElement, host: ColumnPanelHost): { t
 
 function buildPanel(host: ColumnPanelHost, close: () => void): HTMLElement {
   const el = document.createElement('div');
-  el.className = 'cgext-col';
+  el.className = 'vgext-col';
   el.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
   if (host.targetCols().length === 0) {
-    el.innerHTML = `<div class="cgext-fmt-empty">Select a cell or column first.</div>`;
+    el.innerHTML = `<div class="vgext-fmt-empty">Select a cell or column first.</div>`;
     return el;
   }
   renderSections(el, host); // Task 4 fills the rows; skeleton renders headings.
@@ -535,17 +535,17 @@ export function switchRow(
   onToggle: (next: boolean) => void,
 ): HTMLElement {
   const row = document.createElement('div');
-  row.className = 'cgext-col-row';
+  row.className = 'vgext-col-row';
   row.dataset.k = key;
   const lab = document.createElement('span');
-  lab.className = 'cgext-col-label';
+  lab.className = 'vgext-col-label';
   lab.textContent = label;
   const sw = document.createElement('button');
   sw.type = 'button';
-  sw.className = 'cgext-col-switch' + (state.mixed ? ' is-mixed' : '');
+  sw.className = 'vgext-col-switch' + (state.mixed ? ' is-mixed' : '');
   sw.setAttribute('role', 'switch');
   sw.setAttribute('aria-checked', state.mixed ? 'mixed' : String(!!state.value));
-  sw.innerHTML = '<span class="cgext-col-knob"></span>';
+  sw.innerHTML = '<span class="vgext-col-knob"></span>';
   sw.addEventListener('click', () => onToggle(state.mixed ? true : !state.value));
   row.append(lab, sw);
   return row;
@@ -558,13 +558,13 @@ export function segRow(
   onPick: (v: string) => void,
 ): HTMLElement {
   const row = document.createElement('div');
-  row.className = 'cgext-col-row';
+  row.className = 'vgext-col-row';
   row.dataset.k = key;
   const lab = document.createElement('span');
-  lab.className = 'cgext-col-label';
+  lab.className = 'vgext-col-label';
   lab.textContent = label;
   const seg = document.createElement('span');
-  seg.className = 'cgext-col-seg';
+  seg.className = 'vgext-col-seg';
   for (const opt of options) {
     const b = document.createElement('button');
     b.type = 'button';
@@ -580,7 +580,7 @@ export function segRow(
 
 export function sectionCaps(text: string): HTMLElement {
   const h = document.createElement('div');
-  h.className = 'cgext-col-caps';
+  h.className = 'vgext-col-caps';
   h.textContent = text;
   return h;
 }
@@ -594,66 +594,66 @@ function renderSections(el: HTMLElement, host: ColumnPanelHost): void {
 
 export function injectColumnPanelStyles(): void {
   if (typeof document === 'undefined') return;
-  if (document.getElementById('cgext-col-styles')) return;
+  if (document.getElementById('vgext-col-styles')) return;
   const style = document.createElement('style');
-  style.id = 'cgext-col-styles';
+  style.id = 'vgext-col-styles';
   style.textContent = COL_CSS;
   document.head.appendChild(style);
 }
 
 const COL_CSS = `
-.cgext-menu.cgext-col { width: 300px; padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 2px; }
-.cgext-col-caps {
+.vgext-menu.vgext-col { width: 300px; padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 2px; }
+.vgext-col-caps {
   padding: 8px 2px 4px; font-size: 11px; font-weight: 650; letter-spacing: 0.08em;
-  color: var(--cg-muted-fg-color, #9aa4b6);
+  color: var(--vg-muted-fg-color, #9aa4b6);
 }
-.cgext-col-row {
+.vgext-col-row {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   padding: 5px 4px; border-radius: 6px;
 }
-.cgext-col-row:hover { background: var(--cg-row-alt-bg, rgba(255,255,255,0.05)); }
-.cgext-col-label { font-size: 12px; color: var(--cg-fg-color, #e5e9f0); }
-.cgext-col-switch {
+.vgext-col-row:hover { background: var(--vg-row-alt-bg, rgba(255,255,255,0.05)); }
+.vgext-col-label { font-size: 12px; color: var(--vg-fg-color, #e5e9f0); }
+.vgext-col-switch {
   appearance: none; width: 30px; height: 17px; border-radius: 9px; position: relative;
-  border: 1px solid var(--cg-border-color, #2a3140);
-  background: var(--cg-control-bg, rgba(255,255,255,0.06)); cursor: pointer; flex: 0 0 auto;
+  border: 1px solid var(--vg-border-color, #2a3140);
+  background: var(--vg-control-bg, rgba(255,255,255,0.06)); cursor: pointer; flex: 0 0 auto;
   transition: background 120ms ease, border-color 120ms ease;
 }
-.cgext-col-switch[aria-checked="true"] {
-  background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 55%, transparent);
-  border-color: var(--cg-accent-color, #4f9cf9);
+.vgext-col-switch[aria-checked="true"] {
+  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 55%, transparent);
+  border-color: var(--vg-accent-color, #4f9cf9);
 }
-.cgext-col-knob {
+.vgext-col-knob {
   position: absolute; top: 1px; left: 1px; width: 13px; height: 13px; border-radius: 50%;
-  background: var(--cg-fg-color, #e5e9f0); transition: left 120ms ease;
+  background: var(--vg-fg-color, #e5e9f0); transition: left 120ms ease;
 }
-.cgext-col-switch[aria-checked="true"] .cgext-col-knob { left: 14px; }
-.cgext-col-switch.is-mixed { border-style: dashed; }
-.cgext-col-switch.is-mixed .cgext-col-knob { left: 7.5px; opacity: 0.6; }
-.cgext-col-switch:focus-visible { outline: 2px solid var(--cg-accent-color, #4f9cf9); outline-offset: 1px; }
-.cgext-col-seg { display: inline-flex; gap: 2px; }
-.cgext-col-seg > button {
+.vgext-col-switch[aria-checked="true"] .vgext-col-knob { left: 14px; }
+.vgext-col-switch.is-mixed { border-style: dashed; }
+.vgext-col-switch.is-mixed .vgext-col-knob { left: 7.5px; opacity: 0.6; }
+.vgext-col-switch:focus-visible { outline: 2px solid var(--vg-accent-color, #4f9cf9); outline-offset: 1px; }
+.vgext-col-seg { display: inline-flex; gap: 2px; }
+.vgext-col-seg > button {
   appearance: none; height: 22px; padding: 0 8px; border-radius: 5px;
-  border: 1px solid var(--cg-border-color, #2a3140); background: transparent;
-  color: var(--cg-muted-fg-color, #9aa4b6); font: inherit; font-size: 11.5px; cursor: pointer;
+  border: 1px solid var(--vg-border-color, #2a3140); background: transparent;
+  color: var(--vg-muted-fg-color, #9aa4b6); font: inherit; font-size: 11.5px; cursor: pointer;
 }
-.cgext-col-seg > button.is-on {
-  color: var(--cg-accent-color, #4f9cf9); border-color: var(--cg-accent-color, #4f9cf9);
-  background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 12%, transparent);
+.vgext-col-seg > button.is-on {
+  color: var(--vg-accent-color, #4f9cf9); border-color: var(--vg-accent-color, #4f9cf9);
+  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 12%, transparent);
 }
-.cgext-col-row.is-error { box-shadow: inset 0 0 0 1px var(--cg-neg-color, #e2606c); }
-.cgext-col-select {
+.vgext-col-row.is-error { box-shadow: inset 0 0 0 1px var(--vg-neg-color, #e2606c); }
+.vgext-col-select {
   height: 24px; padding: 0 6px; border-radius: 6px;
-  border: 1px solid var(--cg-border-color, #2a3140);
-  background: var(--cg-control-bg, rgba(0,0,0,0.25)); color: var(--cg-fg-color, #e5e9f0);
+  border: 1px solid var(--vg-border-color, #2a3140);
+  background: var(--vg-control-bg, rgba(0,0,0,0.25)); color: var(--vg-fg-color, #e5e9f0);
   font: inherit; font-size: 12px;
 }
 `;
 ```
 
-Note the format-picker's `.cgext-fmt-empty` class is styled in formatPicker's stylesheet — the popover reuses the CLASS; ensure `injectFormatPickerStyles()` has run (it has whenever the ribbon rendered) or duplicate the 3-line rule into `COL_CSS` under `.cgext-col .cgext-fmt-empty` — do the latter for standalone safety:
+Note the format-picker's `.vgext-fmt-empty` class is styled in formatPicker's stylesheet — the popover reuses the CLASS; ensure `injectFormatPickerStyles()` has run (it has whenever the ribbon rendered) or duplicate the 3-line rule into `COL_CSS` under `.vgext-col .vgext-fmt-empty` — do the latter for standalone safety:
 ```css
-.cgext-col .cgext-fmt-empty { padding: 18px 10px; font-size: 12.5px; color: var(--cg-muted-fg-color, #9aa4b6); }
+.vgext-col .vgext-fmt-empty { padding: 18px 10px; font-size: 12.5px; color: var(--vg-muted-fg-color, #9aa4b6); }
 ```
 
 - [ ] **Step 5: Verify green + suite**
@@ -678,31 +678,31 @@ git commit -m "feat(ext): column popover skeleton — effective-flag resolution,
 
 **Interfaces:**
 - Consumes: Task 3's factories + host; Task 1's patch keys.
-- Produces DOM rows (Task 6 E2E hooks): `data-k` values `floatingFilter`, `filter`, `enableRowGroup`, `enablePivot`, `aggFunc` (a `<select class="cgext-col-select">` with options none+AGG_FUNCS), `aggHeader`, `sortable`, `resizable`, `editable`, `pinned` (seg values `left`/`none`/`right`), `hide`.
+- Produces DOM rows (Task 6 E2E hooks): `data-k` values `floatingFilter`, `filter`, `enableRowGroup`, `enablePivot`, `aggFunc` (a `<select class="vgext-col-select">` with options none+AGG_FUNCS), `aggHeader`, `sortable`, `resizable`, `editable`, `pinned` (seg values `left`/`none`/`right`), `hide`.
 
 - [ ] **Step 1: Write the failing tests (append)**
 
 ```ts
 describe('sections — state read + apply fan-out', () => {
-  const row = (panel: HTMLElement, k: string) => panel.querySelector<HTMLElement>(`.cgext-col-row[data-k="${k}"]`)!;
+  const row = (panel: HTMLElement, k: string) => panel.querySelector<HTMLElement>(`.vgext-col-row[data-k="${k}"]`)!;
 
   it('floating filter switch applies editColumn to every target', () => {
     const grid = new FakeColumnGrid();
     const { panel, host } = mountColumnPanel(['px', 'qty'], grid);
-    row(panel, 'floatingFilter').querySelector<HTMLElement>('.cgext-col-switch')!.click();
+    row(panel, 'floatingFilter').querySelector<HTMLElement>('.vgext-col-switch')!.click();
     // grid option floatingFilter=true → effective true → toggle writes false
     expect(grid.editColumn).toHaveBeenCalledWith('px', { floatingFilter: false });
     expect(grid.editColumn).toHaveBeenCalledWith('qty', { floatingFilter: false });
     expect(host.onApplied).toHaveBeenCalled();
-    expect(document.querySelector('.cgext-menu.cgext-col')).not.toBeNull(); // stays open
+    expect(document.querySelector('.vgext-menu.vgext-col')).not.toBeNull(); // stays open
   });
 
   it('filter type segment: Set writes filter:set, Auto writes filter:null', () => {
     const grid = new FakeColumnGrid();
     const { panel } = mountColumnPanel(['px'], grid);
-    row(panel, 'filter').querySelector<HTMLElement>('.cgext-col-seg button[data-v="set"]')!.click();
+    row(panel, 'filter').querySelector<HTMLElement>('.vgext-col-seg button[data-v="set"]')!.click();
     expect(grid.editColumn).toHaveBeenCalledWith('px', { filter: 'set' });
-    row(panel, 'filter').querySelector<HTMLElement>('.cgext-col-seg button[data-v="auto"]')!.click();
+    row(panel, 'filter').querySelector<HTMLElement>('.vgext-col-seg button[data-v="auto"]')!.click();
     expect(grid.editColumn).toHaveBeenCalledWith('px', { filter: null });
   });
 
@@ -723,12 +723,12 @@ describe('sections — state read + apply fan-out', () => {
   it('show-in-header switch writes the INVERSE suppress flag and is disabled without an agg', () => {
     const grid = new FakeColumnGrid();
     const { panel } = mountColumnPanel(['px'], grid);
-    const sw = row(panel, 'aggHeader').querySelector<HTMLButtonElement>('.cgext-col-switch')!;
+    const sw = row(panel, 'aggHeader').querySelector<HTMLButtonElement>('.vgext-col-switch')!;
     expect(sw.disabled).toBe(true); // no agg on px
     document.body.replaceChildren();
     grid.valueCols = [{ colId: 'px', aggFunc: 'sum' }];
     const { panel: p2 } = mountColumnPanel(['px'], grid);
-    const sw2 = row(p2, 'aggHeader').querySelector<HTMLButtonElement>('.cgext-col-switch')!;
+    const sw2 = row(p2, 'aggHeader').querySelector<HTMLButtonElement>('.vgext-col-switch')!;
     expect(sw2.disabled).toBe(false);
     expect(sw2.getAttribute('aria-checked')).toBe('true'); // suppress default false → shown
     sw2.click();
@@ -742,7 +742,7 @@ describe('sections — state read + apply fan-out', () => {
     expect(grid.setColumnsPinned).toHaveBeenCalledWith(['px', 'qty'], 'left');
     row(panel, 'pinned').querySelector<HTMLElement>('button[data-v="none"]')!.click();
     expect(grid.setColumnsPinned).toHaveBeenCalledWith(['px', 'qty'], null);
-    row(panel, 'hide').querySelector<HTMLElement>('.cgext-col-switch')!.click();
+    row(panel, 'hide').querySelector<HTMLElement>('.vgext-col-switch')!.click();
     expect(grid.editColumn).toHaveBeenCalledWith('px', { hide: true });
   });
 
@@ -751,7 +751,7 @@ describe('sections — state read + apply fan-out', () => {
     grid.editColumn('px', { sortable: false });
     grid.editColumn.mockClear();
     const { panel } = mountColumnPanel(['px', 'qty'], grid);
-    const sw = row(panel, 'sortable').querySelector<HTMLElement>('.cgext-col-switch')!;
+    const sw = row(panel, 'sortable').querySelector<HTMLElement>('.vgext-col-switch')!;
     expect(sw.classList.contains('is-mixed')).toBe(true);
     sw.click(); // mixed → true for ALL
     expect(grid.editColumn).toHaveBeenCalledWith('px', { sortable: true });
@@ -762,7 +762,7 @@ describe('sections — state read + apply fan-out', () => {
     const grid = new FakeColumnGrid();
     grid.editColumn.mockImplementationOnce(() => { throw new Error('nope'); });
     const { panel } = mountColumnPanel(['px'], grid);
-    row(panel, 'enableRowGroup').querySelector<HTMLElement>('.cgext-col-switch')!.click();
+    row(panel, 'enableRowGroup').querySelector<HTMLElement>('.vgext-col-switch')!.click();
     expect(row(panel, 'enableRowGroup').classList.contains('is-error')).toBe(true);
   });
 });
@@ -780,7 +780,7 @@ function renderSections(el: HTMLElement, host: ColumnPanelHost): void {
   const { grid } = host;
   const cols = host.targetCols();
   const rerender = () => {
-    el.querySelectorAll('.cgext-col-caps, .cgext-col-row').forEach((n) => n.remove());
+    el.querySelectorAll('.vgext-col-caps, .vgext-col-row').forEach((n) => n.remove());
     renderSections(el, host);
   };
   /** Fan an apply over every target; error-tints the row on throw. */
@@ -833,13 +833,13 @@ function renderSections(el: HTMLElement, host: ColumnPanelHost): void {
     const mixed = !aggs.every((a) => a === aggs[0]);
     const current = mixed ? '' : (aggs[0] ?? 'none');
     const row = document.createElement('div');
-    row.className = 'cgext-col-row';
+    row.className = 'vgext-col-row';
     row.dataset.k = 'aggFunc';
     const lab = document.createElement('span');
-    lab.className = 'cgext-col-label';
+    lab.className = 'vgext-col-label';
     lab.textContent = 'Function';
     const sel = document.createElement('select');
-    sel.className = 'cgext-col-select';
+    sel.className = 'vgext-col-select';
     for (const v of ['none', ...AGG_FUNCS]) {
       const o = document.createElement('option');
       o.value = v;
@@ -871,7 +871,7 @@ function renderSections(el: HTMLElement, host: ColumnPanelHost): void {
     const hdrRow = switchRow('aggHeader', 'Show in header', shown, (next) => {
       applyAll(hdrRow, (colId) => grid.editColumn(colId, { suppressAggFuncInHeader: !next }));
     });
-    const hdrSwitch = hdrRow.querySelector<HTMLButtonElement>('.cgext-col-switch')!;
+    const hdrSwitch = hdrRow.querySelector<HTMLButtonElement>('.vgext-col-switch')!;
     hdrSwitch.disabled = !anyAgg;
     el.append(hdrRow);
   }
@@ -924,7 +924,7 @@ git commit -m "feat(ext): column popover sections — filter/grouping/aggregatio
 
 **Interfaces:**
 - Consumes: Task 3/4's `columnPanelMenu` + `ColumnPanelHost` + `effectiveFlag` + `AGG_FUNCS`; the wiring closures `targetCols`, `refresh`, `grid`, `disposers`, `menu`.
-- Produces DOM hooks (Task 6): trigger `[data-col="open"]` (labeled chrome `⚙ Column ⌄`), agg pill `[data-col="agg"]`, quick toggles `[data-col="ff"]`, `[data-col="grp"]`, `[data-col="aggh"]` (`.cgext-rb-toggle` with `is-on`).
+- Produces DOM hooks (Task 6): trigger `[data-col="open"]` (labeled chrome `⚙ Column ⌄`), agg pill `[data-col="agg"]`, quick toggles `[data-col="ff"]`, `[data-col="grp"]`, `[data-col="aggh"]` (`.vgext-rb-toggle` with `is-on`).
 
 - [ ] **Step 1: Write the failing static-guard test**
 
@@ -966,7 +966,7 @@ Render side — create the controls (near the other Row-A controls), replacing n
       // Column group — quick per-column configuration (spec 2026-07-08).
       const colOpen = document.createElement('button');
       colOpen.type = 'button';
-      colOpen.className = 'cgext-ip-open'; // labeled-control chrome (well-less variant)
+      colOpen.className = 'vgext-ip-open'; // labeled-control chrome (well-less variant)
       colOpen.dataset.col = 'open';
       colOpen.innerHTML =
         `${svg(I.settings, 14)}<span>Column</span>` +
@@ -1011,11 +1011,11 @@ Wiring (in `wireFormattingToolbar`, after the borders block; `grid` there is the
     try { return colGrid.getValueColumns().find((v) => v.colId === c)?.aggFunc; } catch { return undefined; }
   };
   const aggMenu = menu(r.aggPill, (close) => {
-    const list = h('cgext-menu-list');
+    const list = h('vgext-menu-list');
     for (const v of ['none', ...AGG_FUNCS]) {
       const it = document.createElement('button');
       it.type = 'button';
-      it.className = 'cgext-menu-item' + ((aggOfFirst() ?? 'none') === v ? ' is-active' : '');
+      it.className = 'vgext-menu-item' + ((aggOfFirst() ?? 'none') === v ? ' is-active' : '');
       it.textContent = v === 'none' ? 'None' : v;
       it.addEventListener('click', () => {
         for (const colId of targetCols()) {
@@ -1082,7 +1082,7 @@ Wiring (in `wireFormattingToolbar`, after the borders block; `grid` there is the
       r.aggPill.querySelector('span')!.textContent = 'Σ None';
     }
 ```
-(`.is-set` accent rule exists from the format pill: `.cgext-rb-pill.is-set`.)
+(`.is-set` accent rule exists from the format pill: `.vgext-rb-pill.is-set`.)
 
 Also widen the wiring `grid` structural type (the inline interface near the top of `wireFormattingToolbar`) with:
 ```ts
@@ -1125,14 +1125,14 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await page.evaluate(() => localStorage.clear());
   await page.reload();
-  await expect(page.locator('.cgext-titlebar')).toBeVisible();
+  await expect(page.locator('.vgext-titlebar')).toBeVisible();
 });
 
 const openPanel = async (page: Page) => {
   await page.locator('[data-col="open"]').click();
-  await expect(page.locator('.cgext-menu.cgext-col')).toBeVisible();
+  await expect(page.locator('.vgext-menu.vgext-col')).toBeVisible();
 };
-const row = (page: Page, k: string) => page.locator(`.cgext-col-row[data-k="${k}"]`);
+const row = (page: Page, k: string) => page.locator(`.vgext-col-row[data-k="${k}"]`);
 const selectCol = (page: Page, colId: string) => page.evaluate((c) => {
   const g = (window as any).__ext.grid;
   g.clearCellRanges();
@@ -1153,21 +1153,21 @@ test('popover flags: floating filter + set filter + groupable write templates; p
   // input per visible column; use its column-identifying attribute/class) and
   // count inputs before/after. If the overlay exposes no per-column hook,
   // assert on the TOTAL input count dropping by one.
-  const ffInputs = () => page.evaluate(() => document.querySelectorAll('.cg-floating-filter input, [class*="floating-filter"] input').length);
+  const ffInputs = () => page.evaluate(() => document.querySelectorAll('.vg-floating-filter input, [class*="floating-filter"] input').length);
   const before = await ffInputs();
-  await row(page, 'floatingFilter').locator('.cgext-col-switch').click();
+  await row(page, 'floatingFilter').locator('.vgext-col-switch').click();
   expect(await ownFlag(page, 'notionalAmount', 'floatingFilter')).toBe(false); // demo default is on
-  await page.waitForFunction((n) => document.querySelectorAll('.cg-floating-filter input, [class*="floating-filter"] input').length < n, before);
+  await page.waitForFunction((n) => document.querySelectorAll('.vg-floating-filter input, [class*="floating-filter"] input').length < n, before);
   await row(page, 'filter').locator('button[data-v="set"]').click();
   expect(await ownFlag(page, 'notionalAmount', 'filter')).toBe('set');
-  await row(page, 'enableRowGroup').locator('.cgext-col-switch').click();
+  await row(page, 'enableRowGroup').locator('.vgext-col-switch').click();
   expect(await ownFlag(page, 'notionalAmount', 'enableRowGroup')).toBe(true);
   await page.keyboard.press('Escape');
 
   await page.waitForFunction(() =>
     Object.keys(localStorage).some((k) => (localStorage.getItem(k) ?? '').includes('enableRowGroup')));
   await page.reload();
-  await expect(page.locator('.cgext-titlebar')).toBeVisible();
+  await expect(page.locator('.vgext-titlebar')).toBeVisible();
   await page.waitForFunction(() => {
     const own = (window as any).__ext.grid.getTemplates?.()
       ?.find((t: any) => t.id === '__cgridOwn:notionalAmount');
@@ -1181,17 +1181,17 @@ test('aggregation: pill sets sum, popover switches header visibility, none remov
   const agg = () => page.evaluate(() =>
     (window as any).__ext.grid.getValueColumns().find((v: any) => v.colId === 'yield')?.aggFunc);
   await page.locator('[data-col="agg"]').click();
-  await page.locator('.cgext-menu-item', { hasText: /^sum$/ }).click();
+  await page.locator('.vgext-menu-item', { hasText: /^sum$/ }).click();
   expect(await agg()).toBe('sum');
   await expect(page.locator('[data-col="agg"]')).toContainText('Σ sum');
 
   await openPanel(page);
-  await row(page, 'aggHeader').locator('.cgext-col-switch').click();
+  await row(page, 'aggHeader').locator('.vgext-col-switch').click();
   expect(await ownFlag(page, 'yield', 'suppressAggFuncInHeader')).toBe(true);
   await page.keyboard.press('Escape');
 
   await page.locator('[data-col="agg"]').click();
-  await page.locator('.cgext-menu-item', { hasText: /^None$/ }).click();
+  await page.locator('.vgext-menu-item', { hasText: /^None$/ }).click();
   expect(await agg()).toBeUndefined();
 });
 
@@ -1210,9 +1210,9 @@ test('quick toggles + pinned + hidden behave and reflect state', async ({ page }
     (window as any).__ext.grid.getColumnState().find((s: any) => s.colId === 'spread')?.pinned);
   expect(pinned).toBe('left');
   await row(page, 'pinned').locator('button[data-v="none"]').click();
-  await row(page, 'hide').locator('.cgext-col-switch').click();
+  await row(page, 'hide').locator('.vgext-col-switch').click();
   expect(await ownFlag(page, 'spread', 'hide')).toBe(true);
-  await row(page, 'hide').locator('.cgext-col-switch').click(); // restore
+  await row(page, 'hide').locator('.vgext-col-switch').click(); // restore
 });
 ```
 

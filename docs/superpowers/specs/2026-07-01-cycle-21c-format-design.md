@@ -1,10 +1,10 @@
-# Cycle 21c — `@cgrid/format` (Unified Formatting DSL) — Design
+# Cycle 21c — `@wellsfargo-starui/velocity-grid-format` (Unified Formatting DSL) — Design
 
 **Status:** Draft — pending user review before writing implementation plan.
 **Date:** 2026-07-01
-**Predecessor:** [Cycle 21b `@cgrid/expression`](../plans/2026-07-01-cycle-21b-expression.md) (merged as PR #93)
+**Predecessor:** [Cycle 21b `@wellsfargo-starui/velocity-grid-expression`](../plans/2026-07-01-cycle-21b-expression.md) (merged as PR #93)
 **Parent brief:** [Cycle 21 modular monorepo + intrinsic features](../plans/2026-07-01-canvasgrid-cycle-21-modular-monorepo-and-intrinsic-features.md) §3.2, §4.3, §5, §7
-**Successor cycles unblocked:** 21d (`@cgrid/calc`), 21e (`@cgrid/rules`), 21f (`@cgrid/renderers`), 21h (`@cgrid/export`), 21i (`@cgrid/customizer`)
+**Successor cycles unblocked:** 21d (`@wellsfargo-starui/velocity-grid-calc`), 21e (`@wellsfargo-starui/velocity-grid-rules`), 21f (`@wellsfargo-starui/velocity-grid-renderers`), 21h (`@wellsfargo-starui/velocity-grid-export`), 21i (`@wellsfargo-starui/velocity-grid-customizer`)
 
 ---
 
@@ -12,23 +12,23 @@
 
 ### 1.1 In scope — everything the parent brief specifies
 
-Cycle 21c ships **all three DSL tiers** and **the kernel bridge** in a single landing. Non-deferral per the durable project principle: every feature the parent brief enumerates for `@cgrid/format` lands here. If a cycle looks large, we decompose into more tasks (~20 vs 21b's 5) — we do not push features to a follow-up cycle.
+Cycle 21c ships **all three DSL tiers** and **the kernel bridge** in a single landing. Non-deferral per the durable project principle: every feature the parent brief enumerates for `@wellsfargo-starui/velocity-grid-format` lands here. If a cycle looks large, we decompose into more tasks (~20 vs 21b's 5) — we do not push features to a follow-up cycle.
 
-**`@cgrid/format` package:**
+**`@wellsfargo-starui/velocity-grid-format` package:**
 
 - **Tier 0 — pure Excel format codes.** Digit placeholders (`0`, `#`, `?`), decimal/group separators, `%`, quoted literals, escape sequences, section separator `;` (up to 4: positive/negative/zero/text), Excel named colors `[Red]`/`[Green]`/etc., Excel conditions `[>1000]`, Excel locale tags `[$-409]` (parsed as Intl hints), date/time tokens (`yyyy`, `mmm`, `dd`, `hh`, `AM/PM`).
 - **Tier 1 — Tier 0 + expression brackets + icon references.** New bracket kinds: `[color=<expr>]`, `[bg=<expr>]`, `[weight=<expr>]`, `[style=<expr>]`, `[if <expr>]`, `{icon:<name>}`, `{icon:<name>|<expr>}` (dynamic name).
 - **Tier 2 — composite ColDef.** New ColDef shape `type: 'composite'` + `fragments[]` array; each fragment carries text or expr + per-fragment `format` + per-fragment `style`.
 - **Formatter template registry.** 9 built-in Intl-backed templates (Number, Currency, Percent, Date, Time, DateTime, RelativeTime, Abbreviated, Custom) + `registerFormatterTemplate` extension point.
-- **Style resolution.** Per-row eval of Tier 1 bracket expressions produces `StyleObj` for `cellStyle` + `IconRef` for `cellIcon`. Uses `@cgrid/expression` for interior parse + eval.
+- **Style resolution.** Per-row eval of Tier 1 bracket expressions produces `StyleObj` for `cellStyle` + `IconRef` for `cellIcon`. Uses `@wellsfargo-starui/velocity-grid-expression` for interior parse + eval.
 - **Fragment resolution.** Per-row eval of composite fragments produces `ResolvedFragment[]` used by paint, tooltip, clipboard.
 - **`wireIntoKernel(grid)` bridge.** Idempotent side-effect module that registers the format compiler into kernel's injection slot, registers the Lucide icon bundle, and auto-registers per-composite-column tooltip providers.
 
-**`@cgrid/kernel` bridge (surgical additions):**
+**`@wellsfargo-starui/velocity-grid` bridge (surgical additions):**
 
 - **`valueFormatter` type broadening** — `string | ((params) => string)`. Backwards-compatible; existing function form works unchanged.
 - **New ColDef fields** — `cellIcon`, `type: 'composite'`, `fragments`, `cellBackground`, `align`, `overflow`.
-- **Format compiler injection slot** — `grid.registerFormatCompiler(fn)` / `getFormatCompiler()`; kernel never imports `@cgrid/format`; the DI slot uses structural type aliases.
+- **Format compiler injection slot** — `grid.registerFormatCompiler(fn)` / `getFormatCompiler()`; kernel never imports `@wellsfargo-starui/velocity-grid-format`; the DI slot uses structural type aliases.
 - **ColDef-resolve step** — `compileFormatSlots` pass in `core/propertyChain.ts` derives `valueFormatter` fn, `cellStyle` fn (merged with any user-supplied `cellStyle`), and `cellIcon` fn from the format string / composite shape.
 - **Icon registry** — `grid.registerIconSet(name, paths)` / `grid.resolveIcon(name)` backed by a Path2D map. Bundled `lucide.generated.ts` (all ~1500 icons as SVG path strings, lazy-`new Path2D` on first access). Kernel does not auto-register; format's bridge does.
 - **Composite cell renderer** — new painter at `packages/kernel/src/renderer/cellRenderers/composite.ts`; layout pass measures fragments + handles ellipsis + alignment; draw pass renders per-fragment style + inline icons.
@@ -42,14 +42,14 @@ Called out so scope creep during implementation gets caught early:
 
 - **Multi-line composite cells.** Row heights stay uniform; composite is single-line only. Locked by parent brief §5 DSL decision 1.
 - **Composite cell editing.** Composite is a derived view. F2/dblclick on composite is a no-op. Users edit source columns directly. Locked by §5 DSL decision 4.
-- **Rule reference resolution.** `rule:<ruleId>` inside a style expression is an honest structural reserve — parsed, `RuleRefNode` emitted, resolver returns `null`. `@cgrid/rules` (Cycle 21e) plugs the resolver. Mirrors 21b's `AggregateNode` pattern.
-- **Aggregate-driven format strings.** `[color=[if [price] > AVG([price]) then "#0a7" else "#d33"]]` — the `AVG([price])` interior gets rejected at `expression.compile` with `not-yet-implemented` (already handled by 21b). Ships when `@cgrid/calc` (Cycle 21d) lands.
+- **Rule reference resolution.** `rule:<ruleId>` inside a style expression is an honest structural reserve — parsed, `RuleRefNode` emitted, resolver returns `null`. `@wellsfargo-starui/velocity-grid-rules` (Cycle 21e) plugs the resolver. Mirrors 21b's `AggregateNode` pattern.
+- **Aggregate-driven format strings.** `[color=[if [price] > AVG([price]) then "#0a7" else "#d33"]]` — the `AVG([price])` interior gets rejected at `expression.compile` with `not-yet-implemented` (already handled by 21b). Ships when `@wellsfargo-starui/velocity-grid-calc` (Cycle 21d) lands.
 - **Server-side format evaluation.** Format runs on whatever thread the caller invokes it on. Parent brief §7 worker-only-evaluation is a *deployment policy* for downstream consumers (rules/calc/renderers deploy format to the worker); the package itself is thread-agnostic. Same posture as 21b.
-- **Customizer editor UX for format strings.** Autocomplete, syntax highlighting, live preview belong to `@cgrid/customizer` (Cycle 21i). Format exposes `compileFormat` + `CompileFormatError` with `loc` info; customizer builds the UI on top.
+- **Customizer editor UX for format strings.** Autocomplete, syntax highlighting, live preview belong to `@wellsfargo-starui/velocity-grid-customizer` (Cycle 21i). Format exposes `compileFormat` + `CompileFormatError` with `loc` info; customizer builds the UI on top.
 - **Format-string round-trip / prettify.** No `formatToString(program)` inverse; compilation is one-way (parse-only). Editors save the source string, not the `FormatProgram`.
 - **Alternate icon libraries beyond Lucide + Phosphor stub.** Bundle Lucide by default; expose `registerIconSet(name, paths)` for Phosphor or others. No bundled Phosphor — users opt in.
 - **Runtime locale switching.** `compileFormat(source, { locale, currency })` locks locale at compile time. Runtime locale changes require re-resolving affected ColDefs. Add a `grid.setLocale(locale)` shortcut in a follow-up cycle if a real consumer needs it.
-- **CSS-in-JS style output.** `StyleObj` uses simple string fields (color/background as CSS-format strings). No CSSVar interpolation, no theme-token indirection. Theme integration lands with `@cgrid/renderers` (Cycle 21f) design tokens.
+- **CSS-in-JS style output.** `StyleObj` uses simple string fields (color/background as CSS-format strings). No CSSVar interpolation, no theme-token indirection. Theme integration lands with `@wellsfargo-starui/velocity-grid-renderers` (Cycle 21f) design tokens.
 - **Format performance benchmarks against 8ms/frame at 50k rows.** Deferred until Cycle 20 (excel-pivot) or Cycle 21f (renderers) actually exercises the hot path at scale. Format aims for correctness + reasonable per-cell allocation in 21c.
 
 ---
@@ -66,15 +66,15 @@ expression    (no cgrid deps)
 format        → expression                    ← this cycle
 ```
 
-Kernel does **not** gain a `@cgrid/format` dep. Instead:
+Kernel does **not** gain a `@wellsfargo-starui/velocity-grid-format` dep. Instead:
 
-- Format declares `peerDependencies: { "@cgrid/kernel": "*" }`. The kernel bridge module (`src/bridge.ts`) imports kernel types + calls kernel APIs.
+- Format declares `peerDependencies: { "@wellsfargo-starui/velocity-grid": "*" }`. The kernel bridge module (`src/bridge.ts`) imports kernel types + calls kernel APIs.
 - Kernel exposes a **format-compiler injection slot** (`src/core/formatCompilerSlot.ts`) using structural type aliases — no import from format required.
 - Format's `wireIntoKernel(grid)` calls kernel's `grid.registerFormatCompiler(compileFormat)` at grid-setup time.
 
 This keeps the dep graph acyclic and lets consumers who don't use format ship without importing it (kernel-only apps are unaffected). ESLint `no-restricted-imports` rule enforces the boundary at CI time.
 
-### 2.2 `@cgrid/format` source layout
+### 2.2 `@wellsfargo-starui/velocity-grid-format` source layout
 
 ```
 packages/format/
@@ -110,11 +110,11 @@ packages/format/
 │   ├── bridge.test.ts
 │   └── fixtures/format-corpus.json    — ~80 golden format-string → expected {text, style, icon, fragments} entries
 ├── README.md
-├── package.json                       — dependencies: { "@cgrid/expression": "*" }; peerDependencies: { "@cgrid/kernel": "*" }
+├── package.json                       — dependencies: { "@wellsfargo-starui/velocity-grid-expression": "*" }; peerDependencies: { "@wellsfargo-starui/velocity-grid": "*" }
 └── tsconfig.json
 ```
 
-### 2.3 `@cgrid/kernel` diff footprint
+### 2.3 `@wellsfargo-starui/velocity-grid` diff footprint
 
 New files (isolated; no existing tests edited):
 
@@ -137,14 +137,14 @@ Touched existing files (surgical):
 | `types/column.ts` | `valueFormatter` type broadened; new fields `cellIcon`, `type: 'composite'`, `fragments`, `cellBackground`, `align`, `overflow` |
 | `types.ts` | Structural aliases for format compiler DI (CompositeColDefShape, FormatProgramShape) |
 | `types/api.ts` | Public `registerFormatCompiler`, `registerIconSet`, `resolveIcon`, `registerTooltipProvider`, `unregisterTooltipProvider` added |
-| `cgrid.ts` | Wires new API methods to internal implementations |
+| `velocityGrid.ts` | Wires new API methods to internal implementations |
 | `core/propertyChain.ts` | `compileFormatSlots` pass runs at ColDef-resolve; `mergeCellStyle` helper |
 | `renderer/painters/byRows.ts` | Icon inline rendering (left of text, tint respect, text-metrics inclusion) |
 | `interaction/featureChain.ts` | TooltipProvider feature inserted ahead of OnHover, behind SparklineTooltip |
 | `interaction/features/keyboardShortcuts.ts` | Copy path extended: ClipboardItem write when composite cells in range; feature-detect fallback |
 | `interaction/features/keyboardShortcuts.ts` (new helper) | `serializeToHtml(rows)` for the copy path |
 
-**All kernel changes guarded by the injection-slot pattern.** Apps that don't import `@cgrid/format` never call `registerFormatCompiler`; `getFormatCompiler()` returns null; `compileFormatSlots` is a pass-through; the icon registry is empty; `registerTooltipProvider` is a no-op cost until called. Behavior identical to today's kernel for such apps.
+**All kernel changes guarded by the injection-slot pattern.** Apps that don't import `@wellsfargo-starui/velocity-grid-format` never call `registerFormatCompiler`; `getFormatCompiler()` returns null; `compileFormatSlots` is a pass-through; the icon registry is empty; `registerTooltipProvider` is a no-op cost until called. Behavior identical to today's kernel for such apps.
 
 ---
 
@@ -152,7 +152,7 @@ Touched existing files (surgical):
 
 ### 3.1 Tier 0 — pure Excel format codes
 
-Excel-native. Format's `excel/parser.ts` handles this end-to-end; `@cgrid/expression` is not invoked.
+Excel-native. Format's `excel/parser.ts` handles this end-to-end; `@wellsfargo-starui/velocity-grid-expression` is not invoked.
 
 **Supported tokens:**
 
@@ -190,7 +190,7 @@ Format's outer `tokenizer.ts` recognizes these new bracket kinds alongside Tier 
 
 ### 3.3 Sugar canonicalization (before `expression.parse`)
 
-`tier1/sugar.ts` transforms bracket interiors before handing off to `@cgrid/expression`:
+`tier1/sugar.ts` transforms bracket interiors before handing off to `@wellsfargo-starui/velocity-grid-expression`:
 
 1. **`if X then Y else Z`** → `(X) ? (Y) : (Z)`. Recognized only when the bracket interior begins with `if ` (space required). Nested `if/then/else` supported via recursive canonicalization. Rewrite happens at the string level before expression parse; expression sees only its native ternary syntax.
 2. **Bare hex color tokens** `#0a7`, `#0af`, `#00aa77`, `#00aa77ff` (3/4/6/8-char hex) → converted to string literals `"#0a7"`, etc. Format's tokenizer recognizes `#[0-9a-fA-F]{3,8}` inside style-bracket interiors ONLY (`[color=…]`, `[bg=…]`, `[weight=…]`, `[style=…]`, `[if …]`) and rewrites in place before expression.parse. Not recognized inside `{icon:…}` interior (icon names are bare identifiers, not colors). Bare hex outside any bracket is treated as a literal character sequence.
@@ -239,7 +239,7 @@ export type FragmentStyle = {
 
 ### 3.5 Grammar reserves (honest structural reserves, mirror 21b's `AggregateNode`)
 
-- **`rule:<ruleId>`** in any style expression → parsed, `RuleRefNode` emitted, resolver returns `null`. `@cgrid/rules` (Cycle 21e) plugs the resolver.
+- **`rule:<ruleId>`** in any style expression → parsed, `RuleRefNode` emitted, resolver returns `null`. `@wellsfargo-starui/velocity-grid-rules` (Cycle 21e) plugs the resolver.
 - **Aggregate function calls** inside Tier 1 interior (`SUM`, `AVG`, `RUNNING_SUM`, etc.) → `expression.compile` rejects with `not-yet-implemented` (already handled by 21b). Format surfaces the error with format-source loc translated from expression-source loc.
 
 Both are honest reserves — the DSL grammar recognizes them, format's error surface documents them, downstream cycle plugs the resolver. Not deferral of the format DSL; deferral of the downstream package that supplies the referent.
@@ -248,7 +248,7 @@ Both are honest reserves — the DSL grammar recognizes them, format's error sur
 
 ## §4 Public API surface
 
-### 4.1 `@cgrid/format` exports
+### 4.1 `@wellsfargo-starui/velocity-grid-format` exports
 
 ```ts
 // packages/format/src/index.ts
@@ -421,7 +421,7 @@ export interface FormatterTemplateContext {
 ### 4.5 `wireIntoKernel(grid, opts?)` bridge
 
 ```ts
-export function wireIntoKernel(grid: CGrid<any>, opts?: WireOptions): void;
+export function wireIntoKernel(grid: VelocityGrid<any>, opts?: WireOptions): void;
 
 export interface WireOptions {
   additionalIconSets?: Record<string, IconSet>;   // e.g. Phosphor
@@ -440,22 +440,22 @@ Bridge does:
 Consumers wire once at grid setup:
 
 ```ts
-import { CGrid } from '@cgrid/kernel';
-import { wireIntoKernel } from '@cgrid/format';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
+import { wireIntoKernel } from '@wellsfargo-starui/velocity-grid-format';
 
-const grid = new CGrid({ ... });
+const grid = new VelocityGrid({ ... });
 wireIntoKernel(grid);
 ```
 
 ### 4.6 Type-only imports (dep-graph hygiene)
 
-Kernel's `types/column.ts` imports `Fragment`, `IconRef`, `FragmentStyle` from `@cgrid/format` via `import type`:
+Kernel's `types/column.ts` imports `Fragment`, `IconRef`, `FragmentStyle` from `@wellsfargo-starui/velocity-grid-format` via `import type`:
 
 ```ts
-import type { Fragment, IconRef, FragmentStyle } from '@cgrid/format';
+import type { Fragment, IconRef, FragmentStyle } from '@wellsfargo-starui/velocity-grid-format';
 ```
 
-Type-only imports don't create runtime dep-graph edges. TypeScript checks kernel's ColDef shapes against format's types; the compiled JS has no `@cgrid/format` import. Verified by lint rule + build-time check that kernel's `dist/*.js` never mentions `@cgrid/format`.
+Type-only imports don't create runtime dep-graph edges. TypeScript checks kernel's ColDef shapes against format's types; the compiled JS has no `@wellsfargo-starui/velocity-grid-format` import. Verified by lint rule + build-time check that kernel's `dist/*.js` never mentions `@wellsfargo-starui/velocity-grid-format`.
 
 ---
 
@@ -466,7 +466,7 @@ Type-only imports don't create runtime dep-graph edges. TypeScript checks kernel
 `packages/kernel/src/types/column.ts`:
 
 ```ts
-import type { Fragment, IconRef, FragmentStyle } from '@cgrid/format';  // type-only
+import type { Fragment, IconRef, FragmentStyle } from '@wellsfargo-starui/velocity-grid-format';  // type-only
 
 export interface CColDef<TRow, TValue = unknown> {
   // ... existing fields ...
@@ -494,8 +494,8 @@ export interface CColDef<TRow, TValue = unknown> {
 `packages/kernel/src/core/formatCompilerSlot.ts` (new):
 
 ```ts
-// Kernel exposes an injection point; @cgrid/format registers itself.
-// Kernel does NOT import @cgrid/format at runtime.
+// Kernel exposes an injection point; @wellsfargo-starui/velocity-grid-format registers itself.
+// Kernel does NOT import @wellsfargo-starui/velocity-grid-format at runtime.
 
 export interface CompositeColDefShape {
   type: 'composite';
@@ -679,7 +679,7 @@ interface TooltipParams {
 type TooltipPayload = { plain: string } | { html: string };
 ```
 
-**Feature-chain integration** — `TooltipProvider` sits between `SparklineTooltip` (existing, specialized) and `OnHover`. On mouseenter of a cell with a registered provider, feature debounces (~500ms), invokes provider, shows DOM tooltip using existing tooltip chrome tokens (`--cg-tooltip-bg`, `--cg-tooltip-fg`, `--cg-tooltip-border`).
+**Feature-chain integration** — `TooltipProvider` sits between `SparklineTooltip` (existing, specialized) and `OnHover`. On mouseenter of a cell with a registered provider, feature debounces (~500ms), invokes provider, shows DOM tooltip using existing tooltip chrome tokens (`--vg-tooltip-bg`, `--vg-tooltip-fg`, `--vg-tooltip-border`).
 
 **Auto-registration for composite** — during `compileFormatSlots`, if `type === 'composite'`, kernel auto-registers a tooltip provider for that `colId` that returns `{ plain: program.formatText(...) }`. Users can override with their own `registerTooltipProvider` — user registration wins. Auto-registration cleared on ColDef removal.
 
@@ -745,9 +745,9 @@ Branch: `cycle21c/format`. Single PR. Cadence: subagent-driven-development — o
 
 Six phases, dependency-ordered. Detailed step lists live in the implementation plan (`docs/superpowers/plans/2026-07-01-cycle-21c-format.md`).
 
-**Phase A — @cgrid/format package scaffold + shared types (1 task)**
+**Phase A — @wellsfargo-starui/velocity-grid-format package scaffold + shared types (1 task)**
 
-1. Types + module skeletons + package.json wiring. Author `types.ts` with all shapes from §4. Skeleton every source file from §2.2 with `throw new Error('not-yet-implemented')` bodies. Wire `index.ts`. `@cgrid/format`'s `package.json` gains `peerDependencies: { "@cgrid/kernel": "*" }`. Typecheck + vacuous tests pass. Kernel + expression untouched.
+1. Types + module skeletons + package.json wiring. Author `types.ts` with all shapes from §4. Skeleton every source file from §2.2 with `throw new Error('not-yet-implemented')` bodies. Wire `index.ts`. `@wellsfargo-starui/velocity-grid-format`'s `package.json` gains `peerDependencies: { "@wellsfargo-starui/velocity-grid": "*" }`. Typecheck + vacuous tests pass. Kernel + expression untouched.
 
 **Phase B — Tier 0 Excel format code engine (3 tasks)**
 
@@ -778,8 +778,8 @@ Corrections land before Phase E starts. Cheap insurance; no schedule cost.
 
 **Phase E — Kernel bridge + infrastructure (7 tasks)**
 
-10. Kernel: format compiler injection slot. New `packages/kernel/src/core/formatCompilerSlot.ts`. `grid.registerFormatCompiler(fn)` API on `types/api.ts` + `cgrid.ts`. Structural type aliases so kernel doesn't import format. Unit tests use a fake compiler.
-11. Kernel: ColDef type broadening + `compileFormatSlots` pass. `types/column.ts` broadening + type-only imports from `@cgrid/format`. `core/propertyChain.ts` gains `compileFormatSlots` at ColDef-resolve. `mergeCellStyle` helper. `warnOnce` on compile failure. Handles both string `valueFormatter` and `type: 'composite'`. **Existing 2326 kernel unit tests pass unchanged** (function-form `valueFormatter` still works identically).
+10. Kernel: format compiler injection slot. New `packages/kernel/src/core/formatCompilerSlot.ts`. `grid.registerFormatCompiler(fn)` API on `types/api.ts` + `velocityGrid.ts`. Structural type aliases so kernel doesn't import format. Unit tests use a fake compiler.
+11. Kernel: ColDef type broadening + `compileFormatSlots` pass. `types/column.ts` broadening + type-only imports from `@wellsfargo-starui/velocity-grid-format`. `core/propertyChain.ts` gains `compileFormatSlots` at ColDef-resolve. `mergeCellStyle` helper. `warnOnce` on compile failure. Handles both string `valueFormatter` and `type: 'composite'`. **Existing 2326 kernel unit tests pass unchanged** (function-form `valueFormatter` still works identically).
 12. Kernel: icon registry + Lucide build step. `packages/kernel/src/icons/registry.ts`. `packages/kernel/src/icons/build-lucide.ts` build script — generates `lucide.generated.ts` from `lucide-static/icons/*.svg`. Wire prebuild via package.json script. Registry API on grid: `grid.registerIconSet(name, paths)`, `grid.resolveIcon(name)`. Kernel does NOT auto-register Lucide.
 13. Kernel: composite cell renderer. `packages/kernel/src/renderer/cellRenderers/composite.ts`. Layout pass (fragment measure + ellipsis + alignment), draw pass (per-fragment style + inline icons). Registered via existing `registerCellRenderer('composite', painter)` on grid init.
 14. Kernel: tooltip provider hook. `packages/kernel/src/interaction/features/tooltipProvider.ts`. Feature chain integration. `grid.registerTooltipProvider(colId, fn)` + `unregister`. Debounced hover. Rich payload. Existing `SparklineTooltip` untouched.
@@ -788,7 +788,7 @@ Corrections land before Phase E starts. Cheap insurance; no schedule cost.
 
 **Phase F — Format-package kernel bridge + demo + polish (4 tasks)**
 
-17. Format: `wireIntoKernel(grid)` bridge. `packages/format/src/bridge.ts` — registers format compiler, registers Lucide icon set, auto-registers composite tooltip providers on ColDef resolve. Integration tests with a real `CGrid` fixture.
+17. Format: `wireIntoKernel(grid)` bridge. `packages/format/src/bridge.ts` — registers format compiler, registers Lucide icon set, auto-registers composite tooltip providers on ColDef resolve. Integration tests with a real `VelocityGrid` fixture.
 18. Format: showcase demo column. Add a Tier 0 + Tier 1 + Tier 2 blotter-style column set to `apps/cgrid-showcase/src/features/formatDSL.js`. Golden path: price + change + composite summary column with icons + conditional colors. E2E test (see §7.3).
 19. Format: README + public API polish. Grammar cheat sheet, quickstart with `wireIntoKernel`, worked examples for each tier, migration note ("existing function-form `valueFormatter` keeps working unchanged").
 20. Full monorepo verify + PR. Fresh install, typecheck, lint, unit tests (kernel + expression + format), E2E (showcase + positions), build. Push branch, open PR.
@@ -811,7 +811,7 @@ Corrections land before Phase E starts. Cheap insurance; no schedule cost.
 
 ## §7 Testing strategy + verification gates
 
-### 7.1 `@cgrid/format` unit tests
+### 7.1 `@wellsfargo-starui/velocity-grid-format` unit tests
 
 | File | Coverage target | Purpose |
 |---|---|---|
@@ -824,14 +824,14 @@ Corrections land before Phase E starts. Cheap insurance; no schedule cost.
 | `tests/templates/registry.test.ts` | 90%+ lines | All 9 built-in templates; Intl cache hit/miss/eviction |
 | `tests/templates/intlCache.test.ts` | 95%+ lines | LRU eviction at ceiling; key hash correctness |
 | `tests/compile.test.ts` | 85%+ lines | Public API round-trip — every tier + composite; error surfaces (excel-parse / tier1-parse / expression-parse / unknown-token / not-yet-implemented) |
-| `tests/bridge.test.ts` | 80%+ lines | `wireIntoKernel(grid)` integration — uses a real `CGrid` fixture; verifies compiler registration, icon set registration, composite auto-tooltip |
+| `tests/bridge.test.ts` | 80%+ lines | `wireIntoKernel(grid)` integration — uses a real `VelocityGrid` fixture; verifies compiler registration, icon set registration, composite auto-tooltip |
 | `tests/fixtures/format-corpus.json` | Golden regression | ~80 canonical format strings → expected `{text, style, icon, fragments}` outputs |
 
 **Roughly ~680 unit tests total across the package.**
 
 **Coverage bar rationale** — 85-95% per file. Vitest v8 provider. Composite renderer + bridge sit at 80-85% because canvas/DOM paths are harder to unit-test (E2E covers those).
 
-### 7.2 `@cgrid/kernel` new-code unit tests
+### 7.2 `@wellsfargo-starui/velocity-grid` new-code unit tests
 
 | File | Coverage target | Purpose |
 |---|---|---|
@@ -868,19 +868,19 @@ Rough count — ~5-8 new E2E specs.
 
 ### 7.5 Verification gates (Task 20)
 
-- `npm --workspace @cgrid/format run typecheck` — clean
-- `npm --workspace @cgrid/format run test` — 100% pass, coverage per §7.1
-- `npm --workspace @cgrid/format run build` — echo no-op acceptable if scaffold not upgraded; otherwise clean
-- `npm --workspace @cgrid/kernel run typecheck` — clean
-- `npm --workspace @cgrid/kernel run test` — **2326 baseline + new tests, all pass**
-- `npm --workspace @cgrid/expression run test` — **185/185 baseline (untouched)**
+- `npm --workspace @wellsfargo-starui/velocity-grid-format run typecheck` — clean
+- `npm --workspace @wellsfargo-starui/velocity-grid-format run test` — 100% pass, coverage per §7.1
+- `npm --workspace @wellsfargo-starui/velocity-grid-format run build` — echo no-op acceptable if scaffold not upgraded; otherwise clean
+- `npm --workspace @wellsfargo-starui/velocity-grid run typecheck` — clean
+- `npm --workspace @wellsfargo-starui/velocity-grid run test` — **2326 baseline + new tests, all pass**
+- `npm --workspace @wellsfargo-starui/velocity-grid-expression run test` — **185/185 baseline (untouched)**
 - Root `npm run lint` — clean
 - Root `turbo typecheck` — full graph clean, no cycles
 - Root `turbo build` — all packages build
 - Showcase E2E — **98 baseline + new (5-8) tests, all pass**
 - Positions E2E — **262 baseline + updated positions demo, all pass**
 - Fresh install (`rm -rf node_modules && npm i`) — no warnings
-- Bundle-size sanity — kernel-only app remains under +2% vs pre-cycle baseline (registry infra only); `@cgrid/format + wireIntoKernel` app absorbs ~30KB gzip for Lucide
+- Bundle-size sanity — kernel-only app remains under +2% vs pre-cycle baseline (registry infra only); `@wellsfargo-starui/velocity-grid-format + wireIntoKernel` app absorbs ~30KB gzip for Lucide
 
 ### 7.6 Golden format corpus
 
@@ -899,7 +899,7 @@ Any change to the tokenizer / parser / evaluator must update the corpus in the s
 
 | # | Risk | Mitigation |
 |---|---|---|
-| R1 | `@cgrid/format` gains a `@cgrid/kernel` dep for the bridge → dep-graph cycle if kernel later imports format | Bridge imports kernel via `peerDependencies` only. Kernel never imports format (structural type aliases in DI slot). ESLint `no-restricted-imports` enforces boundary at CI |
+| R1 | `@wellsfargo-starui/velocity-grid-format` gains a `@wellsfargo-starui/velocity-grid` dep for the bridge → dep-graph cycle if kernel later imports format | Bridge imports kernel via `peerDependencies` only. Kernel never imports format (structural type aliases in DI slot). ESLint `no-restricted-imports` enforces boundary at CI |
 | R2 | DSL grammar too permissive → downstream consumers hit surprises, especially at Tier 1 sugar boundaries (`if ... then ... else ...` swallowing unintended tokens) | Golden corpus locks every parse decision (~80 entries). Sugar canonicalization runs as a pre-pass with explicit tests for boundary cases. Reviewers inspect corpus diff each phase |
 | R3 | Composite renderer performs poorly at scale (per-fragment text metrics + ellipsis) | Layout caches text-metric width per (font, char-set) at the painter level. Ellipsis truncation runs O(fragments) per cell, not O(chars). Performance measurement deferred (§1.2) but hot path is scoped to composite columns only |
 | R4 | Multi-format clipboard `ClipboardItem` write fails in older Firefox / Safari builds | Feature-detect `navigator.clipboard.write` at copy time. Fall back to `writeText(plainText)` with debug breadcrumb. Composite rich copy is nice-to-have; plain text is guaranteed |
@@ -918,11 +918,11 @@ Any change to the tokenizer / parser / evaluator must update the corpus in the s
 ## §9 Success criteria
 
 - `packages/format/src/` has all files from §2.2 with real (non-throwing) implementations.
-- `@cgrid/format` public API from §4 is exported from `index.ts`.
+- `@wellsfargo-starui/velocity-grid-format` public API from §4 is exported from `index.ts`.
 - All unit test files exist with the coverage from §7 met.
-- `npm --workspace @cgrid/format run test` — 100% pass, no `.only` / `.skip` leaks.
-- `npm --workspace @cgrid/kernel run test` — 2326 baseline preserved + new tests all pass.
-- `npm --workspace @cgrid/expression run test` — 185/185 baseline preserved (expression untouched).
+- `npm --workspace @wellsfargo-starui/velocity-grid-format run test` — 100% pass, no `.only` / `.skip` leaks.
+- `npm --workspace @wellsfargo-starui/velocity-grid run test` — 2326 baseline preserved + new tests all pass.
+- `npm --workspace @wellsfargo-starui/velocity-grid-expression run test` — 185/185 baseline preserved (expression untouched).
 - Showcase E2E — 98 baseline + 5-8 new format-DSL specs all pass.
 - Positions E2E — 262 baseline (with one column upgraded to DSL) all pass.
 - Turbo graph clean; no dep cycles.
@@ -942,7 +942,7 @@ Any change to the tokenizer / parser / evaluator must update the corpus in the s
 | Decision | Locked as |
 |---|---|
 | Cycle scope | All features (Tier 0/1/2 + kernel bridge + icons + tooltip + clipboard) ship in 21c. No deferral |
-| Kernel bridge contract | `valueFormatter?: string \| ((params) => string)`. String form compiles at ColDef-resolve via `@cgrid/format`. Backwards-compatible superset |
+| Kernel bridge contract | `valueFormatter?: string \| ((params) => string)`. String form compiles at ColDef-resolve via `@wellsfargo-starui/velocity-grid-format`. Backwards-compatible superset |
 | DSL composition with expression | Format handles brackets + sugar; interior handoff to `expression.parse`. Style eval calls `expression.evaluate` |
 | Style channel | Piggyback existing `cellStyle` via `mergeCellStyle`; new `cellIcon` slot on ColDef; composite via `type: 'composite'` |
 | Icon bundle | Full Lucide (~1500 icons) as Path2D source strings, tree-shakable. `lucide.generated.ts` committed to git |
@@ -973,8 +973,8 @@ None block 21c landing.
 
 ## Summary
 
-Cycle 21c ships `@cgrid/format` — the second feature-absorption cycle into the Cycle-21 monorepo scaffold, and the first that touches kernel. The unified formatting DSL lands in a single PR across ~20 tasks: Tier 0 Excel format codes, Tier 1 expression brackets + Lucide icons, Tier 2 composite ColDef shape, plus surgical kernel additions (format-compiler DI slot, ColDef-resolve step, icon registry, composite cell renderer, tooltip provider hook, multi-format clipboard).
+Cycle 21c ships `@wellsfargo-starui/velocity-grid-format` — the second feature-absorption cycle into the Cycle-21 monorepo scaffold, and the first that touches kernel. The unified formatting DSL lands in a single PR across ~20 tasks: Tier 0 Excel format codes, Tier 1 expression brackets + Lucide icons, Tier 2 composite ColDef shape, plus surgical kernel additions (format-compiler DI slot, ColDef-resolve step, icon registry, composite cell renderer, tooltip provider hook, multi-format clipboard).
 
-Every kernel diff is guarded by an injection-slot pattern — apps that don't import `@cgrid/format` see byte-identical behavior. Format itself depends only on `@cgrid/expression` (Cycle 21b, merged as PR #93), keeping the dep graph acyclic. The 4 kernel subsystems (icons, composite, tooltip, clipboard) all ship together, because that's what the "no feature deferral" principle demands: features live in the plan because they're needed; decompose into more tasks rather than push features to follow-ups.
+Every kernel diff is guarded by an injection-slot pattern — apps that don't import `@wellsfargo-starui/velocity-grid-format` see byte-identical behavior. Format itself depends only on `@wellsfargo-starui/velocity-grid-expression` (Cycle 21b, merged as PR #93), keeping the dep graph acyclic. The 4 kernel subsystems (icons, composite, tooltip, clipboard) all ship together, because that's what the "no feature deferral" principle demands: features live in the plan because they're needed; decompose into more tasks rather than push features to follow-ups.
 
-Roadmap position: 21c unblocks 21d (`@cgrid/calc` needs format templates for calc-column formatting), 21e (`@cgrid/rules` needs `rule:<ruleId>` resolution + format style channel), 21f (`@cgrid/renderers` needs Tier 2 composite + icon inline for rich blotter cells), 21h (`@cgrid/export` needs resolved formatters for visual XLSX/CSV mode), 21i (`@cgrid/customizer` needs `compileFormat` + `CompileFormatError.loc` for editor UX).
+Roadmap position: 21c unblocks 21d (`@wellsfargo-starui/velocity-grid-calc` needs format templates for calc-column formatting), 21e (`@wellsfargo-starui/velocity-grid-rules` needs `rule:<ruleId>` resolution + format style channel), 21f (`@wellsfargo-starui/velocity-grid-renderers` needs Tier 2 composite + icon inline for rich blotter cells), 21h (`@wellsfargo-starui/velocity-grid-export` needs resolved formatters for visual XLSX/CSV mode), 21i (`@wellsfargo-starui/velocity-grid-customizer` needs `compileFormat` + `CompileFormatError.loc` for editor UX).

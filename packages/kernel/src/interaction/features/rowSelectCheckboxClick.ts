@@ -15,10 +15,10 @@
  * Shift (which extends the selection from the anchor — mirrors the
  * checkbox-list pattern users know from email clients).
  */
-import { Feature, type CGridEventCtx } from '../feature';
+import { Feature, type VelocityGridEventCtx } from '../feature';
 
 export class RowSelectCheckboxClick extends Feature {
-  override handleMouseDown(ctx: CGridEventCtx): void {
+  override handleMouseDown(ctx: VelocityGridEventCtx): void {
     if (ctx.hit.kind !== 'cell') {
       super.handleMouseDown(ctx);
       return;
@@ -51,7 +51,7 @@ export class RowSelectCheckboxClick extends Feature {
     // range, both of which contradict the gesture.
   }
 
-  override handleClick(ctx: CGridEventCtx): void {
+  override handleClick(ctx: VelocityGridEventCtx): void {
     // Swallow the trailing click event for checkbox cells so
     // `cellClicked` doesn't fire — the gesture is a toggle, not a
     // cell selection.

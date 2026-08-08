@@ -4,7 +4,7 @@
 
 **Goal:** Make cgrid's columns side panel render the live column-group tree hierarchically (groups as expandable rows with tri-state checkboxes, indented children) and support ag-grid-parity drag: reorder columns/groups and re-parent columns into/out of groups.
 
-**Architecture:** A pure group-membership mutation core (`core/columnGroupMutation.ts`) transforms the `columnDefs` tree; two thin `CGridApi` methods apply it while preserving runtime column state. The columns `visibilityPanel` renders by walking `getColumnGroupDefs()` and its drag orchestrator calls the new API on drop.
+**Architecture:** A pure group-membership mutation core (`core/columnGroupMutation.ts`) transforms the `columnDefs` tree; two thin `VelocityGridApi` methods apply it while preserving runtime column state. The columns `visibilityPanel` renders by walking `getColumnGroupDefs()` and its drag orchestrator calls the new API on drop.
 
 **Tech Stack:** TypeScript (strict, `noUncheckedIndexedAccess`), Vitest (kernel unit + integration), Playwright (demo E2E). No new deps. Canvas grid; tool panels are DOM.
 
@@ -14,7 +14,7 @@
 
 - CSP-safe, no `eval`/`new Function`. Pure JSON discipline in the mutation core (plain clones, no class instances leaking into defs).
 - The mutation core is **pure** — no `Date.now()`/`Math.random()` (they're banned in some contexts and unnecessary); auto-`groupId` is NOT minted here (top-level = `null`; no group creation this cycle — spec §5.1/§10).
-- Follow existing tool-panel patterns: DOM built imperatively, listeners cleaned up in `destroy()`, `data-col-id`/`data-group-id` on rows, classes prefixed `cg-columns-panel-*`.
+- Follow existing tool-panel patterns: DOM built imperatively, listeners cleaned up in `destroy()`, `data-col-id`/`data-group-id` on rows, classes prefixed `vg-columns-panel-*`.
 - `marryChildren` groups: re-parent into/out of is REJECTED (no-op); reorder-within + move-group-as-unit allowed (spec §5.1).
 - Verification gate every task: `cd packages/kernel && npx tsc --noEmit && npm run build && npx vitest run` all green before commit. Kernel perf tests are CPU-flaky under load — re-run a lone red standalone before trusting it.
 - Branch `feature/columns-panel-hierarchy` (already created off main). Commit per task. NO per-task reviewer — SINGLE closeout review at T4.
@@ -22,18 +22,18 @@
 **Key existing symbols (verified):**
 - `packages/kernel/src/core/columnTree.ts`: `isColGroupDef(def)`, `resolveColumnTree(defs, defaultColDef?, columnTypes?)` (throws on empty children / duplicate groupId / duplicate colId), `ResolvedColGroupDef` (`kind:'group'`, `groupId`, `headerName`, `marryChildren`, `depth`, `children`, `leafColIds`), `ResolvedColLeaf` (`kind:'leaf'`, `colDef`, `depth`, `groupPath`), `ColumnTree` (`roots`, `leaves`, `leafById`, `groupById`, `maxDepth`).
 - `packages/kernel/src/types/column.ts`: `CColGroupDef` = `{ groupId?, headerName?, children: (CColDef|CColGroupDef)[], openByDefault?, marryChildren?, columnGroupShow? }`; `CColDef` has `colId`/`field`, `columnGroupShow?`, `hide?`, `width?`, `pinned?`.
-- `CGridApi`: `getColumnGroupDefs()`, `getColumnGroupState()`, `setColumnGroupState(state)`, `getColumnState(): CColumnState[]`, `applyColumnState?`/`setColumnsVisible(keys, visible)`, `moveColumns(keys, toIndex)`, `updateGridOptions(partial)`.
-- `packages/kernel/src/cgrid.ts`: `rebuildColumnDefsByLeafOrder(defs, newLeafOrder)` (module-private helper — reorders a defs tree to a leaf order, pulling groups with their leaves), `applyColumnStateInternal`, `this.columnTree`.
+- `VelocityGridApi`: `getColumnGroupDefs()`, `getColumnGroupState()`, `setColumnGroupState(state)`, `getColumnState(): CColumnState[]`, `applyColumnState?`/`setColumnsVisible(keys, visible)`, `moveColumns(keys, toIndex)`, `updateGridOptions(partial)`.
+- `packages/kernel/src/velocityGrid.ts`: `rebuildColumnDefsByLeafOrder(defs, newLeafOrder)` (module-private helper — reorders a defs tree to a leaf order, pulling groups with their leaves), `applyColumnStateInternal`, `this.columnTree`.
 - `visibilityPanel.ts`: `buildRows()` (flat walk of `getColumnState()`), `buildRow(entry)`, `computeRowChecked`, `handleRowCheckboxClick`, `syncRows(state)`, `applySearchFilter`, `beginRowDrag(e, colId)` (drag orchestrator; step 4 = in-panel reorder via `moveColumns`).
 
 ---
 
-### Task 1: Group-membership mutation core + `CGridApi` methods
+### Task 1: Group-membership mutation core + `VelocityGridApi` methods
 
 **Files:**
 - Create: `packages/kernel/src/core/columnGroupMutation.ts`
 - Create: `packages/kernel/tests/columnGroupMutation.test.ts`
-- Modify: `packages/kernel/src/cgrid.ts` (add `moveColumnToGroup` / `moveColumnGroup` class methods + `makeApi` entries; add a private `applyColumnDefsPreservingState`)
+- Modify: `packages/kernel/src/velocityGrid.ts` (add `moveColumnToGroup` / `moveColumnGroup` class methods + `makeApi` entries; add a private `applyColumnDefsPreservingState`)
 - Modify: `packages/kernel/src/types/api.ts` (2 method signatures)
 - Create: `packages/kernel/tests/columnGroupMutationApi.integration.test.ts`
 
@@ -46,7 +46,7 @@
   export function moveColumnToGroup(defs: ColDefsTree, colId: string, targetGroupId: string | null, beforeColId?: string): MutationResult | null;
   export function moveColumnGroup(defs: ColDefsTree, groupId: string, targetParentGroupId: string | null, beforeId?: string): MutationResult | null;
   ```
-- Produces (`CGridApi`): `moveColumnToGroup(colId, targetGroupId, beforeColId?): void`, `moveColumnGroup(groupId, targetParentGroupId, beforeId?): void`.
+- Produces (`VelocityGridApi`): `moveColumnToGroup(colId, targetGroupId, beforeColId?): void`, `moveColumnGroup(groupId, targetParentGroupId, beforeId?): void`.
 - Consumes: `isColGroupDef`, `resolveColumnTree` (validation), `CColDef`/`CColGroupDef`.
 
 - [ ] **Step 1: Write failing tests for the pure `moveColumnToGroup` transform**
@@ -194,10 +194,10 @@ export function moveColumnToGroup(defsIn: ColDefsTree, colId: string, targetGrou
 
 - [ ] **Step 5: Write a failing integration test — the API preserves runtime column state**
 
-Create `packages/kernel/tests/columnGroupMutationApi.integration.test.ts` (mount a real `CGrid` with the fake worker+canvas harness — copy the `beforeAll` stub block from `tests/rulesApiKernel.integration.test.ts`). Grid with `columnDefs: [ {field:'a'}, {groupId:'G',headerName:'G',children:[{field:'b'},{field:'c'}]} ]`.
+Create `packages/kernel/tests/columnGroupMutationApi.integration.test.ts` (mount a real `VelocityGrid` with the fake worker+canvas harness — copy the `beforeAll` stub block from `tests/rulesApiKernel.integration.test.ts`). Grid with `columnDefs: [ {field:'a'}, {groupId:'G',headerName:'G',children:[{field:'b'},{field:'c'}]} ]`.
 ```ts
 it('moveColumnToGroup re-parents a leaf INTO a group and preserves its runtime width + hidden state', async () => {
-  const grid = await mount(); // helper mounting the CGrid + flushing the ready message
+  const grid = await mount(); // helper mounting the VelocityGrid + flushing the ready message
   grid.setColumnWidth?.('a', 222);          // or applyColumnState to set width
   grid.setColumnsVisible(['a'], false);     // runtime hide
   grid.moveColumnToGroup('a', 'G');
@@ -225,9 +225,9 @@ it('moveColumnToGroup fires columnDefsChanged; an invalid move fires nothing', a
 
 - [ ] **Step 6: Run it, verify it fails** — Run: `cd packages/kernel && npx vitest run tests/columnGroupMutationApi.integration.test.ts` — Expected: FAIL (`grid.moveColumnToGroup is not a function`).
 
-- [ ] **Step 7: Implement the `CGridApi` methods with state preservation**
+- [ ] **Step 7: Implement the `VelocityGridApi` methods with state preservation**
 
-In `cgrid.ts`: add a private `applyColumnDefsPreservingState(defs, leafOrder)`:
+In `velocityGrid.ts`: add a private `applyColumnDefsPreservingState(defs, leafOrder)`:
 ```ts
 private applyColumnDefsPreservingState(defs: (CColDef<TRow>|CColGroupDef<TRow>)[], leafOrder: string[]): void {
   const prevState = this.getColumnState();                 // capture width/hide/pinned/etc.
@@ -235,7 +235,7 @@ private applyColumnDefsPreservingState(defs: (CColDef<TRow>|CColGroupDef<TRow>)[
   this.applyColumnState({ state: prevState });             // re-apply runtime state (NOT applyOrder — order came from the tree)
 }
 ```
-Then the two methods (mirror the `moveColumns` style at cgrid.ts:8842):
+Then the two methods (mirror the `moveColumns` style at velocityGrid.ts:8842):
 ```ts
 moveColumnToGroup(colId: string, targetGroupId: string | null, beforeColId?: string): void {
   const res = moveColumnToGroup(this.getColumnGroupDefs(), colId, targetGroupId, beforeColId);
@@ -248,7 +248,7 @@ moveColumnGroup(groupId: string, targetParentGroupId: string | null, beforeId?: 
   this.applyColumnDefsPreservingState(res.defs, res.leafOrder);
 }
 ```
-Add both to `makeApi` (near the `moveColumns` entry ~cgrid.ts:6320). Add the two signatures to `types/api.ts` (after `moveColumns`, with JSDoc from spec §5.1). Import `moveColumnToGroup`/`moveColumnGroup` from `./core/columnGroupMutation`. **During execution, verify `applyColumnState`'s exact param shape against `cgrid.ts` — if `updateGridOptions({columnDefs})` already preserves runtime state (check the columnDefsMap merge at cgrid.ts:1054-1082), the re-apply may be a no-op or need `applyOrder:false`; the integration test in Step 5 is the gate.**
+Add both to `makeApi` (near the `moveColumns` entry ~velocityGrid.ts:6320). Add the two signatures to `types/api.ts` (after `moveColumns`, with JSDoc from spec §5.1). Import `moveColumnToGroup`/`moveColumnGroup` from `./core/columnGroupMutation`. **During execution, verify `applyColumnState`'s exact param shape against `velocityGrid.ts` — if `updateGridOptions({columnDefs})` already preserves runtime state (check the columnDefsMap merge at velocityGrid.ts:1054-1082), the re-apply may be a no-op or need `applyOrder:false`; the integration test in Step 5 is the gate.**
 
 - [ ] **Step 8: Run both test files + full kernel suite, verify green**
 
@@ -257,7 +257,7 @@ Run: `cd packages/kernel && npx vitest run tests/columnGroupMutation.test.ts tes
 - [ ] **Step 9: Commit**
 
 ```bash
-git add packages/kernel/src/core/columnGroupMutation.ts packages/kernel/tests/columnGroupMutation.test.ts packages/kernel/tests/columnGroupMutationApi.integration.test.ts packages/kernel/src/cgrid.ts packages/kernel/src/types/api.ts
+git add packages/kernel/src/core/columnGroupMutation.ts packages/kernel/tests/columnGroupMutation.test.ts packages/kernel/tests/columnGroupMutationApi.integration.test.ts packages/kernel/src/velocityGrid.ts packages/kernel/src/types/api.ts
 git commit -m "feat(kernel): group-membership mutation core + moveColumnToGroup/moveColumnGroup (T1)"
 ```
 
@@ -268,7 +268,7 @@ git commit -m "feat(kernel): group-membership mutation core + moveColumnToGroup/
 **Files:**
 - Modify: `packages/kernel/src/interaction/toolPanels/columns/visibilityPanel.ts`
 - Modify: `packages/kernel/src/interaction/toolPanels/columns/shared.ts` (add tri-state helper if useful) — optional
-- Modify: the columns-panel CSS (find via `grep -rn "cg-columns-panel-row" packages/kernel/src` → the `.css`/`theming` file) — add `--group`, `--indent`, caret, indeterminate styles
+- Modify: the columns-panel CSS (find via `grep -rn "vg-columns-panel-row" packages/kernel/src` → the `.css`/`theming` file) — add `--group`, `--indent`, caret, indeterminate styles
 - Create: `packages/kernel/tests/columnsPanelHierarchy.integration.test.ts`
 
 **Interfaces:**
@@ -277,18 +277,18 @@ git commit -m "feat(kernel): group-membership mutation core + moveColumnToGroup/
 
 - [ ] **Step 1: Write a failing integration test for hierarchical rendering + tri-state**
 
-Create `packages/kernel/tests/columnsPanelHierarchy.integration.test.ts` (real CGrid + sideBar `{ toolPanels: ['columns'] }`; open the panel; query its DOM). Assert:
+Create `packages/kernel/tests/columnsPanelHierarchy.integration.test.ts` (real VelocityGrid + sideBar `{ toolPanels: ['columns'] }`; open the panel; query its DOM). Assert:
 ```ts
 it('renders group rows with indented children', async () => {
   const grid = await mountWithPanel([{field:'a'},{groupId:'G',headerName:'Grp',children:[{field:'b'},{field:'c'}]}]);
-  const panel = document.querySelector('.cg-columns-panel')!;
+  const panel = document.querySelector('.vg-columns-panel')!;
   const groupRow = panel.querySelector('[data-group-id="G"]')!;
   expect(groupRow).toBeTruthy();
-  expect(groupRow.querySelector('.cg-columns-panel-row-caret')).toBeTruthy();
+  expect(groupRow.querySelector('.vg-columns-panel-row-caret')).toBeTruthy();
   const b = panel.querySelector('[data-col-id="b"]') as HTMLElement;
   // child indented deeper than the top-level 'a'
   const a = panel.querySelector('[data-col-id="a"]') as HTMLElement;
-  expect(parseInt(b.style.getPropertyValue('--cg-indent') || '0')).toBeGreaterThan(parseInt(a.style.getPropertyValue('--cg-indent') || '0'));
+  expect(parseInt(b.style.getPropertyValue('--vg-indent') || '0')).toBeGreaterThan(parseInt(a.style.getPropertyValue('--vg-indent') || '0'));
   grid.destroy();
 });
 it('group checkbox is tri-state and toggles all descendants', async () => {
@@ -305,7 +305,7 @@ it('group checkbox is tri-state and toggles all descendants', async () => {
   grid.destroy();
 });
 ```
-(Write `mountWithPanel` in the test — mount CGrid, dispatch ready, click the `columns` side button, return grid. Mirror `apps/colgroups` DOM structure expectations to `.cg-columns-panel`.)
+(Write `mountWithPanel` in the test — mount VelocityGrid, dispatch ready, click the `columns` side button, return grid. Mirror `apps/colgroups` DOM structure expectations to `.vg-columns-panel`.)
 
 - [ ] **Step 2: Run it, verify it fails** — Run: `cd packages/kernel && npx vitest run tests/columnsPanelHierarchy.integration.test.ts` — Expected: FAIL (no `[data-group-id]` rows; flat list only).
 
@@ -339,13 +339,13 @@ In `visibilityPanel.ts`:
    }
    ```
    (Compute `descendantLeafIds` from `resolveColumnTree` OR a local recursive collect over `node.children`.)
-4. `buildGroupRow(node, depth)`: DOM `caret` (▸/▾) + tri-state checkbox + drag handle + label; `el.dataset.groupId = groupId`; `el.style.setProperty('--cg-indent', String(depth))`. Caret click toggles `this.collapsed` + re-renders (or toggles child rows' `display`). Checkbox click → `setColumnsVisible(descendantLeafIds, checked)`.
-5. `buildRow(entry, depth)`: add `el.style.setProperty('--cg-indent', String(depth))` to the existing leaf builder; everything else unchanged.
+4. `buildGroupRow(node, depth)`: DOM `caret` (▸/▾) + tri-state checkbox + drag handle + label; `el.dataset.groupId = groupId`; `el.style.setProperty('--vg-indent', String(depth))`. Caret click toggles `this.collapsed` + re-renders (or toggles child rows' `display`). Checkbox click → `setColumnsVisible(descendantLeafIds, checked)`.
+5. `buildRow(entry, depth)`: add `el.style.setProperty('--vg-indent', String(depth))` to the existing leaf builder; everything else unchanged.
 6. Add `computeGroupChecked(descendantLeafIds)`: read `getColumnState()`; return `'all' | 'none' | 'mixed'`; set `checkbox.checked`/`checkbox.indeterminate` accordingly.
 7. Subscribe to `columnDefsChanged` → full rebuild (`this.listEl.replaceChildren()`, `this.rows.clear()`, `buildRows()`), plus keep the existing `columnRowGroupChanged`/visibility refresh. Extend `refreshRowChecks()`/`syncRows` to also update group tri-state.
 8. `applySearchFilter`: a group row shows if any descendant leaf matches; when searching, force-expand.
 
-- [ ] **Step 4: Add CSS** — in the columns-panel stylesheet add: `.cg-columns-panel-row { padding-left: calc(8px + var(--cg-indent, 0) * 16px); }`, `.cg-columns-panel-row-caret` (rotates ▸→▾), and indeterminate checkbox styling. Match `apps/colgroups` visual (indent unit ~16px, caret before checkbox).
+- [ ] **Step 4: Add CSS** — in the columns-panel stylesheet add: `.vg-columns-panel-row { padding-left: calc(8px + var(--vg-indent, 0) * 16px); }`, `.vg-columns-panel-row-caret` (rotates ▸→▾), and indeterminate checkbox styling. Match `apps/colgroups` visual (indent unit ~16px, caret before checkbox).
 
 - [ ] **Step 5: Run the test + suite, verify green** — Run: `cd packages/kernel && npx vitest run tests/columnsPanelHierarchy.integration.test.ts && npx tsc --noEmit && npm run build && npx vitest run` — Expected: PASS; suite green (existing flat-panel tests updated if any assert flat structure — grep `columnsPanel`/`visibilityPanel` tests and fix expectations).
 
@@ -365,7 +365,7 @@ git commit -m "feat(kernel): hierarchical columns tool panel — group rows, car
 - Create: `packages/kernel/tests/columnsPanelDrag.integration.test.ts`
 
 **Interfaces:**
-- Consumes: T1 `api.moveColumnToGroup(colId, targetGroupId, beforeColId?)`, `api.moveColumnGroup(groupId, targetParentGroupId, beforeId?)`; T2's rendered rows carrying `data-group-id`/`data-col-id`/`--cg-indent`.
+- Consumes: T1 `api.moveColumnToGroup(colId, targetGroupId, beforeColId?)`, `api.moveColumnGroup(groupId, targetParentGroupId, beforeId?)`; T2's rendered rows carrying `data-group-id`/`data-col-id`/`--vg-indent`.
 - Produces: a `resolveDrop(clientY) → { kind:'col'|'group', movingId, targetGroupId: string|null, beforeId?: string }` computing target group + insertion from pointer + row geometry.
 
 - [ ] **Step 1: Write a failing integration test — a drop re-parents via the T1 API**
@@ -397,12 +397,12 @@ In `beginRowDrag`:
    - If it's a **leaf row** → reorder before/after it within that leaf's parent group (targetGroupId = that leaf's parent, or null at top level).
    - Top-level gap (below all, or a top-level leaf) → targetGroupId `null`.
    - Return `{ kind, movingId, targetGroupId, beforeId }`.
-3. Render indicators during move: an insertion line element between rows + a `.cg-columns-panel-row--drop-target` highlight on the target group row. Reuse the ghost + `setZoneDropState` vocabulary.
+3. Render indicators during move: an insertion line element between rows + a `.vg-columns-panel-row--drop-target` highlight on the target group row. Reuse the ghost + `setZoneDropState` vocabulary.
 4. On mouseup (`commitDrop`): `kind==='group' ? api.moveColumnGroup(movingId, targetGroupId, beforeId) : api.moveColumnToGroup(movingId, targetGroupId, beforeId)`. Then the `columnDefsChanged` subscription (T2) rebuilds the panel.
 5. **Preserve** the external routes (steps 1–3 of the orchestrator: row-group/pivot header strips, column-header band, in-panel zones) unchanged — only step 4 changes.
 6. marryChildren: `moveColumnToGroup` already rejects invalid re-parents (no-op); optionally reflect a `reject` cursor when hovering an invalid target (compute from the target group's `marryChildren`).
 
-- [ ] **Step 4: Add CSS** — `.cg-columns-panel-drop-line` (2px accent line) + `.cg-columns-panel-row--drop-target` (group highlight). Match `apps/colgroups`.
+- [ ] **Step 4: Add CSS** — `.vg-columns-panel-drop-line` (2px accent line) + `.vg-columns-panel-row--drop-target` (group highlight). Match `apps/colgroups`.
 
 - [ ] **Step 5: Run tests + suite, verify green** — Run: `cd packages/kernel && npx vitest run tests/columnsPanelDrag.integration.test.ts && npx tsc --noEmit && npm run build && npx vitest run` — Expected: PASS; suite green (existing drag/reorder tests updated to the group-aware path).
 
@@ -420,7 +420,7 @@ git commit -m "feat(kernel): group-aware columns-panel drag — reorder + re-par
 - Modify: `apps/cgrid-customizer-demo/*` only if needed (the `columns` tool panel is already in its `sideBar.toolPanels`, and the demo already seeds nested groups — Trade/Valuation/Risk — so the hierarchy shows with no code change). Add a runtime "create a group" affordance only if the existing Column Groups tab doesn't already exercise it.
 - Create: `apps/cgrid-customizer-demo/e2e/columnsPanelHierarchy.spec.ts`
 
-- [ ] **Step 1: Browser-verify against the reference.** Run the demo (`CGRID_DEMO_PORT=5187 npm run dev` in `apps/cgrid-customizer-demo`; rebuild kernel first — the demo consumes `@cgrid/kernel` dist). Open the Columns tool panel; confirm light + dark: nested groups render hierarchically with carets + tri-state group checkboxes + indentation, matching `apps/colgroups` (run it on :5175 side by side). Drag a column into a group → grid header reflects it; drag it out; move a group. **Reset saved state first; kill the automation browser + dev server(s) when done.**
+- [ ] **Step 1: Browser-verify against the reference.** Run the demo (`CGRID_DEMO_PORT=5187 npm run dev` in `apps/cgrid-customizer-demo`; rebuild kernel first — the demo consumes `@wellsfargo-starui/velocity-grid` dist). Open the Columns tool panel; confirm light + dark: nested groups render hierarchically with carets + tri-state group checkboxes + indentation, matching `apps/colgroups` (run it on :5175 side by side). Drag a column into a group → grid header reflects it; drag it out; move a group. **Reset saved state first; kill the automation browser + dev server(s) when done.**
 
 - [ ] **Step 2: Write E2E** `apps/cgrid-customizer-demo/e2e/columnsPanelHierarchy.spec.ts` (mirror `e2e/columnGroups.spec.ts` harness — `waitForGridReady`, `__cgapi`): open the columns panel; assert a group row + indented children exist; toggle a group checkbox → descendants hide (assert via `__cgapi.getColumnState()`); simulate a drag of a column onto a group → `getColumnGroupDefs()` shows it re-parented; drag out → back to top level. Reset persisted state per test.
 
@@ -436,4 +436,4 @@ git commit -m "feat(kernel): group-aware columns-panel drag — reorder + re-par
 
 - **Spec coverage:** §5.1 mutation core → T1; §5.2 render (carets/tri-state/indent/panel-expand/`columnDefsChanged` refresh) → T2; §5.3 drag + indicators + external routes → T3; §7 testing → per-task tests; §9 delivery → T1–T4; §8 marryChildren/order-contiguity/perf-on-drop → T1 tests + notes; §10 out-of-scope (no group creation from panel; top-level=null) → T1 Step 3 (`targetGroupId:null`, no minted groupId).
 - **Open exec-time confirmations (flagged inline, gated by tests):** T1 Step 7 — exact `applyColumnState` param shape + whether `updateGridOptions({columnDefs})` already preserves runtime state (Step-5 test is the gate). T3 Step 1 — test seam for drag (add a `commitDrop`/test hook if synthetic mouse events are impractical in jsdom).
-- **Type consistency:** `moveColumnToGroup(colId, targetGroupId, beforeColId?)` / `moveColumnGroup(groupId, targetParentGroupId, beforeId?)` identical names/params across T1 (pure + API), T3 (drag calls), T4 (E2E). `MutationResult { defs, leafOrder }` consumed only inside cgrid's apply. `--cg-indent` CSS var consistent T2/T3.
+- **Type consistency:** `moveColumnToGroup(colId, targetGroupId, beforeColId?)` / `moveColumnGroup(groupId, targetParentGroupId, beforeId?)` identical names/params across T1 (pure + API), T3 (drag calls), T4 (E2E). `MutationResult { defs, leafOrder }` consumed only inside cgrid's apply. `--vg-indent` CSS var consistent T2/T3.

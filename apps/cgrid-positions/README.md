@@ -47,7 +47,7 @@ URL flags opt into the per-cell variants the visual matrix baselines
 - `?suppressAggHeader=1` — flip `suppressAggFuncInHeader` to `true`
   so headers read as raw `Notional` / `Price` (cell 19 off variant).
 
-The custom aggFunc registry ships through `CGridOptions.aggFuncs` +
+The custom aggFunc registry ships through `VelocityGridOptions.aggFuncs` +
 the `setAggFuncs` worker message: register a named function once and
 reference it from any column's `aggFunc` field (or use the array form
 `aggFunc: ['p99', 'avg']` for an ordered fallback). The
@@ -86,13 +86,13 @@ baselines (cells 14 / 15 / 16):
   10-row range so the agg panel renders.
 - `?statusBar=customDemo` — the demo `DemoCustomStatusPanel` in the
   left zone + TotalAndFiltered in the right. Exercises the
-  `CGridOptions.components` registration channel + the public
+  `VelocityGridOptions.components` registration channel + the public
   `api.getStatusPanel(key)` lookup.
 
 Status updates batch per rAF and never trigger a body-canvas repaint
 — the bar is a DOM panel and the canvas is canvas, and they don't
 talk. See `cycle-13-statusbar-design.md` for the design vocabulary
-(sandwich tone via `--cg-header-bg`, ≈28 px height, type matching
+(sandwich tone via `--vg-header-bg`, ≈28 px height, type matching
 the side-bar tab labels) every panel inherits.
 
 ## Visual regression (Cycle 12)

@@ -20,18 +20,18 @@ describe('isDarkColor', () => {
 
 describe('resolveThemeKind', () => {
   it('-dark suffixed theme classes are dark', () => {
-    expect(resolveThemeKind(['cg-theme-quartz-dark'], '#fff')).toBe('dark');
-    expect(resolveThemeKind(['cg-theme-high-contrast-dark'], '#fff')).toBe('dark');
+    expect(resolveThemeKind(['vg-theme-quartz-dark'], '#fff')).toBe('dark');
+    expect(resolveThemeKind(['vg-theme-high-contrast-dark'], '#fff')).toBe('dark');
   });
   it('non-dark theme classes are light regardless of bg', () => {
-    expect(resolveThemeKind(['cg-theme-quartz'], '#000')).toBe('light');
-    expect(resolveThemeKind(['cg-theme-high-contrast'], '#000')).toBe('light');
+    expect(resolveThemeKind(['vg-theme-quartz'], '#000')).toBe('light');
+    expect(resolveThemeKind(['vg-theme-high-contrast'], '#000')).toBe('light');
   });
-  it('no cg-theme class falls back to bg luminance', () => {
+  it('no vg-theme class falls back to bg luminance', () => {
     expect(resolveThemeKind(['my-custom-grid'], '#0b0e14')).toBe('dark');
     expect(resolveThemeKind([], '#ffffff')).toBe('light');
   });
-  it('cg-theme-auto follows prefers-color-scheme (light default in happy-dom)', () => {
-    expect(resolveThemeKind(['cg-theme-auto'], '#000')).toBe('light');
+  it('vg-theme-auto follows prefers-color-scheme (light default in happy-dom)', () => {
+    expect(resolveThemeKind(['vg-theme-auto'], '#000')).toBe('light');
   });
 });

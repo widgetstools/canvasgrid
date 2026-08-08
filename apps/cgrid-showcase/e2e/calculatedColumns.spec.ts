@@ -16,7 +16,7 @@ import { gotoFeature } from './helpers';
 //    'currency'/'percent' for notional/pctOfSector. Kernel's
 //    cellDataType is BINARY (packages/kernel/src/types/column.ts); the
 //    paint path only invokes the compiled `valueFormatter` for
-//    numericCols-backed ('number') columns (cgrid.ts `cellAt`'s
+//    numericCols-backed ('number') columns (velocityGrid.ts `cellAt`'s
 //    `numeric` branch calls `formatNumber`; the `text` branch renders
 //    the raw decoded string with no formatter pass). Currency/percent
 //    PRESENTATION comes entirely from the `format` string; the

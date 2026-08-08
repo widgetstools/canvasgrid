@@ -1,12 +1,12 @@
 // Kernel-side calc-provider dependency-injection slot.
 //
-// @cgrid/calc registers its provider via wireIntoKernel(); kernel consults
+// @wellsfargo-starui/velocity-grid-calc registers its provider via wireIntoKernel(); kernel consults
 // it when resolving column defs (synthesized calc columns + override/template
 // patches, Cycle 21d Task 9) and ships its worker program on register /
-// column changes (Task 10). Kernel does NOT import @cgrid/calc at runtime —
+// column changes (Task 10). Kernel does NOT import @wellsfargo-starui/velocity-grid-calc at runtime —
 // only structural types, exactly like core/ruleEngineSlot.ts.
 
-/** Structural surface @cgrid/calc's bridge implements (Cycle 21d Task 14).
+/** Structural surface @wellsfargo-starui/velocity-grid-calc's bridge implements (Cycle 21d Task 14).
  *  Kernel never inspects the payloads beyond the documented keys. */
 export interface CalcProviderShape {
   /** Plain CColDef-keyed records for every registered calculated column.
@@ -25,7 +25,7 @@ export interface CalcProviderShape {
   onColumnsChanged(fn: () => void): () => void;
 
   // ── Grid Layouts / Phase B (B3) — the shared styling-template library ──
-  // CRUD, routed from the kernel's CGridApi template methods to the calc
+  // CRUD, routed from the kernel's VelocityGridApi template methods to the calc
   // engine. Optional so a minimal / pre-B3 provider (or a bare test double)
   // still registers — the kernel guards each call and degrades to a no-op /
   // empty list. The engine is Date-free, so name/save mutations take an

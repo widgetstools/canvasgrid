@@ -162,7 +162,7 @@ export class DataSubgrid implements Subgrid {
     /**
      * Per-row height in CSS px. Receives the local data-row index so the
      * implementation can substitute per-row overrides (Cycle 5 / Task 6 —
-     * `CGridOptions.getRowHeight`) on top of the grid-level fallback.
+     * `VelocityGridOptions.getRowHeight`) on top of the grid-level fallback.
      * Rows outside the current chunk should return the fallback.
      */
     private getRowHeightFn: (local: number) => number,
@@ -200,7 +200,7 @@ export type TotalsCellLookup = (
 
 /**
  * Grand-totals row. Pinned at the top OR bottom of the grid body —
- * `cgrid.ts` picks the slot based on `options.totalsRowPosition`. The
+ * `velocityGrid.ts` picks the slot based on `options.totalsRowPosition`. The
  * row reads `chunk.totals[colId]` from the already-computed worker
  * aggregation; the totals row triggers ZERO additional worker
  * round-trips on scroll. Cycle 14 / Task 1.
@@ -274,7 +274,7 @@ export type PinnedCellLookup<TRow = unknown> = (
 /**
  * Static caller-owned pinned rows. Each entry in the data array becomes
  * one non-scrolling row at the top or bottom of the body — the position
- * is determined by where `cgrid.ts` stacks this subgrid relative to the
+ * is determined by where `velocityGrid.ts` stacks this subgrid relative to the
  * `DataSubgrid` (mirrors the totals positioning convention).
  *
  * Unlike `TotalsSubgrid`, the row data is owned by the main thread:

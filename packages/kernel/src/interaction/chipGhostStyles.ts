@@ -5,8 +5,8 @@
  * `position: fixed`. The ghost is a `cloneNode(true)` of the source
  * chip / pill, so it inherits the same class list. The chip CSS,
  * however, resolves values through panel-scoped CSS variables
- * (`--cg-row-group-chip-bg`, `--cg-row-group-chip-border`, etc.)
- * defined under `.cg-row-group-panel` / `.cg-pivot-panel`. Outside
+ * (`--vg-row-group-chip-bg`, `--vg-row-group-chip-border`, etc.)
+ * defined under `.vg-row-group-panel` / `.vg-pivot-panel`. Outside
  * those parents — i.e. on `document.body` — the variables are
  * `undefined`, and the ghost renders as bare text (no bg, no border).
  *

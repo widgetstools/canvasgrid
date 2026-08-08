@@ -1,4 +1,4 @@
-// CGridApi — the imperative public API surface on a CGrid instance. Plus
+// VelocityGridApi — the imperative public API surface on a VelocityGrid instance. Plus
 // the transaction shapes (Tx, TransactionResult) since they're API-shaped.
 // Depends on every other domain file (column, filter, group, event,
 // options) and the external interaction/* modules for IStatusPanelComp,
@@ -20,8 +20,8 @@ import type {
 } from './column';
 import type { CFilterModelEntry, FilterModel } from './filter';
 import type { GroupModel } from './group';
-import type { CGridEvent } from './event';
-import type { CGridOptions } from './options';
+import type { VelocityGridEvent } from './event';
+import type { VelocityGridOptions } from './options';
 import type { FloatingRect } from '../interaction/floatingPanel/host';
 
 export interface Tx<TRow = any> {
@@ -37,7 +37,7 @@ export interface TransactionResult {
 
 /**
  * Damage-region rendering — cumulative + last-paint telemetry surfaced via
- * `CGridApi.getPaintStats()`. `paints`/`fullPaints`/`partialPaints`/`blits`
+ * `VelocityGridApi.getPaintStats()`. `paints`/`fullPaints`/`partialPaints`/`blits`
  * are running totals since construction (or the last `resetPaintStats()`);
  * `lastRects`/`lastAreaPct` describe only the MOST RECENT paint.
  */
@@ -179,14 +179,14 @@ export interface ColumnGroupWalkNode {
  * The public API surface handed to `gridReady` listeners, tool panels,
  * status panels, and every other extension point.
  *
- * Two-tier contract (Cycle 21i Phase 2 / T3): `CGridApi` is THE surface
+ * Two-tier contract (Cycle 21i Phase 2 / T3): `VelocityGridApi` is THE surface
  * customizer panels + engine packages code against — anything a panel
- * needs belongs here, not on the `CGrid` class. Class-tier members are
+ * needs belongs here, not on the `VelocityGrid` class. Class-tier members are
  * an implementation detail reachable only by kernel-internal wiring;
  * reaching for the class from a panel is a smell that the API is
  * missing a method (add it here instead).
  */
-export interface CGridApi<TRow = any> {
+export interface VelocityGridApi<TRow = any> {
   setRowData(rows: TRow[]): void;
   applyTransaction(t: Tx<TRow>): TransactionResult;
   applyTransactionAsync(t: Tx<TRow>): void;
@@ -394,7 +394,7 @@ export interface CGridApi<TRow = any> {
   getGroupSelectionState(groupKey: string): 'none' | 'partial' | 'all';
 
   /** Cycle 13 / Task 2 — current displayed (post-filter) row count.
-   *  Matches `getDisplayedRowCount()` on the underlying CGrid; exposed
+   *  Matches `getDisplayedRowCount()` on the underlying VelocityGrid; exposed
    *  on the public API so status-bar count panels (and any custom
    *  panel that wants the same number) can call it without reaching
    *  into the grid instance. Equal to the `visibleRowCount` last
@@ -475,7 +475,7 @@ export interface CGridApi<TRow = any> {
    *  against the RESOLVED colDef (defaultColDef/columnTypes folded), with
    *  the pivot-mode read-only gate. Static booleans pass through; callback
    *  forms receive `{data, colId, rowIndex, value}`; unknown column →
-   *  `false`. Engine bridges (`@cgrid/edit` smart-edit / bulk-update
+   *  `false`. Engine bridges (`@wellsfargo-starui/velocity-grid-edit` smart-edit / bulk-update
    *  target collection) delegate here instead of replicating the
    *  predicate against authored defs. */
   isCellEditable(rowIndex: number, colId: string): boolean;
@@ -485,7 +485,7 @@ export interface CGridApi<TRow = any> {
    *  `CgTheme` object — see `theming/theme/`. */
   setTheme(theme: string | CgTheme): void;
   /** Theming Task 6/7 — force the active `CgTheme`'s mode (bypasses the
-   *  `data-cg-theme-mode` attribute / OS `prefers-color-scheme` inference
+   *  `data-vg-theme-mode` attribute / OS `prefers-color-scheme` inference
    *  `setTheme`/construction uses). No-op when the active theme is a plain
    *  CSS class string (there is no mode to pick). */
   setThemeMode(mode: ThemeMode): void;
@@ -503,7 +503,7 @@ export interface CGridApi<TRow = any> {
 
   /** Cycle 11 / Task 5 — call `refresh()` on the live `ToolPanel`
    *  instance for `id`. Silent no-op when:
-   *  - `id` is unknown (not registered in `CGridOptions.components` and
+   *  - `id` is unknown (not registered in `VelocityGridOptions.components` and
    *    not one of the built-in IDs);
    *  - no side bar is configured;
    *  - the matching panel is registered but not currently mounted
@@ -514,7 +514,7 @@ export interface CGridApi<TRow = any> {
    *
    *  Works for both built-in panels (`'agColumnsToolPanel'`,
    *  `'agFiltersToolPanel'`) and app-supplied custom panels keyed by
-   *  the same `id` they registered under in `CGridOptions.components`. */
+   *  the same `id` they registered under in `VelocityGridOptions.components`. */
   refreshToolPanel(id: string): void;
   /** Cycle 11 / Task 5 — the live `ToolPanel` instance for `id`, or
    *  `null` when no instance is currently mounted (panel never opened,
@@ -546,7 +546,7 @@ export interface CGridApi<TRow = any> {
    *  one of the registered panels. Closes any previously-open panel
    *  first — only one panel is open at a time. Works for built-in ids
    *  (`agColumnsToolPanel`, `agFiltersToolPanel`) and app-supplied
-   *  custom ids from `CGridOptions.components`. */
+   *  custom ids from `VelocityGridOptions.components`. */
   openToolPanel(id: string): void;
   /** Cycle 11 / Task 6 — close the currently open tool panel. Silent
    *  no-op when no side bar is configured or no panel is open. The
@@ -609,15 +609,15 @@ export interface CGridApi<TRow = any> {
    *  Built-in keys (`'agTotalRowCountComponent'`,
    *  `'agFilteredRowCountComponent'`, `'agSelectedRowCountComponent'`,
    *  `'agTotalAndFilteredRowCountComponent'`, `'agAggregationComponent'`)
-   *  and custom keys registered via `CGridOptions.components` are
+   *  and custom keys registered via `VelocityGridOptions.components` are
    *  both reachable through this surface. */
   getStatusPanel<T extends IStatusPanelComp = IStatusPanelComp>(key: string): T | undefined;
 
   /** Read the current value of any grid option. */
-  getGridOption<K extends keyof CGridOptions<TRow>>(key: K): CGridOptions<TRow>[K] | undefined;
+  getGridOption<K extends keyof VelocityGridOptions<TRow>>(key: K): VelocityGridOptions<TRow>[K] | undefined;
   /** Update a single runtime-mutable option. Throws on initial-only keys
    *  (see `INITIAL_ONLY_OPTIONS` in `core/runtimeOptions.ts`). */
-  setGridOption<K extends keyof CGridOptions<TRow>>(key: K, value: CGridOptions<TRow>[K]): void;
+  setGridOption<K extends keyof VelocityGridOptions<TRow>>(key: K, value: VelocityGridOptions<TRow>[K]): void;
   /**
    * Update the busy-overlay progress line while `loading` is true.
    * Pass `loaded` (and optional `total`) for “12,450 / 20,000 rows”,
@@ -627,7 +627,7 @@ export interface CGridApi<TRow = any> {
   /** Batch-update multiple runtime-mutable options. The `columnDefs` key is
    *  honored only via this batched entrypoint (not via `setGridOption`)
    *  because it rebuilds the column tree + worker column metadata. */
-  updateGridOptions(partial: Partial<CGridOptions<TRow>>): void;
+  updateGridOptions(partial: Partial<VelocityGridOptions<TRow>>): void;
 
   /** Register a custom cell renderer under `name`. Columns referencing the
    *  name via `cellRenderer` (or a `cellRendererSelector` return value)
@@ -670,16 +670,16 @@ export interface CGridApi<TRow = any> {
   /** The grid's COMPLETE configuration in one object: the full live options
    *  (columnDefs, defaultColDef, callbacks, every runtime-updated option)
    *  with the current runtime + view state embedded as `initialState`. Pass
-   *  it to `new CGrid(host, grid.getConfig())` to reconstruct the grid, or to
+   *  it to `new VelocityGrid(host, grid.getConfig())` to reconstruct the grid, or to
    *  `setConfig` to apply it live. Shallow copy — not pure-JSON (use
    *  `getState()` for the serialisable view-state slice). */
-  getConfig(): CGridOptions<TRow>;
+  getConfig(): VelocityGridOptions<TRow>;
 
   /** Apply a config object (from `getConfig`) to this live grid: the embedded
    *  `initialState` restores via `setState`, the rest via `updateGridOptions`.
    *  Initial-only / non-runtime keys can't change mid-session and are
    *  skipped. */
-  setConfig(config: CGridOptions<TRow>): void;
+  setConfig(config: VelocityGridOptions<TRow>): void;
 
   /** Cycle 21i Phase 2 / T4 — the grid's modal primitive (lazily
    *  created, one modal at a time): themed backdrop + centered dialog
@@ -688,19 +688,19 @@ export interface CGridApi<TRow = any> {
   getModal(): import('../interaction/modalHost').ModalHost;
 
   /** Cycle 21c / Task 10 — register the format compiler (supplied by
-   *  @cgrid/format's wireIntoKernel). Kernel invokes it in the
+   *  @wellsfargo-starui/velocity-grid-format's wireIntoKernel). Kernel invokes it in the
    *  compileFormatSlots pass (Task 11). Apps that never call this see
    *  identical behavior to before. */
   registerFormatCompiler(fn: import('../core/formatCompilerSlot').FormatCompiler): void;
 
   /** Cycle 21e / Task 10 — register the rule engine (supplied by
-   *  @cgrid/rules' wireIntoKernel). Kernel consults it in the
+   *  @wellsfargo-starui/velocity-grid-rules' wireIntoKernel). Kernel consults it in the
    *  applyCellProps fold (Task 11). Apps that never call this see
    *  identical behavior to before. */
   registerRuleEngine(engine: import('../core/ruleEngineSlot').RuleEngineShape): void;
 
   /** Cycle 21d / Task 9 — register the calc provider (supplied by
-   *  @cgrid/calc's wireIntoKernel). Kernel folds its synthesized calc
+   *  @wellsfargo-starui/velocity-grid-calc's wireIntoKernel). Kernel folds its synthesized calc
    *  columns + override patches into column resolution and ships its
    *  worker program (Task 10). Apps that never call this see
    *  identical behavior to before. */
@@ -723,7 +723,7 @@ export interface CGridApi<TRow = any> {
   /** Cycle 21e / Task 10 — binary light/dark kind of the active theme. */
   getThemeKind(): 'light' | 'dark';
 
-  /** Cycle 21i / Phase 1 — apply `--cg-*` theme token overrides (e.g.
+  /** Cycle 21i / Phase 1 — apply `--vg-*` theme token overrides (e.g.
    *  data colours: row selection, cell range, flash). Live + repaints. */
   setThemeParams(patch: Readonly<Record<string, string>>): void;
   /** Cycle 21i / Phase 1 — the currently-set theme token overrides
@@ -742,7 +742,7 @@ export interface CGridApi<TRow = any> {
    *  pre-built Path2D instances. Subsequent `resolveIcon` calls look
    *  up icons by name across all registered sets.
    *
-   *  Kernel never auto-registers any icon set; `@cgrid/format`'s
+   *  Kernel never auto-registers any icon set; `@wellsfargo-starui/velocity-grid-format`'s
    *  `wireIntoKernel` registers the Lucide bundle. Apps that supply
    *  additional icon sets (e.g. a custom Phosphor bundle) call this
    *  at init time alongside `wireIntoKernel`. Re-registering under
@@ -805,24 +805,24 @@ export interface CGridApi<TRow = any> {
   stopEditing(cancel?: boolean): void;
 
   /** Subscribe to a typed event. Returns an unsubscribe function. */
-  on<K extends CGridEvent<TRow>['type']>(
+  on<K extends VelocityGridEvent<TRow>['type']>(
     type: K,
-    handler: (event: Extract<CGridEvent<TRow>, { type: K }>) => void,
+    handler: (event: Extract<VelocityGridEvent<TRow>, { type: K }>) => void,
   ): () => void;
   /** Remove a previously-registered listener. */
-  off<K extends CGridEvent<TRow>['type']>(
+  off<K extends VelocityGridEvent<TRow>['type']>(
     type: K,
-    handler: (event: Extract<CGridEvent<TRow>, { type: K }>) => void,
+    handler: (event: Extract<VelocityGridEvent<TRow>, { type: K }>) => void,
   ): void;
   /** Alias for `on()`, present for ag-grid API parity. */
-  addEventListener<K extends CGridEvent<TRow>['type']>(
+  addEventListener<K extends VelocityGridEvent<TRow>['type']>(
     type: K,
-    handler: (event: Extract<CGridEvent<TRow>, { type: K }>) => void,
+    handler: (event: Extract<VelocityGridEvent<TRow>, { type: K }>) => void,
   ): () => void;
   /** Alias for `off()`, present for ag-grid API parity. */
-  removeEventListener<K extends CGridEvent<TRow>['type']>(
+  removeEventListener<K extends VelocityGridEvent<TRow>['type']>(
     type: K,
-    handler: (event: Extract<CGridEvent<TRow>, { type: K }>) => void,
+    handler: (event: Extract<VelocityGridEvent<TRow>, { type: K }>) => void,
   ): void;
 
   /** Move the leaf at `fromIndex` to `toIndex` in the flat visible-leaf
@@ -1109,13 +1109,13 @@ export interface CGridApi<TRow = any> {
   ): void;
 
   // ── Styling templates (Phase B / B3) ────────────────────────────────
-  // The shared styling-template library, routed to `@cgrid/calc`. When no
+  // The shared styling-template library, routed to `@wellsfargo-starui/velocity-grid-calc`. When no
   // calc engine is wired, `getTemplates` returns `[]` and the mutators are
   // no-ops (no `templatesChanged` event). Every mutation fires
   // `templatesChanged` so switchers / editors re-sync.
   /** The host-authored template library (synthetic type-defaults excluded),
    *  as defensive clones. `[]` when no calc engine is wired. */
-  getTemplates(): import('@cgrid/calc').ColumnTemplate[];
+  getTemplates(): import('@wellsfargo-starui/velocity-grid-calc').ColumnTemplate[];
   /** Create-or-replace a template by id (re-save preserves `createdAt`; the
    *  kernel stamps timestamps). Throws on an empty id / non-compiling format. */
   saveTemplate(spec: import('./layout').TemplateSaveInput): void;
@@ -1139,10 +1139,10 @@ export interface CGridApi<TRow = any> {
    *  be reused, and a consumer edit of a column that has a SHARED template
    *  forks to its own rather than mutating the shared one. `headerName` is not
    *  templatable (caption is column-unique). No-op without a calc engine. */
-  editColumn(colId: string, patch: import('@cgrid/calc').ColumnEditPatch): void;
+  editColumn(colId: string, patch: import('@wellsfargo-starui/velocity-grid-calc').ColumnEditPatch): void;
 
   // ── Conditional styling rules (Phase C / C3) ────────────────────────────
-  // The active layout's conditional-rule set, routed to `@cgrid/rules`. When
+  // The active layout's conditional-rule set, routed to `@wellsfargo-starui/velocity-grid-rules`. When
   // no rules engine is wired, `getRules` returns `[]` and the mutators no-op
   // (no `rulesChanged` event). Rules ride the layout-tier `rules` state
   // module, so they round-trip through getState / persistState / layouts +

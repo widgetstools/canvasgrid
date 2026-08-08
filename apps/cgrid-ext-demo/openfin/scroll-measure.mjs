@@ -4,7 +4,7 @@
  * Boots ?paintHarness (hermetic data), expands to N rows, then measures:
  *   - steady-state FPS / longtasks (6s)
  *   - continuous wheel-scroll FPS / longtasks (6s)
- *   - CGrid getPaintStats() during the scroll window
+ *   - VelocityGrid getPaintStats() during the scroll window
  *
  * Usage:
  *   node openfin/scroll-measure.mjs [baseUrl] [rowCount]
@@ -125,8 +125,8 @@ const metrics = await page.evaluate(async () => {
   out.steadyPaint = { ...grid.getPaintStats() };
 
   grid.resetPaintStats();
-  const canvas = document.querySelector('.cg-canvas');
-  if (!canvas) throw new Error('no .cg-canvas');
+  const canvas = document.querySelector('.vg-canvas');
+  if (!canvas) throw new Error('no .vg-canvas');
   const r = canvas.getBoundingClientRect();
   let dir = 1;
   let sent = 0;

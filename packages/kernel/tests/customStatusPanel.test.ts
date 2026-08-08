@@ -3,7 +3,7 @@
  *
  * Asserts the public surface that lets apps:
  *   1. Register custom status-panel components via the shared
- *      `CGridOptions.components` channel (same map that feeds the
+ *      `VelocityGridOptions.components` channel (same map that feeds the
  *      tool-panel registry — `IStatusPanelComp` and `ToolPanel` have
  *      identical lifecycle shapes, so one channel serves both).
  *   2. Reach those custom instances at runtime via
@@ -17,11 +17,11 @@
  * the assertions stay self-contained.
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import type { IStatusPanelComp, StatusPanelParams } from '../src/interaction/statusBar/types';
 
 // Same Worker + canvas stubs the cgrid.integration tests register so
-// CGrid construction completes under happy-dom. CGrid posts to a
+// VelocityGrid construction completes under happy-dom. VelocityGrid posts to a
 // worker on construction and reads a 2D context off the canvas;
 // without these stubs neither code path can run.
 beforeAll(() => {
@@ -63,7 +63,7 @@ class RecordingStatusPanel implements IStatusPanelComp {
   init(params: StatusPanelParams): void {
     this.initCount += 1;
     this.receivedParams = params;
-    this.gui.className = 'cg-recording-status-panel';
+    this.gui.className = 'vg-recording-status-panel';
     // Surface a marker so DOM-based assertions can distinguish multiple
     // instances mounted into the same bar.
     const tag = (params.statusPanelParams?.tag as string) ?? '';
@@ -82,7 +82,7 @@ class CustomPanelWithCustomMethod implements IStatusPanelComp {
   readonly gui: HTMLDivElement = document.createElement('div');
   private internalState = 'initial';
   init(_p: StatusPanelParams): void {
-    this.gui.className = 'cg-custom-panel-with-method';
+    this.gui.className = 'vg-custom-panel-with-method';
   }
   getGui(): HTMLElement { return this.gui; }
   refresh(): void { /* no-op for this test */ }
@@ -98,7 +98,7 @@ class CustomPanelWithCustomMethod implements IStatusPanelComp {
 }
 
 interface MakeGridResult {
-  grid: CGrid<{ id: string }>;
+  grid: VelocityGrid<{ id: string }>;
   container: HTMLElement;
 }
 
@@ -108,9 +108,9 @@ function makeGrid(
 ): MakeGridResult {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
-  const grid = new CGrid<{ id: string }>(container, {
+  const grid = new VelocityGrid<{ id: string }>(container, {
     columnDefs: [{ field: 'id' }],
     getRowId: (r) => r.id,
     components: components as Record<string, new () => IStatusPanelComp>,
@@ -120,16 +120,16 @@ function makeGrid(
 }
 
 describe('Custom status panel API (Cycle 13 / Task 4)', () => {
-  // 1. Registering a custom panel via `CGridOptions.components` mounts it.
-  it('registers a custom panel via CGridOptions.components and mounts it into the bar', () => {
+  // 1. Registering a custom panel via `VelocityGridOptions.components` mounts it.
+  it('registers a custom panel via VelocityGridOptions.components and mounts it into the bar', () => {
     const { grid, container } = makeGrid(
       { myCustomPanel: RecordingStatusPanel },
       [{ key: 'mine', statusPanel: 'myCustomPanel' }],
     );
     // The bar mounted and the custom panel's DOM node is in the right zone.
-    const bar = container.querySelector('.cg-status-bar');
+    const bar = container.querySelector('.vg-status-bar');
     expect(bar).not.toBeNull();
-    const mounted = container.querySelector('.cg-recording-status-panel');
+    const mounted = container.querySelector('.vg-recording-status-panel');
     expect(mounted).not.toBeNull();
     grid.destroy();
   });
@@ -150,7 +150,7 @@ describe('Custom status panel API (Cycle 13 / Task 4)', () => {
     expect(inst).toBeDefined();
     expect(inst!.initCount).toBe(1);
     // The api forwarded into init.params.api must carry the public surface
-    // — at minimum, the methods callable through CGridApi. Asserting on a
+    // — at minimum, the methods callable through VelocityGridApi. Asserting on a
     // sentinel method shape (rather than identity) keeps the test robust
     // against makeApi() returning a fresh object each call.
     expect(typeof (inst!.receivedParams?.api as { getStatusPanel?: unknown })?.getStatusPanel).toBe('function');
@@ -237,9 +237,9 @@ describe('Custom status panel API (Cycle 13 / Task 4)', () => {
     //     the call does NOT throw.
     const noBarContainer = document.createElement('div');
     noBarContainer.style.cssText = 'width:800px; height:600px;';
-    noBarContainer.className = 'cg-theme-quartz';
+    noBarContainer.className = 'vg-theme-quartz';
     document.body.appendChild(noBarContainer);
-    const noBarGrid = new CGrid<{ id: string }>(noBarContainer, {
+    const noBarGrid = new VelocityGrid<{ id: string }>(noBarContainer, {
       columnDefs: [{ field: 'id' }],
       getRowId: (r) => r.id,
     });
@@ -259,7 +259,7 @@ describe('Custom status panel API (Cycle 13 / Task 4)', () => {
         { key: 'third', statusPanel: 'tagger', align: 'left', statusPanelParams: { tag: 'third' } },
       ],
     );
-    const leftZone = container.querySelector('.cg-status-bar-zone--left') as HTMLElement;
+    const leftZone = container.querySelector('.vg-status-bar-zone--left') as HTMLElement;
     expect(leftZone).not.toBeNull();
     const tags = Array.from(leftZone.children).map((c) => (c as HTMLElement).dataset.tag);
     expect(tags).toEqual(['first', 'second', 'third']);
@@ -294,11 +294,11 @@ describe('Custom status panel API (Cycle 13 / Task 4)', () => {
     expect(mine!.initCount).toBe(1);
     // DOM placement: left zone hosts the custom panel, right zone hosts
     // the built-in count panel.
-    const leftZone = container.querySelector('.cg-status-bar-zone--left') as HTMLElement;
-    const rightZone = container.querySelector('.cg-status-bar-zone--right') as HTMLElement;
+    const leftZone = container.querySelector('.vg-status-bar-zone--left') as HTMLElement;
+    const rightZone = container.querySelector('.vg-status-bar-zone--right') as HTMLElement;
     expect(leftZone.children.length).toBe(1);
     expect(rightZone.children.length).toBe(1);
-    expect(leftZone.querySelector('.cg-recording-status-panel')).not.toBeNull();
+    expect(leftZone.querySelector('.vg-recording-status-panel')).not.toBeNull();
     grid.destroy();
   });
 });

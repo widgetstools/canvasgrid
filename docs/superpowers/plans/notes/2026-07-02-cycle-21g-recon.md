@@ -1,8 +1,8 @@
-# Cycle 21g — `@cgrid/edit` Recon Notes
+# Cycle 21g — `@wellsfargo-starui/velocity-grid-edit` Recon Notes
 
 **Date:** 2026-07-02 (redo of the recon lost in the 2026-07-02 session restart; committed per durability rule — no scratchpad artifacts)
 **Feeds:** `docs/superpowers/specs/2026-07-02-cycle-21g-edit-design.md`
-**Sources read:** `docs/starui-customizer/{01-editing-core,11-data-change-history,12-smart-edit,13-bulk-update,14-plus-minus,15-shortcuts}.md`; `docs/starui-customizer-ui/{06-plus-minus,07-shortcuts,09-smart-edit,10-bulk-update,14-smart-edit-toolbar,15-bulk-update-toolbar,16-edit-history-toolbar}.md`; kernel seam sweep over `packages/kernel/src` (cgrid.ts, core/editController.ts, interaction/features/{editTrigger,cellKeyboardEvents}.ts, types/{api,column,event}.ts); `packages/renderers/src/bridge.ts` (addon-attachment precedent); PR #98 diff.
+**Sources read:** `docs/starui-customizer/{01-editing-core,11-data-change-history,12-smart-edit,13-bulk-update,14-plus-minus,15-shortcuts}.md`; `docs/starui-customizer-ui/{06-plus-minus,07-shortcuts,09-smart-edit,10-bulk-update,14-smart-edit-toolbar,15-bulk-update-toolbar,16-edit-history-toolbar}.md`; kernel seam sweep over `packages/kernel/src` (velocityGrid.ts, core/editController.ts, interaction/features/{editTrigger,cellKeyboardEvents}.ts, types/{api,column,event}.ts); `packages/renderers/src/bridge.ts` (addon-attachment precedent); PR #98 diff.
 
 ---
 
@@ -74,7 +74,7 @@ interface BulkUpdateSettings {
 ```
 
 - Targets: same range-first/focused-fallback, but **text|number|date** types (boolean excluded).
-- Distinct values: scan **currently-displayed** rows (filter+sort respected), bounded, fresh per open, natural-sorted. → cgrid: kernel already ships `getDistinctValues(colId, limit)` (see C.6) — the doc's "reuse the set-filter path" option is ALREADY the landed answer.
+- Distinct values: scan **currently-displayed** rows (filter+sort respected), bounded, fresh per open, natural-sorted. → velocity-grid: kernel already ships `getDistinctValues(colId, limit)` (see C.6) — the doc's "reuse the set-filter path" option is ALREADY the landed answer.
 - `parseBulkUpdateValue(raw, cellDataType)`: number → parseFloat, date → ISO 8601 normalize, text passthrough; null on failure → skipped.
 - `buildBulkUpdatePatches`: `Object.is()` no-op guard — same-value cells never produce patches (keeps undo clean).
 
@@ -113,7 +113,7 @@ interface ShortcutsSettings { enabled: boolean; recordHistory: boolean; }
 
 ## Part B — StarUI UI docs (surfaces; engine-API implications only — panels/toolbars are 21i)
 
-- **06 plus-minus panel / 07 shortcuts panel**: master-detail list+editor; module settings as a draft item (`itemId='settings'`); comma-separated column-scope input; meta lines (`on/off · ±step · scope`). Engine implication: nudges/shortcuts are plain arrays in state; per-item commit by id; live expression validation binds to `@cgrid/expression`.
+- **06 plus-minus panel / 07 shortcuts panel**: master-detail list+editor; module settings as a draft item (`itemId='settings'`); comma-separated column-scope input; meta lines (`on/off · ±step · scope`). Engine implication: nudges/shortcuts are plain arrays in state; per-item commit by id; live expression validation binds to `@wellsfargo-starui/velocity-grid-expression`.
 - **09 smart-edit panel / 10 bulk-update panel**: pure settings forms over the settings trio; op set held as `Set`, persisted as array. Engine implication: settings objects must serialize cleanly to JSON and merge partials over defaults.
 - **14 smart-edit toolbar**: operand input + op buttons + Set… dialog + preview table + threshold confirm. Engine surface consumed: `resolveTargetCells(api)`, `buildSmartEditPatches(targets, op, value)`, `previewPatches(patches)`, `applyEdits(api, targets, op, value, {journal, patches})` (async, atomic), `enforceSingleColumn` checked upfront. **Toolbar never mutates the grid — patches only.** Operand draft survives selection changes.
 - **15 bulk-update toolbar**: type-inferred input (from first selected cell's dataType), async distinct-values dropdown (opt-in, only when values exist), single-column guard disables Apply with tooltip. Engine surface: `resolveColumnDistinctValues(api, colId, limit)` (async), `bulkUpdateValueKind(cellDataType)`, `applyBulkUpdateEdits()`.
@@ -125,7 +125,7 @@ Net engine API the UI layer will need later (21i): journal `{canUndo, canRedo, u
 
 ### C.1 Editing pipeline
 
-Owner `EditController` (`packages/kernel/src/core/editController.ts`); CGrid delegates. Triggers: single/double click via `EditTrigger` (`interaction/features/editTrigger.ts:18/36`, gated by `suppressClickEdit` + `isCellEditable`); F2/Enter/type-to-edit via KeyPaging; public `startEditingCell(rowIndex, colId)` (`types/api.ts:486`). Commit path (`editController.ts:289-329`): fetch canonical row from worker → `valueParser` (`:303`) → `valueSetter` or `rowData[field] = parsed` (`:307-312`) → emit `cellValueChanged` + `cellEditingStopped` → `applyTransaction({update:[rowData], async:false})` (`:326`). Full-row commit batches: one `cellValueChanged` per changed cell + `rowValueChanged` + ONE transaction (`:550,:593`).
+Owner `EditController` (`packages/kernel/src/core/editController.ts`); VelocityGrid delegates. Triggers: single/double click via `EditTrigger` (`interaction/features/editTrigger.ts:18/36`, gated by `suppressClickEdit` + `isCellEditable`); F2/Enter/type-to-edit via KeyPaging; public `startEditingCell(rowIndex, colId)` (`types/api.ts:486`). Commit path (`editController.ts:289-329`): fetch canonical row from worker → `valueParser` (`:303`) → `valueSetter` or `rowData[field] = parsed` (`:307-312`) → emit `cellValueChanged` + `cellEditingStopped` → `applyTransaction({update:[rowData], async:false})` (`:326`). Full-row commit batches: one `cellValueChanged` per changed cell + `rowValueChanged` + ONE transaction (`:550,:593`).
 
 **`cellValueChanged` payload** (`types/event.ts:108-124`): `{rowId, colId, oldValue, newValue, newRawValue?, source?: 'edit', rowIndex?, data?}` — `rowId` is the REAL worker string id (`editController.ts:316`). Carries oldValue → journal-ready. **No `field`** — derive from colDef (colId===field for field-backed columns).
 
@@ -141,28 +141,28 @@ Owner `EditController` (`packages/kernel/src/core/editController.ts`); CGrid del
 
 `event.preventDefault()` from a listener short-circuits the whole downstream chain (`cellKeyboardEvents.ts:57-62`) — EditTrigger/type-to-edit never see the key, editor does not open. **An addon can claim `+`/`-`/letter keys with a plain event subscription — no colDef transform, no kernel change.** Ordering note: per-column `suppressKeyboardEvent` is checked BEFORE `cellKeyDown` is emitted (`:37-46`) — if an app suppresses a key, addon listeners won't see it (correct precedence: app colDef wins).
 
-No public grid-root DOM getter (`this.root` private, `cgrid.ts:792`) — not needed; the app owns the container it passed to `new CGrid(container, options)`, and `cellKeyDown` covers focused-cell keys.
+No public grid-root DOM getter (`this.root` private, `velocityGrid.ts:792`) — not needed; the app owns the container it passed to `new VelocityGrid(container, options)`, and `cellKeyDown` covers focused-cell keys.
 
-Caveat (pre-#98): `cellKeyDown.rowId` comes from `rowIdAt(rowIndex)` which is the synthetic `row-${index}` stub (`cgrid.ts:6861`). **PR #98 fixes this at the source** — `rowIdAt` delegates to `stringRowIdAt` for all ~12 call sites (verified in the PR diff; synthetic only as out-of-chunk fallback). → 21g takes PR #98 as a hard dependency.
+Caveat (pre-#98): `cellKeyDown.rowId` comes from `rowIdAt(rowIndex)` which is the synthetic `row-${index}` stub (`velocityGrid.ts:6861`). **PR #98 fixes this at the source** — `rowIdAt` delegates to `stringRowIdAt` for all ~12 call sites (verified in the PR diff; synthetic only as out-of-chunk fallback). → 21g takes PR #98 as a hard dependency.
 
 ### C.4 Data access & rowIds
 
-- `forEachRow((rowId, row) => void)` — public (`types/api.ts:425`, impl `cgrid.ts:3105`), iterates the main-thread `rowDataById` mirror.
+- `forEachRow((rowId, row) => void)` — public (`types/api.ts:425`, impl `velocityGrid.ts:3105`), iterates the main-thread `rowDataById` mirror.
 - `rowDataById` — private Map, synced by `setRowData` + all transaction paths. **No public `getRowById`** single-row accessor.
 - `getCellValue(rowIndex, colId)` (`types/api.ts:713`) — viewport-chunk only.
-- `options.getRowId` required (`cgrid.ts:778`); `inferRowIdField` derives the id field (`cgrid.ts:227-234`), same derivation worker-side.
+- `options.getRowId` required (`velocityGrid.ts:778`); `inferRowIdField` derives the id field (`velocityGrid.ts:227-234`), same derivation worker-side.
 - Addon answer (renderers-bridge precedent, `packages/renderers/src/bridge.ts:219-238`): own rowId→row mirror seeded from `forEachRow()`, freshened on `rowsChanged`, **cleared+reseeded on `modelUpdated`** (21f final-review lesson: same-rowId `setRowData` emits `modelUpdated`, NOT `rowsChanged` — a mirror without that clear goes permanently stale).
 
 ### C.5 Mutation / transactions
 
-- `applyTransaction(t): TransactionResult` (`types/api.ts:36`, impl `cgrid.ts:1979`), `applyTransactionAsync` (`:37`), `flushAsyncTransactions` (`:38`). `Tx = {add?, update?, remove?}` — **`update` REPLACES the row** (worker RowStore.apply, `cgrid.ts:2378`). Result carries `{add/update/remove: [{rowId}]}`.
+- `applyTransaction(t): TransactionResult` (`types/api.ts:36`, impl `velocityGrid.ts:1979`), `applyTransactionAsync` (`:37`), `flushAsyncTransactions` (`:38`). `Tx = {add?, update?, remove?}` — **`update` REPLACES the row** (worker RowStore.apply, `velocityGrid.ts:2378`). Result carries `{add/update/remove: [{rowId}]}`.
 - **No per-cell `setDataValue`** — the editor itself commits via `applyTransaction({update:[row]})`.
 - One transaction = one worker round-trip = one re-render; `update` arrays batch freely (full-row commit precedent).
-- Events after mutation: worker recompute → `modelUpdated` (`cgrid.ts:1697/1966`); `rowsChanged` (`types/event.ts:133-139`) once per mirror-mutating transaction, **listener-gated**, `source: 'transaction'|'transactionAsync'|'edit'`, `updated[]` includes **`oldRow` snapshots**.
+- Events after mutation: worker recompute → `modelUpdated` (`velocityGrid.ts:1697/1966`); `rowsChanged` (`types/event.ts:133-139`) once per mirror-mutating transaction, **listener-gated**, `source: 'transaction'|'transactionAsync'|'edit'`, `updated[]` includes **`oldRow` snapshots**.
 
 ### C.6 Distinct values (landed 21d)
 
-`getDistinctValues(colId, limit?): Promise<string[]>` — public (`types/api.ts:418-421`, impl `cgrid.ts:2959`, worker scan). Note: returns **stringified** values → bulk-update must parse back type-aware (`parseBulkUpdateValue`).
+`getDistinctValues(colId, limit?): Promise<string[]>` — public (`types/api.ts:418-421`, impl `velocityGrid.ts:2959`, worker scan). Note: returns **stringified** values → bulk-update must parse back type-aware (`parseBulkUpdateValue`).
 
 ### C.7 Selection model
 
@@ -170,13 +170,13 @@ Public (`types/api.ts`): `getCellRanges(): SelectionRange[]` (`:280`; `{rowStart
 
 ### C.8 Undo/redo in kernel
 
-**None.** Grep confirms no undo/redo/edit-stack anywhere in `packages/kernel/src` (hits are icon path data + unrelated comments). The cycle-21 master spec assigns EditJournal to `@cgrid/edit` (master doc §4.7, `2026-07-01-...-intrinsic-features.md:231-242`). Journal is greenfield addon territory — no `unifyUndo` conflict, drop that flag.
+**None.** Grep confirms no undo/redo/edit-stack anywhere in `packages/kernel/src` (hits are icon path data + unrelated comments). The cycle-21 master spec assigns EditJournal to `@wellsfargo-starui/velocity-grid-edit` (master doc §4.7, `2026-07-01-...-intrinsic-features.md:231-242`). Journal is greenfield addon territory — no `unifyUndo` conflict, drop that flag.
 
 ### C.9 Editable / value hooks
 
-- `editable?: boolean | ({data, colId, rowIndex, value}) => boolean` (`types/column.ts:272/34-36`); resolved by `EditController.isCellEditable` (`editController.ts:411-428`). ~~public bridge `cgrid.ts:1423`~~ **CORRECTION (plan-time code check, 21g-S2): `cgrid.ts:1423` is the internal feature-deps object, NOT an api bridge — `isCellEditable` is private (`cgrid.ts:7649`) and absent from `types/api.ts`. Same for `isEditing()` (private `isAnyEditOpen`, `cgrid.ts:7672`). The edit bridge replicates editability addon-side from resolved colDefs and derives its editing flag from `cellEditingStarted`/`cellEditingStopped` events.**
+- `editable?: boolean | ({data, colId, rowIndex, value}) => boolean` (`types/column.ts:272/34-36`); resolved by `EditController.isCellEditable` (`editController.ts:411-428`). ~~public bridge `velocityGrid.ts:1423`~~ **CORRECTION (plan-time code check, 21g-S2): `velocityGrid.ts:1423` is the internal feature-deps object, NOT an api bridge — `isCellEditable` is private (`velocityGrid.ts:7649`) and absent from `types/api.ts`. Same for `isEditing()` (private `isAnyEditOpen`, `velocityGrid.ts:7672`). The edit bridge replicates editability addon-side from resolved colDefs and derives its editing flag from `cellEditingStarted`/`cellEditingStopped` events.**
 - `valueParser({newValue, oldValue, data, colDef})` (`types/column.ts:386/561-569`); `valueSetter({data, newValue, oldValue, colDef})` (`:394/571+`).
-- **Kernel runs valueParser/valueSetter ONLY inside the editor commit path** (`editController.ts:303-312`). Programmatic patches (smart-edit/bulk-update/nudges) bypass the editor → `@cgrid/edit` must apply the same parser→setter contract itself before building transaction payloads, or programmatic edits diverge from interactive ones. Correctness requirement for the spec.
+- **Kernel runs valueParser/valueSetter ONLY inside the editor commit path** (`editController.ts:303-312`). Programmatic patches (smart-edit/bulk-update/nudges) bypass the editor → `@wellsfargo-starui/velocity-grid-edit` must apply the same parser→setter contract itself before building transaction payloads, or programmatic edits diverge from interactive ones. Correctness requirement for the spec.
 
 ### C.10 Addon-attachment pattern (canonical template)
 
@@ -196,4 +196,4 @@ Public (`types/api.ts`): `getCellRanges(): SelectionRange[]` (`:280`; `{rowStart
 
 **Kernel-diff verdict: ZERO kernel changes needed.** Everything rides on landed public API: `cellKeyDown`/`cellValueChanged`/`rowsChanged`/`modelUpdated`, `applyTransaction(Async)`, `forEachRow`, `getDistinctValues`, selection get/set, `isCellEditable`, colDef `valueParser`/`valueSetter`/`editable`. Two nice-to-haves surfaced (add `field` to `cellValueChanged`; that's it — the rowId one is already PR #98) — neither crosses the "genuinely needs intrinsic support" bar; both avoidable addon-side. **Hard dependency: PR #98 must merge before 21g's bridge/E2E tasks** (real rowIds in `cellKeyDown`/`getFocusedCell`; lucide icons for the history-toolbar demo).
 
-**Dependencies:** `@cgrid/kernel` (peer, type-only imports + bridge registration — renderers precedent); `@cgrid/expression` (nudge expression gates, main-side `parseAndEvaluate`; grammar `&&`/`||`, `==`/`!=`). No format/rules/calc dependency. Engines Date-free (host-stamped timestamps, injectable now); seeded LCG in tests.
+**Dependencies:** `@wellsfargo-starui/velocity-grid` (peer, type-only imports + bridge registration — renderers precedent); `@wellsfargo-starui/velocity-grid-expression` (nudge expression gates, main-side `parseAndEvaluate`; grammar `&&`/`||`, `==`/`!=`). No format/rules/calc dependency. Engines Date-free (host-stamped timestamps, injectable now); seeded LCG in tests.

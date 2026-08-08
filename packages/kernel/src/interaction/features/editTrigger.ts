@@ -12,10 +12,10 @@
 // editing keys (F2 / Esc / Enter / Tab) — see those features for the
 // "what happens when an editor is already open" half of the surface.
 
-import { Feature, type CGridEventCtx } from '../feature';
+import { Feature, type VelocityGridEventCtx } from '../feature';
 
 export class EditTrigger extends Feature {
-  override handleClick(ctx: CGridEventCtx): void {
+  override handleClick(ctx: VelocityGridEventCtx): void {
     // Let CellSelection set focus + emit cellClicked first.
     super.handleClick(ctx);
     if (ctx.hit.kind !== 'cell') return;
@@ -33,7 +33,7 @@ export class EditTrigger extends Feature {
     grid.openEditor(ctx.hit.rowIndex, ctx.hit.colId, undefined, 'edit');
   }
 
-  override handleDoubleClick(ctx: CGridEventCtx): void {
+  override handleDoubleClick(ctx: VelocityGridEventCtx): void {
     super.handleDoubleClick(ctx);
     if (ctx.hit.kind !== 'cell') return;
     const grid = ctx.grid;
@@ -44,7 +44,7 @@ export class EditTrigger extends Feature {
     grid.openEditor(ctx.hit.rowIndex, ctx.hit.colId, undefined, 'edit');
   }
 
-  override handleKeyDown(ctx: CGridEventCtx): void {
+  override handleKeyDown(ctx: VelocityGridEventCtx): void {
     // Head-of-chain suppressKeyboardEvent: when the focused column's
     // callback returns true, swallow the event entirely so nothing
     // downstream (CellSelection, KeyPaging) reacts.

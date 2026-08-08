@@ -1,7 +1,7 @@
 // Cycle 21d / Task 10 — worker-side calc program store.
 //
 // Owns the reconstruction of the calculated-column interpreter + delta
-// aggregate factories shipped from @cgrid/calc's bridge as source text
+// aggregate factories shipped from @wellsfargo-starui/velocity-grid-calc's bridge as source text
 // (Function.prototype.toString() forms) via the setCalcProgram protocol
 // message. Reconstruction mirrors the setAggFuncs / registerComparator
 // `new Function` idiom in handlers/dataPipeline.ts — same CSP caveat,
@@ -26,7 +26,7 @@
 // mirrors `packages/calc/src/scopeKey.ts`'s `scopeKeyOf` / `DataVersionMap`
 // semantics, reimplemented NATIVELY here (coordinator decision: no
 // SCOPE_KEY_SOURCE/DATA_VERSION_MAP_SOURCE shipped over the wire — the
-// kernel has zero runtime @cgrid/calc imports). Delta-aggregate state is
+// kernel has zero runtime @wellsfargo-starui/velocity-grid-calc imports). Delta-aggregate state is
 // cached per scope instance keyed `(fn, colId, scopeKey)` with the
 // current row-group-colId signature folded into group/parent scope keys,
 // so a regroup naturally orphans every stale group/parent entry; a
@@ -99,7 +99,7 @@ interface AggStateEntry {
  *  over the scope's rows in scope iteration order, skipping nulls.
  *  Recomputed on every version bump (O(scope) cost; no delta state).
  *  Case-insensitive match — the AggSpec's `fn` string ships verbatim
- *  from @cgrid/calc's transform output (Task 2's shippable set uses
+ *  from @wellsfargo-starui/velocity-grid-calc's transform output (Task 2's shippable set uses
  *  upper-case `FIRST`/`LAST`; tests here use lower-case for brevity). */
 function isFirstLast(fn: string): 'first' | 'last' | null {
   const lower = fn.toLowerCase();
@@ -109,7 +109,7 @@ function isFirstLast(fn: string): 'first' | 'last' | null {
 /** Final review Fix 1 — parameterized lookup grammar: `NAME(p)`, mirroring
  *  `packages/calc/src/aggregates/registry.ts`'s `PARAM_NAME_RE` /
  *  `getAggregate` exactly (reimplemented natively here per the kernel's
- *  zero-runtime-@cgrid/calc-imports constraint). The transform emits
+ *  zero-runtime-@wellsfargo-starui/velocity-grid-calc-imports constraint). The transform emits
  *  parameterized fn strings like `'PERCENTILE(95)'`
  *  (`packages/calc/src/aggTransform.ts:151`), but `aggregateSources` ships
  *  the BASE factory name only (`'PERCENTILE'`) — the registry's arity
@@ -520,7 +520,7 @@ export class CalcProgramStore implements CalcValueSource {
         // `NAME(p)` grammar as the calc registry's `getAggregate`.
         const impl = resolveAggregateFactory(this.factories, fn);
         if (impl === undefined) {
-          throw new Error(`[cgrid] Stage B: unresolved aggregate function '${fn}' (colId '${colId}')`);
+          throw new Error(`[velocity-grid] Stage B: unresolved aggregate function '${fn}' (colId '${colId}')`);
         }
         entry = { state: impl.init(), impl, dataVersion: 0, finalized: null };
       }
@@ -1018,10 +1018,10 @@ function rebuild(label: string, source: string): unknown {
   try {
     fn = new Function(`"use strict"; return (${source});`)();
   } catch (err) {
-    throw new Error(`[cgrid] failed to deserialise ${label}: ${String((err as Error).message ?? err)}`);
+    throw new Error(`[velocity-grid] failed to deserialise ${label}: ${String((err as Error).message ?? err)}`);
   }
   if (typeof fn !== 'function') {
-    throw new Error(`[cgrid] ${label} did not deserialise to a function`);
+    throw new Error(`[velocity-grid] ${label} did not deserialise to a function`);
   }
   return fn;
 }

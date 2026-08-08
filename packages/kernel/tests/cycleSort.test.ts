@@ -1,6 +1,6 @@
 // Cycle 8 / Task 1 — cycleSort multi-column semantics.
 //
-// CGrid.cycleSort (private) cycles a single column's sort direction
+// VelocityGrid.cycleSort (private) cycles a single column's sort direction
 // (unsorted → asc → desc → unsorted). With Cycle 8 / Task 1 the
 // method takes an optional `{ append }` flag — when `true`, the
 // column is appended to the existing sort model instead of replacing
@@ -8,7 +8,7 @@
 // direction in place; if it cycles to "unsorted", it is removed.
 
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
 
 beforeAll(() => {
@@ -44,9 +44,9 @@ beforeAll(() => {
 function mkGrid(extraOpts: Record<string, unknown> = {}) {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
-  const grid = new CGrid<{ id: string; a: number; b: number; c: number }>(container, {
+  const grid = new VelocityGrid<{ id: string; a: number; b: number; c: number }>(container, {
     columnDefs: [
       { field: 'id' },
       { field: 'a', type: 'number' },

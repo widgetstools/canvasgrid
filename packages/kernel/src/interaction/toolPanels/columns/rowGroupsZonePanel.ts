@@ -6,7 +6,7 @@
 // / Task 2 upgraded this SECTION from an inert stub to a LIVE drop
 // zone.
 
-import type { CGridApi } from '../../../types';
+import type { VelocityGridApi } from '../../../types';
 import {
   ROW_GROUPS_PLACEHOLDER,
   buildDropZoneSection,
@@ -27,7 +27,7 @@ interface RowGroupPill {
 
 /** Deps threaded into `RowGroupsZonePanel` at construction. */
 export interface RowGroupsZonePanelDeps {
-  api: CGridApi;
+  api: VelocityGridApi;
   /** Resolve a colId's rendered label (header name or colId fallback).
    *  Shared with the other sub-panels so pill labels match row labels. */
   resolveLabel(colId: string): string;
@@ -52,13 +52,13 @@ export class RowGroupsZonePanel {
       iconName: 'group',
       headerText: 'Row Groups',
       ariaLabel: 'Row group columns',
-      zoneClass: 'cg-columns-panel-rgz',
-      contentClass: 'cg-columns-panel-rgz-content',
+      zoneClass: 'vg-columns-panel-rgz',
+      contentClass: 'vg-columns-panel-rgz-content',
     });
     this.section = handles.section;
     this.dropZone = handles.dropZone;
     this.content = handles.content;
-    this.dropZone.setAttribute('data-cg-pill-role', 'rowGroup');
+    this.dropZone.setAttribute('data-vg-pill-role', 'rowGroup');
     this.refresh();
     // The Row Groups zone ALWAYS subscribes (independent of
     // `suppressSyncLayoutWithGrid` — the zone IS a mirror by design).

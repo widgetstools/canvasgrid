@@ -2,8 +2,8 @@
  * Shared grid-introspection helpers for the customizer settings modules —
  * expression Schema + column catalogs sourced from the live grid.
  */
-import type { Schema } from '@cgrid/expression';
-import type { CgExtContext } from '../extension/types';
+import type { Schema } from '@wellsfargo-starui/velocity-grid-expression';
+import type { VelocityGridExtContext } from '../extension/types';
 import type { ExpressionColumn } from './expressionEditor';
 
 interface RawColDef {
@@ -15,7 +15,7 @@ interface RawColDef {
 }
 
 /** Leaf column defs from the live grid (groups flattened). */
-export function leafColumns(grid: CgExtContext['grid']): RawColDef[] {
+export function leafColumns(grid: VelocityGridExtContext['grid']): RawColDef[] {
   const out: RawColDef[] = [];
   const walk = (defs: readonly unknown[]): void => {
     for (const d of defs) {
@@ -28,8 +28,8 @@ export function leafColumns(grid: CgExtContext['grid']): RawColDef[] {
   return out;
 }
 
-/** @cgrid/expression Schema from the grid's leaf columns. */
-export function schemaFromGrid(grid: CgExtContext['grid']): Schema {
+/** @wellsfargo-starui/velocity-grid-expression Schema from the grid's leaf columns. */
+export function schemaFromGrid(grid: VelocityGridExtContext['grid']): Schema {
   const fields: Schema['fields'] = {};
   for (const def of leafColumns(grid)) {
     const id = def.colId ?? def.field;
@@ -46,7 +46,7 @@ export function schemaFromGrid(grid: CgExtContext['grid']): Schema {
 }
 
 /** Completion catalog for the expression editor. */
-export function editorColumns(grid: CgExtContext['grid']): ExpressionColumn[] {
+export function editorColumns(grid: VelocityGridExtContext['grid']): ExpressionColumn[] {
   return leafColumns(grid).map((def) => ({
     colId: (def.colId ?? def.field)!,
     headerName: def.headerName,

@@ -265,7 +265,7 @@ describe('serializeRanges (Cycle 10 / Task 3)', () => {
     // `transformCell` callback that runs AFTER value resolution and
     // BEFORE RFC-4180 quoting. The callback receives `{ value, node:
     // { rowIndex, data }, column: { colId } }` — same shape as the
-    // public ag-grid surface (`CGridOptions.processCellForClipboard`).
+    // public ag-grid surface (`VelocityGridOptions.processCellForClipboard`).
     const rows: Row[] = [
       { a: 1, b: 2 },
       { a: 3, b: 4 },

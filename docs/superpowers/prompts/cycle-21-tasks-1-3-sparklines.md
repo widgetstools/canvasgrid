@@ -39,8 +39,8 @@ each task as it lands; merge to main at the end with `--no-ff`.
 - Value is `number[]`. Paint a min-max-normalized line spanning the
   cell minus 2px inner padding. Single pass: compute min/max in
   same loop as path-building (no extra allocations).
-- Tokens: `--cg-sparkline-line` (default stroke),
-  `--cg-sparkline-fill` (area fill).
+- Tokens: `--vg-sparkline-line` (default stroke),
+  `--vg-sparkline-fill` (area fill).
 - Tests: registration, painter renders correctly for ascending /
   descending / constant / empty / single-point data; per-frame
   allocation is zero (mock `gc.cache.beginPath` count and verify

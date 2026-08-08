@@ -1,4 +1,4 @@
-// Centralized teardown registry. CGrid (and other long-lived subsystems) push
+// Centralized teardown registry. VelocityGrid (and other long-lived subsystems) push
 // every listener / RAF / timer / observer they install through here; `dispose`
 // runs them in LIFO order on destroy. Two wins: (1) we never forget to undo a
 // registration, and (2) mid-gesture teardown (e.g. window drag listeners
@@ -28,7 +28,7 @@ export class DisposableRegistry {
 
   /** Register an arbitrary teardown. If already disposed, runs immediately. */
   add(d: Disposer): void {
-    if (this.disposed) { try { d(); } catch (e) { console.error('[cgrid] disposer error:', e); } return; }
+    if (this.disposed) { try { d(); } catch (e) { console.error('[velocity-grid] disposer error:', e); } return; }
     this.disposers.push(d);
   }
 
@@ -75,7 +75,7 @@ export class DisposableRegistry {
     this.disposed = true;
     for (let i = this.disposers.length - 1; i >= 0; i--) {
       try { this.disposers[i]!(); } catch (e) {
-        console.error('[cgrid] disposer error:', e);
+        console.error('[velocity-grid] disposer error:', e);
       }
     }
     this.disposers.length = 0;

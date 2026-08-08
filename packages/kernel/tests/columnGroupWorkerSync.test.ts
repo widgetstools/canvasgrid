@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import type { CColDef, CColGroupDef } from '../src/types';
 
 /**
@@ -51,7 +51,7 @@ function mount(columnDefs: (CColDef | CColGroupDef)[]) {
   const el = document.createElement('div');
   el.style.cssText = 'width:800px; height:600px;';
   document.body.appendChild(el);
-  return new CGrid(el, { columnDefs, rowData: [], getRowId: (r: any) => r.id });
+  return new VelocityGrid(el, { columnDefs, rowData: [], getRowId: (r: any) => r.id });
 }
 
 describe('column-group toggle re-ships worker columns', () => {

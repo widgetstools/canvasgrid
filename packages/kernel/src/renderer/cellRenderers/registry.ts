@@ -82,7 +82,7 @@ export interface CellPaintConfig {
   /** Cycle 8 / Task 5 — when `true` and `sortDirection` is unset, the
    *  header painter draws a faint up/down chevron pair so the user can
    *  see at a glance that the column is sortable. The color resolves
-   *  from `unSortIconColor` (theme's `--cg-unsort-icon-color`) and the
+   *  from `unSortIconColor` (theme's `--vg-unsort-icon-color`) and the
    *  icon paints at 50% alpha so it never competes with the active
    *  sort chevron on other columns. */
   unSortIcon?: boolean;
@@ -121,7 +121,7 @@ export interface CellPaintConfig {
   headerCheckboxState?: 'none' | 'partial' | 'all';
   // Flash overlay (Cycle 4 / Task 11 — `flashAlpha` is the per-cell
   // alpha drained from FlashRegistry; `flashFromColor` is the theme's
-  // current --cg-flash-from-color so light + dark themes both paint
+  // current --vg-flash-from-color so light + dark themes both paint
   // their declared color instead of a hard-coded swatch).
   flashAlpha?: number;
   flashFromColor?: string;
@@ -151,7 +151,7 @@ export interface CellPaintConfig {
    * Cycle 15 / Task 8 — tri-state checkbox tokens for the `'group'`
    * cell renderer. Threaded onto every cell config so the renderer
    * reads colors without reaching into the theme. All four default to
-   * `var(--cg-fg-color)` so the box reads exactly like the existing
+   * `var(--vg-fg-color)` so the box reads exactly like the existing
    * `checkboxCell` painter (one checkbox vocabulary across the grid).
    * Apps that want a filled brand-accent checkbox override
    * `groupCheckboxFill + groupCheckboxCheckColor` via the theme.
@@ -216,7 +216,7 @@ export interface CellPaintConfig {
   /**
    * Workstream A (2026-07-06 CSS styling model) — compact renderer-palette
    * bundle (semantic colors + bar/chip geometry), threaded straight from
-   * `ResolvedTheme.rendererPalette` by `applyCellProps`. `@cgrid/renderers`
+   * `ResolvedTheme.rendererPalette` by `applyCellProps`. `@wellsfargo-starui/velocity-grid-renderers`
    * painters resolve `overrides ?? p.palette?.<field> ?? <literal>` so
    * data-viz appearance comes from theme tokens instead of hardcoded
    * constants. `undefined` on hand-built `CellPaintConfig` test fixtures
@@ -238,7 +238,7 @@ export interface RegisterCellRendererOpts {
    *  covered-field list (opaque `params`, `rowData` reads, module state,
    *  time) must paint live — a bypass is a perf miss, a stale bitmap is a
    *  bug. Only set `true` after auditing every `config.` read against the
-   *  signature (built-ins that qualify are opted in at their cgrid.ts
+   *  signature (built-ins that qualify are opted in at their velocityGrid.ts
    *  registration site). */
   cacheable?: boolean;
 }
@@ -262,7 +262,7 @@ export class CellRendererRegistry {
   }
   get(name: string): CellPainter {
     const p = this.map.get(name);
-    if (!p) throw new Error(`[cgrid] unknown cellRenderer '${name}'`);
+    if (!p) throw new Error(`[velocity-grid] unknown cellRenderer '${name}'`);
     return p;
   }
   /** Cycle 21i Phase 2 / T3 — instance-truth enumeration (registration
@@ -543,7 +543,7 @@ export const checkboxCell: CellPainter = {
     paintBackground(gc, p);
     // Three-state indicator for boolean columns:
     //   true  → outlined 14×14 box + checkmark (accent fill when
-    //           `--cg-checkbox-checked-bg` opts in);
+    //           `--vg-checkbox-checked-bg` opts in);
     //   false → outlined 14×14 empty box;
     //   null / undefined / '' → centered em-dash at 50% alpha of `fg`,
     //           no box — the absence of the box IS the "no value" signal.

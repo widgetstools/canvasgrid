@@ -47,7 +47,7 @@ interface GridApiSurface {
  *  Row 0 is always the first group row on a grouped grid. */
 async function columnWidth(page: Page, colId: string): Promise<number> {
   return page.evaluate(({ id }) => {
-    const g = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+    const g = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
     const b = g.getCellBoundsAt(0, id);
     return b ? b.w : -1;
   }, { id: colId });
@@ -109,7 +109,7 @@ async function seedRows(page: Page, count: number, longTickers: boolean): Promis
         pv01: 10,
       });
     }
-    const g = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+    const g = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
     g.setRowData(rows);
   }, { n: count, longTickers });
   await waitForFrames(page, 12);
@@ -124,7 +124,7 @@ test.describe('auto-group column autosize', () => {
     // grow it" assertion is unambiguous. Pre-fix, autosize would leave
     // this at header/minWidth (~70 px) regardless of content.
     await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       g.setColumnWidths([{ key: 'ag-Grid-AutoColumn', newWidth: 40 }]);
     });
     await waitForFrames(page, 4);
@@ -136,7 +136,7 @@ test.describe('auto-group column autosize', () => {
     // Autosize the auto-group column ONLY. skipHeader stays false so
     // the header label still competes; the group values must dominate.
     await page.evaluate(async () => {
-      const g = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       await g.autoSizeColumns(['ag-Grid-AutoColumn']);
     });
     await waitForFrames(page, 6);
@@ -164,7 +164,7 @@ test.describe('auto-group column autosize', () => {
     // is unambiguous across depths (mirrors `AUTO_GROUP_MULTIPLE_DEFAULT_WIDTH`
     // default of 140 — we drop below it deliberately).
     await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       g.setColumnWidths([
         { key: 'ag-Grid-AutoColumn-0', newWidth: 40 },
         { key: 'ag-Grid-AutoColumn-1', newWidth: 40 },
@@ -183,7 +183,7 @@ test.describe('auto-group column autosize', () => {
     expect(before.depth2).toBe(40);
 
     await page.evaluate(async () => {
-      const g = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       await g.autoSizeColumns([
         'ag-Grid-AutoColumn-0',
         'ag-Grid-AutoColumn-1',

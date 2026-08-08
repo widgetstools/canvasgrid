@@ -14,11 +14,11 @@
  * object (`PivotPanelGridContext`) lets the host report its reserved
  * top inset back to the grid + dispatch the primitive pivot API
  * (`addPivotColumn`, `removePivotColumn`, `movePivotColumn`) without
- * importing `CGrid` directly. The grid's `setHostBounds({ top })`
+ * importing `VelocityGrid` directly. The grid's `setHostBounds({ top })`
  * channel adjusts to the reservation so the scroller + editor overlay
  * + canvas all shrink to make room.
  *
- * Pill chrome REUSES the Task 5 shared `.cg-columns-panel-pill*`
+ * Pill chrome REUSES the Task 5 shared `.vg-columns-panel-pill*`
  * classes from `tokens.css` so the visual idiom across the top-of-grid
  * panel and the sidebar plz zone stays byte-identical.
  *
@@ -45,7 +45,7 @@ import { copyResolvedChipStyles } from '../chipGhostStyles';
 const EMPTY_PLACEHOLDER = 'Drag here to set column labels';
 
 /** Drag-handle glyph for the pill — empty string because the handle
- *  is rendered entirely via CSS dot-grid (`.cg-columns-panel-pill-
+ *  is rendered entirely via CSS dot-grid (`.vg-columns-panel-pill-
  *  handle` background-image, shared with Task 5 plz pills). */
 const DRAG_HANDLE_GLYPH = '';
 
@@ -70,9 +70,9 @@ const GHOST_OFFSET_X = 0;
 // Tied to the 22px row-group chip height (≈ -chipHeight / 2).
 const GHOST_OFFSET_Y = -11;
 
-/** Context handed to PivotPanelHost by CGrid (or a test harness).
+/** Context handed to PivotPanelHost by VelocityGrid (or a test harness).
  *  Keeps the host framework-agnostic — it can mutate PivotState +
- *  report its reserved inset back without importing CGrid directly. */
+ *  report its reserved inset back without importing VelocityGrid directly. */
 export interface PivotPanelGridContext {
   /** Called on mount / unmount / show-mode change. `height === 0`
    *  means the panel is hidden — the grid releases the reservation. */
@@ -111,7 +111,7 @@ type DragState =
 
 export class PivotPanelHost {
   private readonly root: HTMLElement;
-  /** The host element (`.cg-pivot-panel`) appended to the grid root. */
+  /** The host element (`.vg-pivot-panel`) appended to the grid root. */
   private readonly panel: HTMLDivElement;
   private readonly ctx: PivotPanelGridContext;
 
@@ -148,9 +148,9 @@ export class PivotPanelHost {
     this.pivotColumns = [...initialPivotColumns];
 
     this.panel = document.createElement('div');
-    this.panel.className = 'cg-pivot-panel';
+    this.panel.className = 'vg-pivot-panel';
     // Cross-section pill drag routing. See `core/panelDragMove.ts`.
-    this.panel.setAttribute('data-cg-pill-role', 'pivot');
+    this.panel.setAttribute('data-vg-pill-role', 'pivot');
 
     this.onPointerMove = (e) => this.handlePointerMove(e);
     this.onPointerUp = (e) => this.handlePointerUp(e);
@@ -161,7 +161,7 @@ export class PivotPanelHost {
   }
 
   /** Resolved panel height in CSS px when visible. Mirrors the
-   *  `.cg-pivot-panel { height }` rule from `tokens.css`. Used by
+   *  `.vg-pivot-panel { height }` rule from `tokens.css`. Used by
    *  the grid's geometry reservation. `0` when the panel is hidden. */
   getReservedHeight(): number {
     if (!this.isVisible()) return 0;
@@ -351,7 +351,7 @@ export class PivotPanelHost {
     this.panel.replaceChildren();
     if (this.pivotColumns.length === 0) {
       const empty = document.createElement('div');
-      empty.className = 'cg-pivot-panel-empty';
+      empty.className = 'vg-pivot-panel-empty';
       empty.textContent = EMPTY_PLACEHOLDER;
       this.panel.appendChild(empty);
       return;
@@ -360,7 +360,7 @@ export class PivotPanelHost {
       const colId = this.pivotColumns[i]!;
       if (i > 0) {
         const sep = document.createElement('span');
-        sep.className = 'cg-pivot-panel-separator';
+        sep.className = 'vg-pivot-panel-separator';
         sep.setAttribute('aria-hidden', 'true');
         sep.textContent = SEPARATOR_GLYPH;
         this.panel.appendChild(sep);
@@ -372,11 +372,11 @@ export class PivotPanelHost {
   /** Build one pill: drag-handle + label + `×` remove. Wears the
    *  row-group panel's chip classes so the top-of-grid pivot strip
    *  and row-group strip share one visual vocabulary (compact 22px,
-   *  fully-rounded ends). The pivot-scoped `.cg-pivot-panel-pill*`
+   *  fully-rounded ends). The pivot-scoped `.vg-pivot-panel-pill*`
    *  classes are kept for JS targeting + per-panel hooks. */
   private buildPill(colId: string, index: number): HTMLDivElement {
     const pill = document.createElement('div');
-    pill.className = 'cg-pivot-panel-pill cg-row-group-panel-chip';
+    pill.className = 'vg-pivot-panel-pill vg-row-group-panel-chip';
     pill.dataset.colId = colId;
     pill.dataset.index = String(index);
     pill.setAttribute('role', 'button');
@@ -387,19 +387,19 @@ export class PivotPanelHost {
     pill.tabIndex = 0;
 
     const handle = document.createElement('span');
-    handle.className = 'cg-pivot-panel-pill-handle cg-row-group-panel-chip-handle';
+    handle.className = 'vg-pivot-panel-pill-handle vg-row-group-panel-chip-handle';
     handle.setAttribute('aria-hidden', 'true');
     handle.textContent = DRAG_HANDLE_GLYPH;
     pill.appendChild(handle);
 
     const label = document.createElement('span');
-    label.className = 'cg-pivot-panel-pill-label cg-row-group-panel-chip-label';
+    label.className = 'vg-pivot-panel-pill-label vg-row-group-panel-chip-label';
     label.textContent = this.ctx.getHeaderName(colId) ?? colId;
     pill.appendChild(label);
 
     const remove = document.createElement('button');
     remove.type = 'button';
-    remove.className = 'cg-pivot-panel-pill-remove cg-row-group-panel-chip-remove';
+    remove.className = 'vg-pivot-panel-pill-remove vg-row-group-panel-chip-remove';
     remove.setAttribute(
       'aria-label',
       `Remove ${this.ctx.getHeaderName(colId) ?? colId} from column labels`,
@@ -435,14 +435,14 @@ export class PivotPanelHost {
     if (this.destroyed) return 0;
     if (!this.insertionLine) {
       this.insertionLine = document.createElement('div');
-      this.insertionLine.className = 'cg-pivot-panel-insertion-line';
+      this.insertionLine.className = 'vg-pivot-panel-insertion-line';
       this.panel.appendChild(this.insertionLine);
     }
     this.insertionLine.style.display = '';
 
     const panelRect = this.panel.getBoundingClientRect();
     const pills = Array.from(
-      this.panel.querySelectorAll('.cg-pivot-panel-pill'),
+      this.panel.querySelectorAll('.vg-pivot-panel-pill'),
     ) as HTMLElement[];
     if (pills.length === 0) {
       const x = (panelRect.width - 2) / 2;
@@ -607,7 +607,7 @@ export class PivotPanelHost {
     // Inherits the row-group chip's ghost styling (opaque bg, soft
     // shadow, fixed positioning, top-most z-index) so dragging a pill
     // in either panel produces an identical floating ghost.
-    ghost.classList.add('cg-pivot-panel-pill-ghost', 'cg-row-group-panel-chip-ghost');
+    ghost.classList.add('vg-pivot-panel-pill-ghost', 'vg-row-group-panel-chip-ghost');
     ghost.removeAttribute('data-col-id');
     ghost.removeAttribute('data-index');
     ghost.setAttribute('aria-hidden', 'true');
@@ -662,7 +662,7 @@ export class PivotPanelHost {
   }
 }
 
-/** Resolve `CGridOptions.pivotPanelShow` (accepts only the canonical
+/** Resolve `VelocityGridOptions.pivotPanelShow` (accepts only the canonical
  *  strings; default `'never'`) to a non-`'never'` value OR `null`
  *  when the panel should never mount. Apps can also pass `undefined`
  *  (default off). Returns `null` for `'never'` / undefined so the

@@ -1,4 +1,4 @@
-# `@cgrid/calc`
+# `@wellsfargo-starui/velocity-grid-calc`
 
 Calculated columns for the cgrid monorepo — worker-evaluated
 expressions (row-local + scoped aggregates + `PREV`), the delta-aware
@@ -21,7 +21,7 @@ aggregate registry + cache, and the column override / template fold.
 **Status:** Cycle 21d — everything above shipped, including the kernel
 bridge, the two-stage worker CalcPass, and `PREV`. The 21b/21e
 `not-yet-implemented` reserve for aggregates comes alive here — but
-only for CALC columns; aggregates inside `@cgrid/rules` conditions and
+only for CALC columns; aggregates inside `@wellsfargo-starui/velocity-grid-rules` conditions and
 format Tier-1 interiors stay reserved. Order-dependent aggregates
 (`RANK`, `RUNNING_*`, `MOVING_AVG`, `DELTA_FROM_*`), `window:` scopes,
 and t-digest approximate percentiles are grammar-honest reserves for a
@@ -31,11 +31,11 @@ follow-up cycle. Full spec:
 ## Quickstart
 
 ```ts
-import { CGrid } from '@cgrid/kernel';
-import { wireIntoKernel as wireFormat } from '@cgrid/format';
-import { wireIntoKernel as wireCalc } from '@cgrid/calc';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
+import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid-format';
+import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid-calc';
 
-const grid = new CGrid(host, { /* ... */ });
+const grid = new VelocityGrid(host, { /* ... */ });
 wireFormat(grid);  // calc `format` strings compile via the kernel's
                    // registered format compiler — wire format first
 const { calc } = wireCalc(grid, {
@@ -73,7 +73,7 @@ evaluation is a follow-up-cycle item.
 
 ## Calc DSL cheat sheet
 
-**Row-local layer** — the full `@cgrid/expression` grammar: field refs
+**Row-local layer** — the full `@wellsfargo-starui/velocity-grid-expression` grammar: field refs
 `[col]` / `[a.b]`, every builtin, ternaries. Infix booleans are
 `&&` / `||` ONLY; equality is `==` / `!=` ONLY (no `AND` / `OR` / bare
 `=` — they do not parse).
@@ -204,8 +204,8 @@ Registration APIs never throw — invalid items are skipped and reported
   cycle (the only feature-level reserve).
 - Dependency-ordered calc-on-calc evaluation — follow-up cycle (see
   Quickstart note above).
-- Aggregates inside `@cgrid/rules` conditions / format Tier-1
+- Aggregates inside `@wellsfargo-starui/velocity-grid-rules` conditions / format Tier-1
   interiors — follow-up once both engines coexist.
-- Customizer editor panels — Cycle 21i (`@cgrid/customizer`).
-- Editing calculated columns / editable-overrides UI — `@cgrid/edit`
+- Customizer editor panels — Cycle 21i (`@wellsfargo-starui/velocity-grid-customizer`).
+- Editing calculated columns / editable-overrides UI — `@wellsfargo-starui/velocity-grid-edit`
   (21g) + 21i.

@@ -1,9 +1,9 @@
-import { wireIntoKernel as wireFormat } from '@cgrid/format';
+import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid-format';
 import {
   wireRenderersIntoKernel,
   type RenderersBridgeHandle,
   type RenderersBridgeOptions,
-} from '@cgrid/renderers';
+} from '@wellsfargo-starui/velocity-grid-renderers';
 
 declare global {
   interface Window {

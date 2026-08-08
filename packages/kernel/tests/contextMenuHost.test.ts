@@ -2,7 +2,7 @@
  * Cycle 10 / Task 1 — ContextMenuHost unit tests.
  *
  * The host owns mount/unmount + dismissal for the right-click menu.
- * `open(items, x, y)` mounts a `div.cg-context-menu` positioned `fixed`
+ * `open(items, x, y)` mounts a `div.vg-context-menu` positioned `fixed`
  * at the cursor; `close()` unmounts it; outside click + Escape dismiss
  * implicitly. Separator items (`name: '---'`) render as `<hr>`; disabled
  * items render dim (`aria-disabled="true"`) and skip the `action`.
@@ -31,9 +31,9 @@ describe('ContextMenuHost', () => {
     host.parentElement?.removeChild(host);
   });
 
-  it('open mounts a div.cg-context-menu at (x, y) and isOpen returns true', () => {
+  it('open mounts a div.vg-context-menu at (x, y) and isOpen returns true', () => {
     menu.open([], 10, 20);
-    const root = host.querySelector('.cg-context-menu') as HTMLElement | null;
+    const root = host.querySelector('.vg-context-menu') as HTMLElement | null;
     expect(root).not.toBeNull();
     expect(menu.isOpen()).toBe(true);
     // Positioned `fixed`. Style values come back without their unit on jsdom's
@@ -47,7 +47,7 @@ describe('ContextMenuHost', () => {
   it('close removes the DOM node and isOpen returns false', () => {
     menu.open([{ name: 'A' }], 0, 0);
     menu.close();
-    expect(host.querySelector('.cg-context-menu')).toBeNull();
+    expect(host.querySelector('.vg-context-menu')).toBeNull();
     expect(menu.isOpen()).toBe(false);
   });
 
@@ -59,7 +59,7 @@ describe('ContextMenuHost', () => {
   it('opening a second time replaces the first menu', () => {
     menu.open([{ name: 'first' }], 0, 0);
     menu.open([{ name: 'second' }], 50, 50);
-    const items = Array.from(host.querySelectorAll('.cg-context-menu .cg-menu-item'));
+    const items = Array.from(host.querySelectorAll('.vg-context-menu .vg-menu-item'));
     expect(items.length).toBe(1);
     expect(items[0]!.textContent).toContain('second');
   });
@@ -68,7 +68,7 @@ describe('ContextMenuHost', () => {
     const spy = vi.fn();
     const params = { rowIndex: 0, colId: 'a', ranges: [], defaultItems: [] };
     menu.open([{ name: 'Copy', action: spy }], 0, 0, params);
-    const btn = host.querySelector('.cg-menu-item') as HTMLElement;
+    const btn = host.querySelector('.vg-menu-item') as HTMLElement;
     expect(btn).not.toBeNull();
     btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(spy).toHaveBeenCalledTimes(1);
@@ -85,16 +85,16 @@ describe('ContextMenuHost', () => {
       { name: 'B', action: spy },
     ];
     menu.open(items, 0, 0);
-    const hrs = host.querySelectorAll('.cg-context-menu hr');
+    const hrs = host.querySelectorAll('.vg-context-menu hr');
     expect(hrs.length).toBe(1);
-    const buttons = host.querySelectorAll('.cg-context-menu .cg-menu-item');
+    const buttons = host.querySelectorAll('.vg-context-menu .vg-menu-item');
     expect(buttons.length).toBe(2);
   });
 
   it('disabled items render with aria-disabled and skip action on click', () => {
     const spy = vi.fn();
     menu.open([{ name: 'Paste', action: spy, disabled: true }], 0, 0);
-    const btn = host.querySelector('.cg-menu-item') as HTMLElement;
+    const btn = host.querySelector('.vg-menu-item') as HTMLElement;
     expect(btn.getAttribute('aria-disabled')).toBe('true');
     btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(spy).not.toHaveBeenCalled();
@@ -108,12 +108,12 @@ describe('ContextMenuHost', () => {
     expect(menu.isOpen()).toBe(true);
     document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
     expect(menu.isOpen()).toBe(false);
-    expect(host.querySelector('.cg-context-menu')).toBeNull();
+    expect(host.querySelector('.vg-context-menu')).toBeNull();
   });
 
   it('clicking INSIDE the menu does NOT close it', () => {
     menu.open([{ name: 'A' }], 0, 0);
-    const root = host.querySelector('.cg-context-menu') as HTMLElement;
+    const root = host.querySelector('.vg-context-menu') as HTMLElement;
     root.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
     expect(menu.isOpen()).toBe(true);
   });
@@ -138,7 +138,7 @@ describe('ContextMenuHost', () => {
     const heightSpy = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(100);
     try {
       menu.open([{ name: 'A' }], 750, 580);
-      const root = host.querySelector('.cg-context-menu') as HTMLElement;
+      const root = host.querySelector('.vg-context-menu') as HTMLElement;
       // 750 + 200 = 950 > 800 → clamp to 800 - 200 = 600.
       // 580 + 100 = 680 > 600 → clamp to 600 - 100 = 500.
       expect(root.style.left).toBe('600px');
@@ -153,7 +153,7 @@ describe('ContextMenuHost', () => {
     menu.open([{ name: 'A' }], 0, 0);
     menu.destroy();
     expect(menu.isOpen()).toBe(false);
-    expect(host.querySelector('.cg-context-menu')).toBeNull();
+    expect(host.querySelector('.vg-context-menu')).toBeNull();
     // After destroy, opening again is a no-op — outside-click and Escape
     // listeners are gone so a fresh open would leak.
     menu.open([{ name: 'B' }], 0, 0);

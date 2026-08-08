@@ -1,6 +1,6 @@
 /**
- * CGridExt + SSRM demo — the batteries-included extension shell
- * (`@cgrid/ext`) driving a sparse Server-Side Row Model v2 grid.
+ * VelocityGridExt + SSRM demo — the batteries-included extension shell
+ * (`@wellsfargo-starui/velocity-grid-ext`) driving a sparse Server-Side Row Model v2 grid.
  *
  * Everything is self-contained: `MockTradingServer` plays the server role
  * (skeleton + leaf + flat queries with simulated latency, live ticks), so
@@ -12,15 +12,15 @@
  *  - drag columns in/out of the row-group panel (skeleton refetch);
  *  - sort an aggregated column (group order re-fetches server-side);
  *  - watch the pinned Grand Total + group aggregates tick live;
- *  - the CGridExt chrome: title bar, profiles, settings sheet, Columns /
+ *  - the VelocityGridExt chrome: title bar, profiles, settings sheet, Columns /
  *    Filters tool panels — all state round-trips through the profile store.
  */
-import { CGridExt, titleBarExtensions, ribbonExtensions, type CGridExtOptions } from '@cgrid/ext';
-import '@cgrid/kernel/style.css';
-import { wireIntoKernel as wireFormat } from '@cgrid/format';
-import { wireEditIntoKernel } from '@cgrid/edit';
-import { wireIntoKernel as wireCalc } from '@cgrid/calc';
-import { wireIntoKernel as wireRules } from '@cgrid/rules';
+import { VelocityGridExt, titleBarExtensions, ribbonExtensions, type VelocityGridExtOptions } from '@wellsfargo-starui/velocity-grid-ext';
+import '@wellsfargo-starui/velocity-grid/style.css';
+import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid-format';
+import { wireEditIntoKernel } from '@wellsfargo-starui/velocity-grid-edit';
+import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid-calc';
+import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid-rules';
 import { MockTradingServer, type PositionRow } from './mockServer';
 import { COLUMNS } from './columns';
 
@@ -36,7 +36,7 @@ const options = {
   gridId: 'ext-ssrm-demo',
   getRowId: (r: PositionRow) => r.positionId,
   columnDefs: COLUMNS,
-  theme: 'cg-theme-quartz-dark',
+  theme: 'vg-theme-quartz-dark',
   defaultColDef: { resizable: true, sortable: true, minWidth: 80 },
 
   // ── Sparse SSRM v2 (client-owned skeleton) ──────────────────────────
@@ -68,7 +68,7 @@ const options = {
     },
   },
 
-  // ── CGridExt / tooling chrome ──────────────────────────────────────
+  // ── VelocityGridExt / tooling chrome ──────────────────────────────────────
   sideBar: { toolPanels: ['columns', 'filters'] },
   statusBar: {
     statusPanels: [
@@ -91,9 +91,9 @@ const options = {
       ...ribbonExtensions({ edit: () => editHandle }),
     ],
   },
-} as CGridExtOptions<PositionRow>;
+} as VelocityGridExtOptions<PositionRow>;
 
-const ext = new CGridExt<PositionRow>(app, options);
+const ext = new VelocityGridExt<PositionRow>(app, options);
 
 // Wire cgrid's engines onto the owned grid — without these the ribbon's
 // format/editing toolbars and the auto-format menu items are inert chrome:

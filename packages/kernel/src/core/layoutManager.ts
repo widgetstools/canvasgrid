@@ -38,7 +38,7 @@ import type { GridLayout, LayoutState, GridLayoutsBundle, GridBaselineConfig } f
 import { DEFAULT_LAYOUT_ID, DEFAULT_GRID_LEVEL_MODULES, LAYOUTS_BUNDLE_VERSION } from '../types/layout';
 import { migrateSnapshot, type GridState } from './stateSnapshot';
 import type { ModuleStateEnvelope } from './moduleState';
-import type { ColumnTemplate } from '@cgrid/calc';
+import type { ColumnTemplate } from '@wellsfargo-starui/velocity-grid-calc';
 
 /** The grid coupling the manager needs, injected so the engine stays
  *  pure and testable. A3 supplies the real implementations; A1 tests
@@ -123,13 +123,13 @@ export function migrateLayoutsBundle(bundle: GridLayoutsBundle): GridLayoutsBund
   let v = bundle.version ?? 1;
   if (v > LAYOUTS_BUNDLE_VERSION) {
     throw new Error(
-      `[cgrid] cannot import layouts: bundle version ${v} is newer than this build (${LAYOUTS_BUNDLE_VERSION})`,
+      `[velocity-grid] cannot import layouts: bundle version ${v} is newer than this build (${LAYOUTS_BUNDLE_VERSION})`,
     );
   }
   let current = bundle;
   while (v < LAYOUTS_BUNDLE_VERSION) {
     const step = LAYOUTS_BUNDLE_MIGRATIONS[v];
-    if (!step) throw new Error(`[cgrid] missing layouts-bundle migration from version ${v} → ${v + 1}`);
+    if (!step) throw new Error(`[velocity-grid] missing layouts-bundle migration from version ${v} → ${v + 1}`);
     current = step(current);
     v++;
   }
@@ -198,7 +198,7 @@ export function extractGridOptionOverride(full: GridState): Record<string, unkno
  * Template ASSIGNMENTS ride in the layout-tier `columnOverrides` module (each
  * override's `templateIds`); this walks those, deduped + order-preserving, so
  * `exportLayout` can bundle the referenced defs for portability. Reads the
- * module data structurally (no `@cgrid/calc` coupling) — an unregistered /
+ * module data structurally (no `@wellsfargo-starui/velocity-grid-calc` coupling) — an unregistered /
  * empty module yields no ids. */
 export function collectReferencedTemplateIds(state: LayoutState): string[] {
   const ids: string[] = [];
@@ -321,7 +321,7 @@ export class LayoutManager {
    *  falls back to Default and re-applies Default's view. */
   deleteLayout(id: string): void {
     if (id === DEFAULT_LAYOUT_ID) {
-      throw new Error('[cgrid] the Default layout cannot be deleted');
+      throw new Error('[velocity-grid] the Default layout cannot be deleted');
     }
     const idx = this.indexOf(id); // throws on unknown
     this.layouts.splice(idx, 1);
@@ -384,7 +384,7 @@ export class LayoutManager {
 
   /** Merge a partial grid-level config into the baseline. `gridOptions`
    *  accumulate per-key; `editing` / `templates` replace when provided.
-   *  Applying it to the live grid is the host's concern (CGrid). */
+   *  Applying it to the live grid is the host's concern (VelocityGrid). */
   setGridConfig(config: GridBaselineConfig): void {
     const next: GridBaselineConfig = { ...this.gridConfig };
     if (config.gridOptions) {
@@ -532,13 +532,13 @@ export class LayoutManager {
 
   private indexOf(id: string): number {
     const idx = this.layouts.findIndex((l) => l.id === id);
-    if (idx === -1) throw new Error(`[cgrid] unknown layout id '${id}'`);
+    if (idx === -1) throw new Error(`[velocity-grid] unknown layout id '${id}'`);
     return idx;
   }
 
   private require(id: string): GridLayout {
     const layout = this.layouts.find((l) => l.id === id);
-    if (!layout) throw new Error(`[cgrid] unknown layout id '${id}'`);
+    if (!layout) throw new Error(`[velocity-grid] unknown layout id '${id}'`);
     return layout;
   }
 
@@ -548,12 +548,12 @@ export class LayoutManager {
   private assertUsableName(name: string, exceptId?: string): string {
     const clean = normName(name);
     if (clean.length === 0) {
-      throw new Error('[cgrid] a layout name cannot be empty');
+      throw new Error('[velocity-grid] a layout name cannot be empty');
     }
     const key = nameKey(clean);
     const clash = this.layouts.some((l) => l.id !== exceptId && nameKey(l.name) === key);
     if (clash) {
-      throw new Error(`[cgrid] a layout named '${clean}' already exists`);
+      throw new Error(`[velocity-grid] a layout named '${clean}' already exists`);
     }
     return clean;
   }
@@ -562,7 +562,7 @@ export class LayoutManager {
    *  snapshot (e.g. one newer than this build) is kept as-is rather than
    *  aborting the whole import (§12). It stays loadable-by-name; only an
    *  attempt to APPLY it throws — cleanly, before any side effect (see
-   *  CGrid.applyLayoutSnapshot's up-front migrate + loadLayout's apply-then-
+   *  VelocityGrid.applyLayoutSnapshot's up-front migrate + loadLayout's apply-then-
    *  commit ordering) — so the grid is never left half-switched. */
   private migrateState(state: LayoutState): LayoutState {
     try {

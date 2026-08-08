@@ -9,7 +9,7 @@ Both are **host concerns**, not grid concerns. cgrid should not ship its own dat
 
 Companion folders:
 - [../starui-customizer/](../starui-customizer/) — the engine layer (lives in cgrid core)
-- [../starui-customizer-ui/](../starui-customizer-ui/) — the `@cgrid/customizer` UI addon
+- [../starui-customizer-ui/](../starui-customizer-ui/) — the `@wellsfargo-starui/velocity-grid-customizer` UI addon
 
 ---
 
@@ -40,7 +40,7 @@ Companion folders:
                │ drives via api.ts
                │
 ┌──────────────────────────────────────────────────────────────────────┐
-│                  @cgrid/customizer (addon)                           │
+│                  @wellsfargo-starui/velocity-grid-customizer (addon)                           │
 │  • UI editors (panels, dialogs, toolbars)                            │
 │  • Lit + Web Awesome web components                                  │
 └──────────────────────────────────────────────────────────────────────┘
@@ -82,7 +82,7 @@ That's the API contract these docs spec out, alongside [the customizer engine do
 
 ## What the addon needs from these
 
-`@cgrid/customizer` mostly doesn't talk to the data provider or config manager directly — it talks to **cgrid's public API**. Two exceptions:
+`@wellsfargo-starui/velocity-grid-customizer` mostly doesn't talk to the data provider or config manager directly — it talks to **cgrid's public API**. Two exceptions:
 
 1. **Some panels need column metadata** that ultimately comes from the data provider (column names, data types). cgrid should re-expose this via `grid.getColumnSchema()` rather than the addon reaching into the provider.
 2. **Dirty/save UX** needs to know whether the host's config manager is in REST mode (network delay) or local mode (instant). cgrid should re-expose this via `grid.getProfileMode()` or have the host configure save semantics on the addon directly.

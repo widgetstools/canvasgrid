@@ -1,6 +1,6 @@
-# @cgrid/ext
+# @wellsfargo-starui/velocity-grid-ext
 
-`CGridExt` — cgrid's self-contained, batteries-included wrapper: owns a `CGrid`
+`VelocityGridExt` — cgrid's self-contained, batteries-included wrapper: owns a `VelocityGrid`
 and layers on all config tooling (two-tier toolbar, settings sheet, profiles)
 via a plugin/extension registry. Zero StarUI dependency.
 

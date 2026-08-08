@@ -1,20 +1,20 @@
-# CGridExt Layouts Toolbar Implementation Plan
+# VelocityGridExt Layouts Toolbar Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the Wave-0 profiles button + profile-save disk in the CGridExt title bar with a full layout-management dropdown (list / switch / rename / duplicate / export / delete / save-new / bundle import-export) and a dirty-aware "update active layout" disk, driven entirely by the kernel's shipped Grid Layouts API.
+**Goal:** Replace the Wave-0 profiles button + profile-save disk in the VelocityGridExt title bar with a full layout-management dropdown (list / switch / rename / duplicate / export / delete / save-new / bundle import-export) and a dirty-aware "update active layout" disk, driven entirely by the kernel's shipped Grid Layouts API.
 
 **Architecture:** One new plain-DOM module `packages/ext/src/toolbar/layoutsMenu.ts` exports two `toolbar-item` extensions (`layouts`, `layout-save`) that `titleBarExtensions()` composes in place of the old `profiles`/`save` items. Shared popup/icon helpers move from `titleBar.ts` into a new `toolbar/ui.ts` (avoids a titleBar↔layoutsMenu import cycle). All UI state re-syncs from the kernel's `layoutChanged` event — the panel holds no model of its own.
 
-**Tech Stack:** TypeScript, plain DOM + injected CSS (`--cg-*` theme tokens; Lit is customizer-only), vitest + happy-dom unit tests, Playwright E2E in `apps/cgrid-ext-demo`.
+**Tech Stack:** TypeScript, plain DOM + injected CSS (`--vg-*` theme tokens; Lit is customizer-only), vitest + happy-dom unit tests, Playwright E2E in `apps/cgrid-ext-demo`.
 
 **Spec:** `docs/superpowers/specs/2026-07-07-ext-layouts-toolbar-design.md`
 
 ## Global Constraints
 
 - **No kernel changes.** The layout API (`getLayouts`/`saveLayout`/`loadLayout`/`updateLayout`/`deleteLayout`/`renameLayout`/`duplicateLayout`/`exportLayout`/`exportLayouts`/`importLayout`/`importLayouts`, `layoutChanged`, `stateUpdated`) is complete and shipped.
-- All colors from `--cg-*` tokens with the title bar's neutral-dark fallbacks; 12px control-type floor, 11px header-type floor; 30px trigger height.
-- Class prefix `cgext-layouts-`; the trigger button reuses the existing `.cgext-profile*` classes (the wireframe deliberately matches that chrome) — do NOT delete that CSS.
+- All colors from `--vg-*` tokens with the title bar's neutral-dark fallbacks; 12px control-type floor, 11px header-type floor; 30px trigger height.
+- Class prefix `vgext-layouts-`; the trigger button reuses the existing `.vgext-profile*` classes (the wireframe deliberately matches that chrome) — do NOT delete that CSS.
 - Every kernel throw is caught at the UI boundary and surfaced inline (row input error state or the panel error strip). No unhandled rejections.
 - `ProfilesController` / `ProfileStore` / `ctx.profiles` are NOT touched or removed — only the two title-bar items that rendered them.
 - Working branch: `cgridext/ribbon-density` (all ext code lives here, unmerged to main). Commit after every task.
@@ -40,11 +40,11 @@ Move the bodies verbatim from `titleBar.ts` (`svg` at :58, `iconButton` at :72, 
 
 ```ts
 /**
- * Shared plain-DOM toolbar primitives for CGridExt chrome: inline Lucide-path
+ * Shared plain-DOM toolbar primitives for VelocityGridExt chrome: inline Lucide-path
  * SVG, the 30px icon button, and the click-away anchored popup. Extracted from
  * titleBar.ts so sibling toolbar modules (layoutsMenu) reuse them without an
- * import cycle. Styling comes from the title-bar stylesheet (`.cgext-iconbtn`,
- * `.cgext-menu*`) — callers must have called `injectTitleBarStyles()`.
+ * import cycle. Styling comes from the title-bar stylesheet (`.vgext-iconbtn`,
+ * `.vgext-menu*`) — callers must have called `injectTitleBarStyles()`.
  */
 
 export function svg(path: string, size = 16): string {
@@ -54,7 +54,7 @@ export function svg(path: string, size = 16): string {
 export function iconButton(icon: string, label: string): HTMLButtonElement {
   const b = document.createElement('button');
   b.type = 'button';
-  b.className = 'cgext-iconbtn';
+  b.className = 'vgext-iconbtn';
   b.title = label;
   b.setAttribute('aria-label', label);
   b.innerHTML = svg(icon);
@@ -79,7 +79,7 @@ export function menu(
   };
   const open = () => {
     panel = build(close);
-    panel.classList.add('cgext-menu');
+    panel.classList.add('vgext-menu');
     document.body.appendChild(panel);
     const r = anchor.getBoundingClientRect();
     panel.style.top = `${Math.round(r.bottom + 4)}px`;
@@ -116,7 +116,7 @@ git commit -m "refactor(ext): extract svg/iconButton/menu toolbar primitives int
 
 ### Task 2: `layoutsMenu.ts` — trigger button + panel skeleton + test harness
 
-The `layouts` toolbar item: `.cgext-profile`-chrome trigger showing the active layout name, opening an anchored panel with the `LAYOUTS` header, count badge, and (for now) an empty list container plus all injected CSS. Also the reusable `FakeGrid` test harness every later task's tests build on.
+The `layouts` toolbar item: `.vgext-profile`-chrome trigger showing the active layout name, opening an anchored panel with the `LAYOUTS` header, count badge, and (for now) an empty list container plus all injected CSS. Also the reusable `FakeGrid` test harness every later task's tests build on.
 
 **Files:**
 - Create: `packages/ext/src/toolbar/layoutsMenu.ts`
@@ -126,18 +126,18 @@ The `layouts` toolbar item: `.cgext-profile`-chrome trigger showing the active l
 **Interfaces:**
 - Consumes: `menu`, `svg` from `./ui` (Task 1).
 - Produces: `layoutsItem(): ToolbarItem` (id `'layouts'`, slot `'primary-right'`); `injectLayoutsMenuStyles(): void`; internal `buildPanel(ctx): { el: HTMLElement; refresh: () => void }`. Test harness exports `FakeGrid` (layout API + event emitter + `emit()`) and `mountItem(item, grid?)` → `{ host, grid, inst, ctx }`.
-- DOM contract (E2E + later tasks rely on these hooks): trigger = `[data-item-id="layouts"] button.cgext-profile`; panel root = `.cgext-menu.cgext-layouts`; header count = `.cgext-layouts-count`; list = `.cgext-layouts-list`; error strip = `.cgext-layouts-error`.
+- DOM contract (E2E + later tasks rely on these hooks): trigger = `[data-item-id="layouts"] button.vgext-profile`; panel root = `.vgext-menu.vgext-layouts`; header count = `.vgext-layouts-count`; list = `.vgext-layouts-list`; error strip = `.vgext-layouts-error`.
 
 - [ ] **Step 1: Write the test harness `packages/ext/tests/layoutsMenuHarness.ts`**
 
 ```ts
 import { vi } from 'vitest';
-import type { CgExtContext, ToolbarItem, ToolbarItemInstance } from '../src/extension/types';
+import type { VelocityGridExtContext, ToolbarItem, ToolbarItemInstance } from '../src/extension/types';
 
 export interface FakeLayout { id: string; name: string; state: Record<string, unknown> }
 
 /** Structural stand-in for the kernel layout API + event emitter. Mutators
- *  emit `layoutChanged` exactly like the real CGrid so the UI's single
+ *  emit `layoutChanged` exactly like the real VelocityGrid so the UI's single
  *  re-sync path is exercised. */
 export class FakeGrid {
   layouts: FakeLayout[] = [{ id: 'default', name: 'Default', state: {} }];
@@ -207,12 +207,12 @@ export class FakeGrid {
 /** Mounts a toolbar item over a FakeGrid; caller must clean the DOM
  *  (tests use afterEach(() => { document.body.replaceChildren(); })). */
 export function mountItem(item: ToolbarItem, grid = new FakeGrid()): {
-  host: HTMLElement; grid: FakeGrid; inst: ToolbarItemInstance; ctx: CgExtContext;
+  host: HTMLElement; grid: FakeGrid; inst: ToolbarItemInstance; ctx: VelocityGridExtContext;
 } {
   const host = document.createElement('div');
   host.dataset.itemId = item.id;
   document.body.appendChild(host);
-  const ctx = { grid } as unknown as CgExtContext;
+  const ctx = { grid } as unknown as VelocityGridExtContext;
   const inst = item.render(host, ctx);
   return { host, grid, inst, ctx };
 }
@@ -228,8 +228,8 @@ import { FakeGrid, mountItem } from './layoutsMenuHarness';
 afterEach(() => { document.body.replaceChildren(); });
 
 const openPanel = (host: HTMLElement) => {
-  host.querySelector<HTMLButtonElement>('button.cgext-profile')!.click();
-  return document.querySelector<HTMLElement>('.cgext-menu.cgext-layouts')!;
+  host.querySelector<HTMLButtonElement>('button.vgext-profile')!.click();
+  return document.querySelector<HTMLElement>('.vgext-menu.vgext-layouts')!;
 };
 
 describe('layouts trigger button', () => {
@@ -237,7 +237,7 @@ describe('layouts trigger button', () => {
     const grid = new FakeGrid();
     grid.layouts.push({ id: 'l1', name: 'Layout 1', state: {} });
     const { host } = mountItem(layoutsItem(), grid);
-    const name = () => host.querySelector('.cgext-profile-name')!.textContent;
+    const name = () => host.querySelector('.vgext-profile-name')!.textContent;
     expect(name()).toBe('Default');
     grid.loadLayout('l1');
     expect(name()).toBe('Layout 1');
@@ -245,13 +245,13 @@ describe('layouts trigger button', () => {
 
   it('opens/closes the panel and syncs aria-expanded', () => {
     const { host } = mountItem(layoutsItem());
-    const btn = host.querySelector<HTMLButtonElement>('button.cgext-profile')!;
+    const btn = host.querySelector<HTMLButtonElement>('button.vgext-profile')!;
     expect(btn.getAttribute('aria-expanded')).toBe('false');
     btn.click();
-    expect(document.querySelector('.cgext-menu.cgext-layouts')).toBeTruthy();
+    expect(document.querySelector('.vgext-menu.vgext-layouts')).toBeTruthy();
     expect(btn.getAttribute('aria-expanded')).toBe('true');
     btn.click();
-    expect(document.querySelector('.cgext-menu.cgext-layouts')).toBeNull();
+    expect(document.querySelector('.vgext-menu.vgext-layouts')).toBeNull();
     expect(btn.getAttribute('aria-expanded')).toBe('false');
   });
 
@@ -260,10 +260,10 @@ describe('layouts trigger button', () => {
     grid.layouts.push({ id: 'l1', name: 'Layout 1', state: {} });
     const { host } = mountItem(layoutsItem(), grid);
     const panel = openPanel(host);
-    expect(panel.querySelector('.cgext-layouts-head')!.textContent).toContain('LAYOUTS');
-    expect(panel.querySelector('.cgext-layouts-count')!.textContent).toBe('2');
+    expect(panel.querySelector('.vgext-layouts-head')!.textContent).toContain('LAYOUTS');
+    expect(panel.querySelector('.vgext-layouts-count')!.textContent).toBe('2');
     grid.saveLayout('Layout 2');
-    expect(panel.querySelector('.cgext-layouts-count')!.textContent).toBe('3');
+    expect(panel.querySelector('.vgext-layouts-count')!.textContent).toBe('3');
   });
 
   it('destroy unsubscribes and clears the host', () => {
@@ -288,7 +288,7 @@ If the `frontend-design` skill is available in your session, invoke it now (pane
 
 ```ts
 /**
- * Layout management for the CGridExt title bar — a dropdown listing the
+ * Layout management for the VelocityGridExt title bar — a dropdown listing the
  * kernel's named Grid Layouts (switch / rename / duplicate / export /
  * delete / save-new / bundle import-export) plus a dirty-aware
  * "update active layout" disk button.
@@ -299,10 +299,10 @@ If the `frontend-design` skill is available in your session, invoke it now (pane
  * Kernel throws (duplicate name, bad import, newer bundle version) are
  * caught at this boundary and surfaced inline.
  */
-import type { ToolbarItem, CgExtContext } from '../extension/types';
+import type { ToolbarItem, VelocityGridExtContext } from '../extension/types';
 import { menu, svg, iconButton } from './ui';
 
-/** Kernel layout surface this module drives — structural subset of CGridApi
+/** Kernel layout surface this module drives — structural subset of VelocityGridApi
  *  so the module stays testable against a stub. */
 interface LayoutGridSurface {
   getGridOption(key: string): unknown;
@@ -321,7 +321,7 @@ interface LayoutGridSurface {
   importLayouts(bundle: unknown, opts?: { mode?: 'replace' | 'merge'; overwrite?: boolean }): void;
   addEventListener(type: string, fn: (e: never) => void): () => void;
 }
-const surface = (ctx: CgExtContext): LayoutGridSurface => ctx.grid as unknown as LayoutGridSurface;
+const surface = (ctx: VelocityGridExtContext): LayoutGridSurface => ctx.grid as unknown as LayoutGridSurface;
 
 const DEFAULT_ID = 'default';
 
@@ -351,14 +351,14 @@ export function layoutsItem(): ToolbarItem {
       const grid = surface(ctx);
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'cgext-profile';
+      btn.className = 'vgext-profile';
       btn.setAttribute('aria-haspopup', 'menu');
       btn.setAttribute('aria-expanded', 'false');
       btn.innerHTML =
-        `<span class="cgext-profile-avatar">${svg(I.user, 13)}</span>` +
-        `<span class="cgext-profile-name"></span>` +
-        `<span class="cgext-profile-caret">${svg(I.chevronDown, 13)}</span>`;
-      const nameEl = btn.querySelector('.cgext-profile-name')!;
+        `<span class="vgext-profile-avatar">${svg(I.user, 13)}</span>` +
+        `<span class="vgext-profile-name"></span>` +
+        `<span class="vgext-profile-caret">${svg(I.chevronDown, 13)}</span>`;
+      const nameEl = btn.querySelector('.vgext-profile-name')!;
       const paint = () => {
         let name = 'Default';
         try { name = grid.getActiveLayout().name; } catch { /* pre-init grid */ }
@@ -396,17 +396,17 @@ export function layoutsItem(): ToolbarItem {
 /** The dropdown panel. `refresh` re-renders the list + count and hides the
  *  error strip; the save-new input is left alone so typing survives
  *  unrelated layout events. */
-function buildPanel(ctx: CgExtContext): { el: HTMLElement; refresh: () => void } {
+function buildPanel(ctx: VelocityGridExtContext): { el: HTMLElement; refresh: () => void } {
   const grid = surface(ctx);
   const el = document.createElement('div');
-  el.className = 'cgext-layouts';
+  el.className = 'vgext-layouts';
   el.innerHTML =
-    `<div class="cgext-layouts-head"><span>LAYOUTS</span><span class="cgext-layouts-count"></span></div>` +
-    `<div class="cgext-layouts-list" role="menu"></div>` +
-    `<div class="cgext-layouts-error" hidden></div>`;
-  const listEl = el.querySelector<HTMLElement>('.cgext-layouts-list')!;
-  const countEl = el.querySelector<HTMLElement>('.cgext-layouts-count')!;
-  const errorEl = el.querySelector<HTMLElement>('.cgext-layouts-error')!;
+    `<div class="vgext-layouts-head"><span>LAYOUTS</span><span class="vgext-layouts-count"></span></div>` +
+    `<div class="vgext-layouts-list" role="menu"></div>` +
+    `<div class="vgext-layouts-error" hidden></div>`;
+  const listEl = el.querySelector<HTMLElement>('.vgext-layouts-list')!;
+  const countEl = el.querySelector<HTMLElement>('.vgext-layouts-count')!;
+  const errorEl = el.querySelector<HTMLElement>('.vgext-layouts-error')!;
 
   const showError = (message: string) => { errorEl.textContent = message; errorEl.hidden = false; };
   const refresh = () => {
@@ -423,94 +423,94 @@ function buildPanel(ctx: CgExtContext): { el: HTMLElement; refresh: () => void }
 
 export function injectLayoutsMenuStyles(): void {
   if (typeof document === 'undefined') return;
-  if (document.getElementById('cgext-layouts-styles')) return;
+  if (document.getElementById('vgext-layouts-styles')) return;
   const style = document.createElement('style');
-  style.id = 'cgext-layouts-styles';
+  style.id = 'vgext-layouts-styles';
   style.textContent = LAYOUTS_CSS;
   document.head.appendChild(style);
 }
 
 const LAYOUTS_CSS = `
-.cgext-menu.cgext-layouts { width: 300px; padding: 0; }
-.cgext-layouts-head {
+.vgext-menu.vgext-layouts { width: 300px; padding: 0; }
+.vgext-layouts-head {
   display: flex; justify-content: space-between; align-items: center;
   padding: 10px 12px 8px;
   font-size: 11px; font-weight: 650; letter-spacing: 0.08em;
-  color: var(--cg-muted-fg-color, #9aa4b6);
-  border-bottom: 1px solid var(--cg-border-color, #2a3140);
+  color: var(--vg-muted-fg-color, #9aa4b6);
+  border-bottom: 1px solid var(--vg-border-color, #2a3140);
 }
-.cgext-layouts-count { font-weight: 500; font-variant-numeric: tabular-nums; }
-.cgext-layouts-list {
+.vgext-layouts-count { font-weight: 500; font-variant-numeric: tabular-nums; }
+.vgext-layouts-list {
   max-height: 320px; overflow-y: auto;
   padding: 6px; display: flex; flex-direction: column; gap: 2px;
 }
-.cgext-layouts-row {
+.vgext-layouts-row {
   position: relative; display: flex; align-items: center; gap: 8px;
   padding: 7px 8px; border-radius: 7px; cursor: pointer;
-  color: var(--cg-fg-color, #e5e9f0); font-size: 12.5px;
+  color: var(--vg-fg-color, #e5e9f0); font-size: 12.5px;
 }
-.cgext-layouts-row:hover { background: var(--cg-row-alt-bg, rgba(255,255,255,0.06)); }
-.cgext-layouts-row.is-active { background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 14%, transparent); }
-.cgext-layouts-row.is-active::before {
+.vgext-layouts-row:hover { background: var(--vg-row-alt-bg, rgba(255,255,255,0.06)); }
+.vgext-layouts-row.is-active { background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 14%, transparent); }
+.vgext-layouts-row.is-active::before {
   content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; width: 2px;
-  border-radius: 2px; background: var(--cg-accent-color, #4f9cf9);
+  border-radius: 2px; background: var(--vg-accent-color, #4f9cf9);
 }
-.cgext-layouts-mark { width: 16px; display: inline-flex; justify-content: center; color: var(--cg-accent-color, #4f9cf9); }
-.cgext-layouts-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--cg-muted-fg-color, #9aa4b6); opacity: 0.6; }
-.cgext-layouts-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; }
-.cgext-layouts-actions { display: none; align-items: center; gap: 2px; }
-.cgext-layouts-row:hover .cgext-layouts-actions,
-.cgext-layouts-row.is-active .cgext-layouts-actions,
-.cgext-layouts-row:focus-within .cgext-layouts-actions { display: inline-flex; }
-.cgext-layouts-act {
+.vgext-layouts-mark { width: 16px; display: inline-flex; justify-content: center; color: var(--vg-accent-color, #4f9cf9); }
+.vgext-layouts-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--vg-muted-fg-color, #9aa4b6); opacity: 0.6; }
+.vgext-layouts-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; }
+.vgext-layouts-actions { display: none; align-items: center; gap: 2px; }
+.vgext-layouts-row:hover .vgext-layouts-actions,
+.vgext-layouts-row.is-active .vgext-layouts-actions,
+.vgext-layouts-row:focus-within .vgext-layouts-actions { display: inline-flex; }
+.vgext-layouts-act {
   appearance: none; border: none; background: transparent;
   width: 24px; height: 24px; border-radius: 6px;
   display: inline-flex; align-items: center; justify-content: center;
-  color: var(--cg-muted-fg-color, #9aa4b6); cursor: pointer;
+  color: var(--vg-muted-fg-color, #9aa4b6); cursor: pointer;
 }
-.cgext-layouts-act:hover { background: var(--cg-row-alt-bg, rgba(255,255,255,0.08)); color: var(--cg-fg-color, #e5e9f0); }
-.cgext-layouts-act:focus-visible { outline: 2px solid var(--cg-accent-color, #4f9cf9); outline-offset: 1px; }
-.cgext-layouts-lock { width: 24px; display: inline-flex; justify-content: center; color: var(--cg-muted-fg-color, #9aa4b6); opacity: 0.7; }
-.cgext-layouts-rename {
+.vgext-layouts-act:hover { background: var(--vg-row-alt-bg, rgba(255,255,255,0.08)); color: var(--vg-fg-color, #e5e9f0); }
+.vgext-layouts-act:focus-visible { outline: 2px solid var(--vg-accent-color, #4f9cf9); outline-offset: 1px; }
+.vgext-layouts-lock { width: 24px; display: inline-flex; justify-content: center; color: var(--vg-muted-fg-color, #9aa4b6); opacity: 0.7; }
+.vgext-layouts-rename {
   flex: 1 1 auto; min-width: 0; height: 26px; padding: 0 8px;
-  border: 1px solid var(--cg-accent-color, #4f9cf9); border-radius: 6px;
-  background: var(--cg-control-bg, rgba(0,0,0,0.25));
-  color: var(--cg-fg-color, #e5e9f0); font: inherit; font-size: 12px;
+  border: 1px solid var(--vg-accent-color, #4f9cf9); border-radius: 6px;
+  background: var(--vg-control-bg, rgba(0,0,0,0.25));
+  color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: 12px;
 }
-.cgext-layouts-rename:focus { outline: none; }
-.cgext-layouts-rename.is-error, .cgext-layouts-new input.is-error { border-color: var(--cg-neg-color, #e2606c); }
-.cgext-layouts-error { margin: 6px 12px 0; font-size: 12px; color: var(--cg-neg-color, #e2606c); }
-.cgext-layouts-new {
+.vgext-layouts-rename:focus { outline: none; }
+.vgext-layouts-rename.is-error, .vgext-layouts-new input.is-error { border-color: var(--vg-neg-color, #e2606c); }
+.vgext-layouts-error { margin: 6px 12px 0; font-size: 12px; color: var(--vg-neg-color, #e2606c); }
+.vgext-layouts-new {
   display: flex; gap: 6px; padding: 10px 12px;
-  border-top: 1px solid var(--cg-border-color, #2a3140); margin-top: 6px;
+  border-top: 1px solid var(--vg-border-color, #2a3140); margin-top: 6px;
 }
-.cgext-layouts-new input {
+.vgext-layouts-new input {
   flex: 1 1 auto; min-width: 0; height: 28px; padding: 0 9px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 7px;
-  background: var(--cg-control-bg, rgba(0,0,0,0.25));
-  color: var(--cg-fg-color, #e5e9f0); font: inherit; font-size: 12px;
+  border: 1px solid var(--vg-border-color, #2a3140); border-radius: 7px;
+  background: var(--vg-control-bg, rgba(0,0,0,0.25));
+  color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: 12px;
 }
-.cgext-layouts-new input:focus { outline: none; border-color: var(--cg-accent-color, #4f9cf9); }
-.cgext-layouts-savenew {
+.vgext-layouts-new input:focus { outline: none; border-color: var(--vg-accent-color, #4f9cf9); }
+.vgext-layouts-savenew {
   height: 28px; padding: 0 12px; white-space: nowrap;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 7px;
-  background: var(--cg-control-bg, rgba(255,255,255,0.04));
-  color: var(--cg-fg-color, #e5e9f0); font: inherit; font-size: 12px; font-weight: 550;
+  border: 1px solid var(--vg-border-color, #2a3140); border-radius: 7px;
+  background: var(--vg-control-bg, rgba(255,255,255,0.04));
+  color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: 12px; font-weight: 550;
   cursor: pointer; transition: border-color 120ms ease;
 }
-.cgext-layouts-savenew:hover:not(:disabled) { border-color: var(--cg-accent-color, #4f9cf9); }
-.cgext-layouts-savenew:disabled { opacity: 0.45; cursor: default; }
-.cgext-layouts-foot { display: flex; gap: 8px; padding: 0 12px 12px; }
-.cgext-layouts-foot button {
+.vgext-layouts-savenew:hover:not(:disabled) { border-color: var(--vg-accent-color, #4f9cf9); }
+.vgext-layouts-savenew:disabled { opacity: 0.45; cursor: default; }
+.vgext-layouts-foot { display: flex; gap: 8px; padding: 0 12px 12px; }
+.vgext-layouts-foot button {
   flex: 1; height: 28px;
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 7px;
-  background: var(--cg-control-bg, rgba(255,255,255,0.04));
-  color: var(--cg-fg-color, #e5e9f0); font: inherit; font-size: 12px; font-weight: 550;
+  border: 1px solid var(--vg-border-color, #2a3140); border-radius: 7px;
+  background: var(--vg-control-bg, rgba(255,255,255,0.04));
+  color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: 12px; font-weight: 550;
   cursor: pointer; transition: border-color 120ms ease;
 }
-.cgext-layouts-foot button:hover { border-color: var(--cg-accent-color, #4f9cf9); }
-.cgext-layouts-foot button svg { color: var(--cg-muted-fg-color, #9aa4b6); }
+.vgext-layouts-foot button:hover { border-color: var(--vg-accent-color, #4f9cf9); }
+.vgext-layouts-foot button svg { color: var(--vg-muted-fg-color, #9aa4b6); }
 `;
 ```
 
@@ -536,7 +536,7 @@ git commit -m "feat(ext): layouts dropdown trigger + panel skeleton over the ker
 
 **Interfaces:**
 - Consumes: Task 2's `buildPanel` internals (`listEl`, `showError`, `refresh`), `FakeGrid`/`mountItem`/`openPanel` from the harness.
-- Produces: exported helpers `uniqueCopyName(base: string, existing: string[]): string` and `fileIO: { download(filename: string, data: unknown): void }` (test seam). DOM hooks: rows = `.cgext-layouts-row[data-layout-id]`, action buttons = `.cgext-layouts-act[data-act="rename"|"duplicate"|"export"|"delete"]`, Default lock = `.cgext-layouts-lock`, rename input = `input.cgext-layouts-rename`.
+- Produces: exported helpers `uniqueCopyName(base: string, existing: string[]): string` and `fileIO: { download(filename: string, data: unknown): void }` (test seam). DOM hooks: rows = `.vgext-layouts-row[data-layout-id]`, action buttons = `.vgext-layouts-act[data-act="rename"|"duplicate"|"export"|"delete"]`, Default lock = `.vgext-layouts-lock`, rename input = `input.vgext-layouts-rename`.
 
 - [ ] **Step 1: Write the failing tests (append to `layoutsMenu.test.ts`)**
 
@@ -551,28 +551,28 @@ const twoLayouts = () => {
   return grid;
 };
 const row = (panel: HTMLElement, id: string) =>
-  panel.querySelector<HTMLElement>(`.cgext-layouts-row[data-layout-id="${id}"]`)!;
+  panel.querySelector<HTMLElement>(`.vgext-layouts-row[data-layout-id="${id}"]`)!;
 
 describe('layout list', () => {
   it('renders one row per layout, marks the active row, dots the rest', () => {
     const { host } = mountItem(layoutsItem(), twoLayouts());
     const panel = openPanel(host);
-    expect(panel.querySelectorAll('.cgext-layouts-row')).toHaveLength(2);
+    expect(panel.querySelectorAll('.vgext-layouts-row')).toHaveLength(2);
     expect(row(panel, 'l1').classList.contains('is-active')).toBe(true);
-    expect(row(panel, 'l1').querySelector('.cgext-layouts-mark svg')).toBeTruthy(); // check icon
-    expect(row(panel, 'default').querySelector('.cgext-layouts-dot')).toBeTruthy();
-    expect(row(panel, 'default').querySelector('.cgext-layouts-name')!.getAttribute('title')).toBe('Default');
+    expect(row(panel, 'l1').querySelector('.vgext-layouts-mark svg')).toBeTruthy(); // check icon
+    expect(row(panel, 'default').querySelector('.vgext-layouts-dot')).toBeTruthy();
+    expect(row(panel, 'default').querySelector('.vgext-layouts-name')!.getAttribute('title')).toBe('Default');
   });
 
   it('locks Default (no rename/delete; duplicate/export present) and offers all four elsewhere', () => {
     const { host } = mountItem(layoutsItem(), twoLayouts());
     const panel = openPanel(host);
     const acts = (id: string) =>
-      [...row(panel, id).querySelectorAll<HTMLElement>('.cgext-layouts-act')].map((b) => b.dataset.act);
+      [...row(panel, id).querySelectorAll<HTMLElement>('.vgext-layouts-act')].map((b) => b.dataset.act);
     expect(acts('default')).toEqual(['duplicate', 'export']);
-    expect(row(panel, 'default').querySelector('.cgext-layouts-lock')).toBeTruthy();
+    expect(row(panel, 'default').querySelector('.vgext-layouts-lock')).toBeTruthy();
     expect(acts('l1')).toEqual(['rename', 'duplicate', 'export', 'delete']);
-    expect(row(panel, 'l1').querySelector('.cgext-layouts-lock')).toBeNull();
+    expect(row(panel, 'l1').querySelector('.vgext-layouts-lock')).toBeNull();
   });
 
   it('row click loads the layout; active marking and trigger follow', () => {
@@ -582,7 +582,7 @@ describe('layout list', () => {
     row(panel, 'default').click();
     expect(grid.loadLayout).toHaveBeenCalledWith('default');
     expect(row(panel, 'default').classList.contains('is-active')).toBe(true);
-    expect(host.querySelector('.cgext-profile-name')!.textContent).toBe('Default');
+    expect(host.querySelector('.vgext-profile-name')!.textContent).toBe('Default');
   });
 
   it('rename: Enter commits, Escape cancels, kernel throw shows inline error', () => {
@@ -591,19 +591,19 @@ describe('layout list', () => {
     const panel = openPanel(host);
     const startRename = () =>
       row(panel, 'l1').querySelector<HTMLButtonElement>('[data-act="rename"]')!.click();
-    const input = () => panel.querySelector<HTMLInputElement>('input.cgext-layouts-rename')!;
+    const input = () => panel.querySelector<HTMLInputElement>('input.vgext-layouts-rename')!;
 
     startRename();
     input().value = 'Blotter';
     input().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     expect(grid.renameLayout).toHaveBeenCalledWith('l1', 'Blotter');
-    expect(row(panel, 'l1').querySelector('.cgext-layouts-name')!.textContent).toBe('Blotter');
+    expect(row(panel, 'l1').querySelector('.vgext-layouts-name')!.textContent).toBe('Blotter');
 
     startRename();
     input().value = 'Ignored';
     input().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    expect(panel.querySelector('input.cgext-layouts-rename')).toBeNull();
-    expect(row(panel, 'l1').querySelector('.cgext-layouts-name')!.textContent).toBe('Blotter');
+    expect(panel.querySelector('input.vgext-layouts-rename')).toBeNull();
+    expect(row(panel, 'l1').querySelector('.vgext-layouts-name')!.textContent).toBe('Blotter');
 
     startRename();
     input().value = 'Default'; // collides (case-insensitive in FakeGrid, like the kernel)
@@ -620,7 +620,7 @@ describe('layout list', () => {
     const panel = openPanel(host);
     row(panel, 'l1').querySelector<HTMLButtonElement>('[data-act="duplicate"]')!.click();
     expect(grid.duplicateLayout).toHaveBeenCalledWith('l1', 'Layout 1 copy');
-    expect(panel.querySelectorAll('.cgext-layouts-row')).toHaveLength(3);
+    expect(panel.querySelectorAll('.vgext-layouts-row')).toHaveLength(3);
   });
 
   it('row export downloads the layout JSON with a slugged filename', () => {
@@ -640,8 +640,8 @@ describe('layout list', () => {
     const panel = openPanel(host);
     row(panel, 'l1').querySelector<HTMLButtonElement>('[data-act="delete"]')!.click();
     expect(grid.deleteLayout).toHaveBeenCalledWith('l1');
-    expect(panel.querySelectorAll('.cgext-layouts-row')).toHaveLength(1);
-    expect(host.querySelector('.cgext-profile-name')!.textContent).toBe('Default');
+    expect(panel.querySelectorAll('.vgext-layouts-row')).toHaveLength(1);
+    expect(host.querySelector('.vgext-profile-name')!.textContent).toBe('Default');
   });
 });
 ```
@@ -706,27 +706,27 @@ function layoutRow(
   showError: (message: string) => void,
 ): HTMLElement {
   const row = document.createElement('div');
-  row.className = 'cgext-layouts-row' + (active ? ' is-active' : '');
+  row.className = 'vgext-layouts-row' + (active ? ' is-active' : '');
   row.dataset.layoutId = l.id;
   row.innerHTML =
-    `<span class="cgext-layouts-mark">${active ? svg(I.check, 13) : '<i class="cgext-layouts-dot"></i>'}</span>` +
-    `<span class="cgext-layouts-name"></span>` +
-    `<span class="cgext-layouts-actions"></span>`;
-  const nameEl = row.querySelector<HTMLElement>('.cgext-layouts-name')!;
+    `<span class="vgext-layouts-mark">${active ? svg(I.check, 13) : '<i class="vgext-layouts-dot"></i>'}</span>` +
+    `<span class="vgext-layouts-name"></span>` +
+    `<span class="vgext-layouts-actions"></span>`;
+  const nameEl = row.querySelector<HTMLElement>('.vgext-layouts-name')!;
   nameEl.textContent = l.name;                 // textContent + setAttribute — names are user input
   nameEl.setAttribute('title', l.name);
 
   row.addEventListener('click', (e) => {
-    if ((e.target as HTMLElement).closest('.cgext-layouts-actions, .cgext-layouts-rename')) return;
+    if ((e.target as HTMLElement).closest('.vgext-layouts-actions, .vgext-layouts-rename')) return;
     if (l.id === grid.getActiveLayoutId()) return;
     try { grid.loadLayout(l.id); } catch (err) { showError(errText(err)); }
   });
 
-  const actions = row.querySelector<HTMLElement>('.cgext-layouts-actions')!;
+  const actions = row.querySelector<HTMLElement>('.vgext-layouts-actions')!;
   const act = (kind: string, icon: string, label: string, onClick: () => void) => {
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'cgext-layouts-act';
+    b.className = 'vgext-layouts-act';
     b.dataset.act = kind;
     b.title = label;
     b.setAttribute('aria-label', `${label} layout '${l.name}'`);
@@ -750,7 +750,7 @@ function layoutRow(
   });
   else {
     const lock = document.createElement('span');
-    lock.className = 'cgext-layouts-lock';
+    lock.className = 'vgext-layouts-lock';
     lock.title = 'Built-in layout';
     lock.innerHTML = svg(I.lock, 13);
     actions.appendChild(lock);
@@ -762,10 +762,10 @@ function layoutRow(
  *  re-renders via layoutChanged; a kernel throw marks the input and keeps it
  *  open), Escape/blur cancels back to the label. */
 function startRename(grid: LayoutGridSurface, row: HTMLElement, l: { id: string; name: string }): void {
-  const nameEl = row.querySelector<HTMLElement>('.cgext-layouts-name')!;
+  const nameEl = row.querySelector<HTMLElement>('.vgext-layouts-name')!;
   const input = document.createElement('input');
   input.type = 'text';
-  input.className = 'cgext-layouts-rename';
+  input.className = 'vgext-layouts-rename';
   input.value = l.name;
   nameEl.replaceWith(input);
   input.focus();
@@ -809,7 +809,7 @@ git commit -m "feat(ext): layouts panel rows — switch, inline rename, duplicat
 
 **Interfaces:**
 - Consumes: Task 2/3 panel internals, `fileIO`.
-- Produces: exported `sniffImport(json: unknown): 'bundle' | 'layout' | null` and `handleImportText(grid, text: string, showError): void` (test seam — happy-dom lacks reliable `DataTransfer`). DOM hooks: `.cgext-layouts-new input`, `.cgext-layouts-savenew`, `.cgext-layouts-export`, `.cgext-layouts-import`, `.cgext-layouts-foot input[type=file]`.
+- Produces: exported `sniffImport(json: unknown): 'bundle' | 'layout' | null` and `handleImportText(grid, text: string, showError): void` (test seam — happy-dom lacks reliable `DataTransfer`). DOM hooks: `.vgext-layouts-new input`, `.vgext-layouts-savenew`, `.vgext-layouts-export`, `.vgext-layouts-import`, `.vgext-layouts-foot input[type=file]`.
 
 - [ ] **Step 1: Write the failing tests (append to `layoutsMenu.test.ts`)**
 
@@ -817,8 +817,8 @@ git commit -m "feat(ext): layouts panel rows — switch, inline rename, duplicat
 import { sniffImport, handleImportText } from '../src/toolbar/layoutsMenu';
 
 describe('save-new + import/export', () => {
-  const newInput = (panel: HTMLElement) => panel.querySelector<HTMLInputElement>('.cgext-layouts-new input')!;
-  const saveBtn = (panel: HTMLElement) => panel.querySelector<HTMLButtonElement>('.cgext-layouts-savenew')!;
+  const newInput = (panel: HTMLElement) => panel.querySelector<HTMLInputElement>('.vgext-layouts-new input')!;
+  const saveBtn = (panel: HTMLElement) => panel.querySelector<HTMLButtonElement>('.vgext-layouts-savenew')!;
 
   it('save-new: disabled while blank, Enter commits, clears on success, error inline on duplicate', () => {
     const grid = new FakeGrid();
@@ -831,7 +831,7 @@ describe('save-new + import/export', () => {
     newInput(panel).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     expect(grid.saveLayout).toHaveBeenCalledWith('Layout 1');
     expect(newInput(panel).value).toBe('');
-    expect(host.querySelector('.cgext-profile-name')!.textContent).toBe('Layout 1'); // kernel activates
+    expect(host.querySelector('.vgext-profile-name')!.textContent).toBe('Layout 1'); // kernel activates
 
     newInput(panel).value = 'layout 1'; // duplicate, case-insensitive
     newInput(panel).dispatchEvent(new Event('input', { bubbles: true }));
@@ -845,7 +845,7 @@ describe('save-new + import/export', () => {
     const grid = new FakeGrid();
     const { host } = mountItem(layoutsItem(), grid);
     const panel = openPanel(host);
-    panel.querySelector<HTMLButtonElement>('.cgext-layouts-export')!.click();
+    panel.querySelector<HTMLButtonElement>('.vgext-layouts-export')!.click();
     expect(grid.exportLayouts).toHaveBeenCalled();
     expect(dl).toHaveBeenCalledWith('fake-grid-layouts.json', expect.objectContaining({ version: 1 }));
     dl.mockRestore();
@@ -885,8 +885,8 @@ describe('save-new + import/export', () => {
     grid.loadLayout.mockImplementationOnce(() => { throw new Error('boom'); });
     const { host } = mountItem(layoutsItem(), grid);
     const panel = openPanel(host);
-    panel.querySelector<HTMLElement>('.cgext-layouts-row[data-layout-id="l1"]')!.click();
-    const strip = panel.querySelector<HTMLElement>('.cgext-layouts-error')!;
+    panel.querySelector<HTMLElement>('.vgext-layouts-row[data-layout-id="l1"]')!.click();
+    const strip = panel.querySelector<HTMLElement>('.vgext-layouts-error')!;
     expect(strip.hidden).toBe(false);
     expect(strip.textContent).toContain('boom');
     grid.saveLayout('Fresh');
@@ -898,7 +898,7 @@ describe('save-new + import/export', () => {
 - [ ] **Step 2: Run tests to verify the new block fails**
 
 Run: `cd packages/ext && npx vitest run tests/layoutsMenu.test.ts`
-Expected: prior 11 pass; new 5 FAIL (`sniffImport` not exported / no `.cgext-layouts-new` in the panel).
+Expected: prior 11 pass; new 5 FAIL (`sniffImport` not exported / no `.vgext-layouts-new` in the panel).
 
 - [ ] **Step 3: Implement in `layoutsMenu.ts`**
 
@@ -937,13 +937,13 @@ export function handleImportText(
 In `buildPanel`, extend `el.innerHTML` (after the error-strip div):
 
 ```ts
-    `<div class="cgext-layouts-new">` +
+    `<div class="vgext-layouts-new">` +
       `<input type="text" placeholder="New layout name" aria-label="New layout name" />` +
-      `<button type="button" class="cgext-layouts-savenew" disabled>+ Save</button>` +
+      `<button type="button" class="vgext-layouts-savenew" disabled>+ Save</button>` +
     `</div>` +
-    `<div class="cgext-layouts-foot">` +
-      `<button type="button" class="cgext-layouts-export">${svg(I.download, 14)}<span>Export</span></button>` +
-      `<button type="button" class="cgext-layouts-import">${svg(I.upload, 14)}<span>Import</span></button>` +
+    `<div class="vgext-layouts-foot">` +
+      `<button type="button" class="vgext-layouts-export">${svg(I.download, 14)}<span>Export</span></button>` +
+      `<button type="button" class="vgext-layouts-import">${svg(I.upload, 14)}<span>Import</span></button>` +
       `<input type="file" accept="application/json,.json" hidden />` +
     `</div>`;
 ```
@@ -951,8 +951,8 @@ In `buildPanel`, extend `el.innerHTML` (after the error-strip div):
 And wire them (after `refresh();`, before `return`):
 
 ```ts
-  const newInput = el.querySelector<HTMLInputElement>('.cgext-layouts-new input')!;
-  const saveNewBtn = el.querySelector<HTMLButtonElement>('.cgext-layouts-savenew')!;
+  const newInput = el.querySelector<HTMLInputElement>('.vgext-layouts-new input')!;
+  const saveNewBtn = el.querySelector<HTMLButtonElement>('.vgext-layouts-savenew')!;
   newInput.addEventListener('input', () => {
     newInput.classList.remove('is-error');
     newInput.title = '';
@@ -973,15 +973,15 @@ And wire them (after `refresh();`, before `return`):
   saveNewBtn.addEventListener('click', commitNew);
   newInput.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') commitNew(); });
 
-  el.querySelector<HTMLButtonElement>('.cgext-layouts-export')!.addEventListener('click', () => {
+  el.querySelector<HTMLButtonElement>('.vgext-layouts-export')!.addEventListener('click', () => {
     try {
       let gid = 'grid';
       try { gid = String(grid.getGridOption('gridId') || 'grid'); } catch { /* keep fallback */ }
       fileIO.download(`${slug(gid)}-layouts.json`, grid.exportLayouts());
     } catch (err) { showError(errText(err)); }
   });
-  const fileInput = el.querySelector<HTMLInputElement>('.cgext-layouts-foot input[type=file]')!;
-  el.querySelector<HTMLButtonElement>('.cgext-layouts-import')!.addEventListener('click', () => fileInput.click());
+  const fileInput = el.querySelector<HTMLInputElement>('.vgext-layouts-foot input[type=file]')!;
+  el.querySelector<HTMLButtonElement>('.vgext-layouts-import')!.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', () => {
     const file = fileInput.files?.[0];
     fileInput.value = '';
@@ -1023,7 +1023,7 @@ This task also amends spec §5 to record the final rule.
 
 **Interfaces:**
 - Consumes: `iconButton` from `./ui`, `I.save`, `surface()`.
-- Produces: `layoutSaveItem(): ToolbarItem` (id `'layout-save'`, slot `'primary-right'`). DOM: `[data-item-id="layout-save"] button.cgext-save`, dirty = class `is-dirty` + enabled.
+- Produces: `layoutSaveItem(): ToolbarItem` (id `'layout-save'`, slot `'primary-right'`). DOM: `[data-item-id="layout-save"] button.vgext-save`, dirty = class `is-dirty` + enabled.
 
 - [ ] **Step 1: Write the failing tests (append to `layoutsMenu.test.ts`)**
 
@@ -1037,7 +1037,7 @@ describe('layout-save disk', () => {
   it('starts clean/disabled; a ui state change dirties it; click updates the active layout and cleans', () => {
     const grid = new FakeGrid();
     const { host } = mountItem(layoutSaveItem(), grid);
-    const btn = host.querySelector<HTMLButtonElement>('button.cgext-save')!;
+    const btn = host.querySelector<HTMLButtonElement>('button.vgext-save')!;
     expect(btn.disabled).toBe(true);
     expect(btn.classList.contains('is-dirty')).toBe(false);
 
@@ -1055,7 +1055,7 @@ describe('layout-save disk', () => {
     const grid = new FakeGrid();
     grid.layouts.push({ id: 'l1', name: 'Layout 1', state: {} });
     const { host } = mountItem(layoutSaveItem(), grid);
-    const btn = host.querySelector<HTMLButtonElement>('button.cgext-save')!;
+    const btn = host.querySelector<HTMLButtonElement>('button.vgext-save')!;
 
     grid.emit(stateUpdated('init', ['columnState']));       // constructor initialState
     grid.emit(stateUpdated('api', ['columnState', 'sort'])); // setState (restore / loadLayout apply)
@@ -1105,7 +1105,7 @@ export function layoutSaveItem(): ToolbarItem {
     render(host, ctx) {
       const grid = surface(ctx);
       const btn = iconButton(I.save, 'Layout up to date');
-      btn.classList.add('cgext-save');
+      btn.classList.add('vgext-save');
       let dirty = false;
       const sync = () => {
         btn.classList.toggle('is-dirty', dirty);
@@ -1168,7 +1168,7 @@ git commit -m "feat(ext): dirty-aware layout-save disk — source-discriminated 
 
 **Interfaces:**
 - Consumes: `layoutsItem`, `layoutSaveItem` from `./layoutsMenu`.
-- Produces: `titleBarExtensions()` now returns items with ids `brand, search, notifications, layouts, layout-save, date, settings-launcher, overflow` (the ids `profiles` and `save` no longer appear in the title-bar set; the default bundle's separate `save` item is untouched). Public export surface of `@cgrid/ext` is unchanged.
+- Produces: `titleBarExtensions()` now returns items with ids `brand, search, notifications, layouts, layout-save, date, settings-launcher, overflow` (the ids `profiles` and `save` no longer appear in the title-bar set; the default bundle's separate `save` item is untouched). Public export surface of `@wellsfargo-starui/velocity-grid-ext` is unchanged.
 
 - [ ] **Step 1: Swap the items in `titleBar.ts`**
 
@@ -1185,7 +1185,7 @@ In `titleBarExtensions()` replace the two lines `profilesItem(),` / `saveItem(),
     layoutSaveItem(),
 ```
 
-Delete the entire `profilesItem()` function (:157-193) and `saveItem()` function (:195-210). Delete the now-unused `user`, `chevronDown`, and `save` entries from `ICON` (layoutsMenu owns its own copies). Keep ALL CSS — `.cgext-profile*` styles the new trigger and `.cgext-save.is-dirty` styles the new disk. Update the file's doc header (line ~5): "profile selector, dirty-aware save" → "layout switcher, dirty-aware layout-update save".
+Delete the entire `profilesItem()` function (:157-193) and `saveItem()` function (:195-210). Delete the now-unused `user`, `chevronDown`, and `save` entries from `ICON` (layoutsMenu owns its own copies). Keep ALL CSS — `.vgext-profile*` styles the new trigger and `.vgext-save.is-dirty` styles the new disk. Update the file's doc header (line ~5): "profile selector, dirty-aware save" → "layout switcher, dirty-aware layout-update save".
 
 - [ ] **Step 2: Verify no dangling references**
 
@@ -1234,7 +1234,7 @@ git commit -m "feat(ext): title bar swaps Wave-0 profiles/save for the layouts d
 - Create: `apps/cgrid-ext-demo/e2e/layoutsToolbar.spec.ts` (camelCase matches `iconRibbon.spec.ts`)
 
 **Interfaces:**
-- Consumes: the demo's `window.__ext` handle (`CGridExt`; `__ext.grid` = kernel), `persistState: true` under `gridId: 'ext-demo'`, and Task 2-6's DOM hooks.
+- Consumes: the demo's `window.__ext` handle (`VelocityGridExt`; `__ext.grid` = kernel), `persistState: true` under `gridId: 'ext-demo'`, and Task 2-6's DOM hooks.
 
 - [ ] **Step 1: Write the E2E spec**
 
@@ -1249,17 +1249,17 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await page.evaluate(() => localStorage.clear());
   await page.reload();
-  await expect(page.locator('.cgext-titlebar')).toBeVisible();
+  await expect(page.locator('.vgext-titlebar')).toBeVisible();
 });
 
-const trigger = (page: Page) => page.locator('[data-item-id="layouts"] button.cgext-profile');
-const panel = (page: Page) => page.locator('.cgext-menu.cgext-layouts');
-const row = (page: Page, id: string) => panel(page).locator(`.cgext-layouts-row[data-layout-id="${id}"]`);
+const trigger = (page: Page) => page.locator('[data-item-id="layouts"] button.vgext-profile');
+const panel = (page: Page) => page.locator('.vgext-menu.vgext-layouts');
+const row = (page: Page, id: string) => panel(page).locator(`.vgext-layouts-row[data-layout-id="${id}"]`);
 const disk = (page: Page) => page.locator('[data-item-id="layout-save"] button');
 
 async function saveNewLayout(page: Page, name: string): Promise<void> {
-  await panel(page).locator('.cgext-layouts-new input').fill(name);
-  await panel(page).locator('.cgext-layouts-savenew').click();
+  await panel(page).locator('.vgext-layouts-new input').fill(name);
+  await panel(page).locator('.vgext-layouts-savenew').click();
   await expect(trigger(page)).toContainText(name);
 }
 
@@ -1273,9 +1273,9 @@ test('save new layout; ui change dirties the disk; update + switch round-trips t
 
   await trigger(page).click();
   await expect(panel(page)).toBeVisible();
-  await expect(panel(page).locator('.cgext-layouts-count')).toHaveText('1');
+  await expect(panel(page).locator('.vgext-layouts-count')).toHaveText('1');
   await saveNewLayout(page, 'Layout 1');
-  await expect(panel(page).locator('.cgext-layouts-count')).toHaveText('2');
+  await expect(panel(page).locator('.vgext-layouts-count')).toHaveText('2');
   const l1 = await activeLayoutId(page);
   await expect(row(page, l1)).toHaveClass(/is-active/);
 
@@ -1303,16 +1303,16 @@ test('rename, duplicate, delete; Default is locked', async ({ page }) => {
 
   // Rename the active row (actions are always visible on it).
   await row(page, alpha).locator('[data-act="rename"]').click();
-  const rename = panel(page).locator('input.cgext-layouts-rename');
+  const rename = panel(page).locator('input.vgext-layouts-rename');
   await rename.fill('Beta');
   await rename.press('Enter');
-  await expect(row(page, alpha).locator('.cgext-layouts-name')).toHaveText('Beta');
+  await expect(row(page, alpha).locator('.vgext-layouts-name')).toHaveText('Beta');
   await expect(trigger(page)).toContainText('Beta');
 
   // Duplicate → "Beta copy" appears, NOT active (kernel duplicate doesn't activate).
   await row(page, alpha).locator('[data-act="duplicate"]').click();
-  await expect(panel(page).locator('.cgext-layouts-count')).toHaveText('3');
-  const copyRow = panel(page).locator('.cgext-layouts-row', { hasText: 'Beta copy' });
+  await expect(panel(page).locator('.vgext-layouts-count')).toHaveText('3');
+  const copyRow = panel(page).locator('.vgext-layouts-row', { hasText: 'Beta copy' });
   await expect(copyRow).toBeVisible();
   await expect(copyRow).not.toHaveClass(/is-active/);
   await expect(trigger(page)).toContainText('Beta');
@@ -1320,11 +1320,11 @@ test('rename, duplicate, delete; Default is locked', async ({ page }) => {
   // Delete the copy (hover reveals its actions).
   await copyRow.hover();
   await copyRow.locator('[data-act="delete"]').click();
-  await expect(panel(page).locator('.cgext-layouts-count')).toHaveText('2');
+  await expect(panel(page).locator('.vgext-layouts-count')).toHaveText('2');
 
   // Default: locked — no rename/delete, lock badge present.
   await row(page, 'default').hover();
-  await expect(row(page, 'default').locator('.cgext-layouts-lock')).toBeVisible();
+  await expect(row(page, 'default').locator('.vgext-layouts-lock')).toBeVisible();
   await expect(row(page, 'default').locator('[data-act="rename"]')).toHaveCount(0);
   await expect(row(page, 'default').locator('[data-act="delete"]')).toHaveCount(0);
 });
@@ -1335,7 +1335,7 @@ test('bundle export → delete → import restores the layout', async ({ page })
 
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    panel(page).locator('.cgext-layouts-export').click(),
+    panel(page).locator('.vgext-layouts-export').click(),
   ]);
   // 'ext-demo-layouts.json' when getGridOption('gridId') resolves; the
   // 'grid-layouts.json' fallback is also acceptable — assert the stable suffix.
@@ -1344,11 +1344,11 @@ test('bundle export → delete → import restores the layout', async ({ page })
 
   const keeper = await activeLayoutId(page);
   await row(page, keeper).locator('[data-act="delete"]').click();
-  await expect(panel(page).locator('.cgext-layouts-count')).toHaveText('1');
+  await expect(panel(page).locator('.vgext-layouts-count')).toHaveText('1');
 
-  await panel(page).locator('.cgext-layouts-foot input[type=file]').setInputFiles(bundlePath!);
-  await expect(panel(page).locator('.cgext-layouts-count')).toHaveText('2');
-  await expect(panel(page).locator('.cgext-layouts-row', { hasText: 'Keeper' })).toBeVisible();
+  await panel(page).locator('.vgext-layouts-foot input[type=file]').setInputFiles(bundlePath!);
+  await expect(panel(page).locator('.vgext-layouts-count')).toHaveText('2');
+  await expect(panel(page).locator('.vgext-layouts-row', { hasText: 'Keeper' })).toBeVisible();
 });
 
 test('layouts persist across reload', async ({ page }) => {
@@ -1358,17 +1358,17 @@ test('layouts persist across reload', async ({ page }) => {
   await page.waitForFunction(() =>
     Object.keys(localStorage).some((k) => (localStorage.getItem(k) ?? '').includes('Persist')));
   await page.reload();
-  await expect(page.locator('.cgext-titlebar')).toBeVisible();
+  await expect(page.locator('.vgext-titlebar')).toBeVisible();
   await expect(trigger(page)).toContainText('Persist'); // layoutChanged 'restore' repainted the trigger
   await trigger(page).click();
-  await expect(panel(page).locator('.cgext-layouts-count')).toHaveText('2');
+  await expect(panel(page).locator('.vgext-layouts-count')).toHaveText('2');
 });
 ```
 
 - [ ] **Step 2: Run the new E2E spec**
 
 Run: `cd apps/cgrid-ext-demo && npx playwright test e2e/layoutsToolbar.spec.ts`
-Expected: 4 pass. Debug notes if not: kill stale :5188 servers first (Playwright's `reuseExistingServer` latches onto them); no kernel rebuild is needed (this feature touches only `@cgrid/ext`, which is source-direct) — but if the demo behaves as if the feature is missing, clear `node_modules/.vite` and restart.
+Expected: 4 pass. Debug notes if not: kill stale :5188 servers first (Playwright's `reuseExistingServer` latches onto them); no kernel rebuild is needed (this feature touches only `@wellsfargo-starui/velocity-grid-ext`, which is source-direct) — but if the demo behaves as if the feature is missing, clear `node_modules/.vite` and restart.
 
 - [ ] **Step 3: Run the FULL demo E2E suite (done-gate)**
 

@@ -86,7 +86,7 @@ function getPath(name: string): Path2D {
   let p = cache.get(name);
   if (!p) {
     const d = lookupPath(name);
-    if (d === undefined) throw new Error(`[cgrid] unknown icon '${name}'`);
+    if (d === undefined) throw new Error(`[velocity-grid] unknown icon '${name}'`);
     p = new Path2D(d);
     cache.set(name, p);
   }
@@ -115,7 +115,7 @@ export function hasIcon(name: string): boolean {
 }
 
 /** Cycle 27 / Task 3 — test-only. Drains a single custom registration.
- *  Not exposed via the public CGrid API. */
+ *  Not exposed via the public VelocityGrid API. */
 export function unregisterIconForTest(name: string): void {
   CUSTOM_PATHS.delete(name);
   cache.delete(name);

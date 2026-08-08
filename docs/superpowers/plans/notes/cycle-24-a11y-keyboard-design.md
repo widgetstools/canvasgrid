@@ -139,7 +139,7 @@ Debounced 250 ms — prevents firehose during multi-changes.
 
 ## Task 5 — High-contrast theme
 
-**Goal:** A `cg-theme-high-contrast` class with WCAG AAA contrast
+**Goal:** A `vg-theme-high-contrast` class with WCAG AAA contrast
 ratios (≥ 7:1 for body text), thicker focus rings, no
 semi-transparent fills.
 
@@ -147,16 +147,16 @@ semi-transparent fills.
 
 | Token | Quartz | High-contrast |
 |---|---|---|
-| `--cg-fg` | `#1a1f24` | `#000000` |
-| `--cg-bg` | `#ffffff` | `#ffffff` |
-| `--cg-grid-line-color` | `#eceff2` | `#000000` |
-| `--cg-focus-ring-color` | `#2563eb` | `#0000ff` |
-| `--cg-focus-ring-width` | `2px` | `3px` |
-| `--cg-selection-bg` | `rgba(37,99,235,0.18)` | `#ffff00` |
-| `--cg-selection-fg` | `inherit` | `#000000` |
-| `--cg-range-selection-border-color` | `#2563eb` | `#000000` |
+| `--vg-fg` | `#1a1f24` | `#000000` |
+| `--vg-bg` | `#ffffff` | `#ffffff` |
+| `--vg-grid-line-color` | `#eceff2` | `#000000` |
+| `--vg-focus-ring-color` | `#2563eb` | `#0000ff` |
+| `--vg-focus-ring-width` | `2px` | `3px` |
+| `--vg-selection-bg` | `rgba(37,99,235,0.18)` | `#ffff00` |
+| `--vg-selection-fg` | `inherit` | `#000000` |
+| `--vg-range-selection-border-color` | `#2563eb` | `#000000` |
 
-A dark-variant `cg-theme-high-contrast-dark` mirrors the same
+A dark-variant `vg-theme-high-contrast-dark` mirrors the same
 contrast minimums against a `#000000` background.
 
 ---
@@ -169,7 +169,7 @@ exit via `tabToNextHeader` / `tabToPreviousHeader` callbacks.
 **Behaviour:**
 
 - Default: focus stays inside the grid; Tab cycles cells.
-- `CGridOptions.tabToNextHeader: (params) => boolean | HeaderPosition`
+- `VelocityGridOptions.tabToNextHeader: (params) => boolean | HeaderPosition`
   — at the LAST tabbable cell, when Tab is pressed, callback decides
   whether to wrap (return `true`), exit grid (return `false`), or
   move to a specific header (return `HeaderPosition`).
@@ -184,7 +184,7 @@ exit via `tabToNextHeader` / `tabToPreviousHeader` callbacks.
 **Goal:** `prefers-reduced-motion` disables:
 
 - Row insertion / removal animations (Cycle 5).
-- Cell flash overlay (`--cg-flash-from-color` → `transparent`).
+- Cell flash overlay (`--vg-flash-from-color` → `transparent`).
 - Scroll smoothing.
 - Sparkline tooltip fade-in.
 
@@ -192,9 +192,9 @@ exit via `tabToNextHeader` / `tabToPreviousHeader` callbacks.
 
 ```css
 @media (prefers-reduced-motion: reduce) {
-  .cg-host {
-    --cg-flash-from-color: transparent;
-    --cg-anim-duration: 0ms;
+  .vg-host {
+    --vg-flash-from-color: transparent;
+    --vg-anim-duration: 0ms;
   }
 }
 ```

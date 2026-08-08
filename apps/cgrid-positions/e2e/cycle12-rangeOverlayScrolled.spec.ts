@@ -58,7 +58,7 @@ test.describe('range overlay paints visible portion when ends are off-screen', (
     // Seed 500 deterministic rows + add a range that spans well past
     // the viewport in both directions.
     await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: GridSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridSurface }).__cgrid;
       const rows: Record<string, unknown>[] = [];
       for (let i = 0; i < 500; i++) {
         rows.push({
@@ -83,14 +83,14 @@ test.describe('range overlay paints visible portion when ends are off-screen', (
     // Scroll deep into the range so row 5 (top) is far above bodyTop
     // and row 400 (bottom) is far below bodyBottom.
     await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: GridSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridSurface }).__cgrid;
       g.getScroller().scrollTop = 3200; // row ~100 at 32 px row height
     });
     await waitForFrames(page, 10);
 
     // Range model must still hold the original [5, 400] range.
     const rangeCount = await page.evaluate(
-      () => (window as unknown as { __cgrid: GridSurface }).__cgrid.getCellRanges().length,
+      () => (window as unknown as { __velocity-grid: GridSurface }).__cgrid.getCellRanges().length,
     );
     expect(rangeCount).toBe(1);
 
@@ -100,7 +100,7 @@ test.describe('range overlay paints visible portion when ends are off-screen', (
     // range) is at y = bodyTop + 5*rowHeight. Sample its centre and
     // assert the pixel matches the range fill colour.
     const probe = await page.evaluate(() => {
-      const g = (window as unknown as { __cgrid: GridSurface }).__cgrid;
+      const g = (window as unknown as { __velocity-grid: GridSurface }).__cgrid;
       // Pick a cell that's definitely on-screen and in the range.
       const cellBounds = g.getCellBoundsAt(105, 'marketValue');
       if (!cellBounds) return { hit: false } as const;

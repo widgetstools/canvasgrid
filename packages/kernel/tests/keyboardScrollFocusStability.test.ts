@@ -23,9 +23,9 @@
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { SelectionModel } from '../src/interaction/selectionModel';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
-import type { CGridOptions } from '../src/types/options';
+import type { VelocityGridOptions } from '../src/types/options';
 
 // ─── Fix B: stale-reply guard (pure SelectionModel unit) ─────────────────────
 
@@ -65,7 +65,7 @@ describe('SelectionModel.rebuildIndices — stale-reply focus guard', () => {
   });
 });
 
-// ─── Fix A: no synthetic ids in persistent focus (wired CGrid) ───────────────
+// ─── Fix A: no synthetic ids in persistent focus (wired VelocityGrid) ───────────────
 
 beforeAll(() => {
   (globalThis as any).Worker = class {
@@ -108,7 +108,7 @@ beforeAll(() => {
 function buildWiredGrid() {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
-  container.className = 'cg-theme-quartz';
+  container.className = 'vg-theme-quartz';
   document.body.appendChild(container);
   const prevWorker = (globalThis as any).Worker;
   (globalThis as any).Worker = class {
@@ -122,11 +122,11 @@ function buildWiredGrid() {
     terminate() {}
   };
   const rows = Array.from({ length: 1000 }, (_, i) => ({ id: `row-id-${i}`, v: i }));
-  const grid = new CGrid(container, {
+  const grid = new VelocityGrid(container, {
     columnDefs: [{ field: 'id' }, { field: 'v', type: 'number' }],
     getRowId: (r) => r.id,
     rowData: rows,
-  } as CGridOptions<{ id: string; v: number }>);
+  } as VelocityGridOptions<{ id: string; v: number }>);
   const g = grid as any;
   Object.defineProperty(g.scroller, 'clientWidth', { value: 800, configurable: true });
   Object.defineProperty(g.scroller, 'clientHeight', { value: 600, configurable: true });
@@ -139,7 +139,7 @@ function buildWiredGrid() {
 
 const tick = (ms = 50) => new Promise((r) => setTimeout(r, ms));
 
-describe('CGrid — persistent focus id never records the synthetic fallback', () => {
+describe('VelocityGrid — persistent focus id never records the synthetic fallback', () => {
   it('focus on a loaded row records the REAL row id', async () => {
     const { grid, g, restore } = buildWiredGrid();
     await tick();

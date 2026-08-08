@@ -9,7 +9,7 @@
 import { test, Page } from '@playwright/test';
 
 const GRID_SELECTOR = '#grid canvas';
-const MENU_SELECTOR = '.cg-context-menu';
+const MENU_SELECTOR = '.vg-context-menu';
 
 interface GridApiSurface {
   getHeaderBoundsAt: (colId: string) => { x: number; y: number; w: number; h: number } | null;
@@ -40,12 +40,12 @@ async function gridReady(page: Page): Promise<void> {
 
 async function rightClickHeader(page: Page, colId: string): Promise<void> {
   await page.evaluate(
-    (id) => (window as unknown as { __cgrid: GridApiSurface }).__cgrid.ensureColumnVisible(id),
+    (id) => (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.ensureColumnVisible(id),
     colId,
   );
   await waitForFrames(page, 4);
   const bounds = await page.evaluate(
-    (id) => (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getHeaderBoundsAt(id),
+    (id) => (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getHeaderBoundsAt(id),
     colId,
   );
   if (!bounds) throw new Error(`no header bounds for ${colId}`);
@@ -78,14 +78,14 @@ test.describe('Cycle 18 / Task 7 — visual snapshots', () => {
     // Seed: notionalAmount as a value column with avg so the submenu paints
     // a check next to "avg" in the screenshot.
     await page.evaluate(() => {
-      (window as unknown as { __cgrid: { addValueColumn: (c: string, a: string) => void } })
+      (window as unknown as { __velocity-grid: { addValueColumn: (c: string, a: string) => void } })
         .__cgrid.addValueColumn('notionalAmount', 'avg');
     });
     await waitForFrames(page, 4);
 
     await rightClickHeader(page, 'notionalAmount');
-    const valueRow = page.locator(`${MENU_SELECTOR} .cg-menu-item`).filter({
-      has: page.locator('.cg-menu-item-label', { hasText: /^Value: Aggregate Notional$/ }),
+    const valueRow = page.locator(`${MENU_SELECTOR} .vg-menu-item`).filter({
+      has: page.locator('.vg-menu-item-label', { hasText: /^Value: Aggregate Notional$/ }),
     });
     await valueRow.hover();
     await waitForFrames(page, 4);

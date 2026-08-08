@@ -1,19 +1,19 @@
-# @cgrid/kernel
+# @wellsfargo-starui/velocity-grid
 
 A vanilla-TypeScript canvas-based grid library. No framework dependencies.
 
 ## Install
 
 ```bash
-npm install @cgrid/kernel
+npm install @wellsfargo-starui/velocity-grid
 ```
 
 ## Quickstart
 
 ```typescript
-import { CGrid } from '@cgrid/kernel';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
 
-const grid = new CGrid<{ id: string; name: string; value: number }>(
+const grid = new VelocityGrid<{ id: string; name: string; value: number }>(
   document.getElementById('grid')!,
   {
     columnDefs: [
@@ -26,7 +26,7 @@ const grid = new CGrid<{ id: string; name: string; value: number }>(
     // Cycle 14 — pinned grand-totals row at the bottom of the body.
     // Reads chunk.totals[colId] for every column that declares aggFunc.
     totalsRowPosition: 'bottom',
-    theme: 'cg-theme-quartz',
+    theme: 'vg-theme-quartz',
   },
 );
 

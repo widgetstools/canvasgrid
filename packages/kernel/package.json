@@ -1,15 +1,15 @@
 {
-  "name": "@cgrid/kernel",
+  "name": "@wellsfargo-starui/velocity-grid",
   "version": "0.0.0",
   "type": "module",
-  "main": "./dist/cgrid.js",
-  "types": "./dist/cgrid.d.ts",
+  "main": "./dist/velocity-grid.js",
+  "types": "./dist/velocityGrid.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/cgrid.d.ts",
-      "import": "./dist/cgrid.js"
+      "types": "./dist/velocityGrid.d.ts",
+      "import": "./dist/velocity-grid.js"
     },
-    "./style.css": "./dist/kernel.css",
+    "./style.css": "./dist/velocity-grid.css",
     "./icons/lucide.generated": {
       "types": "./src/icons/lucide.generated.ts",
       "import": "./src/icons/lucide.generated.ts"
@@ -29,9 +29,9 @@
     "src"
   ],
   "devDependencies": {
-    "@cgrid/calc": "*",
-    "@cgrid/format": "*",
-    "@cgrid/rules": "*",
+    "@wellsfargo-starui/velocity-grid-calc": "*",
+    "@wellsfargo-starui/velocity-grid-format": "*",
+    "@wellsfargo-starui/velocity-grid-rules": "*",
     "@types/node": "^20.0.0",
     "@vitest/coverage-v8": "^2.1.0",
     "happy-dom": "^15.0.0",

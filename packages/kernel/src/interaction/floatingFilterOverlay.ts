@@ -10,7 +10,7 @@ import { parseFloatingFilterInput, type FilterColumnType } from './floatingFilte
  * Cycle 7 / Task 1.
  */
 export interface FloatingFilterColDef {
-  /** Per-column resolution of grid-level `CGridOptions.floatingFilter`. When
+  /** Per-column resolution of grid-level `VelocityGridOptions.floatingFilter`. When
    *  `false` (explicit), the overlay skips the column entirely. */
   floatingFilter?: boolean;
   /** Resolved filter type. Currently used only as metadata in `data-*`
@@ -34,7 +34,7 @@ export interface FloatingFilterOverlayDeps {
   /** Apply a filter mutation. Called by the overlay after the typing
    *  debounce; `model: null` clears the column's filter. Cycle 7 /
    *  Task 9 widened the return type to `Promise<void> | void` so cgrid
-   *  can await the worker round-trip from `CGridApi.setColumnFilterModel`
+   *  can await the worker round-trip from `VelocityGridApi.setColumnFilterModel`
    *  callers while the overlay continues to fire-and-forget. */
   setColumnFilterModel: (colId: string, model: CFilterModelEntry | null) => Promise<void> | void;
   /** Resolved per-column floating-filter metadata. Returning `undefined`
@@ -132,7 +132,7 @@ export class FloatingFilterOverlay {
       // band by definition.
       //
       // Cycle 12 / Task 3 — the data-subgrid overlays (focus ring,
-      // range, DOM editor) delegate this to CGrid.getVisibleCellBounds.
+      // range, DOM editor) delegate this to VelocityGrid.getVisibleCellBounds.
       // The floating-filter row lives on the floating-filter subgrid,
       // not the data subgrid, so `getVisibleCellBounds` (whose row arg
       // resolves against data rows) can't represent it. The vertical
@@ -208,29 +208,29 @@ export class FloatingFilterOverlay {
     if (existing) return existing;
 
     const wrapper = document.createElement('div');
-    wrapper.className = 'cg-floating-filter-cell';
-    wrapper.setAttribute('data-cg-floating-filter-cell', '');
-    wrapper.setAttribute('data-cg-col-id', colId);
+    wrapper.className = 'vg-floating-filter-cell';
+    wrapper.setAttribute('data-vg-floating-filter-cell', '');
+    wrapper.setAttribute('data-vg-col-id', colId);
 
     const input = document.createElement('input');
     input.type = 'text';
-    input.className = 'cg-floating-filter-input';
-    input.setAttribute('data-cg-floating-filter', '');
-    input.setAttribute('data-cg-col-id', colId);
+    input.className = 'vg-floating-filter-input';
+    input.setAttribute('data-vg-floating-filter', '');
+    input.setAttribute('data-vg-col-id', colId);
     // Resolved filter type: explicit `filter:` wins, else fall back to
     // `cellDataType` (every column has one). The overlay's inline
     // parser uses this to route the user's typed expression to the
     // right grammar (text-contains for text columns, comparison +
     // range + CSV + AND/OR for number / date columns).
     const resolvedFilter = resolveFilterType(def);
-    if (resolvedFilter) input.setAttribute('data-cg-filter-type', resolvedFilter);
+    if (resolvedFilter) input.setAttribute('data-vg-filter-type', resolvedFilter);
     input.placeholder = placeholderFor(resolvedFilter);
 
     const clearBtn = document.createElement('button');
     clearBtn.type = 'button';
-    clearBtn.className = 'cg-floating-filter-clear';
-    clearBtn.setAttribute('data-cg-floating-filter-clear', '');
-    clearBtn.setAttribute('data-cg-col-id', colId);
+    clearBtn.className = 'vg-floating-filter-clear';
+    clearBtn.setAttribute('data-vg-floating-filter-clear', '');
+    clearBtn.setAttribute('data-vg-col-id', colId);
     clearBtn.setAttribute('aria-label', 'Clear filter');
     clearBtn.tabIndex = -1;
     clearBtn.textContent = '×';
@@ -245,9 +245,9 @@ export class FloatingFilterOverlay {
     if (!def.suppressFloatingFilterButton && hasPopupFilter(def)) {
       expandBtn = document.createElement('button');
       expandBtn.type = 'button';
-      expandBtn.className = 'cg-floating-filter-expand';
-      expandBtn.setAttribute('data-cg-floating-filter-expand', '');
-      expandBtn.setAttribute('data-cg-col-id', colId);
+      expandBtn.className = 'vg-floating-filter-expand';
+      expandBtn.setAttribute('data-vg-floating-filter-expand', '');
+      expandBtn.setAttribute('data-vg-col-id', colId);
       expandBtn.setAttribute('aria-label', 'Open filter');
       expandBtn.tabIndex = -1;
       // Three-line hamburger icon — keeps the popup-entry visually

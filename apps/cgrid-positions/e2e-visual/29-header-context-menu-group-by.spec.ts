@@ -51,7 +51,7 @@ test('header context menu — Group by Ticker (groupable, not grouped)', async (
 
   const bounds = await page.evaluate(() => {
     const g = (window as unknown as {
-      __cgrid: {
+      __velocity-grid: {
         getHeaderBoundsAt: (c: string) => { x: number; y: number; w: number; h: number } | null;
       };
     }).__cgrid;
@@ -68,7 +68,7 @@ test('header context menu — Group by Ticker (groupable, not grouped)', async (
     { button: 'right' },
   );
 
-  await page.waitForSelector('.cg-context-menu', { state: 'visible' });
+  await page.waitForSelector('.vg-context-menu', { state: 'visible' });
   await waitForFrames(page, 6);
 
   await expect(page).toHaveScreenshot('29-header-context-menu-group-by.png');

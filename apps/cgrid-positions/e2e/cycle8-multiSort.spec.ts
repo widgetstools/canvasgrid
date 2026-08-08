@@ -58,14 +58,14 @@ async function canvasOffset(page: Page): Promise<{ x: number; y: number }> {
 
 async function sortModel(page: Page): Promise<SortEntry[]> {
   return page.evaluate(
-    () => (window as unknown as { __cgrid: { sortModel: SortEntry[] } }).__cgrid.sortModel,
+    () => (window as unknown as { __velocity-grid: { sortModel: SortEntry[] } }).__cgrid.sortModel,
   );
 }
 
 async function headerBounds(page: Page, colId: string): Promise<HeaderBounds> {
   const b = await page.evaluate(
     (id) =>
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getHeaderBoundsAt(id),
+      (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid.getHeaderBoundsAt(id),
     colId,
   );
   if (!b) throw new Error(`no header bounds for ${colId}`);
@@ -182,7 +182,7 @@ test.describe('Cycle 8 / Task 1 — multi-column sort + badge', () => {
     await gridReady(page);
     await page.evaluate(() => {
       const w = window as unknown as {
-        __cgrid: GridApiSurface;
+        __velocity-grid: GridApiSurface;
         __sortEvents: Array<SortEntry[]>;
       };
       w.__sortEvents = [];

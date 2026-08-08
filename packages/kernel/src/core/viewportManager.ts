@@ -1,16 +1,16 @@
 // Cycle 19 / Task 2 — owns the scroll/viewport subsystem extracted from
-// CGrid: scroll-state fields, the native `'scroll'` listener (routed through
+// VelocityGrid: scroll-state fields, the native `'scroll'` listener (routed through
 // the host's DisposableRegistry), `computeCurrentViewport` + `syncSizer`,
 // the velocity sampler used by the prefetch-range expansion, the
 // request-coalescing flags around the worker viewport fetch, and the
 // `setScroll` / `ensure*Visible` scroll-imperative helpers.
 //
-// CGrid is the thin delegator: `this.viewport` (the ViewportState) is still
-// CGrid's read-only field — `recompute()` returns the new state which CGrid
+// VelocityGrid is the thin delegator: `this.viewport` (the ViewportState) is still
+// VelocityGrid's read-only field — `recompute()` returns the new state which VelocityGrid
 // assigns back so the 100+ readers of `viewport.visibleColumns` etc. don't
 // have to change. The seam pulls the chunk-processing tail of `requestViewport`
 // out as the `dispatchViewportRequest` dep: ViewportManager owns coalescing,
-// prefetch-range math, and the `request` entry point; CGrid (until cycle 19 /
+// prefetch-range math, and the `request` entry point; VelocityGrid (until cycle 19 /
 // task 3 lands `WorkerCoordinator`) owns the worker call + chunk plumbing.
 // The split was deliberately chosen so this extraction stays pure-viewport
 // and surfaces the worker-pipeline coupling instead of dragging half the
@@ -21,11 +21,11 @@ import type { DisposableRegistry } from './disposable';
 import type { ColumnLayout } from './layout';
 import type { Subgrid } from './subgrid';
 import type { RowHeightIndex } from './rowHeightIndex';
-import type { AggregationChangedSource, CGridEvent } from '../types';
+import type { AggregationChangedSource, VelocityGridEvent } from '../types';
 import { computeViewport, type ViewportState } from './viewport';
 import { expandRangeForScrollDelta, expandRangeForVelocity } from './prefetchRange';
 
-/** Subset of CGridOptions the viewport math reads. Passed through a
+/** Subset of VelocityGridOptions the viewport math reads. Passed through a
  *  closure so per-tick `setGridOption` flips light up on the next
  *  recompute without re-wiring the manager. */
 export interface ViewportComputeOptions {
@@ -49,7 +49,7 @@ export interface ViewportComputeOptions {
 
 export interface ViewportManagerDeps {
   disposables: DisposableRegistry;
-  events: TypedEventEmitter<CGridEvent>;
+  events: TypedEventEmitter<VelocityGridEvent>;
   scroller: HTMLDivElement;
   sizer: HTMLDivElement;
   root: HTMLDivElement;
@@ -68,7 +68,7 @@ export interface ViewportManagerDeps {
    *  overlay to re-pin its pooled `<input>` elements; safe to no-op. */
   afterRecompute(viewport: ViewportState): void;
   /** Called once per scroll tick after viewport state has been updated.
-   *  CGrid uses this to `requestRepaint()` and re-anchor any open
+   *  VelocityGrid uses this to `requestRepaint()` and re-anchor any open
    *  inline editor. Separate from `afterRecompute` so non-scroll
    *  recomputes (resize, column mutation, group toggle) don't repaint
    *  out of band. */
@@ -78,7 +78,7 @@ export interface ViewportManagerDeps {
   // --- Worker-pipeline seam. ---
   /** Fire the actual worker fetch for the velocity-expanded range and
    *  process the response (chunk → state mutations + events). Owned by
-   *  CGrid until cycle 19 / task 3 extracts `WorkerCoordinator`. */
+   *  VelocityGrid until cycle 19 / task 3 extracts `WorkerCoordinator`. */
   dispatchViewportRequest(opts: {
     rowStart: number;
     rowEnd: number;
@@ -217,7 +217,7 @@ export class ViewportManager {
 
   private computeCurrentViewport(): ViewportState {
     // Use the canvas drawable width (which subtracts the scrollbar gutter on
-    // overlay-scrollbar platforms — see CGridCanvas.measureSize). Falling back
+    // overlay-scrollbar platforms — see VelocityGridCanvas.measureSize). Falling back
     // to scroller.clientWidth would leave the rightmost right-pinned column
     // extending into the gutter, clipped by the canvas right edge.
     const { scroller, root } = this.deps;
@@ -318,7 +318,7 @@ export class ViewportManager {
     // the per-scroll-event path free of `clientWidth`/`clientHeight` reads
     // (forced-layout hazards) and style writes. Canvas bounds stand in for
     // the client box in the key: every path that resizes the scroller also
-    // re-measures the canvas (`CGridCanvas.resize` → recompute), so a
+    // re-measures the canvas (`VelocityGridCanvas.resize` → recompute), so a
     // client-box change always lands here with fresh bounds.
     const bounds = this.deps.getCanvasBounds();
     const key = {
@@ -370,7 +370,7 @@ export class ViewportManager {
   /** Called by the scroller's native 'scroll' event. Idempotent — if internal
    *  state already matches (e.g., because we just set scrollLeft
    *  programmatically), it's a no-op so there's no feedback loop. Public so
-   *  CGrid's back-compat `onScrollerScroll` shim (and the existing E2E /
+   *  VelocityGrid's back-compat `onScrollerScroll` shim (and the existing E2E /
    *  integration tests that reach in via `(grid as any).onScrollerScroll`)
    *  can drive scroll events directly. */
   onScrollerScroll(x: number, y: number): void {
@@ -710,12 +710,12 @@ export class ViewportManager {
       .catch((err) => {
         this.requestPending = false;
         this.requestQueued = false;
-        if (!this.deps.isDestroyed()) console.error('[cgrid] viewport request:', err);
+        if (!this.deps.isDestroyed()) console.error('[velocity-grid] viewport request:', err);
       });
   }
 
   /** Read + clear the pending aggregation source. Called from the chunk-arrival
-   *  handler in CGrid so the right `aggregationChanged` source bubbles up even
+   *  handler in VelocityGrid so the right `aggregationChanged` source bubbles up even
    *  after coalesced requests overwrite the field mid-flight. Returns `null`
    *  when nothing is pending (cosmetic re-fetch path). */
   consumePendingAggSource(): AggregationChangedSource | null {

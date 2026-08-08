@@ -65,14 +65,14 @@ test.describe('cross-section pill drag routing', () => {
 
     // Target a point on the right side of the pivot panel (past the existing chips).
     const targetXY = await page.evaluate(() => {
-      const panel = document.querySelector('.cg-pivot-panel') as HTMLElement;
+      const panel = document.querySelector('.vg-pivot-panel') as HTMLElement;
       const r = panel.getBoundingClientRect();
       return { x: r.right - 80, y: r.top + r.height / 2 };
     });
 
     await simulatePointerDrag(
       page,
-      '.cg-row-group-panel-chip[data-col-id="desk"]',
+      '.vg-row-group-panel-chip[data-col-id="desk"]',
       targetXY.x, targetXY.y,
     );
 
@@ -95,10 +95,10 @@ test.describe('cross-section pill drag routing', () => {
   test('pivot-mode checkbox tracks role membership (strict AG-v36 semantic)', async ({ page }) => {
     await gotoFeature(page, 'pivot');
     const opened = await page.evaluate(
-      () => document.querySelector('.cg-columns-panel-row[data-col-id="desk"]') !== null,
+      () => document.querySelector('.vg-columns-panel-row[data-col-id="desk"]') !== null,
     );
-    if (!opened) await page.locator('button.cg-side-bar-tab:has-text("Columns")').click();
-    await page.locator('.cg-columns-panel-row[data-col-id="desk"]').waitFor();
+    if (!opened) await page.locator('button.vg-side-bar-tab:has-text("Columns")').click();
+    await page.locator('.vg-columns-panel-row[data-col-id="desk"]').waitFor();
 
     const result = await page.evaluate(() => {
       const g = (window as any).__cgrid;
@@ -107,7 +107,7 @@ test.describe('cross-section pill drag routing', () => {
       const values = new Set<string>(
         (g.getValueColumns() as Array<{ colId: string }>).map((v) => v.colId),
       );
-      const rows = Array.from(document.querySelectorAll('.cg-columns-panel-row'));
+      const rows = Array.from(document.querySelectorAll('.vg-columns-panel-row'));
       const checks: Record<string, boolean | undefined> = {};
       const hasRole: Record<string, boolean> = {};
       for (const r of rows) {
@@ -132,14 +132,14 @@ test.describe('cross-section pill drag routing', () => {
   test('unchecking region in pivot mode removes its pivot role', async ({ page }) => {
     await gotoFeature(page, 'pivot');
     const opened = await page.evaluate(
-      () => document.querySelector('.cg-columns-panel-row[data-col-id="region"]') !== null,
+      () => document.querySelector('.vg-columns-panel-row[data-col-id="region"]') !== null,
     );
-    if (!opened) await page.locator('button.cg-side-bar-tab:has-text("Columns")').click();
-    await page.locator('.cg-columns-panel-row[data-col-id="region"]').waitFor();
+    if (!opened) await page.locator('button.vg-side-bar-tab:has-text("Columns")').click();
+    await page.locator('.vg-columns-panel-row[data-col-id="region"]').waitFor();
 
     // Locate region's checkbox and click it (uncheck).
     await page.evaluate(() => {
-      const row = Array.from(document.querySelectorAll('.cg-columns-panel-row'))
+      const row = Array.from(document.querySelectorAll('.vg-columns-panel-row'))
         .find((r) => (r as HTMLElement).getAttribute('data-col-id') === 'region');
       (row?.querySelector('input[type=checkbox]') as HTMLInputElement | undefined)?.click();
     });
@@ -154,10 +154,10 @@ test.describe('cross-section pill drag routing', () => {
   test('unchecking ALL roles in pivot mode tears down synthesised pivot columns (no stale matrix)', async ({ page }) => {
     await gotoFeature(page, 'pivot');
     const opened = await page.evaluate(
-      () => document.querySelector('.cg-columns-panel-row[data-col-id="desk"]') !== null,
+      () => document.querySelector('.vg-columns-panel-row[data-col-id="desk"]') !== null,
     );
-    if (!opened) await page.locator('button.cg-side-bar-tab:has-text("Columns")').click();
-    await page.locator('.cg-columns-panel-row[data-col-id="desk"]').waitFor();
+    if (!opened) await page.locator('button.vg-side-bar-tab:has-text("Columns")').click();
+    await page.locator('.vg-columns-panel-row[data-col-id="desk"]').waitFor();
 
     // Tear down every pivot role through the public API (the panel
     // checkbox no longer toggles role membership — visibility-only
@@ -206,8 +206,8 @@ test.describe('cross-section pill drag routing', () => {
     await page.waitForTimeout(300);
 
     const split = await page.evaluate(() => {
-      const rg = document.querySelector('.cg-row-group-panel') as HTMLElement;
-      const pp = document.querySelector('.cg-pivot-panel') as HTMLElement;
+      const rg = document.querySelector('.vg-row-group-panel') as HTMLElement;
+      const pp = document.querySelector('.vg-pivot-panel') as HTMLElement;
       return {
         rgClasses: rg.className,
         ppClasses: pp.className,
@@ -217,8 +217,8 @@ test.describe('cross-section pill drag routing', () => {
     });
 
     // Split modifier classes applied on both panels.
-    expect(split.rgClasses).toContain('cg-row-group-panel--split-left');
-    expect(split.ppClasses).toContain('cg-pivot-panel--split-right');
+    expect(split.rgClasses).toContain('vg-row-group-panel--split-left');
+    expect(split.ppClasses).toContain('vg-pivot-panel--split-right');
     // Same vertical strip — same top, same height, single 32 px row.
     expect(split.rgRect.top).toBe(split.ppRect.top);
     expect(split.rgRect.bottom).toBe(split.ppRect.bottom);
@@ -233,13 +233,13 @@ test.describe('cross-section pill drag routing', () => {
     await page.locator('[data-testid="btn-pivot-toggle"]').click();
     await page.waitForTimeout(300);
     const unsplit = await page.evaluate(() => {
-      const rg = document.querySelector('.cg-row-group-panel') as HTMLElement;
+      const rg = document.querySelector('.vg-row-group-panel') as HTMLElement;
       return {
         rgClasses: rg.className,
         rgWidth: rg.getBoundingClientRect().width,
       };
     });
-    expect(unsplit.rgClasses).not.toContain('cg-row-group-panel--split-left');
+    expect(unsplit.rgClasses).not.toContain('vg-row-group-panel--split-left');
     expect(unsplit.rgWidth).toBeGreaterThan(800);
   });
 
@@ -248,9 +248,9 @@ test.describe('cross-section pill drag routing', () => {
 
     // Pivot ON by default in the showcase — panel + section visible.
     let initial = await page.evaluate(() => {
-      const pp = document.querySelector('.cg-pivot-panel') as HTMLElement | null;
-      const lblSection = Array.from(document.querySelectorAll('.cg-columns-panel-section'))
-        .find((s) => s.querySelector('.cg-columns-panel-plz')) as HTMLElement | undefined;
+      const pp = document.querySelector('.vg-pivot-panel') as HTMLElement | null;
+      const lblSection = Array.from(document.querySelectorAll('.vg-columns-panel-section'))
+        .find((s) => s.querySelector('.vg-columns-panel-plz')) as HTMLElement | undefined;
       return {
         pivotPanelDisplay: pp ? getComputedStyle(pp).display : 'no panel',
         labelsSectionDisplay: lblSection ? getComputedStyle(lblSection).display : 'no section',
@@ -263,9 +263,9 @@ test.describe('cross-section pill drag routing', () => {
     await page.waitForTimeout(300);
 
     const afterOff = await page.evaluate(() => {
-      const pp = document.querySelector('.cg-pivot-panel') as HTMLElement | null;
-      const lblSection = Array.from(document.querySelectorAll('.cg-columns-panel-section'))
-        .find((s) => s.querySelector('.cg-columns-panel-plz')) as HTMLElement | undefined;
+      const pp = document.querySelector('.vg-pivot-panel') as HTMLElement | null;
+      const lblSection = Array.from(document.querySelectorAll('.vg-columns-panel-section'))
+        .find((s) => s.querySelector('.vg-columns-panel-plz')) as HTMLElement | undefined;
       return {
         pivotPanelDisplay: pp ? getComputedStyle(pp).display : 'no panel',
         labelsSectionDisplay: lblSection ? getComputedStyle(lblSection).display : 'no section',
@@ -279,9 +279,9 @@ test.describe('cross-section pill drag routing', () => {
     await page.waitForTimeout(300);
 
     const afterOn = await page.evaluate(() => {
-      const pp = document.querySelector('.cg-pivot-panel') as HTMLElement | null;
-      const lblSection = Array.from(document.querySelectorAll('.cg-columns-panel-section'))
-        .find((s) => s.querySelector('.cg-columns-panel-plz')) as HTMLElement | undefined;
+      const pp = document.querySelector('.vg-pivot-panel') as HTMLElement | null;
+      const lblSection = Array.from(document.querySelectorAll('.vg-columns-panel-section'))
+        .find((s) => s.querySelector('.vg-columns-panel-plz')) as HTMLElement | undefined;
       return {
         pivotPanelDisplay: pp ? getComputedStyle(pp).display : 'no panel',
         labelsSectionDisplay: lblSection ? getComputedStyle(lblSection).display : 'no section',
@@ -313,8 +313,8 @@ test.describe('cross-section pill drag routing', () => {
 
     // Drag desk into the pivot panel — uses the cross-panel router.
     await page.evaluate(() => {
-      const deskPill = document.querySelector('.cg-row-group-panel-chip[data-col-id="desk"]') as HTMLElement;
-      const pivotPanel = document.querySelector('.cg-pivot-panel') as HTMLElement;
+      const deskPill = document.querySelector('.vg-row-group-panel-chip[data-col-id="desk"]') as HTMLElement;
+      const pivotPanel = document.querySelector('.vg-pivot-panel') as HTMLElement;
       const sr = deskPill.getBoundingClientRect();
       const tr = pivotPanel.getBoundingClientRect();
       const startX = sr.left + sr.width / 2;
@@ -377,7 +377,7 @@ test.describe('cross-section pill drag routing', () => {
       return new Promise<Record<string, boolean | undefined>>((resolve) => {
         setTimeout(() => {
           const getCheck = (colId: string) => {
-            const r = Array.from(document.querySelectorAll('.cg-columns-panel-row'))
+            const r = Array.from(document.querySelectorAll('.vg-columns-panel-row'))
               .find((el) => el.getAttribute('data-col-id') === colId);
             return (r?.querySelector('input[type=checkbox]') as HTMLInputElement | null)?.checked;
           };
@@ -393,7 +393,7 @@ test.describe('cross-section pill drag routing', () => {
       return new Promise<Record<string, boolean | undefined>>((resolve) => {
         setTimeout(() => {
           const getCheck = (colId: string) => {
-            const r = Array.from(document.querySelectorAll('.cg-columns-panel-row'))
+            const r = Array.from(document.querySelectorAll('.vg-columns-panel-row'))
               .find((el) => el.getAttribute('data-col-id') === colId);
             return (r?.querySelector('input[type=checkbox]') as HTMLInputElement | null)?.checked;
           };
@@ -404,7 +404,7 @@ test.describe('cross-section pill drag routing', () => {
     expect(afterCodeShow).toEqual({ ticker: true });
 
     const afterPanelClick = await page.evaluate(() => {
-      const row = Array.from(document.querySelectorAll('.cg-columns-panel-row'))
+      const row = Array.from(document.querySelectorAll('.vg-columns-panel-row'))
         .find((el) => el.getAttribute('data-col-id') === 'ticker') as HTMLElement;
       (row.querySelector('input[type=checkbox]') as HTMLInputElement).click();
       return new Promise<{ checked: boolean | undefined; gridHide: boolean }>((resolve) => {
@@ -428,16 +428,16 @@ test.describe('cross-section pill drag routing', () => {
   test('pivot-mode checkbox reads role membership even when the column is hidden', async ({ page }) => {
     await gotoFeature(page, 'pivot');
     const opened = await page.evaluate(
-      () => document.querySelector('.cg-columns-panel-row[data-col-id="desk"]') !== null,
+      () => document.querySelector('.vg-columns-panel-row[data-col-id="desk"]') !== null,
     );
-    if (!opened) await page.locator('button.cg-side-bar-tab:has-text("Columns")').click();
-    await page.locator('.cg-columns-panel-row[data-col-id="desk"]').waitFor();
+    if (!opened) await page.locator('button.vg-side-bar-tab:has-text("Columns")').click();
+    await page.locator('.vg-columns-panel-row[data-col-id="desk"]').waitFor();
 
     const roleBearingHidden = await page.evaluate(() => {
       const g = (window as any).__cgrid;
       const state = g.getColumnState() as Array<{ colId: string; hide?: boolean }>;
       const desk = state.find((s) => s.colId === 'desk');
-      const row = Array.from(document.querySelectorAll('.cg-columns-panel-row'))
+      const row = Array.from(document.querySelectorAll('.vg-columns-panel-row'))
         .find((el) => el.getAttribute('data-col-id') === 'desk') as HTMLElement;
       return {
         pivotMode: g.isPivotMode(),
@@ -479,10 +479,10 @@ test.describe('cross-section pill drag routing', () => {
 
     // Open the columns side bar so the pill zones are mounted.
     const opened = await page.evaluate(
-      () => document.querySelector('.cg-columns-panel-row[data-col-id="desk"]') !== null,
+      () => document.querySelector('.vg-columns-panel-row[data-col-id="desk"]') !== null,
     );
-    if (!opened) await page.locator('button.cg-side-bar-tab:has-text("Columns")').click();
-    await page.locator('.cg-columns-panel-row[data-col-id="desk"]').waitFor();
+    if (!opened) await page.locator('button.vg-side-bar-tab:has-text("Columns")').click();
+    await page.locator('.vg-columns-panel-row[data-col-id="desk"]').waitFor();
 
     const before = await page.evaluate(() => {
       const g = (window as any).__cgrid;
@@ -494,8 +494,8 @@ test.describe('cross-section pill drag routing', () => {
     // notional. The mousedown is on the pill; mousemove/mouseup go to
     // the window. Pass DRAG_THRESHOLD_PX (default 4) on the first move.
     await page.evaluate(() => {
-      const valuesContent = document.querySelector('.cg-columns-panel-valz-content') as HTMLElement;
-      const pills = Array.from(valuesContent.querySelectorAll('.cg-columns-panel-valz-pill')) as HTMLElement[];
+      const valuesContent = document.querySelector('.vg-columns-panel-valz-content') as HTMLElement;
+      const pills = Array.from(valuesContent.querySelectorAll('.vg-columns-panel-valz-pill')) as HTMLElement[];
       const pnlPill = pills.find((p) => p.getAttribute('data-col-id') === 'pnl')!;
       const notionalPill = pills.find((p) => p.getAttribute('data-col-id') === 'notional')!;
       const srcRect = pnlPill.getBoundingClientRect();
@@ -540,10 +540,10 @@ test.describe('cross-section pill drag routing', () => {
   test('side-panel row drag → row-group panel strip adds the column to rowGroupColumns', async ({ page }) => {
     await gotoFeature(page, 'pivot');
     const opened = await page.evaluate(
-      () => document.querySelector('.cg-columns-panel-row[data-col-id="desk"]') !== null,
+      () => document.querySelector('.vg-columns-panel-row[data-col-id="desk"]') !== null,
     );
-    if (!opened) await page.locator('button.cg-side-bar-tab:has-text("Columns")').click();
-    await page.locator('.cg-columns-panel-row[data-col-id="ticker"]').waitFor();
+    if (!opened) await page.locator('button.vg-side-bar-tab:has-text("Columns")').click();
+    await page.locator('.vg-columns-panel-row[data-col-id="ticker"]').waitFor();
 
     const before = await page.evaluate(() => {
       const g = (window as any).__cgrid;
@@ -553,9 +553,9 @@ test.describe('cross-section pill drag routing', () => {
 
     await page.evaluate(() => {
       const handle = document.querySelector(
-        '.cg-columns-panel-row[data-col-id="ticker"] .cg-columns-panel-row-handle',
+        '.vg-columns-panel-row[data-col-id="ticker"] .vg-columns-panel-row-handle',
       ) as HTMLElement;
-      const strip = document.querySelector('.cg-row-group-panel') as HTMLElement;
+      const strip = document.querySelector('.vg-row-group-panel') as HTMLElement;
       const sr = handle.getBoundingClientRect();
       const tr = strip.getBoundingClientRect();
       const startX = sr.left + sr.width / 2;
@@ -591,10 +591,10 @@ test.describe('cross-section pill drag routing', () => {
   test('side-panel row drag → pivot panel strip (Column Labels) adds the column to pivotColumns', async ({ page }) => {
     await gotoFeature(page, 'pivot');
     const opened = await page.evaluate(
-      () => document.querySelector('.cg-columns-panel-row[data-col-id="desk"]') !== null,
+      () => document.querySelector('.vg-columns-panel-row[data-col-id="desk"]') !== null,
     );
-    if (!opened) await page.locator('button.cg-side-bar-tab:has-text("Columns")').click();
-    await page.locator('.cg-columns-panel-row[data-col-id="ticker"]').waitFor();
+    if (!opened) await page.locator('button.vg-side-bar-tab:has-text("Columns")').click();
+    await page.locator('.vg-columns-panel-row[data-col-id="ticker"]').waitFor();
 
     const before = await page.evaluate(() => {
       const g = (window as any).__cgrid;
@@ -604,9 +604,9 @@ test.describe('cross-section pill drag routing', () => {
 
     await page.evaluate(() => {
       const handle = document.querySelector(
-        '.cg-columns-panel-row[data-col-id="ticker"] .cg-columns-panel-row-handle',
+        '.vg-columns-panel-row[data-col-id="ticker"] .vg-columns-panel-row-handle',
       ) as HTMLElement;
-      const strip = document.querySelector('.cg-pivot-panel') as HTMLElement;
+      const strip = document.querySelector('.vg-pivot-panel') as HTMLElement;
       const sr = handle.getBoundingClientRect();
       const tr = strip.getBoundingClientRect();
       const startX = sr.left + sr.width / 2;
@@ -648,10 +648,10 @@ test.describe('cross-section pill drag routing', () => {
     await page.waitForTimeout(300);
 
     const opened = await page.evaluate(
-      () => document.querySelector('.cg-columns-panel-row[data-col-id="desk"]') !== null,
+      () => document.querySelector('.vg-columns-panel-row[data-col-id="desk"]') !== null,
     );
-    if (!opened) await page.locator('button.cg-side-bar-tab:has-text("Columns")').click();
-    await page.locator('.cg-columns-panel-row[data-col-id="ticker"]').waitFor();
+    if (!opened) await page.locator('button.vg-side-bar-tab:has-text("Columns")').click();
+    await page.locator('.vg-columns-panel-row[data-col-id="ticker"]').waitFor();
 
     // Hide ticker via the public API so the drag has a hidden column
     // to re-introduce. Confirm the hide landed.
@@ -670,9 +670,9 @@ test.describe('cross-section pill drag routing', () => {
     // Drag ticker from the side panel onto the column header band.
     await page.evaluate(() => {
       const handle = document.querySelector(
-        '.cg-columns-panel-row[data-col-id="ticker"] .cg-columns-panel-row-handle',
+        '.vg-columns-panel-row[data-col-id="ticker"] .vg-columns-panel-row-handle',
       ) as HTMLElement;
-      const canvas = document.querySelector('.cg-grid-canvas, canvas') as HTMLElement;
+      const canvas = document.querySelector('.vg-grid-canvas, canvas') as HTMLElement;
       const sr = handle.getBoundingClientRect();
       const tr = canvas.getBoundingClientRect();
       const startX = sr.left + sr.width / 2;
@@ -711,10 +711,10 @@ test.describe('cross-section pill drag routing', () => {
     await gotoFeature(page, 'pivot');
 
     const opened = await page.evaluate(
-      () => document.querySelector('.cg-columns-panel-row[data-col-id="desk"]') !== null,
+      () => document.querySelector('.vg-columns-panel-row[data-col-id="desk"]') !== null,
     );
-    if (!opened) await page.locator('button.cg-side-bar-tab:has-text("Columns")').click();
-    await page.locator('.cg-columns-panel-row[data-col-id="desk"]').waitFor();
+    if (!opened) await page.locator('button.vg-side-bar-tab:has-text("Columns")').click();
+    await page.locator('.vg-columns-panel-row[data-col-id="desk"]').waitFor();
 
     const before = await page.evaluate(() => {
       const g = (window as any).__cgrid;
@@ -724,8 +724,8 @@ test.describe('cross-section pill drag routing', () => {
 
     // Drag sector ABOVE region's midpoint → slot 0.
     await page.evaluate(() => {
-      const labelsContent = document.querySelector('.cg-columns-panel-plz-content') as HTMLElement;
-      const pills = Array.from(labelsContent.querySelectorAll('.cg-columns-panel-plz-pill')) as HTMLElement[];
+      const labelsContent = document.querySelector('.vg-columns-panel-plz-content') as HTMLElement;
+      const pills = Array.from(labelsContent.querySelectorAll('.vg-columns-panel-plz-pill')) as HTMLElement[];
       const regionPill = pills.find((p) => p.getAttribute('data-col-id') === 'region')!;
       const sectorPill = pills.find((p) => p.getAttribute('data-col-id') === 'sector')!;
       const srcRect = sectorPill.getBoundingClientRect();

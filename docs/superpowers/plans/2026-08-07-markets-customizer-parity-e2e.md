@@ -8,7 +8,7 @@
 
 **Architecture:** Split specs by Markets module under `apps/cgrid-ext-demo/e2e/`. Shared boot/helpers in `helpers/customizer.ts` (+ `helpers/editOps.ts`). Assert via `__ext.grid` / `__edit` APIs on `/?paintHarness`. Phases: (1) Customize gap-fill → (2) toolbar → (3) checklist + remaining gaps.
 
-**Tech Stack:** Playwright, Vite demo on `:5188`, `@cgrid/edit` `EditBridgeHandle`, existing `bootCustomizer` / `openCustomizer` helpers.
+**Tech Stack:** Playwright, Vite demo on `:5188`, `@wellsfargo-starui/velocity-grid-edit` `EditBridgeHandle`, existing `bootCustomizer` / `openCustomizer` helpers.
 
 ## Global Constraints
 
@@ -122,7 +122,7 @@ export async function makeTarget(
 }
 
 export async function undoOnce(page: Page): Promise<void> {
-  const btn = page.locator('.cgext-ribbon button[title="Undo"]');
+  const btn = page.locator('.vgext-ribbon button[title="Undo"]');
   if (await btn.isEnabled().catch(() => false)) {
     await btn.click();
     return;
@@ -160,7 +160,7 @@ test.describe('Bulk Update (Markets parity)', () => {
   test('settings Save toggles recordHistory', async ({ page }) => {
     // Markets: v2-bulk-update — settings sheet opens Bulk Update panel
     await openCustomizer(page, 'bulk-update');
-    await expect(page.locator('.cgext-sheet-title')).toHaveText('Bulk Update');
+    await expect(page.locator('.vgext-sheet-title')).toHaveText('Bulk Update');
     await cockpit(page).locator('.ckp-switch').last().click();
     await saveCard(page);
     await expect.poll(async () =>
@@ -227,7 +227,7 @@ await page.evaluate(() => {
 // Then select pnl cell + page.keyboard.press('+') on focused grid
 ```
 
-If keyboard path fails hermetically, fall back to documenting key path as follow-up and assert via building patches only if bridge exposes apply — otherwise use keyboard with `page.locator('.cgext-grid canvas').click()` first.
+If keyboard path fails hermetically, fall back to documenting key path as follow-up and assert via building patches only if bridge exposes apply — otherwise use keyboard with `page.locator('.vgext-grid canvas').click()` first.
 
 - [ ] **Step 2: Run** `npx playwright test e2e/customizer-plusMinus.spec.ts --project=chromium` → PASS
 
@@ -305,8 +305,8 @@ Cases (beyond `customizer.spec.ts` smoke):
 - Optional: `e2e/helpers/savedFilters.ts`
 
 Cases from Markets `v2-filters-toolbar` + canvasgrid layout-tier contract:
-1. Empty toolbar: `[data-testid="cgext-saved-filters"]` visible; add disabled without filter
-2. `setFilterModel` on a column → add enabled → click add → `.cgext-sf-pill` count 1
+1. Empty toolbar: `[data-testid="vgext-saved-filters"]` visible; add disabled without filter
+2. `setFilterModel` on a column → add enabled → click add → `.vgext-sf-pill` count 1
 3. Toggle pill off → `getFilterModel()` empty/cleared; toggle on → restored
 4. Clear all → no active filters
 5. Rename via hover pencil + popover

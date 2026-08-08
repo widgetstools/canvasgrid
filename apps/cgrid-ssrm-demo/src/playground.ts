@@ -10,14 +10,14 @@
  * the REAL book size. `?worker=dedicated` gives each Apply a private
  * engine if you want reseeds to take effect exactly.
  */
-import { CGrid } from '@cgrid/kernel';
-import '@cgrid/kernel/style.css';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
+import '@wellsfargo-starui/velocity-grid/style.css';
 import {
   StompPerspectiveProvider,
   type BookTelemetry,
   type PspFilter,
   type StompPerspectiveProviderConfig,
-} from '@cgrid/perspective';
+} from '@wellsfargo-starui/velocity-grid-perspective';
 
 const form = document.getElementById('cfg') as HTMLFormElement;
 const statusEl = document.getElementById('status')!;
@@ -99,7 +99,7 @@ function paintStatus(t: BookTelemetry): void {
 }
 
 let provider: StompPerspectiveProvider | null = null;
-let grid: CGrid | null = null;
+let grid: VelocityGrid | null = null;
 let detach: (() => void) | null = null;
 
 function teardown(): void {
@@ -117,8 +117,8 @@ function build(): void {
   if (!config) return;
   teardown();
   provider = new StompPerspectiveProvider(config);
-  grid = new CGrid(gridHost, {
-    theme: 'cg-theme-quartz-dark',
+  grid = new VelocityGrid(gridHost, {
+    theme: 'vg-theme-quartz-dark',
     ...provider.gridOptions(),
   });
   detach = provider.attach(grid);

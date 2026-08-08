@@ -23,7 +23,7 @@ export class SelectCellEditor<TValue = unknown> implements ICellEditor<unknown, 
     const selectParams = (params.params ?? {}) as unknown as SelectParams<TValue>;
     this.values = Array.isArray(selectParams.values) ? selectParams.values : [];
     const select = document.createElement('select');
-    select.className = 'cg-cell-editor cg-cell-editor--select';
+    select.className = 'vg-cell-editor vg-cell-editor--select';
     for (let i = 0; i < this.values.length; i++) {
       const opt = document.createElement('option');
       opt.value = String(i);
@@ -39,9 +39,9 @@ export class SelectCellEditor<TValue = unknown> implements ICellEditor<unknown, 
     select.style.cssText +=
       'box-sizing:border-box; width:100%; height:100%; ' +
       'border:0; padding:0 8px; margin:0; ' +
-      'background:var(--cg-cell-editor-bg, var(--cg-bg-color, #fff)); color:var(--cg-text-color, var(--cg-fg-color, #111)); ' +
-      'font-family:var(--cg-font-family, inherit); font-size:var(--cg-font-size, inherit); ' +
-      'outline:2px solid var(--cg-focus-ring-color, #4a90e2);';
+      'background:var(--vg-cell-editor-bg, var(--vg-bg-color, #fff)); color:var(--vg-text-color, var(--vg-fg-color, #111)); ' +
+      'font-family:var(--vg-font-family, inherit); font-size:var(--vg-font-size, inherit); ' +
+      'outline:2px solid var(--vg-focus-ring-color, #4a90e2);';
     this.keydownHandler = (e: KeyboardEvent) => {
       if (e.key === 'Enter') {
         e.stopPropagation();

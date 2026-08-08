@@ -11,7 +11,7 @@ test('horizontally scrolled grid — center column under pinned-left band', asyn
   await setupGrid(page, 50);
   await page.evaluate(() => {
     const g = (window as unknown as {
-      __cgrid: { setFocusedCell: (rowId: string, colId: string) => void };
+      __velocity-grid: { setFocusedCell: (rowId: string, colId: string) => void };
     }).__cgrid;
     g.setFocusedCell('POS-000003', 'currentPrice');
   });

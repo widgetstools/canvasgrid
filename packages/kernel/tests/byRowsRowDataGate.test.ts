@@ -123,7 +123,7 @@ describe('byRows — rowData snapshot gate', () => {
   it('computes the snapshot when a column declares cellClassRules', () => {
     // Resolved form: pre-compiled `{ className, predicate }` entries.
     const snapshot = paint(baseDef({
-      cellClassRules: [{ className: 'cg-cell-red', predicate: () => false }],
+      cellClassRules: [{ className: 'vg-cell-red', predicate: () => false }],
     } as unknown as Partial<ResolvedColDef>));
     expect(snapshot).toHaveBeenCalledTimes(2); // once per data row
   });

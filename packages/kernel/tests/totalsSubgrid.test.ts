@@ -128,7 +128,7 @@ describe('TotalsSubgrid — viewport-math placement', () => {
   });
 
   it('null = no totals subgrid in the stack ⇒ zero totals rows in viewport', () => {
-    // Caller's responsibility (cgrid.ts) — if options.totalsRowPosition is
+    // Caller's responsibility (velocityGrid.ts) — if options.totalsRowPosition is
     // null/omitted, no TotalsSubgrid is pushed. The viewport should then
     // contain only header + data rows.
     const vs = computeViewport({

@@ -1,6 +1,6 @@
 import {
-  CGrid,
-  type CGridOptions,
+  VelocityGrid,
+  type VelocityGridOptions,
   type CellPainter,
   type MenuItem,
   type GetContextMenuItemsParams,
@@ -8,13 +8,13 @@ import {
   type ToolPanelParams,
   type IStatusPanelComp,
   type StatusPanelParams,
-} from '@cgrid/kernel';
-import { wireIntoKernel } from '@cgrid/format';
+} from '@wellsfargo-starui/velocity-grid';
+import { wireIntoKernel } from '@wellsfargo-starui/velocity-grid-format';
 import type { Position } from './stomp';
 
 /**
  * Cycle 11 / Task 5 — demo custom tool panel. Registered via
- * `CGridOptions.components: { demoCustomPanel: DemoCustomPanel }` only
+ * `VelocityGridOptions.components: { demoCustomPanel: DemoCustomPanel }` only
  * when the demo opts in (URL `?customPanel=1`), so the default demo's
  * side bar still ships exactly two tabs (Columns + Filters) and the
  * other Cycle 11 E2E specs remain untouched.
@@ -33,7 +33,7 @@ export class DemoCustomPanel implements ToolPanel {
 
   init(params: ToolPanelParams): void {
     this.initCount += 1;
-    this.gui.className = 'cg-demo-custom-panel';
+    this.gui.className = 'vg-demo-custom-panel';
     this.gui.dataset.testid = 'demo-custom-panel';
     this.gui.dataset.initCount = String(this.initCount);
     this.gui.dataset.refreshCount = '0';
@@ -62,7 +62,7 @@ export class DemoCustomPanel implements ToolPanel {
 
 /**
  * Cycle 13 / Task 4 — demo custom status panel. Registered via
- * `CGridOptions.components: { demoCustomStatusPanel: DemoCustomStatusPanel }`
+ * `VelocityGridOptions.components: { demoCustomStatusPanel: DemoCustomStatusPanel }`
  * only when the demo opts into `?statusBar=customDemo`, so the default
  * demo's status bar still ships the canonical built-in panels (Cycle 13
  * / Tasks 2 + 3) and the other Cycle 13 visual cells stay untouched.
@@ -84,15 +84,15 @@ export class DemoCustomStatusPanel implements IStatusPanelComp {
 
   init(_params: StatusPanelParams): void {
     this.initCount += 1;
-    this.gui.className = 'cg-status-panel-count cg-demo-custom-status-panel';
+    this.gui.className = 'vg-status-panel-count vg-demo-custom-status-panel';
     this.gui.dataset.testid = 'demo-custom-status-panel';
     this.gui.dataset.panelKey = 'demoCustomStatusPanel';
     this.gui.dataset.initCount = String(this.initCount);
     this.gui.dataset.refreshCount = '0';
     this.gui.dataset.destroyCount = '0';
-    this.label.className = 'cg-status-panel-count-label';
+    this.label.className = 'vg-status-panel-count-label';
     this.label.textContent = 'Custom:';
-    this.value.className = 'cg-status-panel-count-value';
+    this.value.className = 'vg-status-panel-count-value';
     this.value.textContent = 'live';
     this.gui.appendChild(this.label);
     this.gui.appendChild(document.createTextNode(' '));
@@ -170,7 +170,7 @@ const pnlPill: CellPainter = {
  *     `cellClass: 'warning'` (pale-yellow bg on Daily). Off by
  *     default so the default demo isn't visually busy. */
 export interface PositionsGridOptions {
-  /** Cycle 21c / Task 18 — `?formatDsl=1` wires @cgrid/format into the
+  /** Cycle 21c / Task 18 — `?formatDsl=1` wires @wellsfargo-starui/velocity-grid-format into the
    *  kernel and upgrades the Price column to a Tier 1 DSL string
    *  formatter (`[color=<expr>] $#,##0.00` — green/red by dailyPnl
    *  sign), verifying real-time STOMP ticks under DSL rendering. Off
@@ -181,7 +181,7 @@ export interface PositionsGridOptions {
   autoHeight?: boolean;
   cellClassDemo?: boolean;
   /** Cycle 11 / Task 5 — opt the demo into registering a third tool
-   *  panel (`DemoCustomPanel`) via `CGridOptions.components` plus an
+   *  panel (`DemoCustomPanel`) via `VelocityGridOptions.components` plus an
    *  extra entry in `sideBar.toolPanels`. Off by default so the other
    *  Cycle 11 E2Es still see the canonical two-tab side bar; the
    *  cycle11-customPanelApi spec opts in via `?customPanel=1`. */
@@ -217,7 +217,7 @@ export interface PositionsGridOptions {
    *      visual cell 16 once the spec stages a range selection.
    *      Cycle 13 / Task 3.
    *    - `'customDemo'`: a custom `DemoCustomStatusPanel` registered
-   *      via `CGridOptions.components` mounted in the LEFT zone,
+   *      via `VelocityGridOptions.components` mounted in the LEFT zone,
    *      alongside the built-in `agTotalAndFilteredRowCountComponent`
    *      in the RIGHT zone. Cycle 13 / Task 4 — exercises the custom
    *      panel registration + `getStatusPanel(key)` API surface in
@@ -415,7 +415,7 @@ let positiveOnlyExternalFilter = false;
 /** Cycle 7 / Task 8 — flip the demo's "show only positive P&L" filter
  *  and re-trigger the pipeline. Exposed so the toolbar checkbox in
  *  main.ts can drive the grid without reaching into private state. */
-export function setPositiveOnlyFilter(grid: CGrid<Position>, value: boolean): void {
+export function setPositiveOnlyFilter(grid: VelocityGrid<Position>, value: boolean): void {
   positiveOnlyExternalFilter = value;
   grid.onFilterChanged('externalFilter');
 }
@@ -434,7 +434,7 @@ let pinSelectedRowIds: Set<string> = new Set();
  *  Re-applying the current sort model is the cheapest way to re-fire
  *  `postSortRows` — `setSortModel` invalidates the worker's visible
  *  cache, which awaits the post-sort hook on the next build. */
-export function setPinSelectedToTop(grid: CGrid<Position>, value: boolean): void {
+export function setPinSelectedToTop(grid: VelocityGrid<Position>, value: boolean): void {
   if (value) {
     pinSelectedRowIds = new Set(grid.getSelectedRowIds());
   } else {
@@ -446,7 +446,7 @@ export function setPinSelectedToTop(grid: CGrid<Position>, value: boolean): void
 export function createPositionsGrid(
   container: HTMLElement,
   opts: PositionsGridOptions = {},
-): CGrid<Position> {
+): VelocityGrid<Position> {
   // Cycle 6 / Task 6 — named column-type bundle. Columns referencing
   // `type: 'money'` pick up the numeric cellDataType (drives the default
   // right-aligned halign) plus a shared currency formatter so the two
@@ -458,7 +458,7 @@ export function createPositionsGrid(
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-  const columnTypes: NonNullable<CGridOptions<Position>['columnTypes']> = {
+  const columnTypes: NonNullable<VelocityGridOptions<Position>['columnTypes']> = {
     money: {
       cellDataType: 'number',
       valueFormatter: ({ value }) =>
@@ -468,7 +468,7 @@ export function createPositionsGrid(
     },
   };
 
-  const options: CGridOptions<Position> = {
+  const options: VelocityGridOptions<Position> = {
     columnTypes,
     // Cycle 7 / Task 1 — turn on the floating-filter row so the
     // cycle7-floatingFilter E2E has a typing target. Per-column
@@ -699,7 +699,7 @@ export function createPositionsGrid(
     cellFlashDuration: 500,
     cellFadeDuration: 800,
     asyncTransactionWaitMillis: 50,
-    theme: 'cg-theme-starui-dark',
+    theme: 'vg-theme-starui-dark',
     // Cycle 5 / Task 4 — turn on the click + key edit-triggers so the
     // editing.triggers E2E can exercise singleClickEdit and
     // enterNavigatesVerticallyAfterEdit. stopEditingWhenCellsLoseFocus
@@ -1034,7 +1034,7 @@ export function createPositionsGrid(
     }
   }
 
-  const grid = new CGrid<Position>(container, options);
+  const grid = new VelocityGrid<Position>(container, options);
   grid.registerCellRenderer('pnlPill', pnlPill);
   // Cycle 21c / Task 18 — `?formatDsl=1` upgrades the Price column to a
   // Tier 1 DSL string formatter. The compiler registers via
@@ -1049,7 +1049,7 @@ export function createPositionsGrid(
         ? { ...def, valueFormatter: '[color=[dailyPnl] >= 0 ? "#0a7" : "#d33"] $#,##0.00' }
         : def,
     );
-    grid.updateGridOptions({ columnDefs: upgraded as CGridOptions<Position>['columnDefs'] });
+    grid.updateGridOptions({ columnDefs: upgraded as VelocityGridOptions<Position>['columnDefs'] });
   }
   // Cycle 8 / Task 3 — register a natural-order comparator so the ticker
   // column sorts "TICK2" before "TICK10" instead of "TICK10" before

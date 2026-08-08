@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 
 beforeAll(() => {
   // ── stubs copied from tests/rulesKernelApi.test.ts ──
@@ -28,12 +28,12 @@ beforeAll(() => {
   })() as any;
 });
 
-function makeGrid(themeClass = 'cg-theme-quartz') {
+function makeGrid(themeClass = 'vg-theme-quartz') {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
   container.className = themeClass;
   document.body.appendChild(container);
-  return new CGrid<{ id: string; px: number }>(container, {
+  return new VelocityGrid<{ id: string; px: number }>(container, {
     columnDefs: [{ field: 'id' }, { field: 'px' }],
     getRowId: (r) => r.id,
     theme: themeClass,

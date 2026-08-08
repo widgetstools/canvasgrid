@@ -1,5 +1,5 @@
 // Icon registry — Path2D-backed, lazy-instantiated from SVG path strings.
-// Populated by @cgrid/format's wireIntoKernel (Task 17); kernel does NOT
+// Populated by @wellsfargo-starui/velocity-grid-format's wireIntoKernel (Task 17); kernel does NOT
 // auto-register any icon set.
 
 type IconPathValue = string | Path2D;

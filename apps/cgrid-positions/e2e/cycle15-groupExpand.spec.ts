@@ -16,7 +16,7 @@
  *
  * What regression this catches:
  *   - Hit-test divergence: if the click point's hit zone formula in
- *     `cgrid.ts hitTestGroupChevron` drifts from the renderer's
+ *     `velocityGrid.ts hitTestGroupChevron` drifts from the renderer's
  *     paint position, the click lands in the cell but resolves to
  *     `null` — no toggle fires.
  *   - Feature ordering break: if `GroupExpandFeature` moved behind
@@ -72,7 +72,7 @@ async function gridReady(page: Page): Promise<void> {
 
 async function seedRows(page: Page, count: number): Promise<void> {
   await page.evaluate((n) => {
-    const g = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+    const g = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
     const TICKERS = [
       'AAPL', 'MSFT', 'GOOG', 'AMZN', 'META', 'NVDA', 'TSLA', 'BRK', 'JPM', 'XOM',
     ];
@@ -123,7 +123,7 @@ test.describe('Cycle 15 / Task 7 — chevron click toggles group expansion', () 
     // Snapshot of the initial expanded set so we can prove the click
     // mutated state vs. just firing an event for the wrong key.
     const before = await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return Array.from(api.getExpandedKeys()).sort();
     });
     expect(before.length).toBeGreaterThan(0);
@@ -133,7 +133,7 @@ test.describe('Cycle 15 / Task 7 — chevron click toggles group expansion', () 
     // the slicer's depth-first walk), column 'ag-Grid-AutoColumn' is
     // the synthesized auto-group column.
     const bounds = await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return api.getCellBoundsAt(0, 'ag-Grid-AutoColumn');
     });
     expect(bounds).not.toBeNull();
@@ -143,13 +143,13 @@ test.describe('Cycle 15 / Task 7 — chevron click toggles group expansion', () 
     type RowGroupOpenedEvent = { type: 'rowGroupOpened'; key: string; expanded: boolean; source: 'ui' | 'api' };
     interface GridWithEvents { on(type: 'rowGroupOpened', handler: (e: RowGroupOpenedEvent) => void): void }
     await page.evaluate(() => {
-      const w = window as unknown as { __cgrid: GridWithEvents; __rgo: RowGroupOpenedEvent[] };
+      const w = window as unknown as { __velocity-grid: GridWithEvents; __rgo: RowGroupOpenedEvent[] };
       w.__rgo = [];
       w.__cgrid.on('rowGroupOpened', (e: RowGroupOpenedEvent) => { w.__rgo.push(e); });
     });
 
     // Compute the chevron's center in viewport coords. Constants
-    // mirror `cgrid.ts hitTestGroupChevron` + `renderer/cellRenderers/group.ts`:
+    // mirror `velocityGrid.ts hitTestGroupChevron` + `renderer/cellRenderers/group.ts`:
     //   PADDING = 6, CHEVRON_SIZE = 12. depth 0 -> indentX = 0.
     // Chevron center X = boundsX + PADDING + CHEVRON_SIZE/2 = boundsX + 12.
     const off = await canvasOffset(page);
@@ -174,7 +174,7 @@ test.describe('Cycle 15 / Task 7 — chevron click toggles group expansion', () 
 
     // The main-side mirror lost exactly that key (and kept all others).
     const after = await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      const api = (window as unknown as { __velocity-grid: GridApiSurface }).__cgrid;
       return Array.from(api.getExpandedKeys()).sort();
     });
     expect(after).not.toContain(collapsedKey);

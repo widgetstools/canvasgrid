@@ -13,7 +13,7 @@ import { resolve } from 'node:path';
 export default defineConfig({
   build: {
     lib: {
-      entry: { cgrid: resolve(__dirname, 'src/cgrid.ts') },
+      entry: { 'velocity-grid': resolve(__dirname, 'src/velocityGrid.ts') },
       formats: ['es'],
       fileName: (_format, entryName) => `${entryName}.js`,
     },

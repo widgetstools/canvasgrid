@@ -1,4 +1,4 @@
-// @cgrid/edit — bulk-update target collection, type-aware value parsing,
+// @wellsfargo-starui/velocity-grid-edit — bulk-update target collection, type-aware value parsing,
 // patch build, and the distinct-values dropdown feed.
 // Authoritative reference: docs/superpowers/specs/2026-07-02-cycle-21g-edit-design.md
 // section 1.1.5 (bulk-update).

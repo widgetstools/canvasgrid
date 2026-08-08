@@ -8,7 +8,7 @@
 // See docs/catalog/01-grid-options.md "Lifecycle — initial vs runtime
 // options" for the source of truth on which keys belong in which bucket.
 
-import type { CGridOptions } from '../types';
+import type { VelocityGridOptions } from '../types';
 import { clampRowHeight } from '../types/options';
 import { CgTheme } from '../theming/theme/themeObject';
 
@@ -20,8 +20,8 @@ import { CgTheme } from '../theming/theme/themeObject';
  * `setGridOption` single-key entrypoint cannot perform those side-effects
  * coherently, so it rejects with a clear pointer to the batched API.
  */
-export const INITIAL_ONLY_OPTIONS: ReadonlySet<keyof CGridOptions<any>> = new Set<
-  keyof CGridOptions<any>
+export const INITIAL_ONLY_OPTIONS: ReadonlySet<keyof VelocityGridOptions<any>> = new Set<
+  keyof VelocityGridOptions<any>
 >([
   'columnDefs',
   'getRowId',
@@ -105,9 +105,9 @@ export type RuntimeOption =
   | 'rasterCacheBudgetMB';
 
 /** Minimal grid surface the apply table needs. Lives here to avoid a circular
- *  import on `CGrid` (cgrid.ts imports this module). */
+ *  import on `VelocityGrid` (velocityGrid.ts imports this module). */
 export interface RuntimeOptionTarget<TRow = any> {
-  options: CGridOptions<TRow>;
+  options: VelocityGridOptions<TRow>;
   setTheme(theme: string | CgTheme): void;
   /** Cycle 22 / Task 2 — swap the density-mode CSS class on the grid
    *  root (or remove it entirely when `density` is `null` /
@@ -136,14 +136,14 @@ export interface RuntimeOptionTarget<TRow = any> {
   applyRowData(rows: unknown[]): void;
   /** Cycle 7 / Task 7 — re-evaluate the quick filter using the current
    *  `options.quickFilterText` / `cacheQuickFilter` /
-   *  `includeHiddenColumnsInQuickFilter`. Implementation in `cgrid.ts`
+   *  `includeHiddenColumnsInQuickFilter`. Implementation in `velocityGrid.ts`
    *  parses the text, ships to the worker, and fires `filterChanged` with
    *  `source: 'quickFilter'`. */
   applyQuickFilter(): void;
   /** Cycle 4 / Task 11 (cell-flash patch) — forward the runtime
    *  `enableCellChangeFlash` flip to the worker so the diff producer
    *  starts / stops on the next applyTransaction. Implementation in
-   *  `cgrid.ts` calls `workerClient.setEnableCellChangeFlash`. */
+   *  `velocityGrid.ts` calls `workerClient.setEnableCellChangeFlash`. */
   forwardEnableCellChangeFlash(enabled: boolean): void;
   /** Forward async-transaction batching knobs to the worker queue. */
   forwardAsyncTransactionOptions(): void;
@@ -157,7 +157,7 @@ export interface RuntimeOptionTarget<TRow = any> {
   refreshPinnedRowPixels(): void;
   /** Cycle 14 / Task 3 — forward the runtime `aggFuncs` swap to the
    *  worker so the AggFuncRegistry's custom layer reflects the new map.
-   *  Implementation in `cgrid.ts` serialises each function, screens for
+   *  Implementation in `velocityGrid.ts` serialises each function, screens for
    *  closures, and calls `workerClient.setAggFuncs`.
    *
    *  Cycle 14 / Task 6 — `triggerRefresh: true` (the runtime-apply path
@@ -167,16 +167,16 @@ export interface RuntimeOptionTarget<TRow = any> {
    *  stays tagged `rowDataChanged` from the subsequent setRowData. */
   forwardAggFuncs(funcs: Record<string, unknown> | undefined, triggerRefresh?: boolean): void;
   /** Cycle 15 / Task 6 — hand the runtime row-group-panel show mode
-   *  to CGrid so it can mount / unmount / setShowMode on the host.
-   *  CGrid normalises the value (undefined / `'never'` → unmount;
+   *  to VelocityGrid so it can mount / unmount / setShowMode on the host.
+   *  VelocityGrid normalises the value (undefined / `'never'` → unmount;
    *  otherwise mount-or-update). */
   updateRowGroupPanelShow(value: 'always' | 'onlyWhenGrouping' | 'never' | undefined): void;
   /** Cycle 21i Phase 2 — re-resolve the status bar from the current
    *  `options.statusBar` (intrinsic default-on; `false` opts out).
-   *  CGrid mounts, unmounts, or swaps the def on the live host. */
+   *  VelocityGrid mounts, unmounts, or swaps the def on the live host. */
   updateStatusBar(): void;
   /** Cycle 18 / Task 6 — hand the runtime pivot-panel show mode to
-   *  CGrid so it can mount / unmount / setShowMode on the host. */
+   *  VelocityGrid so it can mount / unmount / setShowMode on the host. */
   updatePivotPanelShow(value: 'always' | 'onlyWhenPivoting' | 'never' | undefined): void;
   /** Cycle 18 / Task 8a — forward the runtime cap to the worker so
    *  subsequent `getViewport` calls honor it. `undefined` reverts to
@@ -189,27 +189,27 @@ export interface RuntimeOptionTarget<TRow = any> {
   /** Cycle 18 / Task 8e — re-synthesize the pivot columns so the new
    *  totals position lands. The cached pivot tree signature folds the
    *  totals options in, so the next chunk receipt detects the change
-   *  and re-synthesizes. CGrid implementation triggers a viewport
+   *  and re-synthesizes. VelocityGrid implementation triggers a viewport
    *  request after stashing the option. */
   updatePivotTotalsOption(): void;
   /** Cycle 15.5 / Task 1 — hand the runtime `rowGroupPanelSuppressSort`
-   *  flag to CGrid so the panel re-renders (with / without the sort
+   *  flag to VelocityGrid so the panel re-renders (with / without the sort
    *  indicator) on the next frame. */
   updateRowGroupPanelSuppressSort(suppress: boolean): void;
   /** Cycle 15 / Task 8 — flip the `groupSelectsChildren` tri-state
-   *  selection feature. CGrid wires the SelectionModel's group
+   *  selection feature. VelocityGrid wires the SelectionModel's group
    *  membership resolver, toggles the worker's per-snapshot descendant
    *  emission, and triggers a paint refresh so the auto-group cells
    *  re-render with / without checkboxes. */
   updateGroupSelectsChildren(enabled: boolean): void;
   /** Task 4 (paint-cache layer) — runtime `paintCache` / `paintCacheOverscan`
-   *  flip. CGrid's implementation disposes any existing retained layer and
+   *  flip. VelocityGrid's implementation disposes any existing retained layer and
    *  (when the option is now active) constructs a fresh one, then forces a
    *  full repaint — a flip is a teardown/rebuild, never a stale-present
    *  frame. */
   resetPaintCacheLayer(): void;
   /** Cycle 22 / Task 2 — runtime `rasterCache` / `rasterCacheBudgetMB`
-   *  flip. CGrid's implementation disposes BOTH raster-cache tiers (cell
+   *  flip. VelocityGrid's implementation disposes BOTH raster-cache tiers (cell
    *  bitmaps + row strips) and, when the option is now active, rebuilds
    *  them under a fresh shared `RasterBudget`, then forces a full
    *  repaint. `rasterCache: false` must land as "both tiers disposed" —
@@ -247,7 +247,7 @@ export function applyRuntimeOption<TRow>(
       // like squashed / uneven rows when an app (or Grid Options) dials
       // the height too low.
       if (typeof value === 'number') {
-        (target as { options: CGridOptions<any> }).options.rowHeight = clampRowHeight(value);
+        (target as { options: VelocityGridOptions<any> }).options.rowHeight = clampRowHeight(value);
       }
       target.refreshLayout();
       return;
@@ -266,7 +266,7 @@ export function applyRuntimeOption<TRow>(
     case 'suppressColumnVirtualisation':
     case 'suppressRowVirtualisation':
     case 'rowBuffer':
-      // computeViewport reads these directly from CGridOptions, so a single
+      // computeViewport reads these directly from VelocityGridOptions, so a single
       // viewport recompute is enough — no column-tree rebuild needed.
       target.refreshLayout();
       return;
@@ -310,7 +310,7 @@ export function applyRuntimeOption<TRow>(
     case 'suppressRowClickSelection':
     case 'rowMultiSelectWithClick':
       // Both flags are storage-only at runtime — CellSelection reads
-      // them at event time via `CGridLike.isRowClickSelectionSuppressed`
+      // them at event time via `VelocityGridLike.isRowClickSelectionSuppressed`
       // / `isRowMultiSelectWithClick`, so a flip lights up on the
       // next click without further wiring.
       return;
@@ -340,11 +340,11 @@ export function applyRuntimeOption<TRow>(
     case 'fillOperation':
     // Cycle 9 / Task 6 — `cellSelection` is storage-only at runtime. The
     // feature chain reads `options.cellSelection` at event time via
-    // `CGridLike.getCellSelectionOptions()`, so a flip lights up on the
+    // `VelocityGridLike.getCellSelectionOptions()`, so a flip lights up on the
     // next pointer event without further wiring.
     case 'cellSelection':
     // Cycle 10 / Task 1 — `getContextMenuItems` is storage-only at runtime.
-    // CGrid.resolveContextMenuItems reads `options.getContextMenuItems`
+    // VelocityGrid.resolveContextMenuItems reads `options.getContextMenuItems`
     // at event time, so a runtime flip lights up on the next
     // right-click without further wiring.
     case 'getContextMenuItems':
@@ -416,7 +416,7 @@ export function applyRuntimeOption<TRow>(
     }
     case 'rowGroupPanelShow':
       // Cycle 15 / Task 6 — runtime mount / unmount / show-mode swap.
-      // CGrid normalises `undefined` / `'never'` to "unmount"; any other
+      // VelocityGrid normalises `undefined` / `'never'` to "unmount"; any other
       // valid value mounts (or updates an existing host).
       target.updateRowGroupPanelShow(
         value as 'always' | 'onlyWhenGrouping' | 'never' | undefined,
@@ -465,7 +465,7 @@ export function applyRuntimeOption<TRow>(
       // next viewport. All four options are inputs to
       // `synthesizePivotColumns` (NOT to the worker pipeline), so the
       // change only matters once the next chunk arrives + the
-      // signature compare picks up the option delta. CGrid
+      // signature compare picks up the option delta. VelocityGrid
       // implementation issues a viewport request.
       target.updatePivotTotalsOption();
       return;
@@ -484,7 +484,7 @@ export function applyRuntimeOption<TRow>(
       target.updateRowGroupPanelSuppressSort(value === true);
       return;
     case 'groupSelectsChildren':
-      // Cycle 15 / Task 8 — flip the tri-state cascading. CGrid wires
+      // Cycle 15 / Task 8 — flip the tri-state cascading. VelocityGrid wires
       // the SelectionModel's membership resolver, toggles the worker's
       // descendant emission, and repaints. A runtime flip on a grid
       // that is currently grouped lights up checkboxes (true) or hides

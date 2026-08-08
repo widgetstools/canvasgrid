@@ -1,5 +1,5 @@
 {
-  "name": "@cgrid/perspective",
+  "name": "@wellsfargo-starui/velocity-grid-perspective",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -12,17 +12,18 @@
     }
   },
   "scripts": {
-    "build": "echo '@cgrid/perspective ships source (worker URLs resolve in the consuming app bundle)' && exit 0",
+    "build": "echo '@wellsfargo-starui/velocity-grid-perspective ships source (worker URLs resolve in the consuming app bundle)' && exit 0",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@wellsfargo-starui/velocity-grid-appdata": "*",
     "@perspective-dev/client": "^4.5.2",
     "@perspective-dev/server": "^4.5.2",
     "@stomp/stompjs": "^7.3.0"
   },
   "peerDependencies": {
-    "@cgrid/kernel": "*"
+    "@wellsfargo-starui/velocity-grid": "*"
   },
   "devDependencies": {
     "typescript": "~5.9.3",

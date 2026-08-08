@@ -342,7 +342,7 @@ html, body, #app {
 }
 
 /* Grid root must fill the blotter pane so chrome + canvas share one surface. */
-.blotter-body > .cg-grid {
+.blotter-body > .vg-grid {
   width: 100%;
   height: 100%;
 }

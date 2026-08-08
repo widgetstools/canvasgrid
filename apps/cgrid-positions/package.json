@@ -12,8 +12,8 @@
   },
   "dependencies": {
     "@stomp/stompjs": "^7.1.1",
-    "@cgrid/format": "*",
-    "@cgrid/kernel": "*"
+    "@wellsfargo-starui/velocity-grid-format": "*",
+    "@wellsfargo-starui/velocity-grid": "*"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",

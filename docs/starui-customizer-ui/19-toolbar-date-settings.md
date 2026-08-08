@@ -167,7 +167,7 @@ type in expression editor → update('rowExclusionExpression', expr) →
 
 ## cgrid translation
 
-This panel is starui-specific (financial app concerns: as-of-date, provider hosts, OpenFin bindings). For cgrid:
+This panel is starui-specific (financial app concerns: as-of-date, provider hosts, OpenFin bindings). For velocity-grid:
 
 1. **Skip the provider + bindings sections** unless cgrid has equivalent host integration concepts (it doesn't, currently).
 2. **Keep the row-exclusion section.** This is a powerful general-purpose feature — user-authored expression that filters rows. cgrid's worker filter pipeline can accept this as a global filter expression.

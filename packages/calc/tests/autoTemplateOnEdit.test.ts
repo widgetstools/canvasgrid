@@ -109,7 +109,7 @@ describe('CalcEngine.editColumn — auto-template-on-edit', () => {
   });
 });
 
-// ─── headerStyle (CGridExt formatting toolbar: Header target) ──────────────
+// ─── headerStyle (VelocityGridExt formatting toolbar: Header target) ──────────────
 // headerStyle rides the same own-template plumbing as cellStyle: per-key
 // merge across successive edits, template-chain fold, and pass-through to
 // the kernel patch (kernel CColDef.headerStyle, ColCellOverrides vocabulary).
@@ -141,7 +141,7 @@ describe('CalcEngine.editColumn — headerStyle', () => {
   });
 });
 
-// ─── cellIcon / headerIcon (CGridExt formatting toolbar: icon slots) ───────
+// ─── cellIcon / headerIcon (VelocityGridExt formatting toolbar: icon slots) ───────
 // cellIcon/headerIcon ride the same own-template plumbing as headerStyle, but
 // fold LAST-WRITER-WINS WHOLESALE (an icon is one value, not a style bag) and
 // support `null` as an explicit "remove the stored icon" signal.

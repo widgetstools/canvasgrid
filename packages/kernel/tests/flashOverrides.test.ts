@@ -8,7 +8,7 @@
  * Grid fixture copied from the Task 10 pattern (tests/rulesKernelApi.test.ts).
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 
 beforeAll(() => {
   (globalThis as any).Worker = class {
@@ -36,12 +36,12 @@ beforeAll(() => {
   })() as any;
 });
 
-function makeGrid(themeClass = 'cg-theme-quartz'): CGrid<{ id: string; px: number }> {
+function makeGrid(themeClass = 'vg-theme-quartz'): VelocityGrid<{ id: string; px: number }> {
   const container = document.createElement('div');
   container.style.cssText = 'width:800px; height:600px;';
   container.className = themeClass;
   document.body.appendChild(container);
-  return new CGrid<{ id: string; px: number }>(container, {
+  return new VelocityGrid<{ id: string; px: number }>(container, {
     columnDefs: [{ field: 'id' }, { field: 'px' }],
     getRowId: (r) => r.id,
     theme: themeClass,
@@ -49,15 +49,15 @@ function makeGrid(themeClass = 'cg-theme-quartz'): CGrid<{ id: string; px: numbe
   });
 }
 
-// Test seam: `flashOverrides` is a private field on CGrid. We reach in via
+// Test seam: `flashOverrides` is a private field on VelocityGrid. We reach in via
 // bracket-index access (the same pattern used elsewhere in this codebase's
 // tests for private-field seams) rather than exposing a public accessor
 // solely for tests.
-function overridesOf(grid: CGrid<any>): Map<string, { color?: string; mode?: string; expiresAt: number }> {
+function overridesOf(grid: VelocityGrid<any>): Map<string, { color?: string; mode?: string; expiresAt: number }> {
   return (grid as any).flashOverrides;
 }
 
-describe('CGrid flashCells per-call overrides (Cycle 21e / Task 13)', () => {
+describe('VelocityGrid flashCells per-call overrides (Cycle 21e / Task 13)', () => {
   it('stages exact rowId\\0colId keys when colIds is provided', () => {
     const grid = makeGrid();
     grid.flashCells({ rowIds: ['a', 'b'], colIds: ['px'], color: '#ff0000' });
@@ -127,12 +127,12 @@ describe('CGrid flashCells per-call overrides (Cycle 21e / Task 13)', () => {
   it('flashCells with enableCellChangeFlash: false is a no-op (stages nothing)', () => {
     const container = document.createElement('div');
     container.style.cssText = 'width:800px; height:600px;';
-    container.className = 'cg-theme-quartz';
+    container.className = 'vg-theme-quartz';
     document.body.appendChild(container);
-    const grid = new CGrid<{ id: string; px: number }>(container, {
+    const grid = new VelocityGrid<{ id: string; px: number }>(container, {
       columnDefs: [{ field: 'id' }, { field: 'px' }],
       getRowId: (r) => r.id,
-      theme: 'cg-theme-quartz',
+      theme: 'vg-theme-quartz',
       // enableCellChangeFlash defaults to false/undefined.
     });
     grid.flashCells({ rowIds: ['a'], colIds: ['px'], color: '#ff0000' });

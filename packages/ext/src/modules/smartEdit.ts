@@ -2,8 +2,8 @@
  * Smart Edit — Customize sheet flat settings (starui customizer-ui #09).
  * GLOBAL / OPERATIONS / SAFETY bands; Save commits via edit handle.
  */
-import type { SmartEditOp, SmartEditSettings } from '@cgrid/edit';
-import type { SettingsModule, CgExtContext, ModuleInstance } from '../extension/types';
+import type { SmartEditOp, SmartEditSettings } from '@wellsfargo-starui/velocity-grid-edit';
+import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import {
   band, el, injectCockpitStyles, lucideSvg, numberInput, row, switchToggle,
 } from '../ui/cockpit';
@@ -27,7 +27,7 @@ export function smartEditModule(): SettingsModule {
 
     init(): void { injectCockpitStyles(); },
 
-    mount(host: HTMLElement, ctx: CgExtContext): ModuleInstance {
+    mount(host: HTMLElement, ctx: VelocityGridExtContext): ModuleInstance {
       let committed: SmartEditSettings | null = null;
       let draft: SmartEditSettings | null = null;
       const root = el('div', 'ckp ckp-flat');

@@ -1,5 +1,5 @@
 {
-  "name": "@cgrid/excel-pivot",
+  "name": "@wellsfargo-starui/velocity-grid-excel-pivot",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -12,18 +12,18 @@
     }
   },
   "scripts": {
-    "build": "echo '@cgrid/excel-pivot is a scaffold — no build yet' && exit 0",
+    "build": "echo '@wellsfargo-starui/velocity-grid-excel-pivot is a scaffold — no build yet' && exit 0",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@cgrid/kernel": "*",
-    "@cgrid/expression": "*",
-    "@cgrid/format": "*",
-    "@cgrid/calc": "*",
-    "@cgrid/renderers": "*",
-    "@cgrid/edit": "*",
-    "@cgrid/export": "*"
+    "@wellsfargo-starui/velocity-grid": "*",
+    "@wellsfargo-starui/velocity-grid-expression": "*",
+    "@wellsfargo-starui/velocity-grid-format": "*",
+    "@wellsfargo-starui/velocity-grid-calc": "*",
+    "@wellsfargo-starui/velocity-grid-renderers": "*",
+    "@wellsfargo-starui/velocity-grid-edit": "*",
+    "@wellsfargo-starui/velocity-grid-export": "*"
   },
   "devDependencies": {
     "typescript": "~5.9.3",

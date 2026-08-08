@@ -2,11 +2,11 @@
 // setColumnWidths mutates ONLY the resolved def; rebuildColumns
 // (fired by every calc mutation — editColumn styling a header, applying a
 // template, …) re-resolves from options.columnDefs and used to silently
-// reset the user's widths. Regression for the CGridExt formatting-toolbar
+// reset the user's widths. Regression for the VelocityGridExt formatting-toolbar
 // requirement: "applying styles to column headers must not alter widths".
 
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { VelocityGrid } from '../src/velocityGrid';
 import { _resetCalcProvider_forTests, type CalcProviderShape } from '../src/core/calcSlot';
 
 beforeAll(() => {
@@ -43,18 +43,18 @@ beforeAll(() => {
 
 afterEach(() => _resetCalcProvider_forTests());
 
-function mountGrid(): { grid: CGrid<any>; host: HTMLDivElement } {
+function mountGrid(): { grid: VelocityGrid<any>; host: HTMLDivElement } {
   const host = document.createElement('div');
   host.style.cssText = 'width:800px; height:600px;';
-  host.className = 'cg-theme-quartz';
+  host.className = 'vg-theme-quartz';
   document.body.appendChild(host);
-  const grid = new CGrid<{ id: string; a: number }>(host, {
+  const grid = new VelocityGrid<{ id: string; a: number }>(host, {
     columnDefs: [
       { colId: 'id', field: 'id', width: 90 },
       { colId: 'a', field: 'a', cellDataType: 'number', width: 120 },
     ],
     getRowId: (r) => r.id,
-    theme: 'cg-theme-quartz',
+    theme: 'vg-theme-quartz',
   });
   const worker = (grid as any).workerClient.worker;
   worker.listeners.forEach((cb: any) => cb({ data: { id: 1, type: 'ready' } }));
@@ -71,7 +71,7 @@ function makeProvider(overrides: Partial<CalcProviderShape> = {}): CalcProviderS
   };
 }
 
-function widthOf(grid: CGrid<any>, colId: string): number | undefined {
+function widthOf(grid: VelocityGrid<any>, colId: string): number | undefined {
   return grid.getColumnState().find((c) => c.colId === colId)?.width;
 }
 

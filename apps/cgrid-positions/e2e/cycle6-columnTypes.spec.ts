@@ -54,7 +54,7 @@ test.describe('Cycle 6 / Task 6 — columnTypes templates', () => {
     await gridReady(page);
 
     const result = await page.evaluate(() => {
-      const grid = (window as unknown as { __cgrid: GridRuntime }).__cgrid;
+      const grid = (window as unknown as { __velocity-grid: GridRuntime }).__cgrid;
       const notional = grid.columnDefsMap.get('notionalAmount');
       const market = grid.columnDefsMap.get('marketValue');
       if (!notional || !market) {
