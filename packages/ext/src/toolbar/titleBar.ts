@@ -544,7 +544,7 @@ const TITLEBAR_CSS = `
   background: transparent;
   color: var(--vg-muted-fg-color, #9aa4b6);
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
+  transition: background 110ms ease, color 110ms ease;
 }
 .vgext-iconbtn:hover { background: var(--vg-row-alt-bg, rgba(255,255,255,0.06)); color: var(--vg-fg-color, #e5e9f0); }
 .vgext-iconbtn:focus-visible { outline: 2px solid var(--vg-accent-color, #4f9cf9); outline-offset: 1px; }
@@ -573,7 +573,7 @@ const TITLEBAR_CSS = `
   border: 1px solid var(--vg-border-color, #2a3140); border-radius: var(--vg-radius, 2px);
   background: var(--vg-control-bg, rgba(255,255,255,0.04));
   color: var(--vg-fg-color, #e5e9f0); font: inherit; cursor: pointer;
-  transition: border-color 120ms ease, background 120ms ease;
+  transition: border-color 110ms ease, background 110ms ease;
 }
 .vgext-pill:hover { border-color: var(--vg-accent-color, #4f9cf9); }
 .vgext-pill-icon {
@@ -625,7 +625,7 @@ const TITLEBAR_CSS = `
   background: var(--vg-control-bg, rgba(255,255,255,0.04));
   color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: 12.5px;
   font-variant-numeric: tabular-nums; cursor: pointer;
-  transition: border-color 120ms ease, background 120ms ease;
+  transition: border-color 110ms ease, background 110ms ease;
 }
 .vgext-date:hover { border-color: var(--vg-accent-color, #4f9cf9); }
 .vgext-date:focus-visible { outline: 2px solid var(--vg-accent-color, #4f9cf9); outline-offset: 1px; }
