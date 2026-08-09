@@ -2,6 +2,7 @@ import {
   VelocityGridExt,
   titleBarExtensions,
   ribbonExtensions,
+  wireFormatContextMenu,
   type VelocityGridExtOptions,
 } from '@wellsfargo-starui/velocity-grid-ext';
 import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid-format';
@@ -43,10 +44,10 @@ export function mountSsrmFeature(
   const heavy = feature.id === 'live' || feature.id === 'overview' || feature.id === 'groups';
   const rowCount = chrome.rowCount ?? (heavy ? 8_000 : 2_500);
 
-  const showRibbon =
-    chrome.showFormattingToolbar !== false ||
-    chrome.showEditingToolbar !== false ||
-    ['editing', 'bulk-update', 'plus-minus', 'shortcuts', 'formatting', 'toolbar'].includes(feature.id);
+  // Mount toolbars for More → Editing/Formatting toggles. Compact tabs start
+  // with both strips hidden (formatting via context menu / More when needed).
+  const formatHidden = chrome.showFormattingToolbar !== true;
+  const editHidden = chrome.showEditingToolbar !== true;
 
   const pauseBtn = consoleEl.querySelector<HTMLButtonElement>('[data-console="pause"]');
   const status = consoleEl.querySelector<HTMLElement>('[data-console-status]');
@@ -118,7 +119,11 @@ export function mountSsrmFeature(
           name: feature.label,
           date: new Date().toISOString().slice(0, 10),
         }),
-        ...(showRibbon ? ribbonExtensions({ edit: () => editHandle }) : []),
+        ...ribbonExtensions({
+          edit: () => editHandle,
+          formatHidden,
+          editHidden,
+        }),
       ],
     },
   } as VelocityGridExtOptions<MockPositionRow>;
@@ -152,6 +157,7 @@ export function mountSsrmFeature(
     const updated = provider.applyEdit(rowId, colId, newValue);
     if (updated) ext.grid.applyServerSideTransaction({ update: [updated] });
   });
+  wireFormatContextMenu(ext.context);
 
   detach = provider.attach(ext.grid);
   if (catalog) {

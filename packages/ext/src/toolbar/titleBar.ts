@@ -1,7 +1,7 @@
 /**
  * Title-bar chrome for VelocityGridExt — the slim always-on primary toolbar that
- * matches the MarketsGrid reference: brand + collapse on the left, an
- * expandable search in the center, and a right cluster of notifications,
+ * matches the MarketsGrid reference: brand + filter-pill collapse on the left,
+ * an expandable search in the center, and a right cluster of notifications,
  * layout switcher + dirty-aware layout save, date, settings launcher,
  * and an overflow menu.
  *
@@ -99,6 +99,7 @@ const MONTH_LABELS = [
 // ── icons ────────────────────────────────────────────────────────────────
 const ICON = {
   chevronsLeft: 'M11 17l-5-5 5-5M18 17l-5-5 5-5',
+  chevronsRight: 'M13 17l5-5-5-5M6 17l5-5-5-5',
   search: 'M11 11m-8 0a8 8 0 1 0 16 0a8 8 0 1 0-16 0M21 21l-4.3-4.3',
   bell: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0',
   calendar: 'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z',
@@ -128,16 +129,50 @@ function brandItem(name: string): ToolbarItem {
     const label = document.createElement('span');
     label.className = 'vgext-brand-name';
     label.textContent = name;
-    const collapse = iconButton(ICON.chevronsLeft, 'Collapse');
+    // `<<` collapses the saved-filter pill strip beside the brand (not the
+    // editing/formatting toolbars — those toggle from More → Toolbars).
+    const collapse = iconButton(ICON.chevronsLeft, 'Hide filter pills');
     collapse.classList.add('vgext-brand-collapse');
+
+    const filterPills = (): HTMLElement | null => {
+      const root = host.closest('.vgext-root') ?? document;
+      return root.querySelector<HTMLElement>('[data-testid="vgext-saved-filters"]');
+    };
+
+    const paint = (): void => {
+      const sf = filterPills();
+      const hidden = !!sf?.hidden;
+      collapse.innerHTML = svg(hidden ? ICON.chevronsRight : ICON.chevronsLeft);
+      const title = !sf
+        ? 'Filter pills unavailable'
+        : hidden
+          ? 'Show filter pills'
+          : 'Hide filter pills';
+      collapse.title = title;
+      collapse.setAttribute('aria-label', title);
+      collapse.setAttribute('aria-pressed', hidden ? 'true' : 'false');
+      collapse.disabled = !sf;
+      collapse.classList.toggle('is-collapsed', hidden);
+    };
+
+    collapse.addEventListener('click', () => {
+      const sf = filterPills();
+      if (!sf) return;
+      sf.hidden = !sf.hidden;
+      paint();
+    });
     wrap.append(label, collapse);
     host.appendChild(wrap);
+    // Saved-filters mounts in the same slot after brand — paint once it's in.
+    queueMicrotask(paint);
     return { destroy() { host.replaceChildren(); } };
   });
 }
 
 function searchItem(): ToolbarItem {
-  return item('search', 'primary-center', (host, ctx) => {
+  // Sit in the right cluster immediately before the alerts badge so search
+  // and bell are adjacent (not split by the center slot / right-cluster rule).
+  return item('search', 'primary-right', (host, ctx) => {
     const wrap = document.createElement('div');
     wrap.className = 'vgext-search';
     const btn = iconButton(ICON.search, 'Search grid');
@@ -438,6 +473,11 @@ function settingsItem(): ToolbarItem {
       section('View');
       entry(ICON.columns, 'Columns…', () => { try { ctx.grid.openToolPanel?.('columns'); } catch { /* ignore */ } });
       entry(ICON.wand, 'Auto format', () => ctx.events.emit({ type: 'auto-format' }));
+      section('Configure');
+      entry(ICON.brush, 'Column format…', () => ctx.events.emit({ type: 'open-settings', id: 'column-settings' }));
+      entry(ICON.pencil, 'Smart edit…', () => ctx.events.emit({ type: 'open-settings', id: 'smart-edit' }));
+      entry(ICON.sliders, 'Conditional styling…', () => ctx.events.emit({ type: 'open-settings', id: 'conditional-styling' }));
+      entry(ICON.sliders, 'Grid options…', () => ctx.events.emit({ type: 'open-settings', id: 'grid-options' }));
       section('Toolbars');
       toggleEntry(ICON.pencil, 'Editing toolbar', 'edit', 'editing');
       toggleEntry(ICON.brush, 'Formatting toolbar', 'format', 'formatting');
@@ -514,6 +554,7 @@ const TITLEBAR_CSS = `
 .vgext-brand { display: inline-flex; align-items: center; gap: var(--vgext-space-2); padding-right: var(--vgext-space-1); }
 .vgext-brand-name { font-weight: 650; font-size: 14px; letter-spacing: -0.01em; color: var(--vg-fg-color, #e5e9f0); }
 .vgext-brand-collapse { width: 28px; height: 28px; }
+.vgext-brand-collapse.is-collapsed { color: var(--vg-accent-color, #4f9cf9); }
 
 .vgext-search { display: inline-flex; align-items: center; gap: var(--vgext-space-1); }
 .vgext-search-open { background: var(--vg-control-bg, rgba(255,255,255,0.05)); border-radius: var(--vg-radius, 2px); padding-left: 2px; }
@@ -549,6 +590,27 @@ const TITLEBAR_CSS = `
 }
 .vgext-pill-name, .vgext-profile-name { font-weight: 550; font-size: 12.5px; }
 .vgext-pill-caret { color: var(--vg-muted-fg-color, #9aa4b6); display: inline-flex; }
+
+/* Layout selector stays a fixed footprint so a growing filter-pill
+ * strip (or a long layout name) cannot stretch or squeeze it. */
+.vgext-titlebar > .vgext-slot-primary-right > .vgext-toolbar-item[data-item-id="layouts"] {
+  flex: 0 0 auto;
+}
+.vgext-layouts-trigger {
+  box-sizing: border-box;
+  width: 180px;
+  min-width: 180px;
+  max-width: 180px;
+  flex: 0 0 180px;
+}
+.vgext-layouts-trigger .vgext-pill-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
 
 .vgext-save.is-dirty {
   color: var(--vg-warning-color, #e0b341);
@@ -630,11 +692,17 @@ const TITLEBAR_CSS = `
 }
 .vgext-cal-today:hover { background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 12%, transparent); }
 
-/* Right cluster: breathing room + hairline before utility icons. */
+/* Right cluster: search sits flush with the left side; hairline separates
+   search from the alerts / layouts / date utilities that follow.
+   Shell styles own flex-wrap / sizing so this strip can drop to a second
+   row instead of colliding with the filter-pill strip. */
 .vgext-titlebar > .vgext-slot-primary-right {
   gap: var(--vgext-space-1);
-  padding-left: var(--vgext-space-3);
+  margin-left: auto;
+}
+.vgext-titlebar > .vgext-slot-primary-right > .vgext-toolbar-item[data-item-id="notifications"] {
   margin-left: var(--vgext-space-2);
+  padding-left: var(--vgext-space-3);
   border-left: 1px solid color-mix(in srgb, var(--vg-border-color, #2a3140) 85%, transparent);
 }
 

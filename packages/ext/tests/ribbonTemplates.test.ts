@@ -7,17 +7,17 @@ describe('ribbon Templates group wiring', () => {
   const src = readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), '../src/toolbar/ribbon.ts'), 'utf8');
 
-  it('Templates group opens the template manager', () => {
-    expect(src.includes("grp('Templates'")).toBe(true);
+  it('Templates segment opens the template manager', () => {
+    expect(src.includes("seg('Templates'")).toBe(true);
     expect(src.includes('templateManagerMenu')).toBe(true);
     expect(src.includes("dataset.tpl = 'open'")).toBe(true);
     expect(src.includes("dataset.tpl = 'pill'")).toBe(true);
   });
 
-  it('Clear is its own group with undo/redo + eraser + clear-all', () => {
-    expect(src.includes("grp('Clear'")).toBe(true);
-    expect(src.includes("grp('Templates', mini(tplOpen, tplPill))")).toBe(true);
-    expect(src.includes("grp('Clear', mini(fmtUndo, fmtRedo), mini(eraser, clearAll))")).toBe(true);
+  it('Clear is its own segment with undo/redo + eraser + clear-all', () => {
+    expect(src.includes("seg('Clear'")).toBe(true);
+    expect(src.includes("seg('Templates', tplOpen, tplPill)")).toBe(true);
+    expect(src.includes("seg('Clear', fmtUndo, fmtRedo, eraser, clearAll)")).toBe(true);
     expect(src.includes("pill('Clear'")).toBe(false);
     expect(src.includes('createFormatHistory')).toBe(true);
     expect(src.includes('clearColumnCustomization')).toBe(true);

@@ -1,32 +1,21 @@
 /**
- * Formatting / editing ribbon for VelocityGridExt — the dense multi-row toolbar
- * from the MarketsGrid reference. It renders as one strip in the shell's
- * `.vgext-ribbon` host, organised into labelled sections:
+ * Formatting / editing toolbars for VelocityGridExt. Two single-row strips
+ * in the shell's `.vgext-ribbon` host, with labelled segments and `⋯`
+ * overflow when space is tight:
  *
- *   HISTORY · SMART · BULK        (edit ops on the current selection)
- *   SCOPE · type · B I U · align · size
- *   PAINT · fill
- *   FORMAT · EDIT · GROUP
- *   TEMPLATES
+ *   Editing:    HISTORY · SMART · BULK
+ *   Formatting: Target · Font · Align · Borders · $ % # decimals ▾ · …
  *
- * Structural signature: each section leads with a small UPPERCASE label,
- * the way the reference encodes "what this cluster acts on". Colour comes
- * entirely from the grid's `--vg-*` theme tokens.
- *
- * This pass ships the full chrome (every section + control, themed and
- * laid out to match the reference) with the History undo/redo wired to the
- * kernel and the section-toggle plumbing live; the remaining controls carry
- * their real affordances and wire to their engines (format / edit / calc /
- * rules) as those module waves land — no control is faked to look enabled
- * when it isn't.
+ * Colour comes entirely from the grid's `--vg-*` theme tokens. Toggle
+ * visibility via the `toggle-ribbon` ext event (title-bar More menu).
  */
 import type { VelocityGridExtension, VelocityGridExtContext, ToolbarItem, ToolbarItemInstance, Unsub } from '../extension/types';
-import { menu } from './ui';
+import { menu, mirrorThemeClass } from './ui';
 import { injectTitleBarStyles } from './titleBar';
 import type { EditBridgeHandle, SmartEditOp } from '@wellsfargo-starui/velocity-grid-edit';
 import { createIconPicker, type IconPickerHandle, type IconSelection } from './iconPicker';
 import { formatPickerMenu, type FormatPickerHost } from './formatPicker';
-import { findPresetByFormat, type FormatDataType } from './formatPresets';
+import { adjustFormatDecimals, findPresetByFormat, type FormatDataType } from './formatPresets';
 import { columnPanelMenu, effectiveFlag, aggFuncChoices, type ColumnConfigGrid, type ColumnPanelHost } from './columnPanel';
 import {
   activeLibraryTemplateId,
@@ -93,17 +82,18 @@ const I = {
   templates: 'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z',
   eraser: 'M7 21h13M5 13l6 6M20 8l-9 9-6-6 9-9a2.8 2.8 0 0 1 4 0l2 2a2.8 2.8 0 0 1 0 4z',
   trash: 'M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6',
-  more: 'M5 12h.01M12 12h.01M19 12h.01',
+  /** Solid dots — Lucide's h.01 ellipsis reads as nearly invisible at 14px. */
+  more: 'M5 12m-1.6 0a1.6 1.6 0 1 0 3.2 0a1.6 1.6 0 1 0-3.2 0M12 12m-1.6 0a1.6 1.6 0 1 0 3.2 0a1.6 1.6 0 1 0-3.2 0M19 12m-1.6 0a1.6 1.6 0 1 0 3.2 0a1.6 1.6 0 1 0-3.2 0',
 };
 
 function svg(path: string, size = 14): string {
   return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}"/></svg>`;
 }
 
-/** ONE two-state labeled toggle (target-toggle chrome): the face shows the
- *  ACTIVE state's icon + label with trailing swap arrows; clicking flips.
- *  Both Target (Cells↔Header) and Scope (Selected↔All) are built from
- *  this — their construction + paint logic used to be duplicated inline. */
+/** Compact two-state icon toggle: shows the ACTIVE state's icon only;
+ *  tooltip carries the label + "click to switch". Used for Cells↔Header
+ *  and Selected↔All so the Target cluster stays toolbar-width, not a
+ *  third of the strip. */
 function stateToggle(opts: {
   rb: string;
   a: { icon: string; label: string };
@@ -116,7 +106,7 @@ function stateToggle(opts: {
   el.dataset.rb = opts.rb;
   const paint = (isA: boolean): void => {
     const s = isA ? opts.a : opts.b;
-    el.innerHTML = `${svg(s.icon, 14)}<span>${s.label}</span>${svg(I.swap, 11)}`;
+    el.innerHTML = svg(s.icon, 14);
     const title = opts.title(isA);
     el.title = title;
     el.setAttribute('aria-label', title);
@@ -126,11 +116,19 @@ function stateToggle(opts: {
   return { el, paint };
 }
 
+export interface RibbonExtensionsOpts {
+  edit?: EditHandleGetter;
+  /** Start with the formatting strip hidden (toggle via More → Formatting toolbar). */
+  formatHidden?: boolean;
+  /** Start with the editing strip hidden (toggle via More → Editing toolbar). */
+  editHidden?: boolean;
+}
+
 /** Build the ribbon extension (one item at `ribbon.main`). Compose into
  *  `ext.extensions`. Toggle visibility via the `toggle-ribbon` ext event. */
-export function ribbonExtensions(opts: { edit?: EditHandleGetter } = {}): VelocityGridExtension[] {
+export function ribbonExtensions(opts: RibbonExtensionsOpts = {}): VelocityGridExtension[] {
   injectRibbonStyles();
-  return [ribbonItem(opts.edit)];
+  return [ribbonItem(opts)];
 }
 
 // ── small builders ──────────────────────────────────────────────────────
@@ -140,23 +138,101 @@ function h(cls: string, html?: string): HTMLDivElement {
   if (html) d.innerHTML = html;
   return d;
 }
-/** One horizontal run of small controls inside a group's deck. */
-function mini(...children: HTMLElement[]): HTMLDivElement {
-  const r = h('vgext-rb-mini'); r.append(...children); return r;
-}
-/** Excel-ribbon group: stacked mini-rows with the group name centered
- *  underneath, hairline-separated from its neighbours. */
-function grp(name: string, ...rows: HTMLElement[]): HTMLDivElement {
-  const g = h('vgext-rb-grp');
-  const deck = h('vgext-rb-deck'); deck.append(...rows);
-  g.append(deck, h('vgext-rb-grp-name', name));
-  return g;
-}
 function iconBtn(icon: string, title: string): HTMLButtonElement {
   const b = document.createElement('button');
   b.type = 'button'; b.className = 'vgext-rb-btn'; b.title = title;
   b.setAttribute('aria-label', title); b.innerHTML = svg(icon);
   return b;
+}
+
+/** Labeled dropdown trigger (Borders / Column) — same chrome as icon picker. */
+function dropdownBtn(icon: string, label: string, title: string): HTMLButtonElement {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'vgext-ip-open';
+  b.title = title;
+  b.setAttribute('aria-label', title);
+  b.innerHTML =
+    `${svg(icon, 14)}<span>${label}</span>` +
+    '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+  return b;
+}
+
+/**
+ * Flyout that keeps a persistent content node alive across open/close so
+ * ribbon control wiring (borders, icon tools) is not rebuilt each time.
+ * Nested popovers (color picker, icon panel, `.vgext-menu`) do not dismiss it.
+ */
+function persistentFlyout(
+  anchor: HTMLButtonElement,
+  content: HTMLElement,
+  opts?: { preferWidth?: number },
+): { toggle: () => void; destroy: () => void } {
+  const stash = document.createElement('div');
+  stash.className = 'vgext-rb-flyout-stash';
+  stash.hidden = true;
+  stash.appendChild(content);
+  let panel: HTMLElement | null = null;
+
+  const close = (): void => {
+    if (!panel) return;
+    stash.appendChild(content);
+    panel.remove();
+    panel = null;
+    document.removeEventListener('pointerdown', onDoc, true);
+    anchor.classList.remove('is-open');
+    anchor.setAttribute('aria-expanded', 'false');
+  };
+
+  const onDoc = (e: PointerEvent): void => {
+    if (!panel) return;
+    const t = e.target as Node;
+    if (panel.contains(t) || anchor.contains(t)) return;
+    const el = t instanceof Element ? t : t.parentElement;
+    if (el?.closest('.vgext-menu, .vg-colorpicker, .vgext-ip-panel, .vg-popup')) return;
+    close();
+  };
+
+  const open = (): void => {
+    if (panel) return;
+    panel = document.createElement('div');
+    panel.className = 'vgext-menu vgext-rb-tool-flyout';
+    mirrorThemeClass(anchor, panel);
+    panel.appendChild(content);
+    document.body.appendChild(panel);
+
+    const margin = 8;
+    const prefer = opts?.preferWidth ?? 300;
+    const width = Math.min(prefer, window.innerWidth - margin * 2);
+    panel.style.width = `${width}px`;
+    const r = anchor.getBoundingClientRect();
+    let left = Math.round(r.left);
+    left = Math.max(margin, Math.min(left, window.innerWidth - width - margin));
+    let top = Math.round(r.bottom + 4);
+    const h = panel.offsetHeight;
+    if (top + h > window.innerHeight - margin && r.top - 4 - h >= margin) {
+      top = Math.round(r.top - 4 - h);
+    }
+    panel.style.setProperty('--vgext-menu-top', `${top}px`);
+    panel.style.setProperty('--vgext-menu-left', `${left}px`);
+    document.addEventListener('pointerdown', onDoc, true);
+    anchor.classList.add('is-open');
+    anchor.setAttribute('aria-expanded', 'true');
+  };
+
+  anchor.setAttribute('aria-haspopup', 'dialog');
+  anchor.setAttribute('aria-expanded', 'false');
+  const onClick = (): void => { if (panel) close(); else open(); };
+  anchor.addEventListener('click', onClick);
+
+  return {
+    toggle: () => { if (panel) close(); else open(); },
+    destroy: () => {
+      close();
+      anchor.removeEventListener('click', onClick);
+      stash.remove();
+    },
+  };
 }
 /** Excel-style increase/decrease-decimal glyphs — composite two-row icons
  *  (digits in the icon colour + an accent arrow), not single Lucide paths:
@@ -255,18 +331,16 @@ function stat(text: string): HTMLSpanElement {
   const s = document.createElement('span'); s.className = 'vgext-rb-stat'; s.textContent = text; return s;
 }
 
-function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
+function ribbonItem(opts: RibbonExtensionsOpts = {}): ToolbarItem {
+  const getEdit = opts.edit;
   return {
     id: 'ribbon', kind: 'toolbar-item', slot: 'ribbon.main', init() {},
     render(host: HTMLElement, ctx: VelocityGridExtContext): ToolbarItemInstance {
-      // Excel-ribbon band: ONE horizontal strip of hairline-separated groups,
-      // each a stacked deck of mini-rows with the group's name centered
-      // underneath. Controls are captured by reference so the wire fns can
-      // bind them to their engines (edit journal, calc editColumn).
+      // Two single-row toolbars (editing + formatting). Controls are captured
+      // by reference so the wire fns can bind them to their engines.
       // Title-bar styles carry the shared `.vgext-menu*` popup rules the
       // border style/width dropdowns ride — inject for standalone ribbons.
       injectTitleBarStyles();
-      const root = h('vgext-ribbon-band');
 
       // Editing cluster — HISTORY · SMART · BULK.
       const undo = iconBtn(I.undo, 'Undo');
@@ -302,7 +376,9 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       });
       const targetToggle = targetT.el;
       const scopeToggle = scopeT.el;
-      const selPill = pill('Select a cell', false);
+      const selPill = pill('—', false);
+      selPill.classList.add('vgext-rb-selpill');
+      selPill.title = 'Selection target';
       const bold = toggleBtn(I.bold, 'Bold');
       const italic = toggleBtn(I.italic, 'Italic');
       const underline = toggleBtn(I.underline, 'Underline');
@@ -360,13 +436,24 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       const iconPlacePill = pill('Prefix'); iconPlacePill.dataset.ip = 'place';
       const iconClear = iconBtn(I.eraser, 'Clear icon at this placement'); iconClear.dataset.ip = 'clear';
       document.body.append(picker.panel);
+      // Place / colour / clear sit in the Icons flyout next to the picker.
+      const iconTools = h('vgext-ip-tools');
+      iconTools.append(iconPlacePill, iconColorBtn, iconColor.host, iconClear);
 
       const fmtDollar = iconBtn(I.dollar, 'Currency format');
       const fmtPercent = iconBtn(I.percent, 'Percent format');
       const fmtThousands = iconBtn(I.hash, 'Thousands format');
       const decDown = decimalBtn('fewer', 'Fewer decimals');
       const decUp = decimalBtn('more', 'More decimals');
-      const fmtCode = pill('# Format');
+      // Caret after the quick icons opens the full custom format picker.
+      const fmtCode = document.createElement('button');
+      fmtCode.type = 'button';
+      fmtCode.className = 'vgext-rb-btn vgext-rb-fmt-caret';
+      fmtCode.title = 'Custom format…';
+      fmtCode.setAttribute('aria-label', 'Custom format');
+      fmtCode.setAttribute('aria-haspopup', 'dialog');
+      fmtCode.dataset.fmt = 'picker';
+      fmtCode.innerHTML = svg('M6 9l6 6 6-6', 12);
       const eraser = dangerIcon(I.eraser, 'Clear column customization');
       eraser.dataset.fmt = 'clear';
       eraser.title = 'Clear styling, format, filter, and template references for the selected column(s) in this layout';
@@ -387,14 +474,10 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       fmtRedo.dataset.fmt = 'redo';
       fmtRedo.title = 'Redo formatting changes';
 
-      // Column group — quick per-column configuration (spec 2026-07-08).
-      const colOpen = document.createElement('button');
-      colOpen.type = 'button';
-      colOpen.className = 'vgext-ip-open'; // labeled-control chrome (well-less variant)
+      // Column — strip shows the settings dropdown; quick toggles live in
+      // a flyout so the strip stays compact (full detail is in the panel).
+      const colOpen = dropdownBtn(I.settings, 'Column', 'Column settings');
       colOpen.dataset.col = 'open';
-      colOpen.innerHTML =
-        `${svg(I.settings, 14)}<span>Column</span>` +
-        '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
       const aggPill = pill('Σ None');
       aggPill.dataset.col = 'agg';
       const colFF = toggleBtn(I.filter, 'Floating filter');
@@ -410,15 +493,16 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       colGrp.dataset.col = 'grp';
       const colAggH = toggleBtn(I.rows, 'Show aggregation in header');
       colAggH.dataset.col = 'aggh';
+      const bordersOpen = dropdownBtn('M5 5h14v14H5z', 'Borders', 'Border styling');
+      bordersOpen.dataset.rb = 'borders-open';
+      const iconsOpen = dropdownBtn(I.templates, 'Icons', 'Icons and placement');
+      iconsOpen.dataset.ip = 'tools-open';
+      // Compact the picker trigger — the Icons flyout hosts it.
+      picker.button.querySelector('.vgext-ip-openlabel')!.textContent = 'Pick…';
 
-      // Editing strip — a STANDALONE single-row toolbar rendered ABOVE the
-      // ribbon band, not part of it: flat segments with inline labels
-      // instead of the band's 2-deep group decks. Same control references,
-      // so the edit-engine wiring below is unchanged; the
-      // `[data-toolbar="editing"]` hook stays so the title-bar overflow
-      // toggle keeps addressing it.
-      const editStrip = h('vgext-edit-strip');
-      editStrip.dataset.toolbar = 'editing';
+      // Flat labelled segments shared by both strips. The
+      // `[data-toolbar="…"]` hooks stay so the title-bar More toggles keep
+      // addressing each strip.
       const seg = (label: string, ...controls: HTMLElement[]): HTMLElement => {
         const s = h('vgext-es-seg');
         const l = document.createElement('span');
@@ -427,6 +511,9 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
         s.append(l, ...controls);
         return s;
       };
+
+      const editStrip = h('vgext-edit-strip');
+      editStrip.dataset.toolbar = 'editing';
       const histSeg = seg('History', undo, redo, histCount);
       const smartSeg = seg('Smart edit', operand, opMul, opDiv, opAdd, opSub, setBtn, smartCount);
       const bulkSeg = seg('Bulk', bulkValue, bulkApply, bulkCount);
@@ -443,32 +530,69 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       });
       editStrip.append(editBody, editOverflow, editClose);
 
-      const formatting = h('vgext-rb-cluster'); formatting.dataset.toolbar = 'formatting';
-      const gTarget = grp('Target', mini(selPill), mini(targetToggle, scopeToggle));
-      const gFont = grp('Font', mini(bold, italic, underline, strike, sizeWrap), mini(textColorBtn, textColor.host, fillColorBtn, fillColor.host, headerCase));
-      const gAlign = grp('Alignment', mini(alignL, alignC, alignR));
-      const gBorders = grp('Borders',
-        mini(borderSideBtns.all, borderSideBtns.top, borderSideBtns.bottom, borderSideBtns.left, borderSideBtns.right, borderPreview),
-        mini(borderColorBtn, borderColor.host, borderStylePill, borderWidthPill, borderClear));
-      const gFormat = grp('Format', mini(fmtCode), mini(fmtDollar, fmtPercent, fmtThousands, decDown, decUp));
-      const gIcons = grp('Icons', mini(picker.button, iconPlacePill), mini(iconColorBtn, iconColor.host, iconClear));
-      const gColumn = grp('Column', mini(colOpen, aggPill), mini(colFF, filterTypePill, colGrp, colAggH));
-      const gTemplates = grp('Templates', mini(tplOpen, tplPill));
-      const gClear = grp('Clear', mini(fmtUndo, fmtRedo), mini(eraser, clearAll));
-      formatting.append(gTarget, gFont, gAlign, gBorders, gFormat, gIcons, gColumn, gTemplates, gClear);
+      // Formatting — single-row strip (same pattern as editing), not Excel decks.
+      const formatting = h('vgext-edit-strip');
+      formatting.classList.add('vgext-format-strip');
+      formatting.dataset.toolbar = 'formatting';
+      // No "Target" label — icon toggles + compact selection chip are enough.
+      const gTarget = seg('', selPill, targetToggle, scopeToggle);
+      gTarget.classList.add('vgext-es-seg--target');
+      const gFont = seg(
+        'Font',
+        bold, italic, underline, strike, sizeWrap,
+        textColorBtn, textColor.host, fillColorBtn, fillColor.host, headerCase,
+      );
+      const gAlign = seg('Align', alignL, alignC, alignR);
+      // Borders / Icons / Column — compact dropdown triggers; dense controls
+      // live in flyouts (or the existing Column / icon picker panels).
+      // Format — quick icons on the strip ($ % # · decimals), not a Format ▾.
+      const bordersBody = h('vgext-rb-tool-flyout-body');
+      const bordersRowSides = h('vgext-rb-flyout-row');
+      bordersRowSides.append(
+        borderSideBtns.all, borderSideBtns.top, borderSideBtns.bottom,
+        borderSideBtns.left, borderSideBtns.right, borderPreview,
+      );
+      const bordersRowStyle = h('vgext-rb-flyout-row');
+      bordersRowStyle.append(
+        borderColorBtn, borderColor.host, borderStylePill, borderWidthPill, borderClear,
+      );
+      bordersBody.append(bordersRowSides, bordersRowStyle);
+      const bordersFly = persistentFlyout(bordersOpen, bordersBody, { preferWidth: 280 });
+      const gBorders = seg('', bordersOpen);
+
+      // Quick format icons + caret (opens the custom format picker).
+      const gFormat = seg('', fmtDollar, fmtPercent, fmtThousands, decDown, decUp, fmtCode);
+
+      const iconsBody = h('vgext-rb-tool-flyout-body');
+      iconsBody.append(picker.button, iconTools);
+      const iconsFly = persistentFlyout(iconsOpen, iconsBody, { preferWidth: 320 });
+      const gIcons = seg('', iconsOpen);
+
+      // Full column settings are in the Column dropdown panel (filter,
+      // grouping, aggregation, behavior). Keep strip-side quick toggles
+      // wired for refresh/agg menus but park them off-strip — the panel
+      // is the primary surface now.
+      const columnQuickPark = h('vgext-rb-flyout-stash');
+      columnQuickPark.hidden = true;
+      columnQuickPark.append(aggPill, colFF, filterTypePill, colGrp, colAggH);
+      const gColumn = seg('', colOpen);
+
+      const gTemplates = seg('Templates', tplOpen, tplPill);
+      const gClear = seg('Clear', fmtUndo, fmtRedo, eraser, clearAll);
+      const formatBody = h('vgext-es-body');
+      formatBody.append(gTarget, gFont, gAlign, gBorders, gFormat, gIcons, gColumn, gTemplates, gClear);
 
       const fmtOverflow = iconBtn(I.more, 'More formatting tools');
       fmtOverflow.dataset.tb = 'format-overflow';
       fmtOverflow.hidden = true;
       const fmtClose = iconBtn(I.close, 'Hide formatting toolbar');
       fmtClose.dataset.tb = 'close-format';
+      fmtClose.classList.add('vgext-es-close');
       fmtClose.addEventListener('click', () => {
         if (!formatting.hidden) ctx.events.emit({ type: 'toggle-ribbon', section: 'format' });
       });
-
-      const spacer = h('vgext-rb-spacer');
-      root.append(formatting, fmtOverflow, spacer, fmtClose);
-      host.append(editStrip, root);
+      formatting.append(formatBody, fmtOverflow, fmtClose, columnQuickPark);
+      host.append(editStrip, formatting);
 
       const editOverflowHandle = wireRibbonOverflow({
         track: editBody,
@@ -480,34 +604,29 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
           { el: bulkSeg, priority: 2 },
         ],
       });
+      // Compact dropdown triggers stay sticky longer; spill Format icons /
+      // Clear / Templates first when the strip is tight.
       const fmtOverflowHandle = wireRibbonOverflow({
-        track: formatting,
+        track: formatBody,
         button: fmtOverflow,
-        maxRows: 2,
+        maxRows: 1,
         items: [
           { el: gTarget, priority: 0 },
           { el: gFont, priority: 0 },
-          { el: gAlign, priority: 0 },
           { el: gBorders, priority: 0 },
-          { el: gFormat, priority: 0 },
-          { el: gIcons, priority: 1 },
-          { el: gColumn, priority: 2 },
-          { el: gClear, priority: 3 },
-          { el: gTemplates, priority: 4 },
+          { el: gIcons, priority: 0 },
+          { el: gColumn, priority: 0 },
+          { el: gAlign, priority: 2 },
+          { el: gFormat, priority: 3 },
+          { el: gClear, priority: 4 },
+          { el: gTemplates, priority: 5 },
         ],
       });
 
-      // Collapse leftover ribbon chrome when strips are toggled off. The
-      // band still hosts a flex spacer + close button after the
-      // formatting cluster is hidden — that left an empty bar above the
-      // row-group panel. Hide spacer/close with formatting, and hide the
-      // whole `.vgext-ribbon` when BOTH toolbars are off.
+      // Hide the whole `.vgext-ribbon` when BOTH toolbars are off.
       const syncRibbonChrome = () => {
         const formatOff = formatting.hidden;
         const editOff = editStrip.hidden;
-        spacer.hidden = formatOff;
-        fmtClose.hidden = formatOff;
-        root.hidden = formatOff;
         if (formatOff) {
           fmtOverflow.hidden = true;
         } else {
@@ -530,6 +649,11 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
         else if (section === 'format') formatting.hidden = !formatting.hidden;
         syncRibbonChrome();
       });
+
+      // Initial visibility (compact chrome starts both strips hidden).
+      if (opts.editHidden) editStrip.hidden = true;
+      if (opts.formatHidden) formatting.hidden = true;
+      syncRibbonChrome();
 
       const disposeEditing = getEdit
         ? wireEditingToolbar(ctx, getEdit, {
@@ -559,6 +683,9 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
 
       return {
         destroy() {
+          bordersFly.destroy();
+          iconsFly.destroy();
+          columnQuickPark.remove();
           editOverflowHandle.destroy();
           fmtOverflowHandle.destroy();
           disposeEditing?.();
@@ -868,13 +995,25 @@ function wireFormattingToolbar(ctx: VelocityGridExtContext, r: FormattingRefs): 
   const refresh = (): void => {
     const cols = targetCols();
     const none = cols.length === 0;
+    // Compact selection chip — short face text; full detail in the tooltip.
+    const oneName = !none && cols.length === 1
+      ? (grid.getColumnHeaderName?.(cols[0]!) ?? cols[0]!)
+      : '';
+    const truncate = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
     r.selPill.querySelector('span')!.textContent = none
+      ? '—'
+      : scope === 'all'
+        ? `All·${cols.length}`
+        : cols.length === 1
+          ? truncate(oneName, 10)
+          : String(cols.length);
+    r.selPill.title = none
       ? 'Select a cell'
       : scope === 'all'
         ? `All columns (${cols.length})`
         : cols.length === 1
-          ? (grid.getColumnHeaderName?.(cols[0]!) ?? cols[0]!)
-          : `${cols.length} columns`;
+          ? oneName
+          : `${cols.length} columns selected`;
     for (const b of [r.bold, r.italic, r.underline, r.strike, r.alignL, r.alignC, r.alignR,
       r.textColor.button, r.fillColor.button, r.fmtDollar, r.fmtPercent, r.fmtThousands,
       r.decDown, r.decUp, r.fmtCode, r.eraser, r.sizeUp, r.sizeDn,
@@ -977,13 +1116,13 @@ function wireFormattingToolbar(ctx: VelocityGridExtContext, r: FormattingRefs): 
       for (const b of [r.colFF, r.colGrp, r.colAggH]) b.classList.remove('is-on');
     }
 
-    // # Format pill caption tracks the target column's current format.
+    // Format caret — tooltip tracks the applied format; accent when set.
     const fmt = currentFormat();
     const label = fmt === undefined
-      ? 'Format'
-      : findPresetByFormat(fmt)?.label ?? (fmt.length > 18 ? `${fmt.slice(0, 17)}…` : fmt);
-    const captionEl = r.fmtCode.querySelector('span');
-    if (captionEl) captionEl.textContent = `# ${label}`;
+      ? undefined
+      : findPresetByFormat(fmt)?.label ?? (fmt.length > 28 ? `${fmt.slice(0, 27)}…` : fmt);
+    r.fmtCode.title = label === undefined ? 'Custom format…' : `Format: ${label}`;
+    r.fmtCode.setAttribute('aria-label', r.fmtCode.title);
     r.fmtCode.classList.toggle('is-set', fmt !== undefined);
 
     // Templates — pill shows the active library template name (if any).
@@ -1194,7 +1333,9 @@ function wireFormattingToolbar(ctx: VelocityGridExtContext, r: FormattingRefs): 
   r.textColor.input.addEventListener('change', () => applyStyle({ fg: r.textColor.input.value }));
   r.fillColor.input.addEventListener('change', () => applyStyle({ bg: r.fillColor.input.value }));
 
-  // Format presets + decimals (cell data only — formats don't apply to headers)
+  // Format presets + decimals (cell data only — formats don't apply to headers).
+  // Decimal bumpers preserve the active format (currency / % / sections) and
+  // only change the `.0+` precision — they do not replace with a plain number.
   const decimalsOf = (fmt: string | undefined): number => {
     const m = /\.(0+)/.exec(fmt ?? '');
     return m ? m[1]!.length : 2;
@@ -1204,8 +1345,8 @@ function wireFormattingToolbar(ctx: VelocityGridExtContext, r: FormattingRefs): 
   r.fmtDollar.addEventListener('click', () => applyFormat(`$${numberFormat(decimalsOf(currentFormat()))}`));
   r.fmtPercent.addEventListener('click', () => applyFormat('0.00%'));
   r.fmtThousands.addEventListener('click', () => applyFormat(numberFormat(decimalsOf(currentFormat()))));
-  r.decDown.addEventListener('click', () => applyFormat(numberFormat(decimalsOf(currentFormat()) - 1)));
-  r.decUp.addEventListener('click', () => applyFormat(numberFormat(decimalsOf(currentFormat()) + 1)));
+  r.decDown.addEventListener('click', () => applyFormat(adjustFormatDecimals(currentFormat(), -1)));
+  r.decUp.addEventListener('click', () => applyFormat(adjustFormatDecimals(currentFormat(), +1)));
   r.fmtCode.addEventListener('click', () => fmtPicker.toggle());
 
   // Eraser: drop ALL layout customization for the selected column(s) —
@@ -1524,44 +1665,22 @@ const RIBBON_CSS = `
 }
 .vgext-ribbon:empty,
 .vgext-ribbon[hidden] { display: none; }
-/* ONE font size for every element in the bar (user request): controls,
-   labels, stats, and captions all read at 12px. */
-.vgext-ribbon-band, .vgext-edit-strip { font-size: 12px; }
-.vgext-ribbon-band {
-  display: flex;
-  align-items: flex-start;
-  padding: 4px 8px 2px;
-  box-sizing: border-box;
-  gap: 2px;
-  min-width: 0;
-}
-.vgext-ribbon-band[hidden] { display: none; }
-.vgext-rb-cluster {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: stretch;
-  align-content: flex-start;
-  flex: 1 1 auto;
-  min-width: 0;
-  row-gap: 2px;
-  column-gap: 0;
-}
-.vgext-rb-cluster[hidden] { display: none; }
+/* ONE font size for every element in the bar: controls, labels, stats. */
+.vgext-edit-strip { font-size: 12px; }
 
-/* The ribbon item renders TWO stacked strips (edit strip above the band);
-   the shell's generic toolbar-item host is inline-flex ROW, so re-scope it
-   to a column inside the ribbon slot. */
+/* Two stacked single-row strips; shell toolbar-item is row by default. */
 .vgext-ribbon .vgext-toolbar-item { display: flex; flex-direction: column; align-items: stretch; min-width: 0; }
 
-/* Editing strip — standalone toolbar ABOVE the ribbon band; wraps + overflow. */
+/* Editing + formatting strips — single-row labelled segments + overflow. */
 .vgext-edit-strip {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 2px;
   min-height: 32px;
   padding: 4px 8px;
   border-bottom: 1px solid color-mix(in srgb, var(--vg-border-color, #2a3140) 70%, transparent);
   min-width: 0;
+  box-sizing: border-box;
 }
 .vgext-edit-strip[hidden] { display: none; }
 .vgext-es-body {
@@ -1582,26 +1701,75 @@ const RIBBON_CSS = `
   font-size: 10.5px; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase;
   color: var(--vg-muted-fg-color, #7f8ba0); margin-right: 6px; white-space: nowrap;
 }
+.vgext-es-label:empty { display: none; margin: 0; }
+.vgext-es-seg--target { gap: 2px; }
 .vgext-es-seg > .vgext-rb-stat { margin-left: 4px; }
 .vgext-es-close,
-.vgext-rb-btn[data-tb="edit-overflow"],
-.vgext-rb-btn[data-tb="format-overflow"],
 .vgext-rb-btn[data-tb="close-format"] {
   flex: 0 0 auto;
-  align-self: flex-start;
-  margin-top: 2px;
+  align-self: center;
   color: var(--vg-muted-fg-color, #7f8ba0);
 }
 .vgext-es-close { margin-left: 0; }
 .vgext-es-close:hover,
-.vgext-rb-btn[data-tb="edit-overflow"]:hover,
-.vgext-rb-btn[data-tb="format-overflow"]:hover,
 .vgext-rb-btn[data-tb="close-format"]:hover { color: var(--vg-fg-color, #e5e9f0); }
+
+/* Overflow ⋯ — high-contrast chip so it doesn't disappear into the strip.
+ * Only shown when wireRibbonOverflow has stashed items (button.hidden). */
+.vgext-rb-btn[data-tb="edit-overflow"],
+.vgext-rb-btn[data-tb="format-overflow"] {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 28px;
+  height: 28px;
+  color: var(--vg-fg-color, #e5e9f0);
+  background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 28%, var(--vg-border-color, #2a3140));
+  box-sizing: border-box;
+}
+/* Author display:inline-flex on .vgext-rb-btn beats the UA [hidden] rule. */
+.vgext-rb-btn[data-tb="edit-overflow"][hidden],
+.vgext-rb-btn[data-tb="format-overflow"][hidden] {
+  display: none !important;
+}
+.vgext-rb-btn[data-tb="edit-overflow"] svg,
+.vgext-rb-btn[data-tb="format-overflow"] svg {
+  width: 16px;
+  height: 16px;
+  /* Fill the solid-dot path; stroke alone still looked faint. */
+  fill: currentColor;
+  stroke: none;
+}
+.vgext-rb-btn[data-tb="edit-overflow"]:hover,
+.vgext-rb-btn[data-tb="format-overflow"]:hover {
+  color: var(--vg-accent-fg, #ffffff);
+  background: var(--vg-accent-color, #4f9cf9);
+  border-color: var(--vg-accent-color, #4f9cf9);
+}
 .vgext-rb-btn[data-tb="edit-overflow"].is-open,
 .vgext-rb-btn[data-tb="format-overflow"].is-open,
 .vgext-rb-btn[data-tb="edit-overflow"].has-items,
 .vgext-rb-btn[data-tb="format-overflow"].has-items {
-  color: var(--vg-accent-color, #4f9cf9);
+  color: var(--vg-fg-color, #e5e9f0);
+  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 28%, transparent);
+  border-color: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 70%, transparent);
+}
+.vgext-rb-btn[data-tb="edit-overflow"].is-open,
+.vgext-rb-btn[data-tb="format-overflow"].is-open {
+  color: var(--vg-accent-fg, #ffffff);
+  background: var(--vg-accent-color, #4f9cf9);
+  border-color: var(--vg-accent-color, #4f9cf9);
+}
+/* Group decks still used by drawer style chrome (styleChrome.ts). */
+.vgext-rb-cluster {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  align-content: flex-start;
+  flex: 1 1 auto;
+  min-width: 0;
+  row-gap: 2px;
+  column-gap: 0;
 }
 .vgext-rb-grp {
   display: flex; flex-direction: column; padding: 0 6px;
@@ -1610,7 +1778,7 @@ const RIBBON_CSS = `
   max-width: 100%;
 }
 .vgext-rb-cluster > .vgext-rb-grp:first-child { padding-left: 2px; }
-.vgext-rb-cluster[data-toolbar="formatting"] > .vgext-rb-grp:last-child { border-right: none; }
+.vgext-rb-cluster[data-toolbar="group-style"] > .vgext-rb-grp:last-child { border-right: none; }
 .vgext-rb-deck { display: flex; flex-direction: column; gap: 3px; justify-content: center; flex: 1 1 auto; }
 .vgext-rb-mini { display: flex; align-items: center; gap: 2px; flex-wrap: nowrap; }
 .vgext-rb-mini > .vgext-rb-pill:first-child:last-child { flex: 1 1 auto; min-width: 0; }
@@ -1620,8 +1788,55 @@ const RIBBON_CSS = `
   color: var(--vg-muted-fg-color, #7f8ba0);
   white-space: nowrap;
 }
-.vgext-rb-spacer { flex: 1 1 auto; min-width: 4px; }
-.vgext-rb-overflow-stash { display: none !important; }
+.vgext-rb-overflow-stash,
+.vgext-rb-flyout-stash { display: none !important; }
+.vgext-menu.vgext-rb-tool-flyout {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  max-height: min(70vh, 420px);
+  overflow: auto;
+  scrollbar-width: thin;
+}
+.vgext-rb-tool-flyout-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.vgext-rb-flyout-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.vgext-rb-flyout-row > .vgext-rb-pill:first-child:last-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* Caret after $ % # decimals — opens the custom format picker. */
+.vgext-rb-fmt-caret {
+  width: 18px;
+  margin-left: 2px;
+  color: var(--vg-muted-fg-color, #9aa4b6);
+}
+.vgext-rb-fmt-caret:hover,
+.vgext-rb-fmt-caret.is-set {
+  color: var(--vg-accent-color, #4f9cf9);
+}
+.vgext-rb-fmt-caret.is-set {
+  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 16%, transparent);
+}
+.vgext-ip-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding-top: 6px;
+  border-top: 1px solid color-mix(in srgb, var(--vg-border-color, #2a3140) 70%, transparent);
+}
 .vgext-menu.vgext-rb-overflow-panel {
   display: flex;
   flex-direction: column;
@@ -1639,6 +1854,8 @@ const RIBBON_CSS = `
   border: 1px solid color-mix(in srgb, var(--vg-border-color, #2a3140) 80%, transparent);
   border-radius: var(--vg-radius, 2px);
   background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 3%, transparent);
+  flex-wrap: wrap;
+  max-width: min(360px, 80vw);
 }
 .vgext-rb-overflow-panel > .vgext-es-seg + .vgext-es-seg {
   margin-left: 0;
@@ -1683,26 +1900,32 @@ const RIBBON_CSS = `
 }
 .vgext-rb-ab:disabled { opacity: 0.45; cursor: default; }
 
-/* Cell↔header target toggle — the face shows the ACTIVE target, the
-   trailing swap arrows signal "click to switch". */
+/* Cells↔Header / Selected↔All — icon-only (same footprint as .vgext-rb-btn). */
 .vgext-rb-targettoggle {
   appearance: none; -webkit-appearance: none;
-  display: inline-flex; align-items: center; gap: 6px;
-  height: 24px; padding: 0 8px; box-sizing: border-box;
-  border: 1px solid var(--vg-border-color, #2a3140); border-radius: 2px;
-  background: transparent; color: var(--vg-fg-color, #d3dbe7);
-  font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
-  transition: border-color 110ms ease, background 110ms ease;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; padding: 0; box-sizing: border-box;
+  border: none; border-radius: 2px;
+  background: transparent; color: var(--vg-accent-color, #4f9cf9);
+  cursor: pointer;
+  transition: background 110ms ease, color 110ms ease;
 }
-.vgext-rb-targettoggle:hover { border-color: var(--vg-accent-color, #4f9cf9); }
+.vgext-rb-targettoggle:hover {
+  background: var(--vg-row-alt-bg, rgba(255,255,255,0.07));
+  color: var(--vg-accent-color, #4f9cf9);
+}
 .vgext-rb-targettoggle:focus-visible { outline: 2px solid var(--vg-accent-color, #4f9cf9); outline-offset: 1px; }
-.vgext-rb-targettoggle > svg:first-child { color: var(--vg-accent-color, #4f9cf9); }
-.vgext-rb-targettoggle > svg:last-child { color: var(--vg-muted-fg-color, #7f8ba0); }
 .vgext-rb-targettoggle.is-header {
-  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 10%, transparent);
+  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 22%, transparent);
+  color: var(--vg-accent-color, #4f9cf9);
 }
-.vgext-ribbon-band > .vgext-rb-btn { align-self: flex-start; margin-top: 2px; }
-
+.vgext-rb-selpill {
+  max-width: 64px; min-width: 28px; padding: 0 6px;
+  font-size: 11px; font-weight: 550;
+}
+.vgext-rb-selpill > span {
+  overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
 .vgext-rb-btn, .vgext-rb-toggle {
   appearance: none; -webkit-appearance: none;
   width: 24px; height: 24px;

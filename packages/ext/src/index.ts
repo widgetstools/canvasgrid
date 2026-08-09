@@ -2,9 +2,23 @@ export const CGRID_EXT_VERSION = '0.0.0';
 export * from './extension/types';
 export { ExtensionRegistry, type ExtensionSpec } from './extension/registry';
 export { LocalStorageProfileStore } from './profiles/localStorageStore';
+export {
+  LocalStorageConfigSession,
+  isConfigSession,
+  extractGridLevelData,
+  applyGridLevelDataToState,
+  emptyBundle,
+  instanceStorageKey,
+  INSTANCE_STORAGE_PREFIX,
+  INSTANCE_BUNDLE_VERSION,
+  type ConfigSession,
+  type InstanceConfigBundle,
+  type InstanceGridLevelData,
+  type WorkspaceConfig,
+} from './profiles/configSession';
 export { ProfilesController, type ProfilesOptions } from './profiles/controller';
 export { createExtContext, createExtEventBus } from './extension/context';
-export { ShellLayout } from './shell/shell';
+export { ShellLayout, groupModulesForNav } from './shell/shell';
 export {
   VelocityGridExt,
   type VelocityGridExtOptions,
@@ -33,6 +47,13 @@ export {
   type ExpressionFunction,
 } from './ui/expressionEditor';
 export { buildDefaultBundle } from './defaultBundle';
+export {
+  dataProviderModule,
+  DataProviderController,
+  type DataProviderModuleOptions,
+  type DataProviderControllerOptions,
+  type DataProviderStateSlice,
+} from './modules/dataProvider';
 export { titleBarExtensions, injectTitleBarStyles, type TitleBarOptions } from './toolbar/titleBar';
 export { profilesItem, profileSaveItem } from './toolbar/profilesMenu';
 export { savedFiltersItem, type SavedFilter } from './toolbar/savedFiltersToolbar';
@@ -46,6 +67,14 @@ export {
   doesRowMatchFilterModel,
 } from './toolbar/savedFiltersLogic';
 export { ribbonExtensions, injectRibbonStyles } from './toolbar/ribbon';
+export { formatMiniBarItem, formatMiniBarExtensions } from './toolbar/formatMiniBar';
+export { wireFormatContextMenu, buildFormatContextMenuItems } from './toolbar/formatContextMenu';
+export {
+  selectedColIds,
+  applyCellStyle,
+  clearCellFormatting,
+  toggleBold,
+} from './toolbar/formatActions';
 export {
   mountFormatterStyleChrome,
   type StyleChromeAdapter,

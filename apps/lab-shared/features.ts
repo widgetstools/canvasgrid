@@ -9,7 +9,12 @@ import {
 import { buildCsrmRendererColumns } from './rendererColumns';
 
 export interface LabChrome {
+  /**
+   * Classic multi-row formatting ribbon. Default off — use selection
+   * mini-bar + settings drawer instead. Set true for ribbon teaching tabs.
+   */
   showFormattingToolbar?: boolean;
+  /** Classic editing strip (History / Smart edit / Bulk). Default off. */
   showEditingToolbar?: boolean;
   enableUpdates?: boolean;
   rowCount?: number;
@@ -34,13 +39,21 @@ export interface LabFeature {
   chrome?: LabChrome;
 }
 
+/** Compact default: title bar + selection mini-bar (no classic ribbon). */
 const fullChrome: LabChrome = {
-  showFormattingToolbar: true,
-  showEditingToolbar: true,
+  showFormattingToolbar: false,
+  showEditingToolbar: false,
   enableUpdates: true,
   rowCount: 500,
   updateIntervalMs: 500,
   sideBar: { toolPanels: ['columns', 'filters'] },
+};
+
+/** Classic Excel-style ribbon for formatter / editing teaching tabs. */
+const classicRibbonChrome: LabChrome = {
+  ...fullChrome,
+  showFormattingToolbar: true,
+  showEditingToolbar: true,
 };
 
 export const LAB_FEATURES: LabFeature[] = [
@@ -52,7 +65,7 @@ export const LAB_FEATURES: LabFeature[] = [
     subtitle: 'Multi-profile gallery · chrome · live mock stream',
     what: 'Full VelocityGridExt surface with several named demo layouts (kitchen sink, trader P&L, risk desk, grouped, bare). Switch layouts from the title-bar Layouts picker.',
     why: 'Same teaching thesis as MarketsGrid Feature Lab — one grid, many pre-baked layouts per tab.',
-    tryIt: 'Open the Layouts menu → switch 00 Kitchen sink → 01 Trader P&L → 04 Bare. Notice rules/formats/groups change.',
+    tryIt: 'Layouts → 00 Kitchen sink → 01 Trader P&L. Select cells for the compact format bar; More opens the settings drawer (no permanent ribbon).',
     gridId: 'lab-overview-v3',
     getColumnDefs: () => baseColumns.map((c) => ({ ...c })) as CColDef<LabRow>[],
     chrome: fullChrome,
@@ -68,7 +81,7 @@ export const LAB_FEATURES: LabFeature[] = [
     tryIt: 'Layouts → 00 Full showcase, then 01 Excel P&L, then 05 Bare and paint from the ribbon.',
     gridId: 'lab-formatting-v3',
     getColumnDefs: () => PRICING_COLUMNS,
-    chrome: { ...fullChrome, updateIntervalMs: 600 },
+    chrome: { ...classicRibbonChrome, updateIntervalMs: 600 },
   },
   {
     id: 'visual-excel',
@@ -81,7 +94,7 @@ export const LAB_FEATURES: LabFeature[] = [
     tryIt: 'Switch profiles, then export — paints should follow the active profile.',
     gridId: 'lab-visual-excel-v3',
     getColumnDefs: () => PRICING_COLUMNS,
-    chrome: { ...fullChrome, updateIntervalMs: 600 },
+    chrome: { ...classicRibbonChrome, updateIntervalMs: 600 },
   },
   {
     id: 'renderers',
@@ -107,7 +120,7 @@ export const LAB_FEATURES: LabFeature[] = [
     tryIt: 'Layouts → 02 Blank canvas → select cells → Bold / Fill / Format.',
     gridId: 'lab-toolbar-v3',
     getColumnDefs: () => PRICING_COLUMNS,
-    chrome: { ...fullChrome, updateIntervalMs: 600 },
+    chrome: { ...classicRibbonChrome, updateIntervalMs: 600 },
   },
   {
     id: 'groups',
@@ -143,7 +156,7 @@ export const LAB_FEATURES: LabFeature[] = [
     subtitle: 'Rule layouts · flash / row / cell / .old/.new diffs',
     what: 'Layouts install StyleRule sets including diff-aware `[midPrice.old]` / `[midPrice.new]` tick rules (up, down, |Δ| > 0.05).',
     why: 'Markets Lab Conditional Styling — each layout is a tutorial chapter; Diff (.old/.new) is the tick curriculum.',
-    tryIt: 'Layouts → 02 · Diff (.old/.new). Watch Mid flash green on upticks / red on downticks as the book ticks.',
+    tryIt: 'Layouts → 02 · Diff (.old/.new). Watch Mid flash on ticks. Select cells for the format mini-bar; More → Conditional styling… for rules.',
     gridId: 'lab-conditional-v5',
     getColumnDefs: () => LIVE_COLUMNS,
     chrome: { ...fullChrome, updateIntervalMs: 500 },
@@ -195,10 +208,10 @@ export const LAB_FEATURES: LabFeature[] = [
     subtitle: 'Editing-family profiles · ticks paused',
     what: 'Profiles seed editSettings slices (full family, smart+bulk, nudges, shortcuts).',
     why: 'Markets Lab Editing family — one tab, many editing curricula.',
-    tryIt: 'Layouts → 00 Full family, then 02 Plus/Minus and nudge Bid with +/−.',
+    tryIt: 'Layouts → 00 Full family, then 02 Plus/Minus and nudge Bid with +/−. Or More → Smart edit…',
     gridId: 'lab-editing-v3',
     getColumnDefs: () => EDIT_COLUMNS,
-    chrome: { showFormattingToolbar: true, showEditingToolbar: true, enableUpdates: false, rowCount: 200, sideBar: { toolPanels: ['columns'] } },
+    chrome: { ...classicRibbonChrome, enableUpdates: false, rowCount: 200, sideBar: { toolPanels: ['columns'] } },
   },
   {
     id: 'bulk-update',
@@ -208,10 +221,10 @@ export const LAB_FEATURES: LabFeature[] = [
     subtitle: 'Bulk Update profiles · stable book',
     what: 'Editing chrome focused on Bulk Update with ready / undo-practice profiles.',
     why: 'Markets Lab Bulk Update.',
-    tryIt: 'Select the pre-highlighted Trader range → Bulk Update → set one name → Undo.',
+    tryIt: 'Select the pre-highlighted Trader range → More → Smart edit… / Bulk, or use classic Editing ribbon from More.',
     gridId: 'lab-bulk-update-v3',
     getColumnDefs: () => EDIT_COLUMNS,
-    chrome: { showFormattingToolbar: false, showEditingToolbar: true, enableUpdates: false, rowCount: 200 },
+    chrome: { showFormattingToolbar: false, showEditingToolbar: false, enableUpdates: false, rowCount: 200 },
   },
   {
     id: 'plus-minus',
@@ -224,7 +237,7 @@ export const LAB_FEATURES: LabFeature[] = [
     tryIt: 'Layouts → 02 Bid only → focus Bid → press + / −.',
     gridId: 'lab-plus-minus-v3',
     getColumnDefs: () => EDIT_COLUMNS,
-    chrome: { showFormattingToolbar: false, showEditingToolbar: true, enableUpdates: false, rowCount: 200 },
+    chrome: { showFormattingToolbar: false, showEditingToolbar: false, enableUpdates: false, rowCount: 200 },
   },
   {
     id: 'shortcuts',
@@ -237,7 +250,7 @@ export const LAB_FEATURES: LabFeature[] = [
     tryIt: 'Layouts → 00 H ×100 Face → select Face → press H.',
     gridId: 'lab-shortcuts-v3',
     getColumnDefs: () => EDIT_COLUMNS,
-    chrome: { showFormattingToolbar: false, showEditingToolbar: true, enableUpdates: false, rowCount: 200 },
+    chrome: { showFormattingToolbar: false, showEditingToolbar: false, enableUpdates: false, rowCount: 200 },
   },
   {
     id: 'profiles',

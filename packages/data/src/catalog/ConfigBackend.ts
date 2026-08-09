@@ -1,0 +1,223 @@
+import type { DataProviderConfig } from '../types';
+
+export interface ConfigBackend {
+  list(userId?: string): Promise<DataProviderConfig[]>;
+  get(providerId: string): Promise<DataProviderConfig | null>;
+  getByName(name: string): Promise<DataProviderConfig | null>;
+  save(cfg: DataProviderConfig): Promise<DataProviderConfig>;
+  remove(providerId: string): Promise<void>;
+}
+
+const LS_KEY = 'vg-data:provider-catalog';
+
+/** Simple localStorage catalog — fine for small configs / demos. */
+export class LocalStorageConfigBackend implements ConfigBackend {
+  private read(): DataProviderConfig[] {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw) as unknown;
+      return Array.isArray(parsed) ? parsed as DataProviderConfig[] : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private write(rows: DataProviderConfig[]): void {
+    localStorage.setItem(LS_KEY, JSON.stringify(rows));
+  }
+
+  async list(userId?: string): Promise<DataProviderConfig[]> {
+    const all = this.read();
+    return userId ? all.filter((r) => !r.userId || r.userId === userId) : all;
+  }
+
+  async get(providerId: string): Promise<DataProviderConfig | null> {
+    return this.read().find((r) => r.providerId === providerId) ?? null;
+  }
+
+  async getByName(name: string): Promise<DataProviderConfig | null> {
+    return this.read().find((r) => r.name === name) ?? null;
+  }
+
+  async save(cfg: DataProviderConfig): Promise<DataProviderConfig> {
+    const rows = this.read();
+    const next = { ...cfg, updatedAt: new Date().toISOString() };
+    const i = rows.findIndex((r) => r.providerId === cfg.providerId);
+    if (i >= 0) rows[i] = next;
+    else rows.push(next);
+    this.write(rows);
+    return next;
+  }
+
+  async remove(providerId: string): Promise<void> {
+    this.write(this.read().filter((r) => r.providerId !== providerId));
+  }
+}
+
+const IDB_NAME = 'vg-data-catalog';
+const IDB_STORE = 'providers';
+
+function openDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(IDB_STORE)) {
+        const store = db.createObjectStore(IDB_STORE, { keyPath: 'providerId' });
+        store.createIndex('name', 'name', { unique: false });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+/** IndexedDB catalog — preferred for OpenFin multi-window same-origin sharing. */
+export class IndexedDbConfigBackend implements ConfigBackend {
+  async list(userId?: string): Promise<DataProviderConfig[]> {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readonly');
+      const req = tx.objectStore(IDB_STORE).getAll();
+      req.onsuccess = () => {
+        let rows = (req.result ?? []) as DataProviderConfig[];
+        if (userId) rows = rows.filter((r) => !r.userId || r.userId === userId);
+        resolve(rows);
+      };
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async get(providerId: string): Promise<DataProviderConfig | null> {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readonly');
+      const req = tx.objectStore(IDB_STORE).get(providerId);
+      req.onsuccess = () => resolve((req.result as DataProviderConfig) ?? null);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async getByName(name: string): Promise<DataProviderConfig | null> {
+    const all = await this.list();
+    return all.find((r) => r.name === name) ?? null;
+  }
+
+  async save(cfg: DataProviderConfig): Promise<DataProviderConfig> {
+    const next = { ...cfg, updatedAt: new Date().toISOString() };
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).put(next);
+      tx.oncomplete = () => resolve(next);
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  async remove(providerId: string): Promise<void> {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).delete(providerId);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+}
+
+/** In-memory catalog — tests and ephemeral sessions. */
+export class MemoryConfigBackend implements ConfigBackend {
+  private rows = new Map<string, DataProviderConfig>();
+
+  async list(userId?: string): Promise<DataProviderConfig[]> {
+    const all = [...this.rows.values()];
+    return userId ? all.filter((r) => !r.userId || r.userId === userId) : all;
+  }
+
+  async get(providerId: string): Promise<DataProviderConfig | null> {
+    return this.rows.get(providerId) ?? null;
+  }
+
+  async getByName(name: string): Promise<DataProviderConfig | null> {
+    return [...this.rows.values()].find((r) => r.name === name) ?? null;
+  }
+
+  async save(cfg: DataProviderConfig): Promise<DataProviderConfig> {
+    const next = { ...cfg, updatedAt: new Date().toISOString() };
+    this.rows.set(cfg.providerId, next);
+    return next;
+  }
+
+  async remove(providerId: string): Promise<void> {
+    this.rows.delete(providerId);
+  }
+}
+
+/** REST / enterprise config-service backend. */
+export class RestConfigBackend implements ConfigBackend {
+  constructor(
+    private readonly baseUrl: string,
+    private readonly fetchImpl: typeof fetch = fetch.bind(globalThis),
+  ) {}
+
+  private url(path: string): string {
+    return new URL(path, this.baseUrl).toString();
+  }
+
+  async list(userId?: string): Promise<DataProviderConfig[]> {
+    const u = new URL(this.url('providers'));
+    if (userId) u.searchParams.set('userId', userId);
+    const res = await this.fetchImpl(u.toString());
+    if (!res.ok) throw new Error(`Config list failed: HTTP ${res.status}`);
+    return (await res.json()) as DataProviderConfig[];
+  }
+
+  async get(providerId: string): Promise<DataProviderConfig | null> {
+    const res = await this.fetchImpl(this.url(`providers/${encodeURIComponent(providerId)}`));
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`Config get failed: HTTP ${res.status}`);
+    return (await res.json()) as DataProviderConfig;
+  }
+
+  async getByName(name: string): Promise<DataProviderConfig | null> {
+    const u = new URL(this.url('providers'));
+    u.searchParams.set('name', name);
+    const res = await this.fetchImpl(u.toString());
+    if (!res.ok) throw new Error(`Config getByName failed: HTTP ${res.status}`);
+    const rows = (await res.json()) as DataProviderConfig[];
+    return rows[0] ?? null;
+  }
+
+  async save(cfg: DataProviderConfig): Promise<DataProviderConfig> {
+    const res = await this.fetchImpl(this.url(`providers/${encodeURIComponent(cfg.providerId)}`), {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(cfg),
+    });
+    if (!res.ok) throw new Error(`Config save failed: HTTP ${res.status}`);
+    return (await res.json()) as DataProviderConfig;
+  }
+
+  async remove(providerId: string): Promise<void> {
+    const res = await this.fetchImpl(this.url(`providers/${encodeURIComponent(providerId)}`), {
+      method: 'DELETE',
+    });
+    if (!res.ok && res.status !== 404) {
+      throw new Error(`Config remove failed: HTTP ${res.status}`);
+    }
+  }
+}
+
+export function createDefaultConfigBackend(): ConfigBackend {
+  if (typeof indexedDB !== 'undefined') return new IndexedDbConfigBackend();
+  return new LocalStorageConfigBackend();
+}
+
+/**
+ * Prefer this name in host docs: this interface is the **provider definition
+ * catalog**, not Markets Config Manager (profiles / identity / sync).
+ * See docs/starui-platform/03-config-planes.md.
+ */
+export type ProviderCatalogBackend = ConfigBackend;
+

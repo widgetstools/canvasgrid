@@ -506,6 +506,28 @@ describe('SelectionModel.selectColumnBand (Cycle 9 / Task 4)', () => {
     expect(sel.getRanges()).toEqual([]);
     expect(emits).toBe(0);
   });
+
+  it('pulls focus into the new band when it was outside (focus ring must not sit beside the shade)', () => {
+    const sel = new SelectionModel('multiple');
+    const cols = ['cusip', 'ticker', 'price', 'qty'];
+    sel.selectColumnBand('cusip', cols, 50, false);
+    // Focus sits on qty — immediately right of the shaded band.
+    sel.setFocus(3, 'qty');
+    sel.selectColumnBand('price', cols, 50, true);
+    expect(sel.getRanges()).toEqual([
+      { rowStart: 0, rowEnd: 49, colIds: ['cusip', 'ticker', 'price'] },
+    ]);
+    expect(sel.state.focusedRowIndex).toBe(3);
+    expect(sel.state.focusedColId).toBe('price');
+    expect(sel.isInsideAnyRange(sel.state.focusedRowIndex!, sel.state.focusedColId!)).toBe(true);
+  });
+
+  it('seeds focus into the band when focus was previously unset', () => {
+    const sel = new SelectionModel('multiple');
+    sel.selectColumnBand('ticker', ['cusip', 'ticker', 'price'], 20, false);
+    expect(sel.state.focusedRowIndex).toBe(0);
+    expect(sel.state.focusedColId).toBe('ticker');
+  });
 });
 
 describe('computeAutoScrollDelta (Cycle 9 patch / Task 2) — edge-zone math', () => {
