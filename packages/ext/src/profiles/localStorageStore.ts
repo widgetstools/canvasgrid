@@ -1,8 +1,12 @@
 import type { ProfileStore, ProfileSnapshot, ProfileMeta } from '../extension/types';
 
-/** Default `ProfileStore` — one localStorage key per namespace holding a
- *  `{ [id]: ProfileSnapshot }` map. Consumers swap in server/IndexedDB
- *  stores by implementing `ProfileStore`. */
+/** Legacy flat `ProfileStore` — one localStorage key per namespace holding a
+ *  `{ [id]: ProfileSnapshot }` map.
+ *
+ *  Prefer `LocalStorageConfigSession` (default in VelocityGridExt) so
+ *  profiles + layouts share one Markets-aligned instance bundle per gridId.
+ *  Host Config Managers should implement `ConfigSession` / `ProfileStore`.
+ */
 export class LocalStorageProfileStore implements ProfileStore {
   constructor(private namespace = 'velocity-grid-ext') {}
   private get key(): string { return `${this.namespace}:profiles`; }

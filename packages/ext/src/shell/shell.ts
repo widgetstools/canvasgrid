@@ -1,5 +1,11 @@
 import type {
-  VelocityGridExtContext, SettingsModule, ToolbarItem, ToolbarItemInstance, ToolbarSlot, ModuleInstance,
+  VelocityGridExtContext,
+  SettingsModule,
+  ToolbarItem,
+  ToolbarItemInstance,
+  ToolbarSlot,
+  ModuleInstance,
+  ModuleCategory,
 } from '../extension/types';
 import { lucideBundle } from '@wellsfargo-starui/velocity-grid/icons/lucide.generated';
 
@@ -9,6 +15,60 @@ const MODULE_ICON_ALIAS: Record<string, string> = {
   columns: 'columns-3',
   wand: 'sparkles',
 };
+
+/** Display order for Customize drawer category menus. */
+const CATEGORY_ORDER: readonly ModuleCategory[] = [
+  'layout',
+  'data',
+  'format',
+  'editing',
+  'workspace',
+];
+
+const CATEGORY_LABELS: Record<ModuleCategory, string> = {
+  layout: 'Layout',
+  data: 'Data',
+  format: 'Format',
+  editing: 'Editing',
+  workspace: 'Workspace',
+};
+
+interface ModuleNavGroup {
+  id: string;
+  label: string;
+  modules: SettingsModule[];
+}
+
+/** Bucket registered modules into category dropdowns (empty groups dropped). */
+export function groupModulesForNav(
+  modules: Iterable<SettingsModule>,
+): ModuleNavGroup[] {
+  const byCat = new Map<string, SettingsModule[]>();
+  for (const mod of modules) {
+    const key = mod.category || 'workspace';
+    const list = byCat.get(key);
+    if (list) list.push(mod);
+    else byCat.set(key, [mod]);
+  }
+
+  const groups: ModuleNavGroup[] = [];
+  for (const id of CATEGORY_ORDER) {
+    const members = byCat.get(id);
+    if (!members?.length) continue;
+    groups.push({ id, label: CATEGORY_LABELS[id], modules: members });
+    byCat.delete(id);
+  }
+  // Unknown / future categories — keep reachable under their raw id.
+  for (const [id, members] of byCat) {
+    if (!members.length) continue;
+    groups.push({
+      id,
+      label: id.charAt(0).toUpperCase() + id.slice(1),
+      modules: members,
+    });
+  }
+  return groups;
+}
 
 function moduleIconSvg(name: string, size = 14): string {
   const key = MODULE_ICON_ALIAS[name] ?? name;
@@ -44,8 +104,8 @@ export class ShellLayout {
   private live: ModuleInstance | null = null;
   private activeId: string | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
-  /** Tear down ResizeObserver / scroll listeners for the sheet tab strip. */
-  private navOverflowCleanup: (() => void) | null = null;
+  /** Tear down dropdown listeners for the sheet category nav. */
+  private navCleanup: (() => void) | null = null;
 
   constructor(private root: HTMLElement) {
     injectShellStyles();
@@ -94,17 +154,21 @@ export class ShellLayout {
   private renderSheet(id: string): void {
     this.live?.destroy();
     this.live = null;
-    this.navOverflowCleanup?.();
-    this.navOverflowCleanup = null;
+    this.navCleanup?.();
+    this.navCleanup = null;
     this.sheet.replaceChildren();
     this.activeId = id;
     const entry = this.modules.get(id)!;
+    const groups = groupModulesForNav([...this.modules.values()].map((m) => m.module));
+    const activeGroup = groups.find((g) => g.modules.some((m) => m.id === id));
 
     // Drawer header: quiet eyebrow + module title + close.
     const header = el('vgext-sheet-header');
     const titles = el('vgext-sheet-titles');
     const eyebrow = el('vgext-sheet-eyebrow');
-    eyebrow.textContent = 'Customize';
+    eyebrow.textContent = activeGroup
+      ? `Customize · ${activeGroup.label}`
+      : 'Customize';
     const title = el('vgext-sheet-title');
     title.id = 'vgext-sheet-title';
     title.textContent = entry.module.title;
@@ -117,47 +181,116 @@ export class ShellLayout {
     close.addEventListener('click', () => this.closeSettings());
     header.append(titles, close);
 
-    // Module switcher — icon + label strip with overflow carets (no scrollbar).
+    // Category dropdown menus — replaces the scrollable flat tab strip.
     const body = el('vgext-sheet-body');
     body.setAttribute('role', 'tabpanel');
     body.setAttribute('aria-labelledby', 'vgext-sheet-title');
     if (this.modules.size > 1) {
       const wrap = el('vgext-sheet-nav-wrap');
       const nav = el('vgext-sheet-nav');
-      nav.setAttribute('role', 'tablist');
-      nav.setAttribute('aria-label', 'Settings sections');
-      for (const [mid, { module }] of this.modules) {
-        const tab = document.createElement('button');
-        tab.type = 'button';
-        tab.className = 'vgext-sheet-nav-item';
-        tab.setAttribute('role', 'tab');
-        tab.setAttribute('aria-selected', String(mid === id));
-        tab.dataset.moduleId = mid;
-        tab.title = module.title;
-        if (mid === id) tab.classList.add('is-active');
-        const iconHtml = moduleIconSvg(module.icon, 14);
-        tab.innerHTML =
-          `${iconHtml ? `<span class="vgext-sheet-nav-icon">${iconHtml}</span>` : ''}` +
-          `<span class="vgext-sheet-nav-label">${module.title}</span>`;
-        tab.addEventListener('click', () => {
-          if (mid === this.activeId) return;
-          this.renderSheet(mid);
-        });
-        nav.appendChild(tab);
+      nav.setAttribute('role', 'menubar');
+      nav.setAttribute('aria-label', 'Settings categories');
+      nav.setAttribute('data-testid', 'vgext-sheet-nav');
+
+      for (const group of groups) {
+        const containsActive = group.modules.some((m) => m.id === id);
+        const groupEl = el('vgext-sheet-nav-group');
+        groupEl.dataset.groupId = group.id;
+
+        const trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'vgext-sheet-nav-group-trigger';
+        trigger.setAttribute('role', 'menuitem');
+        trigger.setAttribute('aria-haspopup', 'menu');
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.setAttribute('data-testid', `vgext-sheet-nav-group-${group.id}`);
+        trigger.dataset.groupId = group.id;
+        if (containsActive) trigger.classList.add('is-active');
+        const chevron = moduleIconSvg('chevron-down', 12);
+        trigger.innerHTML =
+          `<span class="vgext-sheet-nav-group-label">${group.label}</span>` +
+          (chevron
+            ? `<span class="vgext-sheet-nav-group-chevron" aria-hidden="true">${chevron}</span>`
+            : '');
+
+        const menu = el('vgext-sheet-nav-menu');
+        menu.setAttribute('role', 'menu');
+        menu.setAttribute('aria-label', group.label);
+        menu.hidden = true;
+        menu.setAttribute('data-testid', `vgext-sheet-nav-menu-${group.id}`);
+
+        for (const mod of group.modules) {
+          const item = document.createElement('button');
+          item.type = 'button';
+          item.className = 'vgext-sheet-nav-menu-item';
+          item.setAttribute('role', 'menuitem');
+          item.setAttribute('data-testid', `vgext-sheet-nav-item-${mod.id}`);
+          item.dataset.moduleId = mod.id;
+          if (mod.id === id) item.classList.add('is-active');
+          const iconHtml = moduleIconSvg(mod.icon, 14);
+          item.innerHTML =
+            `${iconHtml ? `<span class="vgext-sheet-nav-icon">${iconHtml}</span>` : ''}` +
+            `<span class="vgext-sheet-nav-label">${mod.title}</span>`;
+          item.addEventListener('click', () => {
+            if (mod.id === this.activeId) {
+              closeAllMenus();
+              return;
+            }
+            this.renderSheet(mod.id);
+          });
+          menu.appendChild(item);
+        }
+
+        groupEl.append(trigger, menu);
+        nav.appendChild(groupEl);
       }
-      const prev = document.createElement('button');
-      prev.type = 'button';
-      prev.className = 'vgext-sheet-nav-scroll vgext-sheet-nav-scroll--prev';
-      prev.setAttribute('aria-label', 'Scroll tabs left');
-      prev.innerHTML = moduleIconSvg('chevrons-left', 14);
-      const next = document.createElement('button');
-      next.type = 'button';
-      next.className = 'vgext-sheet-nav-scroll vgext-sheet-nav-scroll--next';
-      next.setAttribute('aria-label', 'Scroll tabs right');
-      next.innerHTML = moduleIconSvg('chevrons-right', 14);
-      wrap.append(prev, nav, next);
+
+      const closeAllMenus = (): void => {
+        for (const g of nav.querySelectorAll<HTMLElement>('.vgext-sheet-nav-group')) {
+          g.classList.remove('is-open');
+          const t = g.querySelector<HTMLButtonElement>('.vgext-sheet-nav-group-trigger');
+          const m = g.querySelector<HTMLElement>('.vgext-sheet-nav-menu');
+          if (t) t.setAttribute('aria-expanded', 'false');
+          if (m) m.hidden = true;
+        }
+      };
+
+      const onTriggerClick = (e: Event): void => {
+        const triggerEl = (e.currentTarget as HTMLElement);
+        const groupEl = triggerEl.closest<HTMLElement>('.vgext-sheet-nav-group');
+        if (!groupEl) return;
+        const wasOpen = groupEl.classList.contains('is-open');
+        closeAllMenus();
+        if (wasOpen) return;
+        groupEl.classList.add('is-open');
+        triggerEl.setAttribute('aria-expanded', 'true');
+        const menu = groupEl.querySelector<HTMLElement>('.vgext-sheet-nav-menu');
+        if (menu) menu.hidden = false;
+      };
+
+      for (const t of nav.querySelectorAll<HTMLButtonElement>('.vgext-sheet-nav-group-trigger')) {
+        t.addEventListener('click', onTriggerClick);
+      }
+
+      const onDocPointer = (e: Event): void => {
+        const target = e.target as Node | null;
+        if (target && nav.contains(target)) return;
+        closeAllMenus();
+      };
+      // Capture so we close before other handlers; ignore the opening click.
+      requestAnimationFrame(() => {
+        document.addEventListener('pointerdown', onDocPointer, true);
+      });
+
+      this.navCleanup = () => {
+        document.removeEventListener('pointerdown', onDocPointer, true);
+        for (const t of nav.querySelectorAll<HTMLButtonElement>('.vgext-sheet-nav-group-trigger')) {
+          t.removeEventListener('click', onTriggerClick);
+        }
+      };
+
+      wrap.appendChild(nav);
       this.sheet.append(header, wrap, body);
-      this.navOverflowCleanup = wireNavOverflow(wrap, nav, prev, next, id);
     } else {
       this.sheet.append(header, body);
     }
@@ -219,8 +352,8 @@ export class ShellLayout {
     this.sheet.classList.remove('is-open');
     this.sheet.setAttribute('aria-hidden', 'true');
     const finish = (): void => {
-      this.navOverflowCleanup?.();
-      this.navOverflowCleanup = null;
+      this.navCleanup?.();
+      this.navCleanup = null;
       this.live?.destroy();
       this.live = null;
       this.activeId = null;
@@ -240,8 +373,8 @@ export class ShellLayout {
 
   destroy(): void {
     this.unbindEscape();
-    this.navOverflowCleanup?.();
-    this.navOverflowCleanup = null;
+    this.navCleanup?.();
+    this.navCleanup = null;
     this.live?.destroy();
     this.live = null;
     for (const inst of this.toolbarInstances) inst?.destroy();
@@ -263,70 +396,6 @@ function sub(parent: HTMLElement, name: string): HTMLElement {
   let found = parent.querySelector<HTMLElement>(`:scope > .${key}`);
   if (!found) { found = el(key); parent.appendChild(found); }
   return found;
-}
-
-/**
- * Drive horizontal tab overflow with chevron buttons instead of a native
- * scrollbar. Carets appear only when content overflows; each click scrolls
- * by ~75% of the visible strip. Returns a cleanup for observers/listeners.
- */
-function wireNavOverflow(
-  wrap: HTMLElement,
-  nav: HTMLElement,
-  prev: HTMLButtonElement,
-  next: HTMLButtonElement,
-  activeId: string,
-): () => void {
-  const EDGE = 2;
-  const sync = (): void => {
-    const overflow = nav.scrollWidth > nav.clientWidth + EDGE;
-    wrap.classList.toggle('is-overflowing', overflow);
-    if (!overflow) {
-      prev.disabled = true;
-      next.disabled = true;
-      return;
-    }
-    prev.disabled = nav.scrollLeft <= EDGE;
-    next.disabled = nav.scrollLeft + nav.clientWidth >= nav.scrollWidth - EDGE;
-  };
-
-  const scrollByPage = (dir: -1 | 1): void => {
-    const step = Math.max(120, Math.floor(nav.clientWidth * 0.75));
-    nav.scrollBy({ left: dir * step, behavior: 'smooth' });
-  };
-
-  const onPrev = (): void => scrollByPage(-1);
-  const onNext = (): void => scrollByPage(1);
-  prev.addEventListener('click', onPrev);
-  next.addEventListener('click', onNext);
-  nav.addEventListener('scroll', sync, { passive: true });
-
-  let ro: ResizeObserver | null = null;
-  const onWinResize = (): void => sync();
-  if (typeof ResizeObserver !== 'undefined') {
-    ro = new ResizeObserver(() => sync());
-    ro.observe(nav);
-    ro.observe(wrap);
-  } else {
-    window.addEventListener('resize', onWinResize);
-  }
-
-  const revealActive = (): void => {
-    const active = nav.querySelector<HTMLElement>(
-      `.vgext-sheet-nav-item[data-module-id="${CSS.escape(activeId)}"]`,
-    );
-    active?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
-    sync();
-  };
-  requestAnimationFrame(() => requestAnimationFrame(revealActive));
-
-  return () => {
-    ro?.disconnect();
-    if (!ro) window.removeEventListener('resize', onWinResize);
-    prev.removeEventListener('click', onPrev);
-    next.removeEventListener('click', onNext);
-    nav.removeEventListener('scroll', sync);
-  };
 }
 
 /** Inject the shell chrome CSS once per document. Kept in JS (not a
@@ -536,118 +605,134 @@ const SHELL_CSS = `
   color: var(--vg-fg-color, #e5e9f0);
 }
 .vgext-sheet-close:focus-visible { outline: 2px solid var(--vg-accent-color, #4f9cf9); outline-offset: 1px; }
+/* Category menubar — few stable dropdowns instead of a long tab strip. */
 .vgext-sheet-nav-wrap {
   flex: 0 0 auto;
   display: flex;
   align-items: stretch;
   gap: 0;
   min-width: 0;
-  overflow: hidden; /* never show a native strip scrollbar */
+  position: relative;
+  z-index: 2;
   border-bottom: 1px solid color-mix(in srgb, var(--vg-border-color, #2a3140) 85%, transparent);
   background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 2%, transparent);
 }
 .vgext-sheet-nav {
   flex: 1 1 auto;
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
+  align-items: stretch;
   gap: 2px;
   min-width: 0;
-  padding: 8px 4px 0;
-  overflow-x: hidden; /* carets replace the scrollbar */
-  overflow-y: hidden;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  padding: 6px 10px;
 }
-.vgext-sheet-nav::-webkit-scrollbar { display: none; }
-.vgext-sheet-nav-wrap:not(.is-overflowing) .vgext-sheet-nav {
-  padding-left: 12px;
-  padding-right: 12px;
-}
-.vgext-sheet-nav-scroll {
-  appearance: none;
-  flex: 0 0 auto;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  margin: 8px 4px 0;
-  padding: 0;
-  border: 1px solid color-mix(in srgb, var(--vg-primary-color, var(--vg-accent-color, #4f9cf9)) 35%, transparent);
-  border-radius: var(--vg-radius, 2px);
-  /* Cursor primary/accent: tinted fill + accent icon (Anysphere #81A1C1 / Light #2778C1). */
-  background: color-mix(in srgb, var(--vg-primary-color, var(--vg-accent-color, #4f9cf9)) 14%, transparent);
-  color: var(--vg-accent-color, #4f9cf9);
-  cursor: pointer;
-  align-self: stretch;
-  max-height: 36px;
-  transition: background 120ms ease, color 120ms ease, opacity 120ms ease, border-color 120ms ease;
-}
-.vgext-sheet-nav-wrap.is-overflowing .vgext-sheet-nav-scroll { display: inline-flex; }
-.vgext-sheet-nav-scroll:hover:not(:disabled) {
-  background: var(--vg-primary-color, var(--vg-accent-color, #4f9cf9));
-  border-color: var(--vg-primary-color, var(--vg-accent-color, #4f9cf9));
-  color: var(--vg-primary-fg, var(--vg-accent-fg, #ffffff));
-}
-.vgext-sheet-nav-scroll:disabled {
-  opacity: 0.32;
-  cursor: default;
-}
-.vgext-sheet-nav-scroll:focus-visible { outline: 2px solid var(--vg-accent-color, #4f9cf9); outline-offset: 1px; }
-.vgext-sheet-nav-scroll svg { display: block; }
-.vgext-sheet-nav-item {
-  appearance: none;
+.vgext-sheet-nav-group {
   position: relative;
+  flex: 0 0 auto;
+}
+.vgext-sheet-nav-group-trigger {
+  appearance: none;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  height: 36px;
-  padding: 0 12px;
-  border: none;
-  border-radius: var(--vg-radius, 2px) var(--vg-radius, 2px) 0 0;
+  gap: 5px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--vg-radius, 2px);
   background: transparent;
   color: var(--vg-muted-fg-color, #8a93a6);
   font: inherit;
-  font-size: 12px;
-  font-weight: 550;
-  letter-spacing: 0.01em;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   white-space: nowrap;
   cursor: pointer;
-  flex: 0 0 auto;
-  transition: color 140ms ease, background 140ms ease;
+  transition: color 140ms ease, background 140ms ease, border-color 140ms ease;
 }
-.vgext-sheet-nav-item::after {
-  content: '';
+.vgext-sheet-nav-group-chevron {
+  display: inline-flex;
+  opacity: 0.7;
+  transition: transform 140ms ease, opacity 140ms ease;
+}
+.vgext-sheet-nav-group-trigger:hover,
+.vgext-sheet-nav-group.is-open .vgext-sheet-nav-group-trigger {
+  color: var(--vg-fg-color, #e5e9f0);
+  background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 5%, transparent);
+  border-color: color-mix(in srgb, var(--vg-border-color, #2a3140) 70%, transparent);
+}
+.vgext-sheet-nav-group-trigger.is-active {
+  color: var(--vg-fg-color, #e5e9f0);
+  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 10%, transparent);
+  border-color: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 35%, transparent);
+}
+.vgext-sheet-nav-group.is-open .vgext-sheet-nav-group-chevron {
+  transform: rotate(180deg);
+  opacity: 1;
+}
+.vgext-sheet-nav-group-trigger:focus-visible {
+  outline: 2px solid var(--vg-accent-color, #4f9cf9);
+  outline-offset: 1px;
+}
+.vgext-sheet-nav-menu {
   position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: 0;
-  height: 2px;
-  border-radius: 1px 1px 0 0;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 200px;
+  max-width: min(280px, 80vw);
+  padding: 4px;
+  border: 1px solid color-mix(in srgb, var(--vg-border-color, #2a3140) 90%, transparent);
+  border-radius: var(--vg-radius, 2px);
+  background: var(--vg-popup-bg, #12161f);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  z-index: 5;
+}
+.vgext-sheet-nav-menu[hidden] { display: none !important; }
+.vgext-sheet-nav-menu-item {
+  appearance: none;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--vg-radius, 2px);
   background: transparent;
-  transition: background 140ms ease;
+  color: var(--vg-fg-color, #e5e9f0);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 550;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.vgext-sheet-nav-menu-item:hover {
+  background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 6%, transparent);
+}
+.vgext-sheet-nav-menu-item.is-active {
+  color: var(--vg-accent-color, #4f9cf9);
+  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 10%, transparent);
+}
+.vgext-sheet-nav-menu-item:focus-visible {
+  outline: 2px solid var(--vg-accent-color, #4f9cf9);
+  outline-offset: -2px;
 }
 .vgext-sheet-nav-icon {
   display: inline-flex;
-  opacity: 0.72;
-  transition: opacity 140ms ease, color 140ms ease;
+  opacity: 0.75;
+  flex: 0 0 auto;
 }
-.vgext-sheet-nav-item:hover {
-  color: var(--vg-fg-color, #e5e9f0);
-  background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 4%, transparent);
-}
-.vgext-sheet-nav-item:hover .vgext-sheet-nav-icon { opacity: 1; }
-.vgext-sheet-nav-item.is-active {
-  color: var(--vg-fg-color, #e5e9f0);
-  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 8%, transparent);
-}
-.vgext-sheet-nav-item.is-active::after {
-  background: var(--vg-accent-color, #4f9cf9);
-}
-.vgext-sheet-nav-item.is-active .vgext-sheet-nav-icon {
+.vgext-sheet-nav-menu-item.is-active .vgext-sheet-nav-icon,
+.vgext-sheet-nav-menu-item:hover .vgext-sheet-nav-icon {
   opacity: 1;
-  color: var(--vg-accent-color, #4f9cf9);
 }
-.vgext-sheet-nav-item:focus-visible { outline: 2px solid var(--vg-accent-color, #4f9cf9); outline-offset: -2px; }
+.vgext-sheet-nav-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .vgext-sheet-body {
   flex: 1 1 auto;
   min-height: 0;
@@ -734,8 +819,11 @@ const SHELL_CSS = `
 
 @media (prefers-reduced-motion: reduce) {
   .vgext-sheet { transition: none; }
+  .vgext-sheet-nav-group-chevron { transition: none; }
 }
 @media (prefers-reduced-motion: no-preference) {
-  .vgext-btn, .vgext-sheet-close, .vgext-sheet-nav-item { transition-duration: 120ms; }
+  .vgext-btn, .vgext-sheet-close, .vgext-sheet-nav-group-trigger, .vgext-sheet-nav-menu-item {
+    transition-duration: 120ms;
+  }
 }
 `;

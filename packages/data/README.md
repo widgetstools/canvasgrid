@@ -57,12 +57,34 @@ See [OPENFIN.md](./OPENFIN.md) for multi-window / OpenFin affinity notes.
 
 ## Editor
 
-```ts
-import { mountProviderEditor } from '@wellsfargo-starui/velocity-grid-data/editor';
+Markets-shaped shell (list + form) modeled on
+`widgets-react/.../provider-editor`:
 
-mountProviderEditor({
+- Sidebar: search, Import, + New, clone/delete, Public / Unsaved badges
+- Form header: Name *, Description, Public
+- Tabs: Connection (Test Connection) · Fields (Infer Fields) · Columns
+  (key column, import/export) · Behaviour (STOMP knobs) · Diagnostics
+- Footer: Cancel · Export · Duplicate · Update Columns · Create/Update DataProvider
+
+The full editor runs as a **shared browser popout**; per-grid Customize
+only selects the active `providerId`.
+
+```ts
+import {
+  mountDataProviderEditor,
+  openProviderEditorPopout,
+} from '@wellsfargo-starui/velocity-grid-data/editor';
+
+// Shared popout (named window — focuses on reopen)
+openProviderEditorPopout({
+  backend: catalog,
+  providerId: 'positions',
+});
+
+// Or embed the shell (tests / dedicated admin page)
+mountDataProviderEditor({
   mount: document.getElementById('editor')!,
-  onSave: async (cfg) => { /* restart hub slot */ },
+  backend: catalog,
 });
 ```
 
@@ -80,3 +102,9 @@ const resolved = resolveProviderConfig(cfg, store.lookup);
 ## Custom transports + Ext selection
 
 See [PLUGINS.md](./PLUGINS.md): `defineTransportPlugin` / `registerTransportPlugin`, pluggable connection UI, and opt-in `dataProviderModule()` on VelocityGridExt (active `providerId` persisted in grid/profile state).
+
+## Persistence planes
+
+Provider catalog (`ConfigBackend`) ≠ Ext/Markets Config Manager ≠ AppData.
+See [docs/starui-platform/03-config-planes.md](../../docs/starui-platform/03-config-planes.md).
+

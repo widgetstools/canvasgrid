@@ -34,7 +34,9 @@ export type {
   IDataProvider,
   SsrmGetRowsRequest,
   SsrmGetRowsResult,
+  ProviderStats,
 } from './types';
+export { emptyProviderStats } from './types';
 
 export { PROTOCOL_VERSION, isHubPush } from './protocol/messages';
 export type { HubRequest, HubResponse, HubPush, HubMessage } from './protocol/messages';
@@ -75,8 +77,29 @@ export {
 
 export { mountProviderEditor, ProviderEditor } from './editor/ProviderEditor';
 export type { ProviderEditorOptions } from './editor/ProviderEditor';
-export { mountFieldDescriptors, mountGenericConfigFields } from './editor/connectionFields';
-export type { FieldDescriptor } from './editor/connectionFields';
+export {
+  mountDataProviderEditor,
+  DataProviderEditor,
+} from './editor/DataProviderEditor';
+export type { DataProviderEditorOptions } from './editor/DataProviderEditor';
+export { openProviderEditorPopout } from './editor/openProviderEditorPopout';
+export type {
+  OpenProviderEditorPopoutOpts,
+  ProviderEditorPopoutHandle,
+} from './editor/openProviderEditorPopout';
+export {
+  applyThemeToPopout,
+  findThemeSource,
+  resolveThemeMode,
+} from './editor/themeSync';
+export type { ThemeMode } from './editor/themeSync';
+export {
+  mountFieldDescriptors,
+  mountFieldGroups,
+  mountGenericConfigFields,
+} from './editor/connectionFields';
+export type { FieldDescriptor, FieldGroup } from './editor/connectionFields';
+
 
 export { DataServicesHub } from './hub/DataServicesHub';
 export { RowCache, LivePipeline, composeRowId } from './hub/rowCache';
@@ -84,7 +107,8 @@ export { RowCache, LivePipeline, composeRowId } from './hub/rowCache';
 export { inferFieldsFromRows, fieldsToColumnDefinitions } from './schema/infer';
 export { pageCachedRows } from './query/page';
 
-export type { ConfigBackend } from './catalog/ConfigBackend';
+export type { ConfigBackend,
+  ProviderCatalogBackend } from './catalog/ConfigBackend';
 export {
   LocalStorageConfigBackend,
   IndexedDbConfigBackend,

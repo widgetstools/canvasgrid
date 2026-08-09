@@ -1,14 +1,14 @@
 /**
- * Opt-in Data provider settings module — catalog list, active selection
- * (persisted via StateModule `data-provider`), and ProviderEditor shell.
+ * Opt-in Data provider settings module — Markets-shaped Customize panel:
+ * active provider selection only. Full authoring opens in a shared browser
+ * popout (`openProviderEditorPopout`).
  *
  * Host: `extensions: [dataProviderModule({ catalog, inProcess })]`
  * Custom transports: `registerTransportPlugin(...)` in app + worker entry.
  */
 import {
-  mountProviderEditor,
+  openProviderEditorPopout,
   type ConfigBackend,
-  type ProviderEditor,
 } from '@wellsfargo-starui/velocity-grid-data';
 import type { ModuleInstance, SettingsModule, VelocityGridExtContext } from '../extension/types';
 import {
@@ -30,6 +30,11 @@ const STYLE = `
   min-height: 0;
   color: var(--vg-fg-color, #1a1f24);
 }
+.vgext-dp__section-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
 .vgext-dp__row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .vgext-dp__row label {
   font-size: 12px;
@@ -47,6 +52,10 @@ const STYLE = `
   color-scheme: inherit;
   cursor: pointer;
 }
+.vgext-dp__row select {
+  flex: 1;
+  min-width: 160px;
+}
 .vgext-dp__row select:hover,
 .vgext-dp__row button:hover {
   border-color: var(--vg-primary-color, var(--vg-accent-color, #4f9cf9));
@@ -63,10 +72,10 @@ const STYLE = `
   opacity: 0.55;
   cursor: default;
 }
-.vgext-dp__editor { flex: 1; min-height: 280px; overflow: auto; }
 .vgext-dp__hint {
   font-size: 11px;
   color: var(--vg-muted-fg-color, color-mix(in srgb, var(--vg-fg-color, #1a1f24) 55%, transparent));
+  line-height: 1.4;
 }
 `;
 
@@ -85,12 +94,6 @@ function ensureStyles(): void {
   el.setAttribute('data-vgext-dp', '');
   el.textContent = STYLE;
   document.head.appendChild(el);
-}
-
-function syncEditorPreview(editor: ProviderEditor | null, controller: DataProviderController): void {
-  const provider = controller.getProvider();
-  if (!editor || !provider) return;
-  editor.setPreview(provider.getStatus(), [...provider.getData()].slice(0, 5));
 }
 
 export function dataProviderModule(opts?: DataProviderModuleOptions): SettingsModule {
@@ -117,47 +120,43 @@ export function dataProviderModule(opts?: DataProviderModuleOptions): SettingsMo
       root.className = 'vgext-dp';
       host.appendChild(root);
 
+      const title = document.createElement('h3');
+      title.className = 'vgext-dp__section-title';
+      title.textContent = 'Active provider';
+      root.appendChild(title);
+
       const row = document.createElement('div');
       row.className = 'vgext-dp__row';
       const lab = document.createElement('label');
-      lab.textContent = 'Active provider';
+      lab.textContent = 'Provider';
+      lab.htmlFor = 'vgext-dp-active';
       const sel = document.createElement('select');
+      sel.id = 'vgext-dp-active';
       const applyBtn = document.createElement('button');
       applyBtn.type = 'button';
       applyBtn.className = 'primary';
       applyBtn.textContent = 'Apply';
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.textContent = 'Edit…';
+      editBtn.title = 'Open the shared data-provider editor popout';
+      const manageBtn = document.createElement('button');
+      manageBtn.type = 'button';
+      manageBtn.textContent = 'Manage…';
+      manageBtn.title = 'Open the catalog editor (all providers)';
       const refreshBtn = document.createElement('button');
       refreshBtn.type = 'button';
-      refreshBtn.textContent = 'Refresh list';
-      row.append(lab, sel, applyBtn, refreshBtn);
+      refreshBtn.textContent = 'Refresh';
+      row.append(lab, sel, applyBtn, editBtn, manageBtn, refreshBtn);
       root.appendChild(row);
 
       const hint = document.createElement('div');
       hint.className = 'vgext-dp__hint';
-      hint.textContent = 'Apply saves the editor form, starts the hub feed, and binds the grid.';
+      hint.textContent =
+        'Apply attaches the selected catalog provider to this grid. Author connection, fields, and columns in the shared editor popout.';
       root.appendChild(hint);
 
-      const editorHost = document.createElement('div');
-      editorHost.className = 'vgext-dp__editor';
-      root.appendChild(editorHost);
-
-      let editor: ProviderEditor | null = null;
-      let previewOff: (() => void) | null = null;
       const catalog: ConfigBackend = controller.getCatalog();
-
-      const wirePreview = (): void => {
-        previewOff?.();
-        previewOff = null;
-        const provider = controller.getProvider();
-        if (!editor || !provider) return;
-        syncEditorPreview(editor, controller);
-        const offs = [
-          provider.onStatus(() => syncEditorPreview(editor, controller)),
-          provider.onSnapshotData(() => syncEditorPreview(editor, controller)),
-          provider.onRowsReceived(() => syncEditorPreview(editor, controller)),
-        ];
-        previewOff = () => offs.forEach((fn) => fn());
-      };
 
       const rebuildSelect = async (): Promise<void> => {
         const list = await catalog.list();
@@ -165,53 +164,46 @@ export function dataProviderModule(opts?: DataProviderModuleOptions): SettingsMo
         sel.replaceChildren();
         const none = document.createElement('option');
         none.value = '';
-        none.textContent = '(none)';
+        none.textContent = '— None —';
         sel.appendChild(none);
         for (const p of list) {
           const opt = document.createElement('option');
           opt.value = p.providerId;
-          opt.textContent = `${p.name} (${p.providerId})`;
+          opt.textContent = `${p.name} (${p.providerType})`;
           if (p.providerId === active) opt.selected = true;
           sel.appendChild(opt);
         }
         if (active) sel.value = active;
-        else if (!sel.value && list[0]) sel.value = list[0].providerId;
       };
 
-      const remountEditor = async (): Promise<void> => {
-        editor?.destroy();
-        editorHost.replaceChildren();
-        const selectedId = sel.value || controller.getActiveProviderId();
-        const initial = selectedId ? (await catalog.get(selectedId)) ?? undefined : undefined;
-        editor = mountProviderEditor({
-          mount: editorHost,
+      const openEditor = (providerId: string | null): void => {
+        const themeSource =
+          host.closest<HTMLElement>('.vgext-root')
+          ?? document.querySelector<HTMLElement>('.vgext-root')
+          ?? document.querySelector<HTMLElement>('[class*="vg-theme-"]');
+        const handle = openProviderEditorPopout({
           backend: catalog,
-          initial: initial ?? undefined,
-          onChange: () => ctx.profiles.markDirty(),
-          onSave: async (cfg) => {
-            await controller.saveDefinition(cfg);
-            await rebuildSelect();
-            sel.value = cfg.providerId;
-            wirePreview();
+          providerId,
+          themeSource,
+          hubOpts: controller.getHubOpts(),
+          onSaved: () => {
+            void rebuildSelect();
+            ctx.profiles.markDirty();
           },
+          onClose: () => { void rebuildSelect(); },
         });
-        wirePreview();
+        if (!handle) {
+          hint.textContent = 'Pop-up blocked — allow pop-ups for this origin, then try Edit / Manage again.';
+        }
       };
 
       applyBtn.addEventListener('click', () => {
         void (async () => {
           applyBtn.disabled = true;
           try {
-            // Persist the form the user is looking at, then activate that id.
-            if (editor) {
-              const draft = editor.getConfig();
-              await catalog.save(draft);
-              sel.value = draft.providerId;
-            }
             const id = sel.value || null;
             await controller.setActiveProvider(id, { force: true });
             await rebuildSelect();
-            await remountEditor();
             hint.textContent = id
               ? `Applied “${id}” · status ${controller.getProvider()?.getStatus() ?? '—'} · rows ${controller.getProvider()?.getData().length ?? 0}`
               : 'Cleared active provider.';
@@ -223,25 +215,27 @@ export function dataProviderModule(opts?: DataProviderModuleOptions): SettingsMo
           }
         })();
       });
-      refreshBtn.addEventListener('click', () => { void rebuildSelect(); });
-      sel.addEventListener('change', () => { void remountEditor(); });
 
-      void (async () => {
-        await rebuildSelect();
-        await remountEditor();
-      })();
+      editBtn.addEventListener('click', () => {
+        openEditor(sel.value || controller.getActiveProviderId());
+      });
+      manageBtn.addEventListener('click', () => {
+        openEditor(null);
+      });
+      refreshBtn.addEventListener('click', () => { void rebuildSelect(); });
+
+      const onFocus = (): void => { void rebuildSelect(); };
+      window.addEventListener('focus', onFocus);
+
+      void rebuildSelect();
 
       return {
         destroy() {
-          previewOff?.();
-          previewOff = null;
-          editor?.destroy();
-          editor = null;
+          window.removeEventListener('focus', onFocus);
           host.replaceChildren();
         },
         refresh() {
           void rebuildSelect();
-          wirePreview();
         },
       };
     },

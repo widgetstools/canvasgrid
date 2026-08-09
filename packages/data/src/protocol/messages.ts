@@ -1,6 +1,7 @@
 import type { ColumnDefinition, FieldInfo } from '../types/schema';
 import type { DataProviderConfig, ProviderStatus } from '../types/transport';
 import type { SsrmGetRowsRequest, SsrmGetRowsResult } from '../types/provider';
+import type { ProviderStats } from '../types/stats';
 
 export const PROTOCOL_VERSION = 1 as const;
 
@@ -16,7 +17,8 @@ export type HubRequest =
   | { v: 1; id: string; type: 'refresh'; providerId: string; subId: string }
   | { v: 1; id: string; type: 'getSnapshot'; providerId: string }
   | { v: 1; id: string; type: 'getRows'; providerId: string; request: SsrmGetRowsRequest }
-  | { v: 1; id: string; type: 'getMeta'; providerId: string };
+  | { v: 1; id: string; type: 'getMeta'; providerId: string }
+  | { v: 1; id: string; type: 'getStats'; providerId: string };
 
 /** Hub → client */
 export type HubResponse =
@@ -33,7 +35,8 @@ export type HubResponse =
       rowCount: number;
       columnDefinitions: ColumnDefinition[];
       inferredFields: FieldInfo[];
-    };
+    }
+  | { v: 1; id: string; type: 'stats'; stats: ProviderStats };
 
 /** Unsolicited hub → client push */
 export type HubPush =

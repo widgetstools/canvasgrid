@@ -213,3 +213,11 @@ export function createDefaultConfigBackend(): ConfigBackend {
   if (typeof indexedDB !== 'undefined') return new IndexedDbConfigBackend();
   return new LocalStorageConfigBackend();
 }
+
+/**
+ * Prefer this name in host docs: this interface is the **provider definition
+ * catalog**, not Markets Config Manager (profiles / identity / sync).
+ * See docs/starui-platform/03-config-planes.md.
+ */
+export type ProviderCatalogBackend = ConfigBackend;
+

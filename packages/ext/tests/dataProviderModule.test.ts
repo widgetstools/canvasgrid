@@ -86,7 +86,7 @@ describe('DataProviderController', () => {
 });
 
 describe('dataProviderModule', () => {
-  it('mounts settings UI with active selector', async () => {
+  it('mounts Customize selector without embedding the full editor', async () => {
     reset();
     registerDefaultTransports();
     const catalog = new MemoryConfigBackend();
@@ -107,7 +107,12 @@ describe('dataProviderModule', () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(host.querySelector('.vgext-dp')).toBeTruthy();
     expect(host.querySelector('select')).toBeTruthy();
-    expect(host.querySelector('.vg-dp-editor')).toBeTruthy();
+    expect(host.querySelector('.vg-dp-editor')).toBeNull();
+    expect(host.querySelector('.vg-dp-shell')).toBeNull();
+    const buttons = Array.from(host.querySelectorAll('button')).map((b) => b.textContent);
+    expect(buttons).toContain('Apply');
+    expect(buttons).toContain('Edit…');
+    expect(buttons).toContain('Manage…');
     inst.destroy();
     mod.dispose?.();
     host.remove();

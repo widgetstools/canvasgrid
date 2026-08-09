@@ -2,6 +2,7 @@ import type { VelocityGrid, GridState } from '@wellsfargo-starui/velocity-grid';
 import type {
   ProfileController, ProfileStore, ProfileMeta, Unsub,
 } from '../extension/types';
+import { isConfigSession } from './configSession';
 
 export interface ProfilesOptions { initialId?: string; extState?: () => Record<string, unknown> }
 
@@ -62,6 +63,7 @@ export class ProfilesController implements ProfileController {
     const existing = await this.store.load(this.id);
     const name = existing?.meta.name ?? this.id;
     await this.store.save(this.id, this.snapshot(this.id, name));
+    await this.syncActivePointer();
     this.setDirty(false);
     this.notifyList();
   }
@@ -81,6 +83,7 @@ export class ProfilesController implements ProfileController {
     }
     await this.store.save(id, this.snapshot(id, trimmed));
     this.id = id;
+    await this.syncActivePointer();
     this.setDirty(false);
     this.notifyList();
     return id;
@@ -111,6 +114,7 @@ export class ProfilesController implements ProfileController {
     if (!snap) return;
     this.id = id;
     this.grid.setState(snap.gridState);
+    await this.syncActivePointer();
     this.setDirty(false);
     this.notifyList();
   }
@@ -135,16 +139,25 @@ export class ProfilesController implements ProfileController {
     const existing = await this.store.load(this.id);
     if (existing) {
       this.grid.setState(existing.gridState);
+      await this.syncActivePointer();
       this.setDirty(false);
       this.notifyList();
       return;
     }
     await this.store.save(this.id, this.snapshot(this.id, this.id === 'default' ? 'Default' : this.id));
+    await this.syncActivePointer();
     this.setDirty(false);
     this.notifyList();
   }
 
   list(): Promise<ProfileMeta[]> { return this.store.list(); }
+
+  /** Keep ConfigSession.activeProfileId aligned with the controller pointer. */
+  private async syncActivePointer(): Promise<void> {
+    if (isConfigSession(this.store)) {
+      await this.store.setActiveProfileId(this.id);
+    }
+  }
 }
 
 function slugId(name: string): string {

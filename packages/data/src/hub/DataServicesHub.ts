@@ -9,6 +9,18 @@ import { pageCachedRows } from '../query/page';
 import type { FieldInfo } from '../types/schema';
 import { fieldPathsFromColumnDefs, projectRow, thinDelta } from '../pipeline/project';
 import { rowsToColumnar } from '../pipeline/wireFormat';
+import {
+  createSlotStats,
+  estimateBytes,
+  markRestart,
+  noteMessage,
+  notePublish,
+  noteStatus,
+  resetRuntimeCounters,
+  snapshotProviderStats,
+  type SlotStatsState,
+  zeroedStats,
+} from './hubStats';
 
 interface Subscriber {
   port: MessagePort;
@@ -25,6 +37,7 @@ interface ProviderSlot {
   inferredFields: FieldInfo[];
   rowsReceived: number;
   inferSample: Record<string, unknown>[];
+  stats: SlotStatsState;
 }
 
 /**
@@ -121,6 +134,31 @@ export class DataServicesHub {
           });
           return;
         }
+        case 'getStats': {
+          const slot = this.slots.get(req.providerId);
+          if (!slot) {
+            port.postMessage({
+              v: 1,
+              id: req.id,
+              type: 'stats',
+              stats: zeroedStats('idle'),
+            });
+            return;
+          }
+          const sample = slot.cache.size > 0 ? slot.cache.getAll()[0] : undefined;
+          port.postMessage({
+            v: 1,
+            id: req.id,
+            type: 'stats',
+            stats: snapshotProviderStats(slot.stats, {
+              rowCount: slot.cache.size,
+              sampleRow: sample,
+              subscriberCount: slot.subscribers.length,
+              status: slot.status,
+            }),
+          });
+          return;
+        }
         default:
           port.postMessage({ v: 1, id: (req as { id: string }).id, type: 'error', error: 'Unknown request' });
       }
@@ -153,6 +191,7 @@ export class DataServicesHub {
       inferredFields: config.config.inferredFields ?? [],
       rowsReceived: 0,
       inferSample: [],
+      stats: createSlotStats(),
     };
     this.slots.set(config.providerId, slot);
     return slot;
@@ -180,13 +219,14 @@ export class DataServicesHub {
     }
   }
 
-  private startSlot(providerId: string): void {
+  private startSlot(providerId: string, opts?: { preserveStats?: boolean }): void {
     const slot = this.slots.get(providerId);
     if (!slot) throw new Error(`Unknown provider ${providerId}`);
     if (slot.handle) return;
     const factory = getTransportFactory(slot.config.providerType);
     if (!factory) throw new Error(`No transport registered for ${slot.config.providerType}`);
 
+    if (!opts?.preserveStats) resetRuntimeCounters(slot.stats);
     slot.pipeline?.destroy();
     slot.pipeline = new LivePipeline(slot.config.config, (rows) => {
       slot.cache.upsert(rows);
@@ -215,17 +255,19 @@ export class DataServicesHub {
     slot.pipeline?.destroy();
     slot.pipeline = null;
     slot.status = 'disconnected';
+    noteStatus(slot.stats, slot.status);
     this.broadcastStatus(slot);
   }
 
   private restartSlot(providerId: string, overlay?: Record<string, unknown>): void {
     const slot = this.slots.get(providerId);
     if (!slot) throw new Error(`Unknown provider ${providerId}`);
+    markRestart(slot.stats);
     if (slot.handle) {
       void slot.handle.restart(overlay);
       return;
     }
-    this.startSlot(providerId);
+    this.startSlot(providerId, { preserveStats: true });
   }
 
   private onTransportEmit(
@@ -234,6 +276,7 @@ export class DataServicesHub {
   ): void {
     if ('status' in event && event.status) {
       slot.status = event.status;
+      noteStatus(slot.stats, event.status, event.error);
       this.broadcastStatus(slot, event.error);
       return;
     }
@@ -244,6 +287,7 @@ export class DataServicesHub {
     }
     if ('rows' in event) {
       let rows = event.rows as Record<string, unknown>[];
+      noteMessage(slot.stats, estimateBytes(rows));
       rows = this.applyIngressProjection(slot, rows);
       if (event.replace) {
         slot.cache.replace(rows);
@@ -298,6 +342,7 @@ export class DataServicesHub {
 
   private fanOutReplace(slot: ProviderSlot): void {
     if (slot.config.rowModel === 'serverSide') {
+      notePublish(slot.stats);
       this.broadcast(slot, { v: 1, type: 'tickNotify', providerId: slot.config.providerId });
       return;
     }
@@ -305,6 +350,7 @@ export class DataServicesHub {
     const chunk = slot.config.config.snapshotChunkSize ?? 500;
     for (let i = 0; i < rows.length; i += chunk) {
       const slice = rows.slice(i, i + chunk);
+      notePublish(slot.stats);
       this.broadcast(slot, {
         v: 1,
         type: 'push',
@@ -314,6 +360,7 @@ export class DataServicesHub {
       });
     }
     if (rows.length === 0) {
+      notePublish(slot.stats);
       this.broadcast(slot, {
         v: 1,
         type: 'push',
@@ -325,6 +372,7 @@ export class DataServicesHub {
   }
 
   private fanOutLive(slot: ProviderSlot, rows: Record<string, unknown>[]): void {
+    notePublish(slot.stats);
     if (slot.config.rowModel === 'serverSide') {
       this.broadcast(slot, { v: 1, type: 'tickNotify', providerId: slot.config.providerId });
       return;

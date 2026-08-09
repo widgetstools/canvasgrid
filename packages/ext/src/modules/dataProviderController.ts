@@ -46,6 +46,11 @@ export class DataProviderController {
     this.onActiveChange = opts?.onActiveChange;
   }
 
+  /** Hub connection options shared with Diagnostics in the editor popout. */
+  getHubOpts(): ProviderClientOptions {
+    return { ...this.clientOpts };
+  }
+
   getCatalog(): ConfigBackend {
     return this.catalog;
   }

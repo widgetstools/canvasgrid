@@ -77,8 +77,8 @@ export function uniqueCopyName(base: string, existing: string[]): string {
 }
 
 /** Dirty-aware save disk: fold the view into the active layout, then
- *  persist the full grid config (view + layouts) to localStorage under
- *  `velocity-grid:config:<gridId>`. Requires a construction `gridId`. */
+ *  persist the full grid config (view + layouts) through ConfigSession
+ *  (`velocity-grid:instance:<gridId>`). Requires a construction `gridId`. */
 export function layoutSaveItem(): ToolbarItem {
   return {
     id: 'layout-save', kind: 'toolbar-item', slot: 'primary-right',
@@ -94,7 +94,7 @@ export function layoutSaveItem(): ToolbarItem {
         let name = 'Default';
         try { name = grid.getActiveLayout().name; } catch { /* pre-init grid */ }
         btn.title = dirty
-          ? `Save layout '${name}' + grid config to localStorage`
+          ? `Save layout '${name}' + grid config`
           : 'Config up to date';
       };
       sync();
@@ -118,7 +118,7 @@ export function layoutSaveItem(): ToolbarItem {
           grid.updateLayout();
           const gid = String(grid.getGridOption('gridId') ?? '');
           if (!gid) {
-            console.warn('[cgext] layout-save: set options.gridId to persist config to localStorage');
+            console.warn('[cgext] layout-save: set options.gridId to persist config via ConfigSession');
           } else {
             saveConfigToLocalStorage(gid, captureGridConfig(grid));
           }

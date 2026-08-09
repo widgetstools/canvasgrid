@@ -1,5 +1,5 @@
 import { defineTransportPlugin, type TransportPlugin } from '../registry/plugins';
-import { mountFieldDescriptors } from '../editor/connectionFields';
+import { mountFieldDescriptors, mountFieldGroups } from '../editor/connectionFields';
 import { createMockTransport } from './mock';
 import { createStompTransport } from './stomp';
 import { createRestTransport } from './rest';
@@ -23,11 +23,20 @@ export const mockTransportPlugin: TransportPlugin = defineTransportPlugin({
     keyColumn: 'positionId',
   }),
   mountConnectionFields(host, api) {
-    return mountFieldDescriptors(host, [
-      { kind: 'number', key: 'rowCount', label: 'rowCount' },
-      { kind: 'number', key: 'tickMs', label: 'tickMs' },
-      { kind: 'select', key: 'shape', label: 'shape', options: ['positions', 'trades', 'orders'] },
-    ], api);
+    return mountFieldGroups(host, [{
+      title: 'Mock stream',
+      fields: [
+        { kind: 'number', key: 'rowCount', label: 'Row count', help: 'Initial snapshot size.' },
+        { kind: 'number', key: 'tickMs', label: 'Tick interval (ms)', help: '0 = snapshot only, no live ticks.' },
+        {
+          kind: 'select',
+          key: 'shape',
+          label: 'Shape',
+          options: ['positions', 'trades', 'orders'],
+          help: 'Synthetic row shape for local demos.',
+        },
+      ],
+    }], api);
   },
 });
 
@@ -40,14 +49,80 @@ export const stompTransportPlugin: TransportPlugin = defineTransportPlugin({
     listenerTopic: '',
     snapshotEndToken: 'Success',
     autoStart: true,
+    heartbeat: { outgoing: 4000, incoming: 4000 },
   }),
   mountConnectionFields(host, api) {
-    return mountFieldDescriptors(host, [
-      { kind: 'text', key: 'websocketUrl', label: 'websocketUrl' },
-      { kind: 'text', key: 'listenerTopic', label: 'listenerTopic' },
-      { kind: 'text', key: 'requestMessage', label: 'requestMessage' },
-      { kind: 'text', key: 'requestBody', label: 'requestBody' },
-      { kind: 'text', key: 'snapshotEndToken', label: 'snapshotEndToken' },
+    // Markets StompFields layout: Connection + Trigger + Heartbeat.
+    return mountFieldGroups(host, [
+      {
+        title: 'Connection',
+        fields: [
+          {
+            kind: 'text',
+            key: 'websocketUrl',
+            label: 'WebSocket URL',
+            required: true,
+            mono: true,
+            placeholder: 'ws://localhost:8080',
+            help: 'Supports {{appData.key}} (deterministic) and [name] (session-unique ID).',
+          },
+          {
+            kind: 'text',
+            key: 'listenerTopic',
+            label: 'Listener Topic',
+            required: true,
+            mono: true,
+            placeholder: '/snapshot/positions/TRADER001',
+            help: 'Topic the worker SUBSCRIBEs to. Use [name] for a session-unique ID.',
+          },
+        ],
+      },
+      {
+        title: 'Trigger',
+        fields: [
+          {
+            kind: 'text',
+            key: 'requestMessage',
+            label: 'Trigger Destination',
+            mono: true,
+            placeholder: '/snapshot/positions/TRADER001/1000',
+            help: 'SEND destination after subscribing. Supports [name] tokens.',
+          },
+          {
+            kind: 'text',
+            key: 'requestBody',
+            label: 'Trigger Body',
+            mono: true,
+            placeholder: '(empty — rate in destination)',
+            help: 'Leave empty when destination encodes everything. Some servers expect START or a JSON envelope.',
+          },
+          {
+            kind: 'text',
+            key: 'snapshotEndToken',
+            label: 'Snapshot End Token',
+            mono: true,
+            placeholder: 'Success',
+            help: "Case-insensitive substring that flips status: 'snapshot' → 'ready'.",
+          },
+        ],
+      },
+      {
+        title: 'Heartbeat',
+        fields: [
+          {
+            kind: 'number',
+            key: 'heartbeat.outgoing',
+            label: 'Outgoing (ms)',
+            help: 'STOMP heartbeat interval the client sends. 0 disables.',
+          },
+          {
+            kind: 'number',
+            key: 'heartbeat.incoming',
+            label: 'Incoming (ms)',
+            help: 'Expected broker heartbeat interval. 0 disables.',
+          },
+        ],
+      },
     ], api);
   },
 });
@@ -63,12 +138,41 @@ export const restTransportPlugin: TransportPlugin = defineTransportPlugin({
     pollInterval: 0,
   }),
   mountConnectionFields(host, api) {
-    return mountFieldDescriptors(host, [
-      { kind: 'text', key: 'baseUrl', label: 'baseUrl' },
-      { kind: 'text', key: 'endpoint', label: 'endpoint' },
-      { kind: 'number', key: 'pollInterval', label: 'pollInterval' },
-      { kind: 'text', key: 'rowsPath', label: 'rowsPath' },
-    ], api);
+    return mountFieldGroups(host, [{
+      title: 'Endpoint',
+      fields: [
+        {
+          kind: 'text',
+          key: 'baseUrl',
+          label: 'Base URL',
+          required: true,
+          mono: true,
+          placeholder: 'https://api.example.com',
+        },
+        {
+          kind: 'text',
+          key: 'endpoint',
+          label: 'Endpoint',
+          required: true,
+          mono: true,
+          placeholder: '/v1/positions',
+        },
+        {
+          kind: 'text',
+          key: 'rowsPath',
+          label: 'Rows Path',
+          mono: true,
+          placeholder: 'data.results',
+          help: 'Dot path into the JSON response. Empty if response IS the array.',
+        },
+        {
+          kind: 'number',
+          key: 'pollInterval',
+          label: 'Poll interval (ms)',
+          help: '0 = one-shot fetch.',
+        },
+      ],
+    }], api);
   },
 });
 

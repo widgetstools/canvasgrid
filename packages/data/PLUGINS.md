@@ -55,7 +55,7 @@ await catalog.save({
 });
 ```
 
-Or use the Provider Editor / Ext settings module and Save.
+Or open the shared editor popout (`openProviderEditorPopout`) / Save from the form.
 
 ## 3. Ext: select provider at runtime
 
@@ -72,9 +72,10 @@ new VelocityGridExt(el, {
 });
 ```
 
-- Definitions live in `ConfigBackend` (IndexedDB by default).
+- Definitions live in `ConfigBackend` (localStorage by default; IndexedDB preferred for multi-window).
 - Active selection `{ activeProviderId }` is a StateModule slice `data-provider` and rides profiles / `getConfig` / `persistConfig`.
-- Apply in the settings panel binds CSRM or SSRM via the hub.
+- Customize / settings shows **selection + Apply** only; **Edit… / Manage…** opens the shared browser popout for authoring.
+- Apply binds CSRM or SSRM via the hub.
 
 ## Event → grid mapping
 
@@ -84,3 +85,14 @@ new VelocityGridExt(el, {
 | `{ rows }` | tick → `applyTransaction` |
 | `{ status: 'ready' }` | status ready |
 | authored `columnDefinitions` | `setColumnDefs` on bind |
+
+## Catalog vs Config Manager
+
+`ConfigBackend` / `ProviderCatalogBackend` stores **data-provider definitions**
+only. It is not Markets Config Manager (profile bundles, identity, sync).
+
+- Persist provider **bodies** here.
+- Persist `{ activeProviderId }` on the grid via StateModule `data-provider`
+  (and optionally `gridLevelData` on Ext `ConfigSession`).
+- See `docs/starui-platform/03-config-planes.md`.
+

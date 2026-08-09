@@ -8,7 +8,11 @@ import { ExtensionRegistry, type ExtensionSpec } from './extension/registry';
 import { ShellLayout } from './shell/shell';
 import { createExtContext } from './extension/context';
 import { ProfilesController } from './profiles/controller';
-import { LocalStorageProfileStore } from './profiles/localStorageStore';
+import {
+  LocalStorageConfigSession,
+  isConfigSession,
+  type ConfigSession,
+} from './profiles/configSession';
 import { isSettingsModule, isToolbarItem, type VelocityGridExtContext, type ProfileStore } from './extension/types';
 import { buildDefaultBundle } from './defaultBundle';
 import {
@@ -21,7 +25,12 @@ import {
 export interface VelocityGridExtOptions<TRow = any> extends VelocityGridOptions<TRow> {
   ext?: {
     extensions?: ExtensionSpec[];
-    profiles?: { store?: ProfileStore; initialId?: string };
+    /**
+     * Profile / ConfigSession store. Prefer a {@link ConfigSession}
+     * (default: LocalStorageConfigSession keyed by `gridId`) so layouts
+     * save and profile save share one instance bundle.
+     */
+    profiles?: { store?: ProfileStore | ConfigSession; initialId?: string };
     modules?: Record<string, unknown>;
   };
 }
@@ -47,6 +56,8 @@ export class VelocityGridExt<TRow = any> {
   private registry = new ExtensionRegistry();
   private profiles: ProfilesController;
   private ctx: VelocityGridExtContext;
+  /** Set when the profile store is a ConfigSession (default adapter). */
+  private configSession: ConfigSession | null = null;
 
   constructor(container: HTMLElement, options: VelocityGridExtOptions<TRow> = {} as any) {
     const { ext, ...gridOptions } = options;
@@ -61,7 +72,12 @@ export class VelocityGridExt<TRow = any> {
     }
     this._grid = new VelocityGrid<TRow>(this.shell.gridMount, gridOptions as VelocityGridOptions<TRow>);
 
-    const store = ext?.profiles?.store ?? new LocalStorageProfileStore();
+    const gridId = typeof gridOptions.gridId === 'string' && gridOptions.gridId
+      ? gridOptions.gridId
+      : 'default';
+    const store = ext?.profiles?.store
+      ?? new LocalStorageConfigSession(gridId);
+    this.configSession = isConfigSession(store) ? store : null;
     this.profiles = new ProfilesController(this._grid, store, {
       initialId: ext?.profiles?.initialId ?? 'default',
     });
@@ -136,15 +152,21 @@ export class VelocityGridExt<TRow = any> {
     this._grid.setState(viewState as GridState, { exhaustive: true });
   }
 
-  /** Persist {@link getConfig} to `localStorage` under
-   *  `velocity-grid:config:<gridId>`. No-op (warns) without a `gridId`. */
+  /** Persist {@link getConfig} through the ConfigSession instance bundle
+   *  (`velocity-grid:instance:<gridId>`). Falls back to the same helper
+   *  path when a custom non-session ProfileStore is injected. */
   persistConfig(): void {
     const gid = this._grid.getGridOption('gridId');
     if (typeof gid !== 'string' || !gid) {
       console.warn('[velocity-grid-ext] persistConfig requires options.gridId');
       return;
     }
-    saveConfigToLocalStorage(gid, this.getConfig());
+    const cfg = this.getConfig();
+    if (this.configSession) {
+      void this.configSession.saveWorkspace(cfg);
+      return;
+    }
+    saveConfigToLocalStorage(gid, cfg);
   }
 
   /** Restore a blob previously written by {@link persistConfig} / the
@@ -152,22 +174,46 @@ export class VelocityGridExt<TRow = any> {
   restorePersistedConfig(): boolean {
     const gid = this._grid.getGridOption('gridId');
     if (typeof gid !== 'string' || !gid) return false;
+    if (this.configSession) {
+      // sync path for LocalStorageConfigSession
+      if (this.configSession instanceof LocalStorageConfigSession) {
+        const raw = this.configSession.loadWorkspaceSync();
+        if (!raw || typeof raw !== 'object') return false;
+        this.loadConfig(raw as VelocityGridExtConfig);
+        return true;
+      }
+    }
     const raw = loadConfigFromLocalStorage(gid);
     if (!raw || typeof raw !== 'object') return false;
     this.loadConfig(raw as VelocityGridExtConfig);
     return true;
   }
 
-  /** Whether `localStorage` has a saved config for this grid's `gridId`. */
+  /** Whether a saved instance / workspace exists for this grid's `gridId`. */
   hasPersistedConfig(): boolean {
     const gid = this._grid.getGridOption('gridId');
-    return typeof gid === 'string' && gid.length > 0 && hasConfigInLocalStorage(gid);
+    if (typeof gid !== 'string' || !gid) return false;
+    if (this.configSession instanceof LocalStorageConfigSession) {
+      return this.configSession.hasWorkspaceSync();
+    }
+    return hasConfigInLocalStorage(gid);
   }
 
-  /** Delete the persisted config for this grid's `gridId`. */
+  /** Delete the persisted instance bundle for this grid's `gridId`. */
   clearPersistedConfig(): void {
     const gid = this._grid.getGridOption('gridId');
-    if (typeof gid === 'string' && gid) clearConfigFromLocalStorage(gid);
+    if (typeof gid !== 'string' || !gid) return;
+    if (this.configSession instanceof LocalStorageConfigSession) {
+      this.configSession.clearWorkspaceSync();
+      try { localStorage.removeItem(`velocity-grid:config:${gid}`); } catch { /* ignore */ }
+      return;
+    }
+    clearConfigFromLocalStorage(gid);
+  }
+
+  /** Active ConfigSession when the profile store implements it. */
+  getConfigSession(): ConfigSession | null {
+    return this.configSession;
   }
 
   on(type: string, fn: (e: unknown) => void): () => void {

@@ -7,6 +7,8 @@ import type {
   SsrmGetRowsResult,
   Unsubscribe,
 } from '../types';
+import type { ProviderStats } from '../types/stats';
+import { emptyProviderStats } from '../types/stats';
 import { connectHub, type HubConnection } from './hubConnection';
 import { columnarToRows, type ColumnarBatch } from '../pipeline/wireFormat';
 
@@ -182,6 +184,18 @@ export class ProviderClientAdapter<T extends Record<string, unknown> = Record<st
     });
     if (res.type !== 'getRowsResult') throw new Error('Unexpected hub response');
     return res.result as SsrmGetRowsResult<T>;
+  }
+
+  /** Live hub diagnostics (Markets ProviderStats parity). */
+  async getStats(): Promise<ProviderStats> {
+    const res = await this.hub.post({
+      v: 1,
+      id: '',
+      type: 'getStats',
+      providerId: this.providerId,
+    });
+    if (res.type !== 'stats') return emptyProviderStats(this.status);
+    return res.stats;
   }
 
   destroy(): void {

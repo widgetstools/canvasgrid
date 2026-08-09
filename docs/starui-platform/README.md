@@ -60,6 +60,7 @@ Both seams need to live in `cgrid/src/api.ts` (the public contract documented in
 - **[01-data-providers.md](01-data-providers.md)** — Full starui data layer: hub-spoke SharedWorker architecture, ProviderEmit / IDataProvider contracts, transport types (STOMP, REST, Mock, WebSocket, AppData), snapshot vs delta semantics, live/historical switching with as-of-date templating, throttling + conflation, key column identity, bootstrap lifecycle. Includes recommended cgrid API surface for data ingress.
 
 - **[02-config-manager.md](02-config-manager.md)** — Full starui config layer: ConfigManager with IndexedDB persistence, profile bundle structure, per-module state slicing with schema versioning, identity + impersonation + visibility, optimistic locking, cross-tab BroadcastChannel sync, seed data + migrations, deploy export/import. Includes recommended cgrid API surface for state management.
+- **[03-config-planes.md](03-config-planes.md)** — Canvasgrid ownership map: AppData vs Provider catalog (`ConfigBackend`) vs ConfigSession / Config Manager, `getConfig` name collision, instance bundle shape, and how a future Dexie HostConfigManager plugs in.
 
 ---
 
@@ -67,7 +68,7 @@ Both seams need to live in `cgrid/src/api.ts` (the public contract documented in
 
 Both subsystems are **already solved** in starui. cgrid doesn't need to:
 - Ship its own data provider plumbing (SharedWorker, hub, transports) — too opinionated, too host-specific
-- Ship its own config manager (IndexedDB, REST sync, identity, visibility) — same reason
+- Ship a full Markets Config Manager (IndexedDB, REST sync, identity, visibility) — host concern; canvasgrid ships only a thin optional `ConfigSession` adapter (see [03-config-planes.md](03-config-planes.md))
 - Reimplement live/historical switching — the host orchestrates it
 
 cgrid **does** need to:

@@ -22,7 +22,7 @@ export function createStompTransport(
   let client: Client | null = null;
   let snapshotComplete = false;
   let received = 0;
-  const endToken = cfg.snapshotEndToken ?? 'Success';
+  const endTokenRe = buildEndTokenMatcher(cfg.snapshotEndToken ?? 'Success');
   const reconnectDelay = cfg.reconnect?.initialDelayMs ?? 2000;
 
   const activate = (): void => {
@@ -33,8 +33,8 @@ export function createStompTransport(
     const c = new Client({
       brokerURL: cfg.websocketUrl,
       reconnectDelay,
-      heartbeatIncoming: cfg.heartbeat?.incoming ?? 0,
-      heartbeatOutgoing: cfg.heartbeat?.outgoing ?? 0,
+      heartbeatIncoming: cfg.heartbeat?.incoming ?? 4000,
+      heartbeatOutgoing: cfg.heartbeat?.outgoing ?? 4000,
       onConnect: () => {
         emit({ status: 'snapshot' });
         c.subscribe(cfg.listenerTopic, (msg: IMessage) => onMessage(msg));
@@ -58,7 +58,8 @@ export function createStompTransport(
   const onMessage = (msg: IMessage): void => {
     const body = msg.body?.trim() ?? '';
     if (!body) return;
-    if (body === endToken || body.startsWith(`${endToken}:`)) {
+    // Markets: case-insensitive substring match on the end token.
+    if (endTokenRe?.test(body)) {
       if (snapshotComplete) return;
       snapshotComplete = true;
       emit({ rowsReceived: received });
@@ -103,4 +104,10 @@ export function createStompTransport(
       activate();
     },
   };
+}
+
+/** Case-insensitive substring matcher (Markets `buildEndTokenMatcher`). */
+export function buildEndTokenMatcher(token: string | undefined): RegExp | null {
+  if (!token) return null;
+  return new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 }
