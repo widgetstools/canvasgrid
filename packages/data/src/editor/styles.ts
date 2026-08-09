@@ -2,7 +2,26 @@
  * Provider editor styles — driven by VelocityGrid `--vg-*` theme tokens so
  * the panel tracks dark / light (and custom) themes when mounted under
  * VelocityGridExt chrome. Fallbacks lean light for standalone / popout hosts.
+ *
+ * Primitive controls (switch, caps label, input focus ring) source their look
+ * from the shared kernel primitives so this kit and the ext cockpit kit can't
+ * drift; passing the `--vg-dp-*` aliases reproduces this kit's exact rendering.
  */
+import {
+  vguiSwitchCss,
+  vguiCapsCss,
+  vguiInputInteractionCss,
+  type VguiTokens,
+} from '@wellsfargo-starui/velocity-grid/ui/primitives';
+
+const DP_TOKENS: VguiTokens = {
+  accent: 'var(--vg-dp-accent)',
+  border: 'var(--vg-dp-border)',
+  muted: 'var(--vg-dp-muted)',
+  surface: 'var(--vg-dp-input-bg)',
+  radius: 'var(--vg-dp-radius)',
+};
+
 export const EDITOR_CSS = `
 .vg-dp-editor,
 .vg-dp-shell {
@@ -199,9 +218,12 @@ export const EDITOR_CSS = `
   border-radius: 0;
 }
 
-.vg-dp-shell button,
+/* Generic button chrome — excludes .vg-dp-switch, which is a <button> but owns
+   its full pill styling (otherwise this rule's specificity overrides the
+   switch on-state track fill). */
+.vg-dp-shell button:not(.vg-dp-switch),
 .vg-dp-shell .vg-dp-btn,
-.vg-dp-editor button[type="button"]:not(.vg-dp-editor__tab):not(.vg-dp-editor__actions button),
+.vg-dp-editor button[type="button"]:not(.vg-dp-editor__tab):not(.vg-dp-editor__actions button):not(.vg-dp-switch),
 .vg-dp-editor .vg-dp-btn:not(.vg-dp-editor__tab) {
   appearance: none;
   border: 1px solid var(--vg-dp-border);
@@ -222,7 +244,7 @@ export const EDITOR_CSS = `
   color: var(--vg-dp-accent-fg);
   border-color: transparent;
 }
-.vg-dp-shell button:hover,
+.vg-dp-shell button:not(.vg-dp-switch):hover,
 .vg-dp-shell .vg-dp-btn:hover:not(:disabled) { border-color: var(--vg-dp-accent); }
 
 .vg-dp-btn--secondary,
@@ -406,25 +428,22 @@ export const EDITOR_CSS = `
 .vg-dp-shell__sidebar-head input[type="search"] {
   color-scheme: inherit;
 }
-/* Shared accent focus ring — matches the ext cockpit input (.ckp-input:focus):
-   accent border + 3px translucent glow + faint accent wash. */
-.vg-dp-editor__grid input:focus,
-.vg-dp-editor__grid select:focus,
-.vg-dp-editor__grid textarea:focus,
-.vg-dp-field input:focus,
-.vg-dp-field select:focus,
-.vg-dp-field textarea:focus,
-.vg-dp-editor__inline-actions input:focus,
-.vg-dp-editor__header input:focus,
-.vg-dp-editor__header textarea:focus,
-.vg-dp-shell__sidebar-head input[type="search"]:focus,
-.vg-dp-editor__fields-toolbar input[type="search"]:focus,
-.vg-dp-search:focus {
-  outline: none;
-  border-color: color-mix(in srgb, var(--vg-dp-accent) 70%, var(--vg-dp-border));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vg-dp-accent) 16%, transparent);
-  background: color-mix(in srgb, var(--vg-dp-accent) 5%, var(--vg-dp-input-bg));
-}
+/* Shared hover + accent focus ring from the kernel primitive (same treatment
+   as the ext cockpit input). Base box geometry stays on the rules above. */
+${vguiInputInteractionCss([
+  '.vg-dp-editor__grid input',
+  '.vg-dp-editor__grid select',
+  '.vg-dp-editor__grid textarea',
+  '.vg-dp-field input',
+  '.vg-dp-field select',
+  '.vg-dp-field textarea',
+  '.vg-dp-editor__inline-actions input',
+  '.vg-dp-editor__header input',
+  '.vg-dp-editor__header textarea',
+  '.vg-dp-shell__sidebar-head input[type="search"]',
+  '.vg-dp-editor__fields-toolbar input[type="search"]',
+  '.vg-dp-search',
+], DP_TOKENS)}
 .vg-dp-mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
 .vg-dp-editor__grid input[type="checkbox"] {
   width: auto;
@@ -542,7 +561,7 @@ export const EDITOR_CSS = `
   overflow: auto;
   white-space: pre-wrap;
 }
-.vg-dp-editor button[type="button"]:not(.vg-dp-editor__tab):not(.vg-dp-editor__actions button):hover {
+.vg-dp-editor button[type="button"]:not(.vg-dp-editor__tab):not(.vg-dp-editor__actions button):not(.vg-dp-switch):hover {
   border-color: var(--vg-dp-accent);
   color: var(--vg-dp-accent);
 }
@@ -581,13 +600,7 @@ export const EDITOR_CSS = `
   background: var(--vg-dp-border);
 }
 .vg-dp-field { display: flex; flex-direction: column; gap: 6px; }
-.vg-dp-field__label {
-  font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--vg-dp-muted);
-}
+${vguiCapsCss('.vg-dp-field__label', DP_TOKENS)}
 .vg-dp-field__help {
   margin: 0;
   font-size: 11px;
@@ -608,40 +621,9 @@ export const EDITOR_CSS = `
   color: var(--vg-dp-muted);
 }
 
-/* Switch toggle — matches the ext cockpit switch (.ckp-switch): 36×20 pill,
-   quiet accent-tint track when on (not a solid fill), accent-coloured knob. */
-.vg-dp-switch {
-  appearance: none;
-  position: relative;
-  box-sizing: border-box;
-  width: 36px;
-  height: 20px;
-  border-radius: 999px;
-  border: 1px solid var(--vg-dp-border);
-  background: color-mix(in srgb, var(--vg-dp-fg) 5%, var(--vg-dp-bg));
-  padding: 0;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: background 110ms ease, border-color 110ms ease;
-}
-.vg-dp-switch__knob {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--vg-dp-muted);
-  transition: left 140ms ease, background 140ms ease;
-}
-.vg-dp-switch.is-on {
-  background: color-mix(in srgb, var(--vg-dp-accent) 14%, transparent);
-  border-color: color-mix(in srgb, var(--vg-dp-accent) 55%, transparent);
-}
-.vg-dp-switch.is-on .vg-dp-switch__knob {
-  left: 18px;
-  background: var(--vg-dp-accent);
-}
+/* Switch toggle — geometry + states from the shared kernel primitive so this
+   kit and the ext cockpit switch (.ckp-switch) can't drift. */
+${vguiSwitchCss({ root: 'vg-dp-switch', knob: 'vg-dp-switch__knob', on: 'is-on' }, DP_TOKENS)}
 .vg-dp-editor__switch-row {
   display: flex;
   align-items: center;

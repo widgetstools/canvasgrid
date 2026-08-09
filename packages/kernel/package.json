@@ -13,6 +13,10 @@
     "./icons/lucide.generated": {
       "types": "./src/icons/lucide.generated.ts",
       "import": "./src/icons/lucide.generated.ts"
+    },
+    "./ui/primitives": {
+      "types": "./src/ui/primitives.ts",
+      "import": "./src/ui/primitives.ts"
     }
   },
   "scripts": {
