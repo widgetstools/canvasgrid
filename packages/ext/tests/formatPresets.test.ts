@@ -2,8 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { compileFormat } from '@wellsfargo-starui/velocity-grid-format';
 import {
   CATEGORY_LABELS, CURRENCY_QUICK_INSERT, EXCEL_EXAMPLES,
-  applyCurrencySymbol, categoriesForDataType, codeText, defaultSampleValue,
-  filterPresets, findPresetByFormat, presetsForCategory, presetsForDataType,
+  adjustFormatDecimals, applyCurrencySymbol, categoriesForDataType, codeText,
+  defaultSampleValue, filterPresets, findPresetByFormat, presetsForCategory,
+  presetsForDataType,
 } from '../src/toolbar/formatPresets';
 
 describe('categories', () => {
@@ -111,5 +112,24 @@ describe('excel reference data', () => {
     ]);
     const tick = EXCEL_EXAMPLES.find((s) => s.title.startsWith('Fixed-income'))!;
     expect(tick.rows.every((r) => r.format.startsWith('—'))).toBe(true);
+  });
+});
+
+describe('adjustFormatDecimals', () => {
+  it('preserves currency / percent wrappers while bumping decimals', () => {
+    expect(adjustFormatDecimals('$#,##0.00', +1)).toBe('$#,##0.000');
+    expect(adjustFormatDecimals('$#,##0.00', -1)).toBe('$#,##0.0');
+    expect(adjustFormatDecimals('$#,##0.0', -1)).toBe('$#,##0');
+    expect(adjustFormatDecimals('0.00%', +1)).toBe('0.000%');
+    expect(adjustFormatDecimals('€#,##0.00;(€#,##0.00)', -1)).toBe('€#,##0.0;(€#,##0.0)');
+  });
+  it('adds decimals to integer / raw formats', () => {
+    expect(adjustFormatDecimals('$#,##0', +1)).toBe('$#,##0.0');
+    expect(adjustFormatDecimals(undefined, +1)).toBe('#,##0.0');
+    expect(adjustFormatDecimals('#,##0', +2)).toBe('#,##0.00');
+  });
+  it('leaves expression and tick formats alone', () => {
+    expect(adjustFormatDecimals('TICK32', +1)).toBe('TICK32');
+    expect(adjustFormatDecimals('=FIXED([value], 2)', +1)).toBe('=FIXED([value], 2)');
   });
 });

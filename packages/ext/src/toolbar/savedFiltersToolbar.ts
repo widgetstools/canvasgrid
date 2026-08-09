@@ -3,7 +3,6 @@
  * named filter models per layout (Markets Grid "quick filter buttons").
  */
 import type { VelocityGridExtContext, ToolbarItem, ToolbarItemInstance } from '../extension/types';
-import { svg } from './ui';
 import {
   doesRowMatchFilterModel,
   generateLabel,
@@ -22,8 +21,10 @@ export interface SavedFilter {
 }
 
 const I = {
-  plus: 'M12 5v14M5 12h14',
-  filterX: 'M22 3H2l8 9.46V19l4 2v-8.54zM2 2l20 20',
+  /** Lucide filter-plus — same funnel body as filterX for matched optical size. */
+  filterPlus: 'M13.013 3H2l8 9.46V19l4 2v-8.54l.9-1.055 M16 6h6 M19 3v6',
+  /** Lucide filter-x */
+  filterX: 'M13.013 3H2l8 9.46V19l4 2v-8.54l.9-1.055 M22 3l-5 5 M17 3l5 5',
   pencil: 'M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z',
   trash: 'M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6',
   more: 'M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1 M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1',
@@ -67,23 +68,35 @@ function validateFilters(raw: unknown): SavedFilter[] {
   return out;
 }
 
-function iconBtn(path: string, title: string, cls = 'vgext-sf-iconbtn', size = 14): HTMLButtonElement {
+function iconBtn(
+  path: string,
+  title: string,
+  cls = 'vgext-sf-iconbtn',
+  size = 14,
+  strokeWidth = 1.8,
+): HTMLButtonElement {
   const b = document.createElement('button');
   b.type = 'button';
   b.className = cls;
   b.title = title;
   b.setAttribute('aria-label', title);
-  b.innerHTML = svg(path, size);
+  // Inline stroke-width so CSS can't leave mismatched weights on sibling icons.
+  b.innerHTML =
+    `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" ` +
+    `stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">` +
+    `<path d="${path}"/></svg>`;
   return b;
 }
 
 function ensureStyles(): void {
   const ID = 'vgext-saved-filters-styles';
-  if (document.getElementById(ID)) return;
-  const style = document.createElement('style');
-  style.id = ID;
+  let style = document.getElementById(ID) as HTMLStyleElement | null;
+  if (!style) {
+    style = document.createElement('style');
+    style.id = ID;
+    document.head.appendChild(style);
+  }
   style.textContent = SAVED_FILTERS_CSS;
-  document.head.appendChild(style);
 }
 
 /** Title-bar saved-filter pills (slot: primary-left, after brand). */
@@ -115,8 +128,9 @@ export function savedFiltersItem(): ToolbarItem {
       prevBtn.hidden = true;
       nextBtn.hidden = true;
 
-      const clearBtn = iconBtn(I.filterX, 'Deactivate all filter pills', 'vgext-sf-iconbtn vgext-sf-clear');
-      const addBtn = iconBtn(I.plus, 'Save current filters as a pill', 'vgext-sf-iconbtn vgext-sf-add');
+      // Matched funnel icons (filter-x / filter-plus), same box + stroke weight.
+      const clearBtn = iconBtn(I.filterX, 'Deactivate all filter pills', 'vgext-sf-iconbtn vgext-sf-clear', 18, 2.35);
+      const addBtn = iconBtn(I.filterPlus, 'Save current filters as a pill', 'vgext-sf-iconbtn vgext-sf-add', 18, 2.35);
       addBtn.disabled = true;
 
       root.append(prevBtn, scroller, nextBtn, clearBtn, addBtn);
@@ -488,9 +502,12 @@ export function savedFiltersItem(): ToolbarItem {
 const SAVED_FILTERS_CSS = `
 .vgext-sf {
   display: inline-flex; align-items: center; gap: 4px;
-  min-width: 0; max-width: min(52vw, 720px);
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   margin-left: 4px;
 }
+.vgext-sf[hidden] { display: none !important; }
 .vgext-sf-scroll {
   flex: 1 1 auto; min-width: 0; overflow-x: auto; overflow-y: hidden;
   scrollbar-width: none;
@@ -551,6 +568,17 @@ const SAVED_FILTERS_CSS = `
 }
 .vgext-sf-iconbtn:hover:not(:disabled) { color: var(--vg-fg-color, #e5e9f0); background: var(--vg-control-bg, rgba(255,255,255,.06)); }
 .vgext-sf-iconbtn:disabled { opacity: 0.35; cursor: default; }
+.vgext-sf-clear,
+.vgext-sf-add {
+  width: 32px;
+  height: 32px;
+}
+.vgext-sf-clear svg,
+.vgext-sf-add svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+}
 .vgext-sf-clear { color: color-mix(in srgb, var(--vg-neg-color, #e5646e) 85%, var(--vg-muted-fg-color, #9aa4b6)); }
 .vgext-sf-clear:hover:not(:disabled) { color: var(--vg-neg-color, #e5646e); }
 .vgext-sf-add:not(:disabled) { color: var(--vg-accent-color, #4f9cf9); }

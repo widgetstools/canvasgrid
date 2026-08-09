@@ -57,7 +57,8 @@ export function wireRibbonOverflow(opts: {
   };
 
   const syncButton = (): void => {
-    const n = stash.childElementCount;
+    // While the panel is open, overflowed nodes live in the panel — still count them.
+    const n = stash.childElementCount + (panel ? panel.childElementCount : 0);
     button.hidden = n === 0;
     button.classList.toggle('has-items', n > 0);
     button.title = n === 0 ? 'More tools' : `More tools (${n})`;
@@ -139,7 +140,7 @@ export function wireRibbonOverflow(opts: {
   if (typeof ResizeObserver !== 'undefined') {
     ro = new ResizeObserver(() => schedule());
     ro.observe(track);
-    const band = track.closest('.vgext-ribbon-band, .vgext-edit-strip, .vgext-ribbon');
+    const band = track.closest('.vgext-edit-strip, .vgext-format-strip, .vgext-ribbon');
     if (band) ro.observe(band);
   } else {
     window.addEventListener('resize', schedule);

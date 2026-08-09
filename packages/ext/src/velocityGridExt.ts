@@ -96,6 +96,9 @@ export class VelocityGridExt<TRow = any> {
 
   get grid(): VelocityGrid<TRow> { return this._grid; }
 
+  /** Shared extension context (events, profiles, modal) for host wiring. */
+  get context(): VelocityGridExtContext { return this.ctx; }
+
   setRowData(rows: TRow[]): void { this._grid.setRowData(rows); }
   getState(): GridState { return this._grid.getState(); }
   // Kernel `setState` is typed to take a full `GridState`, but at runtime

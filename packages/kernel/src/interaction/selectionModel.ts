@@ -281,6 +281,9 @@ export class SelectionModel {
    *  render order. When `extend` is true but the last range is not a
    *  full column band, falls through to the plain replacement so the
    *  header click still produces a deterministic single-column band.
+   *  Always keeps the focus ring inside the resulting band (header
+   *  select used to leave focus on the previously focused cell, which
+   *  could sit just outside the shaded range).
    *  No-op (no emit) when `rowCount` is 0 or `colId` is unknown.
    *  Cycle 9 / Task 4 (header-click whole-column + shift-extend). */
   selectColumnBand(
@@ -303,11 +306,36 @@ export class SelectionModel {
       const hi = Math.max(firstIdx, lastIdx, clickedIdx);
       const nextColIds = allColIds.slice(lo, hi + 1);
       ranges[ranges.length - 1] = { rowStart: 0, rowEnd, colIds: nextColIds };
-      this.emit();
-      return;
+    } else {
+      this._state.ranges = [{ rowStart: 0, rowEnd, colIds: [colId] }];
     }
-    this._state.ranges = [{ rowStart: 0, rowEnd, colIds: [colId] }];
+    this.ensureFocusInsideRanges(colId);
     this.emit();
+  }
+
+  /** If focus is null or falls outside every current range, move it onto
+   *  a cell inside the last range. Prefer `preferredColId` when that
+   *  column is in the range; keep the focused row when it still falls
+   *  in the range's row span. Does not emit (caller emits). */
+  private ensureFocusInsideRanges(preferredColId?: string): void {
+    const ranges = this._state.ranges;
+    if (ranges.length === 0) return;
+    const last = ranges[ranges.length - 1]!;
+    if (last.colIds.length === 0) return;
+
+    const fr = this._state.focusedRowIndex;
+    const fc = this._state.focusedColId;
+    if (fr != null && fc != null && this.isInsideAnyRange(fr, fc)) return;
+
+    const row = fr != null
+      ? Math.min(Math.max(fr, last.rowStart), last.rowEnd)
+      : last.rowStart;
+    const col = preferredColId && last.colIds.includes(preferredColId)
+      ? preferredColId
+      : last.colIds[0]!;
+    this._state.focusedRowIndex = row;
+    this._state.focusedColId = col;
+    this._focusedRowId = this._resolveRowId ? this._resolveRowId(row) : null;
   }
 
   /** Drop every range. No-op (no emit) when already empty. Row selection

@@ -33,6 +33,13 @@ export {
   type ExpressionFunction,
 } from './ui/expressionEditor';
 export { buildDefaultBundle } from './defaultBundle';
+export {
+  dataProviderModule,
+  DataProviderController,
+  type DataProviderModuleOptions,
+  type DataProviderControllerOptions,
+  type DataProviderStateSlice,
+} from './modules/dataProvider';
 export { titleBarExtensions, injectTitleBarStyles, type TitleBarOptions } from './toolbar/titleBar';
 export { profilesItem, profileSaveItem } from './toolbar/profilesMenu';
 export { savedFiltersItem, type SavedFilter } from './toolbar/savedFiltersToolbar';
@@ -46,6 +53,14 @@ export {
   doesRowMatchFilterModel,
 } from './toolbar/savedFiltersLogic';
 export { ribbonExtensions, injectRibbonStyles } from './toolbar/ribbon';
+export { formatMiniBarItem, formatMiniBarExtensions } from './toolbar/formatMiniBar';
+export { wireFormatContextMenu, buildFormatContextMenuItems } from './toolbar/formatContextMenu';
+export {
+  selectedColIds,
+  applyCellStyle,
+  clearCellFormatting,
+  toggleBold,
+} from './toolbar/formatActions';
 export {
   mountFormatterStyleChrome,
   type StyleChromeAdapter,

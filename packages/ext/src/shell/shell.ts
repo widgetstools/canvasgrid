@@ -28,11 +28,11 @@ function moduleIconSvg(name: string, size = 14): string {
  *
  *  The title bar / ribbon reserve vertical space above the canvas (same as
  *  the kernel's rowGroupPanel/statusBar), so the viewport sizes correctly.
- *  The sheet is an absolutely-positioned drawer over the grid — non-modal,
- *  so the data stays visible while a module is open. All chrome derives its
- *  palette from the grid's own `--vg-*` theme tokens (VelocityGridExt mirrors the
- *  theme class onto the shell root), so title bar + drawer read as one
- *  surface with the data.
+ *  The sheet is a fixed right drawer spanning the full viewport height —
+ *  non-modal, so the data stays visible while a module is open. All chrome
+ *  derives its palette from the grid's own `--vg-*` theme tokens
+ *  (VelocityGridExt mirrors the theme class onto the shell root), so title
+ *  bar + drawer read as one surface with the data.
  */
 export class ShellLayout {
   readonly gridMount: HTMLElement;
@@ -368,21 +368,58 @@ const SHELL_CSS = `
 .vgext-titlebar {
   flex: 0 0 auto;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  height: 48px;
-  padding: 0 14px;
+  column-gap: 8px;
+  row-gap: 8px;
+  min-height: 48px;
+  height: auto;
+  padding: 8px 14px;
   background: var(--vg-header-bg, var(--vg-popup-bg, #171c26));
   border-bottom: 1px solid var(--vg-border-color, #2a3140);
 }
-.vgext-titlebar > .vgext-slot-primary-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.vgext-titlebar > .vgext-slot-primary-center { flex: 1 1 auto; display: flex; justify-content: center; align-items: center; gap: 8px; min-width: 0; }
-.vgext-titlebar > .vgext-slot-primary-right { margin-left: auto; display: flex; align-items: center; }
+/* Left cluster shrinks into remaining space; basis forces the right
+ * utilities onto a second row before either side can overflow/overlap. */
+.vgext-titlebar > .vgext-slot-primary-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 280px;
+}
+.vgext-titlebar > .vgext-slot-primary-center {
+  flex: 1 1 160px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.vgext-titlebar > .vgext-slot-primary-right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-left: auto;
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+.vgext-titlebar > .vgext-slot-primary-left > .vgext-toolbar-item[data-item-id="brand"] {
+  flex: 0 0 auto;
+}
+.vgext-titlebar > .vgext-slot-primary-left > .vgext-toolbar-item[data-item-id="saved-filters"] {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.vgext-titlebar > .vgext-slot-primary-right > .vgext-toolbar-item {
+  flex: 0 0 auto;
+}
 .vgext-ribbon:empty,
 .vgext-ribbon[hidden] { display: none; }
 .vgext-grid { flex: 1 1 auto; min-height: 0; position: relative; }
 
-.vgext-toolbar-item { display: inline-flex; align-items: center; }
+.vgext-toolbar-item { display: inline-flex; align-items: center; min-width: 0; }
 .vgext-btn {
   appearance: none;
   display: inline-flex;
@@ -412,11 +449,16 @@ const SHELL_CSS = `
 .vgext-btn.vgext-save:not(:disabled):hover { filter: brightness(1.08); }
 
 .vgext-sheet {
-  position: absolute;
-  top: 48px;
+  /* Full viewport height — not clipped to the grid host / lab chrome box. */
+  position: fixed;
+  top: 0;
   right: 0;
   bottom: 0;
-  width: min(680px, 92%);
+  width: min(680px, 92vw);
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
   display: flex;
   flex-direction: column;
   background:
@@ -428,7 +470,7 @@ const SHELL_CSS = `
   box-shadow:
     -1px 0 0 color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 4%, transparent),
     -24px 0 48px rgba(0, 0, 0, 0.42);
-  z-index: 30;
+  z-index: 200;
   transform: translateX(18px);
   opacity: 0;
   pointer-events: none;

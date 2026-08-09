@@ -1,0 +1,365 @@
+import type { DataProviderConfig, ProviderStatus, TransportHandle } from '../types';
+import type { HubMessage, HubPush, HubRequest } from '../protocol/messages';
+import { getTransportFactory } from '../registry/transports';
+import { getTransportPlugin } from '../registry/plugins';
+import { registerDefaultTransports } from '../transports/registerDefaults';
+import { LivePipeline, RowCache, composeRowId } from './rowCache';
+import { inferFieldsFromRows } from '../schema/infer';
+import { pageCachedRows } from '../query/page';
+import type { FieldInfo } from '../types/schema';
+import { fieldPathsFromColumnDefs, projectRow, thinDelta } from '../pipeline/project';
+import { rowsToColumnar } from '../pipeline/wireFormat';
+
+interface Subscriber {
+  port: MessagePort;
+  subId: string;
+}
+
+interface ProviderSlot {
+  config: DataProviderConfig;
+  cache: RowCache;
+  handle: TransportHandle | null;
+  status: ProviderStatus;
+  pipeline: LivePipeline | null;
+  subscribers: Subscriber[];
+  inferredFields: FieldInfo[];
+  rowsReceived: number;
+  inferSample: Record<string, unknown>[];
+}
+
+/**
+ * In-worker hub: one slot per providerId, transport plugins, RowCache,
+ * CSRM fan-out and SSRM paging.
+ */
+export class DataServicesHub {
+  private slots = new Map<string, ProviderSlot>();
+  private ports = new Set<MessagePort>();
+
+  constructor() {
+    registerDefaultTransports();
+  }
+
+  addPort(port: MessagePort): void {
+    this.ports.add(port);
+    port.onmessage = (ev: MessageEvent<HubMessage>) => {
+      void this.onMessage(port, ev.data);
+    };
+    port.start?.();
+  }
+
+  removePort(port: MessagePort): void {
+    this.ports.delete(port);
+    for (const slot of this.slots.values()) {
+      slot.subscribers = slot.subscribers.filter((s) => s.port !== port);
+    }
+  }
+
+  private async onMessage(port: MessagePort, msg: HubMessage): Promise<void> {
+    if (!msg || typeof msg !== 'object' || !('type' in msg)) return;
+    if (!('id' in msg)) return; // pushes shouldn't come inbound
+    const req = msg as HubRequest;
+    try {
+      switch (req.type) {
+        case 'ping':
+          port.postMessage({ v: 1, id: req.id, type: 'pong' });
+          return;
+        case 'ensure':
+          this.ensureSlot(req.config);
+          port.postMessage({ v: 1, id: req.id, type: 'ok' });
+          return;
+        case 'attach':
+          this.attach(req.providerId, port, req.subId);
+          port.postMessage({ v: 1, id: req.id, type: 'ok' });
+          return;
+        case 'detach':
+          this.detach(req.providerId, port, req.subId);
+          port.postMessage({ v: 1, id: req.id, type: 'ok' });
+          return;
+        case 'start':
+          this.startSlot(req.providerId);
+          port.postMessage({ v: 1, id: req.id, type: 'ok' });
+          return;
+        case 'stop':
+          this.stopSlot(req.providerId);
+          port.postMessage({ v: 1, id: req.id, type: 'ok' });
+          return;
+        case 'restart':
+          this.restartSlot(req.providerId, req.overlay);
+          port.postMessage({ v: 1, id: req.id, type: 'ok' });
+          return;
+        case 'refresh':
+        case 'getSnapshot': {
+          const slot = this.slots.get(req.providerId);
+          if (!slot) throw new Error(`Unknown provider ${req.providerId}`);
+          port.postMessage({
+            v: 1,
+            id: req.id,
+            type: 'snapshot',
+            rows: slot.cache.getAll(),
+            status: slot.status,
+          });
+          return;
+        }
+        case 'getRows': {
+          const slot = this.slots.get(req.providerId);
+          if (!slot) throw new Error(`Unknown provider ${req.providerId}`);
+          const result = pageCachedRows(slot.cache.getAll(), req.request);
+          port.postMessage({ v: 1, id: req.id, type: 'getRowsResult', result });
+          return;
+        }
+        case 'getMeta': {
+          const slot = this.slots.get(req.providerId);
+          if (!slot) throw new Error(`Unknown provider ${req.providerId}`);
+          port.postMessage({
+            v: 1,
+            id: req.id,
+            type: 'meta',
+            status: slot.status,
+            rowCount: slot.cache.size,
+            columnDefinitions: slot.config.config.columnDefinitions ?? [],
+            inferredFields: slot.inferredFields,
+          });
+          return;
+        }
+        default:
+          port.postMessage({ v: 1, id: (req as { id: string }).id, type: 'error', error: 'Unknown request' });
+      }
+    } catch (err) {
+      port.postMessage({
+        v: 1,
+        id: req.id,
+        type: 'error',
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  private ensureSlot(config: DataProviderConfig): ProviderSlot {
+    let slot = this.slots.get(config.providerId);
+    if (slot) {
+      slot.config = config;
+      slot.cache.setKeyColumn(config.config.keyColumn);
+      return slot;
+    }
+    const cache = new RowCache();
+    cache.setKeyColumn(config.config.keyColumn);
+    slot = {
+      config,
+      cache,
+      handle: null,
+      status: 'idle',
+      pipeline: null,
+      subscribers: [],
+      inferredFields: config.config.inferredFields ?? [],
+      rowsReceived: 0,
+      inferSample: [],
+    };
+    this.slots.set(config.providerId, slot);
+    return slot;
+  }
+
+  private attach(providerId: string, port: MessagePort, subId: string): void {
+    const slot = this.slots.get(providerId);
+    if (!slot) throw new Error(`Call ensure before attach (${providerId})`);
+    if (!slot.subscribers.some((s) => s.port === port && s.subId === subId)) {
+      slot.subscribers.push({ port, subId });
+    }
+    // CSRM: replay cache as replace. SSRM clients use getRows instead.
+    if (slot.config.rowModel === 'clientSide' && slot.cache.size > 0) {
+      this.push(slot, { v: 1, type: 'push', providerId, subId, rows: slot.cache.getAll(), replace: true });
+    }
+    this.push(slot, { v: 1, type: 'status', providerId, status: slot.status });
+  }
+
+  private detach(providerId: string, port: MessagePort, subId: string): void {
+    const slot = this.slots.get(providerId);
+    if (!slot) return;
+    slot.subscribers = slot.subscribers.filter((s) => !(s.port === port && s.subId === subId));
+    if (slot.subscribers.length === 0 && slot.handle) {
+      // Keep transport running so other windows can attach quickly; stop only on explicit stop.
+    }
+  }
+
+  private startSlot(providerId: string): void {
+    const slot = this.slots.get(providerId);
+    if (!slot) throw new Error(`Unknown provider ${providerId}`);
+    if (slot.handle) return;
+    const factory = getTransportFactory(slot.config.providerType);
+    if (!factory) throw new Error(`No transport registered for ${slot.config.providerType}`);
+
+    slot.pipeline?.destroy();
+    slot.pipeline = new LivePipeline(slot.config.config, (rows) => {
+      slot.cache.upsert(rows);
+      this.fanOutLive(slot, rows);
+    });
+
+    const plugin = getTransportPlugin(slot.config.providerType);
+    if (slot.config.config.keyColumn == null && plugin?.defaultKeyFields != null) {
+      slot.config.config.keyColumn = plugin.defaultKeyFields as string | string[];
+    }
+
+    slot.handle = factory(
+      slot.config.config,
+      (event) => this.onTransportEmit(slot, event),
+      { providerId },
+    );
+    // Transports may default keyColumn (e.g. mock) — pick it up before first emit.
+    slot.cache.setKeyColumn(slot.config.config.keyColumn);
+  }
+
+  private stopSlot(providerId: string): void {
+    const slot = this.slots.get(providerId);
+    if (!slot) return;
+    slot.handle?.stop();
+    slot.handle = null;
+    slot.pipeline?.destroy();
+    slot.pipeline = null;
+    slot.status = 'disconnected';
+    this.broadcastStatus(slot);
+  }
+
+  private restartSlot(providerId: string, overlay?: Record<string, unknown>): void {
+    const slot = this.slots.get(providerId);
+    if (!slot) throw new Error(`Unknown provider ${providerId}`);
+    if (slot.handle) {
+      void slot.handle.restart(overlay);
+      return;
+    }
+    this.startSlot(providerId);
+  }
+
+  private onTransportEmit(
+    slot: ProviderSlot,
+    event: import('../types').ProviderEmitEvent,
+  ): void {
+    if ('status' in event && event.status) {
+      slot.status = event.status;
+      this.broadcastStatus(slot, event.error);
+      return;
+    }
+    if ('rowsReceived' in event) {
+      slot.rowsReceived = event.rowsReceived;
+      this.broadcast(slot, { v: 1, type: 'rowsReceived', providerId: slot.config.providerId, count: event.rowsReceived });
+      return;
+    }
+    if ('rows' in event) {
+      let rows = event.rows as Record<string, unknown>[];
+      rows = this.applyIngressProjection(slot, rows);
+      if (event.replace) {
+        slot.cache.replace(rows);
+        if (slot.inferSample.length < 200) {
+          slot.inferSample = rows.slice(0, 200) as Record<string, unknown>[];
+          slot.inferredFields = inferFieldsFromRows(slot.inferSample);
+        }
+        this.fanOutReplace(slot);
+        return;
+      }
+      // Live — through pipeline
+      if (slot.status === 'snapshot' || slot.status === 'connecting') {
+        slot.cache.upsert(rows);
+        if (slot.inferSample.length < 200) {
+          slot.inferSample.push(...rows.slice(0, 200 - slot.inferSample.length));
+          slot.inferredFields = inferFieldsFromRows(slot.inferSample);
+        }
+        // Progressive snapshot chunks for CSRM
+        if (slot.config.rowModel === 'clientSide') {
+          this.fanOutLive(slot, rows);
+        }
+        return;
+      }
+      slot.pipeline?.push(rows);
+    }
+  }
+
+  private applyIngressProjection(
+    slot: ProviderSlot,
+    rows: Record<string, unknown>[],
+  ): Record<string, unknown>[] {
+    const cfg = slot.config.config;
+    const paths = cfg.projectFields
+      ? fieldPathsFromColumnDefs(cfg.columnDefinitions, cfg.keyColumn)
+      : null;
+    const keyFields = typeof cfg.keyColumn === 'string'
+      ? [cfg.keyColumn]
+      : Array.isArray(cfg.keyColumn)
+        ? [...cfg.keyColumn]
+        : [];
+
+    return rows.map((row) => {
+      let next = paths?.length ? projectRow(row, paths) : row;
+      if (cfg.thinDeltas) {
+        const id = composeRowId(next, cfg.keyColumn);
+        const prev = id != null ? slot.cache.get(id) : undefined;
+        next = thinDelta(prev, next, keyFields);
+      }
+      return next;
+    });
+  }
+
+  private fanOutReplace(slot: ProviderSlot): void {
+    if (slot.config.rowModel === 'serverSide') {
+      this.broadcast(slot, { v: 1, type: 'tickNotify', providerId: slot.config.providerId });
+      return;
+    }
+    const rows = slot.cache.getAll();
+    const chunk = slot.config.config.snapshotChunkSize ?? 500;
+    for (let i = 0; i < rows.length; i += chunk) {
+      const slice = rows.slice(i, i + chunk);
+      this.broadcast(slot, {
+        v: 1,
+        type: 'push',
+        providerId: slot.config.providerId,
+        rows: slice,
+        replace: i === 0,
+      });
+    }
+    if (rows.length === 0) {
+      this.broadcast(slot, {
+        v: 1,
+        type: 'push',
+        providerId: slot.config.providerId,
+        rows: [],
+        replace: true,
+      });
+    }
+  }
+
+  private fanOutLive(slot: ProviderSlot, rows: Record<string, unknown>[]): void {
+    if (slot.config.rowModel === 'serverSide') {
+      this.broadcast(slot, { v: 1, type: 'tickNotify', providerId: slot.config.providerId });
+      return;
+    }
+    this.broadcast(slot, {
+      v: 1,
+      type: 'push',
+      providerId: slot.config.providerId,
+      rows: slot.config.config.wireFormat === 'columnar' ? rowsToColumnar(rows) : rows,
+      replace: false,
+    });
+  }
+
+  private broadcastStatus(slot: ProviderSlot, error?: string): void {
+    this.broadcast(slot, {
+      v: 1,
+      type: 'status',
+      providerId: slot.config.providerId,
+      status: slot.status,
+      error,
+    });
+  }
+
+  private broadcast(slot: ProviderSlot, msg: HubPush): void {
+    for (const sub of slot.subscribers) {
+      try {
+        sub.port.postMessage(msg);
+      } catch { /* closed port */ }
+    }
+  }
+
+  private push(slot: ProviderSlot, msg: HubPush): void {
+    for (const sub of slot.subscribers) {
+      if (msg.type === 'push' && msg.subId && msg.subId !== sub.subId) continue;
+      try { sub.port.postMessage(msg); } catch { /* ignore */ }
+    }
+  }
+}

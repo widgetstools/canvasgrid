@@ -137,6 +137,60 @@ export function codeText(format: string): string {
   return format;
 }
 
+const MAX_FORMAT_DECIMALS = 12;
+
+/**
+ * Increase/decrease forced decimals (`.0+`) while preserving the rest of the
+ * Excel format — currency symbols, `%`, multi-section negatives, colours, etc.
+ * Raw / unformatted columns start from `#,##0`. Expression and tick formats
+ * are left unchanged (they aren't decimal-place editable this way).
+ */
+export function adjustFormatDecimals(fmt: string | undefined, delta: number): string {
+  if (!delta) return (fmt ?? '').trim() || '#,##0';
+  const source = (fmt ?? '').trim();
+  if (!source) {
+    return delta > 0 ? `#,##0.${'0'.repeat(Math.min(MAX_FORMAT_DECIMALS, delta))}` : '#,##0';
+  }
+  if (source.startsWith('=') || /^TICK\d/i.test(source)) return source;
+  return source.split(';').map((section) => adjustSectionDecimals(section, delta)).join(';');
+}
+
+function adjustSectionDecimals(section: string, delta: number): string {
+  if (!/[0#?]/.test(section)) return section;
+
+  const m = /\.(0+)/.exec(section);
+  if (m && m.index !== undefined) {
+    const cur = m[1]!.length;
+    const next = Math.max(0, Math.min(MAX_FORMAT_DECIMALS, cur + delta));
+    if (next === cur) return section;
+    if (next === 0) {
+      return section.slice(0, m.index) + section.slice(m.index + m[0].length);
+    }
+    return section.slice(0, m.index) + '.' + '0'.repeat(next) + section.slice(m.index + m[0].length);
+  }
+
+  if (delta <= 0) return section;
+
+  // No `.0+` yet — insert after the last digit placeholder, skipping quotes / [] .
+  let insertAt = -1;
+  for (let i = 0; i < section.length; i++) {
+    const c = section[i]!;
+    if (c === '"') {
+      i++;
+      while (i < section.length && section[i] !== '"') i++;
+      continue;
+    }
+    if (c === '[') {
+      while (i < section.length && section[i] !== ']') i++;
+      continue;
+    }
+    if (c === '0' || c === '#' || c === '?') insertAt = i + 1;
+  }
+  if (insertAt < 0) return section;
+  const n = Math.min(MAX_FORMAT_DECIMALS, delta);
+  return section.slice(0, insertAt) + '.' + '0'.repeat(n) + section.slice(insertAt);
+}
+
 export const CURRENCY_QUICK_INSERT: ReadonlyArray<{ label: string; symbol: string }> = [
   { label: '$', symbol: '$' },
   { label: '€', symbol: '€' },
