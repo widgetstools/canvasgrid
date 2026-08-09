@@ -184,7 +184,7 @@ html[data-vg-theme-mode="dark"] {
   --vg-font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 body {
-  font-family: var(--vg-font-family, "IBM Plex Sans", "Segoe UI", sans-serif);
+  font-family: var(--vg-font-family, "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
   background: var(--vg-popup-bg, var(--vg-bg-color, #f3f6f8));
   color: var(--vg-fg-color, #1a1f24);
   color-scheme: inherit;

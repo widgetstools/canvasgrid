@@ -18,7 +18,7 @@ export const EDITOR_CSS = `
   --vg-dp-card: color-mix(in srgb, var(--vg-dp-fg) 3%, var(--vg-dp-bg));
   --vg-dp-row-sel: color-mix(in srgb, var(--vg-dp-accent) 18%, var(--vg-dp-bg));
 
-  font-family: var(--vg-font-family, "IBM Plex Sans", "Segoe UI", sans-serif);
+  font-family: var(--vg-font-family, "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
   font-size: 13px;
   color: var(--vg-dp-fg);
   background: var(--vg-dp-bg);
@@ -75,6 +75,7 @@ export const EDITOR_CSS = `
   color: var(--vg-dp-fg);
   font: inherit;
   font-size: 12px;
+  transition: border-color 110ms ease, box-shadow 140ms ease, background 110ms ease;
 }
 .vg-dp-shell__list {
   flex: 1;
@@ -95,9 +96,10 @@ export const EDITOR_CSS = `
   align-items: center;
   gap: 8px;
   padding: 8px 8px 8px 10px;
-  border-radius: 4px;
+  border-radius: var(--vg-dp-radius);
   cursor: pointer;
   border-left: 2px solid transparent;
+  transition: background 110ms ease, border-color 110ms ease;
 }
 .vg-dp-shell__row:hover { background: color-mix(in srgb, var(--vg-dp-fg) 6%, transparent); }
 .vg-dp-shell__row.is-selected {
@@ -127,7 +129,7 @@ export const EDITOR_CSS = `
   height: 14px;
   padding: 0 5px;
   border: 1px solid var(--vg-dp-border);
-  border-radius: 3px;
+  border-radius: var(--vg-dp-radius);
   font-size: 9px;
   line-height: 1;
   color: var(--vg-dp-muted);
@@ -210,6 +212,7 @@ export const EDITOR_CSS = `
   cursor: pointer;
   font: inherit;
   font-size: 12px;
+  transition: color 110ms ease, background 110ms ease, border-color 110ms ease;
 }
 .vg-dp-shell button.primary,
 .vg-dp-shell .vg-dp-btn--primary,
@@ -252,6 +255,7 @@ export const EDITOR_CSS = `
   color: var(--vg-dp-fg);
   font: inherit;
   font-size: 12px;
+  transition: border-color 110ms ease, box-shadow 140ms ease, background 110ms ease;
 }
 .vg-dp-badge--outline {
   background: transparent;
@@ -265,7 +269,7 @@ export const EDITOR_CSS = `
 
 .vg-dp-editor {
   border: 1px solid var(--vg-dp-border);
-  border-radius: 4px;
+  border-radius: var(--vg-dp-radius);
   display: flex;
   flex-direction: column;
   min-height: 420px;
@@ -308,10 +312,10 @@ export const EDITOR_CSS = `
   flex-shrink: 0;
 }
 .vg-dp-editor__brand {
-  font-family: "IBM Plex Serif", Georgia, serif;
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
   color: var(--vg-dp-fg);
 }
 .vg-dp-editor__header input,
@@ -325,6 +329,7 @@ export const EDITOR_CSS = `
   color: var(--vg-dp-fg);
   font: inherit;
   resize: vertical;
+  transition: border-color 110ms ease, box-shadow 140ms ease, background 110ms ease;
 }
 .vg-dp-editor__header input::placeholder,
 .vg-dp-editor__header textarea::placeholder {
@@ -349,12 +354,15 @@ export const EDITOR_CSS = `
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
   font: inherit;
+  font-size: 12px;
+  font-weight: 550;
+  transition: color 110ms ease, border-color 110ms ease;
 }
 .vg-dp-editor__tab:hover { color: var(--vg-dp-fg); }
 .vg-dp-editor__tab[aria-selected="true"] {
   color: var(--vg-dp-accent);
   border-bottom-color: var(--vg-dp-accent);
-  font-weight: 600;
+  font-weight: 650;
 }
 .vg-dp-editor__body {
   padding: 16px;
@@ -392,12 +400,32 @@ export const EDITOR_CSS = `
   width: 100%;
   font: inherit;
   color-scheme: inherit;
+  transition: border-color 110ms ease, box-shadow 140ms ease, background 110ms ease;
 }
 .vg-dp-editor__header input,
 .vg-dp-shell__sidebar-head input[type="search"] {
   color-scheme: inherit;
 }
-.vg-dp-mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12px; }
+/* Shared accent focus ring — matches the ext cockpit input (.ckp-input:focus):
+   accent border + 3px translucent glow + faint accent wash. */
+.vg-dp-editor__grid input:focus,
+.vg-dp-editor__grid select:focus,
+.vg-dp-editor__grid textarea:focus,
+.vg-dp-field input:focus,
+.vg-dp-field select:focus,
+.vg-dp-field textarea:focus,
+.vg-dp-editor__inline-actions input:focus,
+.vg-dp-editor__header input:focus,
+.vg-dp-editor__header textarea:focus,
+.vg-dp-shell__sidebar-head input[type="search"]:focus,
+.vg-dp-editor__fields-toolbar input[type="search"]:focus,
+.vg-dp-search:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--vg-dp-accent) 70%, var(--vg-dp-border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vg-dp-accent) 16%, transparent);
+  background: color-mix(in srgb, var(--vg-dp-accent) 5%, var(--vg-dp-input-bg));
+}
+.vg-dp-mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
 .vg-dp-editor__grid input[type="checkbox"] {
   width: auto;
   accent-color: var(--vg-dp-accent);
@@ -444,11 +472,15 @@ export const EDITOR_CSS = `
   border: 1px solid var(--vg-dp-border);
   background: var(--vg-dp-input-bg);
   color: var(--vg-dp-fg);
-  padding: 7px 14px;
+  padding: 8px 14px;
   border-radius: var(--vg-dp-radius);
   cursor: pointer;
   font: inherit;
-  font-size: 12px;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: color 110ms ease, background 110ms ease, border-color 110ms ease, filter 110ms ease;
 }
 .vg-dp-editor__actions button:disabled {
   opacity: 0.5;
@@ -499,7 +531,7 @@ export const EDITOR_CSS = `
   margin-left: auto;
 }
 .vg-dp-editor__preview {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
   font-size: 11px;
   background: color-mix(in srgb, var(--vg-dp-fg) 92%, var(--vg-dp-bg));
   color: color-mix(in srgb, var(--vg-dp-bg) 88%, var(--vg-dp-fg));
@@ -523,7 +555,7 @@ export const EDITOR_CSS = `
 }
 .vg-dp-card {
   border: 1px solid var(--vg-dp-border);
-  border-radius: 6px;
+  border-radius: var(--vg-dp-radius);
   background: var(--vg-dp-card);
   padding: 14px 16px;
   display: flex;
@@ -532,23 +564,35 @@ export const EDITOR_CSS = `
 }
 .vg-dp-card__title {
   margin: 0;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--vg-dp-muted);
+  color: var(--vg-dp-fg);
+}
+/* Trailing hairline rule — matches the ext cockpit band header (TITLE ────). */
+.vg-dp-card__title::after {
+  content: "";
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--vg-dp-border);
 }
 .vg-dp-field { display: flex; flex-direction: column; gap: 6px; }
 .vg-dp-field__label {
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
   color: var(--vg-dp-muted);
 }
 .vg-dp-field__help {
   margin: 0;
   font-size: 11px;
   color: var(--vg-dp-muted);
-  line-height: 1.4;
+  line-height: 1.45;
 }
 .vg-dp-muted { color: var(--vg-dp-muted); }
 .vg-dp-badge {
@@ -556,7 +600,7 @@ export const EDITOR_CSS = `
   align-items: center;
   padding: 1px 6px;
   border: 1px solid var(--vg-dp-border);
-  border-radius: 3px;
+  border-radius: var(--vg-dp-radius);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -564,38 +608,39 @@ export const EDITOR_CSS = `
   color: var(--vg-dp-muted);
 }
 
-/* Switch toggle */
+/* Switch toggle — matches the ext cockpit switch (.ckp-switch): 36×20 pill,
+   quiet accent-tint track when on (not a solid fill), accent-coloured knob. */
 .vg-dp-switch {
   appearance: none;
   position: relative;
-  width: 34px;
-  height: 18px;
+  box-sizing: border-box;
+  width: 36px;
+  height: 20px;
   border-radius: 999px;
   border: 1px solid var(--vg-dp-border);
-  background: color-mix(in srgb, var(--vg-dp-fg) 12%, var(--vg-dp-bg));
+  background: color-mix(in srgb, var(--vg-dp-fg) 5%, var(--vg-dp-bg));
   padding: 0;
   cursor: pointer;
   flex-shrink: 0;
-  transition: background 120ms ease, border-color 120ms ease;
+  transition: background 110ms ease, border-color 110ms ease;
 }
 .vg-dp-switch__knob {
   position: absolute;
-  top: 1px;
-  left: 1px;
+  top: 2px;
+  left: 2px;
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: var(--vg-dp-bg);
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--vg-dp-fg) 25%, transparent);
-  transition: transform 120ms ease;
+  background: var(--vg-dp-muted);
+  transition: left 140ms ease, background 140ms ease;
 }
 .vg-dp-switch.is-on {
-  background: var(--vg-dp-accent);
-  border-color: transparent;
+  background: color-mix(in srgb, var(--vg-dp-accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--vg-dp-accent) 55%, transparent);
 }
 .vg-dp-switch.is-on .vg-dp-switch__knob {
-  transform: translateX(16px);
-  background: var(--vg-dp-accent-fg);
+  left: 18px;
+  background: var(--vg-dp-accent);
 }
 .vg-dp-editor__switch-row {
   display: flex;
@@ -703,6 +748,7 @@ export const EDITOR_CSS = `
   background: var(--vg-dp-input-bg);
   color: var(--vg-dp-fg);
   font: inherit;
+  transition: border-color 110ms ease, box-shadow 140ms ease, background 110ms ease;
 }
 .vg-dp-editor__select-all {
   display: flex;
@@ -725,7 +771,7 @@ export const EDITOR_CSS = `
   color: var(--vg-dp-muted);
 }
 .vg-dp-field__help code {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
   font-size: 10px;
   color: var(--vg-dp-fg);
 }
@@ -751,8 +797,14 @@ export const EDITOR_CSS = `
   cursor: pointer;
   text-align: left;
   color-scheme: inherit;
+  transition: border-color 110ms ease, box-shadow 140ms ease, background 110ms ease;
 }
 .vg-dp-ms__trigger:hover { border-color: var(--vg-dp-accent); }
+.vg-dp-ms__trigger:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--vg-dp-accent) 70%, var(--vg-dp-border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vg-dp-accent) 16%, transparent);
+}
 .vg-dp-ms__trigger:disabled {
   opacity: 0.55;
   cursor: default;
@@ -775,7 +827,7 @@ export const EDITOR_CSS = `
   gap: 2px;
   height: 20px;
   padding: 0 6px;
-  border-radius: 3px;
+  border-radius: var(--vg-dp-radius);
   background: color-mix(in srgb, var(--vg-dp-fg) 8%, transparent);
   font-size: 11px;
   text-transform: none;
@@ -803,7 +855,7 @@ export const EDITOR_CSS = `
   left: 0;
   right: 0;
   border: 1px solid var(--vg-dp-border);
-  border-radius: 4px;
+  border-radius: var(--vg-dp-radius);
   background: var(--vg-dp-bg);
   box-shadow: 0 8px 24px color-mix(in srgb, var(--vg-dp-fg) 18%, transparent);
   overflow: hidden;
@@ -838,7 +890,7 @@ export const EDITOR_CSS = `
   width: 100%;
   padding: 6px 8px;
   border: 0;
-  border-radius: 3px;
+  border-radius: var(--vg-dp-radius);
   background: transparent;
   color: var(--vg-dp-fg);
   font: inherit;
@@ -866,7 +918,7 @@ export const EDITOR_CSS = `
   align-items: center;
   gap: 8px;
   padding: 4px 6px;
-  border-radius: 3px;
+  border-radius: var(--vg-dp-radius);
   font-size: 12px;
   cursor: pointer;
 }
@@ -893,7 +945,7 @@ export const EDITOR_CSS = `
   overflow: auto;
   overscroll-behavior: contain;
   border: 1px solid var(--vg-dp-border);
-  border-radius: 4px;
+  border-radius: var(--vg-dp-radius);
   background: var(--vg-dp-bg);
 }
 .vg-dp-editor__columns-table {
@@ -978,7 +1030,7 @@ export const EDITOR_CSS = `
   border: 1px solid color-mix(in srgb, #c0392b 45%, var(--vg-dp-border));
   background: color-mix(in srgb, #c0392b 12%, transparent);
   color: #c0392b;
-  border-radius: 4px;
+  border-radius: var(--vg-dp-radius);
   padding: 8px 10px;
   font-size: 12px;
 }
@@ -1012,7 +1064,7 @@ export const EDITOR_CSS = `
   width: min(420px, 100%);
   background: var(--vg-dp-bg);
   border: 1px solid var(--vg-dp-border);
-  border-radius: 8px;
+  border-radius: var(--vg-dp-radius);
   box-shadow: 0 12px 40px color-mix(in srgb, var(--vg-dp-fg) 25%, transparent);
   display: flex;
   flex-direction: column;
