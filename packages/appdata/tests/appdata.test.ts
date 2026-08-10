@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   resolveTemplate,
   resolveCfg,
@@ -91,5 +91,24 @@ describe('AppDataStore', () => {
     off();
     store.set('SessionContext', 'userId', 'c');
     expect(seen).toEqual(['SessionContext.userId=a', 'SessionContext.userId=b']);
+  });
+});
+
+describe('LocalStorageAppDataStore', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('round-trips bags across instances', async () => {
+    const { LocalStorageAppDataStore, appDataStorageKey } = await import('../src/localStorageStore');
+    const a = new LocalStorageAppDataStore('test-ns');
+    a.set('SessionContext', 'userId', 'jdoe');
+    a.set('positions', 'asOfDate', '2026-04-01');
+    expect(localStorage.getItem(appDataStorageKey('test-ns'))).toBeTruthy();
+
+    const b = new LocalStorageAppDataStore('test-ns');
+    expect(b.get('SessionContext', 'userId')).toBe('jdoe');
+    expect(b.get('positions', 'asOfDate')).toBe('2026-04-01');
+    expect(
+      resolveTemplate('{{SessionContext.userId}}/{{positions.asOfDate}}', b.lookup),
+    ).toBe('jdoe/2026-04-01');
   });
 });

@@ -1,16 +1,18 @@
 /**
- * ConfigSession — thin host persistence facade for view / profile / layouts.
+ * ConfigSession — thin host persistence facade for the single grid config
+ * (view state + layouts + provider pointers).
+ *
+ * Product model: one config per grid, with layouts. There is no profiles
+ * plane in the document. `ProfileStore` methods are a thin facade so
+ * ProfilesController / markDirty call sites keep working.
  *
  * Markets Config Manager (Dexie, identity, REST sync) can implement the same
- * surface later. This default adapter stores one Markets-aligned instance
- * bundle per `gridId` and implements `ProfileStore` for ProfilesController.
- *
- * See docs/starui-platform/03-config-planes.md.
+ * surface later. See docs/starui-platform/03-config-planes.md.
  */
 import type { GridState, GridLayoutsBundle } from '@wellsfargo-starui/velocity-grid';
 import type { ProfileMeta, ProfileSnapshot, ProfileStore } from '../extension/types';
 
-/** Host-level pointers shared across profiles/layouts (not full provider defs). */
+/** Host-level pointers shared across layouts (not full provider defs). */
 export type InstanceGridLevelData = {
   activeProviderId?: string | null;
   liveProviderId?: string | null;
@@ -18,23 +20,39 @@ export type InstanceGridLevelData = {
   [k: string]: unknown;
 };
 
-/** One document per grid instance — Markets profile-set shaped. */
-export type InstanceConfigBundle = {
-  version: number;
-  activeProfileId: string;
-  profiles: ProfileSnapshot[];
-  gridLevelData: InstanceGridLevelData;
-  /** VelocityGrid named layouts (registry + active id + grid baseline). */
-  layouts?: GridLayoutsBundle;
-};
-
 /** Workspace blob: live view + layouts (Ext getConfig / layout save disk). */
 export type WorkspaceConfig = GridState & { layouts?: GridLayoutsBundle };
 
-export const INSTANCE_BUNDLE_VERSION = 1;
+/**
+ * One document per grid instance — workspace-flat:
+ * GridState fields + layouts at the root, plus gridLevelData and docVersion
+ * (avoids clashing with GridState.version).
+ */
+export type InstanceConfigDoc = {
+  docVersion: 1;
+  gridLevelData: InstanceGridLevelData;
+  /** Single-slot ProfileStore facade meta (not a profiles array). */
+  meta?: ProfileMeta;
+} & WorkspaceConfig;
+
+/**
+ * @deprecated Alias of {@link InstanceConfigDoc}. Older Markets profile-set
+ * shape (`profiles[]` / `activeProfileId`) is migrated on read.
+ */
+export type InstanceConfigBundle = InstanceConfigDoc;
+
+export const INSTANCE_DOC_VERSION = 1 as const;
+/** @deprecated Use INSTANCE_DOC_VERSION */
+export const INSTANCE_BUNDLE_VERSION = INSTANCE_DOC_VERSION;
 export const INSTANCE_STORAGE_PREFIX = 'velocity-grid:instance:';
 export const LEGACY_CONFIG_PREFIX = 'velocity-grid:config:';
 export const LEGACY_PROFILES_KEY = 'velocity-grid-ext:profiles';
+
+const DEFAULT_META = (): ProfileMeta => ({
+  id: 'default',
+  name: 'Default',
+  updatedAt: Date.now(),
+});
 
 export function instanceStorageKey(gridId: string): string {
   return `${INSTANCE_STORAGE_PREFIX}${gridId}`;
@@ -81,13 +99,17 @@ export function applyGridLevelDataToState(
   };
 }
 
-export function emptyBundle(activeProfileId = 'default'): InstanceConfigBundle {
+export function emptyDoc(): InstanceConfigDoc {
   return {
-    version: INSTANCE_BUNDLE_VERSION,
-    activeProfileId,
-    profiles: [],
+    docVersion: INSTANCE_DOC_VERSION,
     gridLevelData: {},
-  };
+    version: 4,
+  } as InstanceConfigDoc;
+}
+
+/** @deprecated Use emptyDoc */
+export function emptyBundle(_activeProfileId = 'default'): InstanceConfigDoc {
+  return emptyDoc();
 }
 
 export function isConfigSession(x: unknown): x is ConfigSession {
@@ -98,14 +120,139 @@ export function isConfigSession(x: unknown): x is ConfigSession {
     && typeof (x as ConfigSession).list === 'function';
 }
 
+function isGridLayoutsBundle(x: unknown): x is GridLayoutsBundle {
+  return !!x && typeof x === 'object';
+}
+
+/** Drop grid-tier module slices (esp. data-provider) from each layout state. */
+function stripGridLevelModulesFromLayouts(bundle: GridLayoutsBundle): GridLayoutsBundle {
+  const GRID_TIER = new Set(['editSettings', 'templates', 'alerts', 'data-provider']);
+  const layouts = (bundle.layouts ?? []).map((layout) => {
+    const state = layout.state as GridState & { modules?: Record<string, unknown> } | undefined;
+    if (!state?.modules) return layout;
+    const modules = { ...state.modules };
+    let changed = false;
+    for (const id of GRID_TIER) {
+      if (id in modules) {
+        delete modules[id];
+        changed = true;
+      }
+    }
+    if (!changed) return layout;
+    return {
+      ...layout,
+      state: {
+        ...state,
+        modules: Object.keys(modules).length ? modules : undefined,
+      },
+    };
+  });
+  return { ...bundle, layouts };
+}
+
+function stripDocEnvelope(doc: InstanceConfigDoc): WorkspaceConfig {
+  const {
+    docVersion: _dv,
+    gridLevelData: _gld,
+    meta: _meta,
+    ...workspace
+  } = doc;
+  return workspace;
+}
+
+function hasWorkspaceContent(doc: InstanceConfigDoc): boolean {
+  const ws = stripDocEnvelope(doc);
+  if (doc.layouts) return true;
+  if (doc.meta) return true;
+  // Any GridState field beyond the empty scaffold
+  const keys = Object.keys(ws).filter((k) => k !== 'version');
+  return keys.length > 0;
+}
+
+/**
+ * Normalize raw localStorage JSON to a flat InstanceConfigDoc.
+ * Migrates legacy `profiles[]` / `activeProfileId` documents on read.
+ */
+export function normalizeInstanceDoc(raw: unknown): InstanceConfigDoc | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+
+  // Legacy Markets profile-set shape
+  if (Array.isArray(o.profiles)) {
+    const profiles = o.profiles as ProfileSnapshot[];
+    const activeId = (typeof o.activeProfileId === 'string' && o.activeProfileId)
+      ? o.activeProfileId
+      : 'default';
+    const active = profiles.find((p) => p?.meta?.id === activeId) ?? profiles[0];
+    const topLayouts = isGridLayoutsBundle(o.layouts) ? o.layouts : undefined;
+    const gld = (o.gridLevelData && typeof o.gridLevelData === 'object')
+      ? { ...(o.gridLevelData as InstanceGridLevelData) }
+      : {};
+    const gridState = (active?.gridState && typeof active.gridState === 'object')
+      ? active.gridState
+      : ({ version: 4 } as GridState);
+    // Prefer top-level layouts over anything nested on the profile state
+    const { layouts: nestedLayouts, ...viewState } = gridState as GridState & {
+      layouts?: GridLayoutsBundle;
+    };
+    const layouts = topLayouts ?? (isGridLayoutsBundle(nestedLayouts) ? nestedLayouts : undefined);
+    const mergedGld = { ...gld, ...extractGridLevelData(gridState) };
+    return {
+      docVersion: INSTANCE_DOC_VERSION,
+      gridLevelData: mergedGld,
+      meta: active?.meta ?? DEFAULT_META(),
+      ...(viewState as GridState),
+      ...(layouts ? { layouts } : {}),
+    };
+  }
+
+  // Flat doc (docVersion or workspace-shaped without profiles)
+  if (
+    o.docVersion === 1
+    || o.docVersion === INSTANCE_DOC_VERSION
+    || (!('profiles' in o) && (
+      'version' in o
+      || 'columnState' in o
+      || 'layouts' in o
+      || 'gridLevelData' in o
+      || 'modules' in o
+    ))
+  ) {
+    const gld = (o.gridLevelData && typeof o.gridLevelData === 'object')
+      ? (o.gridLevelData as InstanceGridLevelData)
+      : {};
+    const meta = (o.meta && typeof o.meta === 'object' && 'id' in (o.meta as object))
+      ? (o.meta as ProfileMeta)
+      : undefined;
+    const {
+      docVersion: _dv,
+      gridLevelData: _gld,
+      meta: _meta,
+      profiles: _profiles,
+      activeProfileId: _ap,
+      ...rest
+    } = o;
+    return {
+      docVersion: INSTANCE_DOC_VERSION,
+      gridLevelData: gld,
+      ...(meta ? { meta } : {}),
+      ...(rest as WorkspaceConfig),
+    } as InstanceConfigDoc;
+  }
+
+  return null;
+}
+
 /**
  * Host persistence for one grid instance. Extends ProfileStore so
- * ProfilesController can use it unchanged.
+ * ProfilesController can use it unchanged (single-slot facade).
  */
 export interface ConfigSession extends ProfileStore {
   readonly gridId: string;
-  loadBundle(): Promise<InstanceConfigBundle>;
-  saveBundle(bundle: InstanceConfigBundle): Promise<void>;
+  /** @deprecated Prefer loadWorkspace — returns flat InstanceConfigDoc. */
+  loadBundle(): Promise<InstanceConfigDoc>;
+  /** @deprecated Prefer saveWorkspace. */
+  saveBundle(bundle: InstanceConfigDoc): Promise<void>;
   loadWorkspace(): Promise<WorkspaceConfig | null>;
   saveWorkspace(config: WorkspaceConfig): Promise<void>;
   clearWorkspace(): Promise<void>;
@@ -116,7 +263,8 @@ export interface ConfigSession extends ProfileStore {
 
 /**
  * Default ConfigSession — one localStorage document per gridId.
- * Migrates legacy `velocity-grid:config:*` and flat profile maps on first read.
+ * Migrates legacy `velocity-grid:config:*`, flat profile maps, and
+ * `profiles[]` instance docs on first read.
  *
  * Sync helpers (`*Sync`) exist because toolbar / Ext restore paths are sync
  * today; async methods delegate to them.
@@ -136,50 +284,71 @@ export class LocalStorageConfigSession implements ConfigSession {
     return instanceStorageKey(this.gridId);
   }
 
-  private readRaw(): InstanceConfigBundle | null {
+  private readRaw(): InstanceConfigDoc | null {
     try {
       const raw = localStorage.getItem(this.key);
       if (!raw) return null;
-      const parsed = JSON.parse(raw) as InstanceConfigBundle;
-      if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.profiles)) return null;
-      return {
-        version: typeof parsed.version === 'number' ? parsed.version : INSTANCE_BUNDLE_VERSION,
-        activeProfileId: parsed.activeProfileId || 'default',
-        profiles: parsed.profiles,
-        gridLevelData: parsed.gridLevelData && typeof parsed.gridLevelData === 'object'
-          ? parsed.gridLevelData
-          : {},
-        layouts: parsed.layouts,
-      };
+      return normalizeInstanceDoc(JSON.parse(raw));
     } catch {
       return null;
     }
   }
 
-  private writeRaw(bundle: InstanceConfigBundle): void {
-    localStorage.setItem(this.key, JSON.stringify({
-      version: bundle.version ?? INSTANCE_BUNDLE_VERSION,
-      activeProfileId: bundle.activeProfileId || 'default',
-      profiles: bundle.profiles ?? [],
-      gridLevelData: bundle.gridLevelData ?? {},
-      layouts: bundle.layouts,
-    }));
+  private writeRaw(doc: InstanceConfigDoc): void {
+    const {
+      docVersion: _dv,
+      gridLevelData,
+      meta,
+      ...workspace
+    } = doc;
+    const payload: Record<string, unknown> = {
+      docVersion: INSTANCE_DOC_VERSION,
+      gridLevelData: gridLevelData ?? {},
+      ...workspace,
+    };
+    if (meta) payload.meta = meta;
+    localStorage.setItem(this.key, JSON.stringify(payload));
   }
 
-  loadBundleSync(): InstanceConfigBundle {
+  /** True when the on-disk JSON still uses the legacy profiles[] shape. */
+  private needsRewrite(raw: string | null): boolean {
+    if (!raw) return false;
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      return Array.isArray(parsed.profiles) || parsed.docVersion !== INSTANCE_DOC_VERSION;
+    } catch {
+      return false;
+    }
+  }
+
+  loadBundleSync(): InstanceConfigDoc {
     const existing = this.readRaw();
-    if (existing) return existing;
+    if (existing) {
+      // Persist migration when old profiles[] (or missing docVersion) was read
+      if (this.needsRewrite(localStorage.getItem(this.key))) {
+        this.writeRaw(existing);
+      }
+      return existing;
+    }
     const migrated = this.migrateLegacy();
-    this.writeRaw(migrated);
+    if (hasWorkspaceContent(migrated)) {
+      this.writeRaw(migrated);
+    }
     return migrated;
   }
 
-  saveBundleSync(bundle: InstanceConfigBundle): void {
-    this.writeRaw(bundle);
+  saveBundleSync(bundle: InstanceConfigDoc): void {
+    const normalized = normalizeInstanceDoc(bundle) ?? {
+      ...emptyDoc(),
+      ...bundle,
+      docVersion: INSTANCE_DOC_VERSION,
+      gridLevelData: bundle.gridLevelData ?? {},
+    };
+    this.writeRaw(normalized);
   }
 
-  private migrateLegacy(): InstanceConfigBundle {
-    const bundle = emptyBundle('default');
+  private migrateLegacy(): InstanceConfigDoc {
+    const doc = emptyDoc();
 
     try {
       const raw = localStorage.getItem(`${LEGACY_CONFIG_PREFIX}${this.gridId}`);
@@ -187,21 +356,21 @@ export class LocalStorageConfigSession implements ConfigSession {
         const cfg = JSON.parse(raw) as WorkspaceConfig;
         if (cfg && typeof cfg === 'object') {
           const { layouts, ...viewState } = cfg;
-          if (layouts && typeof layouts === 'object') {
-            bundle.layouts = layouts as GridLayoutsBundle;
+          if (isGridLayoutsBundle(layouts)) {
+            doc.layouts = layouts;
           }
-          const gld = extractGridLevelData(viewState as GridState);
-          bundle.gridLevelData = { ...bundle.gridLevelData, ...gld };
-          bundle.profiles.push({
-            meta: { id: 'default', name: 'Default', updatedAt: Date.now() },
-            gridState: viewState as GridState,
-            ext: {},
-          });
-          bundle.activeProfileId = 'default';
+          Object.assign(doc, viewState);
+          doc.gridLevelData = {
+            ...doc.gridLevelData,
+            ...extractGridLevelData(viewState as GridState),
+          };
+          doc.meta = DEFAULT_META();
         }
       }
     } catch { /* ignore */ }
 
+    // Legacy flat profile map: take active/default (or first) snapshot into the
+    // single config; prefer an existing view from LEGACY_CONFIG over overwriting.
     const ns = this.opts.legacyProfilesNamespace ?? 'velocity-grid-ext';
     for (const pk of [`${ns}:profiles`, LEGACY_PROFILES_KEY]) {
       try {
@@ -209,99 +378,134 @@ export class LocalStorageConfigSession implements ConfigSession {
         if (!raw) continue;
         const map = JSON.parse(raw) as Record<string, ProfileSnapshot>;
         if (!map || typeof map !== 'object') continue;
-        for (const snap of Object.values(map)) {
-          if (!snap?.meta?.id) continue;
-          const idx = bundle.profiles.findIndex((p) => p.meta.id === snap.meta.id);
-          if (idx >= 0) bundle.profiles[idx] = snap;
-          else bundle.profiles.push(snap);
-          const gld = extractGridLevelData(snap.gridState);
-          bundle.gridLevelData = { ...bundle.gridLevelData, ...gld };
+        const snaps = Object.values(map).filter((s) => s?.meta?.id);
+        if (!snaps.length) continue;
+        const preferred = snaps.find((s) => s.meta.id === 'default') ?? snaps[0]!;
+        // If we already have view from LEGACY_CONFIG, only merge gridLevelData /
+        // keep preferred meta when doc has no meta yet.
+        if (!hasWorkspaceContent(doc) || !doc.meta) {
+          const { layouts: nestedLayouts, ...viewState } = preferred.gridState as GridState & {
+            layouts?: GridLayoutsBundle;
+          };
+          if (!doc.layouts && isGridLayoutsBundle(nestedLayouts)) {
+            doc.layouts = nestedLayouts;
+          }
+          if (!hasWorkspaceContent(doc)) {
+            Object.assign(doc, viewState);
+          }
+          doc.meta = preferred.meta;
+        }
+        for (const s of snaps) {
+          doc.gridLevelData = {
+            ...doc.gridLevelData,
+            ...extractGridLevelData(s.gridState),
+          };
         }
       } catch { /* ignore */ }
     }
 
-    // Leave profiles empty when nothing to migrate — ProfilesController.bootstrap
-    // / saveWorkspace seed the default snapshot on demand.
-    return bundle;
+    return doc;
   }
 
   listSync(): ProfileMeta[] {
-    return this.loadBundleSync().profiles.map((p) => p.meta);
+    const doc = this.loadBundleSync();
+    if (!hasWorkspaceContent(doc) && !doc.meta) return [];
+    return [doc.meta ?? DEFAULT_META()];
   }
 
   loadSync(id: string): ProfileSnapshot | null {
-    const b = this.loadBundleSync();
-    const snap = b.profiles.find((p) => p.meta.id === id) ?? null;
-    if (!snap) return null;
+    const doc = this.loadBundleSync();
+    if (!hasWorkspaceContent(doc) && !doc.meta) return null;
+    const meta = doc.meta ?? DEFAULT_META();
+    // Single-slot facade — only the active meta id loads
+    if (id !== meta.id) return null;
+
+    const workspace = stripDocEnvelope(doc);
+    const { layouts: _layouts, ...gridState } = workspace;
     return {
-      ...snap,
-      gridState: applyGridLevelDataToState(snap.gridState, b.gridLevelData),
+      meta,
+      gridState: applyGridLevelDataToState(gridState as GridState, doc.gridLevelData),
+      ext: {},
     };
   }
 
   saveSync(id: string, snap: ProfileSnapshot): void {
-    const b = this.loadBundleSync();
-    const next = { ...snap, meta: { ...snap.meta, id, updatedAt: Date.now() } };
-    const idx = b.profiles.findIndex((p) => p.meta.id === id);
-    if (idx >= 0) b.profiles[idx] = next;
-    else b.profiles.push(next);
-    b.gridLevelData = {
-      ...b.gridLevelData,
-      ...extractGridLevelData(snap.gridState),
+    const doc = this.loadBundleSync();
+    const viewState = snap.gridState;
+    const next: InstanceConfigDoc = {
+      ...doc,
+      docVersion: INSTANCE_DOC_VERSION,
+      ...(viewState as GridState),
+      gridLevelData: {
+        ...doc.gridLevelData,
+        ...extractGridLevelData(viewState),
+      },
+      meta: {
+        ...snap.meta,
+        id,
+        updatedAt: Date.now(),
+      },
+      // Keep existing layouts unless the snap somehow carried them (it doesn't)
+      ...(doc.layouts ? { layouts: doc.layouts } : {}),
     };
-    b.activeProfileId = id;
-    this.saveBundleSync(b);
+    this.writeRaw(next);
   }
 
   removeSync(id: string): void {
-    const b = this.loadBundleSync();
-    b.profiles = b.profiles.filter((p) => p.meta.id !== id);
-    if (b.activeProfileId === id) {
-      b.activeProfileId = b.profiles[0]?.meta.id ?? 'default';
-    }
-    this.saveBundleSync(b);
+    const doc = this.loadBundleSync();
+    const meta = doc.meta ?? DEFAULT_META();
+    if (meta.id !== id) return;
+    // Single config — removing the only slot clears the document
+    this.clearWorkspaceSync();
   }
 
   loadWorkspaceSync(): WorkspaceConfig | null {
-    const b = this.loadBundleSync();
-    const snap = b.profiles.find((p) => p.meta.id === b.activeProfileId)
-      ?? b.profiles[0];
-    if (!snap && !b.layouts) return null;
-    const base = snap
-      ? applyGridLevelDataToState(snap.gridState, b.gridLevelData)
-      : applyGridLevelDataToState({ version: 4 } as GridState, b.gridLevelData);
+    const doc = this.loadBundleSync();
+    if (!hasWorkspaceContent(doc)) return null;
+    const workspace = stripDocEnvelope(doc);
+    const { layouts, ...viewState } = workspace;
+    const base = applyGridLevelDataToState(
+      viewState as GridState,
+      doc.gridLevelData,
+    );
     return {
       ...base,
-      ...(b.layouts ? { layouts: b.layouts } : {}),
+      ...(layouts ? { layouts } : {}),
     };
   }
 
   saveWorkspaceSync(config: WorkspaceConfig): void {
-    const b = this.loadBundleSync();
+    const doc = this.loadBundleSync();
     const { layouts, ...viewState } = config;
-    if (layouts && typeof layouts === 'object') {
-      b.layouts = layouts as GridLayoutsBundle;
+    const cleanedLayouts = layouts ? stripGridLevelModulesFromLayouts(layouts) : undefined;
+    const extracted = extractGridLevelData(viewState as GridState);
+    // Persist provider pointer only in gridLevelData (not root modules) so
+    // layout restore / import cannot race a null modules slice over the id.
+    const modules = viewState.modules ? { ...viewState.modules } : undefined;
+    if (modules && 'data-provider' in modules) {
+      delete modules['data-provider'];
     }
-    b.gridLevelData = {
-      ...b.gridLevelData,
-      ...extractGridLevelData(viewState as GridState),
-    };
-    const id = b.activeProfileId || 'default';
-    const existing = b.profiles.find((p) => p.meta.id === id);
-    const snap: ProfileSnapshot = {
-      meta: {
-        id,
-        name: existing?.meta.name ?? (id === 'default' ? 'Default' : id),
-        updatedAt: Date.now(),
+    const next: InstanceConfigDoc = {
+      ...doc,
+      docVersion: INSTANCE_DOC_VERSION,
+      ...(viewState as GridState),
+      ...(modules !== undefined
+        ? { modules: Object.keys(modules).length ? modules : undefined }
+        : {}),
+      gridLevelData: {
+        ...doc.gridLevelData,
+        ...extracted,
       },
-      gridState: viewState as GridState,
-      ext: existing?.ext ?? {},
+      meta: doc.meta ?? DEFAULT_META(),
+      ...(isGridLayoutsBundle(cleanedLayouts)
+        ? { layouts: cleanedLayouts }
+        : doc.layouts
+          ? { layouts: stripGridLevelModulesFromLayouts(doc.layouts) }
+          : {}),
     };
-    const idx = b.profiles.findIndex((p) => p.meta.id === id);
-    if (idx >= 0) b.profiles[idx] = snap;
-    else b.profiles.push(snap);
-    b.activeProfileId = id;
-    this.saveBundleSync(b);
+    // Ensure meta.updatedAt moves on workspace save
+    next.meta = { ...next.meta!, updatedAt: Date.now() };
+    this.writeRaw(next);
   }
 
   clearWorkspaceSync(): void {
@@ -315,17 +519,24 @@ export class LocalStorageConfigSession implements ConfigSession {
 
   // ── async ProfileStore / ConfigSession surface ─────────────────────────
 
-  async loadBundle(): Promise<InstanceConfigBundle> { return this.loadBundleSync(); }
-  async saveBundle(bundle: InstanceConfigBundle): Promise<void> { this.saveBundleSync(bundle); }
+  async loadBundle(): Promise<InstanceConfigDoc> { return this.loadBundleSync(); }
+  async saveBundle(bundle: InstanceConfigDoc): Promise<void> { this.saveBundleSync(bundle); }
   async list(): Promise<ProfileMeta[]> { return this.listSync(); }
   async load(id: string): Promise<ProfileSnapshot | null> { return this.loadSync(id); }
   async save(id: string, snap: ProfileSnapshot): Promise<void> { this.saveSync(id, snap); }
   async remove(id: string): Promise<void> { this.removeSync(id); }
-  async getActiveProfileId(): Promise<string> { return this.loadBundleSync().activeProfileId; }
+  async getActiveProfileId(): Promise<string> {
+    const doc = this.loadBundleSync();
+    return doc.meta?.id ?? 'default';
+  }
   async setActiveProfileId(id: string): Promise<void> {
-    const b = this.loadBundleSync();
-    b.activeProfileId = id;
-    this.saveBundleSync(b);
+    const doc = this.loadBundleSync();
+    doc.meta = {
+      ...(doc.meta ?? DEFAULT_META()),
+      id,
+      updatedAt: Date.now(),
+    };
+    this.writeRaw(doc);
   }
   async loadWorkspace(): Promise<WorkspaceConfig | null> { return this.loadWorkspaceSync(); }
   async saveWorkspace(config: WorkspaceConfig): Promise<void> { this.saveWorkspaceSync(config); }

@@ -55,7 +55,16 @@ describe('toLayoutTierState (pure)', () => {
 
   it('drops grid-tier module slices, keeps layout-tier ones', () => {
     const out = toLayoutTierState(
-      fullState({ modules: { editSettings: env(1), templates: env(2), columnGroups: env(3), calc: env(4) } }),
+      fullState({
+        modules: {
+          editSettings: env(1),
+          templates: env(2),
+          alerts: env(5),
+          'data-provider': env(6),
+          columnGroups: env(3),
+          calc: env(4),
+        },
+      }),
       gridIds,
     );
     expect(out.modules).toEqual({ columnGroups: env(3), calc: env(4) });
@@ -63,7 +72,14 @@ describe('toLayoutTierState (pure)', () => {
 
   it('omits `modules` entirely when every slice is grid-tier', () => {
     const out = toLayoutTierState(
-      fullState({ modules: { editSettings: env(1), templates: env(2) } }),
+      fullState({
+        modules: {
+          editSettings: env(1),
+          templates: env(2),
+          alerts: env(5),
+          'data-provider': env(6),
+        },
+      }),
       gridIds,
     );
     expect('modules' in out).toBe(false);

@@ -1,7 +1,10 @@
 /**
- * Responsive ribbon overflow — keep labelled groups/segments wrappable, and
- * when content exceeds a max row budget move lowest-priority items into a
- * `⋯` menu (same DOM nodes, so existing control wiring stays intact).
+ * Responsive ribbon overflow — keep labelled groups/segments on the strip,
+ * and when content cannot fit in the row budget move lowest-priority items
+ * into a `⋯` menu (same DOM nodes, so existing control wiring stays intact).
+ *
+ * Items overflow ONLY when the track cannot fit them. A zero-width /
+ * not-yet-laid-out track must not spill.
  */
 import { mirrorThemeClass } from './ui';
 
@@ -43,21 +46,50 @@ export function wireRibbonOverflow(opts: {
     .filter((i) => i.priority > 0)
     .sort((a, b) => b.priority - a.priority);
 
+  const orderIndex = new Map(items.map((it, i) => [it.el, i]));
+
   const restoreAll = (): void => {
     for (const item of items) track.appendChild(item.el);
   };
 
+  /**
+   * True only when laid-out content exceeds the row budget.
+   *
+   * Single-row strips must NOT use unique `offsetTop` counts: with
+   * `align-items: center`, shorter segments sit at a different top than
+   * taller ones on the SAME row, which previously false-triggered overflow
+   * while the bar still had empty space.
+   */
   const exceedsBudget = (): boolean => {
+    const cw = track.clientWidth;
+    // Not laid out yet — never spill; a later resize/rAF reflow measures.
+    if (cw < 8) return false;
+
     const kids = Array.from(track.children).filter((n): n is HTMLElement => n instanceof HTMLElement);
     if (kids.length === 0) return false;
-    const tops = new Set(kids.map((k) => Math.round(k.offsetTop)));
-    if (tops.size > maxRows) return true;
-    const rowH = Math.max(...kids.map((k) => k.offsetHeight), 1);
+
+    if (maxRows === 1) {
+      // nowrap track: horizontal overflow is the only signal.
+      return track.scrollWidth > cw + 1;
+    }
+
+    // Multi-row: cluster tops within a tolerance so center-aligned
+    // different-height siblings count as one row.
+    const heights = kids.map((k) => k.offsetHeight);
+    const medianH = [...heights].sort((a, b) => a - b)[Math.floor(heights.length / 2)] ?? 1;
+    const tol = Math.max(4, medianH * 0.45);
+    const rowTops: number[] = [];
+    for (const k of kids) {
+      const t = k.offsetTop;
+      if (!rowTops.some((rt) => Math.abs(rt - t) <= tol)) rowTops.push(t);
+    }
+    if (rowTops.length > maxRows) return true;
+
+    const rowH = Math.max(...heights, 1);
     return track.scrollHeight > rowH * maxRows + 6;
   };
 
   const syncButton = (): void => {
-    // While the panel is open, overflowed nodes live in the panel — still count them.
     const n = stash.childElementCount + (panel ? panel.childElementCount : 0);
     button.hidden = n === 0;
     button.classList.toggle('has-items', n > 0);
@@ -68,9 +100,15 @@ export function wireRibbonOverflow(opts: {
 
   let panel: HTMLElement | null = null;
 
+  /** Keep overflow panel in toolbar DOM order (Templates/Clear last). */
+  const appendStashInToolbarOrder = (host: HTMLElement): void => {
+    const nodes = Array.from(stash.children) as HTMLElement[];
+    nodes.sort((a, b) => (orderIndex.get(a) ?? 0) - (orderIndex.get(b) ?? 0));
+    for (const n of nodes) host.appendChild(n);
+  };
+
   const closePanel = (): void => {
     if (!panel) return;
-    // Rescue nodes BEFORE removing the panel (menu destroy would drop them).
     while (panel.firstChild) stash.appendChild(panel.firstChild);
     panel.remove();
     panel = null;
@@ -90,7 +128,7 @@ export function wireRibbonOverflow(opts: {
     panel = document.createElement('div');
     panel.className = 'vgext-menu vgext-rb-overflow-panel';
     mirrorThemeClass(button, panel);
-    while (stash.firstChild) panel.appendChild(stash.firstChild);
+    appendStashInToolbarOrder(panel);
     document.body.appendChild(panel);
 
     const margin = 8;
@@ -118,11 +156,11 @@ export function wireRibbonOverflow(opts: {
   const reflow = (): void => {
     if (panel) closePanel();
     restoreAll();
-    void track.offsetHeight;
+    void track.offsetWidth;
     for (const cand of byPriority) {
       if (!exceedsBudget()) break;
       if (cand.el.parentElement === track) stash.appendChild(cand.el);
-      void track.offsetHeight;
+      void track.offsetWidth;
     }
     syncButton();
   };
@@ -132,8 +170,10 @@ export function wireRibbonOverflow(opts: {
   const schedule = (): void => {
     if (raf) cancelAnimationFrame(raf);
     raf = requestAnimationFrame(() => {
-      raf = 0;
-      reflow();
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        reflow();
+      });
     });
   };
 

@@ -9,17 +9,17 @@ describe('wireRibbonOverflow', () => {
   beforeEach(() => {
     track = document.createElement('div');
     track.style.display = 'flex';
-    track.style.flexWrap = 'wrap';
+    track.style.flexWrap = 'nowrap';
     track.style.width = '200px';
+    track.style.overflow = 'hidden';
     document.body.appendChild(track);
 
     items = [1, 2, 3, 4].map((n) => {
       const el = document.createElement('div');
       el.dataset.id = String(n);
       el.textContent = `G${n}`;
-      // Force each "group" wide enough that 4 cannot sit in 1–2 rows of 200px.
       el.style.width = '120px';
-      el.style.height = '40px';
+      el.style.height = n === 1 ? '48px' : '28px'; // different heights (center-align trap)
       el.style.flex = '0 0 auto';
       track.appendChild(el);
       return el;
@@ -29,28 +29,24 @@ describe('wireRibbonOverflow', () => {
     button.type = 'button';
     document.body.appendChild(button);
 
-    // jsdom layout is limited — stub geometry so exceedsBudget can fire.
     let widths = [200];
     Object.defineProperty(track, 'clientWidth', { configurable: true, get: () => widths[0] });
+    Object.defineProperty(track, 'scrollWidth', {
+      configurable: true,
+      get: () => track.childElementCount * 120,
+    });
     Object.defineProperty(track, 'scrollHeight', {
       configurable: true,
-      get: () => {
-        const n = track.childElementCount;
-        const perRow = Math.max(1, Math.floor(widths[0] / 120));
-        return Math.ceil(n / perRow) * 40;
-      },
+      get: () => 48,
     });
+    // Simulate align-items:center — shorter siblings have a larger offsetTop
+    // on the SAME row. Old logic treated this as wrapping and spilled early.
     for (const el of items) {
-      Object.defineProperty(el, 'offsetHeight', { configurable: true, get: () => 40 });
+      const h = el.style.height === '48px' ? 48 : 28;
+      Object.defineProperty(el, 'offsetHeight', { configurable: true, get: () => h });
       Object.defineProperty(el, 'offsetTop', {
         configurable: true,
-        get: () => {
-          const kids = Array.from(track.children);
-          const idx = kids.indexOf(el);
-          if (idx < 0) return 0;
-          const perRow = Math.max(1, Math.floor(widths[0] / 120));
-          return Math.floor(idx / perRow) * 40;
-        },
+        get: () => (h === 48 ? 0 : 10),
       });
     }
     (track as any).__setWidth = (w: number) => { widths[0] = w; };
@@ -61,34 +57,18 @@ describe('wireRibbonOverflow', () => {
     vi.restoreAllMocks();
   });
 
-  it('moves highest-priority items into stash when over the row budget', () => {
+  it('does not spill when scrollWidth fits even if offsetTops differ (center-align)', () => {
+    (track as any).__setWidth(500); // 4×120 = 480 ≤ 500
     const handle = wireRibbonOverflow({
       track,
       button,
-      maxRows: 2,
+      maxRows: 1,
       items: [
         { el: items[0]!, priority: 0 },
-        { el: items[1]!, priority: 0 },
-        { el: items[2]!, priority: 2 },
+        { el: items[1]!, priority: 2 },
+        { el: items[2]!, priority: 3 },
         { el: items[3]!, priority: 4 },
       ],
-    });
-    handle.reflow();
-
-    // 200px fits ~1 item/row → 2-row budget keeps 2 in track; priority 4 then 2 overflow.
-    expect(track.childElementCount).toBeLessThanOrEqual(2);
-    expect(button.hidden).toBe(false);
-    expect(items[3]!.parentElement === track).toBe(false);
-    handle.destroy();
-  });
-
-  it('hides the overflow button when everything fits', () => {
-    (track as any).__setWidth(600);
-    const handle = wireRibbonOverflow({
-      track,
-      button,
-      maxRows: 2,
-      items: items.map((el, i) => ({ el, priority: i === 3 ? 4 : 0 })),
     });
     handle.reflow();
     expect(track.childElementCount).toBe(4);
@@ -96,30 +76,61 @@ describe('wireRibbonOverflow', () => {
     handle.destroy();
   });
 
-  it('opens a panel with stashed groups and restores them on close', () => {
+  it('spills highest-priority items when scrollWidth exceeds clientWidth', () => {
+    (track as any).__setWidth(200);
     const handle = wireRibbonOverflow({
       track,
       button,
       maxRows: 1,
       items: [
         { el: items[0]!, priority: 0 },
-        { el: items[1]!, priority: 1 },
-        { el: items[2]!, priority: 2 },
-        { el: items[3]!, priority: 3 },
+        { el: items[1]!, priority: 2 },
+        { el: items[2]!, priority: 3 },
+        { el: items[3]!, priority: 4 },
       ],
     });
     handle.reflow();
     expect(button.hidden).toBe(false);
+    // priority 4 then 3 then 2 until one item (priority 0) fits in 200px
+    expect(items[0]!.parentElement).toBe(track);
+    expect(items[3]!.parentElement === track).toBe(false);
+    handle.destroy();
+  });
 
+  it('does not spill when the track is not laid out yet (width 0)', () => {
+    (track as any).__setWidth(0);
+    const handle = wireRibbonOverflow({
+      track,
+      button,
+      maxRows: 1,
+      items: items.map((el, i) => ({ el, priority: i + 1 })),
+    });
+    handle.reflow();
+    expect(track.childElementCount).toBe(4);
+    expect(button.hidden).toBe(true);
+    handle.destroy();
+  });
+
+  it('opens overflow panel with items in toolbar order (Clear last)', () => {
+    (track as any).__setWidth(200);
+    const handle = wireRibbonOverflow({
+      track,
+      button,
+      maxRows: 1,
+      items: [
+        { el: items[0]!, priority: 0 },
+        { el: items[1]!, priority: 2 }, // Borders-like
+        { el: items[2]!, priority: 6 }, // Templates-like (spills first)
+        { el: items[3]!, priority: 5 }, // Clear-like (last on strip / in menu)
+      ],
+    });
+    handle.reflow();
     button.click();
     const panel = document.querySelector('.vgext-rb-overflow-panel');
     expect(panel).toBeTruthy();
-    expect(panel!.childElementCount).toBeGreaterThan(0);
-
-    // Click away closes and parks nodes back out of the track.
-    document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-    expect(document.querySelector('.vgext-rb-overflow-panel')).toBeNull();
-
+    const ids = Array.from(panel!.children).map((c) => (c as HTMLElement).dataset.id);
+    // Toolbar order among spilled — Clear (G4) is last
+    expect(ids[ids.length - 1]).toBe('4');
     handle.destroy();
   });
 });

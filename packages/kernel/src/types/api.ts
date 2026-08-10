@@ -199,6 +199,8 @@ export interface VelocityGridApi<TRow = any> {
   refreshServerSide(params?: import('./ssrm').RefreshServerSideParams): void;
   /** SSRM — patch rows already (or about to be) in the block cache. */
   applyServerSideTransaction(tx: import('./ssrm').ServerSideTransaction<TRow>): void;
+  /** Resolves once async init has emitted `gridReady` (SSRM mounted if configured). */
+  whenReady(): Promise<void>;
 
   setSortModel(s: SortModel): void;
   setFilterModel(f: FilterModel): void;
@@ -1105,10 +1107,12 @@ export interface VelocityGridApi<TRow = any> {
     opts?: { overwrite?: boolean; activate?: boolean },
   ): import('./layout').GridLayout;
   /** Import a bundle (`'merge'` default folds in; `'replace'` swaps the set
-   *  + active + grid config). Older bundles migrate; newer bundles throw. */
+   *  + active + grid config). Older bundles migrate; newer bundles throw.
+   *  Pass `{ apply: false }` on replace to reseed without applying the
+   *  active layout (ConfigSession restore — `setState` follows). */
   importLayouts(
     bundle: import('./layout').GridLayoutsBundle,
-    opts?: { mode?: 'replace' | 'merge'; overwrite?: boolean },
+    opts?: { mode?: 'replace' | 'merge'; overwrite?: boolean; apply?: boolean },
   ): void;
 
   // ── Styling templates (Phase B / B3) ────────────────────────────────

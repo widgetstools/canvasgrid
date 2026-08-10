@@ -14,6 +14,25 @@ export interface SsrmBindableGrid {
   setServerSideDatasource?(ds: unknown): void;
   refreshServerSide?(params?: { purge?: boolean }): void;
   applyServerSideTransaction?(tx: { update?: unknown[] }): void;
+  setColumnDefs?(defs: unknown[]): void;
+}
+
+/** Map provider catalog columns onto a VelocityGrid columnDefs payload. */
+function toGridColumnDefs(
+  defs: ReturnType<IDataProvider['getColumnDefs']>,
+): unknown[] {
+  return defs.map((d) => ({
+    field: d.field,
+    headerName: d.headerName,
+    filter: d.filter,
+    sortable: d.sortable,
+    resizable: d.resizable,
+    hide: d.hide,
+    width: d.width,
+    ...(d.cellDataType === 'number' || d.cellDataType === 'text'
+      ? { cellDataType: d.cellDataType }
+      : {}),
+  }));
 }
 
 /**
@@ -27,15 +46,7 @@ export function bindProviderToGrid<T extends Record<string, unknown>>(
   const stops: Array<() => void> = [];
   const defs = provider.getColumnDefs();
   if (defs.length && grid.setColumnDefs) {
-    grid.setColumnDefs(defs.map((d) => ({
-      field: d.field,
-      headerName: d.headerName,
-      filter: d.filter,
-      sortable: d.sortable,
-      resizable: d.resizable,
-      hide: d.hide,
-      width: d.width,
-    })));
+    grid.setColumnDefs(toGridColumnDefs(defs));
   }
 
   stops.push(provider.onSnapshotData((rows) => {
@@ -57,14 +68,21 @@ export function bindProviderToGrid<T extends Record<string, unknown>>(
 }
 
 /**
- * Wire an SSRM provider: exposes IServerSideDatasource.getRows via hub paging
- * and soft-refreshes on tickNotify.
+ * Wire an SSRM provider: exposes IServerSideDatasource.getRows via hub paging.
+ * Live ticks prefer `applyServerSideTransaction` (stages cell flash when
+ * `enableCellChangeFlash` is on); falls back to soft `refreshServerSide`
+ * when the host cannot apply txs or no row payload arrived.
  */
 export function bindProviderToSsrmGrid<T extends Record<string, unknown>>(
-  provider: IDataProvider<T> & Pick<ProviderClientAdapter<T>, 'getRows' | 'onTickNotify'>,
+  provider: IDataProvider<T> & Pick<ProviderClientAdapter<T>, 'getRows' | 'onTickNotify' | 'onTick'>,
   grid: SsrmBindableGrid,
   opts?: { blockSize?: number },
 ): { datasource: { getRows: (params: SsrmParams) => void }; detach: () => void } {
+  const defs = provider.getColumnDefs();
+  if (defs.length && grid.setColumnDefs) {
+    grid.setColumnDefs(toGridColumnDefs(defs));
+  }
+
   const blockSize = opts?.blockSize ?? 100;
   const datasource = {
     getRows(params: SsrmParams) {
@@ -86,14 +104,29 @@ export function bindProviderToSsrmGrid<T extends Record<string, unknown>>(
 
   if (grid.setServerSideDatasource) grid.setServerSideDatasource(datasource);
 
-  const off = provider.onTickNotify(() => {
+  const stops: Array<() => void> = [];
+  const preferTx = (): boolean => typeof grid.applyServerSideTransaction === 'function';
+
+  // Prefer row txs so enableCellChangeFlash stages (soft refresh alone never flashes).
+  stops.push(provider.onTick((rows) => {
+    if (!rows.length) return;
+    if (preferTx()) {
+      grid.applyServerSideTransaction!({ update: rows as T[] });
+      return;
+    }
     grid.refreshServerSide?.({ purge: false });
-  });
+  }));
+
+  // tickNotify without a push payload (or hosts without SSRM txs) → soft refresh.
+  stops.push(provider.onTickNotify(() => {
+    if (preferTx()) return;
+    grid.refreshServerSide?.({ purge: false });
+  }));
 
   return {
     datasource,
     detach: () => {
-      off();
+      stops.forEach((fn) => fn());
     },
   };
 }

@@ -19,6 +19,7 @@ import { menu, mirrorThemeClass, svg, iconButton } from './ui';
 import { layoutsItem, layoutSaveItem } from './layoutsMenu';
 import { alertsBadgeItem } from './alertsChrome';
 import { savedFiltersItem } from './savedFiltersToolbar';
+import { runAutoFormat, type AutoFormatGrid } from './autoFormat';
 
 export interface TitleBarOptions {
   /** Brand label shown at the far left (e.g. the grid's name). */
@@ -411,6 +412,12 @@ function settingsItem(): ToolbarItem {
   return item('settings-launcher', 'primary-right', (host, ctx) => {
     const btn = iconButton(ICON.sliders, 'More');
     btn.classList.add('vgext-settings-launcher');
+    const offAutoFormat = ctx.events.on('auto-format', () => {
+      runAutoFormat({
+        grid: ctx.grid as unknown as AutoFormatGrid,
+        profiles: ctx.profiles,
+      });
+    });
     const m = menu(btn, (close) => {
       const list = document.createElement('div');
       list.className = 'vgext-menu-list';
@@ -487,7 +494,13 @@ function settingsItem(): ToolbarItem {
     });
     btn.addEventListener('click', () => m.toggle());
     host.appendChild(btn);
-    return { destroy() { m.destroy(); host.replaceChildren(); } };
+    return {
+      destroy() {
+        offAutoFormat();
+        m.destroy();
+        host.replaceChildren();
+      },
+    };
   });
 }
 

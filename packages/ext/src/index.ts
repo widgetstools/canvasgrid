@@ -7,11 +7,15 @@ export {
   isConfigSession,
   extractGridLevelData,
   applyGridLevelDataToState,
+  emptyDoc,
   emptyBundle,
+  normalizeInstanceDoc,
   instanceStorageKey,
   INSTANCE_STORAGE_PREFIX,
+  INSTANCE_DOC_VERSION,
   INSTANCE_BUNDLE_VERSION,
   type ConfigSession,
+  type InstanceConfigDoc,
   type InstanceConfigBundle,
   type InstanceGridLevelData,
   type WorkspaceConfig,
@@ -75,6 +79,13 @@ export {
   clearCellFormatting,
   toggleBold,
 } from './toolbar/formatActions';
+export {
+  runAutoFormat,
+  buildAutoFormatPlan,
+  matchFieldToCatalog,
+  type AutoFormatAssignment,
+  type AutoFormatColumn,
+} from './toolbar/autoFormat';
 export {
   mountFormatterStyleChrome,
   type StyleChromeAdapter,

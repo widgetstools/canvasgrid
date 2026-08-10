@@ -6,8 +6,8 @@ names is the most common host-integration bug.
 | Plane | Owns | Does **not** own | Canvasgrid package / API |
 |-------|------|------------------|---------------------------|
 | **AppData** | Named KV bags; `{{name.key}}` templates (e.g. `asOfDate`) | Rows, layouts, provider defs | `@wellsfargo-starui/velocity-grid-appdata` |
-| **Provider catalog** | `DataProviderConfig` bodies (transports, topics, schema) | View state, profiles | `@wellsfargo-starui/velocity-grid-data` **`ConfigBackend`** (think: **ProviderCatalogBackend**) |
-| **Config Manager / ConfigSession** | Named views: profiles + layouts + module slices; optional `gridLevelData` pointers | Live row cache, transport sockets | Ext **`ConfigSession`** / `ProfileStore` → host Dexie later |
+| **Provider catalog** | `DataProviderConfig` bodies (transports, topics, schema) | View state, configs | `@wellsfargo-starui/velocity-grid-data` **`ConfigBackend`** (think: **ProviderCatalogBackend**) |
+| **Config Manager / ConfigSession** | One config per grid: view state + layouts + module slices; optional `gridLevelData` pointers | Live row cache, transport sockets | Ext **`ConfigSession`** / `ProfileStore` facade → host Dexie later |
 
 Markets **Config Manager** (Dexie `host-config`, identity, REST sync, BroadcastChannel)
 is the production owner of plane 3. Canvasgrid ships a thin **`ConfigSession`**
@@ -40,33 +40,40 @@ Do not use kernel `getConfig` for persistence.
   `{ activeProviderId }` (and optionally `gridLevelData.liveProviderId` /
   `historicalProviderId` on the instance bundle).
 - Persist **definition bodies** in the provider catalog.
-- Never embed full `DataProviderConfig` into layout/profile JSON.
+- Never embed full `DataProviderConfig` into layout/config JSON.
 
 ---
 
-## Instance bundle shape (ConfigSession)
+## Instance document shape (ConfigSession)
 
-One document per `gridId`, Markets-aligned:
+One **flat** document per `gridId`: workspace (`GridState` + `layouts`) at the
+root, plus host pointers. There is no `profiles[]` plane — named views are
+**layouts** only. `ProfileStore` / `ProfilesController` remain as a single-slot
+facade (legacy Markets profile-set language) over this document.
 
 ```ts
 {
-  version: 1,
-  activeProfileId: 'default',
-  profiles: [ /* ProfileSnapshot[] */ ],
+  docVersion: 1,                 // instance document version (≠ GridState.version)
   gridLevelData: {
     activeProviderId?: string,
     liveProviderId?: string,
     historicalProviderId?: string,
   },
-  layouts?: GridLayoutsBundle,  // VelocityGrid named layouts
+  meta?: { id: 'default', name: 'Default', updatedAt: number }, // ProfileStore facade
+  // WorkspaceConfig / GridState fields at root:
+  version: 4,
+  columnState?, modules?, sideBar?, scroll?, …
+  layouts?: GridLayoutsBundle,
 }
 ```
 
 Storage key (default adapter): `velocity-grid:instance:<gridId>`.
 
-**Migration:** on first open, `LocalStorageConfigSession` imports legacy
-`velocity-grid:config:<gridId>` and `velocity-grid-ext:profiles` (or a custom
-profile namespace), then writes the instance key.
+**Migration on read:**
+- Legacy `velocity-grid:config:<gridId>` and `velocity-grid-ext:profiles` → flat
+  instance doc.
+- Older instance docs with `profiles[]` / `activeProfileId` → active profile’s
+  `gridState` + top-level `layouts` (preferred) + `gridLevelData`, rewritten flat.
 
 ---
 

@@ -1,8 +1,8 @@
 /**
  * Workspace persistence helpers.
  *
- * All reads/writes go through {@link LocalStorageConfigSession} (instance
- * bundle under `velocity-grid:instance:<gridId>`). Legacy
+ * All reads/writes go through {@link LocalStorageConfigSession} (flat instance
+ * document under `velocity-grid:instance:<gridId>`). Legacy
  * `velocity-grid:config:<gridId>` keys are migrated on first open.
  *
  * Prefer injecting a custom {@link ConfigSession} via

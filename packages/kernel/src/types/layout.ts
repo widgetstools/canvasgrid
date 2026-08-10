@@ -35,8 +35,18 @@ export const DEFAULT_LAYOUT_ID = 'default';
  * keeps the documented default (the `layoutGridLevelModules` construction
  * option, §10) stable as templates lights up. Everything NOT in this set
  * (`columnGroups`, `calc`, `rules`, …) is layout-tier.
+ *
+ * `data-provider` is grid-tier: the active provider is shared across all
+ * layouts (ConfigSession `gridLevelData.activeProviderId` is the persisted
+ * pointer). Baking it into layout snapshots made layout switches rebind /
+ * clear the live provider.
  */
-export const DEFAULT_GRID_LEVEL_MODULES: readonly string[] = ['editSettings', 'templates', 'alerts'];
+export const DEFAULT_GRID_LEVEL_MODULES: readonly string[] = [
+  'editSettings',
+  'templates',
+  'alerts',
+  'data-provider',
+];
 
 /**
  * Schema version of an exported {@link GridLayoutsBundle} envelope. Bumped

@@ -4,6 +4,7 @@ import {
   bindProviderToSsrmGrid,
   createDefaultConfigBackend,
   registerDefaultTransports,
+  resolveProviderConfig,
   type ConfigBackend,
   type DataProviderConfig,
   type ProviderClientOptions,
@@ -14,31 +15,67 @@ export type DataProviderStateSlice = {
   activeProviderId: string | null;
 };
 
+/** `{{name.key}}` lookup — pass `store.lookup` from an AppDataStore. */
+export type DataProviderAppDataLookup = (providerName: string, key: string) => unknown;
+
 export type DataProviderControllerOptions = {
   catalog?: ConfigBackend;
+  /** Resolves `{{name.key}}` tokens in provider configs at bind time. */
+  appData?: DataProviderAppDataLookup | { lookup: DataProviderAppDataLookup };
   workerUrl?: URL | string;
   inProcess?: boolean;
   /** Fired when the active provider changes (after bind/unbind). */
   onActiveChange?: (providerId: string | null, provider: ProviderClientAdapter | null) => void;
 };
 
+type BindableGrid = {
+  setRowData: (rows: Record<string, unknown>[]) => void;
+  applyTransaction?: (tx: { update?: Record<string, unknown>[] }) => void;
+  applyTransactionAsync?: (tx: { update?: Record<string, unknown>[] }) => void;
+  updateGridOptions?: (partial: { columnDefs?: unknown[] }) => void;
+  setColumnDefs?: (defs: unknown[]) => void;
+  setServerSideDatasource?: (ds: unknown) => void;
+  refreshServerSide?: (p?: { purge?: boolean }) => void;
+  applyServerSideTransaction?: (tx: { update?: Record<string, unknown>[] }) => void;
+  whenReady?: () => Promise<void>;
+  addEventListener?: (type: string, handler: (e: unknown) => void) => () => void;
+};
+
 /**
  * Owns the live ProviderClientAdapter for an Ext grid: catalog lookup,
  * hub attach/bind, and StateModule persistence of activeProviderId.
+ *
+ * Activation is serialized + epoch-gated so profile bootstrap / reapply
+ * cannot interleave STOMP sessions or leave a half-bound SSRM datasource.
  */
 export class DataProviderController {
   private readonly catalog: ConfigBackend;
+  private readonly appDataLookup: DataProviderAppDataLookup | null;
   private readonly clientOpts: ProviderClientOptions;
   private readonly onActiveChange?: DataProviderControllerOptions['onActiveChange'];
+  /** Last committed selection (what the UI / profile snapshot report). */
   private activeProviderId: string | null = null;
+  /** In-flight or committed target — used to coalesce duplicate restores. */
+  private desiredProviderId: string | null = null;
   private provider: ProviderClientAdapter | null = null;
   private detachBind: (() => void) | null = null;
   private ctx: VelocityGridExtContext | null = null;
   private unregState: (() => void) | null = null;
+  private activateChain: Promise<void> = Promise.resolve();
+  /** Bumps on every activate so superseded async work exits cleanly. */
+  private activateEpoch = 0;
+  /** Captured in attach() so restore never misses a already-fired gridReady. */
+  private gridReadyWait: Promise<void> | null = null;
 
   constructor(opts?: DataProviderControllerOptions) {
     registerDefaultTransports();
     this.catalog = opts?.catalog ?? createDefaultConfigBackend();
+    const ad = opts?.appData;
+    this.appDataLookup = !ad
+      ? null
+      : typeof ad === 'function'
+        ? ad
+        : ad.lookup;
     this.clientOpts = {
       workerUrl: opts?.workerUrl,
       inProcess: opts?.inProcess,
@@ -46,7 +83,6 @@ export class DataProviderController {
     this.onActiveChange = opts?.onActiveChange;
   }
 
-  /** Hub connection options shared with Diagnostics in the editor popout. */
   getHubOpts(): ProviderClientOptions {
     return { ...this.clientOpts };
   }
@@ -66,72 +102,124 @@ export class DataProviderController {
   /** Wire StateModule + keep ctx for rebind. Call from SettingsModule.init. */
   attach(ctx: VelocityGridExtContext): void {
     this.ctx = ctx;
+    this.gridReadyWait = this.captureGridReady(ctx.grid as unknown as BindableGrid);
     this.unregState?.();
     this.unregState = ctx.registerStateModule({
       id: 'data-provider',
       version: 1,
-      get: () => {
-        if (this.activeProviderId == null) return undefined;
-        return { activeProviderId: this.activeProviderId } satisfies DataProviderStateSlice;
-      },
+      // Always emit the pointer (including null) so a cleared selection
+      // overwrites a previously saved id instead of leaving an orphan.
+      get: () =>
+        ({ activeProviderId: this.activeProviderId }) satisfies DataProviderStateSlice,
       set: (data) => {
-        const slice = data as DataProviderStateSlice | null;
-        const id = slice?.activeProviderId ?? null;
+        const slice = data as DataProviderStateSlice | null | undefined;
+        const id = slice && typeof slice === 'object' && 'activeProviderId' in slice
+          ? (slice.activeProviderId ?? null)
+          : null;
         void this.setActiveProvider(id, { fromState: true });
       },
     });
   }
 
   detach(): void {
+    this.activateEpoch += 1;
+    this.desiredProviderId = null;
     void this.stopCurrent();
     this.unregState?.();
     this.unregState = null;
+    this.gridReadyWait = null;
     this.ctx = null;
   }
 
   /**
    * Select a catalog provider by id, start hub client, bind to the grid.
-   * Pass null to unbind. Re-applying the same id forces a restart.
+   * Pass null to unbind. Re-applying the same id with `{ force: true }` restarts.
    */
   async setActiveProvider(
     providerId: string | null,
     opts?: { fromState?: boolean; force?: boolean },
   ): Promise<void> {
+    const run = () => this.setActiveProviderUnlocked(providerId, opts);
+    const next = this.activateChain.then(run, run);
+    this.activateChain = next.then(() => undefined, () => undefined);
+    return next;
+  }
+
+  private async setActiveProviderUnlocked(
+    providerId: string | null,
+    opts?: { fromState?: boolean; force?: boolean },
+  ): Promise<void> {
+    // Coalesce duplicate profile restores / Apply of the live provider.
     if (
       !opts?.force
+      && providerId != null
+      && providerId === this.desiredProviderId
       && providerId === this.activeProviderId
       && this.provider
-      && providerId != null
     ) {
-      // Still refresh paint — user may have clicked Apply again.
       await this.provider.refresh();
+      if (this.provider.getConfig().rowModel === 'serverSide') {
+        (this.ctx?.grid as unknown as BindableGrid | undefined)
+          ?.refreshServerSide?.({ purge: false });
+      }
       this.onActiveChange?.(this.activeProviderId, this.provider);
       return;
     }
 
+    // Another fromState restore already targeting this id — let it finish.
+    if (
+      opts?.fromState
+      && !opts.force
+      && providerId != null
+      && providerId === this.desiredProviderId
+      && this.provider == null
+    ) {
+      return;
+    }
+
+    const epoch = ++this.activateEpoch;
+    this.desiredProviderId = providerId;
+
     await this.stopCurrent();
+    if (epoch !== this.activateEpoch) return;
+
     this.activeProviderId = providerId;
 
     if (!opts?.fromState) this.ctx?.profiles.markDirty();
 
     if (!providerId || !this.ctx) {
       this.onActiveChange?.(null, null);
+      if (!opts?.fromState && this.ctx) await this.persistActiveSelection();
       return;
     }
 
     const cfg = await this.catalog.get(providerId);
+    if (epoch !== this.activateEpoch) return;
     if (!cfg) {
       console.warn(`[velocity-grid-ext] data provider "${providerId}" not found in catalog`);
       this.activeProviderId = null;
+      this.desiredProviderId = null;
       this.onActiveChange?.(null, null);
+      if (!opts?.fromState) await this.persistActiveSelection();
       return;
     }
 
-    await this.bindConfig(cfg);
+    await this.bindConfig(cfg, epoch);
+    if (epoch !== this.activateEpoch) return;
+
     this.onActiveChange?.(this.activeProviderId, this.provider);
+    if (!opts?.fromState) await this.persistActiveSelection();
   }
 
-  /** Save definition to catalog; rebinds when it is the active provider. */
+  private async persistActiveSelection(): Promise<void> {
+    if (!this.ctx) return;
+    try {
+      await this.ctx.profiles.save();
+    } catch (err) {
+      console.warn('[velocity-grid-ext] failed to persist active data provider', err);
+    }
+  }
+
   async saveDefinition(cfg: DataProviderConfig): Promise<DataProviderConfig> {
     const saved = await this.catalog.save(cfg);
     this.ctx?.profiles.markDirty();
@@ -141,29 +229,85 @@ export class DataProviderController {
     return saved;
   }
 
-  private async bindConfig(cfg: DataProviderConfig): Promise<void> {
-    if (!this.ctx) return;
-    const provider = new ProviderClientAdapter(cfg, this.clientOpts);
-    this.provider = provider;
-    const grid = this.ctx.grid as unknown as {
-      setRowData: (rows: Record<string, unknown>[]) => void;
-      applyTransaction?: (tx: { update?: Record<string, unknown>[] }) => void;
-      applyTransactionAsync?: (tx: { update?: Record<string, unknown>[] }) => void;
-      updateGridOptions?: (partial: { columnDefs?: unknown[] }) => void;
-      setServerSideDatasource?: (ds: unknown) => void;
-      refreshServerSide?: (p?: { purge?: boolean }) => void;
-    };
+  /** Listen from attach-time so restore cannot miss a fired `gridReady`. */
+  private captureGridReady(grid: BindableGrid): Promise<void> {
+    if (typeof grid.whenReady === 'function') {
+      return grid.whenReady();
+    }
+    return new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = (): void => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      const unsub = grid.addEventListener?.('gridReady', () => {
+        unsub?.();
+        finish();
+      });
+      // Missed-event fallback (attach after ready): brief poll then resolve.
+      const deadline = Date.now() + 15_000;
+      const poll = (): void => {
+        if (settled) return;
+        const ssrm = (grid as { ssrm?: unknown }).ssrm;
+        if (ssrm || Date.now() >= deadline) {
+          unsub?.();
+          finish();
+          return;
+        }
+        setTimeout(poll, 16);
+      };
+      poll();
+    });
+  }
 
+  private async waitForGridReady(): Promise<void> {
+    await (this.gridReadyWait ?? this.captureGridReady(
+      (this.ctx?.grid ?? {}) as BindableGrid,
+    ));
+  }
+
+  private async bindConfig(cfg: DataProviderConfig, epoch: number): Promise<void> {
+    if (!this.ctx) return;
+
+    // SSRM controller mounts in async init; kernel also queues early
+    // setServerSideDatasource calls — waiting keeps start/refresh ordered.
+    if (cfg.rowModel === 'serverSide') {
+      await this.waitForGridReady();
+      if (epoch !== this.activateEpoch) return;
+    }
+
+    const resolved = this.appDataLookup
+      ? resolveProviderConfig(cfg, this.appDataLookup)
+      : cfg;
+    const provider = new ProviderClientAdapter(resolved, this.clientOpts);
+    if (epoch !== this.activateEpoch) {
+      provider.destroy();
+      return;
+    }
+    this.provider = provider;
+
+    const grid = this.ctx.grid as unknown as BindableGrid;
     const bindable = {
       setRowData: (rows: Record<string, unknown>[]) => grid.setRowData(rows),
-      applyTransaction: grid.applyTransaction?.bind(grid),
-      applyTransactionAsync: grid.applyTransactionAsync?.bind(grid),
-      // columnDefs is initial-only on setGridOption — use updateGridOptions.
+      applyTransaction: (tx: { update?: Record<string, unknown>[] }) => {
+        grid.applyTransaction?.(tx);
+      },
+      applyTransactionAsync: (tx: { update?: Record<string, unknown>[] }) => {
+        void grid.applyTransactionAsync?.(tx);
+      },
       setColumnDefs: (defs: unknown[]) => {
         grid.updateGridOptions?.({ columnDefs: defs });
       },
-      setServerSideDatasource: grid.setServerSideDatasource?.bind(grid),
-      refreshServerSide: grid.refreshServerSide?.bind(grid),
+      setServerSideDatasource: (ds: unknown) => {
+        grid.setServerSideDatasource?.(ds);
+      },
+      refreshServerSide: (p?: { purge?: boolean }) => {
+        grid.refreshServerSide?.(p);
+      },
+      applyServerSideTransaction: (tx: { update?: Record<string, unknown>[] }) => {
+        grid.applyServerSideTransaction?.(tx);
+      },
     };
 
     if (cfg.rowModel === 'serverSide') {
@@ -174,11 +318,49 @@ export class DataProviderController {
     }
 
     await provider.start();
-    // Snapshot emit is async (microtask + MessagePort); pull book explicitly.
+    if (epoch !== this.activateEpoch) return;
+
+    // Snapshot emit is async; wait until the hub is ready (or errored)
+    // so SSRM getRows sees the full rowCount instead of a partial book.
+    await this.waitForProviderReady(provider, epoch);
+    if (epoch !== this.activateEpoch) return;
+
     await provider.refresh();
+    if (epoch !== this.activateEpoch) return;
+
     if (cfg.rowModel === 'clientSide') {
       grid.setRowData(provider.getData() as Record<string, unknown>[]);
+    } else {
+      // Purge once after the snapshot is complete so any getRows that raced
+      // the partial book (wrong rowCount) are discarded.
+      grid.refreshServerSide?.({ purge: true });
     }
+  }
+
+  private waitForProviderReady(
+    provider: ProviderClientAdapter,
+    epoch: number,
+  ): Promise<void> {
+    const terminal = (s: string): boolean =>
+      s === 'ready' || s === 'error' || s === 'disconnected';
+    if (terminal(provider.getStatus())) return Promise.resolve();
+
+    return new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = (): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        unsub();
+        resolve();
+      };
+      const unsub = provider.onStatus((s) => {
+        if (terminal(s) || epoch !== this.activateEpoch) finish();
+      });
+      const timer = setTimeout(finish, 60_000);
+      // Status may have flipped between getStatus() and subscribe.
+      if (terminal(provider.getStatus()) || epoch !== this.activateEpoch) finish();
+    });
   }
 
   private async stopCurrent(): Promise<void> {

@@ -40,7 +40,7 @@ export interface LayoutGridSurface {
   exportLayout(id: string): unknown;
   exportLayouts(): unknown;
   importLayout(layout: unknown, opts?: { overwrite?: boolean; activate?: boolean }): unknown;
-  importLayouts(bundle: unknown, opts?: { mode?: 'replace' | 'merge'; overwrite?: boolean }): void;
+  importLayouts(bundle: unknown, opts?: { mode?: 'replace' | 'merge'; overwrite?: boolean; apply?: boolean }): void;
   addEventListener<K extends VelocityGridExtGridEvent['type']>(
     type: K,
     fn: (event: Extract<VelocityGridExtGridEvent, { type: K }>) => void,
@@ -112,16 +112,19 @@ export function layoutSaveItem(): ToolbarItem {
         if (ev.changedKeys.length > 0 && ev.changedKeys.every((k) => k === 'layouts')) return;
         if (!dirty) { dirty = true; sync(); }
       });
-      const offLayout = grid.addEventListener('layoutChanged', () => { dirty = false; sync(); });
+      const offLayout = grid.addEventListener('layoutChanged', (e) => {
+        dirty = false;
+        sync();
+        // Selecting (or creating/deleting/importing) a layout must persist
+        // `layouts.activeLayoutId` into the instance config — otherwise a
+        // reload always comes back on Default even though the selector moved.
+        const source = (e as { source?: string }).source;
+        if (shouldPersistLayoutSource(source)) persistGridConfig(grid);
+      });
       btn.addEventListener('click', () => {
         try {
           grid.updateLayout();
-          const gid = String(grid.getGridOption('gridId') ?? '');
-          if (!gid) {
-            console.warn('[cgext] layout-save: set options.gridId to persist config via ConfigSession');
-          } else {
-            saveConfigToLocalStorage(gid, captureGridConfig(grid));
-          }
+          persistGridConfig(grid);
         } catch (err) {
           console.warn('[cgext] save failed:', err);
           /* stays dirty so the user can retry */
@@ -160,6 +163,30 @@ export function captureGridConfig(grid: LayoutGridSurface): GridState & { layout
   };
 }
 
+/** Persist view + layouts (incl. `activeLayoutId`) to the ConfigSession doc. */
+function persistGridConfig(grid: LayoutGridSurface): void {
+  const gid = String(grid.getGridOption('gridId') ?? '');
+  if (!gid) {
+    console.warn('[cgext] persist config: set options.gridId to persist via ConfigSession');
+    return;
+  }
+  try {
+    saveConfigToLocalStorage(gid, captureGridConfig(grid));
+  } catch (err) {
+    console.warn('[cgext] persist config failed:', err);
+  }
+}
+
+/** Layout ops that should write the instance config (active layout + registry).
+ *  Note: `'import'` is intentionally excluded — ConfigSession restore used to
+ *  reseed via importLayouts(replace) which emitted `import` before
+ *  data-provider modules were restored, and auto-persist then wrote
+ *  `activeProviderId: null` over the saved pointer. File import calls
+ *  `persistGridConfig` explicitly after apply. */
+function shouldPersistLayoutSource(source: string | undefined): boolean {
+  return source === 'load' || source === 'save' || source === 'delete';
+}
+
 /** Restore a `captureGridConfig` / `getConfig` blob (layouts replace + view). */
 export function applyGridConfig(
   grid: LayoutGridSurface,
@@ -167,7 +194,9 @@ export function applyGridConfig(
 ): void {
   const { layouts, ...viewState } = config;
   if (layouts && typeof layouts === 'object' && !Array.isArray(layouts)) {
-    grid.importLayouts(layouts, { mode: 'replace', overwrite: true });
+    // apply:false — setState is authoritative; avoids persist-on-import wiping
+    // grid-tier data-provider before modules land.
+    grid.importLayouts(layouts, { mode: 'replace', overwrite: true, apply: false });
   }
   grid.setState(viewState as GridState, { exhaustive: true });
 }
@@ -200,10 +229,16 @@ export function handleImportText(
   catch { showError('Import failed: the file is not valid JSON.'); return; }
   try {
     const kind = sniffImport(parsed);
-    if (kind === 'config') applyGridConfig(grid, parsed as GridState & { layouts?: unknown });
-    else if (kind === 'bundle') grid.importLayouts(parsed, { mode: 'merge' });
-    else if (kind === 'layout') grid.importLayout(parsed);
-    else showError('Import failed: not a grid config, layouts bundle, or layout.');
+    if (kind === 'config') {
+      applyGridConfig(grid, parsed as GridState & { layouts?: unknown });
+      persistGridConfig(grid);
+    } else if (kind === 'bundle') {
+      grid.importLayouts(parsed, { mode: 'merge' });
+      persistGridConfig(grid);
+    } else if (kind === 'layout') {
+      grid.importLayout(parsed);
+      persistGridConfig(grid);
+    } else showError('Import failed: not a grid config, layouts bundle, or layout.');
   } catch (err) { showError(`Import failed: ${errText(err)}`); }
 }
 

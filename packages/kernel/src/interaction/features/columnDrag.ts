@@ -433,7 +433,10 @@ export class ColumnDrag extends Feature {
   override handleMouseMove(ctx: VelocityGridEventCtx): void {
     if (this.state === null) {
       if (ctx.hit.kind === 'header') {
-        this.cursor = ctx.grid.getColDef(ctx.hit.colId)?.suppressMovable === false ? 'grab' : null;
+        // Idle hover: pointer (sort / click affordance). Grab only appears
+        // once a drag is underway (`grabbing` below) — hovering the header
+        // must not look like a drag handle.
+        this.cursor = ctx.grid.getColDef(ctx.hit.colId)?.suppressMovable === false ? 'pointer' : null;
       } else if (ctx.hit.kind === 'headerGroup') {
         // Grid Layouts / column-group-drag feature (Task 1) — same
         // movable check `handleMouseDown` uses, so the hover affordance
@@ -441,7 +444,7 @@ export class ColumnDrag extends Feature {
         const leafColIds = ctx.grid.getGroupLeafColIds(ctx.hit.groupId);
         const movable = leafColIds.length > 0
           && leafColIds.every((id) => (ctx.grid.getColDef(id)?.lockPosition ?? null) === null);
-        this.cursor = movable ? 'grab' : null;
+        this.cursor = movable ? 'pointer' : null;
       } else {
         this.cursor = null;
       }

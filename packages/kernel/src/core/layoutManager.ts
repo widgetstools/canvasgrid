@@ -109,6 +109,22 @@ export interface ImportLayoutsOptions {
 }
 
 /**
+ * Options for {@link VelocityGrid.importLayouts} (manager opts + live-grid
+ * apply control). `apply: false` reseeds the registry only — used by
+ * ConfigSession restore so a subsequent `setState` owns the view (and so
+ * we don't emit a persistable `layoutChanged('import')` before provider
+ * modules have been restored).
+ */
+export type ImportLayoutsLiveOptions = ImportLayoutsOptions & {
+  /**
+   * When `mode: 'replace'`, whether to apply the active layout to the live
+   * grid after reseeding. Default `true`. Pass `false` for restore paths
+   * that immediately `setState` the saved view.
+   */
+  apply?: boolean;
+};
+
+/**
  * Forward-migrate an exported bundle to {@link LAYOUTS_BUNDLE_VERSION}.
  * Mirrors `migrateSnapshot`: older bundles run through the migration chain;
  * a bundle newer than this build throws a clear error rather than restoring

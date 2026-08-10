@@ -277,7 +277,7 @@ export interface VelocityGridOptions<TRow = any> {
   /**
    * Grid Layouts — module ids treated as GRID-tier (shared across every
    * layout rather than captured per-layout). Defaults to
-   * `['editSettings', 'templates', 'alerts']` (see `DEFAULT_GRID_LEVEL_MODULES`).
+   * `['editSettings', 'templates', 'alerts', 'data-provider']` (see `DEFAULT_GRID_LEVEL_MODULES`).
    */
   layoutGridLevelModules?: string[];
   /**

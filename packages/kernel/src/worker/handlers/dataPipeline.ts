@@ -160,6 +160,11 @@ export async function handleDataPipeline(
         if (prev !== '' && prev !== id) repointed = true;
       }
       if (add.length || update.length) {
+        // Soft-refresh hydrate must still stage flashes for value changes —
+        // otherwise a sort-driven refresh silently kills Change flash.
+        if (state.enableCellChangeFlash && update.length > 0) {
+          helpers.stageFlashesForUpdates(update as unknown[]);
+        }
         state.store.apply({ add, update });
       }
       // Orphan sweep — a reallocation (rowCount change) wipes every slot

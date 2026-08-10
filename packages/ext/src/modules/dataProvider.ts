@@ -252,9 +252,19 @@ export function dataProviderModule(opts?: DataProviderModuleOptions): SettingsMo
             const id = sel.value || null;
             await controller.setActiveProvider(id, { force: true });
             await rebuildSelect();
-            hint.textContent = id
-              ? `Applied “${id}” · status ${controller.getProvider()?.getStatus() ?? '—'} · rows ${controller.getProvider()?.getData().length ?? 0}`
-              : 'Cleared active provider.';
+            if (!id) {
+              hint.textContent = 'Cleared active provider · selection saved for next load.';
+            } else {
+              const p = controller.getProvider();
+              const status = p?.getStatus() ?? '—';
+              let rowsHint = String(p?.getData().length ?? 0);
+              try {
+                const page = await p?.getRows?.({ startRow: 0, endRow: 1 });
+                if (page && typeof page.rowCount === 'number') rowsHint = String(page.rowCount);
+              } catch { /* CSRM / not ready */ }
+              hint.textContent =
+                `Applied “${id}” · ${status} · ${rowsHint} rows · selection saved for next load.`;
+            }
           } catch (err) {
             console.error('[velocity-grid-ext] Apply data provider failed', err);
             hint.textContent = err instanceof Error ? err.message : String(err);

@@ -1,8 +1,17 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { layoutsItem, uniqueCopyName, fileIO, sniffImport, handleImportText, layoutSaveItem } from '../src/toolbar/layoutsMenu';
+import {
+  layoutsItem,
+  uniqueCopyName,
+  fileIO,
+  sniffImport,
+  handleImportText,
+  layoutSaveItem,
+  captureGridConfig,
+} from '../src/toolbar/layoutsMenu';
 import type { LayoutGridSurface } from '../src/toolbar/layoutsMenu';
 import type { VelocityGridApi } from '@wellsfargo-starui/velocity-grid';
 import { FakeGrid, mountItem } from './layoutsMenuHarness';
+import { saveConfigToLocalStorage } from '../src/configStorage';
 
 // Type-only compile-time tie to the kernel API (closeout finding #5): if a
 // kernel layout-method rename ever makes VelocityGridApi stop structurally
@@ -15,7 +24,10 @@ type _LayoutSurfaceCheck = VelocityGridApi extends LayoutGridSurface ? true : ne
 const _layoutSurfaceCheck: _LayoutSurfaceCheck = true;
 void _layoutSurfaceCheck;
 
-afterEach(() => { document.body.replaceChildren(); });
+afterEach(() => {
+  document.body.replaceChildren();
+  localStorage.clear();
+});
 
 const openPanel = (host: HTMLElement) => {
   host.querySelector<HTMLButtonElement>('button.vgext-layouts-trigger')!.click();
@@ -308,7 +320,7 @@ describe('save-new + import/export', () => {
     }), showError);
     expect(grid.importLayouts).toHaveBeenCalledWith(
       expect.objectContaining({ version: 1 }),
-      { mode: 'replace', overwrite: true },
+      { mode: 'replace', overwrite: true, apply: false },
     );
     expect(grid.setState).toHaveBeenCalledWith(
       expect.objectContaining({ version: 4, filterModel: { a: 1 } }),
@@ -364,7 +376,7 @@ describe('layout-save disk', () => {
     btn.click();
     expect(grid.updateLayout).toHaveBeenCalled();
     expect(btn.disabled).toBe(true); // updateLayout emitted layoutChanged → clean
-    const raw = localStorage.getItem('velocity-grid:config:fake-grid');
+    const raw = localStorage.getItem('velocity-grid:instance:fake-grid');
     expect(raw).toBeTruthy();
     expect(JSON.parse(raw!).layouts).toBeTruthy();
   });
@@ -387,6 +399,38 @@ describe('layout-save disk', () => {
     grid.loadLayout('l1');
     grid.emit(stateUpdated('api', ['columnState', 'filter']));
     expect(btn.disabled).toBe(true); // clean after a load, despite the state echo
+  });
+
+  it('does not persist on layoutChanged(import) — protects activeProviderId during restore', () => {
+    const grid = new FakeGrid();
+    grid.viewState = {
+      version: 4,
+      modules: { 'data-provider': { version: 1, data: { activeProviderId: 'stomp-ssrm' } } },
+    };
+    mountItem(layoutSaveItem(), grid);
+
+    // Seed a good workspace first (as Apply would).
+    saveConfigToLocalStorage('fake-grid', captureGridConfig(grid as never));
+    expect(JSON.parse(localStorage.getItem('velocity-grid:instance:fake-grid')!).gridLevelData.activeProviderId)
+      .toBe('stomp-ssrm');
+
+    // Simulate cold restore: controller still null, import fires before setState.
+    grid.viewState = { version: 4 };
+    grid.emit({ type: 'layoutChanged', activeLayoutId: 'default', source: 'import' });
+
+    const raw = JSON.parse(localStorage.getItem('velocity-grid:instance:fake-grid')!);
+    expect(raw.gridLevelData.activeProviderId).toBe('stomp-ssrm');
+  });
+
+  it('persists layouts.activeLayoutId when the layout selector loads a layout', () => {
+    const grid = new FakeGrid();
+    grid.layouts.push({ id: 'l1', name: 'Layout 1', state: {} });
+    mountItem(layoutSaveItem(), grid);
+
+    grid.loadLayout('l1');
+
+    const raw = JSON.parse(localStorage.getItem('velocity-grid:instance:fake-grid')!);
+    expect(raw.layouts.activeLayoutId).toBe('l1');
   });
 
   it('destroy unsubscribes both listeners', () => {
