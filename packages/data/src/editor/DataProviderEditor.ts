@@ -26,6 +26,7 @@ import { ensureEditorStyles } from './styles';
 import {
   createButton,
   createField,
+  createJsonImportModal,
   createModal,
   createSearchInput,
   createSelect,
@@ -176,23 +177,36 @@ export class DataProviderEditor {
     this.render();
   }
 
-  private async onImportFile(file: File): Promise<void> {
-    try {
-      const portable = parseProviderConfigImport(await file.text());
-      const draft: DataProviderConfig = {
-        ...portable,
-        providerId: `provider-${Date.now().toString(36)}`,
-        isDefault: false,
-        rowModel: portable.rowModel ?? 'clientSide',
-      };
-      const saved = await this.backend.save(draft);
-      this.creating = null;
-      this.selectedId = saved.providerId;
-      await this.refreshList();
-      this.render();
-    } catch (err) {
-      window.alert(`Could not import provider: ${err instanceof Error ? err.message : String(err)}`);
-    }
+  /** Parse + persist a pasted / dropped provider JSON export. Throws on invalid
+   *  input so the import modal can surface the message inline. */
+  private async onImportText(text: string): Promise<void> {
+    const portable = parseProviderConfigImport(text);
+    const draft: DataProviderConfig = {
+      ...portable,
+      providerId: `provider-${Date.now().toString(36)}`,
+      isDefault: false,
+      rowModel: portable.rowModel ?? 'clientSide',
+    };
+    const saved = await this.backend.save(draft);
+    this.creating = null;
+    this.selectedId = saved.providerId;
+    await this.refreshList();
+    this.render();
+  }
+
+  private openImportModal(): void {
+    this.closeModal();
+    const overlay = createJsonImportModal({
+      title: 'Import provider',
+      description: 'Paste a provider JSON export, or drop a .json file.',
+      hint: 'Use the Export button on any provider to produce this JSON.',
+      placeholder: 'Paste provider JSON here, or drop a .json file…',
+      testId: 'provider-import-dialog',
+      onSubmit: (text) => this.onImportText(text),
+      onClose: () => this.closeModal(),
+    });
+    this.modalHost = overlay;
+    this.root.appendChild(overlay);
   }
 
   private requestDelete(cfg: DataProviderConfig): void {
@@ -284,19 +298,10 @@ export class DataProviderEditor {
     const actions = document.createElement('div');
     actions.className = 'vg-dp-shell__sidebar-actions';
 
-    const fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.accept = 'application/json,.json';
-    fileInput.hidden = true;
-    fileInput.addEventListener('change', () => {
-      const file = fileInput.files?.[0];
-      if (file) void this.onImportFile(file);
-      fileInput.value = '';
-    });
     const importBtn = createButton({
       label: 'Import',
       title: 'Import a provider from JSON',
-      onClick: () => fileInput.click(),
+      onClick: () => this.openImportModal(),
     });
     const newBtn = createButton({
       label: '+ New',
@@ -304,7 +309,7 @@ export class DataProviderEditor {
       onClick: () => this.openNewPicker(),
     });
 
-    actions.append(importBtn, newBtn, fileInput);
+    actions.append(importBtn, newBtn);
     titleRow.append(h2, actions);
 
     const search = createSearchInput({

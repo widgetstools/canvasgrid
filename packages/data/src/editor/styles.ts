@@ -1076,6 +1076,23 @@ ${vguiSwitchCss({ root: 'vg-dp-switch', knob: 'vg-dp-switch__knob', on: 'is-on' 
   background: var(--vg-dp-panel);
 }
 .vg-dp-shell { position: relative; }
+
+/* JSON import modal — paste area + drag-drop zone (no native file dialog). */
+.vg-dp-import-drop {
+  position: relative;
+  border-radius: var(--vg-dp-radius);
+}
+.vg-dp-import-drop.is-dragover {
+  outline: 2px dashed color-mix(in srgb, var(--vg-dp-accent) 60%, transparent);
+  outline-offset: 2px;
+}
+.vg-dp-import-textarea {
+  min-height: 168px;
+  resize: vertical;
+  line-height: 1.5;
+  font-size: 11.5px;
+}
+.vg-dp-import-error { margin-top: 10px; margin-bottom: 0; }
 `;
 
 let injected = false;
