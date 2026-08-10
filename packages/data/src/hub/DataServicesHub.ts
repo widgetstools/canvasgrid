@@ -229,8 +229,10 @@ export class DataServicesHub {
     if (!opts?.preserveStats) resetRuntimeCounters(slot.stats);
     slot.pipeline?.destroy();
     slot.pipeline = new LivePipeline(slot.config.config, (rows) => {
-      slot.cache.upsert(rows);
-      this.fanOutLive(slot, rows);
+      // Fan out hub-merged rows so SSRM txs never replace a full cached
+      // row with a thin/partial tick payload.
+      const merged = slot.cache.upsert(rows);
+      this.fanOutLive(slot, merged);
     });
 
     const plugin = getTransportPlugin(slot.config.providerType);
@@ -300,14 +302,14 @@ export class DataServicesHub {
       }
       // Live — through pipeline
       if (slot.status === 'snapshot' || slot.status === 'connecting') {
-        slot.cache.upsert(rows);
+        const merged = slot.cache.upsert(rows);
         if (slot.inferSample.length < 200) {
           slot.inferSample.push(...rows.slice(0, 200 - slot.inferSample.length));
           slot.inferredFields = inferFieldsFromRows(slot.inferSample);
         }
         // Progressive snapshot chunks for CSRM
         if (slot.config.rowModel === 'clientSide') {
-          this.fanOutLive(slot, rows);
+          this.fanOutLive(slot, merged);
         }
         return;
       }
@@ -374,7 +376,16 @@ export class DataServicesHub {
   private fanOutLive(slot: ProviderSlot, rows: Record<string, unknown>[]): void {
     notePublish(slot.stats);
     if (slot.config.rowModel === 'serverSide') {
+      // Notify soft-refresh consumers, then push tick rows so the bind path
+      // can applyServerSideTransaction (required for cell-change flash).
       this.broadcast(slot, { v: 1, type: 'tickNotify', providerId: slot.config.providerId });
+      this.broadcast(slot, {
+        v: 1,
+        type: 'push',
+        providerId: slot.config.providerId,
+        rows: slot.config.config.wireFormat === 'columnar' ? rowsToColumnar(rows) : rows,
+        replace: false,
+      });
       return;
     }
     this.broadcast(slot, {

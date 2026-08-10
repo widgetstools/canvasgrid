@@ -14,10 +14,10 @@ describe('ribbon Templates group wiring', () => {
     expect(src.includes("dataset.tpl = 'pill'")).toBe(true);
   });
 
-  it('Clear is its own segment with undo/redo + eraser + clear-all', () => {
-    expect(src.includes("seg('Clear'")).toBe(true);
+  it('Clear is its own unlabeled segment with undo/redo + eraser + clear-all', () => {
+    expect(src.includes("seg('', fmtUndo, fmtRedo, eraser, clearAll)")).toBe(true);
     expect(src.includes("seg('Templates', tplOpen, tplPill)")).toBe(true);
-    expect(src.includes("seg('Clear', fmtUndo, fmtRedo, eraser, clearAll)")).toBe(true);
+    expect(src.includes("seg('Clear'")).toBe(false);
     expect(src.includes("pill('Clear'")).toBe(false);
     expect(src.includes('createFormatHistory')).toBe(true);
     expect(src.includes('clearColumnCustomization')).toBe(true);

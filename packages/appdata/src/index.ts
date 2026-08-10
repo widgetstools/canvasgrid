@@ -21,3 +21,9 @@ export {
   type AppDataChange,
   type AppDataUnsubscribe,
 } from './store';
+
+export {
+  LocalStorageAppDataStore,
+  appDataStorageKey,
+  APPDATA_STORAGE_PREFIX,
+} from './localStorageStore';

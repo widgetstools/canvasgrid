@@ -1,8 +1,8 @@
-import type { VelocityGrid, GridState } from '@wellsfargo-starui/velocity-grid';
+import type { VelocityGrid, GridState, GridLayoutsBundle } from '@wellsfargo-starui/velocity-grid';
 import type {
   ProfileController, ProfileStore, ProfileMeta, Unsub,
 } from '../extension/types';
-import { isConfigSession } from './configSession';
+import { isConfigSession, type WorkspaceConfig } from './configSession';
 
 export interface ProfilesOptions { initialId?: string; extState?: () => Record<string, unknown> }
 
@@ -60,6 +60,22 @@ export class ProfilesController implements ProfileController {
   }
 
   async save(): Promise<void> {
+    // ConfigSession: persist the full workspace (view state + layouts) in one
+    // flat document — not a profiles[] slot that omits layouts.
+    if (isConfigSession(this.store)) {
+      const layouts = typeof this.grid.exportLayouts === 'function'
+        ? this.grid.exportLayouts()
+        : undefined;
+      const config: WorkspaceConfig = {
+        ...this.grid.getState(),
+        ...(layouts ? { layouts: layouts as GridLayoutsBundle } : {}),
+      };
+      await this.store.saveWorkspace(config);
+      await this.syncActivePointer();
+      this.setDirty(false);
+      this.notifyList();
+      return;
+    }
     const existing = await this.store.load(this.id);
     const name = existing?.meta.name ?? this.id;
     await this.store.save(this.id, this.snapshot(this.id, name));
@@ -110,6 +126,18 @@ export class ProfilesController implements ProfileController {
     // only adopt the new id / apply state / clear dirty when the snapshot
     // actually exists; otherwise the active pointer, dirty flag and grid
     // state are all left untouched.
+    if (isConfigSession(this.store)) {
+      const snap = await this.store.load(id);
+      if (!snap) return;
+      const ws = await this.store.loadWorkspace();
+      if (!ws) return;
+      this.id = id;
+      this.applyWorkspace(ws);
+      await this.syncActivePointer();
+      this.setDirty(false);
+      this.notifyList();
+      return;
+    }
     const snap = await this.store.load(id);
     if (!snap) return;
     this.id = id;
@@ -135,7 +163,37 @@ export class ProfilesController implements ProfileController {
     return this.bootPromise;
   }
 
+  /**
+   * Restore ConfigSession workspace the same way as `VelocityGridExt.loadConfig`:
+   * layouts registry (incl. `activeLayoutId`) first, then view state.
+   * Uses `apply: false` so replace does not loadLayout + emit persistable
+   * `import` before grid-tier modules (data-provider) are restored.
+   */
+  private applyWorkspace(ws: WorkspaceConfig): void {
+    const { layouts, ...viewState } = ws;
+    if (layouts && typeof this.grid.importLayouts === 'function') {
+      this.grid.importLayouts(layouts, { mode: 'replace', overwrite: true, apply: false });
+    }
+    this.grid.setState(viewState as GridState, { exhaustive: true });
+  }
+
   private async runBootstrap(): Promise<void> {
+    if (isConfigSession(this.store)) {
+      const ws = await this.store.loadWorkspace();
+      if (ws) {
+        this.applyWorkspace(ws);
+        await this.syncActivePointer();
+        this.setDirty(false);
+        this.notifyList();
+        return;
+      }
+      // Seed the flat workspace (view + layouts/activeLayoutId), not a profile slot.
+      await this.save();
+      await this.syncActivePointer();
+      this.setDirty(false);
+      this.notifyList();
+      return;
+    }
     const existing = await this.store.load(this.id);
     if (existing) {
       this.grid.setState(existing.gridState);
@@ -152,7 +210,7 @@ export class ProfilesController implements ProfileController {
 
   list(): Promise<ProfileMeta[]> { return this.store.list(); }
 
-  /** Keep ConfigSession.activeProfileId aligned with the controller pointer. */
+  /** Keep ConfigSession facade meta.id aligned with the controller pointer. */
   private async syncActivePointer(): Promise<void> {
     if (isConfigSession(this.store)) {
       await this.store.setActiveProfileId(this.id);

@@ -4,7 +4,7 @@ import type { ProfileStore, ProfileSnapshot, ProfileMeta } from '../extension/ty
  *  `{ [id]: ProfileSnapshot }` map.
  *
  *  Prefer `LocalStorageConfigSession` (default in VelocityGridExt) so
- *  profiles + layouts share one Markets-aligned instance bundle per gridId.
+ *  view state + layouts share one flat instance document per gridId.
  *  Host Config Managers should implement `ConfigSession` / `ProfileStore`.
  */
 export class LocalStorageProfileStore implements ProfileStore {

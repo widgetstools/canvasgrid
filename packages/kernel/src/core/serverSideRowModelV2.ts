@@ -280,10 +280,16 @@ export class ServerSideRowModelV2Controller<TRow = any> {
             }
             const next = updatesById.get(id);
             if (next === undefined) continue;
-            const prevMeta = readSsrmRowMeta(block.rows[i]);
-            const merged = prevMeta && !readSsrmRowMeta(next)
-              ? attachSsrmRowMeta(next as Record<string, unknown>, prevMeta) as TRow
-              : next;
+            const prevRow = block.rows[i]!;
+            // Field-merge so thin/partial tick payloads don't wipe columns.
+            const mergedFields = {
+              ...(prevRow as Record<string, unknown>),
+              ...(next as Record<string, unknown>),
+            } as TRow;
+            const prevMeta = readSsrmRowMeta(prevRow);
+            const merged = prevMeta && !readSsrmRowMeta(mergedFields)
+              ? attachSsrmRowMeta(mergedFields as Record<string, unknown>, prevMeta) as TRow
+              : mergedFields;
             block.rows[i] = merged;
             patched.set(id, merged);
           }

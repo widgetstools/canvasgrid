@@ -36,7 +36,7 @@ function mockCtx(grid: Record<string, unknown>): VelocityGridExtContext {
       markDirty: vi.fn(),
       onDirtyChange: () => () => {},
       onListChange: () => () => {},
-      save: async () => {},
+      save: vi.fn(async () => {}),
       saveAs: async () => 'x',
       discard: async () => {},
       rename: async () => {},
@@ -66,6 +66,7 @@ describe('DataProviderController', () => {
     const grid = {
       setRowData: (r: unknown[]) => { rows.push(r); },
       applyTransaction: vi.fn(),
+      whenReady: async () => {},
     };
     const ctx = mockCtx(grid);
     const ctl = new DataProviderController({ catalog, inProcess: true });
@@ -77,9 +78,121 @@ describe('DataProviderController', () => {
     expect(ctl.getActiveProviderId()).toBe('pos');
     expect(rows.at(-1)?.length).toBe(12);
     expect(ctx.profiles.markDirty).toHaveBeenCalled();
+    expect(ctx.profiles.save).toHaveBeenCalled();
 
     const mod = (ctx as unknown as { _modules: Map<string, { get: () => unknown }> })._modules.get('data-provider');
     expect(mod?.get()).toEqual({ activeProviderId: 'pos' });
+
+    ctl.detach();
+  });
+
+  it('restores activeProviderId from StateModule set (reload path)', async () => {
+    reset();
+    registerDefaultTransports();
+    const catalog = new MemoryConfigBackend();
+    await catalog.save({
+      providerId: 'pos',
+      name: 'Positions',
+      providerType: 'mock',
+      rowModel: 'clientSide',
+      config: { keyColumn: 'positionId', rowCount: 8, tickMs: 0, throttleEnabled: false },
+    });
+
+    const rows: unknown[][] = [];
+    const grid = {
+      setRowData: (r: unknown[]) => { rows.push(r); },
+      whenReady: async () => {},
+    };
+    const ctx = mockCtx(grid);
+    const ctl = new DataProviderController({ catalog, inProcess: true });
+    ctl.attach(ctx);
+
+    const mod = (ctx as unknown as {
+      _modules: Map<string, { set: (d: unknown, v: number) => void }>;
+    })._modules.get('data-provider');
+    mod?.set({ activeProviderId: 'pos' }, 1);
+    await new Promise((r) => setTimeout(r, 40));
+
+    expect(ctl.getActiveProviderId()).toBe('pos');
+    expect(rows.at(-1)?.length).toBe(8);
+    expect(ctx.profiles.save).not.toHaveBeenCalled();
+
+    ctl.detach();
+  });
+
+  it('waits for whenReady before installing an SSRM datasource on restore', async () => {
+    reset();
+    registerDefaultTransports();
+    const catalog = new MemoryConfigBackend();
+    await catalog.save({
+      providerId: 'ssrm-pos',
+      name: 'SSRM Positions',
+      providerType: 'mock',
+      rowModel: 'serverSide',
+      blockSize: 10,
+      config: { keyColumn: 'positionId', rowCount: 20, tickMs: 0, throttleEnabled: false },
+    });
+
+    let ready!: () => void;
+    const readyPromise = new Promise<void>((r) => { ready = r; });
+    const datasources: unknown[] = [];
+    const grid = {
+      whenReady: () => readyPromise,
+      setServerSideDatasource: (ds: unknown) => { datasources.push(ds); },
+      refreshServerSide: vi.fn(),
+      applyServerSideTransaction: vi.fn(),
+    };
+    const ctx = mockCtx(grid);
+    const ctl = new DataProviderController({ catalog, inProcess: true });
+    ctl.attach(ctx);
+
+    const activate = ctl.setActiveProvider('ssrm-pos', { fromState: true });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(datasources).toHaveLength(0);
+
+    ready();
+    await activate;
+    await new Promise((r) => setTimeout(r, 40));
+
+    expect(ctl.getActiveProviderId()).toBe('ssrm-pos');
+    expect(datasources.length).toBeGreaterThan(0);
+    expect(ctx.profiles.save).not.toHaveBeenCalled();
+
+    ctl.detach();
+  });
+
+  it('coalesces duplicate fromState restores of the same provider', async () => {
+    reset();
+    registerDefaultTransports();
+    const catalog = new MemoryConfigBackend();
+    await catalog.save({
+      providerId: 'pos',
+      name: 'Positions',
+      providerType: 'mock',
+      rowModel: 'clientSide',
+      config: { keyColumn: 'positionId', rowCount: 5, tickMs: 0, throttleEnabled: false },
+    });
+
+    const rows: unknown[][] = [];
+    const grid = {
+      setRowData: (r: unknown[]) => { rows.push(r); },
+      whenReady: async () => {},
+    };
+    const ctx = mockCtx(grid);
+    const ctl = new DataProviderController({ catalog, inProcess: true });
+    ctl.attach(ctx);
+
+    await Promise.all([
+      ctl.setActiveProvider('pos', { fromState: true }),
+      ctl.setActiveProvider('pos', { fromState: true }),
+      ctl.setActiveProvider('pos', { fromState: true }),
+    ]);
+    await new Promise((r) => setTimeout(r, 40));
+
+    expect(ctl.getActiveProviderId()).toBe('pos');
+    expect(rows.at(-1)?.length).toBe(5);
+    // Restores must not rewrite the profile.
+    expect(ctx.profiles.save).not.toHaveBeenCalled();
 
     ctl.detach();
   });
@@ -101,7 +214,11 @@ describe('dataProviderModule', () => {
     const mod = dataProviderModule({ controller: ctl });
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const ctx = mockCtx({ setRowData: () => {}, applyTransaction: () => {} });
+    const ctx = mockCtx({
+      setRowData: () => {},
+      applyTransaction: () => {},
+      whenReady: async () => {},
+    });
     mod.init(ctx);
     const inst = mod.mount(host, ctx);
     await new Promise((r) => setTimeout(r, 20));

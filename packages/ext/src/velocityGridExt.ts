@@ -146,7 +146,11 @@ export class VelocityGridExt<TRow = any> {
   loadConfig(config: VelocityGridExtConfig): void {
     const { layouts, ...viewState } = config;
     if (layouts) {
-      this._grid.importLayouts(layouts, { mode: 'replace', overwrite: true });
+      // Reseed only — setState below is the authoritative view (incl. grid-tier
+      // data-provider). Applying the active layout here would emit
+      // layoutChanged('import') and Ext auto-persist would wipe activeProviderId
+      // before modules restore.
+      this._grid.importLayouts(layouts, { mode: 'replace', overwrite: true, apply: false });
     }
     // Exhaustive so omitted slices clear — matches kernel persist restore.
     this._grid.setState(viewState as GridState, { exhaustive: true });

@@ -4,8 +4,10 @@ import {
   extractGridLevelData,
   applyGridLevelDataToState,
   instanceStorageKey,
+  normalizeInstanceDoc,
   LEGACY_CONFIG_PREFIX,
   LEGACY_PROFILES_KEY,
+  INSTANCE_DOC_VERSION,
 } from '../src/profiles/configSession';
 import type { ProfileSnapshot } from '../src/extension/types';
 import type { GridState } from '@wellsfargo-starui/velocity-grid';
@@ -42,10 +44,44 @@ describe('extractGridLevelData / applyGridLevelDataToState', () => {
   });
 });
 
+describe('normalizeInstanceDoc', () => {
+  it('flattens legacy profiles[] docs (prefers top-level layouts)', () => {
+    const flat = normalizeInstanceDoc({
+      version: 1,
+      activeProfileId: 'default',
+      profiles: [
+        {
+          meta: { id: 'default', name: 'Default', updatedAt: 1 },
+          gridState: {
+            version: 4,
+            filterModel: { a: { filterType: 'text', type: 'contains', filter: 'nested' } },
+            modules: { 'data-provider': { version: 1, data: { activeProviderId: 'from-profile' } } },
+          },
+          ext: {},
+        },
+      ],
+      gridLevelData: { activeProviderId: 'from-gld' },
+      layouts: { version: 1, activeLayoutId: 'L1', layouts: [{ id: 'L1', name: 'One' }], grid: {} },
+    });
+    expect(flat).toBeTruthy();
+    expect(flat!.docVersion).toBe(INSTANCE_DOC_VERSION);
+    expect((flat as any).profiles).toBeUndefined();
+    expect((flat as any).activeProfileId).toBeUndefined();
+    expect(flat!.layouts).toEqual({
+      version: 1,
+      activeLayoutId: 'L1',
+      layouts: [{ id: 'L1', name: 'One' }],
+      grid: {},
+    });
+    expect(flat!.gridLevelData.activeProviderId).toBe('from-profile');
+    expect((flat as any).filterModel).toBeTruthy();
+    expect(flat!.meta?.id).toBe('default');
+  });
+});
+
 describe('LocalStorageConfigSession', () => {
-  it('persists profiles + layouts + gridLevelData under instance key', async () => {
+  it('persists a flat workspace (no profiles[]) under the instance key', async () => {
     const s = new LocalStorageConfigSession('g1');
-    await s.save('default', snap('default', 'prov-a'));
     await s.saveWorkspace({
       version: 4,
       filterModel: { a: { filterType: 'text', type: 'contains', filter: 'x' } } as any,
@@ -53,19 +89,52 @@ describe('LocalStorageConfigSession', () => {
       modules: { 'data-provider': { version: 1, data: { activeProviderId: 'prov-a' } } },
     } as any);
 
-    expect(localStorage.getItem(instanceStorageKey('g1'))).toBeTruthy();
-    const bundle = await s.loadBundle();
-    expect(bundle.gridLevelData.activeProviderId).toBe('prov-a');
-    expect(bundle.layouts).toBeTruthy();
-    expect(bundle.activeProfileId).toBe('default');
+    const raw = JSON.parse(localStorage.getItem(instanceStorageKey('g1'))!);
+    expect(raw.docVersion).toBe(INSTANCE_DOC_VERSION);
+    expect(raw.profiles).toBeUndefined();
+    expect(raw.activeProfileId).toBeUndefined();
+    expect(raw.gridLevelData.activeProviderId).toBe('prov-a');
+    expect(raw.layouts).toBeTruthy();
+    expect(raw.version).toBe(4);
 
-    const loaded = await s.load('default');
-    expect(loaded?.gridState.modules?.['data-provider']?.data).toEqual({
+    const loaded = await s.loadWorkspace();
+    expect(loaded?.modules?.['data-provider']?.data).toEqual({
       activeProviderId: 'prov-a',
     });
+    expect(loaded?.layouts).toBeTruthy();
+
+    const facade = await s.load('default');
+    expect(facade?.gridState.modules?.['data-provider']?.data).toEqual({
+      activeProviderId: 'prov-a',
+    });
+    expect(await s.getActiveProfileId()).toBe('default');
   });
 
-  it('migrates legacy config + flat profiles into the instance bundle', async () => {
+  it('migrates profiles[] instance docs to flat on read and rewrites storage', async () => {
+    localStorage.setItem(
+      instanceStorageKey('g-mig'),
+      JSON.stringify({
+        version: 1,
+        activeProfileId: 'default',
+        profiles: [snap('default', 'old-prov')],
+        gridLevelData: { activeProviderId: 'old-prov' },
+        layouts: { version: 1, activeLayoutId: 'default', layouts: [], grid: {} },
+      }),
+    );
+
+    const s = new LocalStorageConfigSession('g-mig');
+    const ws = await s.loadWorkspace();
+    expect(ws?.modules?.['data-provider']?.data).toEqual({ activeProviderId: 'old-prov' });
+    expect(ws?.layouts).toBeTruthy();
+
+    const rewritten = JSON.parse(localStorage.getItem(instanceStorageKey('g-mig'))!);
+    expect(rewritten.docVersion).toBe(INSTANCE_DOC_VERSION);
+    expect(rewritten.profiles).toBeUndefined();
+    expect(rewritten.activeProfileId).toBeUndefined();
+    expect(rewritten.gridLevelData.activeProviderId).toBe('old-prov');
+  });
+
+  it('migrates legacy config + flat profiles into a flat instance doc', async () => {
     localStorage.setItem(
       `${LEGACY_CONFIG_PREFIX}g2`,
       JSON.stringify({
@@ -82,24 +151,104 @@ describe('LocalStorageConfigSession', () => {
     );
 
     const s = new LocalStorageConfigSession('g2');
-    const bundle = await s.loadBundle();
-    expect(bundle.layouts).toBeTruthy();
-    expect(bundle.gridLevelData.activeProviderId).toBe('legacy-p');
-    expect(bundle.profiles.some((p) => p.meta.id === 'narrow')).toBe(true);
-    // Legacy config also seeds a 'default' profile from the workspace view.
-    expect(bundle.profiles.some((p) => p.meta.id === 'default')).toBe(true);
-    // Subsequent reads use the instance key (no re-migrate wipe).
+    const doc = await s.loadBundle();
+    expect(doc.layouts).toBeTruthy();
+    expect(doc.gridLevelData.activeProviderId).toBe('legacy-p');
+    expect((doc as any).profiles).toBeUndefined();
+    // Single-slot facade meta from legacy config seed
+    expect(doc.meta?.id).toBe('default');
     expect(localStorage.getItem(instanceStorageKey('g2'))).toBeTruthy();
+
+    const stored = JSON.parse(localStorage.getItem(instanceStorageKey('g2'))!);
+    expect(stored.docVersion).toBe(INSTANCE_DOC_VERSION);
+    expect(stored.profiles).toBeUndefined();
   });
 
-  it('ProfileStore list/remove stay consistent with the bundle', async () => {
+  it('ProfileStore facade is a single slot over the flat doc', async () => {
     const s = new LocalStorageConfigSession('g3');
-    await s.save('a', snap('a'));
-    await s.save('b', snap('b'));
-    expect((await s.list()).map((m) => m.id).sort()).toEqual(['a', 'b']);
-    await s.remove('a');
-    expect((await s.list()).map((m) => m.id)).toEqual(['b']);
-    expect(await s.getActiveProfileId()).toBe('b');
+    await s.save('default', snap('default', 'p1'));
+    expect((await s.list()).map((m) => m.id)).toEqual(['default']);
+    // Second save replaces the single slot (not a profiles array)
+    await s.save('default', snap('default', 'p2'));
+    const loaded = await s.load('default');
+    expect(loaded?.gridState.modules?.['data-provider']?.data).toEqual({
+      activeProviderId: 'p2',
+    });
+    await s.remove('default');
+    expect(await s.list()).toEqual([]);
+    expect(await s.loadWorkspace()).toBeNull();
+  });
+
+  it('saveWorkspace round-trips data-provider activeProviderId', async () => {
+    const s = new LocalStorageConfigSession('g4');
+    await s.saveWorkspace({
+      version: 4,
+      modules: { 'data-provider': { version: 1, data: { activeProviderId: 'stomp-ssrm' } } },
+    } as any);
+    const again = new LocalStorageConfigSession('g4');
+    const ws = await again.loadWorkspace();
+    expect(ws?.modules?.['data-provider']?.data).toEqual({
+      activeProviderId: 'stomp-ssrm',
+    });
+  });
+
+  it('strips data-provider from layout snapshots on save (grid-level only)', async () => {
+    const s = new LocalStorageConfigSession('g5');
+    await s.saveWorkspace({
+      version: 4,
+      modules: { 'data-provider': { version: 1, data: { activeProviderId: 'grid-prov' } } },
+      layouts: {
+        version: 1,
+        activeLayoutId: 'L1',
+        layouts: [
+          {
+            id: 'L1',
+            name: 'One',
+            createdAt: 1,
+            updatedAt: 1,
+            state: {
+              version: 4,
+              modules: {
+                'data-provider': { version: 1, data: { activeProviderId: 'layout-prov' } },
+                columnGroups: { version: 1, data: { x: 1 } },
+              },
+            },
+          },
+        ],
+        grid: {},
+      },
+    } as any);
+    const raw = JSON.parse(localStorage.getItem(instanceStorageKey('g5'))!);
+    const layoutMods = raw.layouts.layouts[0].state.modules;
+    expect(layoutMods['data-provider']).toBeUndefined();
+    expect(layoutMods.columnGroups).toEqual({ version: 1, data: { x: 1 } });
+    expect(raw.gridLevelData.activeProviderId).toBe('grid-prov');
+    // Root modules must not carry data-provider — gridLevelData is authoritative
+    expect(raw.modules?.['data-provider']).toBeUndefined();
+  });
+
+  it('keeps activeProviderId in gridLevelData across a null-modules save (restore race)', async () => {
+    const s = new LocalStorageConfigSession('g6');
+    await s.saveWorkspace({
+      version: 4,
+      modules: { 'data-provider': { version: 1, data: { activeProviderId: 'stomp-ssrm' } } },
+    } as any);
+    // Premature persist before StateModule restore — no data-provider slice.
+    await s.saveWorkspace({
+      version: 4,
+      modules: { calc: { version: 1, data: {} } },
+      layouts: {
+        version: 1,
+        activeLayoutId: 'L2',
+        layouts: [{ id: 'default', name: 'Default', state: { version: 4 } }],
+        grid: {},
+      },
+    } as any);
+    const raw = JSON.parse(localStorage.getItem(instanceStorageKey('g6'))!);
+    // Without a data-provider module in the payload, extract is {} and prior gld is kept.
+    expect(raw.gridLevelData.activeProviderId).toBe('stomp-ssrm');
+    const ws = await s.loadWorkspace();
+    expect(ws?.modules?.['data-provider']?.data).toEqual({ activeProviderId: 'stomp-ssrm' });
   });
 });
 
@@ -113,6 +262,9 @@ describe('configStorage helpers route through ConfigSession', () => {
     saveConfigToLocalStorage('grid1', config);
     expect(hasConfigInLocalStorage('grid1')).toBe(true);
     expect(localStorage.getItem(instanceStorageKey('grid1'))).toBeTruthy();
+    const raw = JSON.parse(localStorage.getItem(instanceStorageKey('grid1'))!);
+    expect(raw.docVersion).toBe(INSTANCE_DOC_VERSION);
+    expect(raw.profiles).toBeUndefined();
     const loaded = loadConfigFromLocalStorage('grid1') as any;
     expect(loaded.modules['data-provider'].data.activeProviderId).toBe('p1');
     expect(loaded.layouts).toBeTruthy();

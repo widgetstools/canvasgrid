@@ -1091,6 +1091,19 @@ export class VelocityGrid<TRow = any> {
   /** True when `ssrm` is the v2 skeleton controller. */
   private ssrmV2 = false;
   /**
+   * Datasource installed via `setServerSideDatasource` before async init
+   * mounts `this.ssrm`. Flushed after the construction-time placeholder
+   * (if any) so a late hub bind is not overwritten by the empty default.
+   */
+  private pendingServerSideDatasource:
+    | import('./types/ssrm').AnyServerSideDatasource<TRow>
+    | null
+    | undefined = undefined;
+  /** Resolves when async init emits `gridReady` (SSRM mounted if applicable). */
+  private readonly readyPromise: Promise<void>;
+  private resolveReady!: () => void;
+  private readySettled = false;
+  /**
    * Main-thread mirror of worker `ssrmClientPipeline`. When true, sort /
    * filter / group / pivot go through the CSRM worker path instead of
    * datasource refresh.
@@ -1486,6 +1499,9 @@ export class VelocityGrid<TRow = any> {
 
   constructor(container: HTMLElement, private options: VelocityGridOptions<TRow>) {
     if (!options.getRowId) throw new Error('[velocity-grid] options.getRowId is required');
+    this.readyPromise = new Promise<void>((resolve) => {
+      this.resolveReady = resolve;
+    });
 
     // No-GPU / software-raster profile — resolve `qualityMode` + auto
     // paintCache policy before any layer construction. Explicit
@@ -3347,8 +3363,16 @@ export class VelocityGrid<TRow = any> {
         if (options.serverSideDatasource) {
           this.installServerSideDatasource(options.serverSideDatasource);
         }
+        // Prefer a datasource that arrived during async init (hub restore)
+        // over the construction-time placeholder.
+        if (this.pendingServerSideDatasource !== undefined) {
+          this.installServerSideDatasource(this.pendingServerSideDatasource);
+          this.pendingServerSideDatasource = undefined;
+        }
       }
       this.events.emit({ type: 'gridReady', api: this.makeApi() });
+      this.readySettled = true;
+      this.resolveReady();
       if (options.rowModelType !== 'serverSide' && options.rowData) {
         this.setRowData(options.rowData);
       }
@@ -3602,10 +3626,22 @@ export class VelocityGrid<TRow = any> {
 
   setServerSideDatasource(ds: AnyServerSideDatasource<TRow> | null): void {
     if (!this.ssrm) {
+      if (this.options.rowModelType === 'serverSide' && !this.readySettled) {
+        // Async worker init hasn't mounted SSRM yet — keep the latest ds
+        // and install it after the construction-time placeholder.
+        this.pendingServerSideDatasource = ds;
+        return;
+      }
       console.warn('[velocity-grid] setServerSideDatasource requires rowModelType: \"serverSide\"');
       return;
     }
+    this.pendingServerSideDatasource = undefined;
     this.installServerSideDatasource(ds);
+  }
+
+  /** Resolves once async init has emitted `gridReady` (SSRM live if configured). */
+  whenReady(): Promise<void> {
+    return this.readyPromise;
   }
 
   /** Route a datasource to the matching controller kind, remounting the
@@ -3784,10 +3820,20 @@ export class VelocityGrid<TRow = any> {
 
   /** Apply an SSRM transaction immediately (bypasses scroll deferral). */
   private dispatchServerSideTransaction(tx: ServerSideTransaction<TRow>): void {
-    // Keep main mirror warm for updates.
+    // Detect sort-key changes BEFORE warming the mirror (needs prior values).
+    const sortKeyChanged = this.ssrmUpdateTouchesActiveSort(tx);
+    // Keep main mirror warm for updates — field-merge so thin ticks don't
+    // wipe columns the STOMP payload omitted.
     if (tx.update) {
       for (const row of tx.update) {
-        try { this.rowDataById.set(this.options.getRowId(row), row); } catch { /* skip */ }
+        try {
+          const id = this.options.getRowId(row);
+          const prev = this.rowDataById.get(id);
+          this.rowDataById.set(
+            id,
+            prev ? { ...(prev as object), ...(row as object) } as TRow : row,
+          );
+        } catch { /* skip */ }
       }
     }
     if (tx.add) {
@@ -3801,6 +3847,68 @@ export class VelocityGrid<TRow = any> {
       }
     }
     this.ssrm!.applyServerSideTransaction(tx);
+    // Sparse SSRM: SortPass is skipped — soft-refresh so getRows re-applies
+    // the active sort. Do NOT gate on "visible band would reorder": an
+    // off-screen row can rise into the viewport (or displace a visible row)
+    // without changing relative order among currently-visible ids.
+    // Trailing debounce + SSRM soft-refresh conflation absorb tick storms
+    // so we don't thrash hydrate vs live txs.
+    if (sortKeyChanged && !this.ssrmClientPipeline) {
+      this.scheduleSsrmResortRefresh();
+    }
+  }
+
+  /**
+   * True when an SSRM update changes a value under the active sort model
+   * (or introduces a sort-key for a row not yet mirrored). Only columns
+   * present on the update payload count — thin ticks that omit the sort
+   * field must not spuriously refresh. Unsorted grids stay on the tx-only
+   * path so cell flash is preserved.
+   */
+  private ssrmUpdateTouchesActiveSort(tx: ServerSideTransaction<TRow>): boolean {
+    const sortModel = this.sortModel;
+    if (!sortModel.length || !tx.update?.length) return false;
+    const cols = sortModel.map((s) => s.colId);
+    for (const row of tx.update) {
+      let id: string;
+      try { id = this.options.getRowId(row); } catch { continue; }
+      const next = row as Record<string, unknown>;
+      const prev = this.rowDataById.get(id) as Record<string, unknown> | undefined;
+      if (!prev) {
+        if (cols.some((c) => Object.prototype.hasOwnProperty.call(next, c))) return true;
+        continue;
+      }
+      for (const c of cols) {
+        if (!Object.prototype.hasOwnProperty.call(next, c)) continue;
+        if (prev[c] !== next[c]) return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Coalesce high-frequency sort-key ticks into soft SSRM refreshes.
+   * Pure trailing debounce never fires when the sort column ticks
+   * continuously (each tick resets the timer). Use debounce + maxWait.
+   */
+  private scheduleSsrmResortRefresh(): void {
+    if (this.destroyed) return;
+    const debounceMs = 150;
+    const maxWaitMs = 300;
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (this.ssrmResortFirstAt == null) this.ssrmResortFirstAt = now;
+    if (this.ssrmResortTimer != null) clearTimeout(this.ssrmResortTimer);
+
+    const waited = now - this.ssrmResortFirstAt;
+    const delay = waited >= maxWaitMs ? 0 : Math.min(debounceMs, maxWaitMs - waited);
+
+    this.ssrmResortTimer = setTimeout(() => {
+      this.ssrmResortTimer = null;
+      this.ssrmResortFirstAt = null;
+      if (this.destroyed || !this.ssrm) return;
+      if (this.sortModel.length === 0) return;
+      this.refreshServerSide({ purge: false });
+    }, delay);
   }
 
   setRowData(rows: TRow[]): void {
@@ -9070,8 +9178,18 @@ export class VelocityGrid<TRow = any> {
       this.columnResizeFlushRaf = 0;
     }
     this.columnResizeDragActive = false;
+    if (this.ssrmResortTimer != null) {
+      clearTimeout(this.ssrmResortTimer);
+      this.ssrmResortTimer = null;
+    }
+    this.ssrmResortFirstAt = null;
     this.ssrm?.destroy();
     this.ssrm = null;
+    this.pendingServerSideDatasource = undefined;
+    if (!this.readySettled) {
+      this.readySettled = true;
+      this.resolveReady();
+    }
     this.destroyed = true;
     this.deferredAsyncTxs = [];
     this.bodyScrollActive = false;
@@ -9193,6 +9311,7 @@ export class VelocityGrid<TRow = any> {
       setServerSideDatasource: (ds) => this.setServerSideDatasource(ds),
       refreshServerSide: (p) => this.refreshServerSide(p),
       applyServerSideTransaction: (tx) => this.applyServerSideTransaction(tx),
+      whenReady: () => this.whenReady(),
       setSortModel: (s) => this.setSortModel(s),
       setFilterModel: (f) => this.setFilterModel(f),
       setGroupModel: (g) => this.setGroupModel(g),
@@ -11202,6 +11321,16 @@ export class VelocityGrid<TRow = any> {
   private deferredSsrmRefresh: RefreshServerSideParams | null = null;
   /** SSRM transactions queued while the user is scrolling. */
   private deferredSsrmTxs: ServerSideTransaction<TRow>[] = [];
+  /**
+   * Trailing debounce for soft-refresh after live updates touch an active
+   * sort column. Sparse SSRM patches values in place and keeps `ssrmOrder`
+   * fixed — without this, sorted blotters go stale until the next purge.
+   * `ssrmResortFirstAt` enforces a maxWait so continuous sort-key ticks
+   * (which would otherwise reset a pure trailing debounce forever) still
+   * flush a refresh.
+   */
+  private ssrmResortTimer: ReturnType<typeof setTimeout> | null = null;
+  private ssrmResortFirstAt: number | null = null;
   private flashPausedForScroll = false;
 
   /** Start (or keep alive) the per-rAF flash tick. Each tick calls
@@ -12198,6 +12327,16 @@ export class VelocityGrid<TRow = any> {
     // Migrate up front so an un-migratable (newer-than-build) snapshot throws
     // BEFORE any side effect — no half-reset options, no half-switched view.
     const migrated = migrateSnapshot(snapshot);
+    // Strip grid-tier modules (incl. data-provider) so a polluted legacy
+    // layout snapshot cannot overwrite the live shared selection / edits /
+    // templates / alerts. Capture already omits these via
+    // DEFAULT_GRID_LEVEL_MODULES; this hardens apply for older bundles.
+    const preserve = new Set(this.options.layoutGridLevelModules ?? DEFAULT_GRID_LEVEL_MODULES);
+    if (migrated.modules) {
+      const mods = { ...migrated.modules };
+      for (const id of preserve) delete mods[id];
+      migrated.modules = Object.keys(mods).length > 0 ? mods : undefined;
+    }
     const targetOptions = migrated.gridOptions ?? {};
     for (const key of [...this.runtimeTouchedOptions.keys()]) {
       if (key in targetOptions) continue;
@@ -12358,8 +12497,13 @@ export class VelocityGrid<TRow = any> {
     return imported;
   }
   /** Import a bundle (`'merge'` default / `'replace'`), then resync the live
-   *  grid to the (possibly new) grid config + active layout view. */
-  importLayouts(bundle: GridLayoutsBundle, opts?: { mode?: 'replace' | 'merge'; overwrite?: boolean }): void {
+   *  grid to the (possibly new) grid config + active layout view.
+   *  `{ apply: false }` on replace reseeds only (emits `restore`) — used when
+   *  a following `setState` is the authoritative view restore. */
+  importLayouts(
+    bundle: GridLayoutsBundle,
+    opts?: { mode?: 'replace' | 'merge'; overwrite?: boolean; apply?: boolean },
+  ): void {
     const mgr = this.getLayoutManager();
     mgr.importLayouts(bundle, opts);
     // Only `'replace'` swaps the active layout + config → resync the live grid.
@@ -12370,6 +12514,13 @@ export class VelocityGrid<TRow = any> {
       // reset-to-baseline in loadLayout lands on the imported baseline. The
       // replaced config's `templates` restores the whole library to the engine.
       this.applyGridConfigLive(mgr.getGridConfig());
+      if (opts?.apply === false) {
+        // Registry + baseline only — caller will setState the saved view.
+        // Emit `restore` (not `import`) so Ext layout-save auto-persist does
+        // not write getState() before grid-tier modules (data-provider) restore.
+        this.emitLayoutChanged('restore');
+        return;
+      }
       mgr.loadLayout(mgr.getActiveLayoutId());
     } else {
       // Merge: fold the bundle library into the LIVE engine (add-if-absent) so

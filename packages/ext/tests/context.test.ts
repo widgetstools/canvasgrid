@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { installGridTestEnv } from './setup';
 import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
 import { LocalStorageProfileStore } from '../src/profiles/localStorageStore';
+import { LocalStorageConfigSession } from '../src/profiles/configSession';
 import { ProfilesController } from '../src/profiles/controller';
 import { createExtContext } from '../src/extension/context';
 
@@ -143,5 +144,24 @@ describe('createExtContext + ProfilesController', () => {
     expect(await store.load('drop')).toBeNull();
     await expect(profiles.remove(profiles.activeId())).rejects.toThrow(/active profile/);
     grid.destroy();
+  });
+
+  it('ConfigSession bootstrap restores layouts.activeLayoutId', async () => {
+    const grid = makeGrid();
+    const saved = grid.saveLayout('Trader');
+    expect(grid.getActiveLayoutId()).toBe(saved.id);
+
+    const store = new LocalStorageConfigSession('cfg-layout');
+    const profiles = new ProfilesController(grid, store, { initialId: 'default' });
+    await profiles.save();
+    expect((await store.loadWorkspace())?.layouts?.activeLayoutId).toBe(saved.id);
+    grid.destroy();
+
+    const grid2 = makeGrid();
+    expect(grid2.getActiveLayoutId()).toBe('default');
+    const profiles2 = new ProfilesController(grid2, store, { initialId: 'default' });
+    await profiles2.bootstrap();
+    expect(grid2.getActiveLayoutId()).toBe(saved.id);
+    grid2.destroy();
   });
 });

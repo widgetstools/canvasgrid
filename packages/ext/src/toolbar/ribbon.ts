@@ -4,7 +4,7 @@
  * overflow when space is tight:
  *
  *   Editing:    HISTORY · SMART · BULK
- *   Formatting: Target · Font · Align · Borders · $ % # decimals ▾ · …
+ *   Formatting: Target · Font · Format · Align · Borders · Icons · Column · Templates · Clear · …
  *
  * Colour comes entirely from the grid's `--vg-*` theme tokens. Toggle
  * visibility via the `toggle-ribbon` ext event (title-bar More menu).
@@ -578,9 +578,13 @@ function ribbonItem(opts: RibbonExtensionsOpts = {}): ToolbarItem {
       const gColumn = seg('', colOpen);
 
       const gTemplates = seg('Templates', tplOpen, tplPill);
-      const gClear = seg('Clear', fmtUndo, fmtRedo, eraser, clearAll);
+      const gClear = seg('', fmtUndo, fmtRedo, eraser, clearAll);
       const formatBody = h('vgext-es-body');
-      formatBody.append(gTarget, gFont, gAlign, gBorders, gFormat, gIcons, gColumn, gTemplates, gClear);
+      // Primary strip order: target → font → number formats → align →
+      // flyout triggers → templates/clear last (spill first when tight).
+      formatBody.append(
+        gTarget, gFont, gFormat, gAlign, gBorders, gIcons, gColumn, gTemplates, gClear,
+      );
 
       const fmtOverflow = iconBtn(I.more, 'More formatting tools');
       fmtOverflow.dataset.tb = 'format-overflow';
@@ -604,8 +608,9 @@ function ribbonItem(opts: RibbonExtensionsOpts = {}): ToolbarItem {
           { el: bulkSeg, priority: 2 },
         ],
       });
-      // Compact dropdown triggers stay sticky longer; spill Format icons /
-      // Clear / Templates first when the strip is tight.
+      // Keep $/%/#/decimals + Align on the strip whenever they fit.
+      // Spill order when the strip is truly too narrow: Templates → Clear →
+      // Column → Icons → Borders (Format/Align/Font/Target stay longest).
       const fmtOverflowHandle = wireRibbonOverflow({
         track: formatBody,
         button: fmtOverflow,
@@ -613,13 +618,15 @@ function ribbonItem(opts: RibbonExtensionsOpts = {}): ToolbarItem {
         items: [
           { el: gTarget, priority: 0 },
           { el: gFont, priority: 0 },
-          { el: gBorders, priority: 0 },
-          { el: gIcons, priority: 0 },
-          { el: gColumn, priority: 0 },
-          { el: gAlign, priority: 2 },
-          { el: gFormat, priority: 3 },
-          { el: gClear, priority: 4 },
-          { el: gTemplates, priority: 5 },
+          { el: gFormat, priority: 0 },
+          { el: gAlign, priority: 0 },
+          { el: gBorders, priority: 2 },
+          { el: gIcons, priority: 3 },
+          { el: gColumn, priority: 4 },
+          // restoreAll appends in this order — Templates before Clear so
+          // Clear stays the rightmost section on the strip and in overflow.
+          { el: gTemplates, priority: 6 },
+          { el: gClear, priority: 5 },
         ],
       });
 
@@ -1685,11 +1692,14 @@ const RIBBON_CSS = `
 .vgext-edit-strip[hidden] { display: none; }
 .vgext-es-body {
   display: flex;
-  flex-wrap: wrap;
+  /* Single-row strip: never wrap — overflow is measured via scrollWidth and
+   * sections move into the ⋯ menu. Wrapping + align-items:center made
+   * different-height segments look like multiple rows and false-spilled. */
+  flex-wrap: nowrap;
   align-items: center;
   flex: 1 1 auto;
   min-width: 0;
-  row-gap: 4px;
+  overflow: hidden;
   column-gap: 0;
 }
 .vgext-es-seg { display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto; }
