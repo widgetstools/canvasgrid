@@ -56,19 +56,11 @@ export function createJsonImportModal(opts: JsonImportModalOpts): HTMLElement {
   const clearError = (): void => { error.hidden = true; error.textContent = ''; };
   textarea.addEventListener('input', clearError);
 
-  // Drag & drop a file → read its text into the paste area. Drag-drop never
-  // needs a file picker, so this path is dialog-free too.
-  drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('is-dragover'); });
-  drop.addEventListener('dragleave', () => drop.classList.remove('is-dragover'));
-  drop.addEventListener('drop', (e) => {
-    e.preventDefault();
-    drop.classList.remove('is-dragover');
-    const file = e.dataTransfer?.files?.[0];
-    if (!file) return;
-    void file.text()
+  const readFile = (file: File): void => {
+    void Promise.resolve(file.text())
       .then((t) => { textarea.value = t; clearError(); textarea.focus(); })
       .catch(() => showError('Could not read the dropped file.'));
-  });
+  };
 
   let submitBtn: HTMLButtonElement | null = null;
 
@@ -106,6 +98,29 @@ export function createJsonImportModal(opts: JsonImportModalOpts): HTMLElement {
   submitBtn = overlay.querySelector<HTMLButtonElement>(
     testId ? `[data-testid="${testId}-submit"]` : '.vg-dp-modal__footer .vg-dp-btn--primary',
   );
+
+  // Drag & drop a .json file → read its text into the paste area. Handlers live
+  // on the WHOLE overlay (which fills the popout window), not just the textarea,
+  // so a file dropped anywhere on the modal is captured and the browser never
+  // navigates away to open the dropped file — the classic file-drop bug that
+  // makes a hidden-file-input-free drop appear to "do nothing". Every dragover
+  // is prevented so the drop is always accepted.
+  overlay.addEventListener('dragenter', (e) => { e.preventDefault(); });
+  overlay.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    drop.classList.add('is-dragover');
+  });
+  overlay.addEventListener('dragleave', (e) => {
+    // Only clear when the pointer actually leaves the overlay.
+    if (!overlay.contains(e.relatedTarget as Node | null)) drop.classList.remove('is-dragover');
+  });
+  overlay.addEventListener('drop', (e) => {
+    e.preventDefault();
+    drop.classList.remove('is-dragover');
+    const file = e.dataTransfer?.files?.[0];
+    if (file) readFile(file);
+  });
 
   // Focus the paste area once mounted.
   queueMicrotask(() => textarea.focus());

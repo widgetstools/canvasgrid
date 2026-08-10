@@ -1,7 +1,39 @@
 import { describe, expect, it } from 'vitest';
 import { MemoryConfigBackend, mountDataProviderEditor, registerDefaultTransports } from '../src/index';
+import { createJsonImportModal } from '../src/editor/ui';
+
+function fireDropOn(el: Element, file: File): void {
+  const ev = new Event('drop', { bubbles: true, cancelable: true });
+  Object.defineProperty(ev, 'dataTransfer', { value: { files: [file] } });
+  el.dispatchEvent(ev);
+}
 
 describe('Import via paste modal (no native file dialog)', () => {
+  it('dropping a .json file ANYWHERE on the modal populates the paste area + imports', async () => {
+    let submitted: string | null = null;
+    const overlay = createJsonImportModal({
+      title: 'Import provider',
+      testId: 'imp',
+      onSubmit: (text) => { submitted = text; },
+      onClose: () => overlay.remove(),
+    });
+    document.body.appendChild(overlay);
+
+    const textarea = overlay.querySelector('[data-testid="imp-textarea"]') as HTMLTextAreaElement;
+    const json = '{"name":"Dropped","providerType":"mock","config":{}}';
+
+    // Drop on the overlay itself (e.g. the modal padding), not the textarea —
+    // this is the case that previously navigated the window instead of importing.
+    fireDropOn(overlay, new File([json], 'p.json', { type: 'application/json' }));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(textarea.value, 'drop on overlay populates the paste area').toBe(json);
+
+    (overlay.querySelector('[data-testid="imp-submit"]') as HTMLButtonElement).click();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(submitted, 'Import submits the dropped content').toBe(json);
+  });
+
+
   it('sidebar Import opens a paste modal; pasting valid JSON imports the provider', async () => {
     registerDefaultTransports();
     const backend = new MemoryConfigBackend();
