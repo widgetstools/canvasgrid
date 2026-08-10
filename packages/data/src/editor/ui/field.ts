@@ -1,6 +1,6 @@
 import { el } from './dom';
 
-/** Labeled field with optional help text under the control. */
+/** Labeled field — cockpit row layout (caps label left, control + help right). */
 export function createField(opts: {
   label: string;
   control: HTMLElement;
@@ -14,13 +14,15 @@ export function createField(opts: {
     'vg-dp-field__label',
     opts.required ? `${opts.label} *` : opts.label,
   );
-  block.append(lab, opts.control);
+  const main = el('div', 'vg-dp-field__main');
+  main.appendChild(opts.control);
   if (opts.help) {
     const help = el('p', 'vg-dp-field__help');
     if (typeof opts.help === 'string') help.textContent = opts.help;
     else help.appendChild(opts.help);
-    block.appendChild(help);
+    main.appendChild(help);
   }
+  block.append(lab, main);
   return block;
 }
 

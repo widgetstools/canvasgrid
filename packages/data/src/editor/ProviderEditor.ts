@@ -815,7 +815,8 @@ export class ProviderEditor {
           placeholder: 'Select column(s)…',
           emptyMessage: 'No columns — add fields on the Fields tab',
           onChange: (next) => {
-            // Avoid full remount so the dropdown stays open while toggling.
+            // Keep this MultiSelect mounted (no full Columns remount) so chip
+            // remove / reopen stays responsive; the control closes itself on pick.
             this.patchConfig({ keyColumn: normalizeKeyColumns(next) });
             syncComposite(next);
           },
@@ -834,7 +835,10 @@ export class ProviderEditor {
     });
     const addCard = createCard('Add Custom Column', (card) => {
       const addRow = document.createElement('div');
-      addRow.className = 'vg-dp-editor__inline-actions';
+      addRow.className = 'vg-dp-editor__add-column-row';
+      fieldIn.classList.add('vg-dp-editor__add-column-field');
+      headerIn.classList.add('vg-dp-editor__add-column-header');
+      typeSel.classList.add('vg-dp-editor__add-column-type');
       addRow.append(
         fieldIn,
         headerIn,

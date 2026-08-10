@@ -1695,7 +1695,7 @@ const RIBBON_CSS = `
 .vgext-es-seg { display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto; }
 .vgext-es-seg + .vgext-es-seg {
   margin-left: 10px; padding-left: 10px;
-  border-left: 1px solid color-mix(in srgb, var(--vg-border-color, #2a3140) 70%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--vg-border-color, #2a3140) 85%, transparent);
 }
 .vgext-es-label {
   font-size: 10.5px; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase;
@@ -1904,7 +1904,7 @@ const RIBBON_CSS = `
 .vgext-rb-targettoggle {
   appearance: none; -webkit-appearance: none;
   display: inline-flex; align-items: center; justify-content: center;
-  width: 24px; height: 24px; padding: 0; box-sizing: border-box;
+  width: 32px; height: 32px; padding: 0; box-sizing: border-box;
   border: none; border-radius: 2px;
   background: transparent; color: var(--vg-accent-color, #4f9cf9);
   cursor: pointer;
@@ -1928,7 +1928,7 @@ const RIBBON_CSS = `
 }
 .vgext-rb-btn, .vgext-rb-toggle {
   appearance: none; -webkit-appearance: none;
-  width: 24px; height: 24px;
+  width: 32px; height: 32px;
   display: inline-flex; align-items: center; justify-content: center;
   border: none; border-radius: 2px; background: transparent;
   color: var(--vg-fg-color, #d3dbe7); cursor: pointer;

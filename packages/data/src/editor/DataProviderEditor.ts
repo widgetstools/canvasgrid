@@ -295,12 +295,14 @@ export class DataProviderEditor {
     });
     const importBtn = createButton({
       label: 'Import',
+      variant: 'ghost',
       title: 'Import a provider from JSON',
       onClick: () => fileInput.click(),
     });
     const newBtn = createButton({
-      label: '+ New',
-      variant: 'primary',
+      label: '+',
+      className: 'vg-dp-addbtn',
+      title: 'New provider',
       onClick: () => this.openNewPicker(),
     });
 

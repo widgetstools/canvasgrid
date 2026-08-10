@@ -6,6 +6,22 @@
  */
 import { ColorPickerControl, parseColor, rgbaToString } from '@wellsfargo-starui/velocity-grid';
 import { lucideBundle } from '@wellsfargo-starui/velocity-grid/icons/lucide.generated';
+import {
+  vguiSwitchCss,
+  vguiCapsCss,
+  vguiInputInteractionCss,
+  type VguiTokens,
+} from '@wellsfargo-starui/velocity-grid/ui/primitives';
+
+/** Cockpit's `--ckp-*` aliases → shared primitive generators. Passing the kit's
+ *  own tokens reproduces the exact prior rendering (invariance-preserving). */
+const CKP_TOKENS: VguiTokens = {
+  accent: 'var(--ckp-accent)',
+  border: 'var(--ckp-border)',
+  muted: 'var(--ckp-muted)',
+  surface: 'var(--ckp-surface)',
+  radius: 'var(--vg-radius, 2px)',
+};
 
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -259,10 +275,7 @@ export function injectCockpitStyles(): void {
   border-top: 1px solid var(--ckp-border);
 }
 .ckp * { box-sizing: border-box; }
-.ckp-caps {
-  font-size: 10px; font-weight: 650; letter-spacing: 0.12em; text-transform: uppercase;
-  color: color-mix(in srgb, var(--ckp-muted) 90%, transparent);
-}
+${vguiCapsCss('.ckp-caps', CKP_TOKENS)}
 .ckp-hint {
   font-size: 11px; letter-spacing: 0.01em; color: var(--ckp-muted); margin-top: 6px;
   line-height: 1.45; text-transform: none;
@@ -288,14 +301,14 @@ export function injectCockpitStyles(): void {
   border: 1px solid color-mix(in srgb, var(--ckp-accent) 45%, transparent);
   color: var(--ckp-accent); border-radius: var(--vg-radius, 2px);
   font-size: 14px; line-height: 1; cursor: pointer; padding: 0;
-  transition: background 120ms ease, border-color 120ms ease;
+  transition: background 110ms ease, border-color 110ms ease;
 }
 .ckp-addbtn:hover { background: color-mix(in srgb, var(--ckp-accent) 20%, transparent); }
 .ckp-rail-row {
   display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin: 1px 0;
   cursor: pointer; border-radius: var(--vg-radius, 2px);
   border: 1px solid transparent;
-  transition: background 120ms ease, border-color 120ms ease;
+  transition: background 110ms ease, border-color 110ms ease;
 }
 .ckp-rail-row:hover { background: var(--ckp-surface); }
 .ckp-rail-row.active {
@@ -309,6 +322,7 @@ export function injectCockpitStyles(): void {
   background: transparent; border: none; color: var(--ckp-muted); cursor: pointer;
   padding: 2px; font: inherit; display: inline-flex; align-items: center;
   border-radius: var(--vg-radius, 2px);
+  transition: color 110ms ease, background 110ms ease;
 }
 .ckp-mini:hover { color: var(--vg-fg-color, #e5e9f0); background: var(--ckp-surface); }
 /* pane */
@@ -327,7 +341,7 @@ export function injectCockpitStyles(): void {
   color: var(--ckp-muted); font-size: 10.5px; font-weight: 650;
   letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer;
   padding: 6px 10px; border-radius: var(--vg-radius, 2px);
-  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+  transition: color 110ms ease, background 110ms ease, border-color 110ms ease;
 }
 .ckp-actbtn:hover:not(:disabled) {
   color: var(--vg-fg-color, #e5e9f0);
@@ -350,10 +364,10 @@ export function injectCockpitStyles(): void {
 .ckp-chip {
   display: inline-flex; gap: 6px; align-items: center;
   border: 1px solid var(--ckp-border); border-radius: var(--vg-radius, 2px);
-  padding: 3px 9px; font-size: 10px; letter-spacing: 0.06em;
+  padding: 3px 9px; font-size: 10.5px; letter-spacing: 0.08em;
   background: var(--ckp-surface);
 }
-.ckp-chip-label { text-transform: uppercase; color: var(--ckp-muted); font-weight: 650; }
+.ckp-chip-label { text-transform: uppercase; color: var(--ckp-muted); font-weight: 600; }
 .ckp-chip-value { font-family: ui-monospace, Menlo, Consolas, monospace; text-transform: uppercase; font-variant-numeric: tabular-nums; }
 .ckp-chip.positive { border-color: color-mix(in srgb, #4ade80 50%, transparent); }
 .ckp-chip.positive .ckp-chip-value { color: #4ade80; }
@@ -383,26 +397,19 @@ export function injectCockpitStyles(): void {
 /* rows + inputs — fixed label column so toggles/inputs share one vertical axis */
 .ckp-row {
   display: grid;
-  grid-template-columns: 148px minmax(0, 1fr);
-  gap: 14px 16px;
-  align-items: start;
-  margin-bottom: 14px;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 12px 14px;
+  align-items: center;
+  margin-bottom: 12px;
 }
-.ckp-row > .ckp-caps { padding-top: 8px; }
+.ckp-row > .ckp-caps { padding-top: 0; }
 .ckp-row-main { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
 .ckp-input {
   background: var(--ckp-surface); color: inherit;
   border: 1px solid var(--ckp-border); border-radius: var(--vg-radius, 2px);
   padding: 7px 10px; font: inherit; width: 100%;
-  transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
 }
-.ckp-input:hover { border-color: color-mix(in srgb, var(--ckp-muted) 45%, var(--ckp-border)); }
-.ckp-input:focus {
-  outline: none;
-  border-color: color-mix(in srgb, var(--ckp-accent) 70%, var(--ckp-border));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ckp-accent) 16%, transparent);
-  background: color-mix(in srgb, var(--ckp-accent) 5%, transparent);
-}
+${vguiInputInteractionCss(['.ckp-input'], CKP_TOKENS)}
 .ckp-input.mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px; }
 .ckp-num { width: 96px; max-width: 100%; }
 .ckp-numwrap { display: inline-flex; align-items: center; gap: 6px; width: auto; max-width: 100%; }
@@ -412,26 +419,9 @@ export function injectCockpitStyles(): void {
 /* Text / long inputs stay full band width */
 .ckp-row-main > .ckp-input:not(.ckp-num),
 .ckp-row-main > .ckp-select { width: 100%; max-width: 420px; }
-/* switch — fixed pill; never use flex-basis (row-main is a column flex) */
-.ckp-switch {
-  position: relative;
-  display: inline-block;
-  flex: none;
-  box-sizing: border-box;
-  width: 36px; min-width: 36px; max-width: 36px;
-  height: 20px; min-height: 20px; max-height: 20px;
-  border-radius: 999px; border: 1px solid var(--ckp-border);
-  background: var(--ckp-surface); cursor: pointer; padding: 0; margin: 0;
-  overflow: hidden; vertical-align: middle;
-  transition: border-color 120ms ease, background 120ms ease;
-}
-.ckp-switch-knob {
-  position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%;
-  background: var(--ckp-muted); transition: left 0.14s ease, background 0.14s ease;
-  pointer-events: none;
-}
-.ckp-switch.on { border-color: color-mix(in srgb, var(--ckp-accent) 55%, transparent); background: color-mix(in srgb, var(--ckp-accent) 14%, transparent); }
-.ckp-switch.on .ckp-switch-knob { left: 18px; background: var(--ckp-accent); }
+/* switch — fixed pill; never use flex-basis (row-main is a column flex).
+   Geometry + states come from the shared kernel primitive (invariance-preserving). */
+${vguiSwitchCss({ root: 'ckp-switch', knob: 'ckp-switch-knob', on: 'on' }, CKP_TOKENS)}
 /* pills */
 .ckp-pills {
   display: inline-flex; border: 1px solid var(--ckp-border); border-radius: var(--vg-radius, 2px);
@@ -441,7 +431,7 @@ export function injectCockpitStyles(): void {
   background: transparent; border: none; border-right: 1px solid var(--ckp-border);
   color: var(--ckp-muted); font-size: 10px; font-weight: 650;
   letter-spacing: 0.08em; text-transform: uppercase; padding: 6px 12px; cursor: pointer;
-  transition: color 120ms ease, background 120ms ease;
+  transition: color 110ms ease, background 110ms ease;
 }
 .ckp-pill:last-child { border-right: none; }
 .ckp-pill:hover { color: var(--vg-fg-color, #e5e9f0); }
@@ -455,7 +445,7 @@ export function injectCockpitStyles(): void {
   width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center;
   background: var(--ckp-surface); border: 1px solid var(--ckp-border); border-radius: var(--vg-radius, 2px);
   color: var(--vg-fg-color, #cfd8e3); cursor: pointer; padding: 0;
-  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+  transition: border-color 110ms ease, background 110ms ease, color 110ms ease;
 }
 .ckp-tile:hover { border-color: color-mix(in srgb, var(--ckp-muted) 55%, transparent); }
 .ckp-tile.on {
@@ -483,7 +473,7 @@ export function injectCockpitStyles(): void {
   width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
   background: var(--ckp-surface); border: 1px solid var(--ckp-border); border-radius: var(--vg-radius, 2px);
   color: var(--ckp-muted); cursor: pointer; font-size: 12px; padding: 0;
-  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+  transition: color 110ms ease, border-color 110ms ease, background 110ms ease;
 }
 .ckp-toggle.on {
   border-color: color-mix(in srgb, var(--ckp-accent) 50%, transparent);
