@@ -37,8 +37,6 @@ export { createField, createNumberField } from './field';
 export { createCard, createBadge } from './card';
 export { createModal } from './modal';
 export type { ModalOpts, ModalAction } from './modal';
-export { createJsonImportModal } from './importModal';
-export type { JsonImportModalOpts } from './importModal';
 export { createEmptyState } from './emptyState';
 export type { EmptyStateOpts } from './emptyState';
 

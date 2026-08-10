@@ -38,7 +38,6 @@ import {
   createCheckbox,
   createEmptyState,
   createField,
-  createJsonImportModal,
   createNumberField,
   createSearchInput,
   createSelect,
@@ -124,7 +123,6 @@ function defaultConfig(partial?: Partial<DataProviderConfig>): DataProviderConfi
  */
 export class ProviderEditor {
   private readonly root: HTMLElement;
-  private modalHost: HTMLElement | null = null;
   private readonly backend: ConfigBackend;
   private readonly onSave?: ProviderEditorOptions['onSave'];
   private readonly onChange?: ProviderEditorOptions['onChange'];
@@ -225,7 +223,6 @@ export class ProviderEditor {
     this.connectionFields = null;
     this.keyMultiSelect?.destroy();
     this.keyMultiSelect = null;
-    this.closeModal();
     this.root.remove();
   }
 
@@ -327,8 +324,6 @@ export class ProviderEditor {
     this.connectionFields = null;
     this.keyMultiSelect?.destroy();
     this.keyMultiSelect = null;
-    // Keep an open modal (e.g. Import JSON) alive across a rebuild.
-    const keepModal = this.modalHost;
     this.root.innerHTML = '';
     this.root.appendChild(this.renderHeader());
     this.root.appendChild(this.renderTabs());
@@ -337,12 +332,6 @@ export class ProviderEditor {
     body.appendChild(this.renderTabBody());
     this.root.appendChild(body);
     this.root.appendChild(this.renderFooter());
-    if (keepModal) this.root.appendChild(keepModal);
-  }
-
-  private closeModal(): void {
-    this.modalHost?.remove();
-    this.modalHost = null;
   }
 
   private renderHeader(): HTMLElement {
@@ -751,14 +740,24 @@ export class ProviderEditor {
     const cols = this.cfg.config.columnDefinitions ?? [];
 
     if (!cols.length) {
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = 'application/json,.json';
+      fileInput.hidden = true;
+      fileInput.addEventListener('change', () => {
+        const file = fileInput.files?.[0];
+        if (file) void this.importColumnDefs(file);
+        fileInput.value = '';
+      });
       const empty = createEmptyState({
         title: 'No columns selected',
         description: 'Use the Fields tab to infer and pick columns, or Import JSON.',
         action: {
           label: 'Import JSON',
-          onClick: () => this.openColumnsImportModal(),
+          onClick: () => fileInput.click(),
         },
       });
+      empty.appendChild(fileInput);
       wrap.appendChild(empty);
       return wrap;
     }
@@ -869,10 +868,19 @@ export class ProviderEditor {
     toolbar.className = 'vg-dp-editor__columns-toolbar';
     const count = document.createElement('span');
     count.textContent = `Columns (${cols.length})`;
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'application/json,.json';
+    fileInput.hidden = true;
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files?.[0];
+      if (file) void this.importColumnDefs(file);
+      fileInput.value = '';
+    });
     toolbar.append(
       count,
       createButton({ label: 'Export JSON', onClick: () => exportColumnDefs(cols) }),
-      createButton({ label: 'Import JSON', onClick: () => this.openColumnsImportModal() }),
+      createButton({ label: 'Import JSON', onClick: () => fileInput.click() }),
       createButton({
         label: 'Clear all columns',
         variant: 'secondary',
@@ -884,6 +892,7 @@ export class ProviderEditor {
           this.render();
         },
       }),
+      fileInput,
     );
     wrap.appendChild(toolbar);
 
@@ -998,34 +1007,21 @@ export class ProviderEditor {
     return wrap;
   }
 
-  /** Parse + apply pasted / dropped column-def JSON. Throws on invalid input so
-   *  the import modal surfaces the message inline. */
-  private applyColumnDefsImport(text: string): void {
-    const imported = parseColumnDefsImport(text);
-    const present = new Set(imported.map((c) => c.field));
-    const prunedKey = readKeyColumns(this.cfg.config.keyColumn).filter((k) => present.has(k));
-    this.patchConfig({
-      columnDefinitions: imported,
-      keyColumn: normalizeKeyColumns(prunedKey),
-    });
-    this.selectedFieldPaths = new Set(imported.map((c) => c.field));
-    this.pendingFieldsCols = null;
-    this.render();
-  }
-
-  private openColumnsImportModal(): void {
-    this.closeModal();
-    const overlay = createJsonImportModal({
-      title: 'Import columns',
-      description: 'Paste a column-definitions JSON export, or drop a .json file.',
-      hint: 'Use Export JSON to produce this from another provider.',
-      placeholder: 'Paste column definitions JSON here, or drop a .json file…',
-      testId: 'columns-import-dialog',
-      onSubmit: (text) => this.applyColumnDefsImport(text),
-      onClose: () => this.closeModal(),
-    });
-    this.modalHost = overlay;
-    this.root.appendChild(overlay);
+  private async importColumnDefs(file: File): Promise<void> {
+    try {
+      const imported = parseColumnDefsImport(await file.text());
+      const present = new Set(imported.map((c) => c.field));
+      const prunedKey = readKeyColumns(this.cfg.config.keyColumn).filter((k) => present.has(k));
+      this.patchConfig({
+        columnDefinitions: imported,
+        keyColumn: normalizeKeyColumns(prunedKey),
+      });
+      this.selectedFieldPaths = new Set(imported.map((c) => c.field));
+      this.pendingFieldsCols = null;
+      this.render();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Import failed.');
+    }
   }
 
   private renderBehaviour(): HTMLElement {
