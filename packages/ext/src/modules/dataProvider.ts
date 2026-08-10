@@ -21,61 +21,109 @@ export type DataProviderModuleOptions = DataProviderControllerOptions & {
   controller?: DataProviderController;
 };
 
+/* DATA-tab provider panel — speaks the cockpit customize-drawer language so it
+ * matches the FORMAT/EDITING tabs: caps band header with a trailing rule, caps
+ * micro-labels, cockpit action buttons (caps, transparent secondary / solid
+ * primary), and a cockpit input-style select with an accent focus ring. Colours
+ * come straight from the ext chrome's --vg-* tokens (same as the cockpit kit). */
 const STYLE = `
 .vgext-dp {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   height: 100%;
   min-height: 0;
   color: var(--vg-fg-color, #1a1f24);
 }
 .vgext-dp__section-title {
   margin: 0;
-  font-size: 13px;
-  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vg-fg-color, #1a1f24);
+}
+.vgext-dp__section-title::after {
+  content: "";
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--vg-border-color, #c5d0d8);
 }
 .vgext-dp__row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .vgext-dp__row label {
-  font-size: 12px;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
   color: var(--vg-muted-fg-color, color-mix(in srgb, var(--vg-fg-color, #1a1f24) 55%, transparent));
 }
-.vgext-dp__row select,
-.vgext-dp__row button {
+.vgext-dp__row select {
+  flex: 1;
+  min-width: 160px;
   font: inherit;
   font-size: 12px;
-  padding: 5px 8px;
+  padding: 7px 10px;
   border: 1px solid var(--vg-border-color, #c5d0d8);
   border-radius: var(--vg-radius, 2px);
   background: var(--vg-input-bg, color-mix(in srgb, var(--vg-fg-color, #1a1f24) 3%, transparent));
   color: var(--vg-fg-color, #1a1f24);
   color-scheme: inherit;
   cursor: pointer;
+  transition: border-color 110ms ease, box-shadow 140ms ease, background 110ms ease;
 }
-.vgext-dp__row select {
-  flex: 1;
-  min-width: 160px;
+.vgext-dp__row select:hover {
+  border-color: color-mix(in srgb, var(--vg-muted-fg-color, #8a93a6) 45%, var(--vg-border-color, #c5d0d8));
 }
-.vgext-dp__row select:hover,
-.vgext-dp__row button:hover {
-  border-color: var(--vg-primary-color, var(--vg-accent-color, #4f9cf9));
+.vgext-dp__row select:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 70%, var(--vg-border-color, #c5d0d8));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 16%, transparent);
+}
+.vgext-dp__row button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 7px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--vg-radius, 2px);
+  background: transparent;
+  color: var(--vg-muted-fg-color, color-mix(in srgb, var(--vg-fg-color, #1a1f24) 55%, transparent));
+  cursor: pointer;
+  transition: color 110ms ease, background 110ms ease, border-color 110ms ease;
+}
+.vgext-dp__row button:hover:not(:disabled) {
+  color: var(--vg-fg-color, #1a1f24);
+  background: color-mix(in srgb, var(--vg-fg-color, #1a1f24) 6%, transparent);
+  border-color: var(--vg-border-color, #c5d0d8);
+}
+.vgext-dp__row button:focus-visible {
+  outline: 2px solid var(--vg-accent-color, #4f9cf9);
+  outline-offset: 1px;
 }
 .vgext-dp__row button.primary {
-  background: var(--vg-primary-color, var(--vg-accent-color, #4f9cf9));
   color: var(--vg-primary-fg, var(--vg-accent-fg, #ffffff));
+  background: var(--vg-primary-color, var(--vg-accent-color, #4f9cf9));
   border-color: transparent;
 }
-.vgext-dp__row button.primary:hover {
+.vgext-dp__row button.primary:hover:not(:disabled) {
   filter: brightness(1.08);
 }
 .vgext-dp__row button:disabled {
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: default;
 }
 .vgext-dp__hint {
   font-size: 11px;
   color: var(--vg-muted-fg-color, color-mix(in srgb, var(--vg-fg-color, #1a1f24) 55%, transparent));
-  line-height: 1.4;
+  line-height: 1.45;
 }
 `;
 
