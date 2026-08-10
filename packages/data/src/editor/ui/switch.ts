@@ -22,7 +22,7 @@ export function createSwitch(
   return btn;
 }
 
-/** Label + switch (+ optional help) field block. */
+/** Cockpit-style row: caps label left, switch (+ help) right. */
 export function createSwitchField(opts: {
   label: string;
   checked: boolean;
@@ -30,15 +30,15 @@ export function createSwitchField(opts: {
   help?: string;
 }): HTMLElement {
   const block = el('div', 'vg-dp-field');
-  const row = el('div', 'vg-dp-editor__switch-row');
-  const sw = createSwitch(opts.checked, opts.onChange);
   const lab = el('label', 'vg-dp-field__label', opts.label);
   lab.style.cursor = 'pointer';
+  const sw = createSwitch(opts.checked, opts.onChange);
   lab.addEventListener('click', () => sw.click());
-  row.append(sw, lab);
-  block.appendChild(row);
+  const main = el('div', 'vg-dp-field__main');
+  main.appendChild(sw);
   if (opts.help) {
-    block.appendChild(el('p', 'vg-dp-field__help', opts.help));
+    main.appendChild(el('p', 'vg-dp-field__help', opts.help));
   }
+  block.append(lab, main);
   return block;
 }

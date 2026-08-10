@@ -156,9 +156,11 @@ html[data-vg-theme-mode="light"] {
   --vg-popup-bg: #f3f6f8;
   --vg-header-bg: #f4f6f8;
   --vg-border-color: #c0c8d1;
+  --vg-muted-fg-color: #8a93a6;
   --vg-input-bg: #ffffff;
   --vg-input-fg: #1a1f24;
   --vg-row-alt-bg: #f7f9fb;
+  --vg-radius: 2px;
   --vg-chrome-accent: #4f9cf9;
   --vg-accent-color: #4f9cf9;
   --vg-primary-color: #4f9cf9;
@@ -173,19 +175,25 @@ html[data-vg-theme-mode="dark"] {
   --vg-popup-bg: #242E3A;
   --vg-header-bg: #161D26;
   --vg-border-color: rgb(255 255 255 / 16%);
+  --vg-muted-fg-color: #7f8798;
   --vg-input-bg: #161D26;
   --vg-input-fg: #E6E8EC;
   --vg-row-alt-bg: #1A232E;
-  --vg-chrome-accent: #2196f3;
-  --vg-accent-color: #2196f3;
-  --vg-primary-color: #2196f3;
+  --vg-radius: 2px;
+  --vg-chrome-accent: #4f9cf9;
+  --vg-accent-color: #4f9cf9;
+  --vg-primary-color: #4f9cf9;
   --vg-primary-fg: #ffffff;
   --vg-accent-fg: #ffffff;
   --vg-font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 body {
   font-family: var(--vg-font-family, "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
-  background: var(--vg-popup-bg, var(--vg-bg-color, #f3f6f8));
+  font-size: 12.5px;
+  line-height: 1.4;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--vg-fg-color, #1a1f24) 2.5%, transparent), transparent 72px),
+    var(--vg-popup-bg, var(--vg-bg-color, #f3f6f8));
   color: var(--vg-fg-color, #1a1f24);
   color-scheme: inherit;
 }

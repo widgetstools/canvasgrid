@@ -4,6 +4,9 @@
  * Trigger shows selected values as removable chips; opens a searchable
  * checklist. Selection order is preserved (important for composite keys).
  * Built on the shared editor UI kit (`createSearchInput`).
+ *
+ * Closes on option pick, outside click (uses `ownerDocument` so popout windows
+ * work), and Escape.
  */
 
 import { createSearchInput } from './ui/input';
@@ -46,10 +49,13 @@ export function mountMultiSelect(opts: MultiSelectOptions): MultiSelectHandle {
   let open = false;
   let search = '';
   let docClose: ((e: MouseEvent) => void) | null = null;
+  let keyClose: ((e: KeyboardEvent) => void) | null = null;
 
   const root = document.createElement('div');
   root.className = 'vg-dp-ms';
   host.appendChild(root);
+
+  const doc = (): Document => root.ownerDocument;
 
   const optionByValue = (): Map<string, MultiSelectOption> => {
     const m = new Map<string, MultiSelectOption>();
@@ -59,7 +65,15 @@ export function mountMultiSelect(opts: MultiSelectOptions): MultiSelectHandle {
 
   const setOpen = (next: boolean): void => {
     if (disabled) return;
+    if (open === next) {
+      if (next) {
+        const input = root.querySelector<HTMLInputElement>('.vg-dp-ms__search');
+        input?.focus();
+      }
+      return;
+    }
     open = next;
+    if (!open) search = '';
     render();
     if (open) {
       const input = root.querySelector<HTMLInputElement>('.vg-dp-ms__search');
@@ -71,6 +85,9 @@ export function mountMultiSelect(opts: MultiSelectOptions): MultiSelectHandle {
     const next = value.includes(v) ? value.filter((x) => x !== v) : [...value, v];
     value = next;
     onChange(next);
+    // Close after a pick — reopen to add more keys.
+    open = false;
+    search = '';
     render();
   };
 
@@ -81,23 +98,36 @@ export function mountMultiSelect(opts: MultiSelectOptions): MultiSelectHandle {
     render();
   };
 
-  const bindDocClose = (): void => {
-    unbindDocClose();
+  const bindDismiss = (): void => {
+    unbindDismiss();
     docClose = (e: MouseEvent) => {
-      if (!root.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node | null;
+      if (!t || !root.contains(t)) setOpen(false);
     };
-    document.addEventListener('mousedown', docClose, true);
+    keyClose = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        setOpen(false);
+      }
+    };
+    // ownerDocument — editor may live in a popout window, not the opener.
+    doc().addEventListener('mousedown', docClose, true);
+    doc().addEventListener('keydown', keyClose, true);
   };
 
-  const unbindDocClose = (): void => {
+  const unbindDismiss = (): void => {
     if (docClose) {
-      document.removeEventListener('mousedown', docClose, true);
+      doc().removeEventListener('mousedown', docClose, true);
       docClose = null;
+    }
+    if (keyClose) {
+      doc().removeEventListener('keydown', keyClose, true);
+      keyClose = null;
     }
   };
 
   const render = (): void => {
-    unbindDocClose();
+    unbindDismiss();
     root.replaceChildren();
     const by = optionByValue();
 
@@ -141,11 +171,14 @@ export function mountMultiSelect(opts: MultiSelectOptions): MultiSelectHandle {
     caret.className = 'vg-dp-ms__caret';
     caret.textContent = '▾';
     trigger.append(chips, caret);
-    trigger.addEventListener('click', () => setOpen(!open));
+    trigger.addEventListener('click', (e) => {
+      e.preventDefault();
+      setOpen(!open);
+    });
     root.appendChild(trigger);
 
     if (open) {
-      bindDocClose();
+      bindDismiss();
       const panel = document.createElement('div');
       panel.className = 'vg-dp-ms__panel';
       panel.setAttribute('role', 'listbox');
@@ -159,7 +192,7 @@ export function mountMultiSelect(opts: MultiSelectOptions): MultiSelectHandle {
           renderPanelBody(panel);
         },
       });
-      // Keep focus / open state when interacting inside the panel.
+      // Keep the panel from dismissing when focusing / clicking the search field.
       searchInput.addEventListener('mousedown', (e) => e.stopPropagation());
       panel.appendChild(searchInput);
 
@@ -227,7 +260,7 @@ export function mountMultiSelect(opts: MultiSelectOptions): MultiSelectHandle {
       render();
     },
     destroy() {
-      unbindDocClose();
+      unbindDismiss();
       root.remove();
     },
   };
