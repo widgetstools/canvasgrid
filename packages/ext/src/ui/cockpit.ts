@@ -266,7 +266,7 @@ export function injectCockpitStyles(): void {
   min-height: 0;
   overflow-y: auto;
   padding-right: 4px;
-  scrollbar-width: thin;
+  scrollbar-width: auto;
 }
 .ckp.ckp-flat > .ckp-flat-foot {
   flex: 0 0 auto;
@@ -287,7 +287,7 @@ ${vguiCapsCss('.ckp-caps', CKP_TOKENS)}
   padding: 16px 14px 20px;
   overflow-y: auto; min-height: 0;
   background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 1.5%, transparent);
-  scrollbar-width: thin;
+  scrollbar-width: auto;
 }
 .ckp-rail-head { display: flex; align-items: center; gap: 8px; padding: 0 4px 14px; }
 .ckp-rail-head .ckp-caps { flex: 1 1 auto; color: var(--vg-fg-color, #e5e9f0); letter-spacing: 0.1em; }
@@ -326,7 +326,7 @@ ${vguiCapsCss('.ckp-caps', CKP_TOKENS)}
 }
 .ckp-mini:hover { color: var(--vg-fg-color, #e5e9f0); background: var(--ckp-surface); }
 /* pane */
-.ckp-pane { min-width: 0; min-height: 0; overflow-y: auto; padding: 18px 22px 32px; scrollbar-width: thin; }
+.ckp-pane { min-width: 0; min-height: 0; overflow-y: auto; padding: 18px 22px 32px; scrollbar-width: auto; }
 .ckp-pane-head {
   display: flex; gap: 10px; align-items: center; margin-bottom: 16px; padding-bottom: 14px;
   border-bottom: 1px solid var(--ckp-border);

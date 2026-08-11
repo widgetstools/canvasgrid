@@ -432,8 +432,9 @@ export class LocalStorageConfigSession implements ConfigSession {
   saveSync(id: string, snap: ProfileSnapshot): void {
     const doc = this.loadBundleSync();
     const viewState = snap.gridState;
+    // Replace workspace GridState — spreading `doc` first left stale keys
+    // (e.g. rowGroupColumns) when the new snapshot omitted empty slices.
     const next: InstanceConfigDoc = {
-      ...doc,
       docVersion: INSTANCE_DOC_VERSION,
       ...(viewState as GridState),
       gridLevelData: {
@@ -445,7 +446,6 @@ export class LocalStorageConfigSession implements ConfigSession {
         id,
         updatedAt: Date.now(),
       },
-      // Keep existing layouts unless the snap somehow carried them (it doesn't)
       ...(doc.layouts ? { layouts: doc.layouts } : {}),
     };
     this.writeRaw(next);
@@ -485,8 +485,11 @@ export class LocalStorageConfigSession implements ConfigSession {
     if (modules && 'data-provider' in modules) {
       delete modules['data-provider'];
     }
+    // Replace workspace view state. Do NOT `{ ...doc, ...viewState }` —
+    // cleared slices are omitted from getState() (rowGroupColumns, empty
+    // filterModel, etc.) and spreading the prior doc kept those keys forever
+    // so reload resurrected grouping / filters the user had cleared.
     const next: InstanceConfigDoc = {
-      ...doc,
       docVersion: INSTANCE_DOC_VERSION,
       ...(viewState as GridState),
       ...(modules !== undefined
@@ -496,15 +499,13 @@ export class LocalStorageConfigSession implements ConfigSession {
         ...doc.gridLevelData,
         ...extracted,
       },
-      meta: doc.meta ?? DEFAULT_META(),
+      meta: { ...(doc.meta ?? DEFAULT_META()), updatedAt: Date.now() },
       ...(isGridLayoutsBundle(cleanedLayouts)
         ? { layouts: cleanedLayouts }
         : doc.layouts
           ? { layouts: stripGridLevelModulesFromLayouts(doc.layouts) }
           : {}),
     };
-    // Ensure meta.updatedAt moves on workspace save
-    next.meta = { ...next.meta!, updatedAt: Date.now() };
     this.writeRaw(next);
   }
 

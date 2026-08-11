@@ -174,6 +174,7 @@ export type {
   IServerSideGetLeafRowsParams,
   IServerSideGetGroupLeafIdsRequest,
   IServerSideGetGroupLeafIdsParams,
+  SsrmExpressionHost,
 } from './types/ssrm';
 export {
   SSRM_ROW_META_KEY, attachSsrmRowMeta, readSsrmRowMeta,

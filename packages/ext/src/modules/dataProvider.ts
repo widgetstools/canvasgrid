@@ -257,11 +257,7 @@ export function dataProviderModule(opts?: DataProviderModuleOptions): SettingsMo
             } else {
               const p = controller.getProvider();
               const status = p?.getStatus() ?? '—';
-              let rowsHint = String(p?.getData().length ?? 0);
-              try {
-                const page = await p?.getRows?.({ startRow: 0, endRow: 1 });
-                if (page && typeof page.rowCount === 'number') rowsHint = String(page.rowCount);
-              } catch { /* CSRM / not ready */ }
+              const rowsHint = String(p?.getData().length ?? 0);
               hint.textContent =
                 `Applied “${id}” · ${status} · ${rowsHint} rows · selection saved for next load.`;
             }

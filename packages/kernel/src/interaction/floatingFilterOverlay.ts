@@ -185,8 +185,13 @@ export class FloatingFilterOverlay {
         entry.input.value = String(v);
         this.updateHasValueClass(entry);
       }
+      return;
     }
-    // multi-condition / set: leave input.value untouched.
+    if (model.filterType === 'set' && Array.isArray(model.values)) {
+      entry.input.value = model.values.map((v) => String(v)).join(', ');
+      this.updateHasValueClass(entry);
+    }
+    // multi-condition: leave input.value untouched.
   }
 
   /** Tear down — remove every pooled cell from the DOM and cancel any
@@ -224,7 +229,7 @@ export class FloatingFilterOverlay {
     // range + CSV + AND/OR for number / date columns).
     const resolvedFilter = resolveFilterType(def);
     if (resolvedFilter) input.setAttribute('data-vg-filter-type', resolvedFilter);
-    input.placeholder = placeholderFor(resolvedFilter);
+    input.placeholder = placeholderForDef(def);
 
     const clearBtn = document.createElement('button');
     clearBtn.type = 'button';
@@ -279,6 +284,8 @@ export class FloatingFilterOverlay {
         && (initial.filterType === 'text' || initial.filterType === 'number' || initial.filterType === 'date')
         && initial.filter != null) {
       input.value = String(initial.filter);
+    } else if (initial?.filterType === 'set' && Array.isArray(initial.values)) {
+      input.value = initial.values.map((v) => String(v)).join(', ');
     }
     this.updateHasValueClass(entry);
 
@@ -299,6 +306,19 @@ export class FloatingFilterOverlay {
       if (this.destroyed) return;
       const raw = input.value;
       const def = this.deps.getColDef(colId);
+      // Set-filter columns: CSV / pipe tokens → exact set membership
+      // (not text contains). Matches set-popup Apply semantics on SSRM.
+      if (def?.filter === 'set') {
+        const values = raw
+          .split(/[,|]/)
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0);
+        const model = values.length === 0
+          ? null
+          : { filterType: 'set' as const, values };
+        this.deps.setColumnFilterModel(colId, model);
+        return;
+      }
       const columnType = resolveFilterType(def) ?? 'text';
       // Parser returns null for empty / unparseable input — both clear
       // the column filter. The input text itself is preserved (the
@@ -363,6 +383,12 @@ function placeholderFor(type: FilterColumnType | undefined): string {
   if (type === 'number') return '>100, 1,2,3, 100..200';
   if (type === 'date')   return '>2026-01-01, A..B';
   return '';
+}
+
+/** Placeholder for set-filter floating inputs (exact CSV membership). */
+function placeholderForDef(def: FloatingFilterColDef | undefined): string {
+  if (def?.filter === 'set') return 'APAC, EMEA';
+  return placeholderFor(resolveFilterType(def));
 }
 
 /** True when the column has a resolved filter type that maps to one of

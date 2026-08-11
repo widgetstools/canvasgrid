@@ -502,8 +502,7 @@ const FMT_CSS = `
   max-height: 328px;
   overflow-y: auto;
   padding: 0 2px 2px 4px;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--vg-muted-fg-color, #9aa4b6) 35%, transparent) transparent;
+  scrollbar-width: auto;
 }
 .vgext-fmt-list { display: flex; flex-direction: column; gap: 1px; }
 .vgext-fmt-row {

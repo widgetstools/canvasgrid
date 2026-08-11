@@ -30,6 +30,12 @@ export interface IServerSideGetRowsRequest {
   groupKeys: string[];
   /** Expanded composite keys — cgrid extension for server-side tree materialization. */
   expandedGroupKeys: string[];
+  /**
+   * Optional column projection for the row window. When set, datasources
+   * that support it (e.g. Perspective Views) may return only these fields
+   * (+ expression outputs computed server-side). Omitted = full-row payload.
+   */
+  columnKeys?: string[];
 }
 
 export interface IServerSideGetRowsParams<TRow = any> {
@@ -102,6 +108,8 @@ export interface IServerSideGetLeafRowsRequest {
   sortModel: SortModel;
   filterModel: FilterModel;
   rowGroupCols: string[];
+  /** Optional column projection — see {@link IServerSideGetRowsRequest.columnKeys}. */
+  columnKeys?: string[];
 }
 
 export interface IServerSideGetLeafRowsParams<TRow = any> {
@@ -151,6 +159,32 @@ export interface IServerSideDatasourceV2<TRow = any> {
 export type AnyServerSideDatasource<TRow = any> =
   | IServerSideDatasource<TRow>
   | IServerSideDatasourceV2<TRow>;
+
+/**
+ * Perspective ExprTK expression host (e.g. StompPerspectiveProvider).
+ * Wired via `VelocityGrid.setSsrmExpressionHost` so SSRM calculated-columns
+ * UI can validate/apply without depending on the perspective package.
+ */
+export interface SsrmExpressionHost {
+  getExpressions(): Record<string, string>;
+  setExpressions(expressions: Record<string, string>): Promise<void>;
+  validateExpressions(expressions: Record<string, string>): Promise<{
+    expression_schema: Record<string, string>;
+    errors: Record<string, string>;
+  }>;
+  /**
+   * Optional — sparse SSRM set-filter distinct values. When omitted, the
+   * grid falls back to the worker store / hydrated row mirror (often empty
+   * until windows load).
+   */
+  getDistinctValues?(colId: string, limit?: number): Promise<string[]>;
+  /**
+   * Optional — count rows matching a filter model against the full server
+   * book (for saved-filter pill badges). Sparse SSRM hydrate mirrors are
+   * viewport-sized and must not be used for these counts.
+   */
+  countMatchingFilterModel?(filterModel: FilterModel): Promise<number>;
+}
 
 export function isServerSideDatasourceV2<TRow>(
   ds: AnyServerSideDatasource<TRow> | null | undefined,

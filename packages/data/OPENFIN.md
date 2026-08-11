@@ -8,7 +8,7 @@ The data hub is designed for **same-origin** OpenFin windows (or browser tabs) t
 |--------|----------|
 | Upstream I/O | One STOMP/REST/mock connection per `providerId` |
 | Row cache | Canonical book in the worker |
-| Fan-out | CSRM pushes / SSRM pages to each attached window |
+| Fan-out | CSRM pushes to each attached window |
 | UI thread | Transport + pipeline off the renderer |
 
 ## Affinity / partition checklist
@@ -30,7 +30,6 @@ The data hub is designed for **same-origin** OpenFin windows (or browser tabs) t
    - Window B reaches `ready` without a second mock “connect storm”
    - Both windows show the same row count after attach (cache replay)
    - With `tickMs > 0`, both windows receive live updates
-5. Optional SSRM: set `rowModel: 'serverSide'`, bind via `bindProviderToSsrmGrid`, confirm `getRows({ startRow: 0, endRow: 25 })` returns 25 rows and `rowCount` matches the book.
 
 ### Minimal harness sketch
 

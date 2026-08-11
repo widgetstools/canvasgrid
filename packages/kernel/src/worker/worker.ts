@@ -152,6 +152,10 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     // fully hydrated and CSRM features (group/pivot/filter/sort/totals)
     // run through the same pipeline as clientSide.
     if (state.ssrmActive && !state.ssrmClientPipeline) {
+      // Still materialise Stage A over hydrated leaves so calculated
+      // columns paint in the sparse SSRM viewport (row-local exprs only;
+      // Stage B aggregates stay on the client-pipeline path).
+      state.calc.ensureStageA(state.store, (colId) => state!.columns.find((c) => c.colId === colId)?.field);
       return state.ssrmOrder;
     }
     // Cycle 21d / Task 11 — CalcPass Stage A: materialise row-local calc

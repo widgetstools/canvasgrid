@@ -5,9 +5,9 @@
  * formatter → placement), CodeMirror 6 editor with live compile
  * validation and the shared Format picker.
  *
- * Mutations ride the idempotent @wellsfargo-starui/velocity-grid-calc engine handle; its bridge
- * persists the set in the grid config (layout-tier 'calc' state module)
- * and refolds columnDefs.
+ * CSRM mutations ride the idempotent @wellsfargo-starui/velocity-grid-calc
+ * engine. SSRM + StompPerspectiveProvider uses Perspective ExprTK via
+ * `grid.getSsrmExpressionHost()` (ViewConfig.expressions) instead of Stage A.
  */
 import {
   wireIntoKernel as wireCalc,
@@ -16,8 +16,16 @@ import {
   type CalculatedColumnDef,
   type CellDataType,
 } from '@wellsfargo-starui/velocity-grid-calc';
+import type { SsrmExpressionHost } from '@wellsfargo-starui/velocity-grid';
+import { PerspectiveDataProviderController } from '@wellsfargo-starui/velocity-grid-perspective';
 import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
-import { ExpressionEditor, EXPRESSION_BUILTINS, type ExpressionFunction } from '../ui/expressionEditor';
+import {
+  ExpressionEditor,
+  EXPRESSION_BUILTINS,
+  PERSPECTIVE_EXPRTK_BUILTINS,
+  countPerspectiveColumnRefs,
+  type ExpressionFunction,
+} from '../ui/expressionEditor';
 import { editorColumns, schemaFromGrid } from '../ui/gridSchema';
 import {
   band, caps, chip, el, injectCockpitStyles, lucideSvg, numberInput,
@@ -63,6 +71,59 @@ function countRefs(expression: string): number {
 const toFormatDataType = (t: CellDataType | undefined): FormatDataType =>
   t === 'date' || t === 'datetime' ? 'date' : t === 'boolean' ? 'boolean' : t === 'string' ? 'text' : 'number';
 
+/**
+ * Ensure a Perspective ExprTK alias is a real grid column.
+ * `editColumn` only patches existing defs — expression outputs are new
+ * fields, so we merge into `columnDefs` like the SSRM demo's addPerspectiveCalc.
+ */
+function ensureExprColumnDef(
+  grid: VelocityGridExtContext['grid'],
+  def: CalculatedColumnDef,
+): void {
+  const api = grid as unknown as {
+    columnDefsMap?: Map<string, { colId: string; field?: string }>;
+    updateGridOptions?: (partial: { columnDefs: unknown[] }) => void;
+  };
+  const existing: unknown[] = [];
+  if (api.columnDefsMap) {
+    for (const d of api.columnDefsMap.values()) existing.push({ ...d });
+  }
+  const alias = def.colId;
+  const without = existing.filter((d) => {
+    const row = d as { colId?: string; field?: string };
+    return row.colId !== alias && row.field !== alias;
+  });
+  without.push({
+    colId: alias,
+    field: alias,
+    headerName: def.headerName || alias,
+    cellDataType: def.cellDataType ?? 'number',
+    ...(def.initialWidth != null ? { width: def.initialWidth } : { width: 120 }),
+    ...(def.format ? { format: def.format } : {}),
+    ...(def.cellDataType === 'number' || def.cellDataType == null
+      ? { aggFunc: 'sum', enableValue: true }
+      : {}),
+  });
+  api.updateGridOptions?.({ columnDefs: without });
+}
+
+function removeExprColumnDef(
+  grid: VelocityGridExtContext['grid'],
+  colId: string,
+): void {
+  const api = grid as unknown as {
+    columnDefsMap?: Map<string, { colId: string; field?: string }>;
+    updateGridOptions?: (partial: { columnDefs: unknown[] }) => void;
+  };
+  if (!api.columnDefsMap || !api.updateGridOptions) return;
+  const next: unknown[] = [];
+  for (const d of api.columnDefsMap.values()) {
+    if (d.colId === colId || d.field === colId) continue;
+    next.push({ ...d });
+  }
+  api.updateGridOptions({ columnDefs: next });
+}
+
 export function calculatedColumnsModule(): SettingsModule {
   return {
     id: 'calculated-columns',
@@ -77,6 +138,16 @@ export function calculatedColumnsModule(): SettingsModule {
 
     mount(host: HTMLElement, ctx: VelocityGridExtContext): ModuleInstance {
       const { calc } = wireCalc(ctx.grid);
+      const exprHost = (): SsrmExpressionHost | null => {
+        const g = ctx.grid as unknown as {
+          getSsrmExpressionHost?: () => SsrmExpressionHost | null;
+        };
+        return g.getSsrmExpressionHost?.() ?? null;
+      };
+      const isPerspectiveSsrm = (): boolean => exprHost() != null;
+
+      /** Local metadata for Perspective expression columns (header / format). */
+      let pspMeta: Record<string, Omit<CalculatedColumnDef, 'expression'>> = {};
 
       let columns: CalculatedColumnDef[] = [];
       let selectedId: string | null = null;
@@ -91,7 +162,70 @@ export function calculatedColumnsModule(): SettingsModule {
       root.append(rail, pane);
       host.appendChild(root);
 
+      const hydrateMetaFromController = (): void => {
+        const ctrl = PerspectiveDataProviderController.forGrid(ctx.grid);
+        if (!ctrl) return;
+        for (const [colId, m] of Object.entries(ctrl.getExpressionMeta())) {
+          if (pspMeta[colId]) continue;
+          pspMeta[colId] = {
+            colId,
+            headerName: m.headerName ?? colId,
+            cellDataType: (m.cellDataType as CellDataType | undefined) ?? 'number',
+            initialWidth: m.width,
+            format: m.format,
+          };
+        }
+      };
+
+      const rememberWithController = (exprs: Record<string, string>): void => {
+        const ctrl = PerspectiveDataProviderController.forGrid(ctx.grid);
+        if (!ctrl) return;
+        const meta: Record<string, {
+          headerName?: string;
+          cellDataType?: 'text' | 'number' | 'boolean' | 'date';
+          width?: number;
+          format?: string;
+        }> = {};
+        for (const [colId, m] of Object.entries(pspMeta)) {
+          const dt = m.cellDataType;
+          meta[colId] = {
+            headerName: m.headerName,
+            cellDataType:
+              dt === 'boolean' || dt === 'date'
+                ? dt
+                : dt === 'string'
+                  ? 'text'
+                  : 'number',
+            width: m.initialWidth,
+            format: m.format,
+          };
+        }
+        ctrl.rememberExpressions(exprs, meta);
+      };
+
       const load = (): void => {
+        const hostApi = exprHost();
+        if (hostApi) {
+          hydrateMetaFromController();
+          const exprs = hostApi.getExpressions();
+          columns = Object.entries(exprs).map(([colId, expression], i) => {
+            const meta = pspMeta[colId];
+            return {
+              colId,
+              expression,
+              headerName: meta?.headerName ?? colId,
+              cellDataType: meta?.cellDataType ?? 'number',
+              position: meta?.position ?? i,
+              initialWidth: meta?.initialWidth,
+              initialPinned: meta?.initialPinned,
+              format: meta?.format,
+            } satisfies CalculatedColumnDef;
+          });
+          columns.sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+          // Keep paint/rules columns in sync (e.g. after profile restore).
+          for (const def of columns) ensureExprColumnDef(ctx.grid, def);
+          return;
+        }
         try { columns = calc.listCalculatedColumns(); } catch { columns = []; }
         columns.sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
       };
@@ -128,6 +262,60 @@ export function calculatedColumnsModule(): SettingsModule {
 
       const save = (): void => {
         if (!draft) return;
+        const hostApi = exprHost();
+        if (hostApi) {
+          void (async () => {
+            const next: Record<string, string> = { ...hostApi.getExpressions() };
+            if (selectedId && selectedId !== draft!.colId) delete next[selectedId];
+            const alias = draft!.colId.trim();
+            if (!alias) {
+              errBox.style.display = '';
+              errBox.textContent = 'Column id is required';
+              return;
+            }
+            const raw = draft!.expression.trim();
+            if (!raw) {
+              errBox.style.display = '';
+              errBox.textContent = 'Expression is required';
+              return;
+            }
+            const source = raw.includes('//') ? raw : `// ${alias}\n${raw}`;
+            next[alias] = source;
+            try {
+              const validated = await hostApi.validateExpressions({ [alias]: source });
+              const err = validated.errors?.[alias];
+              if (err) {
+                errBox.style.display = '';
+                errBox.textContent = String(err);
+                return;
+              }
+            } catch (e) {
+              errBox.style.display = '';
+              errBox.textContent = e instanceof Error ? e.message : String(e);
+              return;
+            }
+            await hostApi.setExpressions(next);
+            if (selectedId && selectedId !== alias) delete pspMeta[selectedId];
+            pspMeta[alias] = {
+              colId: alias,
+              headerName: draft!.headerName,
+              cellDataType: draft!.cellDataType,
+              position: draft!.position,
+              initialWidth: draft!.initialWidth,
+              initialPinned: draft!.initialPinned,
+              format: draft!.format,
+            };
+            ensureExprColumnDef(ctx.grid, { ...draft!, expression: source });
+            rememberWithController(next);
+            errBox.style.display = 'none';
+            ctx.profiles.markDirty();
+            load();
+            draftIsNew = false;
+            selectColumn(alias);
+          })();
+          return;
+        }
+
         const compiled = compileCalc(draft.expression, schemaFromGrid(ctx.grid));
         if (!compiled.ok) {
           errBox.style.display = '';
@@ -172,6 +360,21 @@ export function calculatedColumnsModule(): SettingsModule {
           del.innerHTML = lucideSvg('trash-2', 12) || '🗑';
           del.addEventListener('click', (ev) => {
             ev.stopPropagation();
+            const hostApi = exprHost();
+            if (hostApi) {
+              const next = { ...hostApi.getExpressions() };
+              delete next[def.colId];
+              delete pspMeta[def.colId];
+              void hostApi.setExpressions(next).then(() => {
+                removeExprColumnDef(ctx.grid, def.colId);
+                rememberWithController(next);
+                ctx.profiles.markDirty();
+                load();
+                if (selectedId === def.colId) selectColumn(columns[0]?.colId ?? null);
+                else renderAll();
+              });
+              return;
+            }
             calc.removeCalculatedColumn(def.colId);
             ctx.profiles.markDirty();
             load();
@@ -185,8 +388,6 @@ export function calculatedColumnsModule(): SettingsModule {
       };
 
       const renderPane = (): void => {
-        // Destroy the previous CM view + body-mounted format menu before
-        // replacing the DOM — leaked instances pollute document.body.
         editor?.destroy();
         editor = null;
         fmtMenu?.destroy();
@@ -198,8 +399,8 @@ export function calculatedColumnsModule(): SettingsModule {
           return;
         }
         const d = draft;
+        const psp = isPerspectiveSsrm();
 
-        // Title row.
         const head = el('div', 'ckp-pane-head');
         const nameIn = textInput(d.headerName, (v) => { d.headerName = v; syncDirty(); }, { className: 'ckp-title', placeholder: 'Header name' });
         const resetBtn = el('button', 'ckp-actbtn');
@@ -215,10 +416,10 @@ export function calculatedColumnsModule(): SettingsModule {
         head.append(nameIn, resetBtn, saveBtn);
         pane.appendChild(head);
 
-        // Summary chips: COLUMN ID / REFS / FORMATTER / WIDTH.
         const chipsStrip = el('div', 'ckp-chips-strip');
         const idChip = chip('Column id', d.colId, 'warning');
-        const refsChip = chip('Refs', `${countRefs(d.expression)} COLS`, 'info');
+        const refCount = psp ? countPerspectiveColumnRefs(d.expression) : countRefs(d.expression);
+        const refsChip = chip('Refs', `${refCount} COLS`, 'info');
         const fmtChip = chip('Formatter', d.format ? 'SET' : '—');
         const widthChip = chip('Width', d.initialWidth ? `${d.initialWidth}PX` : 'AUTO');
         chipsStrip.append(idChip.root, refsChip.root, fmtChip.root, widthChip.root);
@@ -228,28 +429,30 @@ export function calculatedColumnsModule(): SettingsModule {
           const dirty = isDirty();
           saveBtn.disabled = !dirty;
           resetBtn.disabled = !dirty && !draftIsNew;
-          refsChip.set(`${countRefs(d.expression)} COLS`, 'info');
+          const n = psp ? countPerspectiveColumnRefs(d.expression) : countRefs(d.expression);
+          refsChip.set(`${n} COLS`, 'info');
           fmtChip.set(d.format ? 'SET' : '—');
           widthChip.set(d.initialWidth ? `${d.initialWidth}PX` : 'AUTO');
         };
         syncDirty();
 
-        // COLUMN ID row.
         const idIn = textInput(d.colId, (v) => { d.colId = v.trim(); idChip.set(d.colId, 'warning'); syncDirty(); }, { mono: true });
-        pane.appendChild(row('Column id', idIn, 'Unique — must not collide with data fields'));
+        pane.appendChild(row('Column id', idIn, psp
+          ? 'Perspective expression alias — must not collide with table fields'
+          : 'Unique — must not collide with data fields'));
 
-        // 01 EXPRESSION.
         const expr = band('01', 'Expression');
         const editorHost = el('div', 'ckp-editor');
         editor = new ExpressionEditor(editorHost, {
           value: d.expression,
           multiline: true,
           lines: 3,
-          placeholder: '[price] * [quantity]',
+          dialect: psp ? 'perspective' : 'cgrid',
+          placeholder: psp ? '// MyCalc\n"pnl" + "dailyPnl"' : '[price] * [quantity]',
           columnsProvider: () => editorColumns(ctx.grid),
-          functionsProvider: calcFunctions,
+          functionsProvider: psp ? () => PERSPECTIVE_EXPRTK_BUILTINS : calcFunctions,
           validate: (text) => {
-            if (!text.trim()) return [];
+            if (!text.trim() || psp) return [];
             const compiled = compileCalc(text, schemaFromGrid(ctx.grid));
             if (compiled.ok) return [];
             const loc = (compiled.error as { loc?: { start: number; end: number } | null }).loc;
@@ -258,10 +461,18 @@ export function calculatedColumnsModule(): SettingsModule {
           onChange: (v) => { d.expression = v; syncDirty(); },
           onCommit: () => { if (isDirty()) save(); },
         });
-        expr.body.append(editorHost, el('div', 'ckp-hint', "Type [ for columns · ⌘↵ to save · aggregates take a scope: SUM([price], 'group') · PREV([col]) for prior tick"));
+        expr.body.append(
+          editorHost,
+          el(
+            'div',
+            'ckp-hint',
+            psp
+              ? 'Perspective ExprTK — type " for columns · // Alias on first line · ⌘↵ to save'
+              : "Type [ for columns · ⌘↵ to save · aggregates take a scope: SUM([price], 'group') · PREV([col]) for prior tick",
+          ),
+        );
         pane.appendChild(expr.root);
 
-        // 02 VALUE FORMATTER.
         const fmt = band('02', 'Value formatter');
         const fmtBtn = el('button', 'ckp-fmtbtn');
         fmtBtn.type = 'button';
@@ -283,7 +494,6 @@ export function calculatedColumnsModule(): SettingsModule {
         fmt.body.appendChild(fmtBtn);
         pane.appendChild(fmt.root);
 
-        // 03 PLACEMENT.
         const place = band('03', 'Placement');
         place.body.appendChild(row('Data type', select(
           (['number', 'currency', 'percent', 'date', 'datetime', 'string', 'boolean'] as CellDataType[])

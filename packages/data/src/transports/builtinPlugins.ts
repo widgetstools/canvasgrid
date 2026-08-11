@@ -104,6 +104,18 @@ export const stompTransportPlugin: TransportPlugin = defineTransportPlugin({
             placeholder: 'Success',
             help: "Case-insensitive substring that flips status: 'snapshot' → 'ready'.",
           },
+          {
+            kind: 'number',
+            key: 'messageRate',
+            label: 'Snapshot rows',
+            help: 'Sent as the STOMP `snapshot-rows` header when requesting the book. Default 10000.',
+          },
+          {
+            kind: 'number',
+            key: 'batchSize',
+            label: 'Batch size',
+            help: 'Rows per flush while loading the snapshot / live ticks.',
+          },
         ],
       },
       {

@@ -1073,8 +1073,9 @@ const SSRM_BY_FEATURE: Record<string, LabProfileCatalog> = {
   profiles: SSRM_PROFILES,
 };
 
-export type LabMode = 'csrm' | 'ssrm';
+export type LabMode = 'csrm';
 
-export function getLabCatalog(featureId: string, mode: LabMode): LabProfileCatalog | undefined {
-  return (mode === 'ssrm' ? SSRM_BY_FEATURE : CSRM_BY_FEATURE)[featureId];
+export function getLabCatalog(featureId: string, mode: LabMode = 'csrm'): LabProfileCatalog | undefined {
+  void mode;
+  return CSRM_BY_FEATURE[featureId];
 }

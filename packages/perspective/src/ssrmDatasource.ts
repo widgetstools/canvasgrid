@@ -49,6 +49,7 @@ export function createPerspectiveSsrmDatasource(
               filterModel: params.request.filterModel,
               rowGroupCols: params.request.rowGroupCols,
               expandedGroupKeys: params.request.expandedGroupKeys,
+              columnKeys: params.request.columnKeys,
             });
             served = result.rows.length;
             params.success({
@@ -64,6 +65,7 @@ export function createPerspectiveSsrmDatasource(
             endRow: params.request.endRow,
             sortModel: params.request.sortModel,
             filterModel: params.request.filterModel,
+            columnKeys: params.request.columnKeys,
           });
           served = result.rows.length;
           params.success({

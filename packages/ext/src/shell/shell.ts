@@ -738,8 +738,7 @@ const SHELL_CSS = `
   min-height: 0;
   overflow: auto;
   padding: 16px 16px 24px;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--vg-muted-fg-color, #8a93a6) 35%, transparent) transparent;
+  scrollbar-width: auto;
 }
 /* Kernel tool panels (Options / Column Groups) fill the body edge-to-edge. */
 .vgext-sheet-body:has(> .vgext-sheet-toolpanel) {

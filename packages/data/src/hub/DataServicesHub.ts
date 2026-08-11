@@ -5,7 +5,6 @@ import { getTransportPlugin } from '../registry/plugins';
 import { registerDefaultTransports } from '../transports/registerDefaults';
 import { LivePipeline, RowCache, composeRowId } from './rowCache';
 import { inferFieldsFromRows } from '../schema/infer';
-import { pageCachedRows } from '../query/page';
 import type { FieldInfo } from '../types/schema';
 import { fieldPathsFromColumnDefs, projectRow, thinDelta } from '../pipeline/project';
 import { rowsToColumnar } from '../pipeline/wireFormat';
@@ -113,13 +112,6 @@ export class DataServicesHub {
           });
           return;
         }
-        case 'getRows': {
-          const slot = this.slots.get(req.providerId);
-          if (!slot) throw new Error(`Unknown provider ${req.providerId}`);
-          const result = pageCachedRows(slot.cache.getAll(), req.request);
-          port.postMessage({ v: 1, id: req.id, type: 'getRowsResult', result });
-          return;
-        }
         case 'getMeta': {
           const slot = this.slots.get(req.providerId);
           if (!slot) throw new Error(`Unknown provider ${req.providerId}`);
@@ -203,8 +195,8 @@ export class DataServicesHub {
     if (!slot.subscribers.some((s) => s.port === port && s.subId === subId)) {
       slot.subscribers.push({ port, subId });
     }
-    // CSRM: replay cache as replace. SSRM clients use getRows instead.
-    if (slot.config.rowModel === 'clientSide' && slot.cache.size > 0) {
+    // Replay cache as replace for CSRM subscribers.
+    if (slot.cache.size > 0) {
       this.push(slot, { v: 1, type: 'push', providerId, subId, rows: slot.cache.getAll(), replace: true });
     }
     this.push(slot, { v: 1, type: 'status', providerId, status: slot.status });
@@ -229,7 +221,7 @@ export class DataServicesHub {
     if (!opts?.preserveStats) resetRuntimeCounters(slot.stats);
     slot.pipeline?.destroy();
     slot.pipeline = new LivePipeline(slot.config.config, (rows) => {
-      // Fan out hub-merged rows so SSRM txs never replace a full cached
+      // Fan out hub-merged rows so live txs never replace a full cached
       // row with a thin/partial tick payload.
       const merged = slot.cache.upsert(rows);
       this.fanOutLive(slot, merged);
@@ -343,11 +335,6 @@ export class DataServicesHub {
   }
 
   private fanOutReplace(slot: ProviderSlot): void {
-    if (slot.config.rowModel === 'serverSide') {
-      notePublish(slot.stats);
-      this.broadcast(slot, { v: 1, type: 'tickNotify', providerId: slot.config.providerId });
-      return;
-    }
     const rows = slot.cache.getAll();
     const chunk = slot.config.config.snapshotChunkSize ?? 500;
     for (let i = 0; i < rows.length; i += chunk) {
@@ -375,19 +362,6 @@ export class DataServicesHub {
 
   private fanOutLive(slot: ProviderSlot, rows: Record<string, unknown>[]): void {
     notePublish(slot.stats);
-    if (slot.config.rowModel === 'serverSide') {
-      // Notify soft-refresh consumers, then push tick rows so the bind path
-      // can applyServerSideTransaction (required for cell-change flash).
-      this.broadcast(slot, { v: 1, type: 'tickNotify', providerId: slot.config.providerId });
-      this.broadcast(slot, {
-        v: 1,
-        type: 'push',
-        providerId: slot.config.providerId,
-        rows: slot.config.config.wireFormat === 'columnar' ? rowsToColumnar(rows) : rows,
-        replace: false,
-      });
-      return;
-    }
     this.broadcast(slot, {
       v: 1,
       type: 'push',

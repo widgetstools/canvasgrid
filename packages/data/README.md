@@ -5,10 +5,12 @@ Modular SharedWorker **data-provider hub** for VelocityGrid / OpenFin multi-wind
 - One upstream connection + one row cache per `providerId`
 - Transport plugins: `mock`, `stomp`, `rest` (+ stubs for solace / amps / socketio / websocket)
 - Throughput pipeline: throttle, conflate, thinDeltas, projectFields, wireFormat, snapshot chunks
-- CSRM fan-out and SSRM `getRows` against the same hub cache
+- CSRM fan-out against a shared hub cache
 - Config catalog (IndexedDB / localStorage / REST / memory) + provider editor UI
 
-The kernel package stays a **consumer** (`setRowData` / `applyTransaction` / SSRM datasource). Perspective WASM remains a separate optional path.
+The kernel package stays a **consumer** (`setRowData` / `applyTransaction`).
+SSRM data providers live in `@wellsfargo-starui/velocity-grid-perspective`
+(`StompPerspectiveProvider`).
 
 ## Quick start (CSRM)
 
@@ -29,17 +31,6 @@ const cfg: DataProviderConfig = {
 
 const provider = new ProviderClientAdapter(cfg);
 const detach = bindProviderToGrid(provider, grid);
-await provider.start();
-```
-
-## SSRM
-
-```ts
-import { bindProviderToSsrmGrid } from '@wellsfargo-starui/velocity-grid-data';
-
-const cfg = { /* … */ rowModel: 'serverSide' as const, blockSize: 100 };
-const provider = new ProviderClientAdapter(cfg);
-bindProviderToSsrmGrid(provider, grid, { blockSize: cfg.blockSize });
 await provider.start();
 ```
 

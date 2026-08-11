@@ -17,15 +17,39 @@ export {
 } from './provider';
 
 export {
-  MockSSRMDataProvider,
-  type MockSSRMDataProviderConfig,
-  type MockPositionRow,
-} from './mockSsrmDataProvider';
-
+  mountStompPerspectiveProviderEditor,
+  type StompPerspectiveProviderEditor,
+  type StompPerspectiveProviderEditorOptions,
+} from './editor/StompPerspectiveProviderEditor';
 export {
-  MOCK_POSITION_COLUMNS,
-  MOCK_GRAND_TOTAL_ROW_ID,
-} from './mockPositionColumns';
+  openPerspectiveProviderEditorPopout,
+  type OpenPerspectiveProviderEditorPopoutOpts,
+  type PerspectiveProviderEditorPopoutHandle,
+} from './editor/openEditorPopout';
+export {
+  LocalStoragePerspectiveProviderCatalog,
+  DEFAULT_PERSPECTIVE_PROVIDER_ID,
+  buildDefaultPerspectiveProviderEntry,
+  type PerspectiveProviderCatalog,
+  type PerspectiveProviderEntry,
+} from './catalog';
+export {
+  PerspectiveDataProviderController,
+  type PerspectiveDataProviderControllerOptions,
+  type PerspectiveDataProviderStateSlice,
+} from './controller';
+export {
+  dataProviderConfigToPerspective,
+  gridColumnDefsFromDataProvider,
+  columnDefinitionsToGridDefs,
+  columnDefinitionsToPerspectiveSchema,
+  snapshotRowsFromConfig,
+  type PerspectiveSchema,
+} from './mapFromDataProvider';
+export {
+  mergeExpressionColumnDefs,
+  type ExpressionColumnMeta,
+} from './expressionColumns';
 
 export {
   AppDataStore,
@@ -40,16 +64,29 @@ export {
 } from '@wellsfargo-starui/velocity-grid-appdata';
 export {
   PerspectiveBook,
+  resolvePerspectiveViewColumns,
+  cgridFilterToPsp,
+  mapAggFuncToPerspective,
+  QUICK_FILTER_HAYSTACK_ALIAS,
+  OR_CONTAINS_ALIAS_PREFIX,
+  buildOrContainsExpression,
+  orContainsAlias,
   type BookFeed,
   type BookPhase,
   type BookTelemetry,
+  type ExpressionValidationResult,
   type PerspectiveBookOptions,
   type PspFilter,
+  type PspFilterTerm,
   type SsrmRowsRequest,
   type SsrmRowsResult,
   type ViewSpec,
   type ViewTick,
 } from './book';
+export {
+  distinctValuesFromRowPaths,
+  type GroupedDistinctRow,
+} from './distinctValues';
 export { createPerspectiveSsrmDatasource } from './ssrmDatasource';
 export {
   POSITION_COLUMNS,

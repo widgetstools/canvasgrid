@@ -75,7 +75,7 @@ new VelocityGridExt(el, {
 - Definitions live in `ConfigBackend` (localStorage by default; IndexedDB preferred for multi-window).
 - Active selection `{ activeProviderId }` is a StateModule slice `data-provider` and rides profiles / `getConfig` / `persistConfig`.
 - Customize / settings shows **selection + Apply** only; **Edit… / Manage…** opens the shared browser popout for authoring.
-- Apply binds CSRM or SSRM via the hub.
+- Apply binds CSRM via the hub (SSRM uses `@wellsfargo-starui/velocity-grid-perspective`).
 
 ## Event → grid mapping
 

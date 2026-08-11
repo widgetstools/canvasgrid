@@ -104,26 +104,57 @@ export async function getPerspectiveClient(): Promise<Client> {
   return initPromise;
 }
 
-export async function createPositionsTable(name = 'positions'): Promise<Table> {
+export type PerspectiveColumnType = 'string' | 'float' | 'boolean' | 'date' | 'integer';
+export type PerspectiveTableSchema = Record<string, PerspectiveColumnType | string>;
+
+/** Stable table name so different DataProvider schemas don't collide. */
+export function tableNameForSchema(
+  schema: PerspectiveTableSchema,
+  base = SHARED_TABLE_NAME,
+): string {
+  const keys = Object.keys(schema).sort();
+  const defaultKeys = Object.keys(POSITION_SCHEMA).sort();
+  const sameShape = keys.length === defaultKeys.length
+    && keys.every((k, i) => k === defaultKeys[i] && schema[k] === POSITION_SCHEMA[k as keyof typeof POSITION_SCHEMA]);
+  if (sameShape) return base;
+  let h = 2166136261;
+  for (const k of keys) {
+    for (let i = 0; i < k.length; i++) h = Math.imul(h ^ k.charCodeAt(i), 16777619);
+    const t = String(schema[k] ?? '');
+    for (let i = 0; i < t.length; i++) h = Math.imul(h ^ t.charCodeAt(i), 16777619);
+  }
+  return `${base}-${(h >>> 0).toString(16)}`;
+}
+
+export async function createPositionsTable(
+  name = 'positions',
+  schema: PerspectiveTableSchema = POSITION_SCHEMA,
+): Promise<Table> {
   const c = await getPerspectiveClient();
-  return c.table({ ...POSITION_SCHEMA }, { index: 'positionId', name });
+  return c.table({ ...schema } as typeof POSITION_SCHEMA, { index: 'positionId', name });
 }
 
 /** Phase 5 — attach to the shared table if another tab already hosts it,
  *  else create it. `attached: true` means the snapshot may already be
- *  loaded (or loading) by the tab that created it. */
+ *  loaded (or loading) by the tab that created it.
+ *  Schema comes from the DataProvider when provided. */
 export async function openOrCreatePositionsTable(
   name = SHARED_TABLE_NAME,
+  schema: PerspectiveTableSchema = POSITION_SCHEMA,
 ): Promise<{ table: Table; attached: boolean }> {
   const c = await getPerspectiveClient();
+  const tableName = name === SHARED_TABLE_NAME ? tableNameForSchema(schema, name) : name;
   try {
     const names = await c.get_hosted_table_names();
-    if (names.includes(name)) {
-      return { table: await c.open_table(name), attached: true };
+    if (names.includes(tableName)) {
+      return { table: await c.open_table(tableName), attached: true };
     }
   } catch { /* older engine without listing — fall through to create */ }
   return {
-    table: await c.table({ ...POSITION_SCHEMA }, { index: 'positionId', name }),
+    table: await c.table(
+      { ...schema } as typeof POSITION_SCHEMA,
+      { index: 'positionId', name: tableName },
+    ),
     attached: false,
   };
 }

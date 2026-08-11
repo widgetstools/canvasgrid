@@ -46,6 +46,7 @@ export const DEFAULT_GRID_LEVEL_MODULES: readonly string[] = [
   'templates',
   'alerts',
   'data-provider',
+  'perspective-data-provider',
 ];
 
 /**

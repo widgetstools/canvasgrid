@@ -20,6 +20,7 @@ import { ViewportManager } from './core/viewportManager';
 import { ServerSideRowModelController } from './core/serverSideRowModel';
 import { ServerSideRowModelV2Controller, type SsrmHostV2 } from './core/serverSideRowModelV2';
 import { isServerSideDatasourceV2 } from './types/ssrm';
+import { buildSsrmColumnKeys } from './core/ssrmColumnKeys';
 import { parseCompositeGroupKey, readSsrmRowMeta as readSsrmMeta } from './core/ssrmRowMeta';
 import type {
   AnyServerSideDatasource,
@@ -27,6 +28,7 @@ import type {
   IServerSideDatasourceV2,
   RefreshServerSideParams,
   ServerSideTransaction,
+  SsrmExpressionHost,
 } from './types/ssrm';
 import { type ResolvedColDef, applyCellProps, composeFont } from './core/propertyChain';
 import { resolveColumnTree, isColGroupDef, visibleHeaderGroupDepth, type ColumnTree, type ColumnTreeNode, type ResolvedColGroupDef } from './core/columnTree';
@@ -247,6 +249,7 @@ export type {
   IServerSideGetSkeletonRequest, IServerSideGetSkeletonParams,
   IServerSideGetLeafRowsRequest, IServerSideGetLeafRowsParams,
   IServerSideGetGroupLeafIdsRequest, IServerSideGetGroupLeafIdsParams,
+  SsrmExpressionHost,
   CValueGetterParams, CValueFormatterParams,
   CCellRendererSelector, CCellRendererSelectorParams, CCellRendererSelectorResult,
   ColCellOverrides,
@@ -278,6 +281,8 @@ export type { ConditionalRuleShape } from './core/ruleEngineSlot';
 // bundle version).
 export { DEFAULT_LAYOUT_ID, DEFAULT_GRID_LEVEL_MODULES, LAYOUTS_BUNDLE_VERSION } from './types';
 export { SSRM_ROW_META_KEY, attachSsrmRowMeta, readSsrmRowMeta, isServerSideDatasourceV2 } from './types/ssrm';
+export { buildSsrmColumnKeys, mergeSsrmRowFields } from './core/ssrmColumnKeys';
+export type { SsrmColumnKeysInput } from './core/ssrmColumnKeys';
 export type { CellPainter, CellPaintConfig, RegisterCellRendererOpts } from './renderer/cellRenderers/registry';
 // Workstream A (2026-07-06 CSS styling model) — renderer-palette bundle
 // type, so @wellsfargo-starui/velocity-grid-renderers (and follow-on structured-map work) can name
@@ -722,6 +727,40 @@ function viewportChunkColIds(chunk: ViewportChunk): Set<string> {
   return ids;
 }
 
+/** Usable rule/mirror field — blank chunk placeholders must not clobber. */
+function isUsableRowField(v: unknown): boolean {
+  if (v === undefined || v === null || v === '') return false;
+  if (typeof v === 'number' && Number.isNaN(v)) return false;
+  return true;
+}
+
+/** Field-merge for SSRM hydrate / tick patches: skip null/undefined so
+ *  thin Perspective payloads do not wipe previously hydrated fields. */
+function mergeRowDataFields<TRow>(prev: TRow, row: TRow): TRow {
+  const out: Record<string, unknown> = { ...(prev as object) as Record<string, unknown> };
+  for (const [k, v] of Object.entries(row as object as Record<string, unknown>)) {
+    if (v !== undefined && v !== null) out[k] = v;
+  }
+  return out as TRow;
+}
+
+/** Mirror ⊕ snapshot for rule eval / getCellPaintedBg — mirror wins;
+ *  snapshot only fills gaps with usable values. */
+function mergeRuleRowForPaint(
+  mirror: Record<string, unknown> | undefined,
+  snapshot: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!mirror && !snapshot) return undefined;
+  if (!mirror) return snapshot;
+  if (!snapshot) return mirror;
+  const out: Record<string, unknown> = { ...mirror };
+  for (const [k, v] of Object.entries(snapshot)) {
+    if (!isUsableRowField(v)) continue;
+    if (!isUsableRowField(out[k])) out[k] = v;
+  }
+  return out;
+}
+
 /** Conflate deferred async transactions for scroll-end flush — last write
  *  wins per row id (matches worker `asyncTransactionConflate`). */
 function mergeDeferredAsyncTransactions<TRow>(
@@ -1090,6 +1129,17 @@ export class VelocityGrid<TRow = any> {
   private ssrm: ServerSideRowModelController<TRow> | ServerSideRowModelV2Controller<TRow> | null = null;
   /** True when `ssrm` is the v2 skeleton controller. */
   private ssrmV2 = false;
+  /** Perspective expression output aliases included in SSRM columnKeys. */
+  private ssrmExpressionOutputIds: string[] = [];
+  /** Client rules/alerts/format watched cols included in SSRM columnKeys. */
+  private ssrmClientWatchedColIds: string[] = [];
+  /** Optional Perspective ExprTK host (StompPerspectiveProvider) for SSRM calc. */
+  private ssrmExpressionHost: SsrmExpressionHost | null = null;
+  private ssrmColumnRefillTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Coalesce column-window refill while the user is still scrolling. */
+  private pendingSsrmColumnRefill = false;
+  /** Last columnKeys signature that actually triggered a band refill. */
+  private lastSsrmColumnKeysSig = '';
   /**
    * Datasource installed via `setServerSideDatasource` before async init
    * mounts `this.ssrm`. Flushed after the construction-time placeholder
@@ -1574,10 +1624,9 @@ export class VelocityGrid<TRow = any> {
 
     this.scroller = document.createElement('div');
     this.scroller.className = 'vg-scroller vg-scrollbar';
-    // overflow:scroll (not auto) so scrollbar gutters are reserved unconditionally —
-    // macOS overlay scrollbars otherwise disappear when idle and the user can't
-    // see they're scrollable. The webkit-scrollbar styles in tokens.css then
-    // theme the persistent track + thumb.
+    // overflow:auto — tracks hide when content fits. The themed
+    // `::-webkit-scrollbar` rules in tokens.css force a visible 8px thumb
+    // on Chromium/WebKit (macOS overlay scrollbars otherwise vanish when idle).
     this.scroller.style.cssText = 'position:absolute; inset:0; overflow:auto;';
     this.sizer = document.createElement('div');
     this.sizer.className = 'vg-sizer';
@@ -3080,6 +3129,10 @@ export class VelocityGrid<TRow = any> {
       this.bodyScrollActive = false;
       this.flushDeferredAsyncTransactions();
       this.flushDeferredSsrmUpdates();
+      if (this.pendingSsrmColumnRefill) {
+        this.pendingSsrmColumnRefill = false;
+        this.scheduleSsrmColumnRefill();
+      }
       if (
         this.flashPausedForScroll
         || this.flashRegistry.size() > 0
@@ -3670,6 +3723,9 @@ export class VelocityGrid<TRow = any> {
       getRowGroupCols: () => this.grouping.getRowGroupColumns(),
       getGroupKeys: () => [],
       getExpandedGroupKeys: () => Array.from(this.getExpandedKeys()),
+      getColumnKeys: () => this.isSsrmColumnWindowingActive()
+        ? this.buildSsrmFetchColumnKeys()
+        : undefined,
       mergeGroupKeys: (keys) => {
         if (keys.length === 0) return;
         const merged = new Set(this.knownGroupKeys);
@@ -3727,10 +3783,30 @@ export class VelocityGrid<TRow = any> {
         // Skeleton chrome (group/footer/grand-total rows) stays out of the
         // mirror — it is paint state, not data, and forEachNode/getRowNode
         // must not yield it.
+        let hydratedIds = 0;
         for (const row of rows) {
           const kind = readSsrmMeta(row)?.kind;
           if (kind === 'group' || kind === 'footer' || kind === 'grandTotal') continue;
-          try { this.rowDataById.set(this.options.getRowId(row), row); } catch { /* skip */ }
+          try {
+            const id = this.options.getRowId(row);
+            const prev = this.rowDataById.get(id);
+            // Field-merge so column-window / thin payloads do not wipe
+            // previously hydrated fields (Perspective expression deps stay
+            // on the table; paint columns arrive in slices). Skip
+            // null/undefined so sparse to_json nulls don't clobber mirror
+            // values rules still need (condition cols off the paint window).
+            this.rowDataById.set(
+              id,
+              prev ? mergeRowDataFields(prev, row) : row,
+            );
+            // Soft-refresh / column-window hydrates often arrive without a
+            // flashMask — bump row versions so Tier-2 strips don't keep
+            // serving pre-rule / pre-tick pixels (conditional styles freeze).
+            if (this.rasterStrips !== null) {
+              this.rowVersionByRowId.set(id, (this.rowVersionByRowId.get(id) ?? 0) + 1);
+              hydratedIds++;
+            }
+          } catch { /* skip */ }
         }
         const { visibleCount } = await this.workerCoord.ssrmHydrate({
           rowCount,
@@ -3747,6 +3823,7 @@ export class VelocityGrid<TRow = any> {
             this.viewport.maxScrollTop,
           );
         }
+        if (hydratedIds > 0) this.cgridCanvas?.requestRepaint();
       },
       applyTransaction: (tx) => {
         this.applyTransaction(tx as Tx<TRow>);
@@ -3784,6 +3861,145 @@ export class VelocityGrid<TRow = any> {
         maxConcurrentDatasourceRequests: this.options.maxConcurrentDatasourceRequests,
       });
     }
+    this.wireSsrmColumnWindowRefill();
+  }
+
+  /**
+   * Column projection is opt-in for Perspective ExprTK / client watched
+   * deps. Hub STOMP and other full-width SSRM datasources must not enter
+   * the H-scroll refill path — that caused black voids and flicker.
+   */
+  private isSsrmColumnWindowingActive(): boolean {
+    return this.ssrmExpressionHost != null
+      || this.ssrmExpressionOutputIds.length > 0
+      || this.ssrmClientWatchedColIds.length > 0;
+  }
+
+  /**
+   * Column projection for SSRM fetches — paint window + system cols +
+   * Perspective expression outputs + client watched fields. Datasources
+   * that ignore `columnKeys` still return full rows (backward compatible).
+   */
+  private buildSsrmFetchColumnKeys(): string[] {
+    const visibleColIds = (this.viewport?.visibleColumns ?? []).map((c) => c.colId);
+    let filterIds: string[] = [];
+    try {
+      filterIds = Object.keys(this.getFilterModel());
+    } catch {
+      filterIds = [];
+    }
+    return buildSsrmColumnKeys({
+      visibleColIds,
+      rowIdField: inferRowIdField(this.options.getRowId),
+      sortColIds: this.sortModel.map((s) => s.colId),
+      filterColIds: filterIds,
+      rowGroupColIds: this.grouping.getRowGroupColumns(),
+      valueAggColIds: this.getValueColumns().map((v) => v.colId),
+      expressionOutputIds: this.ssrmExpressionOutputIds,
+      clientWatchedColIds: this.ssrmClientWatchedColIds,
+    });
+  }
+
+  /** Register Perspective expression output aliases for SSRM columnKeys. */
+  setSsrmExpressionOutputs(ids: readonly string[]): void {
+    this.ssrmExpressionOutputIds = [...new Set(ids.filter(Boolean))];
+    this.lastSsrmColumnKeysSig = '';
+    this.scheduleSsrmColumnRefill();
+  }
+
+  /**
+   * Register / clear the Perspective ExprTK host used by SSRM calculated
+   * columns (validate + apply without Stage A / cgrid DSL).
+   */
+  setSsrmExpressionHost(host: SsrmExpressionHost | null): void {
+    this.ssrmExpressionHost = host;
+    if (host) {
+      this.setSsrmExpressionOutputs(Object.keys(host.getExpressions()));
+    } else {
+      this.ssrmExpressionOutputIds = [];
+      this.lastSsrmColumnKeysSig = '';
+    }
+  }
+
+  getSsrmExpressionHost(): SsrmExpressionHost | null {
+    return this.ssrmExpressionHost;
+  }
+
+  /** Register client rules/alerts/format watched cols for SSRM columnKeys. */
+  setSsrmClientWatchedColumns(ids: readonly string[]): void {
+    this.ssrmClientWatchedColIds = [...new Set(ids.filter(Boolean))];
+    this.lastSsrmColumnKeysSig = '';
+    this.scheduleSsrmColumnRefill();
+  }
+
+  private wireSsrmColumnWindowRefill(): void {
+    this.disposables.add(this.events.on('virtualColumnsChanged', () => {
+      this.scheduleSsrmColumnRefill();
+    }));
+  }
+
+  private scheduleSsrmColumnRefill(): void {
+    if (!this.ssrm || this.destroyed) return;
+    // Full-width SSRM (STOMP hub sample, etc.) — never refill on H-scroll.
+    if (!this.isSsrmColumnWindowingActive()) {
+      this.pendingSsrmColumnRefill = false;
+      return;
+    }
+    // Defer during scroll — refill mid-gesture races paint and caused the
+    // black voids / flicker on the STOMP SSRM sample.
+    if (this.bodyScrollActive) {
+      this.pendingSsrmColumnRefill = true;
+      return;
+    }
+    if (this.ssrmColumnRefillTimer) clearTimeout(this.ssrmColumnRefillTimer);
+    this.ssrmColumnRefillTimer = setTimeout(() => {
+      this.ssrmColumnRefillTimer = null;
+      if (this.destroyed || !this.ssrm) return;
+      if (!this.isSsrmColumnWindowingActive()) return;
+      if (this.bodyScrollActive) {
+        this.pendingSsrmColumnRefill = true;
+        return;
+      }
+      const keys = this.buildSsrmFetchColumnKeys();
+      const sig = keys.join('\0');
+      // Skip when nothing changed, or when hydrated rows already carry every
+      // requested field (full-width payloads — H-scroll must not thrash).
+      if (sig === this.lastSsrmColumnKeysSig) return;
+      if (!this.ssrmColumnKeysNeedFetch(keys)) {
+        this.lastSsrmColumnKeysSig = sig;
+        return;
+      }
+      this.lastSsrmColumnKeysSig = sig;
+      const v2 = this.ssrm as ServerSideRowModelV2Controller<TRow>;
+      if (typeof v2.refillColumnKeys === 'function') {
+        void v2.refillColumnKeys();
+      } else {
+        void this.ssrm.refresh({ purge: false });
+      }
+    }, 120);
+  }
+
+  /**
+   * True when at least one fetch key is missing from sample hydrated rows
+   * (Perspective column windows). Full-width datasources always return
+   * false after the first hydrate — no H-scroll refill.
+   */
+  private ssrmColumnKeysNeedFetch(keys: readonly string[]): boolean {
+    if (keys.length === 0) return false;
+    const samples: Array<Record<string, unknown>> = [];
+    for (const row of this.rowDataById.values()) {
+      samples.push(row as Record<string, unknown>);
+      if (samples.length >= 4) break;
+    }
+    // Nothing hydrated yet — let the normal ensureRange path populate;
+    // a refill would only race the first paint.
+    if (samples.length === 0) return false;
+    for (const key of keys) {
+      for (const row of samples) {
+        if (!Object.prototype.hasOwnProperty.call(row, key)) return true;
+      }
+    }
+    return false;
   }
 
   refreshServerSide(params?: RefreshServerSideParams): void {
@@ -3822,6 +4038,15 @@ export class VelocityGrid<TRow = any> {
   private dispatchServerSideTransaction(tx: ServerSideTransaction<TRow>): void {
     // Detect sort-key changes BEFORE warming the mirror (needs prior values).
     const sortKeyChanged = this.ssrmUpdateTouchesActiveSort(tx);
+
+    // Cycle 21e parity with CSRM `updateRowDataCache`: when rules/alerts
+    // listen for `rowsChanged`, capture oldRow BEFORE field-merge and emit
+    // so Perspective/STOMP ticks feed flash, diff styles, and alerts.
+    const emitRowsChanged = this.events.hasListener('rowsChanged');
+    const added: Array<{ rowId: string; row: TRow }> = [];
+    const updated: Array<{ rowId: string; row: TRow; oldRow: TRow }> = [];
+    const removed: Array<{ rowId: string; row: TRow }> = [];
+
     // Keep main mirror warm for updates — field-merge so thin ticks don't
     // wipe columns the STOMP payload omitted.
     if (tx.update) {
@@ -3829,24 +4054,56 @@ export class VelocityGrid<TRow = any> {
         try {
           const id = this.options.getRowId(row);
           const prev = this.rowDataById.get(id);
-          this.rowDataById.set(
-            id,
-            prev ? { ...(prev as object), ...(row as object) } as TRow : row,
-          );
+          const next = prev ? mergeRowDataFields(prev, row) : row;
+          this.rowDataById.set(id, next);
+          if (emitRowsChanged) {
+            if (prev !== undefined) updated.push({ rowId: id, row: next, oldRow: { ...(prev as object) } as TRow });
+            else added.push({ rowId: id, row: next });
+          }
         } catch { /* skip */ }
       }
     }
     if (tx.add) {
       for (const row of tx.add) {
-        try { this.rowDataById.set(this.options.getRowId(row), row); } catch { /* skip */ }
+        try {
+          const id = this.options.getRowId(row);
+          const prev = this.rowDataById.get(id);
+          this.rowDataById.set(id, row);
+          if (emitRowsChanged) {
+            if (prev !== undefined) {
+              updated.push({ rowId: id, row, oldRow: { ...(prev as object) } as TRow });
+            } else {
+              added.push({ rowId: id, row });
+            }
+          }
+        } catch { /* skip */ }
       }
     }
     if (tx.remove) {
       for (const row of tx.remove) {
-        try { this.rowDataById.delete(this.options.getRowId(row)); } catch { /* skip */ }
+        try {
+          const id = this.options.getRowId(row);
+          const prev = this.rowDataById.get(id);
+          this.rowDataById.delete(id);
+          if (emitRowsChanged) {
+            removed.push({ rowId: id, row: prev ?? row });
+          }
+        } catch { /* skip */ }
       }
     }
     this.ssrm!.applyServerSideTransaction(tx);
+    if (
+      emitRowsChanged
+      && (added.length > 0 || updated.length > 0 || removed.length > 0)
+    ) {
+      this.events.emit({
+        type: 'rowsChanged',
+        added,
+        updated,
+        removed,
+        source: 'transaction',
+      });
+    }
     // Sparse SSRM: SortPass is skipped — soft-refresh so getRows re-applies
     // the active sort. Do NOT gate on "visible band would reorder": an
     // off-screen row can rise into the viewport (or displace a visible row)
@@ -4617,6 +4874,12 @@ export class VelocityGrid<TRow = any> {
     return out;
   }
 
+  /** Current `quickFilterText` option (title-bar search). Sparse SSRM
+   *  datasources read this via filterChanged → View remount. */
+  getQuickFilterText(): string {
+    return this.options.quickFilterText ?? '';
+  }
+
   /** Cycle 7 / Task 1 — apply a per-column filter mutation. Updates the
    *  canonical v2 map and ships the composed `FilterModel` to the
    *  worker for re-evaluation. The worker accepts both legacy and v2
@@ -4658,6 +4921,18 @@ export class VelocityGrid<TRow = any> {
     const combined: FilterModel = {};
     for (const [id, entry] of this.columnFilterModels) {
       combined[id] = entry;
+    }
+    // Sparse SSRM — server owns filter. Mirror setFilterModel: skip the
+    // worker FilterPass (no-op on ssrmOrder) and purge so getRows remounts.
+    if (this.ssrm && !this.ssrmClientPipeline) {
+      this.events.emit({
+        type: 'filterChanged',
+        filterModel: combined,
+        source: 'columnFilter',
+        columns: changed ? [colId] : [],
+      });
+      this.ssrm.refresh({ purge: true });
+      return Promise.resolve();
     }
     return this.workerCoord.setFilterModel(combined).then(({ visibleCount }) => {
       if (this.destroyed) return;
@@ -4788,6 +5063,17 @@ export class VelocityGrid<TRow = any> {
     // longer match are simply un-tinted in the next paint, while the
     // chunk catches up.
     this.cgridCanvas?.requestRepaint();
+
+    // Sparse SSRM — worker QuickFilterPass is skipped; Perspective (or
+    // another datasource) must apply the search on the next getRows.
+    if (this.ssrm && !this.ssrmClientPipeline) {
+      const combined: FilterModel = {};
+      for (const [id, entry] of this.columnFilterModels) combined[id] = entry;
+      this.events.emit({ type: 'filterChanged', filterModel: combined, source: 'quickFilter' });
+      this.ssrm.refresh({ purge: true });
+      return;
+    }
+
     // Bump the request id so any in-flight reply for an earlier term set
     // (the user's previous keystroke) is dropped on arrival — see the
     // `reqId` check inside the `.then` below.
@@ -5001,13 +5287,22 @@ export class VelocityGrid<TRow = any> {
       : null;
     const valuesPromise: Promise<string[]> = params.values !== undefined
       ? Promise.resolve(params.values)
-      : this.workerCoord.getDistinctValues(colId);
+      : this.getDistinctValues(colId);
     return valuesPromise.then((values) => {
       if (this.destroyed) return null;
       return new SetFilterPopup({
         values,
         initialModel: initialEntry,
-        onApply: (model) => callbacks.onApply(model as CFilterModelEntry | null),
+        onApply: (model) => {
+          // Empty universe (distinct fetch failed) + empty selection must
+          // clear the filter — otherwise Apply writes match-nothing and
+          // the SSRM blotter sticks at Total Rows: 0.
+          if ((!model || model.values.length === 0) && values.length === 0) {
+            callbacks.onApply(null);
+            return;
+          }
+          callbacks.onApply(model as CFilterModelEntry | null);
+        },
         onClose: callbacks.onClose,
         onModified: callbacks.onModified,
         buttons: params.buttons,
@@ -5037,9 +5332,39 @@ export class VelocityGrid<TRow = any> {
    *  first-seen row order (worker DistinctValuesPass; nulls dropped).
    *  `limit` truncates the reply; the worker cache keeps the full set so
    *  different limits share one derivation. Public surface for
-   *  @wellsfargo-starui/velocity-grid-calc's typed wrapper + apps. */
+   *  @wellsfargo-starui/velocity-grid-calc's typed wrapper + apps.
+   *
+   *  Sparse SSRM: prefer the expression host (Perspective table) — the
+   *  worker store only holds hydrated windows and often answers `[]`. */
   getDistinctValues(colId: string, limit?: number): Promise<string[]> {
+    if (this.ssrm && !this.ssrmClientPipeline) {
+      const host = this.ssrmExpressionHost;
+      if (host && typeof host.getDistinctValues === 'function') {
+        return host.getDistinctValues(colId, limit).then((values) => {
+          if (values.length > 0) return values;
+          return this.distinctValuesFromMirror(colId, limit);
+        }).catch(() => this.distinctValuesFromMirror(colId, limit));
+      }
+      return Promise.resolve(this.distinctValuesFromMirror(colId, limit));
+    }
     return this.workerCoord.getDistinctValues(colId, limit);
+  }
+
+  /** Distinct values from the main-thread SSRM hydrate mirror. */
+  private distinctValuesFromMirror(colId: string, limit?: number): string[] {
+    const field = this.columnDefsMap.get(colId)?.field ?? colId;
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const row of this.rowDataById.values()) {
+      const v = (row as Record<string, unknown>)[field as string];
+      if (v == null) continue;
+      const s = String(v);
+      if (seen.has(s)) continue;
+      seen.add(s);
+      out.push(s);
+      if (limit != null && out.length >= limit) break;
+    }
+    return out;
   }
 
   /** Cycle 21g / Task 10 — fetch full rows by current visible-order index
@@ -5335,10 +5660,42 @@ export class VelocityGrid<TRow = any> {
   isPivotMode(): boolean { return this.pivotEngine.isPivotMode(); }
   setPivotMode(pivotMode: boolean, opts?: { discardSettings?: boolean }): void {
     if (this.destroyed) return;
-    if (this.ssrm) {
-      if (pivotMode) void this.enableSsrmClientPipeline();
-      else void this.disableSsrmClientPipelineIfIdle();
+    if (this.ssrm && pivotMode) {
+      // Sparse Perspective SSRM cannot build a pivot matrix (no full hydrate
+      // while grouped; sample forces client pipeline off). Fail closed so
+      // the Columns panel doesn't show Pivot ON with an empty/wrong grid.
+      const sparsePerspective = this.ssrmExpressionHost != null
+        && this.options.serverSideEnableClientSidePipeline === false;
+      if (sparsePerspective) {
+        console.warn(
+          '[velocity-grid] Pivot mode is not supported on sparse Perspective SSRM. '
+          + 'Use clientSide, or set serverSideEnableClientSidePipeline: true (full hydrate).',
+        );
+        return;
+      }
+      void this.enableSsrmClientPipeline().then(() => {
+        if (this.destroyed) return;
+        if (!this.ssrmClientPipeline) {
+          console.warn(
+            '[velocity-grid] Pivot mode aborted — SSRM could not fully hydrate for the client pipeline.',
+          );
+          return;
+        }
+        this.applyPivotModeChange(true, opts);
+      });
+      return;
     }
+    if (this.ssrm && !pivotMode) {
+      void this.disableSsrmClientPipelineIfIdle();
+    }
+    this.applyPivotModeChange(pivotMode, opts);
+  }
+
+  /** Shared body of setPivotMode after SSRM hydrate gating. */
+  private applyPivotModeChange(
+    pivotMode: boolean,
+    opts?: { discardSettings?: boolean },
+  ): void {
     // Cycle 21i / Phase 1 (user directive) — `discardSettings` (passed by
     // the Pivot Mode toggle in the columns tool panel, i.e. a user-driven
     // switch) gives a clean slate on the mode change so table-mode state
@@ -9703,19 +10060,25 @@ export class VelocityGrid<TRow = any> {
       && rowDepth === rowGroupDepthCount - 1
     ) return null;
     // Chevron geometry must agree with `renderer/cellRenderers/group.ts`.
-    // PADDING + CHEVRON_SIZE + indent unit live as constants in both
-    // files; if either drifts the chevron paints in one place and is
-    // hit-tested in another — visual quality bar would catch it but
-    // these constants are explicitly mirrored to make the agreement
-    // load-bearing.
+    // Expand hit target: from the chevron through the rest of the
+    // auto-group cell (label + count). The checkbox lane (when enabled)
+    // is excluded so GroupExpandFeature can still route it separately.
+    // A 12px-only chevron was too easy to miss — users reported groups
+    // as "unexpandable" when clicking the group label.
     const PADDING = 6;
     const CHEVRON_SIZE = 12;
+    const CHEVRON_GAP = 6;
+    const CHECKBOX_SIZE = 14;
     const HIT_PAD = 4;
     const INDENT_UNIT = 14;
     const indentX = colDepth !== null ? 0 : rowDepth * INDENT_UNIT;
-    const left = col.left + PADDING + indentX;
-    const right = left + CHEVRON_SIZE;
-    if (x < left - HIT_PAD || x > right + HIT_PAD) return null;
+    const chevronLeft = col.left + PADDING + indentX;
+    let hitRight = col.right;
+    if (this.selection.isGroupSelectsChildren()) {
+      const checkboxLeft = chevronLeft + CHEVRON_SIZE + CHEVRON_GAP;
+      hitRight = Math.min(hitRight, checkboxLeft - HIT_PAD);
+    }
+    if (x < chevronLeft - HIT_PAD || x > hitRight) return null;
     const groupKey = this.chunk.groupKey?.[localIndex] ?? '';
     if (groupKey === '') return null;
     return { groupKey };
@@ -13681,7 +14044,12 @@ export class VelocityGrid<TRow = any> {
       rowId: this.stringRowIdAt(rowIndex) || undefined,
       ruleRow: (() => {
         const id = this.stringRowIdAt(rowIndex);
-        return id ? (this.rowDataById.get(id) as Record<string, unknown> | undefined) : undefined;
+        if (!id) return undefined;
+        const mirror = this.rowDataById.get(id) as Record<string, unknown> | undefined;
+        const snap = this.rowDataSnapshotAt(rowIndex) as Record<string, unknown> | undefined;
+        // Match paint path: mirror wins; snapshot only fills usable gaps
+        // (blank chunk cells must not clobber hydrated condition fields).
+        return mergeRuleRowForPaint(mirror, snap);
       })(),
       themeKind: this.getThemeKind(),
     });

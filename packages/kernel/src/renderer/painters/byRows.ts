@@ -162,6 +162,35 @@ export function decorateHeader(def: ResolvedColDef, gridSuppress: boolean): stri
  */
 export type ByRowsMode = 'layer' | 'chrome' | undefined;
 
+/** True when a value is safe to feed a rule condition (not a blank chunk
+ *  placeholder). `0` / `false` count as usable; `''` / NaN do not — cellAt
+ *  returns `''` for columns absent from the chunk, and Float64 missing
+ *  slots become NaN via `Number(undefined)`. */
+function isUsableRuleValue(v: unknown): boolean {
+  if (v === undefined || v === null || v === '') return false;
+  if (typeof v === 'number' && Number.isNaN(v)) return false;
+  return true;
+}
+
+/** Merge mirror ⊕ visible snapshot for rule evaluation.
+ *  Mirror wins when it already has a usable field (hydrated / patched);
+ *  snapshot only fills gaps. Never let blank chunk cells clobber mirror
+ *  numbers — that baked unstyled Tier-2 strips after addRule. */
+function mergeRuleRow(
+  mirror: Record<string, unknown> | undefined,
+  snapshot: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!mirror && !snapshot) return undefined;
+  if (!mirror) return snapshot;
+  if (!snapshot) return mirror;
+  const out: Record<string, unknown> = { ...mirror };
+  for (const [k, v] of Object.entries(snapshot)) {
+    if (!isUsableRuleValue(v)) continue;
+    if (!isUsableRuleValue(out[k])) out[k] = v;
+  }
+  return out;
+}
+
 /**
  * Does any visible column declare something that reads the per-row data
  * snapshot? Three consumers exist, and this predicate must stay in sync
@@ -874,12 +903,16 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
     const mirrorRow: Record<string, unknown> | undefined = ruleRowId !== undefined
       ? (ctx.getRowDataById?.(ruleRowId) as Record<string, unknown> | undefined)
       : undefined;
+    // Snapshot visible cells when evaluating rules: SSRM column-window
+    // mirrors can be thin (missing off-window / condition fields). Fill
+    // gaps from the chunk, but do NOT let undefined/null chunk cells wipe
+    // hydrated mirror fields (soft-reload / thin payloads).
     const rowData: Record<string, unknown> | undefined =
-      row.subgrid.isData && (ctx.rowDataNeeded || (ruleRowId !== undefined && mirrorRow === undefined))
+      row.subgrid.isData && (ctx.rowDataNeeded || ruleRowId !== undefined)
         ? rowDataSnapshotAt(row.localRowIndex)
         : undefined;
     const ruleRow: Record<string, unknown> | undefined = ruleRowId !== undefined
-      ? (mirrorRow ?? rowData)
+      ? mergeRuleRow(mirrorRow, rowData)
       : undefined;
 
     for (const col of cols) {

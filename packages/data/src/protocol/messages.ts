@@ -1,6 +1,5 @@
 import type { ColumnDefinition, FieldInfo } from '../types/schema';
 import type { DataProviderConfig, ProviderStatus } from '../types/transport';
-import type { SsrmGetRowsRequest, SsrmGetRowsResult } from '../types/provider';
 import type { ProviderStats } from '../types/stats';
 
 export const PROTOCOL_VERSION = 1 as const;
@@ -16,7 +15,6 @@ export type HubRequest =
   | { v: 1; id: string; type: 'restart'; providerId: string; overlay?: Record<string, unknown> }
   | { v: 1; id: string; type: 'refresh'; providerId: string; subId: string }
   | { v: 1; id: string; type: 'getSnapshot'; providerId: string }
-  | { v: 1; id: string; type: 'getRows'; providerId: string; request: SsrmGetRowsRequest }
   | { v: 1; id: string; type: 'getMeta'; providerId: string }
   | { v: 1; id: string; type: 'getStats'; providerId: string };
 
@@ -26,7 +24,6 @@ export type HubResponse =
   | { v: 1; id: string; type: 'ok'; payload?: unknown }
   | { v: 1; id: string; type: 'error'; error: string }
   | { v: 1; id: string; type: 'snapshot'; rows: unknown[]; status: ProviderStatus }
-  | { v: 1; id: string; type: 'getRowsResult'; result: SsrmGetRowsResult }
   | {
       v: 1;
       id: string;
@@ -50,14 +47,12 @@ export type HubPush =
       replace?: boolean;
     }
   | { v: 1; type: 'status'; providerId: string; status: ProviderStatus; error?: string }
-  | { v: 1; type: 'rowsReceived'; providerId: string; count: number }
-  | { v: 1; type: 'tickNotify'; providerId: string };
+  | { v: 1; type: 'rowsReceived'; providerId: string; count: number };
 
 export type HubMessage = HubRequest | HubResponse | HubPush;
 
 export function isHubPush(msg: HubMessage): msg is HubPush {
   return msg.type === 'push'
     || msg.type === 'status'
-    || msg.type === 'rowsReceived'
-    || msg.type === 'tickNotify';
+    || msg.type === 'rowsReceived';
 }

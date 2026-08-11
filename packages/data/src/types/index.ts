@@ -27,8 +27,6 @@ export type {
   TransportFactory,
   ITransport,
   IDataProvider,
-  SsrmGetRowsRequest,
-  SsrmGetRowsResult,
 } from './provider';
 export type { TransportConfigBase, BuiltinTransportType } from './transport';
 export type { ProviderStats } from './stats';

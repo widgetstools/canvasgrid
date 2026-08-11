@@ -46,9 +46,12 @@ export { calculatedColumnsModule } from './modules/calculatedColumns';
 export {
   ExpressionEditor,
   EXPRESSION_BUILTINS,
+  PERSPECTIVE_EXPRTK_BUILTINS,
+  countPerspectiveColumnRefs,
   type ExpressionEditorOptions,
   type ExpressionColumn,
   type ExpressionFunction,
+  type ExpressionDialect,
 } from './ui/expressionEditor';
 export { buildDefaultBundle } from './defaultBundle';
 export {
@@ -58,6 +61,11 @@ export {
   type DataProviderControllerOptions,
   type DataProviderStateSlice,
 } from './modules/dataProvider';
+export {
+  perspectiveDataProviderModule,
+  PerspectiveDataProviderController,
+  type PerspectiveDataProviderModuleOptions,
+} from './modules/perspectiveDataProvider';
 export { titleBarExtensions, injectTitleBarStyles, type TitleBarOptions } from './toolbar/titleBar';
 export { profilesItem, profileSaveItem } from './toolbar/profilesMenu';
 export { savedFiltersItem, type SavedFilter } from './toolbar/savedFiltersToolbar';

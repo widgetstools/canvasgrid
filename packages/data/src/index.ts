@@ -1,8 +1,9 @@
 /**
  * `@wellsfargo-starui/velocity-grid-data` — modular SharedWorker data-provider hub.
  *
- * Kernel stays a consumer (`setRowData` / `applyTransaction` / SSRM datasource).
+ * Kernel stays a consumer (`setRowData` / `applyTransaction`).
  * Transports register via `registerTransport`; blotters attach by `providerId`.
+ * SSRM data providers live in `@wellsfargo-starui/velocity-grid-perspective`.
  */
 
 export type {
@@ -32,8 +33,6 @@ export type {
   TransportFactory,
   ITransport,
   IDataProvider,
-  SsrmGetRowsRequest,
-  SsrmGetRowsResult,
   ProviderStats,
 } from './types';
 export { emptyProviderStats } from './types';
@@ -105,7 +104,6 @@ export { DataServicesHub } from './hub/DataServicesHub';
 export { RowCache, LivePipeline, composeRowId } from './hub/rowCache';
 
 export { inferFieldsFromRows, fieldsToColumnDefinitions } from './schema/infer';
-export { pageCachedRows } from './query/page';
 
 export type { ConfigBackend,
   ProviderCatalogBackend } from './catalog/ConfigBackend';
@@ -123,10 +121,16 @@ export { ProviderClientAdapter } from './client/ProviderClientAdapter';
 export type { ProviderClientOptions } from './client/ProviderClientAdapter';
 export {
   bindProviderToGrid,
-  bindProviderToSsrmGrid,
 } from './client/bind';
-export type { CsrmBindableGrid, SsrmBindableGrid } from './client/bind';
+export type { CsrmBindableGrid } from './client/bind';
 
 export { resolveProviderConfig } from './client/resolveConfig';
+export {
+  registerDataProviderFeedControl,
+  stopRegisteredProviderFeeds,
+  restartRegisteredProviderFeeds,
+  _resetDataProviderFeedControlsForTests,
+} from './feedControlRegistry';
+export type { DataProviderFeedControl } from './feedControlRegistry';
 export { rowsToColumnar, columnarToRows, type ColumnarBatch } from './pipeline/wireFormat';
 export { projectRow, thinDelta } from './pipeline/project';

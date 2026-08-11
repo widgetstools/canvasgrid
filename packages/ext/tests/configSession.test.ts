@@ -192,6 +192,33 @@ describe('LocalStorageConfigSession', () => {
     });
   });
 
+  it('cleared rowGroupColumns stay cleared across saveWorkspace (no merge resurrection)', async () => {
+    const s = new LocalStorageConfigSession('g-ungroup');
+    await s.saveWorkspace({
+      version: 4,
+      rowGroupColumns: ['desk', 'region'],
+      columnState: [
+        { colId: 'desk', rowGroup: true, rowGroupIndex: 0 },
+        { colId: 'region', rowGroup: true, rowGroupIndex: 1 },
+      ],
+    } as any);
+
+    // Ungroup → getState() omits rowGroupColumns (empty slices are dropped).
+    await s.saveWorkspace({
+      version: 4,
+      columnState: [
+        { colId: 'desk', rowGroup: false },
+        { colId: 'region', rowGroup: false },
+      ],
+    } as any);
+
+    const raw = JSON.parse(localStorage.getItem(instanceStorageKey('g-ungroup'))!);
+    expect(raw.rowGroupColumns).toBeUndefined();
+
+    const loaded = await s.loadWorkspace();
+    expect(loaded?.rowGroupColumns).toBeUndefined();
+  });
+
   it('strips data-provider from layout snapshots on save (grid-level only)', async () => {
     const s = new LocalStorageConfigSession('g5');
     await s.saveWorkspace({

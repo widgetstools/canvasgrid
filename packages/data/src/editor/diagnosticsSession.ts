@@ -1,8 +1,15 @@
 /**
  * Live diagnostics session for a saved providerId — ensure/start/poll stats,
  * Restart / Stop controls (Markets DiagnosticsTab behaviour).
+ *
+ * Stop/Restart also hit {@link stopRegisteredProviderFeeds} so Perspective
+ * (and any other non-hub) feeds keyed by the same providerId freeze too.
  */
 import { ProviderClientAdapter, type ProviderClientOptions } from '../client/ProviderClientAdapter';
+import {
+  restartRegisteredProviderFeeds,
+  stopRegisteredProviderFeeds,
+} from '../feedControlRegistry';
 import type { DataProviderConfig, ProviderStatus } from '../types';
 import type { ProviderStats } from '../types/stats';
 import { emptyProviderStats } from '../types/stats';
@@ -31,6 +38,8 @@ export function createDiagnosticsSession(
   let client: ProviderClientAdapter | null = null;
   let timer: ReturnType<typeof setInterval> | null = null;
   let unsubStatus: (() => void) | null = null;
+  /** Last ensure/restart target — Stop uses this even if hub client tore down. */
+  let boundProviderId: string | null = null;
   const listeners = new Set<(state: DiagnosticsState) => void>();
   let state: DiagnosticsState = {
     status: 'idle',
@@ -85,6 +94,7 @@ export function createDiagnosticsSession(
 
   const openClient = async (cfg: DataProviderConfig): Promise<ProviderClientAdapter> => {
     if (!cfg.providerId) throw new Error('Diagnostics require a saved providerId');
+    boundProviderId = cfg.providerId;
     disposeClient();
     const next = new ProviderClientAdapter(structuredClone(cfg), hubOpts);
     unsubStatus = next.onStatus((status, error) => {
@@ -121,6 +131,8 @@ export function createDiagnosticsSession(
       try {
         const c = await openClient(cfg);
         await c.restart({ __refresh: Date.now() });
+        // Perspective / shared-book feeds (not hub transport).
+        if (cfg.providerId) await restartRegisteredProviderFeeds(cfg.providerId);
         await pollOnce();
       } catch (err) {
         setState({
@@ -136,7 +148,11 @@ export function createDiagnosticsSession(
     async stop() {
       setState({ busy: true });
       try {
+        const providerId = boundProviderId ?? client?.getConfig().providerId ?? null;
         if (client) await client.stop();
+        // Hub stop alone leaves StompPerspectiveProvider books ticking —
+        // freeze any registered non-hub feeds for this providerId.
+        if (providerId) await stopRegisteredProviderFeeds(providerId);
         setState({
           status: 'idle',
           stats: emptyProviderStats('idle'),

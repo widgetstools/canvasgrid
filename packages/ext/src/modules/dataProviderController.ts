@@ -1,7 +1,6 @@
 import {
   ProviderClientAdapter,
   bindProviderToGrid,
-  bindProviderToSsrmGrid,
   createDefaultConfigBackend,
   registerDefaultTransports,
   resolveProviderConfig,
@@ -34,9 +33,6 @@ type BindableGrid = {
   applyTransactionAsync?: (tx: { update?: Record<string, unknown>[] }) => void;
   updateGridOptions?: (partial: { columnDefs?: unknown[] }) => void;
   setColumnDefs?: (defs: unknown[]) => void;
-  setServerSideDatasource?: (ds: unknown) => void;
-  refreshServerSide?: (p?: { purge?: boolean }) => void;
-  applyServerSideTransaction?: (tx: { update?: Record<string, unknown>[] }) => void;
   whenReady?: () => Promise<void>;
   addEventListener?: (type: string, handler: (e: unknown) => void) => () => void;
 };
@@ -46,7 +42,8 @@ type BindableGrid = {
  * hub attach/bind, and StateModule persistence of activeProviderId.
  *
  * Activation is serialized + epoch-gated so profile bootstrap / reapply
- * cannot interleave STOMP sessions or leave a half-bound SSRM datasource.
+ * cannot interleave STOMP sessions. Hub providers are CSRM-only; SSRM
+ * hosts use `@wellsfargo-starui/velocity-grid-perspective`.
  */
 export class DataProviderController {
   private readonly catalog: ConfigBackend;
@@ -158,10 +155,6 @@ export class DataProviderController {
       && this.provider
     ) {
       await this.provider.refresh();
-      if (this.provider.getConfig().rowModel === 'serverSide') {
-        (this.ctx?.grid as unknown as BindableGrid | undefined)
-          ?.refreshServerSide?.({ purge: false });
-      }
       this.onActiveChange?.(this.activeProviderId, this.provider);
       return;
     }
@@ -249,8 +242,7 @@ export class DataProviderController {
       const deadline = Date.now() + 15_000;
       const poll = (): void => {
         if (settled) return;
-        const ssrm = (grid as { ssrm?: unknown }).ssrm;
-        if (ssrm || Date.now() >= deadline) {
+        if (Date.now() >= deadline) {
           unsub?.();
           finish();
           return;
@@ -261,20 +253,14 @@ export class DataProviderController {
     });
   }
 
-  private async waitForGridReady(): Promise<void> {
-    await (this.gridReadyWait ?? this.captureGridReady(
-      (this.ctx?.grid ?? {}) as BindableGrid,
-    ));
-  }
-
   private async bindConfig(cfg: DataProviderConfig, epoch: number): Promise<void> {
     if (!this.ctx) return;
 
-    // SSRM controller mounts in async init; kernel also queues early
-    // setServerSideDatasource calls — waiting keeps start/refresh ordered.
     if (cfg.rowModel === 'serverSide') {
-      await this.waitForGridReady();
-      if (epoch !== this.activateEpoch) return;
+      console.warn(
+        `[velocity-grid-ext] hub data provider "${cfg.providerId}" uses rowModel=serverSide; `
+          + 'hub SSRM was removed — binding as clientSide. Use StompPerspectiveProvider for SSRM.',
+      );
     }
 
     const resolved = this.appDataLookup
@@ -299,42 +285,20 @@ export class DataProviderController {
       setColumnDefs: (defs: unknown[]) => {
         grid.updateGridOptions?.({ columnDefs: defs });
       },
-      setServerSideDatasource: (ds: unknown) => {
-        grid.setServerSideDatasource?.(ds);
-      },
-      refreshServerSide: (p?: { purge?: boolean }) => {
-        grid.refreshServerSide?.(p);
-      },
-      applyServerSideTransaction: (tx: { update?: Record<string, unknown>[] }) => {
-        grid.applyServerSideTransaction?.(tx);
-      },
     };
 
-    if (cfg.rowModel === 'serverSide') {
-      const { detach } = bindProviderToSsrmGrid(provider, bindable, { blockSize: cfg.blockSize });
-      this.detachBind = detach;
-    } else {
-      this.detachBind = bindProviderToGrid(provider, bindable);
-    }
+    this.detachBind = bindProviderToGrid(provider, bindable);
 
     await provider.start();
     if (epoch !== this.activateEpoch) return;
 
-    // Snapshot emit is async; wait until the hub is ready (or errored)
-    // so SSRM getRows sees the full rowCount instead of a partial book.
     await this.waitForProviderReady(provider, epoch);
     if (epoch !== this.activateEpoch) return;
 
     await provider.refresh();
     if (epoch !== this.activateEpoch) return;
 
-    if (cfg.rowModel === 'clientSide') {
-      grid.setRowData(provider.getData() as Record<string, unknown>[]);
-    } else {
-      // Purge once after the snapshot is complete so any getRows that raced
-      // the partial book (wrong rowCount) are discarded.
-      grid.refreshServerSide?.({ purge: true });
-    }
+    grid.setRowData(provider.getData() as Record<string, unknown>[]);
   }
 
   private waitForProviderReady(
