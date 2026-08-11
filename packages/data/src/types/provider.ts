@@ -60,19 +60,5 @@ export interface IDataProvider<T = Record<string, unknown>> {
   onTick(handler: (rows: readonly T[]) => void): Unsubscribe;
   onError(handler: (error: Error) => void): Unsubscribe;
   onStatus(handler: (status: ProviderStatus, error?: string) => void): Unsubscribe;
-  /** SSRM: request a window from the hub cache. */
-  getRows?(req: SsrmGetRowsRequest): Promise<SsrmGetRowsResult<T>>;
   destroy(): void;
-}
-
-export interface SsrmGetRowsRequest {
-  startRow: number;
-  endRow: number;
-  sortModel?: Array<{ colId: string; direction: 'asc' | 'desc' }>;
-  filterModel?: Record<string, unknown>;
-}
-
-export interface SsrmGetRowsResult<T = Record<string, unknown>> {
-  rowData: T[];
-  rowCount: number;
 }

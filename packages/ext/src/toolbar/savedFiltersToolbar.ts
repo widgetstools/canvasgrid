@@ -5,10 +5,12 @@
 import type { VelocityGridExtContext, ToolbarItem, ToolbarItemInstance } from '../extension/types';
 import {
   doesRowMatchFilterModel,
+  filterModelsEqual,
   generateLabel,
   isNewFilter,
   makeId,
   mergeFilterModels,
+  normalizeFilterModelForCompare,
   subtractFilterModel,
   type SavedFilterShape,
 } from './savedFiltersLogic';
@@ -40,6 +42,10 @@ type FilterHost = {
   getFilterModel(): Record<string, unknown>;
   setFilterModel(f: Record<string, unknown>): void;
   forEachRow?(fn: (rowId: string, row: unknown) => void): void;
+  getDisplayedRowCount?(): number;
+  getSsrmExpressionHost?(): {
+    countMatchingFilterModel?(filterModel: Record<string, unknown>): Promise<number>;
+  } | null;
   addEventListener?(type: string, fn: (e: unknown) => void): () => void;
   registerStateModule?(m: {
     id: string;
@@ -158,24 +164,67 @@ export function savedFiltersItem(): ToolbarItem {
         }
       };
 
+      let countGen = 0;
       const recomputeCounts = (): void => {
-        counts = {};
-        if (!filters.length || typeof grid.forEachRow !== 'function') {
+        const gen = ++countGen;
+        void (async () => {
+          const tally: Record<string, number> = {};
+          for (const f of filters) tally[f.id] = 0;
+          if (!filters.length) {
+            if (gen === countGen) { counts = tally; paintCounts(); }
+            return;
+          }
+
+          let live: Record<string, unknown> = {};
+          try { live = grid.getFilterModel() ?? {}; } catch { live = {}; }
+          const liveNorm = normalizeFilterModelForCompare(live);
+          const displayed = typeof grid.getDisplayedRowCount === 'function'
+            ? grid.getDisplayedRowCount()
+            : 0;
+          const ssrmHost = typeof grid.getSsrmExpressionHost === 'function'
+            ? grid.getSsrmExpressionHost()
+            : null;
+          const countOnServer = typeof ssrmHost?.countMatchingFilterModel === 'function'
+            ? ssrmHost.countMatchingFilterModel.bind(ssrmHost)
+            : null;
+
+          if (countOnServer) {
+            // Sparse SSRM — hydrate mirror under-counts; ask Perspective.
+            await Promise.all(filters.map(async (f) => {
+              // Active pill that equals the live filter → footer row count
+              // (already authoritative for the applied View).
+              if (
+                f.active
+                && liveNorm != null
+                && Object.keys(liveNorm).length > 0
+                && filterModelsEqual(liveNorm, normalizeFilterModelForCompare(f.filterModel))
+              ) {
+                tally[f.id] = displayed;
+                return;
+              }
+              try {
+                tally[f.id] = await countOnServer(f.filterModel);
+              } catch {
+                tally[f.id] = f.active ? displayed : 0;
+              }
+            }));
+          } else if (typeof grid.forEachRow === 'function') {
+            try {
+              grid.forEachRow((_id, row) => {
+                const data = (row && typeof row === 'object') ? row as Record<string, unknown> : {};
+                for (const f of filters) {
+                  if (doesRowMatchFilterModel(data, f.filterModel)) {
+                    tally[f.id] = (tally[f.id] ?? 0) + 1;
+                  }
+                }
+              });
+            } catch { /* empty */ }
+          }
+
+          if (gen !== countGen) return;
+          counts = tally;
           paintCounts();
-          return;
-        }
-        const tally: Record<string, number> = {};
-        for (const f of filters) tally[f.id] = 0;
-        try {
-          grid.forEachRow((_id, row) => {
-            const data = (row && typeof row === 'object') ? row as Record<string, unknown> : {};
-            for (const f of filters) {
-              if (doesRowMatchFilterModel(data, f.filterModel)) tally[f.id] = (tally[f.id] ?? 0) + 1;
-            }
-          });
-        } catch { /* SSRM / empty */ }
-        counts = tally;
-        paintCounts();
+        })();
       };
 
       const paintCounts = (): void => {
@@ -471,15 +520,23 @@ export function savedFiltersItem(): ToolbarItem {
       });
 
       const offs: Array<() => void> = [];
+      let countTimer: ReturnType<typeof setTimeout> | null = null;
+      const scheduleCounts = (): void => {
+        if (countTimer != null) clearTimeout(countTimer);
+        countTimer = setTimeout(() => {
+          countTimer = null;
+          recomputeCounts();
+        }, 120);
+      };
       const on = (type: string, fn: () => void): void => {
         try {
           const off = grid.addEventListener?.(type, () => { if (!pushing) fn(); });
           if (typeof off === 'function') offs.push(off);
         } catch { /* ignore */ }
       };
-      on('filterChanged', () => { syncAddEnabled(); recomputeCounts(); });
-      on('modelUpdated', () => recomputeCounts());
-      on('rowDataUpdated', () => recomputeCounts());
+      on('filterChanged', () => { syncAddEnabled(); scheduleCounts(); });
+      on('modelUpdated', () => scheduleCounts());
+      on('rowDataUpdated', () => scheduleCounts());
 
       paint();
       syncAddEnabled();
@@ -488,6 +545,7 @@ export function savedFiltersItem(): ToolbarItem {
 
       return {
         destroy() {
+          if (countTimer != null) clearTimeout(countTimer);
           closeEditors();
           ro?.disconnect();
           unreg?.();
@@ -510,9 +568,9 @@ const SAVED_FILTERS_CSS = `
 .vgext-sf[hidden] { display: none !important; }
 .vgext-sf-scroll {
   flex: 1 1 auto; min-width: 0; overflow-x: auto; overflow-y: hidden;
+  /* Hide the rail on the pill strip — nav arrows handle scroll. */
   scrollbar-width: none;
 }
-.vgext-sf-scroll::-webkit-scrollbar { display: none; }
 .vgext-sf-pills { display: inline-flex; align-items: center; gap: 6px; padding: 0 2px; }
 .vgext-sf-nav {
   appearance: none; flex: 0 0 auto;

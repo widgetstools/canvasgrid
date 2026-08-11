@@ -1,12 +1,13 @@
 /**
- * CodeMirror 6 expression editor for the cgrid expression DSL.
+ * CodeMirror 6 expression editor for the cgrid expression DSL and
+ * Perspective ExprTK (SSRM).
  *
  * The shared editor embedded by the conditional-styling and
  * calculated-columns settings modules (feature parity with starui's
- * customizer editor, on CM6 instead of Monaco): DSL syntax highlighting,
- * context-aware completions (columns inside `[`, functions / keywords /
- * snippets elsewhere), debounced lint diagnostics from a caller-supplied
- * validator, `--vg-*` token theming, single- or multi-line chrome.
+ * customizer editor, on CM6 instead of Monaco): dialect syntax highlighting,
+ * context-aware completions (columns / functions), debounced lint
+ * diagnostics from a caller-supplied validator, `--vg-*` token theming,
+ * single- or multi-line chrome.
  *
  * Vanilla TS, no Lit/shadow DOM — mounts into any host element.
  */
@@ -43,7 +44,7 @@ const KEYWORDS = new Set(['true', 'false', 'null']);
 
 /** Stream tokenizer for the `[col] OP fn(...)` DSL — the CM6 analogue of
  *  starui's Monarch grammar. */
-const expressionStream = StreamLanguage.define<{ inString: false | '"' | "'" }>({
+const cgridExpressionStream = StreamLanguage.define<{ inString: false | '"' | "'" }>({
   name: 'cgExpression',
   startState: () => ({ inString: false }),
   token(stream, state) {
@@ -88,6 +89,54 @@ const expressionStream = StreamLanguage.define<{ inString: false | '"' | "'" }>(
   },
 });
 
+/**
+ * Perspective ExprTK — column refs are `"colId"` (double quotes); string
+ * literals use single quotes. Optional `// Alias` first-line name.
+ */
+const perspectiveExpressionStream = StreamLanguage.define<{ inString: false | '"' | "'" }>({
+  name: 'pspExprTK',
+  startState: () => ({ inString: false }),
+  token(stream, state) {
+    if (state.inString) {
+      const q = state.inString;
+      while (!stream.eol()) {
+        const ch = stream.next();
+        if (ch === '\\') { stream.next(); continue; }
+        if (ch === q) { state.inString = false; break; }
+      }
+      return q === '"' ? 'variableName.special' : 'string';
+    }
+    if (stream.eatSpace()) return null;
+    if (stream.match(/\/\/.*/)) return 'comment';
+    const quote = stream.peek();
+    if (quote === '"' || quote === "'") {
+      stream.next();
+      const q = quote as '"' | "'";
+      state.inString = q;
+      while (!stream.eol()) {
+        const ch = stream.next();
+        if (ch === '\\') { stream.next(); continue; }
+        if (ch === q) { state.inString = false; break; }
+      }
+      // Double-quoted → column ref; single-quoted → string literal.
+      return q === '"' ? 'variableName.special' : 'string';
+    }
+    if (stream.match(/\d+(\.\d+)?([eE][+-]?\d+)?/)) return 'number';
+    if (stream.match(/[A-Za-z_]\w*/)) {
+      const word = stream.current();
+      if (KEYWORDS.has(word.toLowerCase())) return 'atom';
+      if (stream.peek() === '(') return 'function(variableName)';
+      return 'name';
+    }
+    if (stream.match(/[=!<>]=|[+\-*/%<>^]/)) return 'operator';
+    stream.next();
+    return null;
+  },
+  languageData: {
+    closeBrackets: { brackets: ['(', '"', "'"] },
+  },
+});
+
 const highlightStyle = HighlightStyle.define([
   { tag: tags.special(tags.variableName), color: 'var(--cgx-expr-col, #7dd3fc)' },
   { tag: tags.function(tags.variableName), color: 'var(--cgx-expr-fn, #c084fc)' },
@@ -95,6 +144,7 @@ const highlightStyle = HighlightStyle.define([
   { tag: tags.string, color: 'var(--cgx-expr-str, #86efac)' },
   { tag: tags.number, color: 'var(--cgx-expr-num, #fda4af)' },
   { tag: tags.operator, color: 'var(--cgx-expr-op, #94a3b8)' },
+  { tag: tags.comment, color: 'var(--cgx-expr-comment, #6b7684)', fontStyle: 'italic' },
 ]);
 
 // ─── completion catalog ────────────────────────────────────────────────────
@@ -113,6 +163,9 @@ export interface ExpressionFunction {
   /** Snippet inserted on pick; default `NAME(${})`. */
   apply?: string;
 }
+
+/** Dialect: cgrid `[col]` DSL (CSRM) vs Perspective ExprTK `"col"` (SSRM). */
+export type ExpressionDialect = 'cgrid' | 'perspective';
 
 /** @wellsfargo-starui/velocity-grid-expression builtins (its BUILTINS table is not exported — this
  *  catalog mirrors packages/expression/src/builtins.ts). */
@@ -138,12 +191,32 @@ export const EXPRESSION_BUILTINS: ExpressionFunction[] = [
   { name: 'FIXED', signature: 'FIXED(x, digits)', description: 'Fixed-point string', category: 'String' },
 ];
 
+/** Common Perspective ExprTK builtins used in calculated columns. */
+export const PERSPECTIVE_EXPRTK_BUILTINS: ExpressionFunction[] = [
+  { name: 'abs', signature: 'abs(x)', description: 'Absolute value', category: 'Math' },
+  { name: 'sqrt', signature: 'sqrt(x)', description: 'Square root', category: 'Math' },
+  { name: 'pow', signature: 'pow(x, y)', description: 'x raised to y', category: 'Math' },
+  { name: 'min', signature: 'min(a, b)', description: 'Smaller of two', category: 'Math' },
+  { name: 'max', signature: 'max(a, b)', description: 'Larger of two', category: 'Math' },
+  { name: 'floor', signature: 'floor(x)', description: 'Round down', category: 'Math' },
+  { name: 'ceil', signature: 'ceil(x)', description: 'Round up', category: 'Math' },
+  { name: 'round', signature: 'round(x)', description: 'Round to nearest', category: 'Math' },
+  { name: 'if', signature: 'if(cond) expr1; else expr2', description: 'Conditional', category: 'Logical', apply: 'if(${}) ${}; else ${}' },
+  { name: 'concat', signature: "concat('a', \"col\")", description: 'Concatenate strings', category: 'String' },
+  { name: 'upper', signature: 'upper(s)', description: 'Upper-case', category: 'String' },
+  { name: 'lower', signature: 'lower(s)', description: 'Lower-case', category: 'String' },
+  { name: 'length', signature: 'length(s)', description: 'String length', category: 'String' },
+  { name: 'order', signature: 'order(x)', description: 'Sort key helper', category: 'Misc' },
+];
+
 export interface ExpressionEditorOptions {
   value?: string;
   placeholder?: string;
   /** Single-line by default; multi-line reserves `lines` rows. */
   multiline?: boolean;
   lines?: number;
+  /** `'cgrid'` (default) or `'perspective'` ExprTK for SSRM. */
+  dialect?: ExpressionDialect;
   columnsProvider?: () => ExpressionColumn[];
   functionsProvider?: () => ExpressionFunction[];
   /** Return diagnostics for the current text (char offsets). Debounced. */
@@ -171,6 +244,28 @@ function inColumnRef(text: string): boolean {
   return open;
 }
 
+/** True inside an unclosed `"` column ref (Perspective); ignores `'…'` strings. */
+function inPerspectiveColumnRef(text: string): boolean {
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inSingle) {
+      if (ch === '\\') i++;
+      else if (ch === "'") inSingle = false;
+      continue;
+    }
+    if (inDouble) {
+      if (ch === '\\') i++;
+      else if (ch === '"') inDouble = false;
+      continue;
+    }
+    if (ch === "'") inSingle = true;
+    else if (ch === '"') inDouble = true;
+  }
+  return inDouble;
+}
+
 export class ExpressionEditor {
   private view: EditorView;
   private readonly opts: ExpressionEditorOptions;
@@ -180,9 +275,54 @@ export class ExpressionEditor {
     this.opts = opts;
     const multiline = opts.multiline === true;
     const lines = Math.max(1, opts.lines ?? 3);
+    const dialect: ExpressionDialect = opts.dialect ?? 'cgrid';
+    const language = dialect === 'perspective' ? perspectiveExpressionStream : cgridExpressionStream;
+    const defaultFns = dialect === 'perspective' ? PERSPECTIVE_EXPRTK_BUILTINS : EXPRESSION_BUILTINS;
+    const defaultPlaceholder = dialect === 'perspective'
+      ? '// MyCalc\n"pnl" + "dailyPnl"'
+      : '[price] * [quantity]';
 
     const completionSource = (context: CompletionContext): CompletionResult | null => {
       const before = context.state.sliceDoc(0, context.pos);
+      if (dialect === 'perspective') {
+        if (inPerspectiveColumnRef(before)) {
+          const word = context.matchBefore(/[\w.]*/);
+          const columns = this.opts.columnsProvider?.() ?? [];
+          return {
+            from: word ? word.from : context.pos,
+            options: columns.map((c): Completion => ({
+              label: c.colId,
+              detail: [c.headerName, c.dataType].filter(Boolean).join(' · '),
+              type: 'variable',
+              boost: 2,
+            })),
+            validFor: /^[\w.]*$/,
+          };
+        }
+        const word = context.matchBefore(/[\w"]*$/);
+        if (!word && !context.explicit) return null;
+        const columns = this.opts.columnsProvider?.() ?? [];
+        const functions = this.opts.functionsProvider?.() ?? defaultFns;
+        const options: Completion[] = [
+          ...columns.map((c): Completion => ({
+            label: `"${c.colId}"`,
+            detail: c.headerName ?? '',
+            type: 'variable',
+            boost: 3,
+          })),
+          ...functions.map((f) =>
+            snippetCompletion(f.apply ?? `${f.name}(\${})`, {
+              label: f.name,
+              detail: f.signature,
+              info: `${f.category} — ${f.description}`,
+              type: 'function',
+              boost: 1,
+            }),
+          ),
+        ];
+        return { from: word ? word.from : context.pos, options, validFor: /^[\w"]*$/ };
+      }
+
       if (inColumnRef(before)) {
         const word = context.matchBefore(/[\w.]*/);
         const columns = this.opts.columnsProvider?.() ?? [];
@@ -200,7 +340,7 @@ export class ExpressionEditor {
       const word = context.matchBefore(/[\w[]*$/);
       if (!word && !context.explicit) return null;
       const columns = this.opts.columnsProvider?.() ?? [];
-      const functions = this.opts.functionsProvider?.() ?? EXPRESSION_BUILTINS;
+      const functions = this.opts.functionsProvider?.() ?? defaultFns;
       const options: Completion[] = [
         ...columns.map((c): Completion => ({
           label: `[${c.colId}]`,
@@ -253,7 +393,7 @@ export class ExpressionEditor {
       state: EditorState.create({
         doc: opts.value ?? '',
         extensions: [
-          new LanguageSupport(expressionStream),
+          new LanguageSupport(language),
           syntaxHighlighting(highlightStyle),
           history(),
           closeBrackets(),
@@ -264,7 +404,7 @@ export class ExpressionEditor {
           // acceptably inside the drawer pane.
           this.lintCompartment.of(opts.validate ? [linter(lintSource, { delay: 150 }), lintGutter()] : []),
           ...(multiline ? [lineNumbers()] : []),
-          ...(opts.placeholder ? [cmPlaceholder(opts.placeholder)] : []),
+          cmPlaceholder(opts.placeholder ?? defaultPlaceholder),
           commitKeys,
           keymap.of([...closeBracketsKeymap, ...completionKeymap, ...defaultKeymap, ...historyKeymap]),
           EditorView.updateListener.of((update) => {
@@ -319,7 +459,9 @@ export class ExpressionEditor {
 
   setValue(value: string): void {
     if (value === this.getValue()) return;
-    this.view.dispatch({ changes: { from: 0, to: this.view.state.doc.length, insert: value } });
+    this.view.dispatch({
+      changes: { from: 0, to: this.view.state.doc.length, insert: value },
+    });
   }
 
   focus(): void {
@@ -351,4 +493,11 @@ export class ExpressionEditor {
   destroy(): void {
     this.view.destroy();
   }
+}
+
+/** Count distinct `"col"` refs in a Perspective ExprTK expression. */
+export function countPerspectiveColumnRefs(expression: string): number {
+  const seen = new Set<string>();
+  for (const m of expression.matchAll(/"([^"\\]+)"/g)) seen.add(m[1]!);
+  return seen.size;
 }

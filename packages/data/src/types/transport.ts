@@ -22,6 +22,7 @@ export type ProviderStatus =
   | 'error'
   | 'disconnected';
 
+/** Hub row model. `'serverSide'` is ignored (treated as CSRM); use Perspective for SSRM. */
 export type RowModelType = 'clientSide' | 'serverSide';
 
 /** Shared base every transport config carries. */

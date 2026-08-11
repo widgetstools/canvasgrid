@@ -24,8 +24,8 @@ npm run dev:showcase    # cgrid feature tour (no external services)
 | Script | App | Port | Needs STOMP? | Notes |
 |--------|-----|------|--------------|-------|
 | `npm run dev:showcase` | `cgrid-showcase` | 5185 | No | CSRM feature tour (seed data) |
-| `npm run dev:ssrm-demo` | `cgrid-ssrm-demo` | 5191 | No* | SSRM + Perspective; `?feed=stomp` for live |
-| `npm run dev:ext-ssrm-demo` | `cgrid-ext-ssrm-demo` | 5195 | No | SSRM + VelocityGridExt with in-process mock server |
+| `npm run dev:ssrm-demo` | `cgrid-ssrm-demo` | 5191 | No* | Perspective SSRM (`StompPerspectiveProvider`) |
+| `npm run dev:perspective-ssrm-sample` | `cgrid-perspective-ssrm-sample` | 5201 | No* | Perspective SSRM + tabbed provider editor |
 | `npm run dev:positions` | `cgrid-positions` | 5175 | Yes | Live blotter |
 | `npm run dev:ext-demo` | `cgrid-ext-demo` | 5188 | Yes | VelocityGridExt chrome |
 | `npm run dev:customizer` | `cgrid-customizer-demo` | 5187 | Yes | Customizer UI |

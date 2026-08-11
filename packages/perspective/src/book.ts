@@ -1,15 +1,22 @@
 /**
- * Shared Perspective book + per-blotter Views.
+ * Shared Perspective book for one DataProvider.
+ *
+ * - Owns the Perspective **Table** + STOMP/seed feed (one feeder per table)
+ * - Hosts N **Views** (one per connected grid / StompPerspectiveProvider)
+ * - Grids never access the table — only `getSsrmRows(viewId)` / skeleton APIs
  *
  * STOMP/seed → Table.update → Views → sparse SSRM getRows (windowed only).
- * Grouping / agg / filter / sort owned by Perspective — never full hydrate.
+ * Grouping / agg / filter / sort are per-View — never full hydrate.
  */
 import type { FilterModel, SkeletonGroup, SortModel } from '@wellsfargo-starui/velocity-grid';
 import { Client, type IMessage } from '@stomp/stompjs';
 import {
   getPerspectiveWorkerMode,
   openOrCreatePositionsTable,
+  POSITION_SCHEMA,
   SHARED_TABLE_NAME,
+  tableNameForSchema,
+  type PerspectiveTableSchema,
   type PositionRow,
   type Table,
   type View,
@@ -20,31 +27,54 @@ import {
   materializeGroupedWindow as buildGroupedSsrmWindow,
   parseCompositeGroupKey,
 } from './ssrmGroupTree';
+import {
+  distinctValuesFromRowPaths,
+  type GroupedDistinctRow,
+} from './distinctValues';
 
 const SNAPSHOT_END_TOKEN = 'Success';
 
 /** Perspective filter triple: [column, op, term]. */
-export type PspFilter = [string, string, string | number | boolean | null];
+export type {
+  PspFilter,
+  PspFilterTerm,
+} from './cgridFilterToPsp';
+import {
+  cgridFilterToPsp,
+  mapAggFuncToPerspective,
+  QUICK_FILTER_HAYSTACK_ALIAS,
+  type OrContainsMatcher,
+  type PspFilter,
+} from './cgridFilterToPsp';
+export {
+  cgridFilterToPsp,
+  mapAggFuncToPerspective,
+  QUICK_FILTER_HAYSTACK_ALIAS,
+  OR_CONTAINS_ALIAS_PREFIX,
+  buildOrContainsExpression,
+  orContainsAlias,
+} from './cgridFilterToPsp';
 
-const DATA_COLUMNS = [
-  'positionId',
-  'ticker',
-  'desk',
-  'region',
-  'instrumentType',
-  'notionalAmount',
-  'marketValue',
-  'pnl',
-  'dailyPnl',
-] as const;
+/** Default columns when a book is constructed without a DataProvider schema. */
+const DEFAULT_DATA_COLUMNS = Object.keys(POSITION_SCHEMA);
 
-const VALUE_AGGREGATES = {
-  positionId: 'count',
-  notionalAmount: 'sum',
-  marketValue: 'sum',
-  pnl: 'sum',
-  dailyPnl: 'sum',
-} as const;
+function aggregatesFromSchema(schema: PerspectiveTableSchema): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [col, type] of Object.entries(schema)) {
+    if (col === 'positionId') out[col] = 'count';
+    else if (type === 'float' || type === 'integer') out[col] = 'sum';
+    // Perspective group Views need an aggregate for every selected column.
+    // Dimensions use `dominant` so fat DataProvider schemas still mount.
+    else out[col] = 'dominant';
+  }
+  return out;
+}
+
+function measureColumnsFromSchema(schema: PerspectiveTableSchema): string[] {
+  return Object.entries(schema)
+    .filter(([col, type]) => col !== 'positionId' && (type === 'float' || type === 'integer'))
+    .map(([col]) => col);
+}
 
 export interface SsrmRowsRequest {
   startRow: number;
@@ -53,6 +83,8 @@ export interface SsrmRowsRequest {
   filterModel: FilterModel;
   rowGroupCols: string[];
   expandedGroupKeys: string[];
+  /** Optional column projection (+ expression outputs). */
+  columnKeys?: string[];
 }
 
 export interface SsrmRowsResult {
@@ -136,9 +168,13 @@ export interface PerspectiveBookOptions {
   snapshotEndToken?: string;
   /** Name of the unique-key field in the STOMP payload rows. Mapped onto
    *  the canonical `positionId` key (table index / getRowId / dedupe all
-   *  key on it). Default `'positionId'`. The SCHEMA itself stays the
-   *  positions shape — fully custom schemas are a later step. */
+   *  key on it). Default `'positionId'`. */
   keyColumn?: string;
+  /**
+   * Perspective table schema — owned by the DataProvider catalog
+   * (`columnDefinitions`). Defaults to {@link POSITION_SCHEMA}.
+   */
+  schema?: PerspectiveTableSchema;
   onTelemetry?: (t: BookTelemetry) => void;
   onPhase?: (phase: BookPhase) => void;
   onViewTick?: (tick: ViewTick) => void;
@@ -211,6 +247,30 @@ interface BoundView {
   rowsServed: number;
   inflight: number;
   projectedRows: number;
+  /** Perspective ExprTK expressions — alias → source. Evaluated in WASM. */
+  expressions: Record<string, string>;
+  /**
+   * Columns mounted on the flat data view / leafView (paint projection).
+   * Grouped skeleton views always use the full schema + expression aliases.
+   */
+  readColumns: string[];
+  /** Last filter/sort applied by syncQuery — used when remounting for expressions. */
+  lastExtraFilter: PspFilter[];
+  lastSort: Array<[string, 'asc' | 'desc']>;
+  /** Title-bar / options quick-filter text (sparse SSRM — applied in Perspective). */
+  quickFilterText: string;
+  /** Ephemeral quick-filter haystack ExprTK (not user calculated columns). */
+  quickFilterExpressions: Record<string, string>;
+  /**
+   * OR-contains matchers from the last filter conversion (alias → needles).
+   * Live ticks evaluate these on raw feed rows (no ExprTK columns).
+   */
+  lastOrContains: Record<string, OrContainsMatcher>;
+  /**
+   * User value-column aggFunc overrides (colId → Perspective aggregate).
+   * Merged over schema defaults on every grouped / totals remount.
+   */
+  valueAggOverrides: Record<string, string>;
 }
 
 /** Transpose Perspective columnar output into row objects. Keeps
@@ -246,17 +306,139 @@ async function readRows(
   return (await v.to_json(window)) as Record<string, unknown>[];
 }
 
-function rowMatchesViewFilter(spec: ViewSpec, row: PositionRow): boolean {
-  const filters = spec.filter ?? [];
-  if (filters.length === 0) return true;
+function rowHasField(row: PositionRow, col: string): boolean {
+  return Object.prototype.hasOwnProperty.call(row, col);
+}
+
+/**
+ * Match a feed/tick row against Perspective filters.
+ *
+ * Live STOMP patches are partial — missing fields must NOT fail the gate
+ * (that dropped every tick under an active filter and starved `rowsChanged`
+ * / conditional-style flash). Only evaluate predicates for columns present
+ * on the row; virtual ExprTK / OR-contains aliases are handled separately.
+ */
+function rowMatchesPspFilters(
+  filters: PspFilter[],
+  row: PositionRow,
+  orContains: Record<string, OrContainsMatcher> = {},
+): boolean {
   for (const [col, op, term] of filters) {
-    const raw = row[col];
+    // Haystack is virtual — evaluated via quickFilterText on the raw row.
+    if (col === QUICK_FILTER_HAYSTACK_ALIAS) continue;
+    const matcher = orContains[col];
+    if (matcher) {
+      // Partial tick without the source dimension — don't drop the patch.
+      if (!rowHasField(row, matcher.colId)) continue;
+      const s = String(row[matcher.colId as keyof PositionRow] ?? '').toLowerCase();
+      const hit = matcher.needles.some((n) => n && s.includes(n.toLowerCase()));
+      // Filter is `[alias, '==', true]` — fail when no needle matches.
+      if (op === '==' && (term === true || term === 'true' || term === 1)) {
+        if (!hit) return false;
+        continue;
+      }
+      if (op === '==' && (term === false || term === 'false' || term === 0)) {
+        if (hit) return false;
+        continue;
+      }
+      continue;
+    }
+    // ExprTK alias / omitted patch field — Perspective View already filtered;
+    // gating on undefined would drop every live tick.
+    if (!rowHasField(row, col)) continue;
+    const raw = row[col as keyof PositionRow];
     const s = String(raw ?? '').toLowerCase();
-    const needle = String(term ?? '').toLowerCase();
-    if (op === 'contains' && needle && !s.includes(needle)) return false;
-    if (op === '>' && !(Number(raw) > Number(term))) return false;
-    if (op === '<' && !(Number(raw) < Number(term))) return false;
+    if (op === 'contains') {
+      const needle = String(term ?? '').toLowerCase();
+      if (needle && !s.includes(needle)) return false;
+      continue;
+    }
+    if (op === 'begins with') {
+      const needle = String(term ?? '').toLowerCase();
+      if (needle && !s.startsWith(needle)) return false;
+      continue;
+    }
+    if (op === '==') {
+      if (String(raw ?? '') !== String(term ?? '')) return false;
+      continue;
+    }
+    if (op === '!=') {
+      if (String(raw ?? '') === String(term ?? '')) return false;
+      continue;
+    }
+    if (op === 'in') {
+      const list = Array.isArray(term) ? term.map((v) => String(v)) : [String(term ?? '')];
+      if (!list.includes(String(raw ?? ''))) return false;
+      continue;
+    }
+    if (op === 'not in') {
+      const list = Array.isArray(term) ? term.map((v) => String(v)) : [String(term ?? '')];
+      if (list.includes(String(raw ?? ''))) return false;
+      continue;
+    }
+    if (op === '>') {
+      if (!(Number(raw) > Number(term))) return false;
+      continue;
+    }
+    if (op === '>=') {
+      if (!(Number(raw) >= Number(term))) return false;
+      continue;
+    }
+    if (op === '<') {
+      if (!(Number(raw) < Number(term))) return false;
+      continue;
+    }
+    if (op === '<=') {
+      if (!(Number(raw) <= Number(term))) return false;
+      continue;
+    }
+    if (op === 'is null') {
+      if (raw != null && raw !== '') return false;
+      continue;
+    }
+    if (op === 'is not null') {
+      if (raw == null || raw === '') return false;
+      continue;
+    }
   }
+  return true;
+}
+
+function rowMatchesQuickFilter(
+  text: string,
+  row: PositionRow,
+  columns: readonly string[],
+): boolean {
+  const terms = text.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return true;
+  // Partial ticks often omit search dimensions — don't drop those patches.
+  const present = columns.filter((c) => rowHasField(row, c));
+  if (present.length === 0) return true;
+  const haystack = present.map((c) => String(row[c as keyof PositionRow] ?? '')).join(' ').toLowerCase();
+  // If the tick only carries a couple of fields, haystack is too thin to
+  // decide QF membership — allow through (View filter already applied).
+  if (present.length < Math.min(3, columns.length)) return true;
+  return terms.every((t) => haystack.includes(t));
+}
+
+function rowMatchesViewFilter(
+  spec: ViewSpec,
+  row: PositionRow,
+  opts?: {
+    lastExtraFilter?: PspFilter[];
+    quickFilterText?: string;
+    dataColumns?: readonly string[];
+    lastOrContains?: Record<string, OrContainsMatcher>;
+  },
+): boolean {
+  const orContains = opts?.lastOrContains ?? {};
+  if (!rowMatchesPspFilters(spec.filter ?? [], row, orContains)) return false;
+  if (!rowMatchesPspFilters(opts?.lastExtraFilter ?? [], row, orContains)) return false;
+  if (!rowMatchesQuickFilter(
+    opts?.quickFilterText ?? '',
+    row,
+    opts?.dataColumns ?? [],
+  )) return false;
   return true;
 }
 
@@ -268,36 +450,91 @@ function extractRows(parsed: unknown): Partial<PositionRow>[] {
   return [];
 }
 
-function cgridFilterToPsp(filterModel: FilterModel): PspFilter[] {
-  const out: PspFilter[] = [];
-  for (const [colId, entry] of Object.entries(filterModel)) {
-    if (!entry || typeof entry !== 'object') continue;
-    const e = entry as Record<string, unknown>;
-    if (e.filterType === 'text' || typeof e.filter === 'string') {
-      const needle = String(e.filter ?? '');
-      if (needle) out.push([colId, 'contains', needle]);
-    } else if (e.filterType === 'number' || typeof e.filter === 'number') {
-      const n = Number(e.filter);
-      if (!Number.isFinite(n)) continue;
-      const op = String(e.type ?? 'equals');
-      if (op === 'greaterThan') out.push([colId, '>', n]);
-      else if (op === 'lessThan') out.push([colId, '<', n]);
-      else out.push([colId, '==', n]);
-    }
-  }
-  return out;
-}
-
 function cgridSortToPsp(sortModel: SortModel): Array<[string, 'asc' | 'desc']> {
   return sortModel.map((s) => [s.colId, s.direction] as [string, 'asc' | 'desc']);
 }
 
-function normalizeRowGroupCols(rowGroupCols: string[]): string[] {
-  return rowGroupCols.filter((c) => DATA_COLUMNS.includes(c as typeof DATA_COLUMNS[number]));
+function normalizeRowGroupCols(
+  rowGroupCols: string[],
+  dataColumns: readonly string[],
+  expressionAliases: readonly string[] = [],
+): string[] {
+  const allowed = new Set(dataColumns);
+  for (const alias of expressionAliases) allowed.add(alias);
+  return rowGroupCols.filter((c) => allowed.has(c));
 }
 
 function rowGroupColsEqual(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((c, i) => c === b[i]);
+}
+
+function stringListEqual(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((c, i) => c === b[i]);
+}
+
+function recordStringEqual(
+  a: Record<string, string>,
+  b: Record<string, string>,
+): boolean {
+  const ak = Object.keys(a);
+  const bk = Object.keys(b);
+  if (ak.length !== bk.length) return false;
+  return ak.every((k) => a[k] === b[k]);
+}
+
+/** Ensure quick-filter / ExprTK aliases used in filters appear in View columns. */
+function projectViewColumns(
+  columns: readonly string[],
+  expressions: Record<string, string>,
+): string[] {
+  const out = [...columns];
+  for (const alias of Object.keys(expressions)) {
+    if (!out.includes(alias)) out.push(alias);
+  }
+  return out;
+}
+
+/**
+ * Columns for a Perspective data View: schema ∪ expression aliases,
+ * optionally intersected with a fetch `columnKeys` window (always keeps
+ * `positionId` and active group-by columns).
+ */
+export function resolvePerspectiveViewColumns(opts: {
+  /** Schema / DataProvider columns (defaults to curated positions schema). */
+  dataColumns?: readonly string[];
+  expressions?: Record<string, string>;
+  groupBy?: readonly string[];
+  columnKeys?: readonly string[];
+}): string[] {
+  const exprAliases = Object.keys(opts.expressions ?? {});
+  const all: string[] = [...(opts.dataColumns ?? DEFAULT_DATA_COLUMNS)];
+  for (const alias of exprAliases) {
+    if (!all.includes(alias)) all.push(alias);
+  }
+  const columnKeys = opts.columnKeys;
+  if (!columnKeys || columnKeys.length === 0) return all;
+
+  const allowed = new Set(all);
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (id: string | undefined): void => {
+    if (!id || !allowed.has(id) || seen.has(id)) return;
+    seen.add(id);
+    out.push(id);
+  };
+  add('positionId');
+  for (const g of opts.groupBy ?? []) add(g);
+  for (const k of columnKeys) add(k);
+  // Expression aliases always project — H-scroll windows / lean keys must
+  // not drop ExprTK outputs needed by paint, rules, and alerts.
+  for (const alias of exprAliases) add(alias);
+  return out.length > 0 ? out : all;
+}
+
+/** Result of `Table.validate_expressions` (Perspective 4.x). */
+export interface ExpressionValidationResult {
+  expression_schema: Record<string, string>;
+  errors: Record<string, string>;
 }
 
 export class PerspectiveBook {
@@ -314,12 +551,18 @@ export class PerspectiveBook {
       | 'sparse'
       | 'snapshotEndToken'
       | 'keyColumn'
+      | 'schema'
     >
   > &
     Pick<
       PerspectiveBookOptions,
       'onTelemetry' | 'onPhase' | 'onViewTick' | 'snapshotTopic' | 'triggerTopic'
     >;
+
+  /** DataProvider-owned schema columns (Perspective table + view projection). */
+  private readonly dataColumns: string[];
+  private readonly valueAggregates: Record<string, string>;
+  private readonly measureColumns: string[];
 
   private pendingLiveBatch: PositionRow[] = [];
 
@@ -331,6 +574,8 @@ export class PerspectiveBook {
   private snapshotComplete = false;
   private updateBuffer: PositionRow[] = [];
   private pauseFanout = false;
+  /** Explicit Diagnostics Stop — blocks reconnect / Web-Lock takeover until restartFeed. */
+  private feedStopped = false;
 
   /** Phase 5 — set when `ensureTable` bound the cross-tab shared table. */
   private sharedTable = false;
@@ -365,6 +610,8 @@ export class PerspectiveBook {
   private flushTimer: number | null = null;
 
   constructor(options: PerspectiveBookOptions = {}) {
+    const schema = { ...(options.schema ?? POSITION_SCHEMA) };
+    if (!schema.positionId) schema.positionId = 'string';
     this.opts = {
       feed: options.feed ?? 'seed',
       wsUrl: options.wsUrl ?? 'ws://localhost:8081',
@@ -378,10 +625,14 @@ export class PerspectiveBook {
       triggerTopic: options.triggerTopic,
       snapshotEndToken: options.snapshotEndToken ?? SNAPSHOT_END_TOKEN,
       keyColumn: options.keyColumn ?? 'positionId',
+      schema,
       onTelemetry: options.onTelemetry,
       onPhase: options.onPhase,
       onViewTick: options.onViewTick,
     };
+    this.dataColumns = Object.keys(schema);
+    this.valueAggregates = aggregatesFromSchema(schema);
+    this.measureColumns = measureColumnsFromSchema(schema);
     this.telemetryTimer = window.setInterval(() => this.emitTelemetry(), 250);
   }
 
@@ -397,6 +648,26 @@ export class PerspectiveBook {
     this.pauseFanout = paused;
     if (!paused) void this.flushUpdates();
     this.emitTelemetry();
+  }
+
+  /** Diagnostics / authoring Stop — disconnect STOMP/seed and refuse takeover. */
+  stopFeed(): void {
+    this.feedStopped = true;
+    this.pauseFanout = true;
+    this.disconnect();
+    this.emitTelemetry();
+  }
+
+  /** Diagnostics Restart — clear the stop latch and reconnect the feed. */
+  restartFeed(): void {
+    this.feedStopped = false;
+    this.pauseFanout = false;
+    this.connect();
+    this.emitTelemetry();
+  }
+
+  isFeedStopped(): boolean {
+    return this.feedStopped;
   }
 
   setKnobs(partial: Partial<{ snapshotRows: number; rate: number; batchSize: number; updatesPerTick: number; wsUrl: string }>): void {
@@ -415,7 +686,10 @@ export class PerspectiveBook {
     // table name (attach if another tab already created it). Dedicated
     // fallback keeps the per-client name so parallel dedicated pages
     // can't collide.
-    const { table, attached } = await openOrCreatePositionsTable(SHARED_TABLE_NAME);
+    const { table, attached } = await openOrCreatePositionsTable(
+      SHARED_TABLE_NAME,
+      this.opts.schema,
+    );
     if (getPerspectiveWorkerMode() === 'shared') {
       this.table = table;
       this.sharedTable = true;
@@ -430,9 +704,12 @@ export class PerspectiveBook {
     return this.table;
   }
 
-  // ─── Phase 5: feed leadership (Web Locks; one feeder per origin) ─────
+  // ─── Phase 5: feed leadership (Web Locks; one feeder per table) ─────
 
-  private static readonly FEED_LOCK = 'cgrid-ssrm-demo:feed-leader';
+  /** One leader per physical Perspective table (schema-scoped name). */
+  private feedLockName(): string {
+    return `cgrid-ssrm:feed:${tableNameForSchema(this.opts.schema)}`;
+  }
 
   private hasWebLocks(): boolean {
     return typeof navigator !== 'undefined' && 'locks' in navigator;
@@ -447,7 +724,7 @@ export class PerspectiveBook {
     }
     return new Promise<boolean>((resolveWon) => {
       void navigator.locks.request(
-        PerspectiveBook.FEED_LOCK,
+        this.feedLockName(),
         { ifAvailable: true },
         async (lock) => {
           if (lock === null || this.destroyed) {
@@ -466,11 +743,12 @@ export class PerspectiveBook {
    *  releases and this tab starts feeding the (already-populated) book. */
   private queueFeedTakeover(): void {
     if (!this.sharedTable || !this.hasWebLocks() || this.leadershipQueued) return;
+    if (this.feedStopped) return;
     this.leadershipQueued = true;
     this.feedRole = 'follower';
     this.emitTelemetry();
-    void navigator.locks.request(PerspectiveBook.FEED_LOCK, async () => {
-      if (this.destroyed) return;
+    void navigator.locks.request(this.feedLockName(), async () => {
+      if (this.destroyed || this.feedStopped) return;
       this.feedRole = 'leader';
       this.emitTelemetry();
       // Book is live already (we adopted the snapshot) — just start feeding.
@@ -537,15 +815,118 @@ export class PerspectiveBook {
     return this.views.get(viewId)?.groupKeys ?? [];
   }
 
-  /** Mark pending row-group columns; `getSsrmRows` remounts with full filter/sort. */
+  /**
+   * Apply row-group columns to this blotter's View and remount immediately.
+   * The kernel's `rowGroupCols` is authoritative — clearing groups must
+   * drop Perspective `group_by` right away so flat getRows cannot read a
+   * stale aggregated view (8 desk totals with an empty group panel).
+   */
   async setViewGroupBy(viewId: string, rowGroupCols: string[]): Promise<void> {
-    const bound = this.views.get(viewId);
-    if (!bound) return;
-    const next = normalizeRowGroupCols(rowGroupCols);
-    if (rowGroupColsEqual(next, bound.groupBy)) return;
-    bound.groupBy = next;
-    bound.groupedRawCache = null;
-    bound.groupKeys = [];
+    return this.withViewChain(viewId, async () => {
+      const bound = this.views.get(viewId);
+      if (!bound) return;
+      const next = normalizeRowGroupCols(
+        rowGroupCols,
+        this.dataColumns,
+        Object.keys(bound.expressions),
+      );
+      if (rowGroupColsEqual(next, bound.groupBy)) return;
+      bound.groupBy = next;
+      bound.groupedRawCache = null;
+      bound.groupKeys = [];
+      bound.leafRanges = null;
+      bound.leafRangeByPath = null;
+      bound.leafOffsetsUnreliable = false;
+      // Force syncQuery/remount even when sort/filter are unchanged.
+      bound.lastQuerySig = '';
+      await this.withTableLock(() =>
+        this.remountDataView(bound, bound.lastExtraFilter, bound.lastSort),
+      );
+    });
+  }
+
+  /** Current ExprTK expression map for a blotter view. */
+  getViewExpressions(viewId: string): Record<string, string> {
+    return { ...(this.views.get(viewId)?.expressions ?? {}) };
+  }
+
+  /**
+   * Replace Perspective `ViewConfig.expressions` for a view, remount under
+   * the table lock, and force-union aliases into `readColumns` so leaf /
+   * flat Views always project calculated outputs (rules + format need them).
+   */
+  async setViewExpressions(
+    viewId: string,
+    expressions: Record<string, string>,
+  ): Promise<void> {
+    return this.withViewChain(viewId, async () => {
+      const bound = this.views.get(viewId);
+      if (!bound) return;
+      bound.expressions = { ...expressions };
+      // Start from the full schema paint window, then ensure every alias
+      // is present — intersecting with the prior H-scroll window dropped
+      // new calculated columns from the View `columns` list.
+      const base = this.resolveViewColumns(bound, undefined);
+      const seen = new Set(base);
+      for (const alias of Object.keys(expressions)) {
+        if (!seen.has(alias)) {
+          seen.add(alias);
+          base.push(alias);
+        }
+      }
+      bound.readColumns = base;
+      bound.groupedRawCache = null;
+      bound.lastQuerySig = '';
+      await this.withTableLock(() =>
+        this.remountDataView(bound, bound.lastExtraFilter, bound.lastSort),
+      );
+    });
+  }
+
+  /**
+   * Validate ExprTK expressions against the shared table schema without
+   * remounting views. Returns Perspective's `expression_schema` + `errors`.
+   */
+  async validateExpressions(
+    expressions: Record<string, string>,
+  ): Promise<ExpressionValidationResult> {
+    await this.ensureTable();
+    const table = this.table as Table & {
+      validate_expressions: (e: Record<string, string>) => Promise<ExpressionValidationResult>;
+    };
+    return this.withTableLock(() => table.validate_expressions(expressions));
+  }
+
+  private resolveViewColumns(
+    bound: BoundView,
+    columnKeys?: readonly string[],
+  ): string[] {
+    return resolvePerspectiveViewColumns({
+      dataColumns: this.dataColumns,
+      expressions: bound.expressions,
+      groupBy: bound.groupBy,
+      columnKeys,
+    });
+  }
+
+  /** Lean column set for the grouped skeleton View (not the leaf paint View). */
+  private skeletonViewColumns(bound: BoundView): string[] {
+    const cols: string[] = ['positionId'];
+    const seen = new Set(cols);
+    const add = (id: string | undefined): void => {
+      if (!id || seen.has(id) || !this.dataColumns.includes(id)) return;
+      seen.add(id);
+      cols.push(id);
+    };
+    for (const g of bound.groupBy) add(g);
+    for (const m of this.measureColumns) add(m);
+    for (const alias of Object.keys(bound.expressions)) {
+      if (!seen.has(alias)) {
+        seen.add(alias);
+        cols.push(alias);
+      }
+    }
+    return cols;
   }
 
   /** Serialize per-view Perspective work — concurrent remounts hang WASM. */
@@ -578,8 +959,13 @@ export class PerspectiveBook {
     return this.withViewChain(viewId, async () => {
       const bound = this.views.get(viewId);
       if (!bound?.view) return [];
-      await this.syncQuery(bound, viewId, req.sortModel, req.filterModel, req.rowGroupCols);
+      // Kernel rowGroupCols is authoritative (including empty = ungroup).
+      await this.syncQuery(
+        bound, viewId, req.sortModel, req.filterModel, req.rowGroupCols, true,
+      );
       if (bound.groupBy.length === 0) return [];
+      // Live ticks must see fresh aggregates — never serve a stale dump.
+      bound.groupedRawCache = null;
       const raw = await this.getGroupedRaw(bound);
       const groups: SkeletonGroup[] = [];
       for (const row of raw) {
@@ -588,8 +974,14 @@ export class PerspectiveBook {
           continue;
         }
         const aggregates: Record<string, unknown> = {};
-        for (const col of ['notionalAmount', 'marketValue', 'pnl', 'dailyPnl'] as const) {
+        for (const col of this.measureColumns) {
           if (row[col] !== undefined) aggregates[col] = row[col];
+        }
+        // Also surface any other numeric fields Perspective returned so
+        // Infer Fields measure columns tick even when schema typing is loose.
+        for (const [k, v] of Object.entries(row)) {
+          if (k === 'positionId' || k === '__ROW_PATH__' || k in aggregates) continue;
+          if (typeof v === 'number' && Number.isFinite(v)) aggregates[k] = v;
         }
         // `path: []` is Perspective's root aggregate row — the kernel reads
         // it as the grand total (pinned totals row / grand-total footer).
@@ -614,14 +1006,16 @@ export class PerspectiveBook {
       sortModel: SortModel;
       filterModel: FilterModel;
       rowGroupCols: string[];
+      columnKeys?: string[];
     },
   ): Promise<PositionRow[]> {
     return this.withViewChain(viewId, async () => {
       const bound = this.views.get(viewId);
       if (!bound?.view) return [];
       const { extraFilter, sort } = await this.syncQuery(
-        bound, viewId, req.sortModel, req.filterModel, req.rowGroupCols,
+        bound, viewId, req.sortModel, req.filterModel, req.rowGroupCols, true,
       );
+      await this.ensureReadColumns(bound, req.columnKeys, extraFilter, sort);
       return this.fetchLeafWindowByPath(
         bound, req.groupPath, req.startRow, req.endRow, extraFilter, sort,
       );
@@ -633,12 +1027,21 @@ export class PerspectiveBook {
    *  without a skeleton. */
   async getFlatRows(
     viewId: string,
-    req: { startRow: number; endRow: number; sortModel: SortModel; filterModel: FilterModel },
+    req: {
+      startRow: number;
+      endRow: number;
+      sortModel: SortModel;
+      filterModel: FilterModel;
+      columnKeys?: string[];
+    },
   ): Promise<{ rows: PositionRow[]; rowCount: number; grandTotals?: Record<string, unknown> }> {
     return this.withViewChain(viewId, async () => {
       const bound = this.views.get(viewId);
       if (!bound?.view) return { rows: [], rowCount: 0 };
-      await this.syncQuery(bound, viewId, req.sortModel, req.filterModel, [], true);
+      const { extraFilter, sort } = await this.syncQuery(
+        bound, viewId, req.sortModel, req.filterModel, [], true,
+      );
+      await this.ensureReadColumns(bound, req.columnKeys, extraFilter, sort);
       // count + read under one lock — see fetchLeafWindowByPath.
       return this.withTableLock(async () => {
         const rowCount = Math.max(0, Number(await bound.view!.num_rows()));
@@ -677,7 +1080,7 @@ export class PerspectiveBook {
       const bound = this.views.get(viewId);
       if (!bound?.view || !this.table) return [];
       const { extraFilter } = await this.syncQuery(
-        bound, viewId, req.sortModel, req.filterModel, req.rowGroupCols,
+        bound, viewId, req.sortModel, req.filterModel, req.rowGroupCols, true,
       );
       if (req.groupPath.length === 0 || req.groupPath.length > bound.groupBy.length) return [];
       // Fast path — descendant leaves of ANY-depth group are a contiguous
@@ -775,9 +1178,19 @@ export class PerspectiveBook {
     rowGroupCols: string[],
     trustEmptyGroupBy = false,
   ): Promise<{ extraFilter: PspFilter[]; sort: Array<[string, 'asc' | 'desc']> }> {
-    const extraFilter = cgridFilterToPsp(filterModel);
+    const converted = cgridFilterToPsp(filterModel, {
+      quickFilterText: bound.quickFilterText,
+      quickFilterColumns: this.dataColumns,
+    });
+    const extraFilter = converted.filters;
+    bound.quickFilterExpressions = converted.expressions;
+    bound.lastOrContains = converted.orContains;
     const sort = cgridSortToPsp(sortModel);
-    let requestedGroupBy = normalizeRowGroupCols(rowGroupCols);
+    let requestedGroupBy = normalizeRowGroupCols(
+      rowGroupCols,
+      this.dataColumns,
+      Object.keys(bound.expressions),
+    );
     // Race: columnRowGroupChanged may set bound.groupBy before SSRM ships cols.
     if (!trustEmptyGroupBy && requestedGroupBy.length === 0 && bound.groupBy.length > 0) {
       requestedGroupBy = bound.groupBy;
@@ -790,14 +1203,139 @@ export class PerspectiveBook {
     const querySig = JSON.stringify({
       sort: sortModel,
       filter: filterModel,
+      quickFilterText: bound.quickFilterText,
       groupBy: bound.groupBy,
+      valueAggOverrides: bound.valueAggOverrides,
     });
     if (querySig !== bound.lastQuerySig) {
       bound.lastQuerySig = querySig;
+      bound.lastExtraFilter = extraFilter;
+      bound.lastSort = sort;
       await this.withTableLock(() => this.remountDataView(bound, extraFilter, sort));
       void this.refreshProjected(viewId);
+    } else {
+      bound.lastExtraFilter = extraFilter;
+      bound.lastSort = sort;
     }
     return { extraFilter, sort };
+  }
+
+  /**
+   * Count leaf rows matching a cgrid FilterModel against the full table.
+   * Used by saved-filter pill badges on sparse SSRM (hydrate mirrors are
+   * viewport-sized and under-count badly).
+   */
+  async countMatchingFilterModel(filterModel: FilterModel): Promise<number> {
+    if (!this.table) return 0;
+    const converted = cgridFilterToPsp(filterModel ?? {});
+    const { filters, expressions } = converted;
+    return this.withTableLock(async () => {
+      const view = await this.table!.view({
+        columns: projectViewColumns(['positionId'], expressions),
+        ...(filters.length > 0 ? { filter: filters } : {}),
+        ...(Object.keys(expressions).length > 0 ? { expressions } : {}),
+      } as never);
+      try {
+        return Math.max(0, Number(await view.num_rows()) | 0);
+      } finally {
+        try { await view.delete(); } catch { /* swallow */ }
+      }
+    });
+  }
+
+  /**
+   * Distinct string values for `colId` from the shared table (group_by).
+   * Used by sparse SSRM set-filter popups — the worker store only holds
+   * hydrated windows and cannot enumerate the full book.
+   *
+   * **Never** reads `row[colId]` on the grouped View — that field is an
+   * aggregate (leaf `count`) and must not populate set filters. Values
+   * come only from `__ROW_PATH__` via {@link distinctValuesFromRowPaths}.
+   */
+  async getDistinctColumnValues(colId: string, limit?: number): Promise<string[]> {
+    if (!this.table) return [];
+    if (!this.dataColumns.includes(colId) && colId !== 'positionId') return [];
+    return this.withTableLock(async () => {
+      // group_by yields path keys. Project a throwaway measure so the View
+      // is valid — set-filter values still come ONLY from `__ROW_PATH__`
+      // (never from aggregate fields like count on `colId`).
+      const measureCol = this.dataColumns.includes('positionId')
+        ? 'positionId'
+        : (this.dataColumns.find((c) => c !== colId) ?? colId);
+      const view = await this.table!.view({
+        group_by: [colId],
+        columns: [measureCol],
+        aggregates: { [measureCol]: 'count' },
+      } as never);
+      try {
+        const cap = limit != null && limit > 0 ? Math.min(limit, 10_000) : 5_000;
+        const rows = (await view.to_json({
+          start_row: 0,
+          end_row: cap + 1,
+        })) as GroupedDistinctRow[];
+        return distinctValuesFromRowPaths(rows, cap);
+      } finally {
+        try { await view.delete(); } catch { /* swallow */ }
+      }
+    });
+  }
+
+  /**
+   * Apply grid value-column aggFuncs onto this blotter's Perspective View.
+   * Schema defaults remain for every other column; listed cols override.
+   * Remounts immediately when the override map changes.
+   */
+  async setViewValueAggregates(
+    viewId: string,
+    valueColumns: ReadonlyArray<{ colId: string; aggFunc: string }>,
+  ): Promise<boolean> {
+    return this.withViewChain(viewId, async () => {
+      const bound = this.views.get(viewId);
+      if (!bound) return false;
+      const next: Record<string, string> = {};
+      for (const { colId, aggFunc } of valueColumns) {
+        if (!colId) continue;
+        next[colId] = mapAggFuncToPerspective(aggFunc);
+      }
+      if (recordStringEqual(next, bound.valueAggOverrides)) return false;
+      bound.valueAggOverrides = next;
+      bound.lastQuerySig = '';
+      await this.withTableLock(() =>
+        this.remountDataView(bound, bound.lastExtraFilter, bound.lastSort),
+      );
+      return true;
+    });
+  }
+
+  /** Schema defaults merged with per-view value-column overrides. */
+  private resolveAggregates(bound: BoundView): Record<string, string> {
+    return { ...this.valueAggregates, ...bound.valueAggOverrides };
+  }
+
+  /**
+   * Title-bar quick filter — stored on the View and applied on the next
+   * remount / getRows (sparse SSRM cannot use the worker QuickFilterPass).
+   */
+  setViewQuickFilterText(viewId: string, text: string): void {
+    const bound = this.views.get(viewId);
+    if (!bound) return;
+    const next = text ?? '';
+    if (bound.quickFilterText === next) return;
+    bound.quickFilterText = next;
+    bound.lastQuerySig = '';
+  }
+
+  /** Remount flat/leaf views when the paint column window changes. */
+  private async ensureReadColumns(
+    bound: BoundView,
+    columnKeys: readonly string[] | undefined,
+    extraFilter: PspFilter[],
+    sort: Array<[string, 'asc' | 'desc']>,
+  ): Promise<void> {
+    const next = this.resolveViewColumns(bound, columnKeys);
+    if (stringListEqual(next, bound.readColumns)) return;
+    bound.readColumns = next;
+    await this.withTableLock(() => this.remountDataView(bound, extraFilter, sort));
   }
 
   private async getSsrmRowsInner(viewId: string, req: SsrmRowsRequest): Promise<SsrmRowsResult> {
@@ -806,10 +1344,16 @@ export class PerspectiveBook {
       return { rows: [], rowCount: 0, groupKeys: [] };
     }
 
-    const requestedGroupBy = normalizeRowGroupCols(req.rowGroupCols);
+    const requestedGroupBy = normalizeRowGroupCols(
+      req.rowGroupCols,
+      this.dataColumns,
+      Object.keys(bound.expressions),
+    );
     const { extraFilter, sort } = await this.syncQuery(
       bound, viewId, req.sortModel, req.filterModel, req.rowGroupCols,
+      /* trustEmptyGroupBy */ true,
     );
+    await this.ensureReadColumns(bound, req.columnKeys, extraFilter, sort);
 
     if (bound.groupBy.length === 0) {
       const rowCount = Math.max(0, Number(
@@ -828,7 +1372,7 @@ export class PerspectiveBook {
         return { rows: [], rowCount, groupKeys: [] };
       }
       const json = (await this.withTableLock(
-        () => bound.view!.to_json({ start_row: start, end_row: end }),
+        () => readRows(bound.view!, { start_row: start, end_row: end }),
       )) as PositionRow[];
       this.lastGetRowsDebug.set(viewId, {
         requestedGroupBy: [...requestedGroupBy],
@@ -988,10 +1532,15 @@ export class PerspectiveBook {
       (colId, i) => [colId, '==', groupPath[i] ?? ''],
     );
     const filter = [...(bound.spec.filter ?? []), ...extraFilter, ...groupFilter];
+    const exprs = { ...bound.expressions, ...bound.quickFilterExpressions };
+    const columns = projectViewColumns([...bound.readColumns], exprs);
     const config: Record<string, unknown> = {
-      columns: [...DATA_COLUMNS],
+      columns,
       filter,
     };
+    if (Object.keys(exprs).length > 0) {
+      config.expressions = exprs;
+    }
     if (sort.length > 0) config.sort = sort;
 
     // ONE lock hold for create → count → read → delete. The old per-step
@@ -1066,14 +1615,34 @@ export class PerspectiveBook {
     }
 
     const filter = [...(bound.spec.filter ?? []), ...extraFilter];
+    // Leaf / flat Views project to `readColumns` (full DataProvider paint
+    // window). Grouped skeleton Views stay lean: index + group-by +
+    // measures (+ expressions) so fat catalog schemas don't stall expand.
+    const paintColumns = bound.readColumns.length > 0
+      ? bound.readColumns
+      : this.resolveViewColumns(bound, undefined);
+    const skeletonColumns = bound.groupBy.length > 0
+      ? this.skeletonViewColumns(bound)
+      : paintColumns;
+    const mergedExpressions: Record<string, string> = {
+      ...bound.expressions,
+      ...bound.quickFilterExpressions,
+    };
+    // Perspective requires expression columns used in `filter` to appear
+    // in the View's `columns` list — project the quick-filter haystack.
+    const projectedPaint = projectViewColumns(paintColumns, mergedExpressions);
+    const projectedSkeleton = projectViewColumns(skeletonColumns, mergedExpressions);
     const config: Record<string, unknown> = {
-      columns: [...DATA_COLUMNS],
+      columns: bound.groupBy.length > 0 ? projectedSkeleton : projectedPaint,
       filter,
     };
+    if (Object.keys(mergedExpressions).length > 0) {
+      config.expressions = mergedExpressions;
+    }
     if (sort.length > 0) config.sort = sort;
     if (bound.groupBy.length > 0) {
       config.group_by = bound.groupBy;
-      config.aggregates = { ...VALUE_AGGREGATES };
+      config.aggregates = this.resolveAggregates(bound);
     }
 
     bound.view = await this.table!.view(config as never);
@@ -1081,11 +1650,24 @@ export class PerspectiveBook {
     // group_by-less config made `fetchGrandTotal` read raw row 0 (zeros on
     // an empty/loading table). Any group_by makes to_json emit the root
     // aggregate row (`__ROW_PATH__: []`) first — the real grand total.
+    const totalsCols = this.measureColumns.length > 0
+      ? this.measureColumns
+      : this.dataColumns.filter((c) => c !== 'positionId').slice(0, 4);
+    const totalsGroupCol = this.dataColumns.includes('desk')
+      ? 'desk'
+      : (this.dataColumns.find((c) => c !== 'positionId') ?? 'positionId');
+    const aggregates = this.resolveAggregates(bound);
     bound.totalsView = await this.table!.view({
-      columns: ['notionalAmount', 'marketValue', 'pnl', 'dailyPnl'],
+      columns: projectViewColumns(
+        totalsCols.length > 0 ? totalsCols : ['positionId'],
+        mergedExpressions,
+      ),
       filter,
-      group_by: ['desk'],
-      aggregates: { ...VALUE_AGGREGATES },
+      ...(Object.keys(mergedExpressions).length > 0
+        ? { expressions: mergedExpressions }
+        : {}),
+      group_by: [totalsGroupCol],
+      aggregates,
     } as never);
     // ONE persistent flat leaf view, sorted by the group columns first
     // (direction matching any user sort on those columns) so each deepest
@@ -1098,11 +1680,15 @@ export class PerspectiveBook {
         ...bound.groupBy.map((colId): [string, 'asc' | 'desc'] => [colId, dirFor(colId)]),
         ...sort.filter(([c]) => !bound.groupBy.includes(c)),
       ];
-      bound.leafView = await this.table!.view({
-        columns: [...DATA_COLUMNS],
+      const leafConfig: Record<string, unknown> = {
+        columns: projectedPaint,
         filter,
         sort: leafSort,
-      } as never);
+      };
+      if (Object.keys(mergedExpressions).length > 0) {
+        leafConfig.expressions = mergedExpressions;
+      }
+      bound.leafView = await this.table!.view(leafConfig as never);
     }
     bound.groupedRawCache = null;
     bound.dataUpdateCb = Number(
@@ -1148,6 +1734,14 @@ export class PerspectiveBook {
       rowsServed: 0,
       inflight: 0,
       projectedRows: 0,
+      expressions: {},
+      readColumns: [...this.dataColumns],
+      lastExtraFilter: [],
+      lastSort: [],
+      quickFilterText: '',
+      quickFilterExpressions: {},
+      lastOrContains: {},
+      valueAggOverrides: {},
     };
     await this.withTableLock(() => this.remountDataView(bound, extraFilter, sort));
     return bound;
@@ -1203,6 +1797,7 @@ export class PerspectiveBook {
   }
 
   connect(): void {
+    if (this.feedStopped) return;
     if (this.stomp || this.seedConnecting || this.seedLiveTimer !== null) return;
     void this.connectRouted();
   }
@@ -1212,7 +1807,9 @@ export class PerspectiveBook {
    *  holder) feeds while the rest attach to the live book and queue for
    *  takeover. */
   private async connectRouted(): Promise<void> {
+    if (this.feedStopped || this.destroyed) return;
     await this.ensureTable();
+    if (this.feedStopped || this.destroyed) return;
     if (!this.sharedTable) {
       this.feedRole = 'leader';
       if (this.opts.feed === 'seed') await this.connectSeed();
@@ -1220,17 +1817,23 @@ export class PerspectiveBook {
       return;
     }
     const size = await this.sharedTableSize();
+    if (this.feedStopped || this.destroyed) return;
     if (size > 0) {
       await this.adoptSharedLive(size);
       this.queueFeedTakeover();
       return;
     }
     if (await this.tryLeadFeed()) {
+      if (this.feedStopped || this.destroyed) {
+        this.releaseLeadership();
+        return;
+      }
       if (this.opts.feed === 'seed') await this.connectSeed();
       else this.activateStomp();
       return;
     }
     const settled = await this.waitForSharedSnapshot();
+    if (this.feedStopped || this.destroyed) return;
     if (settled > 0) {
       await this.adoptSharedLive(settled);
       this.queueFeedTakeover();
@@ -1238,12 +1841,15 @@ export class PerspectiveBook {
     }
     // Leader never materialized (crashed mid-boot?) — seed ourselves;
     // positionId-keyed updates make a duplicate snapshot benign.
+    if (this.feedStopped || this.destroyed) return;
     if (this.opts.feed === 'seed') await this.connectSeed();
     else this.activateStomp();
   }
 
   private activateStomp(): void {
+    if (this.feedStopped || this.destroyed) return;
     void this.ensureTable().then(() => {
+      if (this.feedStopped || this.destroyed || this.stomp) return;
       this.setPhase('connecting');
       this.snapshotComplete = false;
       this.snapshotRowsLoaded = 0;
@@ -1257,7 +1863,13 @@ export class PerspectiveBook {
         reconnectDelay: 2000,
         heartbeatIncoming: 0,
         heartbeatOutgoing: 0,
-        onConnect: () => this.onConnected(),
+        onConnect: () => {
+          if (this.feedStopped || this.destroyed) {
+            try { void client.deactivate(); } catch { /* swallow */ }
+            return;
+          }
+          this.onConnected();
+        },
         onStompError: () => this.setPhase('error'),
         onWebSocketError: () => this.setPhase('error'),
         onWebSocketClose: () => this.setPhase('disconnected'),
@@ -1282,9 +1894,11 @@ export class PerspectiveBook {
   }
 
   private async connectSeed(): Promise<void> {
+    if (this.feedStopped || this.destroyed) return;
     this.seedConnecting = true;
     try {
       await this.ensureTable();
+      if (this.feedStopped || this.destroyed) return;
       this.setPhase('connecting');
       this.snapshotComplete = false;
       this.snapshotRowsLoaded = 0;
@@ -1298,7 +1912,7 @@ export class PerspectiveBook {
       const rnd = mulberry32(0xc6_1d);
       const chunk = Math.max(200, this.opts.batchSize * 10);
       for (let i = 0; i < n; i += chunk) {
-        if (!this.seedConnecting) return;
+        if (!this.seedConnecting || this.feedStopped) return;
         const end = Math.min(n, i + chunk);
         const rows: PositionRow[] = [];
         for (let j = i; j < end; j++) rows.push(makeSeedRow(j, rnd));
@@ -1311,6 +1925,7 @@ export class PerspectiveBook {
         await new Promise<void>((r) => requestAnimationFrame(() => r()));
       }
 
+      if (this.feedStopped) return;
       this.snapshotComplete = true;
       try {
         this.snapshotRowsLoaded = Number(await this.withTableLock(() => this.table!.size()));
@@ -1328,10 +1943,11 @@ export class PerspectiveBook {
 
   private startSeedLive(): void {
     this.stopSeedLive();
+    if (this.feedStopped || this.destroyed) return;
     const intervalMs = Math.max(16, Math.round(1000 / Math.max(1, this.opts.rate)));
     const rnd = mulberry32(0x11fe);
     this.seedLiveTimer = window.setInterval(() => {
-      if (this.pauseFanout || !this.table || !this.snapshotComplete) return;
+      if (this.feedStopped || this.pauseFanout || !this.table || !this.snapshotComplete) return;
       const n = Math.max(1, this.opts.updatesPerTick | 0);
       const book = Math.max(1, this.snapshotRowsLoaded);
       const rows: PositionRow[] = [];
@@ -1560,26 +2176,51 @@ export class PerspectiveBook {
     if (this.pauseFanout || !this.opts.onViewTick) return;
     const v = this.views.get(viewId);
     if (!v) return;
-    const totals = await this.fetchGrandTotal(viewId);
-    const updates = v.groupBy.length === 0
-      ? this.pendingLiveBatch.filter((row) => rowMatchesViewFilter(v.spec, row))
-      : [];
+    const filterOpts = {
+      lastExtraFilter: v.lastExtraFilter,
+      quickFilterText: v.quickFilterText,
+      dataColumns: this.dataColumns,
+      lastOrContains: v.lastOrContains,
+    };
+    const updates = this.pendingLiveBatch.filter(
+      (row) => rowMatchesViewFilter(v.spec, row, filterOpts),
+    );
     // Consumed — clear once the LAST armed tick has fired (earlier ticks in
     // the same round still need it; a later tick must not replay it as
     // fresh updates).
     if (![...this.views.values()].some((x) => x.notifyTimer !== null)) {
       this.pendingLiveBatch = [];
     }
+    const hasExpressions = Object.keys(v.expressions).length > 0;
+    // Grouped: soft-refresh skeleton aggregates + still emit leaf patches
+    // so conditional styles / alerts / cell flash see `rowsChanged`.
+    // Skip totals await — table-lock contention under a hot feed starved
+    // expand when we blocked on fetchGrandTotal.
+    if (v.groupBy.length > 0) {
+      this.opts.onViewTick({
+        viewId,
+        totals: emptyGrandTotalRow(),
+        refreshSsrm: true,
+        updates,
+      });
+      return;
+    }
+    const totals = await this.fetchGrandTotal(viewId);
     // Phase 5 — on follower tabs the feeder's row batch lives in ANOTHER
     // tab; this view only learned of the remote update via `on_update`.
     // Route flat views to a band-scoped soft refresh so remote ticks
     // paint (leaders keep the cheaper patch path).
-    const remoteFlatTick =
-      v.groupBy.length === 0 && updates.length === 0 && this.feedRole === 'follower';
+    // With ExprTK aliases, raw feed patches lack computed outputs — soft
+    // refresh so calculated columns / rules watching them re-hydrate.
+    // Do NOT soft-refresh merely because a grid filter is active: partial
+    // tick gating + applyServerSideTransaction already keeps the mirror
+    // honest, and soft-refresh-only ticks skip strip invalidation so
+    // conditional styles freeze on the raster cache.
+    const remoteFlatTick = updates.length === 0 && this.feedRole === 'follower';
     this.opts.onViewTick({
       viewId,
       totals,
-      refreshSsrm: v.groupBy.length > 0 || remoteFlatTick,
+      refreshSsrm: remoteFlatTick || hasExpressions,
       updates,
     });
   }

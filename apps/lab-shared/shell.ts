@@ -2,7 +2,7 @@ import { LAB_CATEGORIES } from './categories';
 import { getFeature, HINT_BY_ID, LAB_FEATURES, LAB_NAV_ITEMS, type LabFeature } from './features';
 import { getLabCatalog } from './profiles';
 
-export type LabMode = 'csrm' | 'ssrm';
+export type LabMode = 'csrm';
 
 export interface LabShellOptions {
   title: string;
@@ -94,7 +94,7 @@ export function mountLabShell(root: HTMLElement, opts: LabShellOptions): void {
           Each tab ships <strong>multiple named demo layouts</strong> (title-bar
           Layouts menu) — same ColDefs, different module state. Mode:
           <strong>${opts.mode.toUpperCase()}</strong>
-          (${opts.mode === 'csrm' ? 'rowData + applyTransactionAsync ticks' : 'MockSSRMDataProvider SSRM v2'}).
+          (${opts.mode === 'csrm' ? 'rowData + applyTransactionAsync ticks' : opts.mode}).
         </p>
         <div class="lab-home-cards"></div>
       </div>

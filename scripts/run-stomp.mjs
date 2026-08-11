@@ -46,7 +46,7 @@ Build the broker first:
 Or set STOMP_SERVER_ENTRY to an absolute path to main.js.
 
 Sample that uses this broker:
-  npm run dev:stomp-ssrm-sample`);
+  npm run dev:perspective-ssrm-sample   # or npm run dev:ssrm-demo ?feed=stomp`);
   process.exit(1);
 }
 

@@ -494,4 +494,28 @@ describe('FloatingFilterOverlay', () => {
     expect(cell.classList.contains('has-value')).toBe(true);
     overlay.destroy();
   });
+
+  it('set-filter columns apply CSV as exact set values (not text contains)', () => {
+    const setColumnFilterModel = vi.fn();
+    const overlay = new FloatingFilterOverlay(host, makeDeps({
+      setColumnFilterModel,
+      debounceMs: 0,
+      getColDef: () => ({ floatingFilter: true, filter: 'set' }),
+    }));
+    const vp = makeViewport([
+      { colId: 'region', index: 0, left: 0, right: 100, width: 100 },
+    ]);
+    overlay.repositionAll(vp);
+    const input = host.querySelector('input[data-vg-col-id="region"]') as HTMLInputElement;
+    expect(input.placeholder).toBe('APAC, EMEA');
+    input.value = 'APAC, EMEA';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(setColumnFilterModel).toHaveBeenCalledWith('region', {
+      filterType: 'set',
+      values: ['APAC', 'EMEA'],
+    });
+    overlay.syncInputValue('region', { filterType: 'set', values: ['APAC', 'EMEA'] });
+    expect(input.value).toBe('APAC, EMEA');
+    overlay.destroy();
+  });
 });

@@ -6,7 +6,8 @@ export interface HintGrid {
   addCellRange?(range: { rowStart: number; rowEnd: number; colIds: string[] }): void;
 }
 
-export function applyLabUiHints(featureId: string, mode: 'csrm' | 'ssrm', grid: HintGrid): void {
+export function applyLabUiHints(featureId: string, mode: 'csrm', grid: HintGrid): void {
+  void mode;
   const later = (fn: () => void) => requestAnimationFrame(() => setTimeout(fn, 60));
 
   later(() => {

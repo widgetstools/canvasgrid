@@ -137,6 +137,46 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     return this.enqueue(() => this.ensureRangeInner(rowStart, rowEnd));
   }
 
+  /**
+   * Horizontal column-window refill — re-fetch the viewport band with the
+   * latest `columnKeys` and field-merge onto cached rows. Does NOT drop
+   * blocks first (that blanked the canvas and caused black voids / flicker
+   * during H-scroll). Does NOT bump dataGen / purge the skeleton.
+   */
+  refillColumnKeys(): Promise<void> {
+    return this.enqueue(async () => {
+      if (this.host.isDestroyed()) return;
+      const band = this.refreshBand();
+      const gen = this.dataGen;
+      if (this.grouped()) {
+        await this.forceReloadBandLeafBlocks(band.rowStart, band.rowEnd, gen);
+      } else {
+        await this.forceReloadFlatBlocks(band.rowStart, band.rowEnd, gen);
+      }
+      if (gen !== this.dataGen || this.host.isDestroyed()) return;
+      // Invalidate hydrate signature so the band re-pushes to the worker.
+      this.lastHydrate = null;
+      this.cacheEpoch++;
+      await this.ensureRangeInner(band.rowStart, band.rowEnd);
+      if (this.host.isDestroyed()) return;
+      this.host.requestViewport();
+    });
+  }
+
+  /** Field-merge an incoming column slice onto previously cached block rows. */
+  private mergeBlockRows(prev: TRow[] | undefined, incoming: TRow[]): TRow[] {
+    if (!prev?.length) return incoming.slice();
+    const n = Math.max(prev.length, incoming.length);
+    const out: TRow[] = new Array(n);
+    for (let i = 0; i < n; i++) {
+      const a = prev[i];
+      const b = incoming[i];
+      if (a && b) out[i] = { ...(a as object), ...(b as object) } as TRow;
+      else out[i] = (b ?? a)!;
+    }
+    return out;
+  }
+
   refresh(params: RefreshServerSideParams = {}): Promise<void> {
     // Conflate soft refreshes: live ticks can arrive faster than a refresh
     // completes, and queuing one op per tick grows the chain without bound
@@ -194,8 +234,19 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     return Math.min(2000, sum / d.length);
   }
 
-  /** Expansion toggle — local reflow, then fill missing leaves. */
+  /**
+   * Expansion toggle — paint the reflow immediately (same frame), then fill
+   * missing leaves on the op chain. Live soft-refreshes must not block the
+   * chevron; otherwise a hot feed makes groups look un-expandable.
+   */
   refreshExpansion(): Promise<void> {
+    if (this.grouped() && this.skeleton !== null && !this.host.isDestroyed()) {
+      this.rebuildIndex();
+      const band = this.refreshBand();
+      void this.hydrateRange(band.rowStart, band.rowEnd).then(() => {
+        if (!this.host.isDestroyed()) this.host.requestViewport();
+      });
+    }
     return this.enqueue(() => this.refreshExpansionInner());
   }
 
@@ -347,18 +398,21 @@ export class ServerSideRowModelV2Controller<TRow = any> {
       this.host.requestViewport();
       return;
     }
-    // Soft refresh — live tick. Grouped: re-sync the skeleton (aggregates
-    // and/or structure), refresh band leaves. Flat: refetch band blocks.
+    // Soft refresh — live tick. Keep painted rows on screen while reloading
+    // (drop-then-fetch blanked the band → black voids during scroll + ticks).
     const gen = this.dataGen;
     const band = this.refreshBand();
     if (this.grouped()) {
       const groups = await this.fetchSkeletonRaw();
       if (gen !== this.dataGen || this.host.isDestroyed()) return;
       if (groups !== null) this.ingestSkeleton(groups, /* soft */ true);
-      this.dropBandLeafBlocks(band.rowStart, band.rowEnd);
+      await this.forceReloadBandLeafBlocks(band.rowStart, band.rowEnd, gen);
     } else {
-      this.dropFlatBlocks(band.rowStart, band.rowEnd);
+      await this.forceReloadFlatBlocks(band.rowStart, band.rowEnd, gen);
     }
+    if (gen !== this.dataGen || this.host.isDestroyed()) return;
+    this.lastHydrate = null;
+    this.cacheEpoch++;
     await this.ensureRangeInner(band.rowStart, band.rowEnd);
     if (gen !== this.dataGen || this.host.isDestroyed()) return;
     this.host.requestViewport();
@@ -521,8 +575,11 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     const start = Math.max(0, Math.floor(rowStart));
     const end = Math.min(index.rowCount, Math.max(start, Math.ceil(rowEnd)));
 
-    // Collect missing leaf blocks for the range.
+    // Collect missing / in-flight leaf blocks for the range. Fast scroll can
+    // overlap ensureRange calls — always wait for `loading` blocks, otherwise
+    // hydrate runs over empty slots and paints black voids.
     const missing: Array<{ node: SkeletonNode; blockIdx: number }> = [];
+    const waiting: Array<Promise<void>> = [];
     const seen = new Set<string>();
     for (const entry of index.entriesInRange(start, end)) {
       if (entry.kind !== 'leaf') continue;
@@ -530,17 +587,32 @@ export class ServerSideRowModelV2Controller<TRow = any> {
       const tag = `${entry.node.key}\u0000${blockIdx}`;
       if (seen.has(tag)) continue;
       seen.add(tag);
-      const block = this.leafCaches.get(entry.node.key)?.get(blockIdx);
-      if (!block || block.state === 'failed') missing.push({ node: entry.node, blockIdx });
+      const cache = this.leafCaches.get(entry.node.key);
+      const block = cache?.get(blockIdx);
+      if (!block || block.state === 'failed') {
+        missing.push({ node: entry.node, blockIdx });
+      } else if (block.state === 'loading') {
+        waiting.push(this.waitUntil(
+          () => cache!.get(blockIdx)?.state !== 'loading' || gen !== this.dataGen,
+        ));
+      }
     }
-    if (missing.length > 0) {
-      await Promise.all(missing.map((m) => this.loadLeafBlock(m.node, m.blockIdx, gen)));
+    if (missing.length > 0 || waiting.length > 0) {
+      await Promise.all([
+        ...missing.map((m) => this.loadLeafBlock(m.node, m.blockIdx, gen)),
+        ...waiting,
+      ]);
     }
     if (gen !== this.dataGen || this.host.isDestroyed()) return;
     await this.hydrateRange(start, end);
   }
 
-  private loadLeafBlock(node: SkeletonNode, blockIdx: number, gen: number): Promise<void> {
+  private loadLeafBlock(
+    node: SkeletonNode,
+    blockIdx: number,
+    gen: number,
+    force = false,
+  ): Promise<void> {
     const ds = this.datasource;
     if (!ds) return Promise.resolve();
     let cache = this.leafCaches.get(node.key);
@@ -552,7 +624,17 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     if (existing && existing.state === 'loading') {
       return this.waitUntil(() => cache!.get(blockIdx)?.state !== 'loading' || gen !== this.dataGen);
     }
-    cache.set(blockIdx, { rows: [], state: 'loading', touch: ++this.touchClock });
+    // Keep prior rows visible while reloading (column-window refill). Wiping
+    // to `[]` blanked the canvas between drop and success — black voids.
+    const preserved = existing?.rows ?? [];
+    cache.set(blockIdx, {
+      rows: preserved,
+      state: 'loading',
+      touch: ++this.touchClock,
+    });
+    // `force` is informational for callers; existing loaded blocks are only
+    // re-entered via forceReload* which always calls load with force=true.
+    void force;
 
     const startRow = blockIdx * this.blockSize;
     const endRow = Math.min(node.leafCount, startRow + this.blockSize);
@@ -564,6 +646,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
         return;
       }
       this.inflight++;
+      const columnKeys = this.host.getColumnKeys?.();
       ds.getLeafRows({
         request: {
           groupPath: node.path.slice(),
@@ -572,6 +655,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
           sortModel: this.host.getSortModel(),
           filterModel: this.host.getFilterModel(),
           rowGroupCols: this.host.getRowGroupCols(),
+          ...(columnKeys && columnKeys.length > 0 ? { columnKeys } : {}),
         },
         success: (result) => {
           this.inflight = Math.max(0, this.inflight - 1);
@@ -580,7 +664,8 @@ export class ServerSideRowModelV2Controller<TRow = any> {
             resolve();
             return;
           }
-          const rows = result.rowData.slice();
+          const prevBlock = cache!.get(blockIdx);
+          const rows = this.mergeBlockRows(prevBlock?.rows, result.rowData);
           // A short / empty window (server still loading, count drift
           // between skeleton and leaves) must stay RETRYABLE — caching it
           // as 'loaded' turned a transient race into permanently blank
@@ -599,7 +684,11 @@ export class ServerSideRowModelV2Controller<TRow = any> {
         },
         fail: () => {
           this.inflight = Math.max(0, this.inflight - 1);
-          cache!.set(blockIdx, { rows: [], state: 'failed', touch: ++this.touchClock });
+          cache!.set(blockIdx, {
+            rows: preserved,
+            state: 'failed',
+            touch: ++this.touchClock,
+          });
           this.cacheEpoch++;
           resolve();
         },
@@ -663,6 +752,27 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     }
   }
 
+  /** Re-fetch leaf blocks in the band while keeping prior rows on screen. */
+  private async forceReloadBandLeafBlocks(
+    rowStart: number,
+    rowEnd: number,
+    gen: number,
+  ): Promise<void> {
+    const index = this.index;
+    if (!index) return;
+    const seen = new Set<string>();
+    const loads: Array<Promise<void>> = [];
+    for (const entry of index.entriesInRange(rowStart, rowEnd)) {
+      if (entry.kind !== 'leaf') continue;
+      const blockIdx = Math.floor(entry.leafOffset / this.blockSize);
+      const tag = `${entry.node.key}\u0000${blockIdx}`;
+      if (seen.has(tag)) continue;
+      seen.add(tag);
+      loads.push(this.loadLeafBlock(entry.node, blockIdx, gen, true));
+    }
+    if (loads.length > 0) await Promise.all(loads);
+  }
+
   // ─── flat fallback (no grouping) ─────────────────────────────────────
 
   private flatCache(): Map<number, LeafBlock<TRow>> {
@@ -683,6 +793,21 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     }
   }
 
+  /** Re-fetch flat blocks in the band while keeping prior rows on screen. */
+  private async forceReloadFlatBlocks(
+    rowStart: number,
+    rowEnd: number,
+    gen: number,
+  ): Promise<void> {
+    const first = Math.floor(Math.max(0, rowStart) / this.blockSize);
+    const last = Math.floor(Math.max(rowStart, rowEnd - 1) / this.blockSize);
+    const loads: Array<Promise<void>> = [];
+    for (let b = first; b <= last; b++) {
+      loads.push(this.loadFlatBlock(b, gen, true));
+    }
+    if (loads.length > 0) await Promise.all(loads);
+  }
+
   private async ensureFlatRange(rowStart: number, rowEnd: number, gen: number): Promise<void> {
     const ds = this.datasource;
     if (!ds) return;
@@ -695,6 +820,14 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     const loads: Array<Promise<void>> = [];
     for (let b = first; b <= last; b++) {
       const cur = cache.get(b);
+      if (cur?.state === 'loading') {
+        // Overlapping ensureRange during fast V-scroll — wait, don't hydrate
+        // empty slots under a still-loading block.
+        loads.push(this.waitUntil(
+          () => cache.get(b)?.state !== 'loading' || gen !== this.dataGen,
+        ));
+        continue;
+      }
       if (cur && cur.state !== 'failed') continue;
       loads.push(this.loadFlatBlock(b, gen));
     }
@@ -707,27 +840,35 @@ export class ServerSideRowModelV2Controller<TRow = any> {
       this.host.setRowCount(this.reportedRowCount, prev);
     }
 
+    // Hydrate contiguous loaded runs only — never push an empty window that
+    // races paint (was: hydrateWindow(0, [], count) while blocks still empty).
     const hi = this.flatRowCount > 0 ? Math.min(this.flatRowCount, end) : end;
-    const rows: TRow[] = [];
+    let run: TRow[] = [];
     let runStart = start;
-    for (let i = start; i < hi; i++) {
-      const row = cache.get(Math.floor(i / this.blockSize))?.rows[i % this.blockSize];
-      if (row === undefined) break;
-      rows.push(row);
-    }
-    if (rows.length > 0) {
+    const flush = async (): Promise<void> => {
+      if (run.length === 0) return;
       await this.host.hydrateWindow(
         runStart,
-        rows,
-        Math.max(this.flatRowCount, runStart + rows.length),
+        run,
+        Math.max(this.flatRowCount, runStart + run.length),
         false,
       );
-    } else if (this.flatRowCount > 0) {
-      await this.host.hydrateWindow(0, [], this.flatRowCount, false);
+      run = [];
+    };
+    for (let i = start; i < hi; i++) {
+      const row = cache.get(Math.floor(i / this.blockSize))?.rows[i % this.blockSize];
+      if (row === undefined) {
+        await flush();
+        runStart = i + 1;
+        continue;
+      }
+      if (run.length === 0) runStart = i;
+      run.push(row);
     }
+    await flush();
   }
 
-  private loadFlatBlock(blockIdx: number, gen: number): Promise<void> {
+  private loadFlatBlock(blockIdx: number, gen: number, force = false): Promise<void> {
     const ds = this.datasource;
     if (!ds) return Promise.resolve();
     const cache = this.flatCache();
@@ -735,7 +876,15 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     if (existing && existing.state === 'loading') {
       return this.waitUntil(() => cache.get(blockIdx)?.state !== 'loading' || gen !== this.dataGen);
     }
-    cache.set(blockIdx, { rows: [], state: 'loading', touch: ++this.touchClock });
+    // Preserve painted rows while the column-window (or soft) reload is in
+    // flight — empty loading rows were the flicker/void source.
+    const preserved = existing?.rows ?? [];
+    cache.set(blockIdx, {
+      rows: preserved,
+      state: 'loading',
+      touch: ++this.touchClock,
+    });
+    void force;
     const startRow = blockIdx * this.blockSize;
     const endRow = startRow + this.blockSize;
 
@@ -746,6 +895,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
         return;
       }
       this.inflight++;
+      const columnKeys = this.host.getColumnKeys?.();
       ds.getRows({
         request: {
           startRow,
@@ -755,6 +905,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
           rowGroupCols: [],
           groupKeys: [],
           expandedGroupKeys: [],
+          ...(columnKeys && columnKeys.length > 0 ? { columnKeys } : {}),
         },
         success: (result) => {
           this.inflight = Math.max(0, this.inflight - 1);
@@ -773,7 +924,8 @@ export class ServerSideRowModelV2Controller<TRow = any> {
           if (result.grandTotals !== undefined) {
             this.host.setGrandTotals?.(result.grandTotals);
           }
-          const rows = result.rowData.slice();
+          const prevBlock = cache.get(blockIdx);
+          const rows = this.mergeBlockRows(prevBlock?.rows, result.rowData);
           // Same retryable rule as the grouped leaf path: a window shorter
           // than the reported rowCount implies (server still settling) must
           // NOT cache as 'loaded' — that turns a transient race into
@@ -791,7 +943,11 @@ export class ServerSideRowModelV2Controller<TRow = any> {
         },
         fail: () => {
           this.inflight = Math.max(0, this.inflight - 1);
-          cache.set(blockIdx, { rows: [], state: 'failed', touch: ++this.touchClock });
+          cache.set(blockIdx, {
+            rows: preserved,
+            state: 'failed',
+            touch: ++this.touchClock,
+          });
           resolve();
         },
       });

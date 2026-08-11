@@ -162,10 +162,29 @@ export async function handleDataPipeline(
       if (add.length || update.length) {
         // Soft-refresh hydrate must still stage flashes for value changes —
         // otherwise a sort-driven refresh silently kills Change flash.
-        if (state.enableCellChangeFlash && update.length > 0) {
-          helpers.stageFlashesForUpdates(update as unknown[]);
+        // Field-merge updates so column-window slices do not wipe prior fields.
+        const mergedUpdate: unknown[] = [];
+        for (const row of update) {
+          let id: string;
+          try {
+            id = state.store.getRowId(row);
+          } catch {
+            continue;
+          }
+          const prev = state.store.getById(id) as Record<string, unknown> | undefined;
+          const next = row as Record<string, unknown>;
+          mergedUpdate.push(prev ? { ...prev, ...next } : row);
         }
-        state.store.apply({ add, update });
+        if (state.enableCellChangeFlash && mergedUpdate.length > 0) {
+          helpers.stageFlashesForUpdates(mergedUpdate);
+        }
+        // Calc Stage A / PREV — capture pre-apply rows for updates, then
+        // mark dirty so sparse SSRM viewports recompute calculated cols.
+        if (mergedUpdate.length > 0 || add.length > 0) {
+          state.calc.capturePrevForUpdates(state.store, mergedUpdate, []);
+        }
+        const results = state.store.apply({ add, update: mergedUpdate });
+        state.calc.onTransaction(results);
       }
       // Orphan sweep — a reallocation (rowCount change) wipes every slot
       // and a re-point strands the previous id; rows no slot references

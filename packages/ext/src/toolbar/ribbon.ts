@@ -1807,7 +1807,7 @@ const RIBBON_CSS = `
   padding: 10px;
   max-height: min(70vh, 420px);
   overflow: auto;
-  scrollbar-width: thin;
+  scrollbar-width: auto;
 }
 .vgext-rb-tool-flyout-body {
   display: flex;
@@ -1854,7 +1854,7 @@ const RIBBON_CSS = `
   padding: 10px 8px;
   max-height: min(70vh, 480px);
   overflow: auto;
-  scrollbar-width: thin;
+  scrollbar-width: auto;
 }
 .vgext-rb-overflow-panel > .vgext-rb-grp,
 .vgext-rb-overflow-panel > .vgext-es-seg {
@@ -2071,25 +2071,8 @@ const RIBBON_CSS = `
 .vgext-ip-search::-webkit-search-cancel-button { appearance: none; }
 
 .vgext-ip-scroll { overflow-y: auto; flex: 1 1 auto; margin: 0 -4px; padding: 0 4px;
-  /* Theme-aware scrollbar (Firefox) — muted thumb over a transparent track
-     in both modes; the raw browser default painted a glaring white rail on
-     dark themes. */
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--vg-muted-fg-color, #7f8ba0) 55%, transparent) transparent;
-}
-/* Theme-aware scrollbar (WebKit/Chromium). */
-.vgext-ip-scroll::-webkit-scrollbar { width: 10px; }
-.vgext-ip-scroll::-webkit-scrollbar-track { background: transparent; }
-.vgext-ip-scroll::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--vg-muted-fg-color, #7f8ba0) 45%, transparent);
-  border-radius: var(--vg-radius, 5px);
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-.vgext-ip-scroll::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--vg-muted-fg-color, #7f8ba0) 70%, transparent);
-  border: 2px solid transparent;
-  background-clip: padding-box;
+  /* OS-native scrollbars — no ::-webkit-scrollbar / scrollbar-color theming. */
+  scrollbar-width: auto;
 }
 .vgext-ip-cat {
   font-size: 10px; font-weight: 650; letter-spacing: 0.09em; text-transform: uppercase;

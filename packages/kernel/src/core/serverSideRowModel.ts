@@ -13,6 +13,11 @@ export interface SsrmHost<TRow> {
   getRowGroupCols(): string[];
   getGroupKeys(): string[];
   getExpandedGroupKeys(): string[];
+  /**
+   * Optional column projection for getRows / getLeafRows. When omitted or
+   * empty, datasources return full rows (legacy behaviour).
+   */
+  getColumnKeys?(): string[] | undefined;
   mergeGroupKeys?(keys: string[]): void;
   setRowCount(count: number, prevCount?: number): void;
   /** Row range to reload on soft refresh — typically the current viewport overscan. */
@@ -214,14 +219,11 @@ export class ServerSideRowModelController<TRow = any> {
       // Await reset so it cannot land after a subsequent data hydrate.
       await this.host.hydrateWindow(0, [], Math.max(this.rowCount, 0), true);
     } else {
-      // Soft refresh — re-run getRows for the visible band. When the
-      // expansion structure changed every cached flattened index below the
-      // toggle has shifted, so drop the whole cache; otherwise keep the
-      // off-screen cache and invalidate only the band.
+      // Soft refresh — re-run getRows for the visible band. Keep painted
+      // rows on screen while reloading (delete-then-fetch blanked the band).
       const range = this.host.getRefreshRange?.() ?? { rowStart: 0, rowEnd: this.cacheBlockSize };
       if (invalidateAllBlocks) {
-        // In-flight loads were issued against the old tree; the generation
-        // bump above discards their results (same contract as purge).
+        // Expansion structure changed — flattened indices shifted; drop all.
         this.blocks.clear();
         this.pending.clear();
       } else {
@@ -229,9 +231,11 @@ export class ServerSideRowModelController<TRow = any> {
         const lastBlock = Math.floor(
           Math.max(range.rowStart, range.rowEnd - 1) / this.cacheBlockSize,
         );
+        const reloads: Array<Promise<void>> = [];
         for (let b = firstBlock; b <= lastBlock; b++) {
-          this.blocks.delete(b);
+          reloads.push(this.loadBlock(b, gen, true));
         }
+        await Promise.all(reloads);
       }
       if (gen !== this.generation || this.host.isDestroyed()) return;
       await this.ensureRangeInner(range.rowStart, range.rowEnd);
@@ -258,8 +262,16 @@ export class ServerSideRowModelController<TRow = any> {
     const gen = this.generation;
 
     const needed: number[] = [];
+    const waiting: Array<Promise<void>> = [];
     for (let b = firstBlock; b <= lastBlock; b++) {
       const cur = this.blocks.get(b);
+      if (cur?.state === 'loading' || this.pending.has(b)) {
+        waiting.push(this.waitUntil(
+          () => (!this.pending.has(b) && this.blocks.get(b)?.state !== 'loading')
+            || gen !== this.generation,
+        ));
+        continue;
+      }
       if (!cur || cur.state === 'failed') {
         needed.push(b);
         continue;
@@ -278,8 +290,11 @@ export class ServerSideRowModelController<TRow = any> {
     // Dedupe
     const uniq = [...new Set(needed)];
 
-    if (uniq.length > 0) {
-      await Promise.all(uniq.map((b) => this.loadBlock(b, gen)));
+    if (uniq.length > 0 || waiting.length > 0) {
+      await Promise.all([
+        ...uniq.map((b) => this.loadBlock(b, gen)),
+        ...waiting,
+      ]);
     }
     if (gen !== this.generation || this.host.isDestroyed()) return;
     await this.hydrateLoadedRange(start, end, gen);
@@ -289,16 +304,22 @@ export class ServerSideRowModelController<TRow = any> {
     return blockIndex * this.cacheBlockSize;
   }
 
-  private loadBlock(blockIndex: number, gen: number): Promise<void> {
+  private loadBlock(blockIndex: number, gen: number, force = false): Promise<void> {
     if (this.pending.has(blockIndex)) {
       return this.waitUntil(() => !this.pending.has(blockIndex) || gen !== this.generation);
     }
     const ds = this.datasource;
     if (!ds) return Promise.resolve();
 
+    const existing = this.blocks.get(blockIndex);
+    if (existing?.state === 'loaded' && !force) {
+      return Promise.resolve();
+    }
+
     const startRow = this.blockStart(blockIndex);
     const endRow = startRow + this.cacheBlockSize;
-    this.blocks.set(blockIndex, { startRow, rows: [], state: 'loading' });
+    const preserved = existing?.rows ?? [];
+    this.blocks.set(blockIndex, { startRow, rows: preserved, state: 'loading' });
     this.pending.add(blockIndex);
 
     const run = (): Promise<void> => new Promise<void>((resolve) => {
@@ -351,6 +372,14 @@ export class ServerSideRowModelController<TRow = any> {
           if (result.groupKeys?.length) {
             this.host.mergeGroupKeys?.(result.groupKeys);
           }
+          // Field-merge onto rows kept visible during reload.
+          const prevRows = this.blocks.get(blockIndex)?.rows ?? preserved;
+          const merged: TRow[] = result.rowData.slice();
+          for (let i = 0; i < merged.length; i++) {
+            const prev = prevRows[i] as Record<string, unknown> | undefined;
+            const next = merged[i] as Record<string, unknown>;
+            if (prev && next) merged[i] = { ...prev, ...next } as TRow;
+          }
           // A window shorter than the (just-updated) rowCount implies the
           // server is still settling — cache it RETRYABLE ('failed'), not
           // 'loaded': a partially short mid-book block cached as 'loaded'
@@ -359,18 +388,18 @@ export class ServerSideRowModelController<TRow = any> {
           // count was inferred above) and stays 'loaded'.
           const expected = this.rowCount > 0
             ? Math.max(0, Math.min(this.cacheBlockSize, this.rowCount - startRow))
-            : result.rowData.length;
+            : merged.length;
           this.blocks.set(blockIndex, {
             startRow,
-            rows: result.rowData.slice(),
-            state: result.rowData.length >= expected ? 'loaded' : 'failed',
+            rows: merged.length > 0 ? merged : prevRows,
+            state: merged.length >= expected ? 'loaded' : 'failed',
           });
           resolve();
         },
         fail: () => {
           this.inflight = Math.max(0, this.inflight - 1);
           this.pending.delete(blockIndex);
-          this.blocks.set(blockIndex, { startRow, rows: [], state: 'failed' });
+          this.blocks.set(blockIndex, { startRow, rows: preserved, state: 'failed' });
           resolve();
         },
       });
@@ -410,25 +439,32 @@ export class ServerSideRowModelController<TRow = any> {
       end = Math.min(this.rowCount, end);
     }
 
-    const rows: TRow[] = [];
+    // Contiguous loaded runs only — skip gaps instead of aborting the
+    // whole window, and never push an empty hydrate that races paint.
+    let run: TRow[] = [];
+    let runStart = start;
+    const flush = async (): Promise<void> => {
+      if (run.length === 0) return;
+      await this.host.hydrateWindow(runStart, run, Math.max(this.rowCount, runStart + run.length), false);
+      run = [];
+    };
     for (let i = start; i < end; i++) {
+      if (gen !== this.generation || this.host.isDestroyed()) return;
       const b = Math.floor(i / this.cacheBlockSize);
       const block = this.blocks.get(b);
-      if (!block || block.state !== 'loaded') break;
-      const local = i - block.startRow;
-      const row = block.rows[local];
-      if (row === undefined) break;
-      rows.push(row);
-    }
-
-    if (rows.length === 0) {
-      if (this.rowCount > 0) {
-        await this.host.hydrateWindow(0, [], this.rowCount, false);
+      const local = block ? i - block.startRow : -1;
+      const row = block && (block.state === 'loaded' || block.rows.length > 0)
+        ? block.rows[local]
+        : undefined;
+      if (row === undefined) {
+        await flush();
+        runStart = i + 1;
+        continue;
       }
-      return;
+      if (run.length === 0) runStart = i;
+      run.push(row);
     }
-
-    await this.host.hydrateWindow(start, rows, Math.max(this.rowCount, start + rows.length), false);
+    await flush();
   }
 
   private waitUntil(pred: () => boolean): Promise<void> {

@@ -85,6 +85,12 @@ interface KernelGridSurface {
   clearAlertHistory?(): void;
   getAlertUnreadCount?(): number;
   onAlert?(fn: (alert: AlertEvent) => void): () => void;
+  /**
+   * Optional SSRM column-window hook (Perspective / sparse SSRM). Keeps
+   * condition + alert watched cols in `columnKeys` so hydrate + paint
+   * see fields referenced by rules even when scrolled out of the H-window.
+   */
+  setSsrmClientWatchedColumns?(ids: readonly string[]): void;
 }
 
 /** Structural mirror of kernel's `StateModule` (core/moduleState.ts) — a
@@ -203,6 +209,15 @@ export function wireIntoKernel(
     rules.recount(seed);
   };
 
+  // Perspective SSRM activates expression-host column windowing; without
+  // syncing watched cols, condition fields can be omitted from columnKeys
+  // and paint-time evaluateCell sees incomplete rows.
+  const syncSsrmWatchedColumns = (): void => {
+    g.setSsrmClientWatchedColumns?.(
+      [...watchedColIdUnion(rules, alerts.getRules())],
+    );
+  };
+
   // 2. Rule-engine adapter. Kernel's paint path supplies row/rowId/
   //    colId AND the per-frame theme kind (final-review fix: consume
   //    ctx.theme instead of calling grid.getThemeKind() per cell —
@@ -223,6 +238,8 @@ export function wireIntoKernel(
         console.warn(`[cgrid/rules] skipped rule '${err.ruleId}': ${err.message}`);
       }
       reseedCounts();
+      syncSsrmWatchedColumns();
+      g.refresh();
     },
   });
 
@@ -301,6 +318,7 @@ export function wireIntoKernel(
 
   // 4. Seed match counts from the current dataset (reseedCounts defined above).
   reseedCounts();
+  syncSsrmWatchedColumns();
 
   // 5. activeDurationMs expiry → repaint so expired matches drop
   //    their styles. refresh() is rAF-coalesced in the kernel, so a
@@ -337,6 +355,7 @@ export function wireIntoKernel(
       // setRules zeroed the counters — re-seed over the current dataset so the
       // live match counts reflect the restored rule set.
       reseedCounts();
+      syncSsrmWatchedColumns();
     },
   });
 
@@ -358,6 +377,7 @@ export function wireIntoKernel(
       console.warn(`[cgrid/rules] skipped alert rule '${err.ruleId}': ${err.message}`);
     }
     notifyAlerts();
+    syncSsrmWatchedColumns();
   };
 
   g.getAlertRules = () => alerts.getRules();
@@ -419,6 +439,7 @@ export function wireIntoKernel(
       }
       // Never restore history — session-only.
       alerts.clearHistory();
+      syncSsrmWatchedColumns();
     },
   });
 

@@ -120,42 +120,32 @@ describe('DataProviderController', () => {
     ctl.detach();
   });
 
-  it('waits for whenReady before installing an SSRM datasource on restore', async () => {
+  it('restores a CSRM provider without waiting on SSRM whenReady', async () => {
     reset();
     registerDefaultTransports();
     const catalog = new MemoryConfigBackend();
     await catalog.save({
-      providerId: 'ssrm-pos',
-      name: 'SSRM Positions',
+      providerId: 'csrm-pos',
+      name: 'CSRM Positions',
       providerType: 'mock',
-      rowModel: 'serverSide',
-      blockSize: 10,
+      rowModel: 'clientSide',
       config: { keyColumn: 'positionId', rowCount: 20, tickMs: 0, throttleEnabled: false },
     });
 
-    let ready!: () => void;
-    const readyPromise = new Promise<void>((r) => { ready = r; });
-    const datasources: unknown[] = [];
+    const rows: unknown[][] = [];
     const grid = {
-      whenReady: () => readyPromise,
-      setServerSideDatasource: (ds: unknown) => { datasources.push(ds); },
-      refreshServerSide: vi.fn(),
-      applyServerSideTransaction: vi.fn(),
+      setRowData: (r: unknown[]) => { rows.push(r); },
+      applyTransactionAsync: vi.fn(),
     };
     const ctx = mockCtx(grid);
     const ctl = new DataProviderController({ catalog, inProcess: true });
     ctl.attach(ctx);
 
-    const activate = ctl.setActiveProvider('ssrm-pos', { fromState: true });
-    await new Promise((r) => setTimeout(r, 30));
-    expect(datasources).toHaveLength(0);
-
-    ready();
-    await activate;
+    await ctl.setActiveProvider('csrm-pos', { fromState: true });
     await new Promise((r) => setTimeout(r, 40));
 
-    expect(ctl.getActiveProviderId()).toBe('ssrm-pos');
-    expect(datasources.length).toBeGreaterThan(0);
+    expect(ctl.getActiveProviderId()).toBe('csrm-pos');
+    expect(rows.length).toBeGreaterThan(0);
     expect(ctx.profiles.save).not.toHaveBeenCalled();
 
     ctl.detach();

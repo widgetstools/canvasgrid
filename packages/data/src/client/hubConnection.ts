@@ -29,7 +29,7 @@ function attachPort(port: MessagePort): PortState {
   port.onmessage = (ev: MessageEvent<HubMessage>) => {
     const data = ev.data;
     if (!data || typeof data !== 'object') return;
-    if (data.type === 'push' || data.type === 'status' || data.type === 'rowsReceived' || data.type === 'tickNotify') {
+    if (data.type === 'push' || data.type === 'status' || data.type === 'rowsReceived') {
       for (const h of state.pushHandlers) h(data);
       return;
     }

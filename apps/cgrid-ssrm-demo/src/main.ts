@@ -350,7 +350,7 @@ async function addView(spec: ViewSpec): Promise<void> {
     enableCellChangeFlash: cellFlashEnabled,
   });
   // Attach gridReady synchronously at construction (before any await) —
-  // see blotterReady. Mirrors multiBlotterSsrm's ready-promise pattern.
+  // see blotterReady.
   blotterReady.set(spec.id, new Promise<void>((resolve) => {
     const off = mount.grid.on('gridReady', () => {
       off();

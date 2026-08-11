@@ -3,8 +3,6 @@ import type {
   DataProviderConfig,
   IDataProvider,
   ProviderStatus,
-  SsrmGetRowsRequest,
-  SsrmGetRowsResult,
   Unsubscribe,
 } from '../types';
 import type { ProviderStats } from '../types/stats';
@@ -46,7 +44,6 @@ export class ProviderClientAdapter<T extends Record<string, unknown> = Record<st
   private statusHandlers = new Set<(s: ProviderStatus, e?: string) => void>();
   private errorHandlers = new Set<(e: Error) => void>();
   private rowsHandlers = new Set<(n: number) => void>();
-  private tickNotifyHandlers = new Set<() => void>();
   private offPush: Unsubscribe;
 
   constructor(config: DataProviderConfig, opts?: ProviderClientOptions) {
@@ -68,10 +65,6 @@ export class ProviderClientAdapter<T extends Record<string, unknown> = Record<st
       }
       if (msg.type === 'rowsReceived') {
         for (const h of this.rowsHandlers) h(msg.count);
-        return;
-      }
-      if (msg.type === 'tickNotify') {
-        for (const h of this.tickNotifyHandlers) h();
         return;
       }
       if (msg.type === 'push') {
@@ -168,24 +161,6 @@ export class ProviderClientAdapter<T extends Record<string, unknown> = Record<st
     return () => { this.statusHandlers.delete(handler); };
   }
 
-  /** SSRM grids subscribe to soft-refresh notifications. */
-  onTickNotify(handler: () => void): Unsubscribe {
-    this.tickNotifyHandlers.add(handler);
-    return () => { this.tickNotifyHandlers.delete(handler); };
-  }
-
-  async getRows(req: SsrmGetRowsRequest): Promise<SsrmGetRowsResult<T>> {
-    const res = await this.hub.post({
-      v: 1,
-      id: '',
-      type: 'getRows',
-      providerId: this.providerId,
-      request: req,
-    });
-    if (res.type !== 'getRowsResult') throw new Error('Unexpected hub response');
-    return res.result as SsrmGetRowsResult<T>;
-  }
-
   /** Live hub diagnostics (Markets ProviderStats parity). */
   async getStats(): Promise<ProviderStats> {
     const res = await this.hub.post({
@@ -209,6 +184,5 @@ export class ProviderClientAdapter<T extends Record<string, unknown> = Record<st
     this.statusHandlers.clear();
     this.errorHandlers.clear();
     this.rowsHandlers.clear();
-    this.tickNotifyHandlers.clear();
   }
 }

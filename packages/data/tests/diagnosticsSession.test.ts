@@ -1,16 +1,21 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryConfigBackend } from '../src/catalog/ConfigBackend';
 import { createDiagnosticsSession } from '../src/editor/diagnosticsSession';
 import { mountProviderEditor } from '../src/editor/ProviderEditor';
 import { _resetHubConnectionForTests } from '../src/client/hubConnection';
 import { _resetTransportRegistryForTests } from '../src/registry/transports';
 import { _resetDefaultTransportsFlagForTests } from '../src/transports/registerDefaults';
+import {
+  registerDataProviderFeedControl,
+  _resetDataProviderFeedControlsForTests,
+} from '../src/feedControlRegistry';
 import type { DataProviderConfig } from '../src/types';
 
 function reset(): void {
   _resetHubConnectionForTests();
   _resetTransportRegistryForTests();
   _resetDefaultTransportsFlagForTests();
+  _resetDataProviderFeedControlsForTests();
 }
 
 afterEach(reset);
@@ -47,6 +52,23 @@ describe('diagnosticsSession', () => {
     await session.stop();
     expect(session.getState().status).toBe('idle');
     expect(session.getState().stats.rowCount).toBe(0);
+
+    session.destroy();
+  });
+
+  it('stop also invokes registered non-hub feed controls (Perspective bridge)', async () => {
+    reset();
+    const stop = vi.fn();
+    const restart = vi.fn();
+    registerDataProviderFeedControl('diag-psp-1', { stop, restart });
+
+    const session = createDiagnosticsSession({ inProcess: true });
+    await session.ensure(mockCfg('diag-psp-1'));
+    await session.stop();
+    expect(stop).toHaveBeenCalledTimes(1);
+
+    await session.restart(mockCfg('diag-psp-1'));
+    expect(restart).toHaveBeenCalledTimes(1);
 
     session.destroy();
   });
