@@ -17,8 +17,14 @@ export type VelocityGridApi<T = unknown> = {
   getQuickFilterText(): string;
   setRowGroupColumns(cols: string[]): void;
   getRowGroupColumns(): string[];
+  setExpanded(key: string, open: boolean): void;
+  expandAll(): void;
+  collapseAll(): void;
   setPivotMode(on: boolean): void;
   isPivotMode(): boolean;
+  /** Explicit pipeline path only — fail-closed when sparse/grouped. */
+  ensureFullyHydrated(): Promise<boolean>;
+  refillServerSideColumnKeys(): void;
   getSelectedRows(): T[];
   deselectAll(): void;
   sizeColumnsToFit(): void;

@@ -21,8 +21,8 @@ vg-new-grid (ApiFacade → RowModel → Paint / Worker / SSRM)
 | Mode | Ownership | Notes |
 |------|-----------|--------|
 | `clientSide` | Worker pipeline Filter→Group→Pivot→Sort→Agg→Viewport | Full book |
-| `serverSide` sparse | Host (Perspective View) owns query; grid owns block cache + paint | Default Markets path |
-| `serverSide` + `clientPipeline: true` | Full hydrate then CSRM passes | Explicit; fail closed if incomplete |
+| `serverSide` sparse | Host (Perspective View) owns query; grid owns FlattenIndex + block cache + paint | Default Markets path — `getGroupSkeleton` / `getLeafRows` / `getGroupLeafIds` |
+| `serverSide` + `clientPipeline: true` | Full hydrate then CSRM passes | Explicit via `ensureFullyHydrated`; fail closed if incomplete / grouped |
 
 ### Merge / ticks
 

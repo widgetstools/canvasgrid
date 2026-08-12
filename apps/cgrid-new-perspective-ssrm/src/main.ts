@@ -14,10 +14,18 @@ const shellHost = document.createElement('div');
 shellHost.style.height = '100%';
 root.appendChild(shellHost);
 
+const params = new URLSearchParams(location.search);
+const groupBy = (params.get('groupBy') ?? '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
 let api: ReturnType<VelocityGrid<PositionRow>['getApi']> | null = null;
 const shell = new VelocityGridExtShell(shellHost, {
   gridId: 'new-perspective-ssrm',
-  title: 'Perspective SSRM',
+  title: groupBy.length
+    ? `Perspective SSRM · groupBy ${groupBy.join(' › ')}`
+    : 'Perspective SSRM',
   getGridApi: () => {
     if (!api) throw new Error('grid not ready');
     return api;
@@ -27,10 +35,25 @@ const shell = new VelocityGridExtShell(shellHost, {
 const opts = provider.gridOptions();
 const grid = new VelocityGrid<PositionRow>(shell.getGridHost(), {
   ...opts,
-  onGridReady: () => {
+  onGridReady: (gridApi) => {
     provider.attach(grid);
+    if (groupBy.length) {
+      gridApi.setRowGroupColumns(groupBy);
+      // Skeleton ingest is async — expand once known keys land.
+      const tryExpand = (): void => {
+        gridApi.expandAll();
+        if (gridApi.getRowCount() <= groupBy.length) {
+          setTimeout(tryExpand, 40);
+        }
+      };
+      setTimeout(tryExpand, 40);
+    }
   },
 });
 api = grid.getApi();
 
-(window as unknown as { __provider: StompPerspectiveProvider }).__provider = provider;
+(window as unknown as {
+  __provider: StompPerspectiveProvider;
+  __gridApi: typeof api;
+}).__provider = provider;
+(window as unknown as { __gridApi: typeof api }).__gridApi = api;

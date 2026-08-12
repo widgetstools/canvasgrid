@@ -125,14 +125,34 @@ export class CanvasPainter {
         this.flashUntil.delete(id);
       }
 
+      const isGroup = row.__isGroup === true;
+      const isFooter = row.__isFooter === true || row.__isGrandTotal === true;
+      if (isGroup || isFooter) {
+        ctx.fillStyle = isFooter ? c.headerBg : (this.opts.theme === 'dark' ? '#1a2330' : '#eef3f8');
+        ctx.fillRect(0, y, cssW, rowHeight);
+      }
       ctx.fillStyle = c.text;
-      ctx.font = '400 12px "IBM Plex Sans", system-ui, sans-serif';
+      ctx.font = isGroup || isFooter
+        ? '600 12px "IBM Plex Sans", system-ui, sans-serif'
+        : '400 12px "IBM Plex Sans", system-ui, sans-serif';
       let cx = -args.scrollLeft;
-      for (const col of args.columns) {
+      for (let ci = 0; ci < args.columns.length; ci++) {
+        const col = args.columns[ci]!;
         if (cx + col.width > 0 && cx < cssW) {
           const field = col.field ?? col.colId;
-          const val = row[field];
-          const text = val == null ? '' : String(val);
+          let text = '';
+          if (isGroup && ci === 0) {
+            const depth = Number(row.__groupDepth ?? 0);
+            const key = String(row.__groupKey ?? '');
+            const label = key.includes(':') ? key.split('::').pop()?.split(':').pop() ?? key : key;
+            const count = row.__leafCount ?? '';
+            text = `${'  '.repeat(depth)}▸ ${label}  (${count})`;
+          } else if (isFooter && ci === 0) {
+            text = row.__isGrandTotal ? 'Grand Total' : 'Total';
+          } else {
+            const val = row[field];
+            text = val == null ? '' : String(val);
+          }
           ctx.save();
           ctx.beginPath();
           ctx.rect(cx, y, col.width, rowHeight);

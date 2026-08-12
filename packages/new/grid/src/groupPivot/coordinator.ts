@@ -1,6 +1,6 @@
 /**
  * Group / agg / pivot coordinator — sparse SSRM fail-closed for pivot.
- * Full GroupPass/PivotPass algorithms port in follow-on; API surface is stable.
+ * Expansion is local (SSRM FlattenIndex rebuild); structure changes purge.
  */
 
 export class GroupPivotCoordinator {
@@ -9,11 +9,15 @@ export class GroupPivotCoordinator {
   private valueCols: Array<{ colId: string; aggFunc: string }> = [];
   private pivotMode = false;
   private expanded = new Set<string>();
+  private knownKeys: string[] = [];
 
   constructor(
     private readonly opts: {
       isSparseSsrm: () => boolean;
-      onChanged: () => void;
+      /** Row-group / pivot / value col changes — purge SSRM. */
+      onStructureChanged: () => void;
+      /** Expand/collapse — local FlattenIndex reflow. */
+      onExpansionChanged: () => void;
     },
   ) {}
 
@@ -23,7 +27,9 @@ export class GroupPivotCoordinator {
 
   setRowGroupColumns(cols: string[]): void {
     this.rowGroupCols = cols.slice();
-    this.opts.onChanged();
+    this.expanded.clear();
+    this.knownKeys = [];
+    this.opts.onStructureChanged();
   }
 
   getPivotColumns(): string[] {
@@ -32,16 +38,16 @@ export class GroupPivotCoordinator {
 
   setPivotColumns(cols: string[]): void {
     this.pivotCols = cols.slice();
-    this.opts.onChanged();
+    this.opts.onStructureChanged();
   }
 
   getValueColumns(): Array<{ colId: string; aggFunc: string }> {
     return this.valueCols.slice();
   }
 
-  setValueColumns(cols: Array<{ colId: string; aggFunc: string }>): void {
+  setValueColumns(cols: Array<{ colId: string; aggFunc: string }> ): void {
     this.valueCols = cols.slice();
-    this.opts.onChanged();
+    this.opts.onStructureChanged();
   }
 
   isPivotMode(): boolean {
@@ -57,7 +63,7 @@ export class GroupPivotCoordinator {
       return false;
     }
     this.pivotMode = on;
-    this.opts.onChanged();
+    this.opts.onStructureChanged();
     return true;
   }
 
@@ -68,16 +74,24 @@ export class GroupPivotCoordinator {
   setExpanded(key: string, open: boolean): void {
     if (open) this.expanded.add(key);
     else this.expanded.delete(key);
-    this.opts.onChanged();
+    this.opts.onExpansionChanged();
+  }
+
+  getExpandedGroupKeys(): string[] {
+    return [...this.expanded];
+  }
+
+  setKnownGroupKeys(keys: readonly string[]): void {
+    this.knownKeys = keys.slice();
   }
 
   expandAll(): void {
-    /* populated when skeleton keys known */
-    this.opts.onChanged();
+    for (const k of this.knownKeys) this.expanded.add(k);
+    this.opts.onExpansionChanged();
   }
 
   collapseAll(): void {
     this.expanded.clear();
-    this.opts.onChanged();
+    this.opts.onExpansionChanged();
   }
 }

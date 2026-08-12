@@ -1,18 +1,30 @@
+import type { SkeletonGroup } from './flattenIndex';
+
+export type { SkeletonGroup, SkeletonNode } from './flattenIndex';
+
+export type SsrmSortModel = Array<{ colId: string; direction: 'asc' | 'desc' }>;
+export type SsrmFilterModel = Record<string, unknown>;
+
 export type SsrmGetRowsRequest = {
   startRow: number;
   endRow: number;
-  sortModel: Array<{ colId: string; direction: 'asc' | 'desc' }>;
-  filterModel: Record<string, unknown>;
+  sortModel: SsrmSortModel;
+  filterModel: SsrmFilterModel;
   rowGroupCols: string[];
   groupKeys: string[];
+  expandedGroupKeys?: string[];
   columnKeys?: string[];
   quickFilterText?: string;
 };
 
 export type SsrmRowsResult<T> = {
-  rows: T[];
-  rowCount: number;
+  /** Preferred payload field (greenfield). */
+  rows?: T[];
+  /** Legacy AG/kernel alias — accepted by the engine. */
+  rowData?: T[];
+  rowCount?: number;
   groupKeys?: string[];
+  grandTotals?: Record<string, unknown> | null;
 };
 
 export type IServerSideGetRowsParams<T> = {
@@ -21,35 +33,32 @@ export type IServerSideGetRowsParams<T> = {
   fail: () => void;
 };
 
-export type SkeletonNode = {
-  key: string;
-  field?: string;
-  children?: SkeletonNode[];
-  leafCount?: number;
-  aggregates?: Record<string, unknown>;
-};
-
 export type IServerSideGetSkeletonParams = {
-  request: { rowGroupCols: string[]; sortModel: SsrmGetRowsRequest['sortModel']; filterModel: Record<string, unknown> };
-  success: (r: { roots: SkeletonNode[]; rowCount: number }) => void;
+  request: {
+    rowGroupCols: string[];
+    sortModel: SsrmSortModel;
+    filterModel: SsrmFilterModel;
+  };
+  success: (r: { groups: SkeletonGroup[] }) => void;
   fail: () => void;
 };
 
 export type IServerSideGetLeafRowsParams<T> = {
   request: {
-    groupKeys: string[];
+    groupPath: string[];
     startRow: number;
     endRow: number;
     columnKeys?: string[];
-    sortModel: SsrmGetRowsRequest['sortModel'];
-    filterModel: Record<string, unknown>;
+    sortModel: SsrmSortModel;
+    filterModel: SsrmFilterModel;
+    rowGroupCols: string[];
   };
-  success: (r: { rows: T[] }) => void;
+  success: (r: { rows?: T[]; rowData?: T[] }) => void;
   fail: () => void;
 };
 
 export type IServerSideGetGroupLeafIdsParams = {
-  request: { groupKeys: string[] };
+  request: { groupPath: string[]; rowGroupCols: string[] };
   success: (r: { ids: string[] }) => void;
   fail: () => void;
 };
@@ -70,4 +79,8 @@ export function isServerSideDatasourceV2<T>(
     && typeof ds === 'object'
     && typeof (ds as IServerSideDatasourceV2).getRows === 'function'
     && typeof (ds as IServerSideDatasourceV2).getGroupSkeleton === 'function';
+}
+
+export function resultRows<T>(r: { rows?: T[]; rowData?: T[] }): T[] {
+  return r.rows ?? r.rowData ?? [];
 }

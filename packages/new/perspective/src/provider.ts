@@ -1,6 +1,9 @@
 import type {
   IServerSideDatasourceV2,
+  IServerSideGetGroupLeafIdsParams,
+  IServerSideGetLeafRowsParams,
   IServerSideGetRowsParams,
+  IServerSideGetSkeletonParams,
   VelocityGridOptions,
 } from '@wellsfargo-starui/vg-new-grid';
 import { registerDataProviderFeedControl } from '@wellsfargo-starui/vg-new-data';
@@ -20,7 +23,7 @@ type AttachableGrid = {
 };
 
 /**
- * One View onto a shared book — sparse SSRM datasource.
+ * One View onto a shared book — sparse SSRM v2 datasource.
  */
 export class StompPerspectiveProvider implements IServerSideDatasourceV2<PositionRow> {
   readonly viewId: string;
@@ -54,12 +57,14 @@ export class StompPerspectiveProvider implements IServerSideDatasourceV2<Positio
   gridOptions(): VelocityGridOptions<PositionRow> {
     return {
       getRowId: (r) => r.positionId,
+      rowIdField: 'positionId',
       columnDefs: [
         { field: 'positionId', headerName: 'Id', width: 100 },
-        { field: 'desk', headerName: 'Desk', width: 80 },
+        { field: 'desk', headerName: 'Desk', width: 80, enableRowGroup: true },
+        { field: 'region', headerName: 'Region', width: 80, enableRowGroup: true },
         { field: 'ticker', headerName: 'Ticker', width: 90 },
-        { field: 'pnl', headerName: 'PnL', width: 100 },
-        { field: 'dailyPnl', headerName: 'Daily', width: 100 },
+        { field: 'pnl', headerName: 'PnL', width: 100, enableValue: true, aggFunc: 'sum' },
+        { field: 'dailyPnl', headerName: 'Daily', width: 100, enableValue: true, aggFunc: 'sum' },
       ],
       rowModelType: 'serverSide',
       serverSideDatasource: this,
@@ -89,13 +94,21 @@ export class StompPerspectiveProvider implements IServerSideDatasourceV2<Positio
     }, () => params.fail());
   }
 
-  getGroupSkeleton(params: {
-    request: unknown;
-    success: (r: { roots: []; rowCount: number }) => void;
-    fail: () => void;
-  }): void {
-    void this.book.getSsrmRows(this.viewId, { startRow: 0, endRow: 1 }).then((r) => {
-      params.success({ roots: [], rowCount: r.rowCount });
+  getGroupSkeleton(params: IServerSideGetSkeletonParams): void {
+    void this.book.getGroupSkeleton(this.viewId, params.request).then((r) => {
+      params.success(r);
+    }, () => params.fail());
+  }
+
+  getLeafRows(params: IServerSideGetLeafRowsParams<PositionRow>): void {
+    void this.book.getLeafRows(this.viewId, params.request).then((r) => {
+      params.success(r);
+    }, () => params.fail());
+  }
+
+  getGroupLeafIds(params: IServerSideGetGroupLeafIdsParams): void {
+    void this.book.getGroupLeafIds(this.viewId, params.request).then((r) => {
+      params.success(r);
     }, () => params.fail());
   }
 

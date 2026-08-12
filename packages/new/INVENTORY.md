@@ -14,12 +14,12 @@ Status legend: `todo` · `wip` · `done` · `deferred`
 | K-CSRM-01 | Client-side row model + worker pipeline order | done |
 | K-CSRM-02 | `setRowData` / sync + async transactions | done |
 | K-CSRM-03 | Async conflation + scroll-defer | done |
-| K-SSRM-01 | Sparse SSRM v2 skeleton (`getGroupSkeleton` / `getLeafRows` / `getGroupLeafIds`) | wip |
-| K-SSRM-02 | Block cache + column windows | wip |
+| K-SSRM-01 | Sparse SSRM v2 skeleton (`getGroupSkeleton` / `getLeafRows` / `getGroupLeafIds`) | done |
+| K-SSRM-02 | Block cache + column windows | done |
 | K-SSRM-03 | Id-based null-safe field merge | done |
-| K-SSRM-04 | Soft refresh on-chain + dataGen bail | wip |
-| K-SSRM-05 | `ensureFullyHydrated` fail-closed | wip |
-| K-SSRM-06 | Explicit client-pipeline mode | wip |
+| K-SSRM-04 | Soft refresh on-chain + dataGen bail | done |
+| K-SSRM-05 | `ensureFullyHydrated` fail-closed | done |
+| K-SSRM-06 | Explicit client-pipeline mode | done |
 | K-SSRM-07 | Expression host + distinct values hooks | wip |
 | K-COL-01 | ColDefs / groups / defaultColDef / types | wip |
 | K-COL-02 | Pin / hide / flex / width / column state | wip |
@@ -29,7 +29,7 @@ Status legend: `todo` · `wip` · `done` · `deferred`
 | K-FILTER-02 | Set filter + distinct values | todo |
 | K-FILTER-03 | Quick filter + external filter | wip |
 | K-FILTER-04 | One filter-model shape (no legacy dual) | wip |
-| K-GROUP-01 | Row grouping API + expand/collapse | wip |
+| K-GROUP-01 | Row grouping API + expand/collapse | done |
 | K-GROUP-02 | Aggregations + footers / grand totals | wip |
 | K-GROUP-03 | Sticky groups | wip |
 | K-PIVOT-01 | Pivot mode (CSRM / pipeline) | wip |

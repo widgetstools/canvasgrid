@@ -33,6 +33,8 @@ export type VelocityGridOptions<T = unknown> = {
   columnDefs: ColDef<T>[];
   rowData?: T[];
   getRowId?: (row: T) => string;
+  /** Field stamped on synthesized SSRM group/footer rows. Default `id`. */
+  rowIdField?: string;
   rowModelType?: RowModelType;
   /** Explicit CSRM-over-SSRM hydrate. Never auto for sparse Perspective. */
   serverSideEnableClientSidePipeline?: boolean;

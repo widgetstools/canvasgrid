@@ -31,7 +31,8 @@ describe('GroupPivotCoordinator', () => {
     try {
       const g = new GroupPivotCoordinator({
         isSparseSsrm: () => true,
-        onChanged: () => {},
+        onStructureChanged: () => {},
+        onExpansionChanged: () => {},
       });
       expect(g.setPivotMode(true)).toBe(false);
       expect(g.isPivotMode()).toBe(false);

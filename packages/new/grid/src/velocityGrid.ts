@@ -3,6 +3,7 @@ import { AsyncTransactionQueue } from './csrm/asyncTransactions';
 import { ColumnModel } from './columns/columnModel';
 import { GroupPivotCoordinator } from './groupPivot/coordinator';
 import { CanvasPainter } from './paint/canvasPainter';
+import { buildSsrmColumnKeys } from './ssrm/columnKeys';
 import { ServerSideRowModel } from './ssrm/serverSideRowModel';
 import type { VelocityGridApi } from './api/facade';
 import type {
@@ -77,8 +78,13 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
     this.csrm = new ClientSideRowModel(this.getRowId, () => options.columnDefs ?? []);
     this.groupPivot = new GroupPivotCoordinator({
       isSparseSsrm: () => this.isSparseSsrm(),
-      onChanged: () => {
+      onStructureChanged: () => {
         if (this.rowModelType === 'serverSide') void this.ssrm.refresh({ purge: true });
+        else this.schedulePaint();
+        this.options.onModelUpdated?.();
+      },
+      onExpansionChanged: () => {
+        if (this.rowModelType === 'serverSide') void this.ssrm.refreshExpansion();
         else this.schedulePaint();
         this.options.onModelUpdated?.();
       },
@@ -88,6 +94,33 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
       getRowId: this.getRowId,
       isDestroyed: () => this.destroyed,
       getRowGroupCols: () => this.groupPivot.getRowGroupColumns(),
+      getExpandedGroupKeys: () => this.groupPivot.getExpandedGroupKeys(),
+      getSortModel: () => this.csrm.getSortModel(),
+      getFilterModel: () => this.csrm.getFilterModel() as Record<string, unknown>,
+      getQuickFilterText: () => this.quickFilterText,
+      getColumnKeys: () => {
+        const vis = this.columns.getVisible().map((c) => c.colId);
+        return buildSsrmColumnKeys({
+          visibleColIds: vis,
+          rowIdField: options.rowIdField ?? 'id',
+          sortColIds: this.csrm.getSortModel().map((s) => s.colId),
+          rowGroupColIds: this.groupPivot.getRowGroupColumns(),
+        });
+      },
+      getRefreshRange: () => {
+        const rh = this.options.rowHeight ?? 28;
+        const start = Math.floor(this.scrollTop / rh);
+        const end = start + Math.ceil(this.wrap.clientHeight / rh) + 5;
+        return { rowStart: start, rowEnd: Math.max(start + 1, end) };
+      },
+      setRowCount: (count) => {
+        this.ssrmRowCount = count;
+        this.schedulePaint();
+      },
+      setGroupKeys: (keys) => {
+        this.groupPivot.setKnownGroupKeys(keys);
+      },
+      requestViewport: () => this.schedulePaint(),
       isSparse: () => this.isSparseSsrm(),
       wantsClientPipeline: () => this.clientPipeline,
       hydrateWindow: (start, rows, rowCount, replace) => {
@@ -95,13 +128,18 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
           this.ssrmRows = rows.slice();
         } else {
           const next = this.ssrmRows.slice();
+          // Grow sparse array to cover hydrate window.
+          if (next.length < start + rows.length) next.length = start + rows.length;
           for (let i = 0; i < rows.length; i++) next[start + i] = rows[i]!;
           this.ssrmRows = next;
         }
         this.ssrmRowCount = rowCount;
         this.schedulePaint();
       },
-    }, { cacheBlockSize: options.cacheBlockSize });
+    }, {
+      cacheBlockSize: options.cacheBlockSize,
+      rowIdField: options.rowIdField ?? 'id',
+    });
 
     this.asyncTx = new AsyncTransactionQueue<T>({
       conflate: options.asyncTransactionConflate !== false,
@@ -187,8 +225,13 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
         this.csrm.setRowGroupColumns(cols);
       },
       getRowGroupColumns: () => this.groupPivot.getRowGroupColumns(),
+      setExpanded: (key, open) => { this.groupPivot.setExpanded(key, open); },
+      expandAll: () => { this.groupPivot.expandAll(); },
+      collapseAll: () => { this.groupPivot.collapseAll(); },
       setPivotMode: (on) => { this.groupPivot.setPivotMode(on); },
       isPivotMode: () => this.groupPivot.isPivotMode(),
+      ensureFullyHydrated: () => this.ssrm.ensureFullyHydrated(),
+      refillServerSideColumnKeys: () => { void this.ssrm.refillColumnKeys(); },
       getSelectedRows: () => {
         const rows = this.visibleRows();
         return rows.filter((r) => this.selected.has(this.getRowId(r)));
