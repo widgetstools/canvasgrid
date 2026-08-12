@@ -56,8 +56,7 @@ import type {
   GroupPassOutput,
 } from './groupPass';
 import { ComparatorRegistry, type ComparatorFn } from '../comparatorRegistry';
-// PORT-NOTE: was '../../core/pivotColumns' (out of the worker port's scope).
-import { decodePivotResultColumnId } from '../interop/pivotColumnIds';
+import { decodePivotResultColumnId } from '../../core/pivotColumns';
 import { encodePivotValueKey, PIVOT_PATH_SEP, type PivotPassOutput } from './pivotPass';
 import type { CalcValueSource } from './calcPass';
 

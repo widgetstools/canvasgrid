@@ -2,11 +2,13 @@
  * PORT-NOTE: NOT a copied legacy test — added by the worker port for
  * required refactor #3.
  *
- * Legacy implemented the sticky-band ancestor walk twice: once over CSRM
+ * Legacy implements the sticky-band ancestor walk twice: once over CSRM
  * visible-order entries (`worker.ts::computeStickyAncestors`) and once over
- * sparse SSRM rows (`computeSsrmStickyAncestors`). The port factors the walk
- * into `worker/stickyAncestors.ts` and leaves each caller only its row source
- * and its display-field resolution.
+ * sparse SSRM rows (`core/ssrmRowMeta.ts::computeSsrmStickyAncestors`). The
+ * port factors the CSRM side into `worker/stickyAncestors.ts`; the SSRM side
+ * keeps its legacy-verbatim inline walk so `core/` takes no runtime dependency
+ * on a worker module, so the two implementations must agree on the same
+ * invariants.
  *
  * Nothing in the parity set covers either walk — `stickyGroupsClip.test.ts`
  * feeds the renderer a literal `stickyAncestors` array — so the shared
@@ -19,7 +21,7 @@ import {
   SSRM_ROW_META_KEY,
   computeSsrmStickyAncestors,
   type SsrmRowMeta,
-} from '../src/worker/interop/ssrmRowMeta';
+} from '../src/core/ssrmRowMeta';
 import { createWorkerHost } from '../src/worker/worker';
 import type {
   StickyAncestor, WorkerRequest, WorkerResponse, WorkerPush,

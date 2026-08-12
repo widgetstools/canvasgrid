@@ -40,7 +40,7 @@ import type { WorkerCoordinator } from '../core/workerCoordinator';
 import type { ServerSideRowModelController } from '../core/serverSideRowModel';
 import type { ServerSideRowModelV2Controller } from '../core/serverSideRowModelV2';
 import { isAutoGroupColumnId } from '../core/autoGroupColumn';
-import { parseCompositeGroupKey } from '../worker/interop/ssrmRowMeta';
+import { parseCompositeGroupKey } from '../core/ssrmRowMeta';
 import { isServerSideDatasourceV2 } from '../types/ssrm';
 import { PivotEngine, type PivotEngineDeps, type PivotEngineOptions } from '../core/pivotEngine';
 import { GroupingCoordinator, type GroupingCoordinatorDeps, type GroupingCoordinatorOptions } from '../core/groupingCoordinator';

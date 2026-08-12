@@ -28,9 +28,9 @@ model, viewport/virtualization/paint infrastructure, the worker protocol and dat
 the renderer and theming layers, and the full interaction layer. The grid host
 (`velocityGrid.ts`) and its split into controllers is in progress.
 
-**Package suite: 3,100 passing / 3 failing across 220 files.** 210 of those files are legacy
-tests running byte-identical; **exactly one** carries an edit, and it is an import path with a
-`PORT-NOTE`. No assertion has been deleted, loosened, or skipped anywhere in the rebuild.
+**Package suite: 3,100 passing / 3 failing across 220 files.** All 210 copied legacy test
+files are **byte-identical** to their originals — zero edits remain. No assertion has been
+deleted, loosened, or skipped anywhere in the rebuild.
 
 **The 3 failures are the two known-bad legacy files below — there are no other failures.**
 
@@ -43,19 +43,46 @@ Files under `src/renderer/`, `src/theming/`, and `src/icons/` are currently an u
 dependency closure dragged in by three column gate tests. They are a starting point for the
 renderer port, **not** finished work, and none of the K-PAINT / K-THEME rows may cite them.
 
-### Duplication debt to retire (`src/worker/interop/`)
+### Duplication debt — retired
 
-Four modules are vendored there because the worker needs them and their owning layer isn't
-ported. Each carries a `PORT-NOTE` naming what should import what once it lands. Two are
-load-bearing and fail *silently* if they drift:
+`src/worker/interop/` is **gone**. The four modules vendored there during the worker port
+(because their owning layers hadn't landed) are retired now that those layers have:
 
-- `aggMath` must stay identical to the status-bar copy, or the aggregation panel and the
-  worker will report different numbers for the same column.
-- `pivotColumnIds` redeclares the colId grammar that `src/core/pivotColumns.ts` also owns.
-  It is not imported from there because that module already imports the worker's `pivotPass`,
-  so reading it back would close a cycle. On drift, `decodePivotResultColumnId` returns null
-  and sorting a pivot-result column stops working with no error anywhere.
-  `pivotColumnIdGrammar.port.test.ts` pins the two together so drift surfaces as a red test.
+- `trimInput` was dead — zero importers. Deleted.
+- `aggMath` differed from the status-bar copy only in comments. `worker/aggFuncRegistry.ts`
+  now imports `../interaction/statusBar/aggMath`, which is legacy's own wiring and its own
+  documented decision that exactly one bundle carries the canonical copy.
+- `pivotColumnIds` was created on a false premise. `worker/passes/sortPass.ts` now imports
+  `decodePivotResultColumnId` from `core/pivotColumns` exactly as legacy does. A cycle *does*
+  form (`pivotPass → worker/dataPipeline → sortPass → core/pivotColumns → pivotPass`, since
+  `pivotPass` reaches `sortPass` transitively), but **legacy's graph contains the identical
+  cycle**, so the duplicate bought nothing legacy wasn't already living with.
+- `ssrmRowMeta` was the one with real behavioral drift: the worker copy delegated sticky-ancestor
+  traversal to `worker/stickyAncestors`, while `core/ssrmRowMeta` kept the legacy inline walk.
+  Resolved toward `core/`, keeping the legacy-verbatim version — adopting the refactor would have
+  made `core/` take a *value* import on worker-layer code and introduced two cycles legacy does
+  not have.
+
+`aggFuncRegistry.ts`, `sortPass.ts`, and `core/ssrmRowMeta.ts` are now byte-identical to legacy.
+There are zero `PORT-NOTE` comments left anywhere in `src/`.
+
+**Remaining, by choice:** the sticky-walk dedup is half-done. The CSRM caller in `worker/worker.ts`
+uses the shared `collectStickyAncestors`; the SSRM caller keeps its own inline copy of the same
+traversal. Two implementations of one subtle algorithm can drift, so `stickyAncestorWalk.port.test.ts`
+pins both against the same invariants. The true fix is moving `collectStickyAncestors` to a
+layer-neutral module both `core/` and `worker/` may import — a deliberate divergence from legacy.
+
+### Encapsulation debt from the host split
+
+Making the five facades' `Deps` interfaces satisfiable meant dropping `private` from ~90
+members of `VelocityGrid`. That widens the host's internal surface. It was mechanically
+necessary for the extraction, but it is real debt — tightening it means introducing narrower
+accessor seams rather than exposing whole members.
+
+The split covers 5 of the 7 seams in §3. The **column facade** and the **lifecycle/wiring
+core** remain inline because their methods are scattered across roughly fifteen sites rather
+than contiguous, so extraction is multi-range surgery. The column *state* logic already lives
+in `ColumnStateManager`; what stays inline is thin delegation plus interaction glue.
 
 ### Uncovered by any parity gate
 
@@ -79,15 +106,15 @@ exercising them. Refactors there rest on port-added tests only — treat with co
 | ID | Feature | Status | Gap vs legacy |
 |----|---------|--------|---------------|
 | K-CSRM-01 | Client-side row model + worker pipeline order | parity | Real worker ported; `groupPass` `quickFilterPass` `calcPassStageA/B` `viewportSlicer*` `chunkFormat*` green |
-| K-CSRM-02 | `setRowData` / sync + async transactions | partial | Worker-side `TransactionQueue` ported; end-to-end needs the grid shell |
+| K-CSRM-02 | `setRowData` / sync + async transactions | parity | Real host landed; `velocityGrid.integration` green |
 | K-CSRM-03 | Async conflation + scroll-defer | parity | Per-rAF push coalescing green (`workerClientCoalesce`) |
-| K-SSRM-01 | Sparse SSRM v2 skeleton | partial | Closest to real; still lacks v2 controller depth |
-| K-SSRM-02 | Block cache + column windows | partial | |
-| K-SSRM-03 | Id-based null-safe field merge | partial | |
-| K-SSRM-04 | Soft refresh on-chain + dataGen bail | partial | |
-| K-SSRM-05 | `ensureFullyHydrated` fail-closed | partial | |
-| K-SSRM-06 | Explicit client-pipeline mode | partial | |
-| K-SSRM-07 | Expression host + distinct values hooks | partial | |
+| K-SSRM-01 | Sparse SSRM v2 skeleton | parity | `ssrmV2Controller` `ssrmV2FirstWave` `ssrmFlattenIndex` `ssrmRowMeta` green |
+| K-SSRM-02 | Block cache + column windows | parity | `ssrmBlockInvalidation` `ssrmColumnKeys` green |
+| K-SSRM-03 | Id-based null-safe field merge | parity | Preserved through the collapse; `ssrmResortOnTick` green |
+| K-SSRM-04 | Soft refresh on-chain + dataGen bail | parity | Adaptive pacing is a mode-profile flag |
+| K-SSRM-05 | `ensureFullyHydrated` fail-closed | parity | `fullHydrate: 'refuse-when-grouped'` profile flag |
+| K-SSRM-06 | Explicit client-pipeline mode | parity | Now a first-class engine mode, not a duck-typed branch |
+| K-SSRM-07 | Expression host + distinct values hooks | parity | `distinctValuesPass` green |
 | K-COL-01 | ColDefs / groups / defaultColDef / types | parity | `propertyChain` `columnTypes` `columnTree` `columnGroupState` `columnGroupMutation` `columnOrder` green |
 | K-COL-02 | Pin / hide / flex / width / column state | parity | State model only — `columnState` `columnStateManager` green; painting pinned bands is K-PAINT-01 |
 | K-COL-03 | Column drag + sizeToFit / autosize | parity | `columnDrag` `columnResizing` `autosizeMainSide` `sizeColumnsToFit` `columnGroupHeaderDrag` green |
@@ -97,9 +124,9 @@ exercising them. Refactors there rest on port-added tests only — treat with co
 | K-FILTER-03 | Quick filter + external filter | parity | `quickFilterPass` `cellMatchesAnyQuickFilterTerm` green |
 | K-FILTER-04 | One filter-model shape (no legacy dual) | parity | Collapse done — one `matchesFilterEntry`; 18 port-added tests pin the legacy shape |
 | K-GROUP-01 | Row grouping API + expand/collapse | parity | `groupPass` `groupElision` `hideOpenParents` `filteringWithGrouping` green |
-| K-GROUP-02 | Aggregations + footers / grand totals | partial | `aggPass` green; `aggFuncRegistry` 14/16 — the 2 end-to-end tests need the shell |
+| K-GROUP-02 | Aggregations + footers / grand totals | parity | `aggPass` `aggFuncRegistry` `groupFooter` green |
 | K-GROUP-03 | Sticky groups | parity | `stickyGroupsClip` `stickyChevronHitTest` green; one shared ancestor walk |
-| K-PIVOT-01 | Pivot mode (CSRM / pipeline) | partial | `pivotPass` green (34); `pivotEngine`/`pivotState` are AnalyticsPlane, unported |
+| K-PIVOT-01 | Pivot mode (CSRM / pipeline) | parity | `pivotPass` `pivotEngine` `pivotIntegration` `pivotInvariants` `pivotColumns` `pivotPanel` green |
 | K-PIVOT-02 | Fail-closed pivot on sparse SSRM | partial | |
 | K-SEL-01 | Unified row selection | parity | `selectionModel` `selectionModes` `selectionConfig` `triStateSelection` `checkboxSelectionColumn` green |
 | K-SEL-02 | Cell ranges + fill handle | parity | `rangeSelection` `rangeSelectionEvents` `cellRangesApi` `fillHandle` green |
@@ -107,15 +134,15 @@ exercising them. Refactors there rest on port-added tests only — treat with co
 | K-EDIT-01 | Cell editors host hooks | parity | All 8 editors — `builtinEditors` `editTrigger` `editorOverlay.registry` `cellEditorRegistry` `rowEditCoordinator` `popupHost` `price32Editor` green |
 | K-CLIP-01 | Clipboard copy/cut/paste | parity | `clipboardSerialize` `clipboardSerializerHtml` `clipboardSuppress` green |
 | K-MENU-01 | Context + main menus | parity | `contextMenuHost` `contextMenuDefaults` `contextMenuMainDefaults` `contextMenuGroupBy` `contextMenuPivot` green |
-| K-EXPORT-01 | CSV / Excel export | todo | |
+| K-EXPORT-01 | CSV / Excel export | parity | `exportCsv` `exportApi` `exportOptions` green |
 | K-PAINT-01 | Canvas virtualization + pinned bands | parity | Full renderer ported; `byRows` `renderer` `rendererDamage` `pinnedRows` `stickyGroupsClip` green |
 | K-PAINT-02 | Cell flash + damage regions | parity | `damageLedger` `scrollBlit` `paintCache` `flashRegistry` `flashAlphaMask` `ruleFlashOwnership` green. `flashOverrides` excluded — fails 2/7 against legacy too |
 | K-PAINT-03 | Quality modes | parity | `paintQuality` green |
 | K-PAINT-04 | Sparklines | parity | `sparkline` green (31) |
-| K-THEME-01 | CSS tokens + shadow root option | partial | `cssReader` (33) and `theme/*` (90) green; `theming` (12) blocked on the god object |
-| K-STATE-01 | GridState get/set + persist | stub | |
-| K-STATE-02 | Layouts bundle | todo | |
-| K-EVT-01 | Lifecycle / model / interaction events | partial | Callback options only; no typed event bus |
+| K-THEME-01 | CSS tokens + shadow root option | parity | `cssReader` `theming` `theme/*` green |
+| K-STATE-01 | GridState get/set + persist | parity | `stateSnapshot` + persistence suites green via `host/persistenceFacade` |
+| K-STATE-02 | Layouts bundle | parity | `layoutManager` `layoutManagerTier` `layoutManagerImportExport` `layoutManagerApi` green |
+| K-EVT-01 | Lifecycle / model / interaction events | parity | Real event surface; `velocityGrid.integration` green |
 | K-A11Y-01 | Keyboard nav + a11y overlay | parity | `a11yKeyboard` `a11yOverlay` `keyboardConventional` `keyboardScrollFocusStability` `singleFocusInvariant` green |
 | K-CHROME-01 | Side bar / tool panels / status bar / overlay | parity | `sideBarHost` `sideBarEvents` `columnsToolPanel` `filtersToolPanel` `toolPanelRegistry` `statusBarHost` `countPanels` `aggregationPanel` `loadingOverlay` `modalHost` green |
 | K-TREE-01 | Tree data | deferred | |

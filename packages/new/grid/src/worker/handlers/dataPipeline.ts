@@ -19,8 +19,7 @@ import type { HandlerCtx } from '../dispatch';
 import { invalidateVisibleModel, setVisibleModel } from '../visibleModel';
 import type { WorkerRequest } from '../protocol';
 import type { IAggFunc } from '../aggFuncRegistry';
-// PORT-NOTE: was '../../core/ssrmRowMeta' (out of the worker port's scope).
-import { readSsrmRowMeta } from '../interop/ssrmRowMeta';
+import { readSsrmRowMeta } from '../../core/ssrmRowMeta';
 
 export type DataPipelineRequest = Extract<WorkerRequest, {
   type:

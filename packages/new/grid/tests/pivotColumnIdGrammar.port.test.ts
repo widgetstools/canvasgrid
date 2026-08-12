@@ -1,36 +1,32 @@
 /**
  * PORT-NOTE: NOT a copied legacy test — added by the worker port.
  *
- * The pivot-result colId grammar exists twice in the rebuild: the worker's
- * copy at `src/worker/interop/pivotColumnIds.ts` (used by SortPass) and
- * `src/core/pivotColumns.ts` (used by main-thread column synthesis). The
- * duplication is deliberate — core already imports the worker's pivotPass, so
- * importing back the other way would close a cycle — but the grammar is a
- * WIRE FORMAT: main encodes the colId, the worker decodes it. If the two drift
- * there is no error, just a sort on a pivot-result column that silently stops
- * working, because `decodePivotResultColumnId` returns null and SortPass falls
- * through to its ordinary path.
+ * The pivot-result colId grammar is a WIRE FORMAT: the main thread's column
+ * synthesis encodes the colId, the worker's SortPass decodes it. If the two
+ * ends disagree there is no error, just a sort on a pivot-result column that
+ * silently stops working, because `decodePivotResultColumnId` returns null and
+ * SortPass falls through to its ordinary path.
  *
- * This pins them together so the drift is a red test instead of a silent
- * feature loss.
+ * `src/core/pivotColumns.ts` is the single owner of the grammar (as in legacy,
+ * where SortPass reached into `../../core/pivotColumns` for the decoder). This
+ * pins the encoding shape and the encode/decode round trips so a change to
+ * either end is a red test instead of a silent feature loss.
  */
 import { describe, it, expect } from 'vitest';
 import {
-  pivotResultColumnId as workerEncode,
-  decodePivotResultColumnId as workerDecode,
-  pivotRowTotalColumnId as workerEncodeRowTotal,
-  decodePivotRowTotalColumnId as workerDecodeRowTotal,
-  isPivotResultColumnId as workerIsResult,
-  isPivotRowTotalColumnId as workerIsRowTotal,
-} from '../src/worker/interop/pivotColumnIds';
-import {
-  pivotResultColumnId as coreEncode,
-  decodePivotResultColumnId as coreDecode,
-  pivotRowTotalColumnId as coreEncodeRowTotal,
-  decodePivotRowTotalColumnId as coreDecodeRowTotal,
-  isPivotResultColumnId as coreIsResult,
-  isPivotRowTotalColumnId as coreIsRowTotal,
+  pivotResultColumnId,
+  decodePivotResultColumnId,
+  pivotRowTotalColumnId,
+  decodePivotRowTotalColumnId,
+  isPivotResultColumnId,
+  isPivotRowTotalColumnId,
+  PIVOT_RESULT_COL_PREFIX,
+  PIVOT_ROW_TOTAL_COL_PREFIX,
 } from '../src/core/pivotColumns';
+
+/** The separator is module-private; the tests spell it out so a change to it
+ *  fails here rather than silently redefining the wire format. */
+const SEP = '\u0001';
 
 const PATHS: string[][] = [
   ['EMEA'],
@@ -40,38 +36,48 @@ const PATHS: string[][] = [
   ['a:b', 'c::d'],
 ];
 
-describe('pivot colId grammar — worker copy vs src/core copy', () => {
-  it('encodes result colIds identically', () => {
+describe('pivot colId grammar — src/core/pivotColumns', () => {
+  it('encodes result colIds as prefix + path segments + value colId', () => {
+    expect(pivotResultColumnId(['EMEA'], 'pnl'))
+      .toBe(`${PIVOT_RESULT_COL_PREFIX}${SEP}EMEA${SEP}pnl`);
+    expect(pivotResultColumnId(['EMEA', 'Rates'], 'pnl'))
+      .toBe(`${PIVOT_RESULT_COL_PREFIX}${SEP}EMEA${SEP}Rates${SEP}pnl`);
+  });
+
+  it('encodes row-total colIds as prefix + value colId', () => {
+    expect(pivotRowTotalColumnId('pnl'))
+      .toBe(`${PIVOT_ROW_TOTAL_COL_PREFIX}${SEP}pnl`);
+  });
+
+  it('round-trips every pivot path through encode → decode', () => {
     for (const path of PATHS) {
-      expect(workerEncode(path, 'pnl')).toBe(coreEncode(path, 'pnl'));
+      const id = pivotResultColumnId(path, 'pnl');
+      expect(decodePivotResultColumnId(id)).toEqual({ pivotPath: path, valueColId: 'pnl' });
     }
+    expect(decodePivotRowTotalColumnId(pivotRowTotalColumnId('pnl'))).toBe('pnl');
   });
 
-  it('encodes row-total colIds identically', () => {
-    expect(workerEncodeRowTotal('pnl')).toBe(coreEncodeRowTotal('pnl'));
-  });
-
-  it('each copy decodes what the other encodes', () => {
-    for (const path of PATHS) {
-      expect(workerDecode(coreEncode(path, 'pnl'))).toEqual({ pivotPath: path, valueColId: 'pnl' });
-      expect(coreDecode(workerEncode(path, 'pnl'))).toEqual({ pivotPath: path, valueColId: 'pnl' });
-    }
-    expect(workerDecodeRowTotal(coreEncodeRowTotal('pnl'))).toBe('pnl');
-    expect(coreDecodeRowTotal(workerEncodeRowTotal('pnl'))).toBe('pnl');
-  });
-
-  it('agrees on which ids are synthetic', () => {
-    const ids = [
-      workerEncode(['EMEA'], 'pnl'),
-      workerEncodeRowTotal('pnl'),
-      'pnl',
-      'pivotcol',
-      'pivotrowtotal',
-      '',
+  it('classifies which ids are synthetic, and decodes nothing out of the rest', () => {
+    const cases: Array<{ id: string; result: boolean; rowTotal: boolean }> = [
+      { id: pivotResultColumnId(['EMEA'], 'pnl'), result: true, rowTotal: false },
+      { id: pivotRowTotalColumnId('pnl'), result: false, rowTotal: true },
+      { id: 'pnl', result: false, rowTotal: false },
+      // Bare prefixes with no separator are ordinary colIds, not synthetics.
+      { id: PIVOT_RESULT_COL_PREFIX, result: false, rowTotal: false },
+      { id: PIVOT_ROW_TOTAL_COL_PREFIX, result: false, rowTotal: false },
+      { id: '', result: false, rowTotal: false },
     ];
-    for (const id of ids) {
-      expect(workerIsResult(id)).toBe(coreIsResult(id));
-      expect(workerIsRowTotal(id)).toBe(coreIsRowTotal(id));
+    for (const { id, result, rowTotal } of cases) {
+      expect(isPivotResultColumnId(id)).toBe(result);
+      expect(isPivotRowTotalColumnId(id)).toBe(rowTotal);
     }
+    for (const id of ['pnl', PIVOT_RESULT_COL_PREFIX, '', pivotRowTotalColumnId('pnl')]) {
+      expect(decodePivotResultColumnId(id)).toBeNull();
+    }
+    for (const id of ['pnl', PIVOT_ROW_TOTAL_COL_PREFIX, '', pivotResultColumnId(['EMEA'], 'pnl')]) {
+      expect(decodePivotRowTotalColumnId(id)).toBeNull();
+    }
+    // Prefix + a single segment cannot name both a path and a value column.
+    expect(decodePivotResultColumnId(pivotResultColumnId([], 'pnl'))).toBeNull();
   });
 });

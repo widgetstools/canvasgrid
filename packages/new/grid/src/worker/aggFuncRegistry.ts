@@ -39,9 +39,7 @@
  * worker never sees a deserialised function that would fail mid-pass.
  */
 
-// PORT-NOTE: was '../interaction/statusBar/aggMath' (out of the worker port's
-// scope). See `interop/aggMath.ts` — the two surfaces must not drift.
-import { aggregate as aggregateValues } from './interop/aggMath';
+import { aggregate as aggregateValues } from '../interaction/statusBar/aggMath';
 import type { IAggFunc, IAggFuncParams } from '../types';
 
 /** Names of the built-in aggregations. Apps reference these by string

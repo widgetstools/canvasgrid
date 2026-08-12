@@ -4,8 +4,7 @@ import type {
   CDateFilterModel, CMultiConditionFilterModel, CSetFilterModel,
 } from '../types';
 import type { CalcValueSource } from './passes/calcPass';
-// PORT-NOTE: was '../core/ssrmRowMeta' (out of the worker port's scope).
-import { readSsrmRowMeta } from './interop/ssrmRowMeta';
+import { readSsrmRowMeta } from '../core/ssrmRowMeta';
 
 /**
  * The worker's filter layer accepts BOTH model shapes on the wire: the

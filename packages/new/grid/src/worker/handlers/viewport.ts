@@ -17,8 +17,7 @@ import {
   type AutosizeGroupNode,
 } from '../autosize';
 import type { GroupNode } from '../passes/groupPass';
-// PORT-NOTE: was '../../core/ssrmRowMeta' (out of the worker port's scope).
-import { materializeSsrmGroupTotals, computeSsrmStickyAncestors } from '../interop/ssrmRowMeta';
+import { materializeSsrmGroupTotals, computeSsrmStickyAncestors } from '../../core/ssrmRowMeta';
 
 export type ViewportRequest = Extract<WorkerRequest, {
   type:
