@@ -270,10 +270,14 @@ export interface ResolvedTheme {
    *  the interior glyph stays legible against the fill. */
   checkboxCheckedBg: string;
   checkboxCheckedFg: string;
-  /** Cycle 22 / Task 1 — optional vertical rule between adjacent
-   *  columns. Default `'transparent'` keeps the grid lineless on the
-   *  X axis (the painter only consults this when the value is a
-   *  non-transparent color). */
+  /** DEAD TOKEN (SPEC.md §2 "Dead code to drop"). Intended as an optional
+   *  vertical rule between adjacent columns; no painter has ever read it —
+   *  `gridLinesPainter` draws every rule from `gridLineColor`. It survives
+   *  only because `theming.test.ts` asserts its default and its
+   *  `--vg-cell-horizontal-border-color` override, and the parity gate
+   *  forbids editing that test. Do not wire new behavior to it: either
+   *  gridlines grow a real per-axis color pair, or this and its
+   *  `theme/params.ts` entry go together. */
   cellHorizontalBorderColor: string;
   /** Cycle 22 / Task 1 — popup / context-menu chrome. Three tokens
    *  shared across the filter popup, the context menu, and the
@@ -986,8 +990,7 @@ export class CssReader {
       // ships with.
       checkboxCheckedBg: get('--vg-checkbox-checked-bg') || 'transparent',
       checkboxCheckedFg: get('--vg-checkbox-checked-fg') || get('--vg-fg-color') || '#1a1f24',
-      // Cycle 22 / Task 1 — optional inter-column rule. Painter only
-      // strokes when the value is a non-transparent color.
+      // Dead token — read but never painted (see the field's doc above).
       cellHorizontalBorderColor: get('--vg-cell-horizontal-border-color') || 'transparent',
       // Cycle 22 / Task 1 — popup / menu surfaces. Default to body bg
       // + border so the popup looks like "a piece of the grid"

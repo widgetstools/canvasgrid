@@ -106,7 +106,13 @@ export interface CellPaintConfig {
    *  cue for the existing hit-testable group region. Design notes:
    *  `docs/superpowers/plans/notes/cycle-18-pivoting-design.md` (Task 4,
    *  original pivot-only version) and Task 10 (broadening to all groups,
-   *  originally drawn leading before this fix moved it trailing). */
+   *  originally drawn leading before this fix moved it trailing).
+   *
+   *  The honest name is `columnGroupExpand`. The rename is BLOCKED, not
+   *  forgotten: `headerStyleText`, `rasterCacheCells` and
+   *  `columnGroupHeaderCaret` all build `CellPaintConfig` literals with this
+   *  key, and those are unmodifiable parity-gate tests. Rename them and this
+   *  field in the same change, never separately. */
   pivotGroupExpand?: 'open' | 'closed';
   /** Row-select header checkbox state, set ONLY on the header cell of
    *  columns declaring `headerCheckboxSelection: true`. `undefined`

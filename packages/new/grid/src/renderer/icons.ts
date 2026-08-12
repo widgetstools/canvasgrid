@@ -14,6 +14,8 @@
  * `new Path2D(d)` entry below.
  */
 
+import type { CachedContext2D } from './gc';
+
 export type IconName =
   | 'chevron-up'
   | 'chevron-down'
@@ -146,6 +148,57 @@ export function iconSvg(name: IconName, sizePx = 16): SVGElement {
   path.setAttribute('d', PATHS[name]);
   svg.appendChild(path);
   return svg;
+}
+
+/**
+ * THE canvas icon-drawing primitive, shared by every `gc`-based icon site:
+ * byRows' inline cell / header icons and cellDecoratorsPainter's positional
+ * decorators. Both used to carry their own copy of this six-line sequence,
+ * which is how the decorator path silently missed catalog icons for a while.
+ *
+ * `left`/`top` anchor the icon's 24×24 box (NOT its center — centered callers
+ * pass `cx - size/2`). Caller owns save/restore: every call site already wraps
+ * a broader region, and nesting another pair here would change the recorded
+ * call sequence the renderer tests lock.
+ */
+export function strokeIconPath(
+  gc: CachedContext2D,
+  path: Path2D,
+  left: number,
+  top: number,
+  size: number,
+  color: string,
+  strokeWidth = 2,
+): void {
+  gc.translate(left, top);
+  const scale = size / 24; // Lucide viewBox is 24×24
+  gc.scale(scale, scale);
+  gc.cache.strokeStyle = color;
+  gc.cache.lineWidth = strokeWidth / scale;
+  gc.cache.lineCap = 'round';
+  gc.cache.lineJoin = 'round';
+  gc.stroke(path);
+}
+
+/**
+ * THE canvas glyph primitive (emoji / short text label) — the non-Path2D half
+ * of the same two icon pipelines. `color` is optional because byRows' inline
+ * emoji deliberately inherits the ambient fill (the cell's resolved `fg`,
+ * already set by the painter) while a decorator carries its own.
+ */
+export function fillGlyph(
+  gc: CachedContext2D,
+  glyph: string,
+  cx: number,
+  cy: number,
+  size: number,
+  color?: string,
+): void {
+  if (color !== undefined) gc.cache.fillStyle = color;
+  gc.cache.font = `${size}px sans-serif`;
+  gc.cache.textAlign = 'center';
+  gc.cache.textBaseline = 'middle';
+  gc.fillText(glyph, cx, cy);
 }
 
 /**

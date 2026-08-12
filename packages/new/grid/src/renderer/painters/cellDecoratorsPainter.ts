@@ -12,7 +12,7 @@
 
 import type { CachedContext2D } from '../gc';
 import type { CellDecorator, DecoratorPosition } from '../../types';
-import { drawIcon, hasIcon } from '../icons';
+import { drawIcon, fillGlyph, hasIcon, strokeIconPath } from '../icons';
 import { resolveIcon as resolveLucideIcon } from '../../icons/registry';
 
 const DEFAULT_SIZE = 12;
@@ -84,11 +84,7 @@ function paintOne(
     }
     case 'emoji':
     case 'text': {
-      gc.cache.fillStyle = d.color ?? '#000';
-      gc.cache.font = `${size}px sans-serif`;
-      gc.cache.textAlign = 'center';
-      gc.cache.textBaseline = 'middle';
-      gc.fillText(d.value, pos.x, pos.y);
+      fillGlyph(gc, d.value, pos.x, pos.y, size, d.color ?? '#000');
       break;
     }
     case 'icon': {
@@ -99,14 +95,7 @@ function paintOne(
       // dropping catalog icons like 'flame' at tl/tr/bl/br/ml/mr.)
       const lucide = d.icon !== undefined ? resolveLucideIcon(d.icon) : null;
       if (lucide) {
-        gc.translate(pos.x - size / 2, pos.y - size / 2);
-        const scale = size / 24; // Lucide viewBox is 24×24
-        gc.scale(scale, scale);
-        gc.cache.strokeStyle = d.color ?? '#000';
-        gc.cache.lineWidth = 2 / scale;
-        gc.cache.lineCap = 'round';
-        gc.cache.lineJoin = 'round';
-        gc.stroke(lucide);
+        strokeIconPath(gc, lucide, pos.x - size / 2, pos.y - size / 2, size, d.color ?? '#000');
         break;
       }
       if (!hasIcon(d.icon)) break;
