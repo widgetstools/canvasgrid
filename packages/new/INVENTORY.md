@@ -9,9 +9,10 @@ plus `apps/cgrid-ext-demo/e2e/parity/CHECKLIST.md`.
 
 | | Legacy | `packages/new` | |
 |---|---|---|---|
-| Source | 463 files / ~124,300 lines | ~83,200 lines | 67% |
-| Grid core | 75,406 lines | 76,657 lines | 102% |
-| Test files | 415 | 233 | 56% |
+| Source | 463 files / ~124,300 lines | ~83,800 lines | 67% |
+| Grid core | 75,406 lines | 77,158 lines | 102% |
+| Test files | 415 | 298 | 72% |
+| Grid test files | 275 | 279 | 101% |
 | E2E specs | 125 | 0 | 0% |
 
 Started the day at 83 files / ~10,000 lines with 19 tests and no ported behavior. Grid core
@@ -23,14 +24,20 @@ cleanly (collapsed dual paths, no god object, one design system), then run the l
 **unmodified** as the gate. A row only becomes `parity` when those tests pass against the new
 code with no assertions removed and no skips.
 
-**Ported so far:** the type contract (verbatim — it *is* the AG-parity surface), the column
-model, viewport/virtualization/paint infrastructure, the worker protocol and data pipeline,
-the renderer and theming layers, and the full interaction layer. The grid host
-(`velocityGrid.ts`) and its split into controllers is in progress.
+**Ported:** the type contract (verbatim — it *is* the AG-parity surface), the column model,
+viewport/virtualization/paint infrastructure, the worker protocol and data pipeline, the
+renderer and theming layers, the full interaction layer, and the grid host with its split
+into facades. `packages/new/grid` is now feature-complete against the legacy kernel by every
+gate legacy ships.
 
-**Package suite: 3,100 passing / 3 failing across 220 files.** All 210 copied legacy test
-files are **byte-identical** to their originals — zero edits remain. No assertion has been
-deleted, loosened, or skipped anywhere in the rebuild.
+**Package suite: 3,601 passing / 3 failing across 285 files.** **All 275 legacy grid test
+files are present and byte-identical** to their originals — zero edits, zero omissions. No
+assertion has been deleted, loosened, or skipped anywhere in the rebuild.
+
+The last 65 of those were copied in only after the host port: they had never been run against
+the rebuild, and **all 65 passed as-is** (+501 tests). They were an unmeasured gap, not a
+failing one — but until they ran, four rows below cited gates that were not actually
+executing here. That is the failure mode this document exists to prevent.
 
 **The 3 failures are the two known-bad legacy files below — there are no other failures.**
 
@@ -39,9 +46,10 @@ deleted, loosened, or skipped anywhere in the rebuild.
 `byRowsRowDataGate` asserts byRows skips the row-data snapshot when the rule-fold mirror
 already holds the row; byRows computes it anyway whenever `ruleRowId` is defined.
 
-Files under `src/renderer/`, `src/theming/`, and `src/icons/` are currently an unrefactored
-dependency closure dragged in by three column gate tests. They are a starting point for the
-renderer port, **not** finished work, and none of the K-PAINT / K-THEME rows may cite them.
+`src/renderer/`, `src/theming/`, and `src/icons/` began as an unrefactored dependency closure
+dragged in by three column gate tests. That is no longer true: the renderer port landed and
+collapsed the two paint pipelines into a single `renderSurface`, so the K-PAINT / K-THEME rows
+may now cite them.
 
 ### Duplication debt — retired
 
@@ -89,6 +97,11 @@ in `ColumnStateManager`; what stays inline is thin delegation plus interaction g
 The SSRM sticky-ancestor path and the pivot sort-by-pivot-column path have no legacy test
 exercising them. Refactors there rest on port-added tests only — treat with corresponding care.
 
+K-PIVOT-02 (fail-closed pivot on sparse SSRM) is the one grid row still `partial`, and it stays
+that way because **legacy ships no test for it either** — no legacy test file combines pivot with
+`skeleton-sparse`. It cannot be raised to `parity` by porting; closing it means writing a new gate
+that legacy never had.
+
 ## Status legend
 
 | Status | Meaning |
@@ -124,7 +137,7 @@ exercising them. Refactors there rest on port-added tests only — treat with co
 | K-FILTER-03 | Quick filter + external filter | parity | `quickFilterPass` `cellMatchesAnyQuickFilterTerm` green |
 | K-FILTER-04 | One filter-model shape (no legacy dual) | parity | Collapse done — one `matchesFilterEntry`; 18 port-added tests pin the legacy shape |
 | K-GROUP-01 | Row grouping API + expand/collapse | parity | `groupPass` `groupElision` `hideOpenParents` `filteringWithGrouping` green |
-| K-GROUP-02 | Aggregations + footers / grand totals | parity | `aggPass` `aggFuncRegistry` `groupFooter` green |
+| K-GROUP-02 | Aggregations + footers / grand totals | parity | `aggPass` `aggFuncRegistry` `groupFooter` `grandTotalLabel` `aggExtensions` `aggregationEvent` green |
 | K-GROUP-03 | Sticky groups | parity | `stickyGroupsClip` `stickyChevronHitTest` green; one shared ancestor walk |
 | K-PIVOT-01 | Pivot mode (CSRM / pipeline) | parity | `pivotPass` `pivotEngine` `pivotIntegration` `pivotInvariants` `pivotColumns` `pivotPanel` green |
 | K-PIVOT-02 | Fail-closed pivot on sparse SSRM | partial | |
