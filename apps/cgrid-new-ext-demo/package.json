@@ -1,0 +1,23 @@
+{
+  "name": "cgrid-new-ext-demo",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5211",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@wellsfargo-starui/vg-new-ext": "*",
+    "@wellsfargo-starui/vg-new-grid": "*",
+    "@wellsfargo-starui/vg-new-ui": "*",
+    "@wellsfargo-starui/vg-new-data": "*",
+    "@wellsfargo-starui/vg-new-engines": "*"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3",
+    "vite": "^7.3.2"
+  }
+}

@@ -1,0 +1,88 @@
+/**
+ * vg-new-ui — single token set (AG Quartz / Markets density).
+ * All Ext / data editor chrome must consume these variables.
+ */
+:root,
+.vg-new-root {
+  color-scheme: light;
+
+  --vgn-font-sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --vgn-font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --vgn-font-size: 13px;
+  --vgn-font-size-sm: 12px;
+  --vgn-font-size-lg: 14px;
+  --vgn-line-height: 1.35;
+  --vgn-font-weight: 400;
+  --vgn-font-weight-medium: 500;
+  --vgn-font-weight-semibold: 600;
+
+  --vgn-space-1: 4px;
+  --vgn-space-2: 8px;
+  --vgn-space-3: 12px;
+  --vgn-space-4: 16px;
+  --vgn-space-5: 20px;
+  --vgn-space-6: 24px;
+
+  --vgn-radius-sm: 2px;
+  --vgn-radius: 4px;
+  --vgn-radius-lg: 6px;
+
+  --vgn-bg: #f7f8fa;
+  --vgn-bg-elevated: #ffffff;
+  --vgn-bg-muted: #eef0f3;
+  --vgn-bg-hover: #e8ebef;
+  --vgn-bg-active: #dde2e8;
+  --vgn-bg-accent: #1f6feb;
+  --vgn-bg-accent-hover: #1a5fd0;
+  --vgn-bg-danger: #cf222e;
+  --vgn-bg-success: #1a7f37;
+
+  --vgn-fg: #1f2328;
+  --vgn-fg-muted: #656d76;
+  --vgn-fg-subtle: #8b949e;
+  --vgn-fg-on-accent: #ffffff;
+  --vgn-fg-danger: #a40e26;
+
+  --vgn-border: #d0d7de;
+  --vgn-border-strong: #afb8c1;
+  --vgn-border-focus: #1f6feb;
+
+  --vgn-shadow-sm: 0 1px 2px rgba(31, 35, 40, 0.06);
+  --vgn-shadow: 0 4px 16px rgba(31, 35, 40, 0.12);
+  --vgn-shadow-lg: 0 12px 40px rgba(31, 35, 40, 0.18);
+
+  --vgn-z-drawer: 40;
+  --vgn-z-dialog: 50;
+  --vgn-z-toast: 60;
+
+  --vgn-control-height: 28px;
+  --vgn-row-height: 28px;
+  --vgn-header-height: 32px;
+  --vgn-titlebar-height: 40px;
+  --vgn-ribbon-height: 36px;
+  --vgn-drawer-width: 360px;
+  --vgn-rail-width: 168px;
+
+  --vgn-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --vgn-duration: 160ms;
+  --vgn-duration-slow: 240ms;
+}
+
+.vg-new-root[data-theme='dark'] {
+  color-scheme: dark;
+  --vgn-bg: #0d1117;
+  --vgn-bg-elevated: #161b22;
+  --vgn-bg-muted: #21262d;
+  --vgn-bg-hover: #30363d;
+  --vgn-bg-active: #3d444d;
+  --vgn-bg-accent: #2f81f7;
+  --vgn-bg-accent-hover: #388bfd;
+  --vgn-fg: #e6edf3;
+  --vgn-fg-muted: #8b949e;
+  --vgn-fg-subtle: #6e7681;
+  --vgn-border: #30363d;
+  --vgn-border-strong: #484f58;
+  --vgn-border-focus: #2f81f7;
+  --vgn-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --vgn-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
