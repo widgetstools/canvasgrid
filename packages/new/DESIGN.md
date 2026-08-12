@@ -48,6 +48,15 @@ vg-new-grid (ApiFacade → RowModel → Paint / Worker / SSRM)
 | Provider catalog | `vg-new:provider-catalog` |
 | Grid instance | `vg-new:instance:<gridId>` |
 
+### Engines (`vg-new-engines`)
+
+- Shared expression DSL (`[field]` paths) powers calc / rules / alerts
+- Format: template codes (`0.00`, `currency`, `%`) + ribbon patches with undo/redo
+- Rules: condition compile → paint style; Alerts: same conditions + token bucket + templates
+- Calc: CSRM enrich + `toPerspectiveExpressions()` for SSRM; rejects calc-on-calc
+- Edit: smart/bulk/nudge/shortcuts journal with undo/redo; cell editor overlay on dblclick
+- Grid DI: `EnginesController` on `VelocityGrid`; Ext ribbons call format/edit APIs
+
 ### UI grammar
 
 Draft → Validate → Apply/Save. Dirty discard on Customize rail switch. Ribbon format undo until layout save (explicit exception).

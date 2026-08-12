@@ -3,6 +3,7 @@ import { AsyncTransactionQueue } from './csrm/asyncTransactions';
 import { ColumnModel } from './columns/columnModel';
 import { GroupPivotCoordinator } from './groupPivot/coordinator';
 import { CanvasPainter } from './paint/canvasPainter';
+import { EnginesController } from './engines/enginesController';
 import { SelectionModel } from './selection/selectionModel';
 import { buildSsrmColumnKeys } from './ssrm/columnKeys';
 import { ServerSideRowModel } from './ssrm/serverSideRowModel';
@@ -12,6 +13,13 @@ import type {
   VelocityGridOptions,
 } from './types/options';
 import type { IServerSideDatasourceV2 } from './ssrm/types';
+import type {
+  AlertRule,
+  CalcColumn,
+  EditOp,
+  FormatPatch,
+  StyleRule,
+} from '@wellsfargo-starui/vg-new-engines';
 
 /**
  * VelocityGrid (greenfield) — ApiFacade over CSRM / SSRM + canvas paint.
@@ -38,10 +46,12 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
   private readonly ssrm: ServerSideRowModel<T>;
   private readonly groupPivot: GroupPivotCoordinator;
   private readonly painter: CanvasPainter;
+  private readonly engines: EnginesController;
   private readonly options: VelocityGridOptions<T>;
   private readonly asyncTx: AsyncTransactionQueue<T>;
   private raf = 0;
   private readonly api: VelocityGridApi<T>;
+  private editorEl: HTMLInputElement | null = null;
 
   constructor(host: HTMLElement, options: VelocityGridOptions<T>) {
     this.options = options;
@@ -77,6 +87,11 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
 
     this.columns.setColumnDefs(options.columnDefs ?? []);
     this.csrm = new ClientSideRowModel(this.getRowId, () => options.columnDefs ?? []);
+    this.engines = new EnginesController({
+      onAlert: (ev) => {
+        this.options.onAlert?.(ev);
+      },
+    });
     this.selection = new SelectionModel((groupKey) => {
       if (this.rowModelType === 'serverSide') {
         // Sparse path — async getGroupLeafIds; sync cascade uses CSRM helper when available.
@@ -118,6 +133,7 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
           rowIdField: options.rowIdField ?? 'id',
           sortColIds: this.csrm.getSortModel().map((s) => s.colId),
           rowGroupColIds: this.groupPivot.getRowGroupColumns(),
+          expressionOutputIds: this.engines.getSsrmExpressionOutputs(),
         });
       },
       getRefreshRange: () => {
@@ -267,6 +283,71 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
       isPivotMode: () => this.groupPivot.isPivotMode(),
       ensureFullyHydrated: () => this.ssrm.ensureFullyHydrated(),
       refillServerSideColumnKeys: () => { void this.ssrm.refillColumnKeys(); },
+      applyFormatPatch: (patch) => {
+        this.engines.applyFormat(patch as FormatPatch);
+        this.schedulePaint();
+      },
+      undoFormat: () => {
+        const ok = this.engines.undoFormat();
+        this.schedulePaint();
+        return ok;
+      },
+      redoFormat: () => {
+        const ok = this.engines.redoFormat();
+        this.schedulePaint();
+        return ok;
+      },
+      clearFormat: () => {
+        this.engines.clearFormat();
+        this.schedulePaint();
+      },
+      setStyleRules: (rules) => {
+        this.engines.setStyleRules(rules as StyleRule[]);
+        this.schedulePaint();
+      },
+      setCalcColumns: (cols) => {
+        this.engines.setCalcColumns(cols as CalcColumn[]);
+        if (this.rowModelType === 'clientSide') {
+          // Re-enrich visible rows via paint path (enrich per paint).
+          this.schedulePaint();
+        }
+        this.options.onModelUpdated?.();
+      },
+      setAlertRules: (rules) => {
+        this.engines.setAlertRules(rules as AlertRule[]);
+      },
+      applyEditOp: (colId, rowIds, op) => {
+        if (this.rowModelType !== 'clientSide') return;
+        const raw = this.csrm.getRawRows() as Array<Record<string, unknown>>;
+        const next = this.engines.applyEdit(
+          raw,
+          (r) => this.getRowId(r as T),
+          colId,
+          rowIds,
+          op as EditOp,
+        );
+        this.csrm.setRowData(next as T[]);
+        this.schedulePaint();
+        this.options.onModelUpdated?.();
+      },
+      undoEdit: () => {
+        if (this.rowModelType !== 'clientSide') return false;
+        const raw = this.csrm.getRawRows() as Array<Record<string, unknown>>;
+        const next = this.engines.undoEdit(raw, (r) => this.getRowId(r as T));
+        this.csrm.setRowData(next as T[]);
+        this.schedulePaint();
+        return true;
+      },
+      redoEdit: () => {
+        if (this.rowModelType !== 'clientSide') return false;
+        const raw = this.csrm.getRawRows() as Array<Record<string, unknown>>;
+        const next = this.engines.redoEdit(raw, (r) => this.getRowId(r as T));
+        this.csrm.setRowData(next as T[]);
+        this.schedulePaint();
+        return true;
+      },
+      getUnreadAlertCount: () => this.engines.unreadAlertCount(),
+      getEngines: () => this.engines,
       getSelectedRows: () => {
         const rows = this.visibleRows();
         return rows.filter((r) => this.selection.isSelected(this.getRowId(r)));
@@ -290,7 +371,7 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
 
   private visibleRows(): T[] {
     if (this.rowModelType === 'serverSide') return this.ssrmRows;
-    return this.csrm.getRows();
+    return this.csrm.getRows().map((r) => this.engines.enrichRow(r) as T);
   }
 
   private rowCount(): number {
@@ -317,6 +398,25 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
         void this.ssrm.ensureRange(start, end);
       }
       this.schedulePaint();
+    });
+
+    this.wrap.addEventListener('dblclick', (ev) => {
+      if (this.rowModelType !== 'clientSide') return;
+      const rect = this.wrap.getBoundingClientRect();
+      const y = ev.clientY - rect.top + this.wrap.scrollTop;
+      if (y < headerHeight) return;
+      const rowIndex = Math.floor((y - headerHeight) / rowHeight);
+      const row = this.visibleRows()[rowIndex];
+      if (!row || (row as { __isGroup?: boolean }).__isGroup) return;
+      const x = ev.clientX - rect.left + this.wrap.scrollLeft;
+      let acc = 0;
+      for (const col of this.columns.getVisible()) {
+        if (x >= acc && x < acc + col.width) {
+          this.openCellEditor(row, col.colId, acc, rowIndex, rowHeight, headerHeight);
+          return;
+        }
+        acc += col.width;
+      }
     });
 
     this.wrap.addEventListener('click', (ev) => {
@@ -395,15 +495,72 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
       stickyAncestors: this.rowModelType === 'clientSide'
         ? this.csrm.getStickyAncestors(first)
         : [],
+      formatValue: (colId, value) => this.engines.formatCell(colId, value),
+      cellStyle: (row, colId) => this.engines.styleCell(row, colId),
+      colFormat: (colId) => this.engines.resolveColFormat(colId),
     });
   }
 
-  setSsrmExpressionHost(_host: unknown | null): void { /* Phase 6 */ }
-  setSsrmExpressionOutputs(_ids: readonly string[]): void { /* Phase 6 */ }
+  setSsrmExpressionHost(host: unknown | null): void {
+    this.engines.setSsrmExpressionHost(host);
+  }
+
+  setSsrmExpressionOutputs(ids: readonly string[]): void {
+    this.engines.setSsrmExpressionOutputs(ids);
+  }
+
+  private openCellEditor(
+    row: T,
+    colId: string,
+    colLeft: number,
+    rowIndex: number,
+    rowHeight: number,
+    headerHeight: number,
+  ): void {
+    this.closeCellEditor();
+    const field = colId;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = String((row as Record<string, unknown>)[field] ?? '');
+    input.style.cssText = [
+      'position:absolute',
+      `left:${colLeft - this.scrollLeft}px`,
+      `top:${headerHeight + rowIndex * rowHeight - this.scrollTop}px`,
+      `height:${rowHeight}px`,
+      'min-width:80px',
+      'z-index:5',
+      'border:1px solid #1f6feb',
+      'font:12px "IBM Plex Sans",system-ui,sans-serif',
+      'padding:0 6px',
+    ].join(';');
+    const commit = (): void => {
+      const id = this.getRowId(row);
+      const rawVal = input.value;
+      const num = Number(rawVal);
+      const value = rawVal.trim() === '' || Number.isNaN(num) ? rawVal : num;
+      this.api.applyEditOp(colId, [id], { type: 'set', value });
+      this.closeCellEditor();
+    };
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') commit();
+      if (e.key === 'Escape') this.closeCellEditor();
+    });
+    input.addEventListener('blur', () => commit());
+    this.root.appendChild(input);
+    this.editorEl = input;
+    input.focus();
+    input.select();
+  }
+
+  private closeCellEditor(): void {
+    this.editorEl?.remove();
+    this.editorEl = null;
+  }
 
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.closeCellEditor();
     if (this.raf) cancelAnimationFrame(this.raf);
     if (this.scrollEndTimer != null) clearTimeout(this.scrollEndTimer);
     this.asyncTx.destroy();

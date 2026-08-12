@@ -55,6 +55,19 @@ export class CanvasPainter {
     selected: Set<string>;
     sortColId?: string;
     stickyAncestors?: Array<{ depth: number; value: string; childCount: number }>;
+    formatValue?: (colId: string, value: unknown) => string;
+    cellStyle?: (row: PaintRow, colId: string) => {
+      backgroundColor?: string;
+      color?: string;
+      fontWeight?: string;
+    } | undefined;
+    colFormat?: (colId: string) => {
+      bold?: boolean;
+      italic?: boolean;
+      align?: 'left' | 'center' | 'right';
+      foreground?: string;
+      background?: string;
+    } | undefined;
   }): void {
     const dpr = Math.max(1, window.devicePixelRatio || 1);
     const cssW = this.canvas.clientWidth;
@@ -149,15 +162,19 @@ export class CanvasPainter {
         ctx.fillStyle = isFooter ? c.headerBg : (this.opts.theme === 'dark' ? '#1a2330' : '#eef3f8');
         ctx.fillRect(0, y, cssW, rowHeight);
       }
-      ctx.fillStyle = c.text;
-      ctx.font = isGroup || isFooter
-        ? '600 12px "IBM Plex Sans", system-ui, sans-serif'
-        : '400 12px "IBM Plex Sans", system-ui, sans-serif';
       let cx = -args.scrollLeft;
       for (let ci = 0; ci < args.columns.length; ci++) {
         const col = args.columns[ci]!;
         if (cx + col.width > 0 && cx < cssW) {
           const field = col.field ?? col.colId;
+          const ruleStyle = !isGroup && !isFooter
+            ? args.cellStyle?.(row, col.colId)
+            : undefined;
+          const colFmt = args.colFormat?.(col.colId);
+          if (ruleStyle?.backgroundColor || colFmt?.background) {
+            ctx.fillStyle = ruleStyle?.backgroundColor ?? colFmt!.background!;
+            ctx.fillRect(cx, y, col.width, rowHeight);
+          }
           let text = '';
           if (isGroup && ci === 0) {
             const depth = Number(row.__groupDepth ?? 0);
@@ -169,13 +186,27 @@ export class CanvasPainter {
             text = row.__isGrandTotal ? 'Grand Total' : 'Total';
           } else {
             const val = row[field];
-            text = val == null ? '' : String(val);
+            text = args.formatValue
+              ? args.formatValue(col.colId, val)
+              : (val == null ? '' : String(val));
           }
+          const weight = isGroup || isFooter || colFmt?.bold || ruleStyle?.fontWeight === 'bold'
+            ? '600'
+            : '400';
+          const style = colFmt?.italic ? 'italic' : 'normal';
+          ctx.font = `${style} ${weight} 12px "IBM Plex Sans", system-ui, sans-serif`;
+          ctx.fillStyle = ruleStyle?.color ?? colFmt?.foreground ?? c.text;
           ctx.save();
           ctx.beginPath();
           ctx.rect(cx, y, col.width, rowHeight);
           ctx.clip();
-          ctx.fillText(text, cx + 8, y + rowHeight / 2);
+          let tx = cx + 8;
+          if (colFmt?.align === 'right') {
+            tx = cx + col.width - 8 - ctx.measureText(text).width;
+          } else if (colFmt?.align === 'center') {
+            tx = cx + (col.width - ctx.measureText(text).width) / 2;
+          }
+          ctx.fillText(text, tx, y + rowHeight / 2);
           ctx.restore();
         }
         cx += col.width;

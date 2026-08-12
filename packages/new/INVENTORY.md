@@ -20,7 +20,7 @@ Status legend: `todo` · `wip` · `done` · `deferred`
 | K-SSRM-04 | Soft refresh on-chain + dataGen bail | done |
 | K-SSRM-05 | `ensureFullyHydrated` fail-closed | done |
 | K-SSRM-06 | Explicit client-pipeline mode | done |
-| K-SSRM-07 | Expression host + distinct values hooks | wip |
+| K-SSRM-07 | Expression host + distinct values hooks | done |
 | K-COL-01 | ColDefs / groups / defaultColDef / types | wip |
 | K-COL-02 | Pin / hide / flex / width / column state | wip |
 | K-COL-03 | Column drag + sizeToFit / autosize | todo |
@@ -37,7 +37,7 @@ Status legend: `todo` · `wip` · `done` · `deferred`
 | K-SEL-01 | Unified row selection | done |
 | K-SEL-02 | Cell ranges + fill handle | todo |
 | K-SEL-03 | Group cascade select | done |
-| K-EDIT-01 | Cell editors host hooks | wip |
+| K-EDIT-01 | Cell editors host hooks | done |
 | K-CLIP-01 | Clipboard copy/cut/paste | todo |
 | K-MENU-01 | Context + main menus | todo |
 | K-EXPORT-01 | CSV / Excel export | todo |
@@ -116,11 +116,11 @@ Status legend: `todo` · `wip` · `done` · `deferred`
 
 | ID | Feature | Status |
 |----|---------|--------|
-| N-CALC-01 | Calculated columns engine + SSRM adapter | wip |
-| N-RULES-01 | Conditional styling rules engine | wip |
-| N-FMT-01 | Format engine + ribbon ops | wip |
-| N-EDIT-01 | Smart/bulk/nudge/shortcuts/history | wip |
-| N-ALERT-01 | Alerts engine + channels | wip |
+| N-CALC-01 | Calculated columns engine + SSRM adapter | done |
+| N-RULES-01 | Conditional styling rules engine | done |
+| N-FMT-01 | Format engine + ribbon ops | done |
+| N-EDIT-01 | Smart/bulk/nudge/shortcuts/history | done |
+| N-ALERT-01 | Alerts engine + channels | done |
 
 ---
 

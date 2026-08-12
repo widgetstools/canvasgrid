@@ -58,4 +58,12 @@ export type VelocityGridOptions<T = unknown> = {
   onModelUpdated?: () => void;
   onBodyScroll?: () => void;
   onBodyScrollEnd?: () => void;
+  onAlert?: (ev: {
+    ruleId: string;
+    at: number;
+    message: string;
+    read: boolean;
+    channels: string[];
+    rowId?: string;
+  }) => void;
 };

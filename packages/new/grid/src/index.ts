@@ -31,6 +31,7 @@ export { applyAggPass, applyGroupAggPass, runAggFunc } from './csrm/aggPass';
 export { computeGroupVisibleOrder } from './csrm/visibleOrder';
 export { computeStickyAncestors, buildGroupMetaLookup } from './csrm/stickyAncestors';
 export { SelectionModel } from './selection/selectionModel';
+export { EnginesController } from './engines/enginesController';
 export {
   isServerSideDatasourceV2,
   resultRows,

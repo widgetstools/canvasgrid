@@ -32,8 +32,29 @@ const grid = new VelocityGrid<Row>(host, {
   deferAsyncTransactionsWhileScrolling: true,
   asyncTransactionConflate: true,
   asyncTransactionWaitMillis: 40,
+  onAlert: (ev) => {
+    console.info('[alert]', ev.message);
+  },
   onGridReady: (api) => {
     (window as unknown as { __grid: typeof api }).__grid = api;
+    // Phase 6 engines demo defaults
+    api.applyFormatPatch({ colIds: ['pnl', 'dailyPnl'], format: '0.00', align: 'right' });
+    api.setStyleRules([
+      { id: 'loss', expression: '[pnl] < 0', style: { color: '#b42318', backgroundColor: '#fef3f2' }, colIds: ['pnl'] },
+      { id: 'gain', expression: '[pnl] > 1000', style: { color: '#027a48' }, colIds: ['pnl'] },
+    ]);
+    api.setCalcColumns([
+      { alias: 'net', expression: '[pnl] + [dailyPnl]', headerName: 'Net' },
+    ]);
+    api.setAlertRules([
+      {
+        id: 'big-loss',
+        expression: '[pnl] < -5000',
+        channels: ['badge', 'toast'],
+        messageTemplate: 'Big loss {rowId}: {value}',
+        column: 'pnl',
+      },
+    ]);
     if (paintHarness) {
       // Live tick simulation for scroll-defer / flash smoke
       let i = 0;

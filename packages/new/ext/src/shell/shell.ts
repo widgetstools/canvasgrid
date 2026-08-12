@@ -256,42 +256,127 @@ export class VelocityGridExtShell {
     this.fmtRibbon = el('div', 'vgn-ribbon');
     this.fmtRibbon.setAttribute('aria-label', 'Formatting');
     this.addRibbonGroup(this.fmtRibbon, 'Font', [
-      { label: 'B', title: 'Bold' },
-      { label: 'I', title: 'Italic' },
-      { label: 'U', title: 'Underline' },
+      { label: 'B', title: 'Bold', onClick: () => this.formatSelected({ bold: true }) },
+      { label: 'I', title: 'Italic', onClick: () => this.formatSelected({ italic: true }) },
+      { label: 'U', title: 'Underline', onClick: () => this.formatSelected({ underline: true }) },
     ]);
     this.addRibbonGroup(this.fmtRibbon, 'Align', [
-      { label: '⬅', title: 'Left' },
-      { label: '▮', title: 'Center' },
-      { label: '➡', title: 'Right' },
+      { label: '⬅', title: 'Left', onClick: () => this.formatSelected({ align: 'left' }) },
+      { label: '▮', title: 'Center', onClick: () => this.formatSelected({ align: 'center' }) },
+      { label: '➡', title: 'Right', onClick: () => this.formatSelected({ align: 'right' }) },
     ]);
     this.addRibbonGroup(this.fmtRibbon, 'Format', [
-      { label: '0.00', title: 'Number format' },
-      { label: 'CLR', title: 'Clear formatting' },
+      {
+        label: '0.00',
+        title: 'Number format',
+        onClick: () => this.formatSelected({ format: '0.00', align: 'right' }),
+      },
+      {
+        label: '$',
+        title: 'Currency',
+        onClick: () => this.formatSelected({ format: 'currency', align: 'right' }),
+      },
+      {
+        label: '%',
+        title: 'Percent',
+        onClick: () => this.formatSelected({ format: '0.00%', align: 'right' }),
+      },
+      {
+        label: 'CLR',
+        title: 'Clear formatting',
+        onClick: () => {
+          this.opts.getGridApi().clearFormat();
+          showToast('Formatting cleared');
+        },
+      },
     ]);
-    this.addRibbonGroup(this.fmtRibbon, 'Templates', [
-      { label: 'Tpl', title: 'Column templates' },
+    this.addRibbonGroup(this.fmtRibbon, 'History', [
+      {
+        label: '↶',
+        title: 'Undo format',
+        onClick: () => {
+          if (!this.opts.getGridApi().undoFormat()) showToast('Nothing to undo');
+        },
+      },
+      {
+        label: '↷',
+        title: 'Redo format',
+        onClick: () => {
+          if (!this.opts.getGridApi().redoFormat()) showToast('Nothing to redo');
+        },
+      },
     ]);
     this.host.appendChild(this.fmtRibbon);
 
     this.editRibbon = el('div', 'vgn-ribbon');
     this.editRibbon.setAttribute('aria-label', 'Editing');
     this.addRibbonGroup(this.editRibbon, 'History', [
-      { label: '↶', title: 'Undo' },
-      { label: '↷', title: 'Redo' },
+      {
+        label: '↶',
+        title: 'Undo edit',
+        onClick: () => {
+          if (!this.opts.getGridApi().undoEdit()) showToast('Nothing to undo');
+        },
+      },
+      {
+        label: '↷',
+        title: 'Redo edit',
+        onClick: () => {
+          if (!this.opts.getGridApi().redoEdit()) showToast('Nothing to redo');
+        },
+      },
     ]);
     this.addRibbonGroup(this.editRibbon, 'Edit', [
-      { label: 'Smart', title: 'Smart edit' },
-      { label: 'Bulk', title: 'Bulk update' },
-      { label: '±', title: 'Plus / minus' },
+      {
+        label: '×2',
+        title: 'Multiply selected by 2',
+        onClick: () => this.editSelected({ type: 'multiply', factor: 2 }),
+      },
+      {
+        label: '+1',
+        title: 'Add 1 to selected',
+        onClick: () => this.editSelected({ type: 'add', delta: 1 }),
+      },
+      {
+        label: '±',
+        title: 'Nudge +1',
+        onClick: () => this.editSelected({ type: 'nudge', steps: 1, stepSize: 1 }),
+      },
     ]);
     this.host.appendChild(this.editRibbon);
+  }
+
+  private formatSelected(partial: {
+    bold?: boolean;
+    italic?: boolean;
+    underline?: boolean;
+    align?: 'left' | 'center' | 'right';
+    format?: string;
+  }): void {
+    const api = this.opts.getGridApi();
+    // Apply to all visible columns until column selection lands (Phase 7).
+    const colIds = ['pnl', 'dailyPnl', 'positionId', 'ticker', 'desk', 'region', 'make', 'model', 'price'];
+    api.applyFormatPatch({ colIds, ...partial });
+  }
+
+  private editSelected(op: {
+    type: 'multiply'; factor: number;
+  } | { type: 'add'; delta: number } | { type: 'nudge'; steps: number; stepSize: number }): void {
+    const api = this.opts.getGridApi();
+    const rows = api.getSelectedRows() as Array<Record<string, unknown>>;
+    if (!rows.length) {
+      showToast('Select rows to edit');
+      return;
+    }
+    const ids = rows.map((r) => String(r.id ?? r.positionId ?? ''));
+    api.applyEditOp('pnl', ids, op);
+    showToast(`Applied ${op.type} to ${ids.length} row(s)`);
   }
 
   private addRibbonGroup(
     ribbon: HTMLElement,
     label: string,
-    tools: Array<{ label: string; title: string }>,
+    tools: Array<{ label: string; title: string; onClick: () => void }>,
   ): void {
     const group = el('div', 'vgn-ribbon__group');
     const toolsRow = el('div', 'vgn-ribbon__tools');
@@ -301,7 +386,7 @@ export class VelocityGridExtShell {
         variant: 'ghost',
         icon: t.label.length <= 2,
         title: t.title,
-        onClick: () => showToast(`${t.title} (Phase 6 wires engines)`),
+        onClick: t.onClick,
       }));
     }
     group.appendChild(toolsRow);

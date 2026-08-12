@@ -39,5 +39,50 @@ export type VelocityGridApi<T = unknown> = {
   deselectAll(): void;
   sizeColumnsToFit(): void;
   getRowCount(): number;
+  /** Format ribbon patches (undoable until layout save). */
+  applyFormatPatch(patch: {
+    colIds: string[];
+    bold?: boolean;
+    italic?: boolean;
+    underline?: boolean;
+    align?: 'left' | 'center' | 'right';
+    format?: string;
+    foreground?: string;
+    background?: string;
+  }): void;
+  undoFormat(): boolean;
+  redoFormat(): boolean;
+  clearFormat(): void;
+  setStyleRules(rules: Array<{
+    id: string;
+    expression: string;
+    style: { backgroundColor?: string; color?: string; fontWeight?: string };
+    colIds?: string[];
+    enabled?: boolean;
+    priority?: number;
+  }>): void;
+  setCalcColumns(cols: Array<{ alias: string; expression: string; headerName?: string }>): void;
+  setAlertRules(rules: Array<{
+    id: string;
+    expression: string;
+    channels: Array<'toast' | 'badge' | 'openfin'>;
+    messageTemplate?: string;
+    column?: string;
+  }>): void;
+  applyEditOp(
+    colId: string,
+    rowIds: string[],
+    op:
+      | { type: 'multiply'; factor: number }
+      | { type: 'divide'; factor: number }
+      | { type: 'add'; delta: number }
+      | { type: 'subtract'; delta: number }
+      | { type: 'set'; value: unknown }
+      | { type: 'nudge'; steps: number; stepSize: number },
+  ): void;
+  undoEdit(): boolean;
+  redoEdit(): boolean;
+  getUnreadAlertCount(): number;
+  getEngines(): unknown;
   destroy(): void;
 };
