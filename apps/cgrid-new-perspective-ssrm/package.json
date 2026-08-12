@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@wellsfargo-starui/vg-new-appdata": "*",
     "@wellsfargo-starui/vg-new-ext": "*",
     "@wellsfargo-starui/vg-new-grid": "*",
     "@wellsfargo-starui/vg-new-perspective": "*",

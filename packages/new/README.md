@@ -25,7 +25,8 @@ Charter for the rewrite that lands beside the legacy packages until cutover.
 
 - [`DESIGN.md`](DESIGN.md) — architecture + contracts
 - [`INVENTORY.md`](INVENTORY.md) — frozen feature IDs (`K-*` / `E-*` / `D-*`)
-- [`MIGRATION.md`](MIGRATION.md) — cutover / import map (Phase 9)
+- [`MIGRATION.md`](MIGRATION.md) — cutover / import map / LS migrators
+- [`DEPRECATION.md`](DEPRECATION.md) — legacy package sunset checklist
 
 ## Quality bar
 
@@ -33,6 +34,15 @@ Charter for the rewrite that lands beside the legacy packages until cutover.
 - Zero reintroduction of known SSRM races (index-merge, null wipe, off-chain soft refresh, Stop vs lock takeover)
 - Parity demos: `apps/cgrid-new-csrm`, `apps/cgrid-new-ext-demo`, `apps/cgrid-new-perspective-ssrm`
 
+## Demos
+
+```bash
+npm run dev:new-csrm              # :5210
+npm run dev:new-ext-demo          # :5211
+npm run dev:new-perspective-ssrm  # :5212
+npm run test:new
+```
+
 ## Branch
 
-`rewrite/packages-new`
+`rewrite/packages-new` — Phases 0–9 cutover prep complete; Playwright parity port remains before deleting legacy packages.

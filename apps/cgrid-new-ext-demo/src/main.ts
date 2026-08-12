@@ -6,7 +6,12 @@ import {
   openProviderEditorPopout,
   SEED_PROVIDERS,
 } from '@wellsfargo-starui/vg-new-data';
-import { LocalStorageAppDataStore } from '@wellsfargo-starui/vg-new-appdata';
+import {
+  LocalStorageAppDataStore,
+  migrateLegacyPersistence,
+} from '@wellsfargo-starui/vg-new-appdata';
+
+migrateLegacyPersistence();
 
 type Row = { id: string; desk: string; ticker: string; pnl: number; dailyPnl: number };
 

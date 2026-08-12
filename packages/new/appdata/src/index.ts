@@ -24,3 +24,8 @@ export {
   appDataStorageKey,
   APPDATA_STORAGE_PREFIX,
 } from './localStorageStore';
+
+export {
+  migrateLegacyPersistence,
+  type MigrateReport,
+} from './migrateLegacy';

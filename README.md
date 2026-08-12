@@ -1,6 +1,10 @@
 # canvasgrid
 
-Vanilla TypeScript **canvas data grid** (`@wellsfargo-starui/velocity-grid` / **cgrid**) aiming for AG Grid API parity. Data ops (sort / filter / group / pivot / agg) run in a Web Worker; the main thread paints visible cells.
+Vanilla TypeScript **canvas data grid** aiming for AG Grid API parity.
+
+**Forward path:** greenfield packages under [`packages/new/`](packages/new/) (`@wellsfargo-starui/vg-new-*`). See [`packages/new/MIGRATION.md`](packages/new/MIGRATION.md).
+
+**Legacy path:** `@wellsfargo-starui/velocity-grid*` (deprecated; still built for comparison demos until Playwright parity cutover).
 
 AG Grid React apps under `apps/showcase` and `apps/colgroups` are **comparison references**, not the product library.
 
@@ -23,12 +27,15 @@ npm run dev:showcase    # cgrid feature tour (no external services)
 
 | Script | App | Port | Needs STOMP? | Notes |
 |--------|-----|------|--------------|-------|
-| `npm run dev:showcase` | `cgrid-showcase` | 5185 | No | CSRM feature tour (seed data) |
-| `npm run dev:ssrm-demo` | `cgrid-ssrm-demo` | 5191 | No* | Perspective SSRM (`StompPerspectiveProvider`) |
-| `npm run dev:perspective-ssrm-sample` | `cgrid-perspective-ssrm-sample` | 5201 | No* | Perspective SSRM + tabbed provider editor |
-| `npm run dev:positions` | `cgrid-positions` | 5175 | Yes | Live blotter |
-| `npm run dev:ext-demo` | `cgrid-ext-demo` | 5188 | Yes | VelocityGridExt chrome |
-| `npm run dev:customizer` | `cgrid-customizer-demo` | 5187 | Yes | Customizer UI |
+| `npm run dev:new-csrm` | `cgrid-new-csrm` | 5210 | No | **Greenfield** CSRM |
+| `npm run dev:new-ext-demo` | `cgrid-new-ext-demo` | 5211 | No | **Greenfield** Ext + data bind |
+| `npm run dev:new-perspective-ssrm` | `cgrid-new-perspective-ssrm` | 5212 | No* | **Greenfield** Perspective SSRM |
+| `npm run dev:showcase` | `cgrid-showcase` | 5185 | No | Legacy CSRM feature tour |
+| `npm run dev:ssrm-demo` | `cgrid-ssrm-demo` | 5191 | No* | Legacy Perspective SSRM |
+| `npm run dev:perspective-ssrm-sample` | `cgrid-perspective-ssrm-sample` | 5201 | No* | Legacy Perspective + provider editor |
+| `npm run dev:positions` | `cgrid-positions` | 5175 | Yes | Live blotter (legacy) |
+| `npm run dev:ext-demo` | `cgrid-ext-demo` | 5188 | Yes | Legacy VelocityGridExt chrome |
+| `npm run dev:customizer` | `cgrid-customizer-demo` | 5187 | Yes | Legacy Customizer UI |
 | `npm run dev:colgroups` | `colgroups` | 5176 | No | AG Grid column-groups reference |
 | `npm run dev:ag-showcase` | `showcase` | 5174 | Optional | AG Grid React reference |
 
@@ -72,12 +79,13 @@ Starts each Vite app briefly, checks HTTP on its port, then stops it. Safe on ma
 
 | Path | Role |
 |------|------|
-| `packages/kernel` | Canvas grid library (built) |
-| `packages/expression` | Safe formula DSL (no `eval`) |
-| `packages/format` / `calc` / `rules` / `edit` / `renderers` | Pluggable feature packages |
-| `packages/ext` / `customizer` | Lit UI chrome |
-| `packages/perspective` | Perspective + STOMP SSRM bridge |
-| `apps/cgrid-*` | Product demos |
+| `packages/new/*` | **Greenfield** `vg-new-*` rewrite (preferred) |
+| `packages/kernel` | Legacy canvas grid (deprecated) |
+| `packages/expression` / `format` / `calc` / `rules` / `edit` | Legacy engines (→ `vg-new-engines`) |
+| `packages/ext` / `customizer` | Legacy Lit UI chrome |
+| `packages/perspective` | Legacy Perspective + STOMP SSRM bridge |
+| `apps/cgrid-new-*` | Greenfield demos |
+| `apps/cgrid-*` | Legacy demos (comparison) |
 | `apps/showcase` / `colgroups` | AG Grid 35.x reference apps |
 | `docs/` | Feature catalog, plans, performance notes |
 
@@ -88,17 +96,20 @@ Starts each Vite app briefly, checks HTTP on its port, then stops it. Safe on ma
 | `npm run build` | Turbo build all workspaces |
 | `npm run typecheck` | Turbo typecheck |
 | `npm run test` | Turbo test |
-| `npm run test:kernel` | Kernel Vitest suite |
+| `npm run test:new` | Greenfield `vg-new-*` Vitest suites |
+| `npm run test:kernel` | Legacy kernel Vitest suite |
 | `npm run lint` | ESLint (identifier vocabulary + basic hygiene) |
 | `npm run verify:demos` | Cross-platform demo HTTP boot check |
 
 ## Trust boundaries
 
-- **`aggFuncs` / custom comparators** serialize via `new Function` on main + worker. Treat them as **trusted application code** only. Prefer `@wellsfargo-starui/velocity-grid-expression` for user-authored formulas.
+- **`aggFuncs` / custom comparators** (legacy) serialize via `new Function` on main + worker. Treat them as **trusted application code** only. Prefer `vg-new-engines` expression DSL for user-authored formulas.
 - **Tooltip `{ html }`** and context-menu icons are allowlist-sanitized; prefer `{ plain }` / trusted SVG.
 
 ## Docs
 
+- [Greenfield README](packages/new/README.md)
+- [Migration / cutover](packages/new/MIGRATION.md)
 - [Performance (Cycle 25)](docs/PERFORMANCE.md)
 - [Feature catalog](docs/catalog/README.md)
 

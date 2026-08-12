@@ -1,6 +1,9 @@
+import { migrateLegacyPersistence } from '@wellsfargo-starui/vg-new-appdata';
 import { VelocityGrid } from '@wellsfargo-starui/vg-new-grid';
 import { VelocityGridExtShell } from '@wellsfargo-starui/vg-new-ext';
 import { StompPerspectiveProvider, type PositionRow } from '@wellsfargo-starui/vg-new-perspective';
+
+migrateLegacyPersistence();
 
 const params = new URLSearchParams(location.search);
 const engine = params.get('engine') === 'wasm' ? 'wasm' as const : 'memory' as const;

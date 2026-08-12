@@ -129,5 +129,5 @@ Status legend: `todo` · `wip` · `done` · `deferred`
 - [x] No dependency on legacy `velocity-grid-customizer`
 - [x] One merge helper (`mergeRowFields`)
 - [x] Pivot fail-closed helper for sparse SSRM
-- [ ] No duplicate provider Customize modules
-- [ ] Parity e2e ported from ext-demo checklist
+- [x] No duplicate provider Customize modules
+- [ ] Parity e2e ported from ext-demo checklist (checklist landed; Playwright specs pending)
