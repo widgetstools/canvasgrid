@@ -63,7 +63,12 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
 
     this.root = document.createElement('div');
     this.root.className = 'vg-new-grid';
-    this.root.style.cssText = 'position:relative;width:100%;height:100%;overflow:hidden;font-family:"IBM Plex Sans",system-ui,sans-serif;background:var(--vgn-bg,#fff);';
+    this.root.style.cssText = 'position:relative;width:100%;height:100%;min-height:0;flex:1;overflow:hidden;font-family:"IBM Plex Sans",system-ui,sans-serif;background:var(--vgn-bg,#fff);';
+    // Ensure flex hosts (Ext shell grid slot) actually size the grid.
+    if (getComputedStyle(host).display.includes('flex') || host.dataset.slot === 'grid') {
+      host.style.minHeight = host.style.minHeight || '0';
+      host.style.height = host.style.height || '100%';
+    }
     host.appendChild(this.root);
 
     this.wrap = document.createElement('div');
@@ -325,10 +330,20 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
       },
       setCalcColumns: (cols) => {
         this.engines.setCalcColumns(cols as CalcColumn[]);
-        if (this.rowModelType === 'clientSide') {
-          // Re-enrich visible rows via paint path (enrich per paint).
-          this.schedulePaint();
-        }
+        // Ensure calc aliases appear as visible columns.
+        const base = this.colDefs.filter((d) => !(d as { __calc?: boolean }).__calc);
+        this.colDefs = [
+          ...base,
+          ...(cols as CalcColumn[]).map((c) => ({
+            field: c.alias as keyof T & string,
+            colId: c.alias,
+            headerName: c.headerName ?? c.alias,
+            width: 110,
+            __calc: true,
+          } as import('./types/options').ColDef<T> & { __calc?: boolean })),
+        ];
+        this.columns.setColumnDefs(this.colDefs);
+        this.schedulePaint();
         this.options.onModelUpdated?.();
       },
       setAlertRules: (rules) => {

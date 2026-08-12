@@ -323,11 +323,11 @@ export function buildDefaultModules(): SettingsModule[] {
       label: 'Calculated columns',
       mount: panel('Calculated columns', (host, ctx) => {
         const draft = ctx.session.beginDraft<CalcDraft>('calculated-columns', {
-          columns: [{ alias: 'net', expression: 'pnl + dailyPnl', headerName: 'Net' }],
+          columns: [{ alias: 'net', expression: '[pnl] + [dailyPnl]', headerName: 'Net' }],
         });
         const col = draft.columns[0]!;
         const dispos: Disposable[] = [
-          mountBanner(host, { text: 'Expression DSL → setCalcColumns on Apply.' }),
+          mountBanner(host, { text: 'Expression DSL → setCalcColumns on Apply. Use [field] refs.' }),
           mountField(host, {
             label: 'Alias',
             value: col.alias,
@@ -339,7 +339,7 @@ export function buildDefaultModules(): SettingsModule[] {
           mountField(host, {
             label: 'Expression',
             value: col.expression,
-            placeholder: 'pnl + dailyPnl',
+            placeholder: '[pnl] + [dailyPnl]',
             onChange: (v) => {
               col.expression = v;
               ctx.session.setDraft('calculated-columns', draft);
@@ -356,7 +356,7 @@ export function buildDefaultModules(): SettingsModule[] {
             ctx.gridApi.setCalcColumns((d as CalcDraft).columns);
           },
           onReset: () => {
-            draft.columns = [{ alias: 'net', expression: 'pnl + dailyPnl', headerName: 'Net' }];
+            draft.columns = [{ alias: 'net', expression: '[pnl] + [dailyPnl]', headerName: 'Net' }];
           },
         }));
         return dispos;
@@ -371,18 +371,18 @@ export function buildDefaultModules(): SettingsModule[] {
         const draft = ctx.session.beginDraft<RulesDraft>('conditional-styling', {
           rules: [{
             id: 'neg-pnl',
-            expression: 'pnl < 0',
+            expression: '[pnl] < 0',
             style: { color: '#b42318', backgroundColor: '#fef3f2' },
             enabled: true,
           }],
         });
         const rule = draft.rules[0]!;
         const dispos: Disposable[] = [
-          mountBanner(host, { text: 'Rule expression → setStyleRules on Apply.' }),
+          mountBanner(host, { text: 'Rule expression → setStyleRules on Apply. Use [field] refs.' }),
           mountField(host, {
             label: 'Expression',
             value: rule.expression,
-            placeholder: 'pnl < 0',
+            placeholder: '[pnl] < 0',
             onChange: (v) => {
               rule.expression = v;
               ctx.session.setDraft('conditional-styling', draft);
@@ -405,7 +405,7 @@ export function buildDefaultModules(): SettingsModule[] {
           onReset: () => {
             draft.rules = [{
               id: 'neg-pnl',
-              expression: 'pnl < 0',
+              expression: '[pnl] < 0',
               style: { color: '#b42318', backgroundColor: '#fef3f2' },
               enabled: true,
             }];
@@ -423,7 +423,7 @@ export function buildDefaultModules(): SettingsModule[] {
         const draft = ctx.session.beginDraft<AlertsDraft>('alerts', {
           rules: [{
             id: 'big-loss',
-            expression: 'pnl < -1000',
+            expression: '[pnl] < -1000',
             channels: ['toast', 'badge'],
             messageTemplate: 'Large loss on {{ticker}}',
           }],
@@ -456,7 +456,7 @@ export function buildDefaultModules(): SettingsModule[] {
           onReset: () => {
             draft.rules = [{
               id: 'big-loss',
-              expression: 'pnl < -1000',
+              expression: '[pnl] < -1000',
               channels: ['toast', 'badge'],
               messageTemplate: 'Large loss on {{ticker}}',
             }];

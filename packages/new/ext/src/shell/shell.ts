@@ -156,8 +156,8 @@ export class VelocityGridExtShell {
       variant: 'ghost',
       onClick: () => this.closeCustomize(),
     }));
-
-    this.renderPanel();
+    // Do not renderPanel here — getGridApi may not be ready until the host
+    // mounts VelocityGrid into getGridHost() after construct.
   }
 
   private mountTitleBar(): void {
@@ -281,7 +281,9 @@ export class VelocityGridExtShell {
         label: 'CLR',
         title: 'Clear formatting',
         onClick: () => {
-          this.opts.getGridApi().clearFormat();
+          const api = this.tryGridApi();
+          if (!api) return;
+          api.clearFormat();
           showToast('Formatting cleared');
         },
       },
@@ -291,14 +293,16 @@ export class VelocityGridExtShell {
         label: '↶',
         title: 'Undo format',
         onClick: () => {
-          if (!this.opts.getGridApi().undoFormat()) showToast('Nothing to undo');
+          const api = this.tryGridApi();
+          if (!api || !api.undoFormat()) showToast('Nothing to undo');
         },
       },
       {
         label: '↷',
         title: 'Redo format',
         onClick: () => {
-          if (!this.opts.getGridApi().redoFormat()) showToast('Nothing to redo');
+          const api = this.tryGridApi();
+          if (!api || !api.redoFormat()) showToast('Nothing to redo');
         },
       },
     ]);
@@ -311,14 +315,16 @@ export class VelocityGridExtShell {
         label: '↶',
         title: 'Undo edit',
         onClick: () => {
-          if (!this.opts.getGridApi().undoEdit()) showToast('Nothing to undo');
+          const api = this.tryGridApi();
+          if (!api || !api.undoEdit()) showToast('Nothing to undo');
         },
       },
       {
         label: '↷',
         title: 'Redo edit',
         onClick: () => {
-          if (!this.opts.getGridApi().redoEdit()) showToast('Nothing to redo');
+          const api = this.tryGridApi();
+          if (!api || !api.redoEdit()) showToast('Nothing to redo');
         },
       },
     ]);
@@ -349,7 +355,11 @@ export class VelocityGridExtShell {
     align?: 'left' | 'center' | 'right';
     format?: string;
   }): void {
-    const api = this.opts.getGridApi();
+    const api = this.tryGridApi();
+    if (!api) {
+      showToast('Grid not ready', { tone: 'warn' });
+      return;
+    }
     // Apply to all visible columns until column selection lands (Phase 7).
     const colIds = ['pnl', 'dailyPnl', 'positionId', 'ticker', 'desk', 'region', 'make', 'model', 'price'];
     api.applyFormatPatch({ colIds, ...partial });
@@ -358,7 +368,11 @@ export class VelocityGridExtShell {
   private editSelected(op: {
     type: 'multiply'; factor: number;
   } | { type: 'add'; delta: number } | { type: 'nudge'; steps: number; stepSize: number }): void {
-    const api = this.opts.getGridApi();
+    const api = this.tryGridApi();
+    if (!api) {
+      showToast('Grid not ready', { tone: 'warn' });
+      return;
+    }
     const rows = api.getSelectedRows() as Array<Record<string, unknown>>;
     if (!rows.length) {
       showToast('Select rows to edit');
@@ -492,16 +506,30 @@ export class VelocityGridExtShell {
     host.appendChild(savePill);
   }
 
+  private tryGridApi(): VelocityGridApi | null {
+    try {
+      return this.opts.getGridApi();
+    } catch {
+      return null;
+    }
+  }
+
   private renderPanel(): void {
     this.panelDispos?.destroy();
     this.panelDispos = null;
     const panelHost = this.host.querySelector('[data-slot="panel"]') as HTMLElement;
+    if (!panelHost) return;
     panelHost.replaceChildren();
     const mod = this.modules.find((m) => m.id === this.activeModuleId);
     if (!mod) return;
     this.drawer.setTitle(mod.label);
+    const gridApi = this.tryGridApi();
+    if (!gridApi) {
+      panelHost.appendChild(el('div', 'vgn-empty', 'Grid not ready yet — close and reopen Customize.'));
+      return;
+    }
     this.panelDispos = mod.mount(panelHost, {
-      gridApi: this.opts.getGridApi(),
+      gridApi,
       session: this.session,
       dataProvider: this.opts.dataProvider ?? null,
       catalog: this.opts.catalog ?? this.opts.dataProvider?.getCatalog() ?? null,

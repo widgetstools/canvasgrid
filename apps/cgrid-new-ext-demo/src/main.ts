@@ -78,16 +78,16 @@ void dataProvider.ensureSeedCatalog(SEED_PROVIDERS).then(() => {
 });
 
 // Seed engines so Customize Apply has something to replace
-api.setCalcColumns([{ alias: 'net', expression: 'pnl + dailyPnl', headerName: 'Net' }]);
+api.setCalcColumns([{ alias: 'net', expression: '[pnl] + [dailyPnl]', headerName: 'Net' }]);
 api.setStyleRules([{
   id: 'neg-pnl',
-  expression: 'pnl < 0',
+  expression: '[pnl] < 0',
   style: { color: '#b42318' },
   enabled: true,
 }]);
 api.setAlertRules([{
   id: 'big-loss',
-  expression: 'pnl < -1000',
+  expression: '[pnl] < -1000',
   channels: ['toast', 'badge'],
   messageTemplate: 'Large loss',
 }]);

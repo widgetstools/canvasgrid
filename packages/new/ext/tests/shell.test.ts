@@ -59,12 +59,18 @@ describe('VelocityGridExtShell', () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const api = fakeApi();
+    let ready = false;
     const shell = new VelocityGridExtShell(host, {
       gridId: 'test-shell',
       title: 'Demo',
-      getGridApi: () => api,
+      getGridApi: () => {
+        if (!ready) throw new Error('grid not ready');
+        return api;
+      },
       asOfLabel: 'As-of 2026-08-12',
     });
+    // Construct must succeed before the host attaches the grid.
+    ready = true;
 
     expect(host.querySelector('.vgn-titlebar__brand')?.textContent).toContain('Demo');
     expect(host.querySelectorAll('.vgn-ribbon')).toHaveLength(2);
