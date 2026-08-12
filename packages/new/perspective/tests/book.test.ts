@@ -3,14 +3,14 @@ import { PerspectiveBook } from '../src/book';
 import { clearSharedFeedStop, isSharedFeedStopped, writeSharedFeedStop } from '../src/feedEpoch';
 
 describe('PerspectiveBook feed epoch', () => {
-  it('stop writes shared epoch and blocks connect', () => {
+  it('stop writes shared epoch and blocks connect', async () => {
     const key = `test-${Date.now()}`;
     clearSharedFeedStop(key);
     const book = new PerspectiveBook({ schemaKey: key, snapshotRows: 10 });
     book.stopFeed();
     expect(book.isFeedStopped()).toBe(true);
     expect(isSharedFeedStopped(key)).toBe(true);
-    book.connect();
+    await book.connect();
     expect(book.getPhase()).toBe('disconnected');
     book.restartFeed();
     expect(book.isFeedStopped()).toBe(false);
@@ -26,7 +26,8 @@ describe('PerspectiveBook feed epoch', () => {
 
   it('resumeLiveFeed does not clear snapshot', async () => {
     const book = new PerspectiveBook({ snapshotRows: 20 });
-    book.connect();
+    await book.connect();
+    await new Promise((r) => setTimeout(r, 30));
     const before = await book.getSsrmRows('v', { startRow: 0, endRow: 5 });
     expect(before.rowCount).toBe(20);
     book.resumeLiveFeed();

@@ -9,6 +9,10 @@
     ".": {
       "types": "./src/index.ts",
       "import": "./src/index.ts"
+    },
+    "./bootstrap": {
+      "types": "./src/bootstrap.ts",
+      "import": "./src/bootstrap.ts"
     }
   },
   "scripts": {
@@ -24,6 +28,9 @@
   "dependencies": {
     "@wellsfargo-starui/vg-new-appdata": "*",
     "@wellsfargo-starui/vg-new-grid": "*",
-    "@wellsfargo-starui/vg-new-data": "*"
+    "@wellsfargo-starui/vg-new-data": "*",
+    "@perspective-dev/client": "^4.5.2",
+    "@perspective-dev/server": "^4.5.2",
+    "@stomp/stompjs": "^7.3.0"
   }
 }

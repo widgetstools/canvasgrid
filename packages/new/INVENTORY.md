@@ -101,13 +101,13 @@ Status legend: `todo` · `wip` · `done` · `deferred`
 | D-HUB-02 | Transport plugins (mock/STOMP/REST/WS) | wip |
 | D-ED-01 | ProviderEditor popout on vg-new-ui | wip |
 | D-ED-02 | Diagnostics Stop/Restart + feed control | wip |
-| D-PSP-01 | SharedWorker multi-session host | wip |
+| D-PSP-01 | SharedWorker multi-session host | done |
 | D-PSP-02 | PerspectiveBook Table + Views | wip |
 | D-PSP-03 | Seed + STOMP feeds | wip |
 | D-PSP-04 | Web Lock leadership + stop epoch | done |
 | D-PSP-05 | Resume-live takeover (no resnapshot) | done |
 | D-PSP-06 | Per-view pending live batches | done |
-| D-PSP-07 | StompPerspectiveProvider + SSRM datasource | wip |
+| D-PSP-07 | StompPerspectiveProvider + SSRM datasource | done |
 | D-PSP-08 | Filter tick ops incl. ends with / not contains | done |
 
 ---

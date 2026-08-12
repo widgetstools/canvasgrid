@@ -3,9 +3,18 @@ import {
   isSharedFeedStopped,
   writeSharedFeedStop,
 } from './feedEpoch';
+import { FeedLeadership, type FeedRole } from './feedLeadership';
+import {
+  feedLockNameForSchema,
+  POSITION_SCHEMA,
+  type PerspectiveTableSchema,
+} from './schema';
+
+type WasmTable = { size(): Promise<number> | number; update(rows: unknown[]): Promise<void> };
 
 export type BookPhase = 'idle' | 'connecting' | 'snapshot' | 'live' | 'disconnected' | 'error';
 export type BookFeed = 'seed' | 'stomp';
+export type BookEngine = 'memory' | 'wasm';
 
 export type PositionRow = Record<string, unknown> & { positionId: string };
 
@@ -24,47 +33,82 @@ type BoundView = {
 
 export type PerspectiveBookOptions = {
   feed?: BookFeed;
+  /** `memory` = in-process Map (tests / default until WASM boots). `wasm` = Perspective table. */
+  engine?: BookEngine;
   schemaKey?: string;
+  schema?: PerspectiveTableSchema;
   snapshotRows?: number;
+  /** Force shared-table leadership semantics (Web Locks) even on memory engine — for tests. */
+  sharedTable?: boolean;
   onPhase?: (p: BookPhase) => void;
   onViewTick?: (t: ViewTick) => void;
+  onRole?: (role: FeedRole) => void;
 };
 
 export type SsrmSortModel = Array<{ colId: string; direction: 'asc' | 'desc' }>;
 
 /**
- * PerspectiveBook (greenfield) — Table + N Views + feed leadership.
- * Seed path implements real sparse SSRM queries (flat + skeleton + leaf windows).
- * SharedWorker WASM ports in Phase 4.
+ * PerspectiveBook — Table + N Views + feed leadership.
+ * Stop epoch is written BEFORE Web Lock release (ADR-003).
+ * Lock takeover resumes live only — never resnapshots.
  */
 export class PerspectiveBook {
   private phase: BookPhase = 'idle';
   private feedStopped = false;
   private feedStopEpoch = 0;
   private readonly schemaKey: string;
+  private readonly schema: PerspectiveTableSchema;
   private readonly views = new Map<string, BoundView>();
   private tableRows = new Map<string, PositionRow>();
   private snapshotComplete = false;
   private seedTimer: ReturnType<typeof setInterval> | null = null;
   private destroyed = false;
+  private sharedTable: boolean;
+  private engine: BookEngine;
+  private wasmTable: WasmTable | null = null;
+  private leadership: FeedLeadership;
+  private connecting = false;
 
   constructor(private readonly opts: PerspectiveBookOptions = {}) {
     this.schemaKey = opts.schemaKey ?? 'positions';
+    this.schema = opts.schema ?? { ...POSITION_SCHEMA };
+    this.engine = opts.engine ?? 'memory';
+    this.sharedTable = opts.sharedTable ?? false;
+    this.leadership = this.makeLeadership();
+  }
+
+  private makeLeadership(): FeedLeadership {
+    return new FeedLeadership({
+      lockName: feedLockNameForSchema(this.schema),
+      sharedTable: this.sharedTable,
+      isDestroyed: () => this.destroyed,
+      isFeedStopped: () => this.isFeedStopped(),
+      onTakeover: () => this.onLeadershipTakeover(),
+    });
   }
 
   getPhase(): BookPhase {
     return this.phase;
   }
 
+  getFeedRole(): FeedRole {
+    return this.leadership.getRole();
+  }
+
   isFeedStopped(): boolean {
     return this.feedStopped || isSharedFeedStopped(this.schemaKey);
   }
 
+  /**
+   * Diagnostics Stop — write stop epoch BEFORE releasing the feed lock
+   * so a waiter cannot resume while BroadcastChannel is still in flight.
+   */
   stopFeed(): void {
     this.feedStopped = true;
     this.feedStopEpoch++;
     writeSharedFeedStop(this.schemaKey, this.feedStopEpoch);
     this.stopSeed();
+    this.leadership.release();
     this.setPhase('disconnected');
   }
 
@@ -82,30 +126,161 @@ export class PerspectiveBook {
     this.views.delete(viewId);
   }
 
-  connect(): void {
+  /** Boot feed — routes through leadership when the table is shared. */
+  connect(): Promise<void> {
+    if (this.isFeedStopped() || this.destroyed || this.connecting) {
+      return Promise.resolve();
+    }
+    return this.connectRouted();
+  }
+
+  private async connectRouted(): Promise<void> {
+    this.connecting = true;
+    try {
+      if (this.isFeedStopped() || this.destroyed) return;
+      this.setPhase('connecting');
+
+      if (this.engine === 'wasm') {
+        await this.ensureWasmTable();
+        if (this.isFeedStopped() || this.destroyed) return;
+      } else if (this.opts.sharedTable) {
+        this.sharedTable = true;
+        this.rebuildLeadership();
+      }
+
+      if (this.sharedTable) {
+        const size = this.engine === 'wasm'
+          ? await this.wasmTableSize()
+          : this.tableRows.size;
+
+        if (size > 0) {
+          await this.adoptSharedLive(size);
+          this.leadership.queueTakeover();
+          return;
+        }
+
+        if (await this.leadership.tryLead()) {
+          if (this.isFeedStopped() || this.destroyed) {
+            this.leadership.release();
+            return;
+          }
+          this.opts.onRole?.(this.leadership.getRole());
+          await this.connectSeed();
+          return;
+        }
+
+        // Follower — wait for leader snapshot then adopt.
+        const settled = await this.waitForSharedSnapshot();
+        if (this.isFeedStopped() || this.destroyed) return;
+        if (settled > 0) {
+          await this.adoptSharedLive(settled);
+          this.leadership.queueTakeover();
+          return;
+        }
+        // Timeout — seed ourselves.
+        if (await this.leadership.tryLead()) {
+          await this.connectSeed();
+        }
+        return;
+      }
+
+      // Dedicated / memory single-tab — always leader.
+      await this.leadership.tryLead();
+      await this.connectSeed();
+    } finally {
+      this.connecting = false;
+    }
+  }
+
+  private rebuildLeadership(): void {
+    this.leadership.release();
+    this.leadership = this.makeLeadership();
+  }
+
+  private onLeadershipTakeover(): void {
+    this.opts.onRole?.(this.leadership.getRole());
+    // Resume live only — never clear rows / resnapshot.
+    this.resumeLiveFeed();
+  }
+
+  private async ensureWasmTable(): Promise<void> {
+    if (this.wasmTable) return;
+    // Dynamic import keeps unit tests free of WASM module resolution.
+    const boot = await import('./bootstrap');
+    const { table, attached } = await boot.openOrCreatePositionsTable(
+      undefined,
+      this.schema,
+    );
+    this.wasmTable = table;
+    this.sharedTable = boot.getPerspectiveWorkerMode() === 'shared';
+    if (this.sharedTable) this.rebuildLeadership();
+    void attached;
+  }
+
+  private async wasmTableSize(): Promise<number> {
+    if (!this.wasmTable) return this.tableRows.size;
+    try {
+      return Number(await this.wasmTable.size());
+    } catch {
+      return this.tableRows.size;
+    }
+  }
+
+  private async waitForSharedSnapshot(timeoutMs = 30_000): Promise<number> {
+    const start = Date.now();
+    for (;;) {
+      const size = this.engine === 'wasm'
+        ? await this.wasmTableSize()
+        : this.tableRows.size;
+      if (size > 0 || Date.now() - start > timeoutMs || this.destroyed) return size;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  }
+
+  private async adoptSharedLive(size: number): Promise<void> {
+    this.snapshotComplete = true;
+    // Memory followers in tests may have empty local maps — that's OK;
+    // WASM followers read via SharedWorker Views (SSRM path uses local
+    // mirror when dual-written by the leader in this process).
+    void size;
+    this.setPhase('live');
+    this.opts.onRole?.(this.leadership.getRole());
+  }
+
+  private async connectSeed(): Promise<void> {
     if (this.isFeedStopped() || this.destroyed) return;
     if (this.tableRows.size === 0) {
       this.setPhase('snapshot');
       const n = this.opts.snapshotRows ?? 500;
       const desks = ['EQ', 'FX', 'FI'];
       const regions = ['AMER', 'EMEA', 'APAC'];
+      const batch: PositionRow[] = [];
       for (let i = 0; i < n; i++) {
         const id = `P${String(i).padStart(5, '0')}`;
-        this.tableRows.set(id, {
+        const row: PositionRow = {
           positionId: id,
           desk: desks[i % desks.length]!,
           region: regions[i % regions.length]!,
           ticker: `T${i % 50}`,
           pnl: Math.round((Math.random() - 0.5) * 100000) / 100,
           dailyPnl: Math.round((Math.random() - 0.5) * 5000) / 100,
-        });
+        };
+        this.tableRows.set(id, row);
+        batch.push(row);
       }
-      this.snapshotComplete = true;
-      this.setPhase('live');
+      if (this.wasmTable && batch.length) {
+        try { await this.wasmTable.update(batch); } catch { /* mirror best-effort */ }
+      }
     }
+    this.snapshotComplete = true;
+    this.setPhase('live');
+    this.opts.onRole?.(this.leadership.getRole());
     this.startSeedLive();
   }
 
+  /**
+   * Lock-takeover / resume path: book already live — feed without resnapshot.
+   */
   resumeLiveFeed(): void {
     if (this.isFeedStopped() || this.destroyed) return;
     this.snapshotComplete = true;
@@ -152,10 +327,6 @@ export class PerspectiveBook {
     return { rows: rows.slice(start, end), rowCount: rows.length };
   }
 
-  /**
-   * Sparse v2 skeleton — every group at every depth for the active rowGroupCols.
-   * Includes a `path: []` root carrier with grand-total aggregates.
-   */
   async getGroupSkeleton(viewId: string, req: {
     rowGroupCols: string[];
     sortModel?: SsrmSortModel;
@@ -252,7 +423,17 @@ export class PerspectiveBook {
     return { ids };
   }
 
-  /** Tick filter ops — includes ends with / not contains; unknown ops fail closed. */
+  /** Row count for leadership / follower polls (memory mirror). */
+  getLocalRowCount(): number {
+    return this.tableRows.size;
+  }
+
+  /** Inject rows into the memory mirror — test helper for follower adopt. */
+  __seedRowsForTests(rows: PositionRow[]): void {
+    for (const r of rows) this.tableRows.set(r.positionId, r);
+    this.snapshotComplete = true;
+  }
+
   static rowMatchesFilterOp(op: string, raw: unknown, term: unknown): boolean {
     const s = String(raw ?? '').toLowerCase();
     const needle = String(term ?? '').toLowerCase();
@@ -270,8 +451,10 @@ export class PerspectiveBook {
   private startSeedLive(): void {
     this.stopSeed();
     if (this.isFeedStopped() || !this.snapshotComplete) return;
+    if (this.leadership.getRole() === 'follower') return;
     this.seedTimer = setInterval(() => {
       if (this.isFeedStopped()) return;
+      if (this.leadership.getRole() === 'follower') return;
       const ids = [...this.tableRows.keys()];
       if (!ids.length) return;
       const batch: PositionRow[] = [];
@@ -284,6 +467,9 @@ export class PerspectiveBook {
         };
         this.tableRows.set(id, next);
         batch.push(next);
+      }
+      if (this.wasmTable) {
+        void this.wasmTable.update(batch).catch(() => undefined);
       }
       for (const v of this.views.values()) {
         const byId = new Map(v.pendingLiveBatch.map((r) => [r.positionId, r]));
@@ -316,6 +502,8 @@ export class PerspectiveBook {
   destroy(): void {
     this.destroyed = true;
     this.stopSeed();
+    this.leadership.release();
     this.views.clear();
+    this.wasmTable = null;
   }
 }

@@ -31,11 +31,14 @@ vg-new-grid (ApiFacade → RowModel → Paint / Worker / SSRM)
 - Soft-refresh pacing runs **inside** the SSRM op chain; bail on generation change
 - Live patches apply before soft refresh (rules / flash see `rowsChanged`)
 
-### Feed epoch
+### Feed epoch / SharedWorker
 
 - Diagnostics Stop writes shared stop epoch (localStorage) **before** releasing Web Lock
-- Lock takeover of a live book = **resume live only** (no STOMP resnapshot)
-- Per-view pending live batches
+- Lock takeover of a live book = **resume live only** (no resnapshot)
+- SharedWorker host: `packages/new/perspective/src/sharedServer.worker.ts` (one session per port)
+- Bootstrap: `@wellsfargo-starui/vg-new-perspective/bootstrap` (shared → dedicated fallback)
+- Per-view pending live batches; page-level book share by `providerId`
+- Sample: `?engine=wasm` · `?groupBy=desk,region` · `?worker=dedicated`
 
 ### Config planes (meanings preserved)
 

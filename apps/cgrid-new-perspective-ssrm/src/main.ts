@@ -2,9 +2,13 @@ import { VelocityGrid } from '@wellsfargo-starui/vg-new-grid';
 import { VelocityGridExtShell } from '@wellsfargo-starui/vg-new-ext';
 import { StompPerspectiveProvider, type PositionRow } from '@wellsfargo-starui/vg-new-perspective';
 
+const params = new URLSearchParams(location.search);
+const engine = params.get('engine') === 'wasm' ? 'wasm' as const : 'memory' as const;
+
 const provider = new StompPerspectiveProvider({
   providerId: 'positions-seed',
   feed: 'seed',
+  engine,
   snapshotRows: 2000,
   label: 'Positions',
 });
@@ -14,7 +18,6 @@ const shellHost = document.createElement('div');
 shellHost.style.height = '100%';
 root.appendChild(shellHost);
 
-const params = new URLSearchParams(location.search);
 const groupBy = (params.get('groupBy') ?? '')
   .split(',')
   .map((s) => s.trim())

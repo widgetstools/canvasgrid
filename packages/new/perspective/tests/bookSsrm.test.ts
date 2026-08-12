@@ -5,7 +5,8 @@ describe('PerspectiveBook sparse SSRM queries', () => {
   it('serves flat windows with stable rowCount', async () => {
     const book = new PerspectiveBook({ snapshotRows: 40, feed: 'seed' });
     await book.registerView({ id: 'v1' });
-    book.connect();
+    await book.connect();
+    await new Promise((r) => setTimeout(r, 30));
     const page = await book.getSsrmRows('v1', { startRow: 0, endRow: 10 });
     expect(page.rowCount).toBe(40);
     expect(page.rows).toHaveLength(10);
@@ -16,7 +17,8 @@ describe('PerspectiveBook sparse SSRM queries', () => {
   it('builds multi-depth skeleton with root grand totals', async () => {
     const book = new PerspectiveBook({ snapshotRows: 30, feed: 'seed' });
     await book.registerView({ id: 'v1' });
-    book.connect();
+    await book.connect();
+    await new Promise((r) => setTimeout(r, 30));
     const { groups } = await book.getGroupSkeleton('v1', {
       rowGroupCols: ['desk', 'region'],
     });
@@ -34,7 +36,8 @@ describe('PerspectiveBook sparse SSRM queries', () => {
   it('returns leaf windows for a deepest group path', async () => {
     const book = new PerspectiveBook({ snapshotRows: 30, feed: 'seed' });
     await book.registerView({ id: 'v1' });
-    book.connect();
+    await book.connect();
+    await new Promise((r) => setTimeout(r, 30));
     const { rows } = await book.getLeafRows('v1', {
       groupPath: ['EQ', 'AMER'],
       rowGroupCols: ['desk', 'region'],
@@ -54,7 +57,8 @@ describe('PerspectiveBook sparse SSRM queries', () => {
   it('projects columnKeys on flat and leaf fetches', async () => {
     const book = new PerspectiveBook({ snapshotRows: 10, feed: 'seed' });
     await book.registerView({ id: 'v1' });
-    book.connect();
+    await book.connect();
+    await new Promise((r) => setTimeout(r, 30));
     const page = await book.getSsrmRows('v1', {
       startRow: 0,
       endRow: 3,
