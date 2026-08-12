@@ -54,6 +54,7 @@ export class CanvasPainter {
     scrollLeft: number;
     selected: Set<string>;
     sortColId?: string;
+    stickyAncestors?: Array<{ depth: number; value: string; childCount: number }>;
   }): void {
     const dpr = Math.max(1, window.devicePixelRatio || 1);
     const cssW = this.canvas.clientWidth;
@@ -105,11 +106,28 @@ export class CanvasPainter {
     const visible = Math.ceil(bodyH / rowHeight) + 1;
     const now = Date.now();
 
+    // Sticky ancestor band (CSRM) — painted above the first data row.
+    const sticky = args.stickyAncestors ?? [];
+    for (let si = 0; si < sticky.length; si++) {
+      const a = sticky[si]!;
+      const y = headerHeight + si * rowHeight;
+      ctx.fillStyle = this.opts.theme === 'dark' ? '#1a2330' : '#e8eef5';
+      ctx.fillRect(0, y, cssW, rowHeight);
+      ctx.fillStyle = c.text;
+      ctx.font = '600 12px "IBM Plex Sans", system-ui, sans-serif';
+      ctx.fillText(
+        `${'  '.repeat(a.depth)}▸ ${a.value}  (${a.childCount})`,
+        8,
+        y + rowHeight / 2,
+      );
+    }
+    const stickyOffset = sticky.length * rowHeight;
+
     for (let i = 0; i < visible; i++) {
       const rowIndex = first + i;
       const row = args.rows[rowIndex];
       if (!row) break;
-      const y = headerHeight + rowIndex * rowHeight - args.scrollTop;
+      const y = headerHeight + stickyOffset + rowIndex * rowHeight - args.scrollTop;
       const id = this.opts.getRowId(row);
       ctx.fillStyle = rowIndex % 2 === 1 ? c.odd : c.bg;
       ctx.fillRect(0, y, cssW, rowHeight);

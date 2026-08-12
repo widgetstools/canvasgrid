@@ -26,6 +26,11 @@ export { ClientSideRowModel } from './csrm/clientSideRowModel';
 export { runCsrmPipeline, applyFilterPass, applySortPass } from './csrm/pipeline';
 export { AsyncTransactionQueue, conflateTransactions } from './csrm/asyncTransactions';
 export { GroupPivotCoordinator } from './groupPivot/coordinator';
+export { applyGroupPass, collectDescendantRowIds } from './csrm/groupPass';
+export { applyAggPass, applyGroupAggPass, runAggFunc } from './csrm/aggPass';
+export { computeGroupVisibleOrder } from './csrm/visibleOrder';
+export { computeStickyAncestors, buildGroupMetaLookup } from './csrm/stickyAncestors';
+export { SelectionModel } from './selection/selectionModel';
 export {
   isServerSideDatasourceV2,
   resultRows,

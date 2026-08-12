@@ -3,6 +3,7 @@ import { AsyncTransactionQueue } from './csrm/asyncTransactions';
 import { ColumnModel } from './columns/columnModel';
 import { GroupPivotCoordinator } from './groupPivot/coordinator';
 import { CanvasPainter } from './paint/canvasPainter';
+import { SelectionModel } from './selection/selectionModel';
 import { buildSsrmColumnKeys } from './ssrm/columnKeys';
 import { ServerSideRowModel } from './ssrm/serverSideRowModel';
 import type { VelocityGridApi } from './api/facade';
@@ -22,7 +23,7 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
   private readonly canvas: HTMLCanvasElement;
   private readonly scroller: HTMLElement;
   private readonly columns = new ColumnModel<T>();
-  private readonly selected = new Set<string>();
+  private readonly selection: SelectionModel;
   private scrollTop = 0;
   private scrollLeft = 0;
   private scrolling = false;
@@ -76,14 +77,26 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
 
     this.columns.setColumnDefs(options.columnDefs ?? []);
     this.csrm = new ClientSideRowModel(this.getRowId, () => options.columnDefs ?? []);
+    this.selection = new SelectionModel((groupKey) => {
+      if (this.rowModelType === 'serverSide') {
+        // Sparse path — async getGroupLeafIds; sync cascade uses CSRM helper when available.
+        return this.csrm.getDescendantRowIds(groupKey);
+      }
+      return this.csrm.getDescendantRowIds(groupKey);
+    });
+
     this.groupPivot = new GroupPivotCoordinator({
       isSparseSsrm: () => this.isSparseSsrm(),
       onStructureChanged: () => {
         if (this.rowModelType === 'serverSide') void this.ssrm.refresh({ purge: true });
-        else this.schedulePaint();
+        else {
+          this.csrm.setRowGroupColumns(this.groupPivot.getRowGroupColumns());
+          this.schedulePaint();
+        }
         this.options.onModelUpdated?.();
       },
       onExpansionChanged: () => {
+        // CSRM owns expansion locally; coordinator drives sparse SSRM only.
         if (this.rowModelType === 'serverSide') void this.ssrm.refreshExpansion();
         else this.schedulePaint();
         this.options.onModelUpdated?.();
@@ -225,19 +238,41 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
         this.csrm.setRowGroupColumns(cols);
       },
       getRowGroupColumns: () => this.groupPivot.getRowGroupColumns(),
-      setExpanded: (key, open) => { this.groupPivot.setExpanded(key, open); },
-      expandAll: () => { this.groupPivot.expandAll(); },
-      collapseAll: () => { this.groupPivot.collapseAll(); },
+      setExpanded: (key, open) => {
+        if (this.rowModelType === 'clientSide') this.csrm.setExpanded(key, open);
+        else this.groupPivot.setExpanded(key, open);
+        this.schedulePaint();
+        this.options.onModelUpdated?.();
+      },
+      expandAll: () => {
+        if (this.rowModelType === 'clientSide') this.csrm.expandAll();
+        else this.groupPivot.expandAll();
+        this.schedulePaint();
+        this.options.onModelUpdated?.();
+      },
+      collapseAll: () => {
+        if (this.rowModelType === 'clientSide') this.csrm.collapseAll();
+        else this.groupPivot.collapseAll();
+        this.schedulePaint();
+        this.options.onModelUpdated?.();
+      },
+      setGroupSelected: (key, on) => {
+        this.selection.setGroupSelected(key, on);
+        this.schedulePaint();
+        this.options.onSelectionChanged?.();
+      },
+      getGroupSelectionState: (key) => this.selection.getGroupSelectionState(key),
+      getStickyAncestors: (rowStart) => this.csrm.getStickyAncestors(rowStart),
       setPivotMode: (on) => { this.groupPivot.setPivotMode(on); },
       isPivotMode: () => this.groupPivot.isPivotMode(),
       ensureFullyHydrated: () => this.ssrm.ensureFullyHydrated(),
       refillServerSideColumnKeys: () => { void this.ssrm.refillColumnKeys(); },
       getSelectedRows: () => {
         const rows = this.visibleRows();
-        return rows.filter((r) => this.selected.has(this.getRowId(r)));
+        return rows.filter((r) => this.selection.isSelected(this.getRowId(r)));
       },
       deselectAll: () => {
-        this.selected.clear();
+        this.selection.clear();
         this.schedulePaint();
         this.options.onSelectionChanged?.();
       },
@@ -308,10 +343,18 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
       if (!row) return;
       const id = this.getRowId(row);
       if (!ev.metaKey && !ev.ctrlKey && this.options.rowSelection !== 'multiple') {
-        this.selected.clear();
+        this.selection.clear();
       }
-      if (this.selected.has(id)) this.selected.delete(id);
-      else this.selected.add(id);
+      // Group row click cascades when the row carries __groupKey.
+      const groupKey = (row as { __groupKey?: string; __isGroup?: boolean }).__isGroup
+        ? String((row as { __groupKey?: string }).__groupKey ?? '')
+        : '';
+      if (groupKey) {
+        const state = this.selection.getGroupSelectionState(groupKey);
+        this.selection.setGroupSelected(groupKey, state !== 'all');
+      } else {
+        this.selection.toggle(id);
+      }
       this.schedulePaint();
       this.options.onSelectionChanged?.();
     });
@@ -341,13 +384,17 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
     this.canvas.style.height = `${this.wrap.clientHeight}px`;
 
     const sort = this.csrm.getSortModel()[0];
+    const first = Math.max(0, Math.floor(this.scrollTop / rowHeight));
     this.painter.paint({
       columns: this.columns.getVisible(),
       rows: this.visibleRows() as Record<string, unknown>[],
       scrollTop: this.scrollTop,
       scrollLeft: this.scrollLeft,
-      selected: this.selected,
+      selected: new Set(this.selection.getSelectedIds()),
       sortColId: sort?.colId,
+      stickyAncestors: this.rowModelType === 'clientSide'
+        ? this.csrm.getStickyAncestors(first)
+        : [],
     });
   }
 

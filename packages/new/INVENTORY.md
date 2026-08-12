@@ -30,13 +30,13 @@ Status legend: `todo` · `wip` · `done` · `deferred`
 | K-FILTER-03 | Quick filter + external filter | wip |
 | K-FILTER-04 | One filter-model shape (no legacy dual) | wip |
 | K-GROUP-01 | Row grouping API + expand/collapse | done |
-| K-GROUP-02 | Aggregations + footers / grand totals | wip |
-| K-GROUP-03 | Sticky groups | wip |
+| K-GROUP-02 | Aggregations + footers / grand totals | done |
+| K-GROUP-03 | Sticky groups | done |
 | K-PIVOT-01 | Pivot mode (CSRM / pipeline) | wip |
 | K-PIVOT-02 | Fail-closed pivot on sparse SSRM | done |
-| K-SEL-01 | Unified row selection | wip |
+| K-SEL-01 | Unified row selection | done |
 | K-SEL-02 | Cell ranges + fill handle | todo |
-| K-SEL-03 | Group cascade select | wip |
+| K-SEL-03 | Group cascade select | done |
 | K-EDIT-01 | Cell editors host hooks | wip |
 | K-CLIP-01 | Clipboard copy/cut/paste | todo |
 | K-MENU-01 | Context + main menus | todo |

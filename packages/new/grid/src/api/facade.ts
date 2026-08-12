@@ -20,6 +20,16 @@ export type VelocityGridApi<T = unknown> = {
   setExpanded(key: string, open: boolean): void;
   expandAll(): void;
   collapseAll(): void;
+  setGroupSelected(groupKey: string, on: boolean): void;
+  getGroupSelectionState(groupKey: string): 'all' | 'none' | 'partial';
+  getStickyAncestors(rowStart: number): Array<{
+    depth: number;
+    key: string;
+    colId: string;
+    value: string;
+    childCount: number;
+    isExpanded: boolean;
+  }>;
   setPivotMode(on: boolean): void;
   isPivotMode(): boolean;
   /** Explicit pipeline path only — fail-closed when sparse/grouped. */

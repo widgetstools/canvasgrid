@@ -1,6 +1,7 @@
 /**
  * CSRM pipeline passes — Filter → QuickFilter → Sort.
- * (Group → Pivot → Agg land in Phase 5; order documented here.)
+ * Group → Agg → VisibleOrder live in ClientSideRowModel (Phase 5).
+ * PivotPass follows when pivot mode is active (CSRM / pipeline only).
  */
 import type { ColDef, FilterModel, FilterModelEntry, SortModel } from '../types/options';
 
