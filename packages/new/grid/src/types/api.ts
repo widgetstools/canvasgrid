@@ -9,6 +9,12 @@ import type { CgTheme, ThemeMode } from '../theming/theme/themeObject';
 import type { ToolPanel, SideBarDef } from '../interaction/toolPanels/types';
 import type { IStatusPanelComp } from '../interaction/statusBar/types';
 import type {
+  AlertRule,
+  CalcColumn,
+  FormatPatch,
+  StyleRule,
+} from '@wellsfargo-starui/vg-new-engines';
+import type {
   CApplyColumnStateParams,
   CColDef,
   CColGroupDef,
@@ -201,6 +207,12 @@ export interface VelocityGridApi<TRow = any> {
   applyServerSideTransaction(tx: import('./ssrm').ServerSideTransaction<TRow>): void;
   /** Resolves once async init has emitted `gridReady` (SSRM mounted if configured). */
   whenReady(): Promise<void>;
+
+  /** New engines facade used by the Ext shell and demo applications. */
+  applyFormatPatch(patch: FormatPatch): void;
+  setStyleRules(rules: StyleRule[]): void;
+  setCalcColumns(columns: CalcColumn[]): void;
+  setAlertRules(rules: AlertRule[]): void;
 
   setSortModel(s: SortModel): void;
   setFilterModel(f: FilterModel): void;

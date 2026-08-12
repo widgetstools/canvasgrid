@@ -13,6 +13,7 @@ import type {
   AggregationChangedSource, PaintStats,
 } from './types';
 import { clampRowHeight } from './types/options';
+import { EnginesHost } from '@wellsfargo-starui/vg-new-engines';
 import type { ToolPanel, SideBarDef } from './interaction/toolPanels/types';
 import { TypedEventEmitter } from './core/eventEmitter';
 import { DisposableRegistry } from './core/disposable';
@@ -678,6 +679,8 @@ export class VelocityGrid<TRow = any> {
   private readonly analytics: AnalyticsFacade<TRow> = new AnalyticsFacade<TRow>(this);
   /** Viewport requests, chunk ingest, row heights. See `host/dataPlaneFacade.ts`. */
   private readonly dataPlane: DataPlaneFacade<TRow> = new DataPlaneFacade<TRow>(this);
+  /** Shared format/rules/calc/alerts facade consumed by the shell API. */
+  readonly engines = new EnginesHost();
 
   /** Set while the host rebuilds selection indices itself (see
    *  `rebuildIndicesWithoutAutoScroll`), so the selection `onChange` handler
@@ -2879,10 +2882,12 @@ export class VelocityGrid<TRow = any> {
     this.wireA11yAnnouncements();
 
     // 9. Worker
-    // Foundation: use options.worker.url for test injection; otherwise resolve the co-emitted worker.js
-    // via new URL() so bundlers (Vite library mode) emit a proper static asset reference rather than
-    // inlining raw TypeScript as a data: URL (which browsers reject).
-    const workerUrl = options.worker?.url ?? new URL('./worker.js', import.meta.url).toString();
+    // Use the injected URL in tests and packaged builds. The source-shipped
+    // new packages are also consumed directly by Vite demos, where worker.js
+    // has not been emitted yet; resolving that missing URL makes Vite return
+    // the app HTML and the Worker closes before gridReady. Vite transforms
+    // this TypeScript module correctly during development.
+    const workerUrl = options.worker?.url ?? new URL('./worker/worker.ts', import.meta.url).toString();
     const worker = new Worker(workerUrl as unknown as URL, { type: 'module' });
     // Cycle 19 / Task 3 — coordinator owns the WorkerClient + the viewport
     // dispatch. The handler closures route every worker push back into
@@ -7799,11 +7804,45 @@ export class VelocityGrid<TRow = any> {
     this.events.destroy();
   }
 
+  /**
+   * Return the stable public API facade for this grid instance.
+   *
+   * The grid-ready callback receives the same facade, but applications that
+   * construct a grid imperatively also need a synchronous handle for wiring
+   * providers and shells immediately after construction.
+   */
+  getApi(): VelocityGridApi<TRow> {
+    return this.makeApi();
+  }
+
+  applyFormatPatch(patch: import('@wellsfargo-starui/vg-new-engines').FormatPatch): void {
+    this.engines.applyFormat(patch);
+    this.repaintFull();
+  }
+
+  setStyleRules(rules: import('@wellsfargo-starui/vg-new-engines').StyleRule[]): void {
+    this.engines.setStyleRules(rules);
+    this.repaintFull();
+  }
+
+  setCalcColumns(columns: import('@wellsfargo-starui/vg-new-engines').CalcColumn[]): void {
+    this.engines.setCalcColumns(columns);
+    this.repaintFull();
+  }
+
+  setAlertRules(rules: import('@wellsfargo-starui/vg-new-engines').AlertRule[]): void {
+    this.engines.setAlertRules(rules);
+  }
+
   // --- Internals ------------------------------------------------------------
 
   private makeApi(): VelocityGridApi<TRow> {
     return {
       setRowData: (r) => this.setRowData(r),
+      applyFormatPatch: (patch) => this.applyFormatPatch(patch),
+      setStyleRules: (rules) => this.setStyleRules(rules),
+      setCalcColumns: (columns) => this.setCalcColumns(columns),
+      setAlertRules: (rules) => this.setAlertRules(rules),
       applyTransaction: (t) => this.applyTransaction(t),
       applyTransactionAsync: (t) => this.applyTransactionAsync(t),
       flushAsyncTransactions: () => this.flushAsyncTransactions(),
