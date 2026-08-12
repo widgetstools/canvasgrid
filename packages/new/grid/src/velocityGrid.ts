@@ -1,12 +1,11 @@
 import { ClientSideRowModel } from './csrm/clientSideRowModel';
+import { AsyncTransactionQueue } from './csrm/asyncTransactions';
 import { ColumnModel } from './columns/columnModel';
 import { GroupPivotCoordinator } from './groupPivot/coordinator';
 import { CanvasPainter } from './paint/canvasPainter';
 import { ServerSideRowModel } from './ssrm/serverSideRowModel';
 import type { VelocityGridApi } from './api/facade';
 import type {
-  ColDef,
-  FilterModel,
   SortModel,
   VelocityGridOptions,
 } from './types/options';
@@ -14,7 +13,6 @@ import type { IServerSideDatasourceV2 } from './ssrm/types';
 
 /**
  * VelocityGrid (greenfield) — ApiFacade over CSRM / SSRM + canvas paint.
- * Structured for coordinators; not a god-object dump of the legacy class.
  */
 export class VelocityGrid<T extends Record<string, unknown> = Record<string, unknown>> {
   private destroyed = false;
@@ -26,6 +24,8 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
   private readonly selected = new Set<string>();
   private scrollTop = 0;
   private scrollLeft = 0;
+  private scrolling = false;
+  private scrollEndTimer: ReturnType<typeof setTimeout> | null = null;
   private quickFilterText = '';
   private rowModelType: 'clientSide' | 'serverSide';
   private clientPipeline: boolean;
@@ -37,6 +37,7 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
   private readonly groupPivot: GroupPivotCoordinator;
   private readonly painter: CanvasPainter;
   private readonly options: VelocityGridOptions<T>;
+  private readonly asyncTx: AsyncTransactionQueue<T>;
   private raf = 0;
   private readonly api: VelocityGridApi<T>;
 
@@ -49,7 +50,7 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
 
     this.root = document.createElement('div');
     this.root.className = 'vg-new-grid';
-    this.root.style.cssText = 'position:relative;width:100%;height:100%;overflow:hidden;font-family:"IBM Plex Sans",system-ui,sans-serif;';
+    this.root.style.cssText = 'position:relative;width:100%;height:100%;overflow:hidden;font-family:"IBM Plex Sans",system-ui,sans-serif;background:var(--vgn-bg,#fff);';
     host.appendChild(this.root);
 
     this.wrap = document.createElement('div');
@@ -102,6 +103,21 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
       },
     }, { cacheBlockSize: options.cacheBlockSize });
 
+    this.asyncTx = new AsyncTransactionQueue<T>({
+      conflate: options.asyncTransactionConflate !== false,
+      deferWhileScrolling: options.deferAsyncTransactionsWhileScrolling === true,
+      waitMillis: options.asyncTransactionWaitMillis ?? 50,
+      getRowId: this.getRowId,
+      isScrolling: () => this.scrolling,
+      apply: (tx) => {
+        this.csrm.applyTransaction(tx);
+        const ids = (tx.update ?? []).map((r) => this.getRowId(r));
+        if (ids.length) this.painter.flashCells(ids);
+        this.schedulePaint();
+        this.options.onModelUpdated?.();
+      },
+    });
+
     if (options.rowData) this.csrm.setRowData(options.rowData);
     if (options.serverSideDatasource) {
       this.ssrm.setDatasource(options.serverSideDatasource as IServerSideDatasourceV2<T>);
@@ -133,6 +149,10 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
         this.schedulePaint();
         this.options.onModelUpdated?.();
       },
+      applyTransactionAsync: (tx) => {
+        this.asyncTx.enqueue(tx as { add?: T[]; update?: T[]; remove?: Array<string | T> });
+      },
+      flushAsyncTransactions: () => this.asyncTx.flush(),
       applyServerSideTransaction: (tx) => {
         this.ssrm.applyTransaction(tx as { update?: T[] });
         if (tx.update?.length) {
@@ -204,6 +224,15 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
     this.wrap.addEventListener('scroll', () => {
       this.scrollTop = this.wrap.scrollTop;
       this.scrollLeft = this.wrap.scrollLeft;
+      this.scrolling = true;
+      this.options.onBodyScroll?.();
+      if (this.scrollEndTimer != null) clearTimeout(this.scrollEndTimer);
+      this.scrollEndTimer = setTimeout(() => {
+        this.scrolling = false;
+        this.scrollEndTimer = null;
+        this.asyncTx.onScrollEnd();
+        this.options.onBodyScrollEnd?.();
+      }, 120);
       if (this.rowModelType === 'serverSide') {
         const start = Math.floor(this.scrollTop / rowHeight);
         const end = start + Math.ceil(this.wrap.clientHeight / rowHeight) + 5;
@@ -216,7 +245,6 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
       const rect = this.wrap.getBoundingClientRect();
       const y = ev.clientY - rect.top + this.wrap.scrollTop;
       if (y < headerHeight) {
-        // Header click → sort first visible column under x
         const x = ev.clientX - rect.left + this.wrap.scrollLeft;
         let acc = 0;
         for (const col of this.columns.getVisible()) {
@@ -280,7 +308,6 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
     });
   }
 
-  /** Expression / rules host hooks (engines attach later). */
   setSsrmExpressionHost(_host: unknown | null): void { /* Phase 6 */ }
   setSsrmExpressionOutputs(_ids: readonly string[]): void { /* Phase 6 */ }
 
@@ -288,9 +315,11 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
     if (this.destroyed) return;
     this.destroyed = true;
     if (this.raf) cancelAnimationFrame(this.raf);
+    if (this.scrollEndTimer != null) clearTimeout(this.scrollEndTimer);
+    this.asyncTx.destroy();
     this.ssrm.destroy();
     this.root.remove();
   }
 }
 
-export type { ColDef, FilterModel, SortModel, VelocityGridOptions };
+export type { ColDef, FilterModel, SortModel, VelocityGridOptions } from './types/options';

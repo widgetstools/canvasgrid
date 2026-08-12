@@ -44,9 +44,16 @@ export type VelocityGridOptions<T = unknown> = {
   rowSelection?: 'single' | 'multiple';
   suppressRowClickSelection?: boolean;
   theme?: 'light' | 'dark';
+  /** Defer async txs until scroll ends (live blotter). */
+  deferAsyncTransactionsWhileScrolling?: boolean;
+  /** Conflate pending async txs by row id. */
+  asyncTransactionConflate?: boolean;
+  asyncTransactionWaitMillis?: number;
   onGridReady?: (api: import('../api/facade').VelocityGridApi<T>) => void;
   onSelectionChanged?: () => void;
   onSortChanged?: () => void;
   onFilterChanged?: () => void;
   onModelUpdated?: () => void;
+  onBodyScroll?: () => void;
+  onBodyScrollEnd?: () => void;
 };

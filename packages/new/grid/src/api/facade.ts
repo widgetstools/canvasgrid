@@ -4,6 +4,9 @@ import type { FilterModel, SortModel } from '../types/options';
 export type VelocityGridApi<T = unknown> = {
   setRowData(rows: T[]): void;
   applyTransaction(tx: { add?: T[]; update?: T[]; remove?: Array<string | T> }): void;
+  /** Async path — conflates / defers while scrolling when options enable it. */
+  applyTransactionAsync(tx: { add?: T[]; update?: T[]; remove?: Array<string | T> }): void;
+  flushAsyncTransactions(): void;
   applyServerSideTransaction(tx: { update?: T[] }): void;
   refreshServerSide(params?: { purge?: boolean }): void;
   setSortModel(model: SortModel): void;

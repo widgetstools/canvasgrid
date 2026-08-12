@@ -1,8 +1,9 @@
 import type { ColDef, FilterModel, SortModel } from '../types/options';
+import { runCsrmPipeline } from './pipeline';
 
 /**
- * In-process CSRM — Filter → Sort (Group/Pivot/Agg land in groupPivot.ts).
- * Worker offload is a later port of the known pass algorithms; behavior contracts match.
+ * In-process CSRM — Filter → QuickFilter → Sort
+ * (Group/Pivot/Agg in Phase 5).
  */
 export class ClientSideRowModel<T extends Record<string, unknown>> {
   private raw: T[] = [];
@@ -20,6 +21,10 @@ export class ClientSideRowModel<T extends Record<string, unknown>> {
   setRowData(rows: T[]): void {
     this.raw = rows.slice();
     this.recompute();
+  }
+
+  getRawRows(): T[] {
+    return this.raw.slice();
   }
 
   applyTransaction(tx: { add?: T[]; update?: T[]; remove?: Array<string | T> }): void {
@@ -82,67 +87,12 @@ export class ClientSideRowModel<T extends Record<string, unknown>> {
   }
 
   private recompute(): void {
-    let rows = this.raw.slice();
-    rows = this.applyFilters(rows);
-    rows = this.applyQuickFilter(rows);
-    rows = this.applySort(rows);
-    this.view = rows;
-  }
-
-  private applyFilters(rows: T[]): T[] {
-    const entries = Object.entries(this.filterModel);
-    if (entries.length === 0) return rows;
-    return rows.filter((row) => {
-      for (const [colId, f] of entries) {
-        const raw = row[colId];
-        if (f.filterType === 'text') {
-          const s = String(raw ?? '').toLowerCase();
-          const needle = String(f.filter ?? '').toLowerCase();
-          if (f.type === 'contains' && needle && !s.includes(needle)) return false;
-          if (f.type === 'equals' && s !== needle) return false;
-          if (f.type === 'notContains' && needle && s.includes(needle)) return false;
-          if (f.type === 'startsWith' && needle && !s.startsWith(needle)) return false;
-          if (f.type === 'endsWith' && needle && !s.endsWith(needle)) return false;
-        } else if (f.filterType === 'number') {
-          const n = Number(raw);
-          const v = Number(f.filter);
-          if (f.type === 'equals' && n !== v) return false;
-          if (f.type === 'greaterThan' && !(n > v)) return false;
-          if (f.type === 'lessThan' && !(n < v)) return false;
-        } else if (f.filterType === 'set') {
-          if (!f.values.map(String).includes(String(raw ?? ''))) return false;
-        }
-      }
-      return true;
-    });
-  }
-
-  private applyQuickFilter(rows: T[]): T[] {
-    const terms = this.quickFilterText.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    if (terms.length === 0) return rows;
-    const fields = this.columns().map((c) => c.field ?? c.colId).filter(Boolean) as string[];
-    return rows.filter((row) => {
-      const hay = fields.map((f) => String(row[f] ?? '')).join(' ').toLowerCase();
-      return terms.every((t) => hay.includes(t));
-    });
-  }
-
-  private applySort(rows: T[]): T[] {
-    if (this.sortModel.length === 0) return rows;
-    const model = this.sortModel;
-    return rows.slice().sort((a, b) => {
-      for (const s of model) {
-        const av = a[s.colId];
-        const bv = b[s.colId];
-        let cmp = 0;
-        if (av == null && bv == null) cmp = 0;
-        else if (av == null) cmp = -1;
-        else if (bv == null) cmp = 1;
-        else if (typeof av === 'number' && typeof bv === 'number') cmp = av - bv;
-        else cmp = String(av).localeCompare(String(bv));
-        if (cmp !== 0) return s.direction === 'asc' ? cmp : -cmp;
-      }
-      return 0;
+    this.view = runCsrmPipeline({
+      rows: this.raw,
+      filterModel: this.filterModel,
+      quickFilterText: this.quickFilterText,
+      sortModel: this.sortModel,
+      columns: this.columns(),
     });
   }
 }

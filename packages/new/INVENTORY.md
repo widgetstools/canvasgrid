@@ -11,9 +11,9 @@ Status legend: `todo` · `wip` · `done` · `deferred`
 
 | ID | Feature | Status |
 |----|---------|--------|
-| K-CSRM-01 | Client-side row model + worker pipeline order | wip |
-| K-CSRM-02 | `setRowData` / sync + async transactions | wip |
-| K-CSRM-03 | Async conflation + scroll-defer | wip |
+| K-CSRM-01 | Client-side row model + worker pipeline order | done |
+| K-CSRM-02 | `setRowData` / sync + async transactions | done |
+| K-CSRM-03 | Async conflation + scroll-defer | done |
 | K-SSRM-01 | Sparse SSRM v2 skeleton (`getGroupSkeleton` / `getLeafRows` / `getGroupLeafIds`) | wip |
 | K-SSRM-02 | Block cache + column windows | wip |
 | K-SSRM-03 | Id-based null-safe field merge | done |
@@ -24,8 +24,8 @@ Status legend: `todo` · `wip` · `done` · `deferred`
 | K-COL-01 | ColDefs / groups / defaultColDef / types | wip |
 | K-COL-02 | Pin / hide / flex / width / column state | wip |
 | K-COL-03 | Column drag + sizeToFit / autosize | todo |
-| K-SORT-01 | Multi-column sort | wip |
-| K-FILTER-01 | Text / number / date / multi filters | wip |
+| K-SORT-01 | Multi-column sort | done |
+| K-FILTER-01 | Text / number / date / multi filters | done |
 | K-FILTER-02 | Set filter + distinct values | todo |
 | K-FILTER-03 | Quick filter + external filter | wip |
 | K-FILTER-04 | One filter-model shape (no legacy dual) | wip |

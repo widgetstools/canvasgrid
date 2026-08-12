@@ -6,6 +6,8 @@ function fakeApi(): VelocityGridApi {
   return {
     setRowData: vi.fn(),
     applyTransaction: vi.fn(),
+    applyTransactionAsync: vi.fn(),
+    flushAsyncTransactions: vi.fn(),
     applyServerSideTransaction: vi.fn(),
     refreshServerSide: vi.fn(),
     setSortModel: vi.fn(),
