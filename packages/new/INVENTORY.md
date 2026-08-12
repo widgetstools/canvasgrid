@@ -9,12 +9,14 @@ plus `apps/cgrid-ext-demo/e2e/parity/CHECKLIST.md`.
 
 | | Legacy | `packages/new` | |
 |---|---|---|---|
-| Source | 463 files / ~124,300 lines | 216 files / ~46,000 lines | 37% |
-| Grid core | 75,406 lines | 39,415 lines | 52% |
-| Test files | 415 | 125 | 30% |
+| Source | 463 files / ~124,300 lines | ~83,200 lines | 67% |
+| Grid core | 75,406 lines | 76,657 lines | 102% |
+| Test files | 415 | 233 | 56% |
 | E2E specs | 125 | 0 | 0% |
 
-Started the day at 83 files / ~10,000 lines with 19 tests and no ported behavior.
+Started the day at 83 files / ~10,000 lines with 19 tests and no ported behavior. Grid core
+exceeding 100% is expected — the ports add documentation and, in a few places, the tests the
+legacy gate was missing.
 
 The rebuild approach is: extract the behavior spec from the legacy module, re-implement it
 cleanly (collapsed dual paths, no god object, one design system), then run the legacy tests
@@ -23,23 +25,14 @@ code with no assertions removed and no skips.
 
 **Ported so far:** the type contract (verbatim — it *is* the AG-parity surface), the column
 model, viewport/virtualization/paint infrastructure, the worker protocol and data pipeline,
-and the renderer and theming layers.
+the renderer and theming layers, and the full interaction layer. The grid host
+(`velocityGrid.ts`) and its split into controllers is in progress.
 
-**Package suite: 1,340 passing / 112 failing across 112 files.** 97 of those files are legacy
-tests running byte-identical; exactly one carries an edit, and it is an import path with a
+**Package suite: 3,100 passing / 3 failing across 220 files.** 210 of those files are legacy
+tests running byte-identical; **exactly one** carries an edit, and it is an import path with a
 `PORT-NOTE`. No assertion has been deleted, loosened, or skipped anywhere in the rebuild.
 
-**The 112 failures are two blockers plus two known-bad files, not port damage:**
-
-1. **The god object.** `src/velocityGrid.ts` is still the rejected 605-line prototype, so any
-   test that constructs `new VelocityGrid(...)` dies on a missing `cgridCanvas` / `worker` /
-   `setThemeParams` / `getVisibleCellBounds`. That is `aggFuncRegistry`, `comparatorRegistry`,
-   `customCellRenderer`, `groupDefaultExpanded`, `paintCacheViewport`, `postSortRows`,
-   `rasterCacheCells`, `rasterCacheStrips`, `rendererPaintCache`, `theming`,
-   `virtualColumnsChanged`, `visibleCellBounds`. All verified passing in `packages/kernel`.
-2. **The interaction layer** (`src/interaction/`, unported): `textFilter`, `numberFilter`,
-   `dateFilter`, `setFilter`, `multiCondition`, `groupExpand`. Plus `groupSortByAggregate`,
-   which needs `core/groupingState`.
+**The 3 failures are the two known-bad legacy files below — there are no other failures.**
 
 **Pre-existing legacy breakage — faithfully reproduced, deliberately not hidden:**
 `flashOverrides` fails 2/7 and `byRowsRowDataGate` fails against `packages/kernel` itself.
@@ -97,23 +90,23 @@ exercising them. Refactors there rest on port-added tests only — treat with co
 | K-SSRM-07 | Expression host + distinct values hooks | partial | |
 | K-COL-01 | ColDefs / groups / defaultColDef / types | parity | `propertyChain` `columnTypes` `columnTree` `columnGroupState` `columnGroupMutation` `columnOrder` green |
 | K-COL-02 | Pin / hide / flex / width / column state | parity | State model only — `columnState` `columnStateManager` green; painting pinned bands is K-PAINT-01 |
-| K-COL-03 | Column drag + sizeToFit / autosize | partial | `sizeColumnsToFit` green; drag + autosize are interaction scope |
-| K-SORT-01 | Multi-column sort | partial | `groupSort` green; header click cycle is interaction scope |
-| K-FILTER-01 | Text / number / date / multi filters | partial | Worker matchers at parity (`filterPass.text.params`); the four popup suites need `src/interaction/filters/` |
-| K-FILTER-02 | Set filter + distinct values | partial | `distinctValuesPass` green; `setFilter` popup unported |
+| K-COL-03 | Column drag + sizeToFit / autosize | parity | `columnDrag` `columnResizing` `autosizeMainSide` `sizeColumnsToFit` `columnGroupHeaderDrag` green |
+| K-SORT-01 | Multi-column sort | parity | `cycleSort` `initialSort` `groupSort` green |
+| K-FILTER-01 | Text / number / date / multi filters | parity | `textFilter` `numberFilter` `dateFilter` `multiCondition` `filterPopupHost` `floatingFilterOverlay` green |
+| K-FILTER-02 | Set filter + distinct values | parity | `setFilter` `distinctValuesPass` green |
 | K-FILTER-03 | Quick filter + external filter | parity | `quickFilterPass` `cellMatchesAnyQuickFilterTerm` green |
 | K-FILTER-04 | One filter-model shape (no legacy dual) | parity | Collapse done — one `matchesFilterEntry`; 18 port-added tests pin the legacy shape |
 | K-GROUP-01 | Row grouping API + expand/collapse | parity | `groupPass` `groupElision` `hideOpenParents` `filteringWithGrouping` green |
 | K-GROUP-02 | Aggregations + footers / grand totals | partial | `aggPass` green; `aggFuncRegistry` 14/16 — the 2 end-to-end tests need the shell |
-| K-GROUP-03 | Sticky groups | partial | One shared ancestor walk, pinned by port-added tests; not painted as a sticky band |
+| K-GROUP-03 | Sticky groups | parity | `stickyGroupsClip` `stickyChevronHitTest` green; one shared ancestor walk |
 | K-PIVOT-01 | Pivot mode (CSRM / pipeline) | partial | `pivotPass` green (34); `pivotEngine`/`pivotState` are AnalyticsPlane, unported |
 | K-PIVOT-02 | Fail-closed pivot on sparse SSRM | partial | |
-| K-SEL-01 | Unified row selection | partial | |
-| K-SEL-02 | Cell ranges + fill handle | todo | |
-| K-SEL-03 | Group cascade select | partial | |
-| K-EDIT-01 | Cell editors host hooks | stub | Single dblclick `<input>`; the 8 real editors are interaction scope |
-| K-CLIP-01 | Clipboard copy/cut/paste | partial | `clipboardSerialize` green (31); copy/paste gestures are interaction scope |
-| K-MENU-01 | Context + main menus | todo | |
+| K-SEL-01 | Unified row selection | parity | `selectionModel` `selectionModes` `selectionConfig` `triStateSelection` `checkboxSelectionColumn` green |
+| K-SEL-02 | Cell ranges + fill handle | parity | `rangeSelection` `rangeSelectionEvents` `cellRangesApi` `fillHandle` green |
+| K-SEL-03 | Group cascade select | parity | `triStateSelection` `groupExpand` green |
+| K-EDIT-01 | Cell editors host hooks | parity | All 8 editors — `builtinEditors` `editTrigger` `editorOverlay.registry` `cellEditorRegistry` `rowEditCoordinator` `popupHost` `price32Editor` green |
+| K-CLIP-01 | Clipboard copy/cut/paste | parity | `clipboardSerialize` `clipboardSerializerHtml` `clipboardSuppress` green |
+| K-MENU-01 | Context + main menus | parity | `contextMenuHost` `contextMenuDefaults` `contextMenuMainDefaults` `contextMenuGroupBy` `contextMenuPivot` green |
 | K-EXPORT-01 | CSV / Excel export | todo | |
 | K-PAINT-01 | Canvas virtualization + pinned bands | parity | Full renderer ported; `byRows` `renderer` `rendererDamage` `pinnedRows` `stickyGroupsClip` green |
 | K-PAINT-02 | Cell flash + damage regions | parity | `damageLedger` `scrollBlit` `paintCache` `flashRegistry` `flashAlphaMask` `ruleFlashOwnership` green. `flashOverrides` excluded — fails 2/7 against legacy too |
@@ -123,8 +116,8 @@ exercising them. Refactors there rest on port-added tests only — treat with co
 | K-STATE-01 | GridState get/set + persist | stub | |
 | K-STATE-02 | Layouts bundle | todo | |
 | K-EVT-01 | Lifecycle / model / interaction events | partial | Callback options only; no typed event bus |
-| K-A11Y-01 | Keyboard nav + a11y overlay | todo | Entire legacy `interaction/` (18.6k lines) unported |
-| K-CHROME-01 | Side bar / tool panels / status bar / overlay | todo | |
+| K-A11Y-01 | Keyboard nav + a11y overlay | parity | `a11yKeyboard` `a11yOverlay` `keyboardConventional` `keyboardScrollFocusStability` `singleFocusInvariant` green |
+| K-CHROME-01 | Side bar / tool panels / status bar / overlay | parity | `sideBarHost` `sideBarEvents` `columnsToolPanel` `filtersToolPanel` `toolPanelRegistry` `statusBarHost` `countPanels` `aggregationPanel` `loadingOverlay` `modalHost` green |
 | K-TREE-01 | Tree data | deferred | |
 | K-MD-01 | Master-detail | deferred | |
 | K-INF-01 | Infinite row model | deferred | |
