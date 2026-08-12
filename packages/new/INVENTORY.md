@@ -14,10 +14,17 @@ plus `apps/cgrid-ext-demo/e2e/parity/CHECKLIST.md`.
 | Unit tests | 415 files | 19 files |
 | E2E specs | 125 | 0 |
 
-No legacy test has been ported yet, so **nothing below can claim parity**. The rebuild
-approach is: extract the behavior spec from the legacy module, re-implement it cleanly
-(collapsed dual paths, no god object, one design system), then port the legacy tests as
-the gate. A row only becomes `parity` when those tests pass against the new code.
+The rebuild approach is: extract the behavior spec from the legacy module, re-implement it
+cleanly (collapsed dual paths, no god object, one design system), then run the legacy tests
+**unmodified** as the gate. A row only becomes `parity` when those tests pass against the new
+code with no assertions removed and no skips.
+
+**Ported so far:** the type contract (4,568 lines, verbatim — it *is* the AG-parity surface)
+and the column model layer (15 legacy test files, 234 tests, byte-identical, green).
+
+Files under `src/renderer/`, `src/theming/`, and `src/icons/` are currently an unrefactored
+dependency closure dragged in by three column gate tests. They are a starting point for the
+renderer port, **not** finished work, and none of the K-PAINT / K-THEME rows may cite them.
 
 ## Status legend
 
@@ -45,9 +52,9 @@ the gate. A row only becomes `parity` when those tests pass against the new code
 | K-SSRM-05 | `ensureFullyHydrated` fail-closed | partial | |
 | K-SSRM-06 | Explicit client-pipeline mode | partial | |
 | K-SSRM-07 | Expression host + distinct values hooks | partial | |
-| K-COL-01 | ColDefs / groups / defaultColDef / types | stub | 69-line ColumnModel vs legacy propertyChain + columnTree + group state |
-| K-COL-02 | Pin / hide / flex / width / column state | stub | State shape only; pinned bands not painted |
-| K-COL-03 | Column drag + sizeToFit / autosize | todo | |
+| K-COL-01 | ColDefs / groups / defaultColDef / types | parity | `propertyChain` `columnTypes` `columnTree` `columnGroupState` `columnGroupMutation` `columnOrder` green |
+| K-COL-02 | Pin / hide / flex / width / column state | parity | State model only — `columnState` `columnStateManager` green; painting pinned bands is K-PAINT-01 |
+| K-COL-03 | Column drag + sizeToFit / autosize | partial | `sizeColumnsToFit` green; drag + autosize are interaction scope |
 | K-SORT-01 | Multi-column sort | partial | Header click cycle only; no shift multi-sort UI |
 | K-FILTER-01 | Text / number / date / multi filters | partial | Model only — no filter UI components |
 | K-FILTER-02 | Set filter + distinct values | todo | |
