@@ -1,8 +1,9 @@
 # Migration — legacy → `packages/new`
 
-Greenfield packages under `packages/new/*` are the forward path. Legacy
-`@wellsfargo-starui/velocity-grid*` packages remain in-tree until a follow-up
-major removes them; they are marked `"deprecated"` in package.json.
+> **Not yet actionable.** `packages/new` is a prototype at roughly 5% of legacy behavior
+> (see [`INVENTORY.md`](INVENTORY.md)). Legacy `@wellsfargo-starui/velocity-grid*` remains
+> the production implementation and is **not** deprecated. This document is the target
+> shape of the migration, kept ahead of the rebuild so the seams stay honest.
 
 ## Import map
 
@@ -87,15 +88,12 @@ npm run test:new
 
 ## Deprecation
 
-Legacy packages ship with `"deprecated": "<message>"` pointing here. Production
-hosts should migrate imports; demos under `apps/cgrid-*` (non-`new`) remain until
-Playwright parity is fully green, then are deleted in a follow-up major.
-
-See [`DEPRECATION.md`](DEPRECATION.md).
+Nothing is deprecated. Preconditions for that step live in
+[`DEPRECATION.md`](DEPRECATION.md).
 
 ## Status
 
-Phases 0–8 implemented under `packages/new/*`. Phase 9 cutover prep (this guide,
-LS migrators, soft-deprecate legacy packages, demo pointers) is in place.
-Remaining: full Playwright port of legacy Ext/Perspective e2e before deleting
-legacy packages.
+Prototype. The rebuild method is: extract the behavior spec from each legacy module,
+re-implement it cleanly (collapsed dual paths, no god object, one design system), then
+port the legacy tests as the parity gate. A feature is only complete when those tests
+pass — see [`INVENTORY.md`](INVENTORY.md) for the per-feature truth.

@@ -36,6 +36,5 @@
     "vitest": "^2.1.0",
     "happy-dom": "^20.0.10",
     "@wellsfargo-starui/velocity-grid": "*"
-  },
-  "deprecated": "Superseded by @wellsfargo-starui/vg-new-* — see packages/new/MIGRATION.md. Legacy remains until Playwright parity cutover."
+  }
 }

@@ -21,6 +21,5 @@
     "@vitest/coverage-v8": "^2.1.9",
     "typescript": "~5.9.3",
     "vitest": "^2.1.0"
-  },
-  "deprecated": "Superseded by @wellsfargo-starui/vg-new-* — see packages/new/MIGRATION.md. Legacy remains until Playwright parity cutover."
+  }
 }
