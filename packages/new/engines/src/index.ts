@@ -54,3 +54,18 @@ export {
 } from './alerts/index';
 
 export { EnginesHost, type EnginesHostOptions } from './host';
+
+export type {
+  IconRef,
+  Fragment,
+  FragmentStyle,
+  ResolvedFragment,
+} from './format/types';
+
+export type {
+  IconOverride,
+  ColumnOverride,
+  ColumnTemplate,
+  TypeDefaults,
+  ColumnEditPatch,
+} from './calc/columnTemplate';
