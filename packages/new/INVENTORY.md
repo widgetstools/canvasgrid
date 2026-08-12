@@ -19,8 +19,21 @@ cleanly (collapsed dual paths, no god object, one design system), then run the l
 **unmodified** as the gate. A row only becomes `parity` when those tests pass against the new
 code with no assertions removed and no skips.
 
-**Ported so far:** the type contract (4,568 lines, verbatim — it *is* the AG-parity surface)
-and the column model layer (15 legacy test files, 234 tests, byte-identical, green).
+**Ported so far:** the type contract (4,568 lines, verbatim — it *is* the AG-parity surface),
+the column model layer (15 legacy test files, 234 tests), and viewport/virtualization/paint
+infrastructure (11 files, 180 tests). All copies byte-identical to their legacy originals.
+
+**Committed failing on purpose** — these are the gate, not noise. `virtualColumnsChanged`,
+`paintCacheViewport` and `flashOverrides` need the real grid shell (`src/velocityGrid.ts` is
+still the rejected prototype); `pinnedRows` needs `core/runtimeOptions.ts`, which needs the
+unported theming layer (9 of its 10 tests pass once that import resolves).
+
+**Pre-existing legacy breakage:** `flashOverrides.test.ts` fails 2 of 7 against
+`packages/kernel` itself, so it can never reach green as copied. Not port damage.
+
+Files under `src/renderer/`, `src/theming/`, and `src/icons/` are currently an unrefactored
+dependency closure dragged in by three column gate tests. They are a starting point for the
+renderer port, **not** finished work, and none of the K-PAINT / K-THEME rows may cite them.
 
 Files under `src/renderer/`, `src/theming/`, and `src/icons/` are currently an unrefactored
 dependency closure dragged in by three column gate tests. They are a starting point for the
@@ -72,9 +85,9 @@ renderer port, **not** finished work, and none of the K-PAINT / K-THEME rows may
 | K-CLIP-01 | Clipboard copy/cut/paste | todo | |
 | K-MENU-01 | Context + main menus | todo | |
 | K-EXPORT-01 | CSV / Excel export | todo | |
-| K-PAINT-01 | Canvas virtualization + pinned bands | partial | 221-line painter vs 6.9k-line renderer |
-| K-PAINT-02 | Cell flash + damage regions | stub | Flash timer only; no damage ledger / paint cache |
-| K-PAINT-03 | Quality modes | todo | |
+| K-PAINT-01 | Canvas virtualization + pinned bands | partial | Viewport/subgrid stack at parity (`viewport` `viewportManager` `totalsSubgrid` green); the painter itself is unported |
+| K-PAINT-02 | Cell flash + damage regions | parity | `damageLedger` `scrollBlit` `paintCache` `flashRegistry` `flashAlphaMask` `ruleFlashOwnership` green. `flashOverrides` excluded — fails 2/7 against legacy too |
+| K-PAINT-03 | Quality modes | parity | `paintQuality` green |
 | K-PAINT-04 | Sparklines | todo | |
 | K-THEME-01 | CSS tokens + shadow root option | partial | Tokens exist; no shadow-root path |
 | K-STATE-01 | GridState get/set + persist | stub | |
