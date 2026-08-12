@@ -182,28 +182,36 @@ export class StompPerspectiveProvider implements IServerSideDatasourceV2<Positio
     };
   }
 
+  /** The book speaks `rows`; the grid's `LoadSuccessParams` reads `rowData`.
+   *  Passing the book result straight through silently yields zero rows —
+   *  `rowData` is simply undefined — so every read is mapped explicitly. */
   getRows(params: IServerSideGetRowsParams<PositionRow>): void {
     void this.book.getSsrmRows(this.viewId, params.request).then((r) => {
-      params.success(r);
-    }, () => params.fail());
+      params.success({ rowData: r.rows, rowCount: r.rowCount });
+    }, (err) => this.failLoad('getRows', params, err));
   }
 
   getGroupSkeleton(params: IServerSideGetSkeletonParams): void {
     void this.book.getGroupSkeleton(this.viewId, params.request).then((r) => {
-      params.success(r);
-    }, () => params.fail());
+      params.success({ groups: r.groups });
+    }, (err) => this.failLoad('getGroupSkeleton', params, err));
   }
 
   getLeafRows(params: IServerSideGetLeafRowsParams<PositionRow>): void {
     void this.book.getLeafRows(this.viewId, params.request).then((r) => {
-      params.success(r);
-    }, () => params.fail());
+      params.success({ rowData: r.rows });
+    }, (err) => this.failLoad('getLeafRows', params, err));
   }
 
   getGroupLeafIds(params: IServerSideGetGroupLeafIdsParams): void {
     void this.book.getGroupLeafIds(this.viewId, params.request).then((r) => {
-      params.success(r);
-    }, () => params.fail());
+      params.success({ ids: r.ids });
+    }, (err) => this.failLoad('getGroupLeafIds', params, err));
+  }
+
+  private failLoad(op: string, params: { fail(): void }, err: unknown): void {
+    console.error(`[vg-new-perspective] ${op} failed`, err);
+    params.fail();
   }
 
   destroy(): void {
