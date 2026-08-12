@@ -1,10 +1,11 @@
 import {
+  confirmDialog,
   el,
   injectVgNewStyles,
   mountButton,
   mountDrawer,
   mountRailNav,
-  mountToolbar,
+  showToast,
   type Disposable,
   type RailSection,
 } from '@wellsfargo-starui/vg-new-ui';
@@ -28,20 +29,29 @@ export type ShellOptions = {
   getGridApi: () => VelocityGridApi;
   title?: string;
   modules?: SettingsModule[];
+  /** Optional as-of label shown in the title bar. */
+  asOfLabel?: string;
 };
 
 /**
  * Markets-shaped shell: title bar + formatting/editing ribbons + Customize drawer.
- * All chrome on vg-new-ui.
+ * Phase 1: polished chrome on vg-new-ui (AG density, dirty discard on rail switch).
  */
 export class VelocityGridExtShell {
   private readonly dispos: Disposable[] = [];
   private readonly session: ConfigSession;
   private readonly modules: SettingsModule[];
   private activeModuleId = '';
+  private panelDirty = false;
   private panelDispos: Disposable | null = null;
   private drawer!: ReturnType<typeof mountDrawer>;
   private railHost!: HTMLElement;
+  private scrim!: HTMLElement;
+  private ribbonsVisible = true;
+  private fmtRibbon!: HTMLElement;
+  private editRibbon!: HTMLElement;
+  private alertBadge!: HTMLElement;
+  private railNav!: ReturnType<typeof mountRailNav>;
 
   constructor(
     private readonly host: HTMLElement,
@@ -61,7 +71,19 @@ export class VelocityGridExtShell {
   openCustomize(moduleId?: string): void {
     if (moduleId) this.activeModuleId = moduleId;
     this.drawer.setOpen(true);
+    this.scrim.dataset.open = 'true';
+    this.railNav.setActive(this.activeModuleId);
     this.renderPanel();
+  }
+
+  closeCustomize(): void {
+    this.drawer.setOpen(false);
+    this.scrim.dataset.open = 'false';
+  }
+
+  setAlertCount(n: number): void {
+    this.alertBadge.textContent = String(Math.max(0, n));
+    this.alertBadge.hidden = n <= 0;
   }
 
   private mount(): void {
@@ -76,90 +98,33 @@ export class VelocityGridExtShell {
       'font-family:var(--vgn-font-sans)',
       'font-size:var(--vgn-font-size)',
       'position:relative',
+      'overflow:hidden',
     ].join(';');
 
-    // Title bar
-    const titleBar = el('div');
-    titleBar.style.cssText = [
-      'display:flex',
-      'align-items:center',
-      'gap:8px',
-      'height:var(--vgn-titlebar-height)',
-      'padding:0 12px',
-      'border-bottom:1px solid var(--vgn-border)',
-      'background:var(--vgn-bg-elevated)',
-      'flex-shrink:0',
-    ].join(';');
-    const brand = el('strong', undefined, this.opts.title ?? 'VelocityGrid');
-    brand.style.marginRight = '8px';
-    titleBar.appendChild(brand);
-    const search = el('input', 'vgn-field__control');
-    search.placeholder = 'Search…';
-    search.style.width = '180px';
-    search.addEventListener('input', () => {
-      this.opts.getGridApi().setQuickFilterText(search.value);
-    });
-    titleBar.appendChild(search);
-    const spacer = el('div');
-    spacer.style.flex = '1';
-    titleBar.appendChild(spacer);
-    this.dispos.push(mountButton(titleBar, {
-      label: 'Layouts',
-      variant: 'ghost',
-      onClick: () => this.openCustomize('grid-options'),
-    }));
-    this.dispos.push(mountButton(titleBar, {
-      label: 'Customize',
-      variant: 'primary',
-      onClick: () => this.openCustomize(),
-    }));
-    const saveHost = el('span');
-    titleBar.appendChild(saveHost);
-    const saveBtn = mountButton(saveHost, {
-      label: 'Save',
-      disabled: true,
-      onClick: () => { void this.session.save(); },
-    });
-    this.dispos.push(saveBtn);
-    this.dispos.push({
-      destroy: this.session.onDirtyChange((dirty) => {
-        saveBtn.button.textContent = dirty ? 'Save*' : 'Save';
-        saveBtn.setDisabled(!dirty);
-      }),
-    });
-    this.host.appendChild(titleBar);
+    this.mountTitleBar();
+    this.mountRibbons();
 
-    // Formatting ribbon
-    const fmt = mountToolbar(this.host);
-    this.dispos.push(fmt);
-    for (const label of ['Bold', 'Italic', 'Align', 'Format', 'Clear']) {
-      this.dispos.push(mountButton(fmt.root, { label, variant: 'ghost' }));
-    }
-    fmt.addSeparator();
-    this.dispos.push(mountButton(fmt.root, { label: 'Templates', variant: 'ghost' }));
-
-    // Editing ribbon
-    const edit = mountToolbar(this.host);
-    this.dispos.push(edit);
-    for (const label of ['Undo', 'Redo', 'Smart', 'Bulk']) {
-      this.dispos.push(mountButton(edit.root, { label, variant: 'ghost' }));
-    }
-
-    // Grid slot
     const gridSlot = el('div');
     gridSlot.dataset.slot = 'grid';
     gridSlot.style.cssText = 'flex:1;min-height:0;position:relative;';
     this.host.appendChild(gridSlot);
 
-    // Drawer
+    this.scrim = el('div', 'vgn-shell-scrim');
+    this.scrim.addEventListener('click', () => this.closeCustomize());
+    this.host.appendChild(this.scrim);
+
     this.drawer = mountDrawer(this.host, {
       title: 'Customize',
-      onClose: () => this.drawer.setOpen(false),
+      onClose: () => this.closeCustomize(),
     });
     this.dispos.push(this.drawer);
+    this.drawer.root.style.width = 'min(400px, 92vw)';
+
     this.railHost = el('div');
     this.drawer.body.style.display = 'flex';
     this.drawer.body.style.padding = '0';
+    // Replace default panel wrapper: rail + panel
+    this.drawer.body.replaceChildren();
     this.drawer.body.appendChild(this.railHost);
     const panelHost = el('div', 'vgn-drawer__panel');
     panelHost.dataset.slot = 'panel';
@@ -173,21 +138,194 @@ export class VelocityGridExtShell {
         .map((m) => ({ id: m.id, label: m.label })),
     })).filter((s) => s.items.length > 0);
 
-    this.dispos.push(mountRailNav(this.railHost, {
+    this.railNav = mountRailNav(this.railHost, {
       sections,
       activeId: this.activeModuleId,
-      onSelect: (id) => {
-        this.activeModuleId = id;
-        this.renderPanel();
-      },
-    }));
+      onSelect: (id) => { void this.selectModule(id); },
+    });
+    this.dispos.push(this.railNav);
 
     this.dispos.push(mountButton(this.drawer.footer, {
       label: 'Close',
       variant: 'ghost',
-      onClick: () => this.drawer.setOpen(false),
+      onClick: () => this.closeCustomize(),
     }));
 
+    this.renderPanel();
+  }
+
+  private mountTitleBar(): void {
+    const titleBar = el('div', 'vgn-titlebar');
+
+    const brand = el('div', 'vgn-titlebar__brand');
+    brand.appendChild(el('span', 'vgn-titlebar__mark'));
+    brand.appendChild(el('span', undefined, this.opts.title ?? 'VelocityGrid'));
+    titleBar.appendChild(brand);
+
+    const search = el('input', 'vgn-field__control vgn-titlebar__search');
+    search.type = 'search';
+    search.placeholder = 'Quick filter…';
+    search.setAttribute('aria-label', 'Quick filter');
+    search.addEventListener('input', () => {
+      try { this.opts.getGridApi().setQuickFilterText(search.value); } catch { /* not ready */ }
+    });
+    titleBar.appendChild(search);
+
+    const pills = el('div', 'vgn-titlebar__cluster');
+    pills.dataset.slot = 'filter-pills';
+    for (const label of ['All', 'EQ', 'FX']) {
+      const pill = el('button', 'vgn-pill', label);
+      pill.type = 'button';
+      if (label === 'All') pill.dataset.active = 'true';
+      pill.addEventListener('click', () => {
+        for (const p of pills.querySelectorAll('.vgn-pill')) {
+          (p as HTMLElement).dataset.active = p === pill ? 'true' : 'false';
+        }
+      });
+      pills.appendChild(pill);
+    }
+    titleBar.appendChild(pills);
+
+    titleBar.appendChild(el('div', 'vgn-titlebar__spacer'));
+
+    const cluster = el('div', 'vgn-titlebar__cluster');
+    if (this.opts.asOfLabel) {
+      const asOf = el('span', 'vgn-pill', this.opts.asOfLabel);
+      asOf.style.cursor = 'default';
+      cluster.appendChild(asOf);
+    }
+
+    const alertBtn = mountButton(cluster, {
+      label: 'Alerts',
+      variant: 'ghost',
+      title: 'Alerts',
+    });
+    this.dispos.push(alertBtn);
+    this.alertBadge = el('span', 'vgn-badge', '0');
+    this.alertBadge.hidden = true;
+    this.alertBadge.style.marginLeft = '-6px';
+    cluster.appendChild(this.alertBadge);
+
+    this.dispos.push(mountButton(cluster, {
+      label: 'Layouts',
+      variant: 'ghost',
+      onClick: () => this.openCustomize('grid-options'),
+    }));
+    this.dispos.push(mountButton(cluster, {
+      label: 'Customize',
+      variant: 'primary',
+      onClick: () => this.openCustomize(),
+    }));
+
+    const saveBtn = mountButton(cluster, {
+      label: 'Save',
+      disabled: true,
+      onClick: () => {
+        void this.session.save().then(() => {
+          this.panelDirty = false;
+          showToast('Layout saved', { tone: 'ok' });
+        });
+      },
+    });
+    this.dispos.push(saveBtn);
+    this.dispos.push({
+      destroy: this.session.onDirtyChange((dirty) => {
+        saveBtn.setLabel(dirty ? 'Save*' : 'Save');
+        saveBtn.setDisabled(!dirty);
+      }),
+    });
+
+    this.dispos.push(mountButton(cluster, {
+      label: '⋯',
+      variant: 'ghost',
+      icon: true,
+      title: 'More',
+      onClick: () => {
+        this.ribbonsVisible = !this.ribbonsVisible;
+        this.fmtRibbon.hidden = !this.ribbonsVisible;
+        this.editRibbon.hidden = !this.ribbonsVisible;
+        showToast(this.ribbonsVisible ? 'Ribbons shown' : 'Ribbons hidden');
+      },
+    }));
+
+    titleBar.appendChild(cluster);
+    this.host.appendChild(titleBar);
+  }
+
+  private mountRibbons(): void {
+    this.fmtRibbon = el('div', 'vgn-ribbon');
+    this.fmtRibbon.setAttribute('aria-label', 'Formatting');
+    this.addRibbonGroup(this.fmtRibbon, 'Font', [
+      { label: 'B', title: 'Bold' },
+      { label: 'I', title: 'Italic' },
+      { label: 'U', title: 'Underline' },
+    ]);
+    this.addRibbonGroup(this.fmtRibbon, 'Align', [
+      { label: '⬅', title: 'Left' },
+      { label: '▮', title: 'Center' },
+      { label: '➡', title: 'Right' },
+    ]);
+    this.addRibbonGroup(this.fmtRibbon, 'Format', [
+      { label: '0.00', title: 'Number format' },
+      { label: 'CLR', title: 'Clear formatting' },
+    ]);
+    this.addRibbonGroup(this.fmtRibbon, 'Templates', [
+      { label: 'Tpl', title: 'Column templates' },
+    ]);
+    this.host.appendChild(this.fmtRibbon);
+
+    this.editRibbon = el('div', 'vgn-ribbon');
+    this.editRibbon.setAttribute('aria-label', 'Editing');
+    this.addRibbonGroup(this.editRibbon, 'History', [
+      { label: '↶', title: 'Undo' },
+      { label: '↷', title: 'Redo' },
+    ]);
+    this.addRibbonGroup(this.editRibbon, 'Edit', [
+      { label: 'Smart', title: 'Smart edit' },
+      { label: 'Bulk', title: 'Bulk update' },
+      { label: '±', title: 'Plus / minus' },
+    ]);
+    this.host.appendChild(this.editRibbon);
+  }
+
+  private addRibbonGroup(
+    ribbon: HTMLElement,
+    label: string,
+    tools: Array<{ label: string; title: string }>,
+  ): void {
+    const group = el('div', 'vgn-ribbon__group');
+    const toolsRow = el('div', 'vgn-ribbon__tools');
+    for (const t of tools) {
+      this.dispos.push(mountButton(toolsRow, {
+        label: t.label,
+        variant: 'ghost',
+        icon: t.label.length <= 2,
+        title: t.title,
+        onClick: () => showToast(`${t.title} (Phase 6 wires engines)`),
+      }));
+    }
+    group.appendChild(toolsRow);
+    group.appendChild(el('div', 'vgn-ribbon__group-label', label));
+    ribbon.appendChild(group);
+  }
+
+  private async selectModule(id: string): Promise<void> {
+    if (id === this.activeModuleId) return;
+    if (this.panelDirty || this.session.isDirty()) {
+      const ok = await confirmDialog(this.host, {
+        title: 'Discard changes?',
+        body: 'You have unsaved customize changes. Switch panels and discard?',
+        confirmLabel: 'Discard',
+        cancelLabel: 'Keep editing',
+        danger: true,
+      });
+      if (!ok) {
+        this.railNav.setActive(this.activeModuleId);
+        return;
+      }
+      this.panelDirty = false;
+    }
+    this.activeModuleId = id;
     this.renderPanel();
   }
 
@@ -207,7 +345,10 @@ export class VelocityGridExtShell {
     this.panelDispos = mod.mount(panelHost, {
       gridApi: this.opts.getGridApi(),
       session: this.session,
-      markDirty: () => this.session.markDirty(),
+      markDirty: () => {
+        this.panelDirty = true;
+        this.session.markDirty();
+      },
     });
   }
 

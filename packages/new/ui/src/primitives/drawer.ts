@@ -9,10 +9,12 @@ export function mountDrawer(
   },
 ): Disposable & {
   root: HTMLElement;
+  /** Flex body — populate with rail + panel as needed. */
   body: HTMLElement;
   footer: HTMLElement;
   setOpen(open: boolean): void;
   setTitle(title: string): void;
+  isOpen(): boolean;
 } {
   const root = el('aside', 'vgn-drawer');
   root.dataset.open = 'false';
@@ -25,20 +27,20 @@ export function mountDrawer(
   const closeHost = el('div');
   header.appendChild(closeHost);
   const closeBtn = mountButton(closeHost, {
-    label: 'Close',
+    label: '✕',
     variant: 'ghost',
+    icon: true,
+    title: 'Close',
     onClick: () => {
       root.dataset.open = 'false';
       opts.onClose?.();
     },
   });
 
-  const bodyWrap = el('div', 'vgn-drawer__body');
-  const body = el('div', 'vgn-drawer__panel');
-  bodyWrap.appendChild(body);
+  const body = el('div', 'vgn-drawer__body');
   const footer = el('div', 'vgn-drawer__footer');
 
-  root.append(header, bodyWrap, footer);
+  root.append(header, body, footer);
   host.appendChild(root);
 
   return {
@@ -46,7 +48,11 @@ export function mountDrawer(
     body,
     footer,
     setOpen(open: boolean) { root.dataset.open = open ? 'true' : 'false'; },
-    setTitle(title: string) { titleEl.textContent = title; },
+    isOpen: () => root.dataset.open === 'true',
+    setTitle(title: string) {
+      titleEl.textContent = title;
+      root.setAttribute('aria-label', title);
+    },
     destroy() {
       closeBtn.destroy();
       root.remove();

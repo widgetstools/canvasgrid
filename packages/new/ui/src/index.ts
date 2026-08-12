@@ -7,3 +7,7 @@ export { mountRailNav, type RailItem, type RailSection } from './primitives/rail
 export { mountDrawer } from './primitives/drawer';
 export { mountToolbar } from './primitives/toolbar';
 export { mountBanner, mountEmptyState } from './primitives/banner';
+export { mountTabs, type TabItem } from './primitives/tabs';
+export { mountDialog, confirmDialog, type DialogResult } from './primitives/dialog';
+export { mountSplitList, type SplitListItem } from './primitives/splitList';
+export { showToast, type ToastTone } from './primitives/toast';

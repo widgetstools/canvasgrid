@@ -20,11 +20,13 @@ let api: ReturnType<VelocityGrid<Row>['getApi']> | null = null;
 const shell = new VelocityGridExtShell(shellHost, {
   gridId: 'new-ext-demo',
   title: 'VelocityGrid New',
+  asOfLabel: 'As-of today',
   getGridApi: () => {
     if (!api) throw new Error('grid not ready');
     return api;
   },
 });
+shell.setAlertCount(2);
 
 const grid = new VelocityGrid<Row>(shell.getGridHost(), {
   columnDefs: [

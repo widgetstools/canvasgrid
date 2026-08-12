@@ -62,9 +62,9 @@ Status legend: `todo` · `wip` · `done` · `deferred`
 
 | ID | Feature | Status |
 |----|---------|--------|
-| E-SHELL-01 | Title bar + ribbon + customize drawer chrome | wip |
+| E-SHELL-01 | Title bar + ribbon + customize drawer chrome | done |
 | E-SHELL-02 | Extension registry + default bundle | wip |
-| E-UI-01 | All chrome on vg-new-ui (no Lit customizer) | wip |
+| E-UI-01 | All chrome on vg-new-ui (no Lit customizer) | done |
 | E-CFG-01 | ConfigSession instance plane `vg-new:instance:*` | wip |
 | E-CFG-02 | Layouts (no profiles dual UI) | wip |
 | E-MOD-01 | Grid options panel | wip |
@@ -84,7 +84,7 @@ Status legend: `todo` · `wip` · `done` · `deferred`
 | E-TB-03 | Saved-filter pills | wip |
 | E-TB-04 | Layouts switcher + save | wip |
 | E-TB-05 | Search / alerts badge / as-of / overflow | wip |
-| E-GRAMMAR-01 | Draft → Validate → Apply/Save | wip |
+| E-GRAMMAR-01 | Draft → Validate → Apply/Save | done |
 
 ---
 
