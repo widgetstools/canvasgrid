@@ -42,10 +42,6 @@ export interface CCellSelectionOptions {
   /** When `true`, a click on a column header no longer selects the whole
    *  column. Sort cycling on the same click is unaffected. */
   suppressHeader?: boolean;
-  /** When `true`, a click on the row-header column (Cycle 14) no longer
-   *  selects the whole row range. Plumbed in Cycle 9 / Task 6; consumed
-   *  when row-header click ships in Cycle 14. */
-  suppressRow?: boolean;
   /** When `true`, mouse drag (and the plain-click + shift-click + ctrl-click
    *  pathways the drag feature owns) no longer creates or mutates ranges.
    *  Focus + row selection on the same press still happen. */
