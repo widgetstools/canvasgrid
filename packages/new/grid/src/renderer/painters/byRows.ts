@@ -496,6 +496,7 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx, mode?: ByRo
     totalRowCount,
     stringRowIdAt: p.stringRowIdAt,
     getRowDataById: p.getRowDataById,
+    engineCellStyle: p.engineCellStyle,
     themeKind: p.themeKind,
     firstVisibleColId,
     lastVisibleColId,
@@ -749,6 +750,7 @@ interface PaintBandCtx {
   totalRowCount: number;
   stringRowIdAt: PainterCtx['stringRowIdAt'];
   getRowDataById: PainterCtx['getRowDataById'];
+  engineCellStyle: PainterCtx['engineCellStyle'];
   themeKind: PainterCtx['themeKind'];
   /** Group-header rows (top→bottom) — the leaf-header paint uses these to
    *  render span-height cells (AG-Grid parity): a leaf whose group ancestry
@@ -940,7 +942,7 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
     // gaps from the chunk, but do NOT let undefined/null chunk cells wipe
     // hydrated mirror fields (soft-reload / thin payloads).
     const rowData: Record<string, unknown> | undefined =
-      row.subgrid.isData && (ctx.rowDataNeeded || ruleRowId !== undefined)
+      row.subgrid.isData && (ctx.rowDataNeeded || ruleRowId !== undefined || ctx.engineCellStyle)
         ? rowDataSnapshotAt(row.localRowIndex)
         : undefined;
     const ruleRow: Record<string, unknown> | undefined = ruleRowId !== undefined
@@ -1099,6 +1101,16 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
         flashAlpha,
         params,
         rowData,
+        engineStyle: (() => {
+          const src = ruleRow ?? rowData;
+          if (!src || !ctx.engineCellStyle || row.subgrid.isHeader) return undefined;
+          const s = ctx.engineCellStyle(src, col.colId);
+          if (!s) return undefined;
+          return {
+            fg: s.color,
+            bg: s.backgroundColor,
+          };
+        })(),
         rowIndex: row.subgrid.isData ? row.localRowIndex : 0,
         // Cycle 21e / Task 11 — rule-engine fold inputs. Undefined on
         // header / totals / pinned / group / footer rows.

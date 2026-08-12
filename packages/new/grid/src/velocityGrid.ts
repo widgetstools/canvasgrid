@@ -1723,6 +1723,9 @@ export class VelocityGrid<TRow = any> {
       // snapshot is visible-columns-only), and the active theme kind.
       stringRowIdAt: (rowIndex) => this.stringRowIdAt(rowIndex),
       getRowDataById: (rowId) => this.rowDataById.get(rowId),
+      getEngineCellStyle: () => this.engines.hasStyleRules()
+        ? (row, colId) => this.engines.cellStyle(row, colId)
+        : undefined,
       getThemeKind: () => this.getThemeKind(),
       getQuickFilterLowerTerms: () => this.quickFilterLowerTerms,
       // Cycle 9 / Task 5 — paint a 6×6 fill handle on the last range when
@@ -3895,9 +3898,11 @@ export class VelocityGrid<TRow = any> {
     // setRowData is a full replace, so wipe the cache first.
     this.rowDataById.clear();
     for (const row of rows) {
-      try { this.rowDataById.set(this.options.getRowId(row), row); } catch { /* skip bad rowId */ }
+      const enriched = this.engines.enrichRow(row as Record<string, unknown>) as TRow;
+      try { this.rowDataById.set(this.options.getRowId(enriched), enriched); } catch { /* skip bad rowId */ }
     }
-    this.workerCoord.setRowData(rows, heightsByRowId).then(({ visibleCount, groupKeys, expandedKeys }) => {
+    const workerRows = rows.map((row) => this.engines.enrichRow(row as Record<string, unknown>) as TRow);
+    this.workerCoord.setRowData(workerRows, heightsByRowId).then(({ visibleCount, groupKeys, expandedKeys }) => {
       if (this.destroyed) return;
       this.rowCount = visibleCount;
       // Cycle 15 / Task 7 — setRowData may have grown the set of
@@ -7826,7 +7831,23 @@ export class VelocityGrid<TRow = any> {
   }
 
   setCalcColumns(columns: import('@wellsfargo-starui/vg-new-engines').CalcColumn[]): void {
+    const prevAliases = new Set(this.engines.calcOutputIds());
     this.engines.setCalcColumns(columns);
+    const aliases = new Set(columns.filter((c) => c.enabled !== false).map((c) => c.alias));
+    const current = [...(this.options.columnDefs ?? [])];
+    const kept = current.filter((c) => {
+      const id = 'colId' in c && c.colId ? String(c.colId) : 'field' in c ? String(c.field ?? '') : '';
+      return !prevAliases.has(id) && !aliases.has(id);
+    });
+    const calcDefs = columns.filter((c) => c.enabled !== false).map((c) => ({
+      colId: c.alias,
+      field: c.alias,
+      headerName: c.headerName ?? c.alias,
+      width: 110,
+    }));
+    this.updateGridOptions({
+      columnDefs: [...kept, ...calcDefs] as VelocityGridOptions<TRow>['columnDefs'],
+    });
     this.repaintFull();
   }
 
@@ -9199,6 +9220,16 @@ export class VelocityGrid<TRow = any> {
       const value = numeric[localIndex]!;
       return { value, valueFormatted: this.formatNumber(colId, value), flashAlpha: flash, flashColor };
     }
+    const calcIds = this.engines.calcOutputIds();
+    if (calcIds.includes(colId)) {
+      const snapshot = this.rowDataSnapshotAt(rowIndex);
+      const enriched = this.engines.enrichRow(snapshot as Record<string, unknown>);
+      const value = enriched[colId];
+      if (typeof value === 'number') {
+        return { value, valueFormatted: this.formatNumber(colId, value), flashAlpha: flash, flashColor };
+      }
+      return { value, valueFormatted: this.formatText(colId, String(value ?? '')), flashAlpha: flash, flashColor };
+    }
     const text = this.chunk.textCols[colId];
     if (text) {
       let decoded = this.decodedTextCols.get(colId);
@@ -9396,7 +9427,7 @@ export class VelocityGrid<TRow = any> {
     if (hit !== undefined) return hit;
     const formatted = def?.valueFormatter
       ? def.valueFormatter({ value, colId, data: undefined as unknown as TRow })
-      : value.toString();
+      : this.engines.formatValue(colId, value) || value.toString();
     if (entry.cache.size >= VelocityGrid.FORMAT_MEMO_CAP) entry.cache.clear();
     entry.cache.set(value, formatted);
     return formatted;
@@ -9408,6 +9439,8 @@ export class VelocityGrid<TRow = any> {
    *  limitation as the numeric path: `[value]`-based programs resolve,
    *  cross-field references don't. Memoized — see `formatMemoByCol`. */
   private formatText(colId: string, value: string): string {
+    const engineFormatted = this.engines.formatValue(colId, value);
+    if (engineFormatted && engineFormatted !== String(value ?? '')) return engineFormatted;
     const def = this.columnDefsMap.get(colId);
     if (!def?.valueFormatter) return value;
     const entry = this.formatMemoEntry(colId, def.valueFormatter);

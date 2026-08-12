@@ -41,6 +41,10 @@ export class EnginesHost {
     this.rules.setRules(rules);
   }
 
+  hasStyleRules(): boolean {
+    return this.rules.getRules().length > 0;
+  }
+
   cellStyle(
     row: Record<string, unknown>,
     colId: string,

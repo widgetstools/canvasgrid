@@ -47,6 +47,7 @@ import type { Renderer } from '../renderer/renderer';
 import { resolveDrawableCellIcon } from '../renderer/painters/byRows';
 import type { ResolvedTheme } from '../theming/cssReader';
 import type { SelectionModel } from '../interaction/selectionModel';
+import type { EnginesHost } from '@wellsfargo-starui/vg-new-engines';
 import type { ViewportChunk, StickyAncestor } from '../worker/protocol';
 
 /**
@@ -79,6 +80,7 @@ export interface PaintDriverHost<TRow = any> {
   stringRowIdAt(rowIndex: number): string | null;
   rowDataById: Map<string, TRow>;
   rowDataSnapshotAt(rowIndex: number): Record<string, unknown>;
+  readonly engines: EnginesHost;
   cellAt(rowIndex: number, colId: string): {
     value: unknown;
     valueFormatted: string;
@@ -507,6 +509,12 @@ export class PaintDriver<TRow = any> {
         flashAlpha: undefined,
         params,
         rowData,
+        engineStyle: (() => {
+          if (!rowData) return undefined;
+          const s = this.host.engines.cellStyle(rowData, col.colId);
+          if (!s) return undefined;
+          return { fg: s.color, bg: s.backgroundColor };
+        })(),
         rowIndex,
         rowId,
         ruleRow,

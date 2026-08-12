@@ -1,3 +1,4 @@
+import { Client, type IMessage } from '@stomp/stompjs';
 import {
   clearSharedFeedStop,
   isSharedFeedStopped,
@@ -38,6 +39,15 @@ export type PerspectiveBookOptions = {
   schemaKey?: string;
   schema?: PerspectiveTableSchema;
   snapshotRows?: number;
+  /** STOMP broker URL when `feed: 'stomp'`. */
+  wsUrl?: string;
+  clientId?: string;
+  snapshotTopic?: string;
+  triggerTopic?: string;
+  snapshotEndToken?: string;
+  keyColumn?: string;
+  rate?: number;
+  batchSize?: number;
   /** Force shared-table leadership semantics (Web Locks) even on memory engine — for tests. */
   sharedTable?: boolean;
   onPhase?: (p: BookPhase) => void;
@@ -68,6 +78,9 @@ export class PerspectiveBook {
   private wasmTable: WasmTable | null = null;
   private leadership: FeedLeadership;
   private connecting = false;
+  private stomp: Client | null = null;
+  private updateBuffer: PositionRow[] = [];
+  private flushTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly opts: PerspectiveBookOptions = {}) {
     this.schemaKey = opts.schemaKey ?? 'positions';
@@ -108,6 +121,7 @@ export class PerspectiveBook {
     this.feedStopEpoch++;
     writeSharedFeedStop(this.schemaKey, this.feedStopEpoch);
     this.stopSeed();
+    this.deactivateStomp();
     this.leadership.release();
     this.setPhase('disconnected');
   }
@@ -165,7 +179,7 @@ export class PerspectiveBook {
             return;
           }
           this.opts.onRole?.(this.leadership.getRole());
-          await this.connectSeed();
+          await this.connectFeed();
           return;
         }
 
@@ -179,14 +193,14 @@ export class PerspectiveBook {
         }
         // Timeout — seed ourselves.
         if (await this.leadership.tryLead()) {
-          await this.connectSeed();
+          await this.connectFeed();
         }
         return;
       }
 
       // Dedicated / memory single-tab — always leader.
       await this.leadership.tryLead();
-      await this.connectSeed();
+      await this.connectFeed();
     } finally {
       this.connecting = false;
     }
@@ -285,7 +299,13 @@ export class PerspectiveBook {
     if (this.isFeedStopped() || this.destroyed) return;
     this.snapshotComplete = true;
     this.setPhase('live');
-    this.startSeedLive();
+    if (this.opts.feed === 'stomp') this.activateStomp();
+    else this.startSeedLive();
+  }
+
+  private async connectFeed(): Promise<void> {
+    if (this.opts.feed === 'stomp') this.activateStomp();
+    else await this.connectSeed();
   }
 
   private sortedRows(sortModel?: SsrmSortModel): PositionRow[] {
@@ -448,6 +468,148 @@ export class PerspectiveBook {
     }
   }
 
+  private activateStomp(): void {
+    if (this.isFeedStopped() || this.destroyed || this.stomp) return;
+    const brokerURL = this.opts.wsUrl;
+    if (!brokerURL) {
+      console.error('[vg-new-perspective] feed=stomp requires wsUrl');
+      this.setPhase('error');
+      return;
+    }
+    this.stopSeed();
+    this.setPhase('connecting');
+    this.snapshotComplete = false;
+    this.updateBuffer = [];
+    const client = new Client({
+      brokerURL,
+      reconnectDelay: 2000,
+      heartbeatIncoming: 0,
+      heartbeatOutgoing: 0,
+      onConnect: () => {
+        if (this.isFeedStopped() || this.destroyed) {
+          try { void client.deactivate(); } catch { /* swallow */ }
+          return;
+        }
+        this.onStompConnected();
+      },
+      onStompError: () => this.setPhase('error'),
+      onWebSocketError: () => this.setPhase('error'),
+      onWebSocketClose: () => {
+        if (!this.destroyed && !this.isFeedStopped()) this.setPhase('disconnected');
+      },
+    });
+    this.stomp = client;
+    client.activate();
+  }
+
+  private onStompConnected(): void {
+    if (!this.stomp) return;
+    this.setPhase('snapshot');
+    const clientId = this.opts.clientId ?? 'TRADER001';
+    const topic = this.opts.snapshotTopic ?? `/snapshot/positions/${clientId}`;
+    const rate = this.opts.rate ?? 40;
+    const batchSize = this.opts.batchSize ?? 200;
+    const trigger = this.opts.triggerTopic ?? `${topic}/${rate}/${batchSize}`;
+    this.stomp.subscribe(topic, (msg: IMessage) => void this.onStompMessage(msg));
+    this.stomp.publish({
+      destination: trigger,
+      body: trigger,
+      headers: {
+        'snapshot-rows': String(this.opts.snapshotRows ?? 10_000),
+      },
+    });
+  }
+
+  private async onStompMessage(msg: IMessage): Promise<void> {
+    const body = msg.body?.trim() ?? '';
+    if (!body) return;
+    const endToken = this.opts.snapshotEndToken ?? 'Success';
+    if (body === endToken || body.startsWith(`${endToken}:`)) {
+      if (this.snapshotComplete) return;
+      this.flushUpdates();
+      this.snapshotComplete = true;
+      this.setPhase('live');
+      return;
+    }
+    let parsed: unknown;
+    try { parsed = JSON.parse(body); } catch { return; }
+    this.ingestStompRows(extractRows(parsed), msg.headers['message-type']);
+  }
+
+  /** Test helper — same ingest path as a live STOMP JSON frame. */
+  __ingestStompBodyForTests(body: string, messageType?: string): void {
+    if (body === (this.opts.snapshotEndToken ?? 'Success')) {
+      this.flushUpdates();
+      this.snapshotComplete = true;
+      this.setPhase('live');
+      return;
+    }
+    this.ingestStompRows(extractRows(JSON.parse(body)), messageType);
+  }
+
+  private ingestStompRows(deltas: Array<Record<string, unknown>>, messageType?: string): void {
+    const keyColumn = this.opts.keyColumn ?? 'positionId';
+    const rows: PositionRow[] = [];
+    for (const delta of deltas) {
+      const raw = delta[keyColumn];
+      const id = raw != null ? String(raw) : '';
+      if (!id) continue;
+      const row = { ...delta, positionId: id } as PositionRow;
+      rows.push(row);
+    }
+    if (!rows.length) return;
+    this.updateBuffer.push(...rows);
+    const batchSize = this.opts.batchSize ?? 200;
+    if (!this.snapshotComplete || messageType === 'snapshot' || this.updateBuffer.length >= batchSize) {
+      this.flushUpdates();
+    } else {
+      this.scheduleFlush();
+    }
+  }
+
+  private scheduleFlush(): void {
+    if (this.flushTimer != null) return;
+    this.flushTimer = setTimeout(() => {
+      this.flushTimer = null;
+      this.flushUpdates();
+    }, 32);
+  }
+
+  private flushUpdates(): void {
+    if (!this.updateBuffer.length) return;
+    const batch = this.updateBuffer.splice(0);
+    for (const row of batch) {
+      const prev = this.tableRows.get(row.positionId);
+      const next = prev ? { ...prev, ...row } : row;
+      this.tableRows.set(row.positionId, next);
+    }
+    if (this.wasmTable) {
+      void this.wasmTable.update(batch).catch(() => undefined);
+    }
+    if (this.snapshotComplete) {
+      for (const v of this.views.values()) {
+        this.opts.onViewTick?.({
+          viewId: v.id,
+          updates: batch,
+          refreshSsrm: false,
+          totals: { positionId: '__total__' },
+        });
+      }
+    }
+  }
+
+  private deactivateStomp(): void {
+    if (this.flushTimer != null) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
+    const c = this.stomp;
+    this.stomp = null;
+    if (c) {
+      try { void c.deactivate(); } catch { /* swallow */ }
+    }
+  }
+
   private startSeedLive(): void {
     this.stopSeed();
     if (this.isFeedStopped() || !this.snapshotComplete) return;
@@ -502,8 +664,17 @@ export class PerspectiveBook {
   destroy(): void {
     this.destroyed = true;
     this.stopSeed();
+    this.deactivateStomp();
     this.leadership.release();
     this.views.clear();
     this.wasmTable = null;
   }
+}
+
+function extractRows(parsed: unknown): Array<Record<string, unknown>> {
+  if (Array.isArray(parsed)) {
+    return parsed.filter((r) => r && typeof r === 'object') as Array<Record<string, unknown>>;
+  }
+  if (parsed && typeof parsed === 'object') return [parsed as Record<string, unknown>];
+  return [];
 }

@@ -24,6 +24,7 @@
     "dev:new-csrm": "npm run dev --workspace=cgrid-new-csrm",
     "dev:new-ext-demo": "npm run dev --workspace=cgrid-new-ext-demo",
     "dev:new-perspective-ssrm": "npm run dev --workspace=cgrid-new-perspective-ssrm",
+    "dev:new-stomp-perspective": "concurrently -k -n broker,new-ssrm -c blue,green \"npm run dev:stomp\" \"wait-on tcp:8082 && npm run dev:new-perspective-ssrm\"",
     "test:new": "npm run test --workspaces --if-present --workspace=@wellsfargo-starui/vg-new-ui --workspace=@wellsfargo-starui/vg-new-grid --workspace=@wellsfargo-starui/vg-new-ext --workspace=@wellsfargo-starui/vg-new-data --workspace=@wellsfargo-starui/vg-new-appdata --workspace=@wellsfargo-starui/vg-new-perspective --workspace=@wellsfargo-starui/vg-new-engines",
     "dev:stomp": "node scripts/run-stomp.mjs",
     "dev:stomp-perspective": "concurrently -k -n broker,sample -c blue,green \"npm run dev:stomp\" \"wait-on tcp:8082 && npm run dev:perspective-ssrm-sample\"",

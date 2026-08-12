@@ -135,6 +135,8 @@ export interface PainterCtx {
    *  mirror. The paint snapshot only covers visible columns; rule
    *  conditions must see hidden fields too. */
   getRowDataById?: (rowId: string) => unknown;
+  /** Conditional-style overlay from the engines host. */
+  engineCellStyle?: (row: Record<string, unknown>, colId: string) => { color?: string; backgroundColor?: string; fontWeight?: string } | undefined;
   /** Cycle 21e / Task 11 — active theme kind for rule eval contexts. */
   themeKind?: 'light' | 'dark';
   /**

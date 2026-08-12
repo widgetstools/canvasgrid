@@ -334,6 +334,12 @@ export interface ApplyCellPropsInput {
    */
   rowData?: Record<string, unknown>;
   /**
+   * Optional engine-driven style overlay (conditional rules / format ribbon).
+   * Applied after colDef cellStyle so product rules are visible, but still
+   * before textTransform.
+   */
+  engineStyle?: { fg?: string; bg?: string };
+  /**
    * Row index in the data subgrid. Required for `cellClassRules` predicate
    * params; defaults to `0` when omitted (header use). Cycle 6 / Task 7.
    */
@@ -978,6 +984,10 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
       patch = undefined;
     }
     if (patch) applyOverridePatch(target, patch, theme.resolveVarRef);
+  }
+
+  if (ctx.engineStyle && !ctx.isHeader) {
+    applyOverridePatch(target, ctx.engineStyle, theme.resolveVarRef);
   }
 
   // ── 5. Cycle 27 / Task 1 — apply textTransform after all overrides ─────

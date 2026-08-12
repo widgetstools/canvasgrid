@@ -20,6 +20,15 @@ export type StompPerspectiveProviderConfig = {
   engine?: BookEngine;
   snapshotRows?: number;
   label?: string;
+  wsUrl?: string;
+  clientId?: string;
+  snapshotTopic?: string;
+  triggerTopic?: string;
+  snapshotEndToken?: string;
+  keyColumn?: string;
+  rate?: number;
+  batchSize?: number;
+  onPhase?: (phase: import('./book').BookPhase) => void;
 };
 
 type AttachableGrid = {
@@ -58,6 +67,15 @@ function acquireBook(config: StompPerspectiveProviderConfig): { book: Perspectiv
       engine: config.engine ?? 'memory',
       snapshotRows: config.snapshotRows,
       schemaKey: config.providerId ?? 'positions',
+      wsUrl: config.wsUrl,
+      clientId: config.clientId,
+      snapshotTopic: config.snapshotTopic,
+      triggerTopic: config.triggerTopic,
+      snapshotEndToken: config.snapshotEndToken,
+      keyColumn: config.keyColumn,
+      rate: config.rate,
+      batchSize: config.batchSize,
+      onPhase: config.onPhase,
       onViewTick: (tick) => {
         for (const h of tickHandlers) h(tick);
       },
@@ -151,7 +169,6 @@ export class StompPerspectiveProvider implements IServerSideDatasourceV2<Positio
   gridOptions(): VelocityGridOptions<PositionRow> {
     return {
       getRowId: (r) => r.positionId,
-      rowIdField: 'positionId',
       columnDefs: [
         { field: 'positionId', headerName: 'Id', width: 100 },
         { field: 'desk', headerName: 'Desk', width: 80, enableRowGroup: true },

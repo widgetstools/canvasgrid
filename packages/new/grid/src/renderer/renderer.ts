@@ -3,7 +3,7 @@ import type { ResolvedColDef } from '../core/propertyChain';
 import type { ResolvedTheme } from '../theming/cssReader';
 import type { CellRendererRegistry } from './cellRenderers/registry';
 import type { GroupCellValue } from './cellRenderers/group';
-import type { CellDataLookup, RasterCellsCtx, RasterStripsCtx } from './painters/types';
+import type { CellDataLookup, RasterCellsCtx, RasterStripsCtx, PainterCtx } from './painters/types';
 import type { PaintCacheCanvasLike } from '../core/paintCache';
 import type { SortModel, SelectionRange } from '../types';
 import type { StickyAncestor } from '../worker/protocol';
@@ -56,6 +56,7 @@ export interface RendererOpts {
   /** Cycle 21e / Task 11 — full row from the main-thread rowDataById
    *  mirror (hidden columns included). Forwarded into `PainterCtx`. */
   getRowDataById?: (rowId: string) => unknown;
+  getEngineCellStyle?: () => PainterCtx['engineCellStyle'];
   /** Cycle 21e / Task 11 — active theme kind for rule eval contexts. */
   getThemeKind?: () => 'light' | 'dark';
   /**
@@ -783,6 +784,7 @@ export class Renderer {
       rowDataSnapshotAt: this.opts.rowDataSnapshotAt,
       stringRowIdAt: this.opts.stringRowIdAt,
       getRowDataById: this.opts.getRowDataById,
+      engineCellStyle: this.opts.getEngineCellStyle?.(),
       themeKind: this.opts.getThemeKind?.(),
       quickFilterLowerTerms: this.opts.getQuickFilterLowerTerms(),
       showFillHandle: this.opts.getShowFillHandle(),

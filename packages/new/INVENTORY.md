@@ -24,11 +24,15 @@ cleanly (collapsed dual paths, no god object, one design system), then run the l
 **unmodified** as the gate. A row only becomes `parity` when those tests pass against the new
 code with no assertions removed and no skips.
 
-**Ported:** the type contract (verbatim — it *is* the AG-parity surface), the column model,
-viewport/virtualization/paint infrastructure, the worker protocol and data pipeline, the
-renderer and theming layers, the full interaction layer, and the grid host with its split
-into facades. `packages/new/grid` is now feature-complete against the legacy kernel by every
-gate legacy ships.
+**Ported:** the type contract, column model, viewport/paint, worker pipeline,
+renderer/theming, interaction, and grid host facades. Kernel unit tests are
+green. That is **not** product parity. The Ext shell, data hub/STOMP
+transports, and engine wiring into paint were still stubs when the demos
+first booted — which is why the new apps looked worse than the old ones.
+
+The new Perspective SSRM demo now defaults to a real STOMP feed
+(`ws://localhost:8082`, same broker as the legacy sample). Use `?feed=seed`
+for the offline generator. Format/style/calc engines now reach painted cells.
 
 **Package suite: 3,601 passing / 3 failing across 285 files.** **All 275 legacy grid test
 files are present and byte-identical** to their originals — zero edits, zero omissions. No
