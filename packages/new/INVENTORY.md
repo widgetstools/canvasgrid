@@ -5,14 +5,16 @@ plus `apps/cgrid-ext-demo/e2e/parity/CHECKLIST.md`.
 
 ## Honest state (2026-08-12)
 
-`packages/new` is currently a **prototype**, not a replacement. Measured against legacy:
+`packages/new` is a **rebuild in progress**, not yet a replacement. Measured against legacy:
 
-| | Legacy | `packages/new` |
-|---|---|---|
-| Source | 463 files / ~124,300 lines | 83 files / ~10,000 lines |
-| Grid core | 75,406 lines | 3,545 lines |
-| Unit tests | 415 files | 19 files |
-| E2E specs | 125 | 0 |
+| | Legacy | `packages/new` | |
+|---|---|---|---|
+| Source | 463 files / ~124,300 lines | 216 files / ~46,000 lines | 37% |
+| Grid core | 75,406 lines | 39,415 lines | 52% |
+| Test files | 415 | 125 | 30% |
+| E2E specs | 125 | 0 | 0% |
+
+Started the day at 83 files / ~10,000 lines with 19 tests and no ported behavior.
 
 The rebuild approach is: extract the behavior spec from the legacy module, re-implement it
 cleanly (collapsed dual paths, no god object, one design system), then run the legacy tests
@@ -20,8 +22,10 @@ cleanly (collapsed dual paths, no god object, one design system), then run the l
 code with no assertions removed and no skips.
 
 **Ported so far:** the type contract (4,568 lines, verbatim — it *is* the AG-parity surface),
-the column model layer (15 legacy test files, 234 tests), and viewport/virtualization/paint
-infrastructure (11 files, 180 tests). All copies byte-identical to their legacy originals.
+the column model layer, viewport/virtualization/paint infrastructure, and the worker protocol
+and data pipeline. **708 legacy tests green across 51 byte-identical files**, plus 46
+port-added tests covering areas the legacy gate left unguarded. Exactly one copied test
+carries an edit, and it is an import path with a `PORT-NOTE`.
 
 **Committed failing on purpose** — these are the gate, not noise. `virtualColumnsChanged`,
 `paintCacheViewport` and `flashOverrides` need the real grid shell (`src/velocityGrid.ts` is
@@ -35,9 +39,24 @@ Files under `src/renderer/`, `src/theming/`, and `src/icons/` are currently an u
 dependency closure dragged in by three column gate tests. They are a starting point for the
 renderer port, **not** finished work, and none of the K-PAINT / K-THEME rows may cite them.
 
-Files under `src/renderer/`, `src/theming/`, and `src/icons/` are currently an unrefactored
-dependency closure dragged in by three column gate tests. They are a starting point for the
-renderer port, **not** finished work, and none of the K-PAINT / K-THEME rows may cite them.
+### Duplication debt to retire (`src/worker/interop/`)
+
+Four modules are vendored there because the worker needs them and their owning layer isn't
+ported. Each carries a `PORT-NOTE` naming what should import what once it lands. Two are
+load-bearing and fail *silently* if they drift:
+
+- `aggMath` must stay identical to the status-bar copy, or the aggregation panel and the
+  worker will report different numbers for the same column.
+- `pivotColumnIds` redeclares the colId grammar that `src/core/pivotColumns.ts` also owns.
+  It is not imported from there because that module already imports the worker's `pivotPass`,
+  so reading it back would close a cycle. On drift, `decodePivotResultColumnId` returns null
+  and sorting a pivot-result column stops working with no error anywhere.
+  `pivotColumnIdGrammar.port.test.ts` pins the two together so drift surfaces as a red test.
+
+### Uncovered by any parity gate
+
+The SSRM sticky-ancestor path and the pivot sort-by-pivot-column path have no legacy test
+exercising them. Refactors there rest on port-added tests only — treat with corresponding care.
 
 ## Status legend
 
@@ -55,9 +74,9 @@ renderer port, **not** finished work, and none of the K-PAINT / K-THEME rows may
 
 | ID | Feature | Status | Gap vs legacy |
 |----|---------|--------|---------------|
-| K-CSRM-01 | Client-side row model + worker pipeline order | partial | Runs in-process; legacy `worker/` (11k lines) not ported |
-| K-CSRM-02 | `setRowData` / sync + async transactions | partial | No transaction result/ledger semantics |
-| K-CSRM-03 | Async conflation + scroll-defer | partial | Conflation only; no damage ledger integration |
+| K-CSRM-01 | Client-side row model + worker pipeline order | parity | Real worker ported; `groupPass` `quickFilterPass` `calcPassStageA/B` `viewportSlicer*` `chunkFormat*` green |
+| K-CSRM-02 | `setRowData` / sync + async transactions | partial | Worker-side `TransactionQueue` ported; end-to-end needs the grid shell |
+| K-CSRM-03 | Async conflation + scroll-defer | parity | Per-rAF push coalescing green (`workerClientCoalesce`) |
 | K-SSRM-01 | Sparse SSRM v2 skeleton | partial | Closest to real; still lacks v2 controller depth |
 | K-SSRM-02 | Block cache + column windows | partial | |
 | K-SSRM-03 | Id-based null-safe field merge | partial | |
@@ -68,21 +87,21 @@ renderer port, **not** finished work, and none of the K-PAINT / K-THEME rows may
 | K-COL-01 | ColDefs / groups / defaultColDef / types | parity | `propertyChain` `columnTypes` `columnTree` `columnGroupState` `columnGroupMutation` `columnOrder` green |
 | K-COL-02 | Pin / hide / flex / width / column state | parity | State model only — `columnState` `columnStateManager` green; painting pinned bands is K-PAINT-01 |
 | K-COL-03 | Column drag + sizeToFit / autosize | partial | `sizeColumnsToFit` green; drag + autosize are interaction scope |
-| K-SORT-01 | Multi-column sort | partial | Header click cycle only; no shift multi-sort UI |
-| K-FILTER-01 | Text / number / date / multi filters | partial | Model only — no filter UI components |
-| K-FILTER-02 | Set filter + distinct values | todo | |
-| K-FILTER-03 | Quick filter + external filter | partial | |
-| K-FILTER-04 | One filter-model shape (no legacy dual) | partial | |
-| K-GROUP-01 | Row grouping API + expand/collapse | partial | |
-| K-GROUP-02 | Aggregations + footers / grand totals | partial | |
-| K-GROUP-03 | Sticky groups | partial | Computed, not painted as sticky band |
-| K-PIVOT-01 | Pivot mode (CSRM / pipeline) | todo | Legacy `pivotEngine`/`pivotColumns`/`pivotState` not ported |
+| K-SORT-01 | Multi-column sort | partial | `groupSort` green; header click cycle is interaction scope |
+| K-FILTER-01 | Text / number / date / multi filters | partial | Worker matchers at parity (`filterPass.text.params`); the four popup suites need `src/interaction/filters/` |
+| K-FILTER-02 | Set filter + distinct values | partial | `distinctValuesPass` green; `setFilter` popup unported |
+| K-FILTER-03 | Quick filter + external filter | parity | `quickFilterPass` `cellMatchesAnyQuickFilterTerm` green |
+| K-FILTER-04 | One filter-model shape (no legacy dual) | parity | Collapse done — one `matchesFilterEntry`; 18 port-added tests pin the legacy shape |
+| K-GROUP-01 | Row grouping API + expand/collapse | parity | `groupPass` `groupElision` `hideOpenParents` `filteringWithGrouping` green |
+| K-GROUP-02 | Aggregations + footers / grand totals | partial | `aggPass` green; `aggFuncRegistry` 14/16 — the 2 end-to-end tests need the shell |
+| K-GROUP-03 | Sticky groups | partial | One shared ancestor walk, pinned by port-added tests; not painted as a sticky band |
+| K-PIVOT-01 | Pivot mode (CSRM / pipeline) | partial | `pivotPass` green (34); `pivotEngine`/`pivotState` are AnalyticsPlane, unported |
 | K-PIVOT-02 | Fail-closed pivot on sparse SSRM | partial | |
 | K-SEL-01 | Unified row selection | partial | |
 | K-SEL-02 | Cell ranges + fill handle | todo | |
 | K-SEL-03 | Group cascade select | partial | |
 | K-EDIT-01 | Cell editors host hooks | stub | Single dblclick `<input>`; no editor types/lifecycle |
-| K-CLIP-01 | Clipboard copy/cut/paste | todo | |
+| K-CLIP-01 | Clipboard copy/cut/paste | partial | `clipboardSerialize` green (31); copy/paste gestures are interaction scope |
 | K-MENU-01 | Context + main menus | todo | |
 | K-EXPORT-01 | CSV / Excel export | todo | |
 | K-PAINT-01 | Canvas virtualization + pinned bands | partial | Viewport/subgrid stack at parity (`viewport` `viewportManager` `totalsSubgrid` green); the painter itself is unported |
