@@ -10,6 +10,8 @@ import {
   type RailSection,
 } from '@wellsfargo-starui/vg-new-ui';
 import type { VelocityGridApi } from '@wellsfargo-starui/vg-new-grid';
+import type { AppDataLookup } from '@wellsfargo-starui/vg-new-appdata';
+import type { ConfigBackend, DataProviderController } from '@wellsfargo-starui/vg-new-data';
 import { ConfigSession } from '../profiles/configSession';
 import { buildDefaultModules } from '../modules/defaultModules';
 import type { SettingsModule } from '../modules/types';
@@ -31,6 +33,10 @@ export type ShellOptions = {
   modules?: SettingsModule[];
   /** Optional as-of label shown in the title bar. */
   asOfLabel?: string;
+  /** Data plane — injected for Customize data-provider module. */
+  dataProvider?: DataProviderController;
+  catalog?: ConfigBackend;
+  appData?: AppDataLookup;
 };
 
 /**
@@ -173,17 +179,7 @@ export class VelocityGridExtShell {
 
     const pills = el('div', 'vgn-titlebar__cluster');
     pills.dataset.slot = 'filter-pills';
-    for (const label of ['All', 'EQ', 'FX']) {
-      const pill = el('button', 'vgn-pill', label);
-      pill.type = 'button';
-      if (label === 'All') pill.dataset.active = 'true';
-      pill.addEventListener('click', () => {
-        for (const p of pills.querySelectorAll('.vgn-pill')) {
-          (p as HTMLElement).dataset.active = p === pill ? 'true' : 'false';
-        }
-      });
-      pills.appendChild(pill);
-    }
+    this.mountFilterPills(pills);
     titleBar.appendChild(pills);
 
     titleBar.appendChild(el('div', 'vgn-titlebar__spacer'));
@@ -408,6 +404,7 @@ export class VelocityGridExtShell {
         this.railNav.setActive(this.activeModuleId);
         return;
       }
+      this.session.discardDraft();
       this.panelDirty = false;
     }
     this.activeModuleId = id;
@@ -417,6 +414,82 @@ export class VelocityGridExtShell {
   /** Host should append the grid element into `[data-slot=grid]`. */
   getGridHost(): HTMLElement {
     return this.host.querySelector('[data-slot="grid"]') as HTMLElement;
+  }
+
+  private mountFilterPills(host: HTMLElement): void {
+    const builtins = [
+      { id: 'all', label: 'All', filterModel: {} as Record<string, unknown> },
+      {
+        id: 'eq',
+        label: 'EQ',
+        filterModel: { desk: { filterType: 'text' as const, type: 'equals', filter: 'EQ' } },
+      },
+      {
+        id: 'fx',
+        label: 'FX',
+        filterModel: { desk: { filterType: 'text' as const, type: 'equals', filter: 'FX' } },
+      },
+      ...this.session.getSavedFilters().map((f) => ({
+        id: f.id,
+        label: f.label,
+        filterModel: f.filterModel,
+        quickFilterText: f.quickFilterText,
+      })),
+    ];
+
+    for (const f of builtins) {
+      const pill = el('button', 'vgn-pill', f.label);
+      pill.type = 'button';
+      if (f.id === 'all') pill.dataset.active = 'true';
+      pill.addEventListener('click', () => {
+        for (const p of host.querySelectorAll('.vgn-pill')) {
+          (p as HTMLElement).dataset.active = p === pill ? 'true' : 'false';
+        }
+        try {
+          const api = this.opts.getGridApi();
+          api.setFilterModel(f.filterModel as ReturnType<VelocityGridApi['getFilterModel']>);
+          if ('quickFilterText' in f && f.quickFilterText != null) {
+            api.setQuickFilterText(f.quickFilterText);
+          } else if (f.id === 'all') {
+            api.setQuickFilterText('');
+          }
+        } catch { /* grid not ready */ }
+      });
+      pill.addEventListener('contextmenu', (ev) => {
+        ev.preventDefault();
+        if (f.id === 'all' || f.id === 'eq' || f.id === 'fx') return;
+        this.session.removeSavedFilter(f.id);
+        void this.session.save();
+        host.replaceChildren();
+        this.mountFilterPills(host);
+        showToast(`Removed filter ${f.label}`);
+      });
+      host.appendChild(pill);
+    }
+
+    const savePill = el('button', 'vgn-pill', '+ Save');
+    savePill.type = 'button';
+    savePill.title = 'Save current filter as pill';
+    savePill.addEventListener('click', () => {
+      try {
+        const api = this.opts.getGridApi();
+        const label = window.prompt('Filter name', 'Custom');
+        if (!label) return;
+        this.session.upsertSavedFilter({
+          id: `sf-${Date.now()}`,
+          label,
+          filterModel: api.getFilterModel() as Record<string, unknown>,
+          quickFilterText: api.getQuickFilterText() || undefined,
+        });
+        void this.session.save();
+        host.replaceChildren();
+        this.mountFilterPills(host);
+        showToast('Filter saved', { tone: 'ok' });
+      } catch {
+        showToast('Grid not ready', { tone: 'warn' });
+      }
+    });
+    host.appendChild(savePill);
   }
 
   private renderPanel(): void {
@@ -430,10 +503,14 @@ export class VelocityGridExtShell {
     this.panelDispos = mod.mount(panelHost, {
       gridApi: this.opts.getGridApi(),
       session: this.session,
+      dataProvider: this.opts.dataProvider ?? null,
+      catalog: this.opts.catalog ?? this.opts.dataProvider?.getCatalog() ?? null,
+      appData: this.opts.appData ?? null,
       markDirty: () => {
         this.panelDirty = true;
         this.session.markDirty();
       },
+      validateAndApply: (moduleId, opts) => this.session.apply(moduleId, opts),
     });
   }
 

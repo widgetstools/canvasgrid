@@ -264,7 +264,7 @@ export class ClientSideRowModel<T extends Record<string, unknown>> {
           __groupKey: entry.key,
           __groupDepth: entry.depth,
           __leafCount: node?.childCount ?? 0,
-        } as ViewRow<T>);
+        } as unknown as ViewRow<T>);
         continue;
       }
       // footer
@@ -274,14 +274,14 @@ export class ClientSideRowModel<T extends Record<string, unknown>> {
           id: '__grand_total__',
           __isGrandTotal: true,
           __isFooter: true,
-        } as ViewRow<T>);
+        } as unknown as ViewRow<T>);
       } else {
         out.push({
           ...(this.groupTotals[entry.key] ?? {}),
           id: `__footer__${entry.key}`,
           __isFooter: true,
           __groupKey: entry.key,
-        } as ViewRow<T>);
+        } as unknown as ViewRow<T>);
       }
     }
     this.view = out;

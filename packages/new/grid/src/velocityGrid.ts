@@ -31,6 +31,7 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
   private readonly canvas: HTMLCanvasElement;
   private readonly scroller: HTMLElement;
   private readonly columns = new ColumnModel<T>();
+  private colDefs: import('./types/options').ColDef<T>[] = [];
   private readonly selection: SelectionModel;
   private scrollTop = 0;
   private scrollLeft = 0;
@@ -85,8 +86,9 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
       getRowId: (r) => this.getRowId(r as T),
     });
 
-    this.columns.setColumnDefs(options.columnDefs ?? []);
-    this.csrm = new ClientSideRowModel(this.getRowId, () => options.columnDefs ?? []);
+    this.colDefs = [...(options.columnDefs ?? [])];
+    this.columns.setColumnDefs(this.colDefs);
+    this.csrm = new ClientSideRowModel(this.getRowId, () => this.colDefs);
     this.engines = new EnginesController({
       onAlert: (ev) => {
         this.options.onAlert?.(ev);
@@ -206,6 +208,22 @@ export class VelocityGrid<T extends Record<string, unknown> = Record<string, unk
 
   private buildApi(): VelocityGridApi<T> {
     return {
+      setColumnDefs: (defs) => {
+        this.colDefs = [...defs] as import('./types/options').ColDef<T>[];
+        this.columns.setColumnDefs(this.colDefs);
+        this.schedulePaint();
+      },
+      getColumnState: () => this.columns.getAll().map((c) => ({
+        colId: c.colId,
+        hide: c.hide,
+        width: c.width,
+        pinned: c.pinned,
+        headerName: c.headerName,
+      })),
+      applyColumnState: (state) => {
+        this.columns.applyState(state);
+        this.schedulePaint();
+      },
       setRowData: (rows) => {
         this.csrm.setRowData(rows as T[]);
         this.schedulePaint();

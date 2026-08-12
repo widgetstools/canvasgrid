@@ -36,15 +36,29 @@ export function mountSelect(
     value?: string;
     onChange?: (value: string) => void;
   },
-): Disposable & { select: HTMLSelectElement; getValue(): string; setValue(v: string): void } {
+): Disposable & {
+  select: HTMLSelectElement;
+  getValue(): string;
+  setValue(v: string): void;
+  setOptions(options: Array<{ value: string; label: string }>): void;
+} {
   const wrap = el('label', 'vgn-field');
   wrap.appendChild(el('span', 'vgn-field__label', opts.label));
   const select = el('select', 'vgn-field__control');
-  for (const o of opts.options) {
-    const opt = el('option', undefined, o.label);
-    opt.value = o.value;
-    select.appendChild(opt);
-  }
+  const fill = (options: Array<{ value: string; label: string }>): void => {
+    const prev = select.value;
+    select.replaceChildren();
+    for (const o of options) {
+      const opt = el('option', undefined, o.label);
+      opt.value = o.value;
+      select.appendChild(opt);
+    }
+    if (options.some((o) => o.value === prev)) select.value = prev;
+    else if (opts.value != null && options.some((o) => o.value === opts.value)) {
+      select.value = opts.value;
+    }
+  };
+  fill(opts.options);
   if (opts.value != null) select.value = opts.value;
   const onChange = opts.onChange;
   if (onChange) select.addEventListener('change', () => onChange(select.value));
@@ -54,6 +68,7 @@ export function mountSelect(
     select,
     getValue: () => select.value,
     setValue(v: string) { select.value = v; },
+    setOptions: fill,
     destroy() { wrap.remove(); },
   };
 }

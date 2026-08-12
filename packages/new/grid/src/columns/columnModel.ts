@@ -45,7 +45,13 @@ export class ColumnModel<T> {
     }));
   }
 
-  applyState(state: Array<{ colId: string; hide?: boolean; width?: number; pinned?: 'left' | 'right' | null }>): void {
+  applyState(state: Array<{
+    colId: string;
+    hide?: boolean;
+    width?: number;
+    pinned?: 'left' | 'right' | null;
+    headerName?: string;
+  }>): void {
     const byId = new Map(state.map((s) => [s.colId, s]));
     for (const c of this.cols) {
       const s = byId.get(c.colId);
@@ -53,6 +59,7 @@ export class ColumnModel<T> {
       if (s.hide !== undefined) c.hide = s.hide;
       if (s.width !== undefined) c.width = s.width;
       if (s.pinned !== undefined) c.pinned = s.pinned;
+      if (s.headerName !== undefined) c.headerName = s.headerName;
     }
   }
 

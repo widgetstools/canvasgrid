@@ -63,27 +63,27 @@ Status legend: `todo` · `wip` · `done` · `deferred`
 | ID | Feature | Status |
 |----|---------|--------|
 | E-SHELL-01 | Title bar + ribbon + customize drawer chrome | done |
-| E-SHELL-02 | Extension registry + default bundle | wip |
+| E-SHELL-02 | Extension registry + default bundle | done |
 | E-UI-01 | All chrome on vg-new-ui (no Lit customizer) | done |
-| E-CFG-01 | ConfigSession instance plane `vg-new:instance:*` | wip |
+| E-CFG-01 | ConfigSession instance plane `vg-new:instance:*` | done |
 | E-CFG-02 | Layouts (no profiles dual UI) | wip |
-| E-MOD-01 | Grid options panel | wip |
+| E-MOD-01 | Grid options panel | done |
 | E-MOD-02 | Column groups panel | wip |
-| E-MOD-03 | Column settings (draft/save) | wip |
-| E-MOD-04 | Conditional styling | wip |
-| E-MOD-05 | Alerts | wip |
-| E-MOD-06 | Calculated columns (CSRM + SSRM ExprTK) | wip |
-| E-MOD-07 | Smart edit | wip |
-| E-MOD-08 | Bulk update | wip |
-| E-MOD-09 | Plus/minus | wip |
+| E-MOD-03 | Column settings (draft/save) | done |
+| E-MOD-04 | Conditional styling | done |
+| E-MOD-05 | Alerts | done |
+| E-MOD-06 | Calculated columns (CSRM + SSRM ExprTK) | done |
+| E-MOD-07 | Smart edit | done |
+| E-MOD-08 | Bulk update | done |
+| E-MOD-09 | Plus/minus | done |
 | E-MOD-10 | Shortcuts | wip |
-| E-MOD-11 | Data-change history | wip |
-| E-MOD-12 | One Data Provider panel + bind strategies | wip |
-| E-TB-01 | Formatting ribbon | wip |
-| E-TB-02 | Editing ribbon | wip |
-| E-TB-03 | Saved-filter pills | wip |
+| E-MOD-11 | Data-change history | done |
+| E-MOD-12 | One Data Provider panel + bind strategies | done |
+| E-TB-01 | Formatting ribbon | done |
+| E-TB-02 | Editing ribbon | done |
+| E-TB-03 | Saved-filter pills | done |
 | E-TB-04 | Layouts switcher + save | wip |
-| E-TB-05 | Search / alerts badge / as-of / overflow | wip |
+| E-TB-05 | Search / alerts badge / as-of / overflow | done |
 | E-GRAMMAR-01 | Draft → Validate → Apply/Save | done |
 
 ---
@@ -95,12 +95,12 @@ Status legend: `todo` · `wip` · `done` · `deferred`
 | D-APP-01 | AppData store + subscribe + snapshot | done |
 | D-APP-02 | `{{name.key}}` resolve + assert-resolved | done |
 | D-APP-03 | LS key `vg-new:appdata` | done |
-| D-CAT-01 | Provider catalog backend (LS + memory) | wip |
+| D-CAT-01 | Provider catalog backend (LS + memory) | done |
 | D-CAT-02 | Key `vg-new:provider-catalog` | done |
 | D-HUB-01 | Data hub + MessagePort client | wip |
-| D-HUB-02 | Transport plugins (mock/STOMP/REST/WS) | wip |
-| D-ED-01 | ProviderEditor popout on vg-new-ui | wip |
-| D-ED-02 | Diagnostics Stop/Restart + feed control | wip |
+| D-HUB-02 | Transport plugins (mock/STOMP/REST/WS) | done |
+| D-ED-01 | ProviderEditor popout on vg-new-ui | done |
+| D-ED-02 | Diagnostics Stop/Restart + feed control | done |
 | D-PSP-01 | SharedWorker multi-session host | done |
 | D-PSP-02 | PerspectiveBook Table + Views | wip |
 | D-PSP-03 | Seed + STOMP feeds | wip |

@@ -4,6 +4,12 @@ import type { VelocityGridApi } from '@wellsfargo-starui/vg-new-grid';
 
 function fakeApi(): VelocityGridApi {
   return {
+    setColumnDefs: vi.fn(),
+    getColumnState: () => [
+      { colId: 'pnl', width: 100, headerName: 'PnL' },
+      { colId: 'desk', width: 90, headerName: 'Desk' },
+    ],
+    applyColumnState: vi.fn(),
     setRowData: vi.fn(),
     applyTransaction: vi.fn(),
     applyTransactionAsync: vi.fn(),
@@ -18,18 +24,38 @@ function fakeApi(): VelocityGridApi {
     getQuickFilterText: () => '',
     setRowGroupColumns: vi.fn(),
     getRowGroupColumns: () => [],
+    setExpanded: vi.fn(),
+    expandAll: vi.fn(),
+    collapseAll: vi.fn(),
+    setGroupSelected: vi.fn(),
+    getGroupSelectionState: () => 'none',
+    getStickyAncestors: () => [],
     setPivotMode: vi.fn(),
     isPivotMode: () => false,
+    ensureFullyHydrated: async () => true,
+    refillServerSideColumnKeys: vi.fn(),
     getSelectedRows: () => [],
     deselectAll: vi.fn(),
     sizeColumnsToFit: vi.fn(),
     getRowCount: () => 0,
+    applyFormatPatch: vi.fn(),
+    undoFormat: () => false,
+    redoFormat: () => false,
+    clearFormat: vi.fn(),
+    setStyleRules: vi.fn(),
+    setCalcColumns: vi.fn(),
+    setAlertRules: vi.fn(),
+    applyEditOp: vi.fn(),
+    undoEdit: () => false,
+    redoEdit: () => false,
+    getUnreadAlertCount: () => 0,
+    getEngines: () => ({}),
     destroy: vi.fn(),
   };
 }
 
 describe('VelocityGridExtShell', () => {
-  it('mounts title bar, ribbons, drawer rail', () => {
+  it('mounts title bar, ribbons, drawer rail, filter pills', () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const api = fakeApi();
@@ -44,6 +70,7 @@ describe('VelocityGridExtShell', () => {
     expect(host.querySelectorAll('.vgn-ribbon')).toHaveLength(2);
     expect(host.querySelector('[data-slot="grid"]')).toBeTruthy();
     expect(host.querySelector('.vgn-rail')).toBeTruthy();
+    expect(host.querySelector('[data-slot="filter-pills"] .vgn-pill')).toBeTruthy();
 
     shell.openCustomize('column-settings');
     expect(host.querySelector('.vgn-drawer')?.getAttribute('data-open')).toBe('true');
@@ -58,5 +85,19 @@ describe('VelocityGridExtShell', () => {
 
     shell.destroy();
     expect(host.childNodes.length).toBe(0);
+  });
+
+  it('opens calculated-columns with Validate/Apply footer', () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const api = fakeApi();
+    const shell = new VelocityGridExtShell(host, {
+      gridId: 'test-shell-calc',
+      getGridApi: () => api,
+    });
+    shell.openCustomize('calculated-columns');
+    const labels = [...host.querySelectorAll('button')].map((b) => b.textContent);
+    expect(labels).toEqual(expect.arrayContaining(['Validate', 'Apply', 'Reset']));
+    shell.destroy();
   });
 });

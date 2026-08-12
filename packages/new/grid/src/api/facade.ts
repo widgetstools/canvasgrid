@@ -1,7 +1,22 @@
-import type { FilterModel, SortModel } from '../types/options';
+import type { ColDef, FilterModel, SortModel } from '../types/options';
 
 /** Public API surface — Markets / AG-familiar. */
 export type VelocityGridApi<T = unknown> = {
+  setColumnDefs(defs: ColDef<T>[]): void;
+  getColumnState(): Array<{
+    colId: string;
+    hide?: boolean;
+    width?: number;
+    pinned?: string | null;
+    headerName?: string;
+  }>;
+  applyColumnState(state: Array<{
+    colId: string;
+    hide?: boolean;
+    width?: number;
+    pinned?: 'left' | 'right' | null;
+    headerName?: string;
+  }>): void;
   setRowData(rows: T[]): void;
   applyTransaction(tx: { add?: T[]; update?: T[]; remove?: Array<string | T> }): void;
   /** Async path — conflates / defers while scrolling when options enable it. */
