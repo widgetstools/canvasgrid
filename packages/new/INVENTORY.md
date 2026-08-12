@@ -21,19 +21,30 @@ cleanly (collapsed dual paths, no god object, one design system), then run the l
 **unmodified** as the gate. A row only becomes `parity` when those tests pass against the new
 code with no assertions removed and no skips.
 
-**Ported so far:** the type contract (4,568 lines, verbatim — it *is* the AG-parity surface),
-the column model layer, viewport/virtualization/paint infrastructure, and the worker protocol
-and data pipeline. **708 legacy tests green across 51 byte-identical files**, plus 46
-port-added tests covering areas the legacy gate left unguarded. Exactly one copied test
-carries an edit, and it is an import path with a `PORT-NOTE`.
+**Ported so far:** the type contract (verbatim — it *is* the AG-parity surface), the column
+model, viewport/virtualization/paint infrastructure, the worker protocol and data pipeline,
+and the renderer and theming layers.
 
-**Committed failing on purpose** — these are the gate, not noise. `virtualColumnsChanged`,
-`paintCacheViewport` and `flashOverrides` need the real grid shell (`src/velocityGrid.ts` is
-still the rejected prototype); `pinnedRows` needs `core/runtimeOptions.ts`, which needs the
-unported theming layer (9 of its 10 tests pass once that import resolves).
+**Package suite: 1,340 passing / 112 failing across 112 files.** 97 of those files are legacy
+tests running byte-identical; exactly one carries an edit, and it is an import path with a
+`PORT-NOTE`. No assertion has been deleted, loosened, or skipped anywhere in the rebuild.
 
-**Pre-existing legacy breakage:** `flashOverrides.test.ts` fails 2 of 7 against
-`packages/kernel` itself, so it can never reach green as copied. Not port damage.
+**The 112 failures are two blockers plus two known-bad files, not port damage:**
+
+1. **The god object.** `src/velocityGrid.ts` is still the rejected 605-line prototype, so any
+   test that constructs `new VelocityGrid(...)` dies on a missing `cgridCanvas` / `worker` /
+   `setThemeParams` / `getVisibleCellBounds`. That is `aggFuncRegistry`, `comparatorRegistry`,
+   `customCellRenderer`, `groupDefaultExpanded`, `paintCacheViewport`, `postSortRows`,
+   `rasterCacheCells`, `rasterCacheStrips`, `rendererPaintCache`, `theming`,
+   `virtualColumnsChanged`, `visibleCellBounds`. All verified passing in `packages/kernel`.
+2. **The interaction layer** (`src/interaction/`, unported): `textFilter`, `numberFilter`,
+   `dateFilter`, `setFilter`, `multiCondition`, `groupExpand`. Plus `groupSortByAggregate`,
+   which needs `core/groupingState`.
+
+**Pre-existing legacy breakage — faithfully reproduced, deliberately not hidden:**
+`flashOverrides` fails 2/7 and `byRowsRowDataGate` fails against `packages/kernel` itself.
+`byRowsRowDataGate` asserts byRows skips the row-data snapshot when the rule-fold mirror
+already holds the row; byRows computes it anyway whenever `ruleRowId` is defined.
 
 Files under `src/renderer/`, `src/theming/`, and `src/icons/` are currently an unrefactored
 dependency closure dragged in by three column gate tests. They are a starting point for the
@@ -100,15 +111,15 @@ exercising them. Refactors there rest on port-added tests only — treat with co
 | K-SEL-01 | Unified row selection | partial | |
 | K-SEL-02 | Cell ranges + fill handle | todo | |
 | K-SEL-03 | Group cascade select | partial | |
-| K-EDIT-01 | Cell editors host hooks | stub | Single dblclick `<input>`; no editor types/lifecycle |
+| K-EDIT-01 | Cell editors host hooks | stub | Single dblclick `<input>`; the 8 real editors are interaction scope |
 | K-CLIP-01 | Clipboard copy/cut/paste | partial | `clipboardSerialize` green (31); copy/paste gestures are interaction scope |
 | K-MENU-01 | Context + main menus | todo | |
 | K-EXPORT-01 | CSV / Excel export | todo | |
-| K-PAINT-01 | Canvas virtualization + pinned bands | partial | Viewport/subgrid stack at parity (`viewport` `viewportManager` `totalsSubgrid` green); the painter itself is unported |
+| K-PAINT-01 | Canvas virtualization + pinned bands | parity | Full renderer ported; `byRows` `renderer` `rendererDamage` `pinnedRows` `stickyGroupsClip` green |
 | K-PAINT-02 | Cell flash + damage regions | parity | `damageLedger` `scrollBlit` `paintCache` `flashRegistry` `flashAlphaMask` `ruleFlashOwnership` green. `flashOverrides` excluded — fails 2/7 against legacy too |
 | K-PAINT-03 | Quality modes | parity | `paintQuality` green |
-| K-PAINT-04 | Sparklines | todo | |
-| K-THEME-01 | CSS tokens + shadow root option | partial | Tokens exist; no shadow-root path |
+| K-PAINT-04 | Sparklines | parity | `sparkline` green (31) |
+| K-THEME-01 | CSS tokens + shadow root option | partial | `cssReader` (33) and `theme/*` (90) green; `theming` (12) blocked on the god object |
 | K-STATE-01 | GridState get/set + persist | stub | |
 | K-STATE-02 | Layouts bundle | todo | |
 | K-EVT-01 | Lifecycle / model / interaction events | partial | Callback options only; no typed event bus |
