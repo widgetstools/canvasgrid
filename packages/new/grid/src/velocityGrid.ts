@@ -21,7 +21,7 @@ import { ServerSideRowModelController } from './core/serverSideRowModel';
 import { ServerSideRowModelV2Controller, type SsrmHostV2 } from './core/serverSideRowModelV2';
 import { isServerSideDatasourceV2 } from './types/ssrm';
 import { buildSsrmColumnKeys } from './core/ssrmColumnKeys';
-import { parseCompositeGroupKey, readSsrmRowMeta as readSsrmMeta } from './core/ssrmRowMeta';
+import { readSsrmRowMeta as readSsrmMeta } from './core/ssrmRowMeta';
 import type {
   AnyServerSideDatasource,
   IServerSideDatasource,
@@ -35,14 +35,13 @@ import { resolveColumnTree, isColGroupDef, visibleHeaderGroupDepth, type ColumnT
 import { moveColumnToGroup as moveColumnToGroupPure, moveColumnGroup as moveColumnGroupPure } from './core/columnGroupMutation';
 import { resolveSelection, applyResolvedSelectionToOptions } from './core/selectionConfig';
 import { serializeAggFuncsMap } from './core/aggFuncSerialization';
-import { buildFlashAlphaMask } from './core/flashAlphaMask';
 import { applyPaintQualityDefaults } from './core/paintQuality';
 import {
   commitPanelMove as commitPanelMoveHelper,
   resolveDragTargetRole as resolveDragTargetRoleHelper,
   type PillPanelRole, type PanelMoveApi,
 } from './core/panelDragMove';
-import { ChunkLRU, estimateChunkBytes } from './core/memoryBudget';
+import { ChunkLRU } from './core/memoryBudget';
 import { ColumnGroupState, resolveVisibleLeaves } from './core/columnGroupState';
 import {
   applyReorder, resolveLegalDropIndex, reorderLeavesByList,
@@ -53,12 +52,10 @@ import {
   type ColumnStateManagerDeps,
 } from './core/columnStateManager';
 import {
-  buildSnapshot, migrateSnapshot, STATE_SCHEMA_VERSION, type GridState,
+  type GridState,
 } from './core/stateSnapshot';
 import { LayoutManager, type LayoutManagerHost, type SaveLayoutOptions } from './core/layoutManager';
 import type { GridLayout, GridBaselineConfig, GridLayoutsBundle, TemplateSaveInput } from './types/layout';
-import { DEFAULT_GRID_LEVEL_MODULES } from './types/layout';
-import type { LayoutChangeSource, TemplateChangeSource, RuleChangeSource } from './types/event';
 import type { ColumnTemplate } from '@wellsfargo-starui/velocity-grid-calc';
 import { StateUpdatedBus } from './core/stateUpdatedBus';
 import {
@@ -79,16 +76,14 @@ import {
   type ColumnLayout,
 } from './core/layout';
 import {
-  computeViewport,
   type ViewportColumn,
   type ViewportRow,
   type ViewportState,
 } from './core/viewport';
 import { RowHeightIndex } from './core/rowHeightIndex';
-import { PaintCacheLayer, planLayer, defaultCanvasFactory, type LayerGeometry, type LayerPlan } from './core/paintCache';
+import { PaintCacheLayer, planLayer, type LayerGeometry, type LayerPlan } from './core/paintCache';
 import { RasterBudget, CellBitmapCache, RowStripCache } from './renderer/rasterCache';
 import type { RasterCellsCtx, RasterStripsCtx } from './renderer/painters/types';
-import type { CellPaintConfig } from './renderer/cellRenderers/registry';
 import { HeaderSubgrid, HeaderGroupSubgrid, DataSubgrid, TotalsSubgrid, PinnedRowsSubgrid, type Subgrid, type SubgridCell } from './core/subgrid';
 import { FloatingFilterSubgrid } from './core/floatingFilterSubgrid';
 import { FloatingFilterOverlay } from './interaction/floatingFilterOverlay';
@@ -114,7 +109,7 @@ export {
 import { SideBarHost, normalizeSideBarOption, type SideBarGridContext } from './interaction/sideBar/host';
 import { StatusBarHost, normalizeStatusBarOption, type StatusBarGridContext } from './interaction/statusBar/host';
 import { StatusPanelRegistry } from './interaction/statusBar/registry';
-import type { StatusBarDef, StatusBarPosition, IStatusPanelComp, StatusPanelComponent } from './interaction/statusBar/types';
+import type { StatusBarPosition, IStatusPanelComp, StatusPanelComponent } from './interaction/statusBar/types';
 import {
   RowGroupPanelHost,
   normalizeRowGroupPanelShow,
@@ -126,12 +121,10 @@ import {
   type PivotPanelGridContext,
 } from './interaction/pivotPanel/host';
 import { LoadingOverlay } from './interaction/loadingOverlay';
-import type { PivotValueColumn } from './core/pivotState';
-import { PivotEngine, type PivotEngineDeps, type PivotEngineOptions } from './core/pivotEngine';
+import { PivotEngine, type PivotEngineDeps } from './core/pivotEngine';
 import {
   GroupingCoordinator,
   type GroupingCoordinatorDeps,
-  type GroupingCoordinatorOptions,
 } from './core/groupingCoordinator';
 import {
   isPivotResultColumnId, isPivotRowTotalColumnId,
@@ -147,6 +140,18 @@ import { TextFilterPopup, applyTrimInputToModel } from './interaction/filters/te
 import { SetFilterPopup } from './interaction/filters/setFilter';
 import { FlashRegistry } from './core/flashRegistry';
 import { VelocityGridCanvas } from './core/canvas';
+import {
+  mergeRowDataFields,
+  mergeRuleRowForPaint,
+  mergeDeferredAsyncTransactions,
+  columnLayoutsEqual,
+} from './host/chunkHelpers';
+import { PaintDriver } from './host/paintDriver';
+import { PersistenceFacade } from './host/persistenceFacade';
+import { SelectionFacade } from './host/selectionFacade';
+import { AnalyticsFacade } from './host/analyticsFacade';
+import { DataPlaneFacade } from './host/dataPlaneFacade';
+import type { ExportCsvParams, ExportExcelParams } from './host/selectionFacade';
 import { CssReader, type ResolvedTheme } from './theming/cssReader';
 import {
   setThemeParams as themeParamsSet,
@@ -170,21 +175,18 @@ import { sparklineCell } from './renderer/cellRenderers/sparkline';
 import { compositeCell } from './renderer/cellRenderers/composite';
 import { rowSelectCheckboxCell } from './renderer/cellRenderers/rowSelectCheckbox';
 import { coerceToNumberArray } from './renderer/cellRenderers/sparkline/coerceToNumberArray';
-import { decorateHeader, resolveDrawableCellIcon } from './renderer/painters/byRows';
+import { decorateHeader } from './renderer/painters/byRows';
 import {
   autoGroupColumnDepthFromId,
   isAutoGroupColumnId,
   resolveGroupDisplayType,
 } from './core/autoGroupColumn';
 import { Renderer } from './renderer/renderer';
-import type { CachedContext2D } from './renderer/gc';
 import {
   DamageLedger,
   decideScrollDamage,
   dataRectToScreen,
-  screenYToContentY,
   STICKY_SHADOW_BLEED_PX,
-  type DamageResolveCtx,
   type Rect,
 } from './core/damageLedger';
 import { HitTester } from './interaction/hitTester';
@@ -194,29 +196,22 @@ import type { CellEditorCtor } from './interaction/editors/iCellEditor';
 import { A11yOverlay } from './interaction/a11yOverlay';
 import { WorkerCoordinator } from './core/workerCoordinator';
 import { EditController } from './core/editController';
-import { wrapTextToHeight } from './worker/measureText';
 import type { WorkerColumn, ViewportChunk, AutosizeColumnRequest, StickyAncestor, WorkerCalcProgram } from './worker/protocol';
-import type { IAggFunc, IAggFuncParams } from './types';
+import type { IAggFunc } from './types';
 import { decodeText } from './worker/chunkFormat';
 // Cycle 10 / Task 5 — main-side serialise + paste-cell map helpers used when
 // the app configures `processCellForClipboard` / `processCellFromClipboard`.
 import {
-  serializeRanges as serializeRangesPure,
-  mapPasteCells,
-} from './worker/passes/clipboardPass';
-import {
   registerFormatCompiler as slotRegisterFormatCompiler,
   type FormatCompiler,
 } from './core/formatCompilerSlot';
-import { registerRuleEngine as slotRegisterRuleEngine, getRuleEngine, type RuleEngineShape, type ConditionalRuleShape } from './core/ruleEngineSlot';
-import { isRuleFlashOwned, ruleFlashOwnership } from './core/ruleFlashOwnership';
+import { registerRuleEngine as slotRegisterRuleEngine, type RuleEngineShape, type ConditionalRuleShape } from './core/ruleEngineSlot';
 import {
   registerCalcProvider as slotRegisterCalcProvider,
   getCalcProvider,
   foldCalcColumnDefs,
   type CalcProviderShape,
 } from './core/calcSlot';
-import { buildFormatEvalCtx } from './core/formatEvalMemo';
 import { resolveThemeKind, isDarkColor } from './theming/themeKind';
 import {
   registerIconSet as regIcons,
@@ -228,7 +223,6 @@ import {
   unregisterTooltipProvider as unregTip,
   type TooltipProviderFn,
 } from './interaction/features/tooltipProvider';
-import { serializeToHtml, type RowExport } from './interaction/features/clipboardSerializer';
 
 export const VELOCITY_GRID_VERSION = '0.0.0';
 
@@ -264,8 +258,7 @@ export type {
   StatusPanelDef, StatusPanelAlign, StatusBarDef, StatusBarPosition,
   IAggregationStatusPanelParams, AggFunc,
   // Cycle 14 / Task 3 — custom column-aggregation registry.
-  IAggFunc, IAggFuncParams,
-  // Cycle 14 / Task 6 — `aggregationChanged` event polish.
+  IAggFunc, // Cycle 14 / Task 6 — `aggregationChanged` event polish.
   AggregationChangedSource, AggregationChangedEvent,
   // Grid Layouts (Phase A) — public data model + event source.
   LayoutState, GridLayout, GridLayoutsBundle, GridBaselineConfig, LayoutChangeSource,
@@ -279,11 +272,11 @@ export type {
 export type { ConditionalRuleShape } from './core/ruleEngineSlot';
 // Grid Layouts (Phase A) — public value exports (reserved id, tier default,
 // bundle version).
-export { DEFAULT_LAYOUT_ID, DEFAULT_GRID_LEVEL_MODULES, LAYOUTS_BUNDLE_VERSION } from './types';
+export { DEFAULT_LAYOUT_ID, LAYOUTS_BUNDLE_VERSION } from './types';
 export { SSRM_ROW_META_KEY, attachSsrmRowMeta, readSsrmRowMeta, isServerSideDatasourceV2 } from './types/ssrm';
 export { buildSsrmColumnKeys, mergeSsrmRowFields } from './core/ssrmColumnKeys';
 export type { SsrmColumnKeysInput } from './core/ssrmColumnKeys';
-export type { CellPainter, CellPaintConfig, RegisterCellRendererOpts } from './renderer/cellRenderers/registry';
+export type { CellPainter, RegisterCellRendererOpts } from './renderer/cellRenderers/registry';
 // Workstream A (2026-07-06 CSS styling model) — renderer-palette bundle
 // type, so @wellsfargo-starui/velocity-grid-renderers (and follow-on structured-map work) can name
 // the shape of `CellPaintConfig.palette` directly.
@@ -558,309 +551,10 @@ function resolveFilterType(
  *  everything else. Empty source returns `undefined` so the caller leaves
  *  the cell alone. `targetIndex` is 0-based into the EXTENDED rows (the
  *  ones beyond the source rect). */
-/** Structural compare for two range lists. Used by Cycle 9 / Task 7 to
- *  debounce `cellSelectionChanged` — a finished `rangeSelectionChanged`
- *  that lands on the same set as before skips the cell event. */
-function rangesEqual(a: SelectionRange[], b: SelectionRange[]): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    const x = a[i]!;
-    const y = b[i]!;
-    if (x.rowStart !== y.rowStart || x.rowEnd !== y.rowEnd) return false;
-    if (x.colIds.length !== y.colIds.length) return false;
-    for (let j = 0; j < x.colIds.length; j++) {
-      if (x.colIds[j] !== y.colIds[j]) return false;
-    }
-  }
-  return true;
-}
 
-/** Cycle 26 (fling-scroll partials) — max CONTIGUOUS RUNS of damaged rows
- *  a window-diff will still resolve as partial damage before bailing to a
- *  full repaint.
- *
- *  This replaces the old `WINDOW_DIFF_MAX_ROWS = 24` ROW-count cap, which
- *  counted the wrong thing: during a scroll the newly-entered rows are one
- *  CONTIGUOUS run, and the damage ledger now coalesces contiguous rows
- *  into a single full-width band rect (`takeResolved`'s rows banding) —
- *  so 40 consecutive rows cost ONE rect, strictly cheaper than a full
- *  repaint. Capping rows made every fast-scroll chunk arrival degrade to
- *  full (PERF-NOTES: 44–52% full paints at fling pace) for damage that
- *  would have resolved to one or two bands.
- *
- *  Runs are what actually cost: each run is one pre-merge rect. 12 aligns
- *  with the ledger's own `DAMAGE_MAX_RECTS` post-merge cap — beyond that
- *  the resolution would degrade to full anyway, so bail early here (and
- *  keep the strip-store wipe semantics of the full path). */
-const WINDOW_DIFF_MAX_RUNS = 12;
-
-/** Count contiguous runs in a sorted ascending index array. */
-function countRuns(sorted: number[]): number {
-  if (sorted.length === 0) return 0;
-  let runs = 1;
-  for (let i = 1; i < sorted.length; i++) {
-    if (sorted[i]! !== sorted[i - 1]! + 1) runs++;
-  }
-  return runs;
-}
-
-/**
- * Closeout fix — C2 + adjudication B's MANDATED guard. Replaces the old
- * `sameWindow` check (which compared only `(rowStart, rowCount)` and so
- * could not tell a window MOVE apart from a REORDER at an overlapping —
- * or identical — window). Diffs the previous chunk's row identity
- * (rowId + rowKind + groupKey, positionally, shifted by the window delta)
- * against the new chunk to find exactly which on-screen positions now
- * show a DIFFERENT row than they did last paint — those need repainting
- * even though their WINDOW POSITION didn't change. Any per-row height
- * mismatch inside the overlap bails to `'full'` outright: a height change
- * shifts every row below it, which is a geometry invalidation the
- * position-diff can't reason about locally (spec's "ambiguous → full").
- *
- * Returns `'full'` when there's no previous chunk to diff against (first
- * chunk ever), when `chunk.touchedRows` is `undefined` (unknown whether
- * any VALUE changed at an identity-matched position — "unknown stays
- * full", never assume "nothing changed" from absence), when the viewport
- * COLUMN SET changed (column-group expand/collapse, setColumnsVisible,
- * column move — new colIds would otherwise stick as blank under a
- * defined-empty `touchedRows` live-feed reply), when a height
- * mismatch is found, or when the damage spans more than
- * `WINDOW_DIFF_MAX_RUNS` contiguous runs. Otherwise returns the sorted
- * array of window-relative
- * row indices (0-based, add `chunk.rowStart` for the global index) that
- * need repainting: positionally-mismatched rows, rows newly scrolled
- * into the window (outside the overlap — this also covers the
- * previously-blitted "exposed band" per spec §5's chunk-arrival
- * re-damage contract), and `touchedRows` (value changes at an
- * identity-matched position — e.g. a live tick that doesn't reorder).
- */
-/** Inclusive end row index for a chunk's data window (`[rowStart, end)`). */
-function chunkRowEnd(chunk: ViewportChunk): number {
-  return chunk.rowStart + chunk.rowCount;
-}
-
-/** True when the chunk overlaps `[firstRow, lastRow]` (inclusive). */
-function chunkIntersectsRowRange(
-  chunk: ViewportChunk, firstRow: number, lastRow: number,
-): boolean {
-  if (lastRow < firstRow) return true;
-  return chunk.rowStart <= lastRow && chunkRowEnd(chunk) > firstRow;
-}
-
-/** On-screen data row span (excludes `rowBuffer` / paint-cache overscan
- *  padding that widens `firstRow`/`lastRow` for the worker fetch). */
-function onScreenDataRowRange(
-  vs: { firstRow: number; lastRow: number; firstVisibleDataRow?: number },
-): { first: number; last: number } | null {
-  if (vs.lastRow < 0) return null;
-  const firstVis = vs.firstVisibleDataRow ?? vs.firstRow;
-  const pad = Math.max(0, firstVis - vs.firstRow);
-  const lastVis = Math.max(firstVis, vs.lastRow - pad);
-  return { first: firstVis, last: lastVis };
-}
-
-/** True when the chunk fully covers the on-screen data rows. */
-function chunkCoversOnScreenRows(
-  chunk: ViewportChunk, vs: { firstRow: number; lastRow: number; firstVisibleDataRow?: number },
-): boolean {
-  const range = onScreenDataRowRange(vs);
-  if (!range) return true;
-  return chunk.rowStart <= range.first && chunkRowEnd(chunk) > range.last;
-}
-
-function resolveWindowDamage(
-  chunk: ViewportChunk,
-  prevChunk: ViewportChunk | null,
-): number[] | 'full' {
-  if (!prevChunk) return 'full';
-  if (chunk.touchedRows === undefined) return 'full';
-  // Column-group expand / showColumns / etc. — row identity is unchanged
-  // so touchedRows is often `[]` on a live blotter, but the chunk now
-  // carries values for colIds the previous paint never had (or drops
-  // ones that collapsed). Force full so those cells aren't left blank.
-  if (viewportColumnSetChanged(prevChunk, chunk)) return 'full';
-  const delta = chunk.rowStart - prevChunk.rowStart;
-  const newCount = chunk.rowCount;
-  const prevCount = prevChunk.rowCount;
-  const overlapStart = Math.max(0, -delta);
-  const overlapEnd = Math.min(newCount, prevCount - delta);
-  const damaged = new Set<number>();
-  for (let i = 0; i < newCount; i++) {
-    if (i >= overlapStart && i < overlapEnd) {
-      const j = i + delta;
-      if (chunk.heights[i] !== prevChunk.heights[j]) return 'full';
-      // rowIds alone is insufficient — group/footer rows share sentinel
-      // ids, so identity also requires rowKind + groupKey agreement.
-      const idMatch = chunk.rowIds[i] === prevChunk.rowIds[j]
-        && chunk.rowKinds[i] === prevChunk.rowKinds[j]
-        && (chunk.groupKey?.[i] ?? '') === (prevChunk.groupKey?.[j] ?? '');
-      if (!idMatch) damaged.add(i);
-    } else {
-      damaged.add(i); // newly entered position — outside the overlap window
-    }
-  }
-  for (const r of chunk.touchedRows) damaged.add(r);
-  // Cap on contiguous RUNS, not rows — see WINDOW_DIFF_MAX_RUNS. The
-  // sorted array is returned either way, so run counting is a single
-  // linear pass over data we already produce.
-  const sorted = Array.from(damaged).sort((a, b) => a - b);
-  if (countRuns(sorted) > WINDOW_DIFF_MAX_RUNS) return 'full';
-  return sorted;
-}
-
-/** True when the set of colIds present in numeric/text payload columns
- *  differs between two chunks (order-insensitive). */
-function viewportColumnSetChanged(prev: ViewportChunk, next: ViewportChunk): boolean {
-  const prevKeys = viewportChunkColIds(prev);
-  const nextKeys = viewportChunkColIds(next);
-  if (prevKeys.size !== nextKeys.size) return true;
-  for (const id of prevKeys) {
-    if (!nextKeys.has(id)) return true;
-  }
-  return false;
-}
-
-function viewportChunkColIds(chunk: ViewportChunk): Set<string> {
-  const ids = new Set<string>();
-  for (const id of Object.keys(chunk.numericCols)) ids.add(id);
-  for (const id of Object.keys(chunk.textCols)) ids.add(id);
-  return ids;
-}
-
-/** Usable rule/mirror field — blank chunk placeholders must not clobber. */
-function isUsableRowField(v: unknown): boolean {
-  if (v === undefined || v === null || v === '') return false;
-  if (typeof v === 'number' && Number.isNaN(v)) return false;
-  return true;
-}
-
-/** Field-merge for SSRM hydrate / tick patches: skip null/undefined so
- *  thin Perspective payloads do not wipe previously hydrated fields. */
-function mergeRowDataFields<TRow>(prev: TRow, row: TRow): TRow {
-  const out: Record<string, unknown> = { ...(prev as object) as Record<string, unknown> };
-  for (const [k, v] of Object.entries(row as object as Record<string, unknown>)) {
-    if (v !== undefined && v !== null) out[k] = v;
-  }
-  return out as TRow;
-}
-
-/** Mirror ⊕ snapshot for rule eval / getCellPaintedBg — mirror wins;
- *  snapshot only fills gaps with usable values. */
-function mergeRuleRowForPaint(
-  mirror: Record<string, unknown> | undefined,
-  snapshot: Record<string, unknown> | undefined,
-): Record<string, unknown> | undefined {
-  if (!mirror && !snapshot) return undefined;
-  if (!mirror) return snapshot;
-  if (!snapshot) return mirror;
-  const out: Record<string, unknown> = { ...mirror };
-  for (const [k, v] of Object.entries(snapshot)) {
-    if (!isUsableRowField(v)) continue;
-    if (!isUsableRowField(out[k])) out[k] = v;
-  }
-  return out;
-}
-
-/** Conflate deferred async transactions for scroll-end flush — last write
- *  wins per row id (matches worker `asyncTransactionConflate`). */
-function mergeDeferredAsyncTransactions<TRow>(
-  txs: Tx<TRow>[],
-  getRowId: (row: TRow) => string | null,
-): Tx<TRow> {
-  const addById = new Map<string, TRow>();
-  const updateById = new Map<string, TRow>();
-  const removeById = new Map<string, TRow>();
-  for (const t of txs) {
-    if (t.add) {
-      for (const row of t.add) {
-        const id = getRowId(row);
-        if (id === null) continue;
-        removeById.delete(id);
-        updateById.delete(id);
-        addById.set(id, row);
-      }
-    }
-    if (t.update) {
-      for (const row of t.update) {
-        const id = getRowId(row);
-        if (id === null) continue;
-        removeById.delete(id);
-        if (addById.has(id)) addById.set(id, row);
-        else updateById.set(id, row);
-      }
-    }
-    if (t.remove) {
-      for (const row of t.remove) {
-        const id = getRowId(row);
-        if (id === null) continue;
-        addById.delete(id);
-        updateById.delete(id);
-        removeById.set(id, row);
-      }
-    }
-  }
-  const out: Tx<TRow> = {};
-  if (addById.size > 0) out.add = Array.from(addById.values());
-  if (updateById.size > 0) out.update = Array.from(updateById.values());
-  if (removeById.size > 0) out.remove = Array.from(removeById.values());
-  return out;
-}
-
-/** Closeout fix — C3: has any group/footer total or the grand-total
- *  changed since the previous chunk? Computed UNCONDITIONALLY (unlike the
- *  old code, which only ran this diff inside `enableCellChangeFlash` —
- *  the ONLY thing that routed changed totals into damage, so a
- *  flash-disabled grid never repainted a changed aggregate on the
- *  partial path). `changedGroupKeys` drives `repaintAggregateDamage`'s
- *  row lookup; `grandTotalChanged` drives its totals-band lookup. Absence
- *  of a previous totals record (first chunk with totals, or grouping/agg
- *  just activated) is NOT a change — there's no stale pixel to correct. */
-function diffAggregates(
-  chunk: ViewportChunk,
-  prevGroupTotals: Record<string, Record<string, unknown>> | undefined,
-  prevChunkTotals: Record<string, unknown> | undefined,
-): { changedGroupKeys: Set<string>; grandTotalChanged: boolean } {
-  const changedGroupKeys = new Set<string>();
-  if (chunk.groupTotals && prevGroupTotals) {
-    for (const groupKey of Object.keys(chunk.groupTotals)) {
-      const oldRec = prevGroupTotals[groupKey];
-      const newRec = chunk.groupTotals[groupKey]!;
-      if (recordChanged(oldRec, newRec)) changedGroupKeys.add(groupKey);
-    }
-  }
-  const grandTotalChanged = chunk.totals !== undefined && prevChunkTotals !== undefined
-    && recordChanged(prevChunkTotals, chunk.totals);
-  return { changedGroupKeys, grandTotalChanged };
-}
-
-/** Shallow value diff — `true` when any key in `newRec` differs from
- *  `oldRec` (or `oldRec` is absent, i.e. a brand-new group this chunk). */
-function recordChanged(
-  oldRec: Record<string, unknown> | undefined,
-  newRec: Record<string, unknown>,
-): boolean {
-  if (!oldRec) return true;
-  for (const k of Object.keys(newRec)) {
-    if (oldRec[k] !== newRec[k]) return true;
-  }
-  return false;
-}
-
-/** Cycle 22 / Task 3 — value equality for the `columnLayout` setter's
- *  layoutEpoch guard. A repaint-poll re-measure reassigns a freshly-built
- *  but IDENTICAL layout every tick; comparing by value keeps those from
- *  wiping the Tier-2 strip store. O(columns), only runs while the strip
- *  store is live. */
-function columnLayoutsEqual(a: ColumnLayout[], b: ColumnLayout[]): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    const x = a[i]!, y = b[i]!;
-    if (x.colId !== y.colId || x.left !== y.left || x.width !== y.width || x.pinned !== y.pinned) {
-      return false;
-    }
-  }
-  return true;
-}
+// The pure chunk / damage / row-merge helpers that used to live here moved to
+// `host/chunkHelpers.ts` when the host split — the data-plane facade needs
+// them too, and a shared module beats duplicating them or closing a cycle.
 
 export function defaultFillExtrapolate(sourceValues: unknown[], targetIndex: number): unknown {
   if (sourceValues.length === 0) return undefined;
@@ -921,7 +615,7 @@ function pickThemeMode(probeHost: Element, theme: CgTheme): ThemeMode {
 }
 
 export class VelocityGrid<TRow = any> {
-  private events = new TypedEventEmitter<VelocityGridEvent<TRow>>();
+  events = new TypedEventEmitter<VelocityGridEvent<TRow>>();
   /** Cycle 21i Phase 2 / T2 — named, versioned engine-state slices that
    *  fold into `GridState.modules` (see `core/moduleState.ts`). The
    *  kernel registers its own `columnGroups` slice at construction;
@@ -929,7 +623,7 @@ export class VelocityGrid<TRow = any> {
    *  `registerStateModule`. `notifyChanged` fans a `moduleStateChanged`
    *  event into the stateUpdated bus so slices ride the persistState
    *  autosave with zero extra plumbing. */
-  private moduleStateRegistry = new ModuleStateRegistry((moduleId) =>
+  moduleStateRegistry = new ModuleStateRegistry((moduleId) =>
     this.events.emit({ type: 'moduleStateChanged', moduleId }),
   );
   /** Cycle 23 / Task 7 — coalesced `stateUpdated` emitter. Subscribes
@@ -937,42 +631,59 @@ export class VelocityGrid<TRow = any> {
    *  `stateUpdated` per rAF tick carrying the full snapshot + the
    *  merged changedKeys. Lazily constructed in the constructor body
    *  so `this.getState()` is bound by the time it subscribes. */
-  private stateUpdatedBus!: StateUpdatedBus;
+  stateUpdatedBus!: StateUpdatedBus;
   /** Cycle 21i / Phase 1 — restore-then-autosave persistence (gridId +
    *  persistState options). Null when persistence is not enabled. */
-  private statePersistence: import('./core/statePersistence').StatePersistenceController | null = null;
+  statePersistence: import('./core/statePersistence').StatePersistenceController | null = null;
   /** Cycle 21i / Phase 1 — runtime options touched via setGridOption /
    *  updateGridOptions (persistable keys only). Feeds the `gridOptions`
    *  slice of the GridState snapshot. */
-  private runtimeTouchedOptions = new Map<string, unknown>();
+  runtimeTouchedOptions = new Map<string, unknown>();
   /** Grid Layouts (Phase A / A3) — construction-baseline value of each
    *  runtime option, captured lazily the first time the option is touched
    *  (before the mutation). Lets `applyLayoutSnapshot` reset options a
    *  target layout does not override back to baseline (spec §7), since
    *  kernel `setState` layers option keys additively rather than resetting. */
-  private optionBaselines = new Map<string, unknown>();
+  optionBaselines = new Map<string, unknown>();
   /** Grid Layouts (Phase A / A3) — the layouts registry + active id.
    *  Lazily built (see `getLayoutManager`) so the baseline captures the
    *  fully-constructed view (columns + `initialState`). */
-  private layoutManager?: LayoutManager;
+  layoutManager?: LayoutManager;
   /** Grid Layouts (Phase A / A3) — the injected host the LayoutManager
    *  drives: full-snapshot capture, reset-then-restore apply, id + clock. */
-  private readonly layoutHost: LayoutManagerHost = {
+  readonly layoutHost: LayoutManagerHost = {
     captureState: () => this.getState(),
-    applyState: (snapshot) => this.applyLayoutSnapshot(snapshot),
+    applyState: (snapshot) => this.persistence.applyLayoutSnapshot(snapshot),
     newId: () => generateLayoutId(),
     now: () => Date.now(),
   };
   /** Cycle 21i / Phase 1 — data-row index currently under the pointer
    *  (null when off any data row). Drives the row-hover highlight;
    *  forced null when `suppressRowHoverHighlight`. */
-  private hoveredRowIndex: number | null = null;
+  hoveredRowIndex: number | null = null;
   /** Damage-region rendering — accumulates semantic damage between paints.
    *  No `requestRepaint()` call site records damage yet (this task's
    *  invariant): the ledger stays empty and every paint resolves to full,
    *  so behavior is byte-identical to pre-damage-region rendering until a
    *  later task migrates a source to `repaintRows`/`repaintCells`. */
-  private readonly damageLedger = new DamageLedger();
+  readonly damageLedger = new DamageLedger();
+  /** Frame pipeline — damage, retained surfaces, raster caches, paint
+   *  telemetry. See `host/paintDriver.ts`. */
+  readonly paintDriver: PaintDriver<TRow> = new PaintDriver<TRow>(this);
+  /** Grid state, layouts, templates, rules. See `host/persistenceFacade.ts`. */
+  private readonly persistence: PersistenceFacade<TRow> = new PersistenceFacade<TRow>(this);
+  /** Focused cell, ranges, clipboard, export. See `host/selectionFacade.ts`. */
+  private readonly selectionFacade: SelectionFacade<TRow> = new SelectionFacade<TRow>(this);
+  /** Pivot, grouping, value columns, expansion. See `host/analyticsFacade.ts`. */
+  private readonly analytics: AnalyticsFacade<TRow> = new AnalyticsFacade<TRow>(this);
+  /** Viewport requests, chunk ingest, row heights. See `host/dataPlaneFacade.ts`. */
+  private readonly dataPlane: DataPlaneFacade<TRow> = new DataPlaneFacade<TRow>(this);
+
+  /** Set while the host rebuilds selection indices itself (see
+   *  `rebuildIndicesWithoutAutoScroll`), so the selection `onChange` handler
+   *  skips its `ensureRowIndexVisible` / `ensureColIdVisible` auto-scroll for
+   *  a focus-index shift the user did not cause. */
+  suppressFocusEnsure = false;
   /** Task 5 — scroll self-blit. Scroll position + DPR/bounds snapshot at
    *  the LAST PAINT (not the last scroll tick) — `afterScrollTick` diffs
    *  against these so deltas accumulate correctly across frames the fps
@@ -1003,7 +714,7 @@ export class VelocityGrid<TRow = any> {
    *  viewport against this and re-queues `repaintFull()` on mismatch.
    *  Vertical needs no equivalent: scroll dy is carried by the self-blit
    *  ('scroll' damage) and the chunk-side position-identity diff. */
-  private lastPaintedViewportScrollLeft = 0;
+  lastPaintedViewportScrollLeft = 0;
   /**
    * Column-geometry / style-layout staleness — same class as
    * `lastPaintedViewportScrollLeft`. Resize, column move, and alignment
@@ -1017,8 +728,8 @@ export class VelocityGrid<TRow = any> {
    * `lastPaintedLayoutPaintEpoch` up. `recomputeViewport` re-queues
    * `repaintFull()` while they disagree.
    */
-  private layoutPaintEpoch = 0;
-  private lastPaintedLayoutPaintEpoch = -1;
+  layoutPaintEpoch = 0;
+  lastPaintedLayoutPaintEpoch = -1;
   /** Task 5 — scroll position as of the LAST `afterScrollTick` (every tick,
    *  not just paints). `DamageLedger.add({kind:'scroll'})` accumulates via
    *  `+=` (same additive contract as `repaintRows`/`repaintCells` — each
@@ -1034,7 +745,7 @@ export class VelocityGrid<TRow = any> {
   private lastTickScrollTop = 0;
   /** Damage-region rendering — cumulative paint telemetry surfaced via
    *  `getPaintStats()`. Reset via `resetPaintStats()`. */
-  private paintStats: PaintStats = {
+  paintStats: PaintStats = {
     paints: 0, fullPaints: 0, partialPaints: 0, blits: 0,
     presents: 0, layerShifts: 0, layerResets: 0, layerRasterMs: 0,
     lastRects: 0, lastAreaPct: 100, avgPaintMs: 0, worstPaintMs: 0,
@@ -1043,7 +754,7 @@ export class VelocityGrid<TRow = any> {
     stripHits: 0, stripMisses: 0, stripMissesUncoverable: 0, stripCaptures: 0, stripPatches: 0,
     rasterCacheBytes: 0, rasterCachePooledBytes: 0,
   };
-  private columnTree!: ColumnTree;
+  columnTree!: ColumnTree;
   /** Grid Layouts / column-group-drag feature (Task 1) — lazily-built
    *  leaf colId → ancestor groupId path (root→parent) map, derived by
    *  walking `columnTree.roots` once. `ResolvedColLeaf.groupPath` only
@@ -1053,10 +764,10 @@ export class VelocityGrid<TRow = any> {
    *  `columnTree` is reassigned — the constructor, `rebuildColumns`, and
    *  the pivot engine's `setColumnTree` callback (all three
    *  `this.columnTree = …` sites). */
-  private colGroupPathCache: Map<string, string[]> | null = null;
-  private columnGroupState!: ColumnGroupState;
-  private columnDefsMap: Map<string, ResolvedColDef<TRow>> = new Map();
-  private columnOrder: ResolvedColDef<TRow>[] = [];
+  colGroupPathCache: Map<string, string[]> | null = null;
+  columnGroupState!: ColumnGroupState;
+  columnDefsMap: Map<string, ResolvedColDef<TRow>> = new Map();
+  columnOrder: ResolvedColDef<TRow>[] = [];
   private _columnLayout: ColumnLayout[] = [];
   /** Cycle 22 / Task 3 — layoutEpoch contract, column-geometry choke
    *  point. EVERY column width / order / visibility / pin change (and a
@@ -1069,19 +780,19 @@ export class VelocityGrid<TRow = any> {
    *  value-equality guard so repaint-poll re-measures that resolve the
    *  identical layout never thrash the strip store) means no current or
    *  FUTURE column mutation can silently skip the bump. */
-  private get columnLayout(): ColumnLayout[] { return this._columnLayout; }
-  private set columnLayout(layout: ColumnLayout[]) {
+  get columnLayout(): ColumnLayout[] { return this._columnLayout; }
+  set columnLayout(layout: ColumnLayout[]) {
     const changed = !columnLayoutsEqual(this._columnLayout, layout);
     if (this.rasterStrips !== null && changed) {
-      this.stripLayoutEpochBump();
+      this.paintDriver.stripLayoutEpochBump();
     }
     this._columnLayout = layout;
     // Absolute-x retained surfaces (paint-cache layer + layer-viewport
     // memo) embed the previous column lefts — wipe them on any geometry
     // change so a later present/partial cannot resurrect staggered cells.
-    if (changed) this.invalidateRetainedPaintForColumnLayout();
+    if (changed) this.paintDriver.invalidateRetainedPaintForColumnLayout();
   }
-  private theme: ResolvedTheme;
+  theme: ResolvedTheme;
   /** Theming Task 6/7 — the active programmatic `CgTheme`, when
    *  `options.theme` (or a `setTheme`/`setGridOption('theme', …)` swap) was
    *  given an object rather than a plain CSS class string. `undefined` for
@@ -1116,25 +827,25 @@ export class VelocityGrid<TRow = any> {
    *  50+ internal callsites still compile unchanged. The chunk-processing
    *  tail of `requestViewport` lives on VelocityGrid as `handleViewportChunk`
    *  until cycle 19 / task 3 lands `WorkerCoordinator`. */
-  private viewportManager!: ViewportManager;
+  viewportManager!: ViewportManager;
   /** Cycle 25 / Task 10 — LRU of recently-fetched chunks keyed by
    *  `${rowStart}:${rowEnd}:${cols}`. Holds entries via WeakRef so
    *  GC can reclaim before our eviction runs. `null` when the
    *  `memoryBudgetMB` option is unset / 0 (caching disabled). */
-  private chunkLRU: ChunkLRU<ViewportChunk> | null = null;
-  private rowCount = 0;
+  chunkLRU: ChunkLRU<ViewportChunk> | null = null;
+  rowCount = 0;
   /** SSRM controller — present only when `rowModelType === 'serverSide'`.
    *  v1 (flat block cache) or v2 (client-owned group skeleton) depending on
    *  the installed datasource's shape. */
-  private ssrm: ServerSideRowModelController<TRow> | ServerSideRowModelV2Controller<TRow> | null = null;
+  ssrm: ServerSideRowModelController<TRow> | ServerSideRowModelV2Controller<TRow> | null = null;
   /** True when `ssrm` is the v2 skeleton controller. */
-  private ssrmV2 = false;
+  ssrmV2 = false;
   /** Perspective expression output aliases included in SSRM columnKeys. */
   private ssrmExpressionOutputIds: string[] = [];
   /** Client rules/alerts/format watched cols included in SSRM columnKeys. */
   private ssrmClientWatchedColIds: string[] = [];
   /** Optional Perspective ExprTK host (StompPerspectiveProvider) for SSRM calc. */
-  private ssrmExpressionHost: SsrmExpressionHost | null = null;
+  ssrmExpressionHost: SsrmExpressionHost | null = null;
   private ssrmColumnRefillTimer: ReturnType<typeof setTimeout> | null = null;
   /** Coalesce column-window refill while the user is still scrolling. */
   private pendingSsrmColumnRefill = false;
@@ -1158,14 +869,14 @@ export class VelocityGrid<TRow = any> {
    * filter / group / pivot go through the CSRM worker path instead of
    * datasource refresh.
    */
-  private ssrmClientPipeline = false;
+  ssrmClientPipeline = false;
   /** Serialise SSRM full-hydrate + pipeline toggles. */
   private ssrmPipelineChain: Promise<void> = Promise.resolve();
-  private chunk: ViewportChunk | null = null;
+  chunk: ViewportChunk | null = null;
   /** Cycle 15 / Task 16 — latest sticky ancestor band from the worker.
    *  Refreshed on every `getViewport` reply. Empty when grouping is
    *  inactive or the first visible row is at position 0. */
-  private stickyAncestors: StickyAncestor[] = [];
+  stickyAncestors: StickyAncestor[] = [];
   /** Cumulative row-height index over the current visible-row order. Built
    *  on first chunk arrival (filled with the global `rowHeight` fallback for
    *  every row), then updated incrementally as chunks layer their per-row
@@ -1173,19 +884,19 @@ export class VelocityGrid<TRow = any> {
    *  filter / transaction). `null` until the first chunk lands — the
    *  viewport falls back to uniform-height math in that window.
    *  Cycle 5 / Task 7. */
-  private rowHeightIndex: RowHeightIndex | null = null;
-  private decodedTextCols = new Map<string, string[]>();
+  rowHeightIndex: RowHeightIndex | null = null;
+  decodedTextCols = new Map<string, string[]>();
 
-  private root: HTMLDivElement;
+  root: HTMLDivElement;
   /** Cycle 22 / Task 5 — non-null when the grid was constructed with
    *  `shadowRoot: true`. The constructor attaches the shadow root to
    *  the supplied container and mounts the grid's entire DOM inside
    *  it; the destroy path detaches the same root. */
   private shadowRoot: ShadowRoot | null = null;
-  private scroller: HTMLDivElement;
+  scroller: HTMLDivElement;
   private sizer: HTMLDivElement;
-  private cgridCanvas!: VelocityGridCanvas;
-  private canvasBounds = { width: 0, height: 0 };
+  cgridCanvas!: VelocityGridCanvas;
+  canvasBounds = { width: 0, height: 0 };
   /** DOM host shared with `EditController` (owner of the editor overlay +
    *  row-edit coordinator), floating-filter overlay, filter popup, context
    *  menu, and the column-drop insertion line. Created early (before
@@ -1193,18 +904,18 @@ export class VelocityGrid<TRow = any> {
    *  / `reserveSideBarSpace`) and handed into `EditController` when the
    *  edit subsystem gets wired up at construction step 9. */
   private editorContainer: HTMLDivElement;
-  private cssReader: CssReader;
-  private cellRenderers: CellRendererRegistry;
-  private renderer: Renderer;
-  private subgrids: Subgrid[] = [];
-  private viewport!: ViewportState;
+  cssReader: CssReader;
+  cellRenderers: CellRendererRegistry;
+  renderer: Renderer;
+  subgrids: Subgrid[] = [];
+  viewport!: ViewportState;
   /** Task 3 (paint-cache layer) — memoizes `buildLayerViewport`'s result.
    *  Keyed on the live `ViewportState` object reference (a fresh object
    *  every `recomputeViewport()` call, so identity alone detects "the real
    *  viewport changed since the last layer-viewport build" with no extra
    *  generation counter) plus the requested layer geometry. `null` until
    *  the first call. */
-  private layerViewportCache: {
+  layerViewportCache: {
     vs: ViewportState;
     layerTop: number;
     layerHeight: number;
@@ -1218,14 +929,14 @@ export class VelocityGrid<TRow = any> {
    *  AND `.available`) rather than a bare non-null check — a layer whose
    *  offscreen-canvas construction failed (headless/unsupported
    *  environment) still gets an instance here, just an inert one. */
-  private paintCacheLayer: PaintCacheLayer | null = null;
+  paintCacheLayer: PaintCacheLayer | null = null;
   /**
    * Hybrid routing — when true, `damage.full` frames paint via the legacy
    * path until the next non-full frame. Avoids paying offscreen+present
    * on continuous-scroll full streaks (no-GPU / software raster). Cleared
    * on the first partial/present-only frame so the layer can rebuild.
    */
-  private paintCacheDeferLayer = false;
+  paintCacheDeferLayer = false;
   /**
    * Column-resize drag is active. While true, every paint uses the legacy
    * path (no retained layer): mousemove width updates outrun full paints
@@ -1233,7 +944,7 @@ export class VelocityGrid<TRow = any> {
    * rastered at different widths → staircase cells. Also coalesces layout
    * + repaint to one rAF so we don't pay invalidate/full per pointer event.
    */
-  private columnResizeDragActive = false;
+  columnResizeDragActive = false;
   /** Pending rAF handle for coalesced resize layout/paint; 0 when idle. */
   private columnResizeFlushRaf = 0;
   /** ColId last touched by `resizeColumn` — emitted on the coalesced flush. */
@@ -1247,25 +958,25 @@ export class VelocityGrid<TRow = any> {
    *  theme/resize/dpr/horizontal-scroll change (all of which already force
    *  `damage.full` via the pre-existing damage system) never lets a stale
    *  layer `'keep'`/`'shift'` through. */
-  private paintCacheLayerAnchored = false;
+  paintCacheLayerAnchored = false;
   /** Cycle 22 / Task 2 — the ONE byte budget shared by BOTH raster-cache
    *  tiers (cross-tier LRU: a cell-bitmap charge can evict a row strip
    *  and vice versa). Sized from `rasterCacheBudgetMB` (default 48).
    *  `null` when `rasterCache: false`. */
-  private rasterBudget: RasterBudget | null = null;
+  rasterBudget: RasterBudget | null = null;
   /** Cycle 22 / Task 2 — Tier-1 content-keyed cell-bitmap store, consumed
    *  at the byRows cell-paint seam via `getRasterCellsCtx()`. `null` when
    *  `rasterCache: false`; an instance whose canvas construction failed
    *  stays non-null but `available === false` (the ctx getter gates). */
-  private rasterCells: CellBitmapCache | null = null;
+  rasterCells: CellBitmapCache | null = null;
   /** Cycle 22 / Task 2 — Tier-2 row-strip store. Constructed here (same
    *  shared budget, same lifecycle/epoch wiring) even though its CONSUME
    *  path (the paint-cache layer's band raster) lands in Task 3. */
-  private rasterStrips: RowStripCache | null = null;
+  rasterStrips: RowStripCache | null = null;
   /** Cycle 22 / Task 2 — the dpr the cell bitmaps were last rasterized
    *  at. A change is an epoch bump (old backing stores are sized at the
    *  old dpr — blitting them would scale/blur). `0` = not yet observed. */
-  private rasterCellsDpr = 0;
+  rasterCellsDpr = 0;
   /** Cycle 22 / Task 3 — per-row content version for the Tier-2 strip
    *  store, keyed by string rowId. Bumped in the SAME code paths that
    *  record `cells`/`rows` damage plus on any row-level data apply (chunk
@@ -1274,7 +985,7 @@ export class VelocityGrid<TRow = any> {
    *  the implicit version 0. Cleared on the unknown-diff chunk wipe and on
    *  a `rasterCache` runtime flip. Zero bookkeeping when `rasterStrips` is
    *  null. */
-  private rowVersionByRowId = new Map<string, number>();
+  rowVersionByRowId = new Map<string, number>();
   /** Cycle 22 / Task 3 — monotonic layout epoch for the Tier-2 strip
    *  store. Every bump site is annotated "layoutEpoch contract" at the
    *  call site: column width/order/visibility/pin (the `columnLayout`
@@ -1283,14 +994,14 @@ export class VelocityGrid<TRow = any> {
    *  scroll (`getRasterStripsCtx`), quick-filter term change
    *  (`applyQuickFilter`), sort change (`setSortModel`), and def-level
    *  rule/format/renderer changes (`rebuildColumns`). */
-  private stripLayoutEpoch = 0;
+  stripLayoutEpoch = 0;
   /** Cycle 22 / Task 3 — the scrollLeft the current strip epoch is valid
    *  for (strips are absolute-x device-px row snapshots). */
-  private stripScrollLeft = 0;
+  stripScrollLeft = 0;
   /** Cycle 22 / Task 3 — memoized `RasterStripsCtx` (the closures are
    *  stable; only `dpr`/`stats` re-point per read). */
-  private stripsCtxMemo: RasterStripsCtx | null = null;
-  private selection: SelectionModel;
+  stripsCtxMemo: RasterStripsCtx | null = null;
+  selection: SelectionModel;
   private hitTester: HitTester;
   private featureChain: FeatureChain;
   /** Cycle 7 / Task 1 — DOM overlay that pools `<input>` elements for the
@@ -1347,7 +1058,7 @@ export class VelocityGrid<TRow = any> {
    *  reopens where the user left it. NOT auto-restored to an open float
    *  on load — only the rect is remembered; the float itself never
    *  auto-reopens. */
-  private popoutRect: FloatingRect | undefined = undefined;
+  popoutRect: FloatingRect | undefined = undefined;
   /** Cycle 13 / Task 1 — status-bar host (DOM strip on the bottom or
    *  top edge that houses status panels). `null` when `options.statusBar`
    *  resolves to off. Reserves a top/bottom inset on the canvas region
@@ -1363,7 +1074,7 @@ export class VelocityGrid<TRow = any> {
    *  an additional top inset on the canvas region via
    *  `reserveRowGroupPanelSpace`; sits BELOW any status bar pinned to
    *  the top, ABOVE the column headers. */
-  private rowGroupPanel: RowGroupPanelHost | null = null;
+  rowGroupPanel: RowGroupPanelHost | null = null;
   /** Cycle 15 / Task 6 — reserved top inset (CSS px) contributed by
    *  the row group panel. Combined with `statusBarInsets.top` when
    *  applying the scroller's `top` style so a top status bar + row
@@ -1376,7 +1087,7 @@ export class VelocityGrid<TRow = any> {
    *  `reservePivotPanelSpace`; stacks ABOVE the row group panel so the
    *  vertical order is: status bar → pivot panel → row group panel →
    *  column headers → body. */
-  private pivotPanel: PivotPanelHost | null = null;
+  pivotPanel: PivotPanelHost | null = null;
   /** Cycle 18 / Task 6 — reserved top inset (CSS px) contributed by
    *  the pivot panel. Combined with `statusBarInsets.top` +
    *  `rowGroupPanelTopInset` when applying the scroller's `top`
@@ -1389,28 +1100,28 @@ export class VelocityGrid<TRow = any> {
   /** Cycle 4 / Task 11 (cell-flash patch) — per-cell flash tracker.
    *  Drained from each `getViewport` chunk's `flashMask` and queried
    *  by the painter's `cellData` callback to produce `flashAlpha`. */
-  private flashRegistry: FlashRegistry;
+  flashRegistry: FlashRegistry;
   /** Cycle 25 / Task 7 wiring — paint-frame flash alpha mask built once
    *  per paint from `buildFlashAlphaMask`. Indexed
    *  `localRow × colCount + colIndex`; `cellAt` reads from this instead
    *  of calling `registry.getAlpha` per cell when the mask is warm. */
-  private flashAlphaMask: Float32Array | null = null;
-  private flashAlphaMaskColIds: string[] = [];
-  private flashAlphaMaskColIndex = new Map<string, number>();
-  private flashAlphaMaskOut: Float32Array | undefined;
+  flashAlphaMask: Float32Array | null = null;
+  flashAlphaMaskColIds: string[] = [];
+  flashAlphaMaskColIndex = new Map<string, number>();
+  flashAlphaMaskOut: Float32Array | undefined;
   /** Cycle 21e / Task 13 — per-call flashCells overrides awaiting the
    *  next mask ingest. Keyed `${stringRowId}\0${colId}`; the
    *  `\0*` colId wildcard covers "all columns" calls. `expiresAt`
    *  bounds staleness (worker round-trip grace included); swept in the
    *  flash tick loop + lazily on each flashCells call. */
-  private flashOverrides = new Map<string, import('./core/flashRegistry').FlashOverride & { expiresAt: number }>();
+  flashOverrides = new Map<string, import('./core/flashRegistry').FlashOverride & { expiresAt: number }>();
   /** Flash tracker for group-row and footer-row aggregate cells.
    *  Keyed by `"${groupKey}\0${colId}"` → flash start time (ms from
    *  performance.now()). Populated when groupTotals values change
    *  between consecutive viewport chunks. Parallel to flashRegistry
    *  but group rows carry no rowId so they can't use the rowId-keyed
    *  registry. */
-  private groupFlashMap = new Map<string, number>();
+  groupFlashMap = new Map<string, number>();
   /** Cycle 4 / Task 11 — `prefers-reduced-motion: reduce` listener.
    *  Live-read by `FlashRegistry.getReducedMotion`. */
   private reducedMotionQuery: MediaQueryList | null = null;
@@ -1428,7 +1139,7 @@ export class VelocityGrid<TRow = any> {
    *  capture-phase keydown matrix, the Excel-mode mousedown flip, and the
    *  `activeEdit` lifecycle state. VelocityGrid routes the open/stop/sync/register
    *  primitives through this surface. */
-  private editController!: EditController<TRow>;
+  editController!: EditController<TRow>;
   private a11y: A11yOverlay;
   /** Busy overlay driven by `options.loading`. */
   private loadingOverlay: LoadingOverlay;
@@ -1437,7 +1148,7 @@ export class VelocityGrid<TRow = any> {
    *  routes every worker call through this surface; the chunk-reply
    *  main-side mutation lives in `handleViewportChunk` (delivered via
    *  the `onViewportChunk` dep below). */
-  private workerCoord: WorkerCoordinator;
+  workerCoord: WorkerCoordinator;
   /** Cycle 19 / Task 3 — back-compat shim. A long tail of integration
    *  tests reach into `(grid as any).workerClient` to read the underlying
    *  `WorkerClient` (FakeWorker access, `vi.spyOn` of a worker method, a
@@ -1447,7 +1158,7 @@ export class VelocityGrid<TRow = any> {
   private get workerClient(): import('./worker/client').WorkerClient {
     return this.workerCoord.workerClient;
   }
-  private destroyed = false;
+  destroyed = false;
   /** Centralized teardown for every listener / RAF / timer the grid installs.
    *  Use `this.disposables.addListener` / `addRaf` / `addTimeout` instead of
    *  raw `addEventListener` / RAF / setTimeout so destroy() never misses one. */
@@ -1457,14 +1168,14 @@ export class VelocityGrid<TRow = any> {
    *  console quiet for apps that repeatedly hit a suppressed entry
    *  point (e.g. a Ctrl+C polling loop) while still surfacing the
    *  first invocation so developers notice the gate. */
-  private clipboardSuppressedWarned = new Set<string>();
+  clipboardSuppressedWarned = new Set<string>();
   private selectionUnsubscribe: () => void = () => {};
   /** Cycle 21d / Task 9 — unsubscribe from the registered calc provider's
    *  onColumnsChanged; re-registration replaces it (previous unsub called
    *  first), destroy() releases it. Module-level slot itself is NOT
    *  cleared on destroy, matching the format/rule slots. */
   private calcProviderUnsub: (() => void) | null = null;
-  private sortModel: SortModel = [];
+  sortModel: SortModel = [];
   /** Cycle 19 / Task 5-ColState — column-state round-trip. Owns
    *  `initialColumnStateSnapshot` + `getColumnState` + `applyColumnState`
    *  + `resetColumnState` + `applyColumnStateInternal` +
@@ -1476,13 +1187,13 @@ export class VelocityGrid<TRow = any> {
    *  listeners only see real post-mount size changes. */
   private lastEmittedBounds: { width: number; height: number } | null = null;
   /** Latches `firstDataRendered` to exactly once per grid instance. */
-  private firstDataFired = false;
+  firstDataFired = false;
   /** Cycle 9 / Task 7 — snapshot of the range set as it stood at the last
    *  `cellSelectionChanged` emission. Used to debounce: a finished
    *  rangeSelectionChanged that lands on the same set as before skips
    *  the cellSelectionChanged fan-out. Deep-cloned on store so a later
    *  in-place mutation can't false-equal. */
-  private lastEmittedCellSelectionRanges: SelectionRange[] = [];
+  lastEmittedCellSelectionRanges: SelectionRange[] = [];
   /** Cycle 19 / Task 5-Grouping — grouping subsystem. Owns the current
    *  `GroupModel` + the canonical `GroupingState` primitive the three
    *  grouping UIs subscribe to + the synthesized `autoGroupColumns` +
@@ -1493,7 +1204,7 @@ export class VelocityGrid<TRow = any> {
    *  ungroup) all live inside the coordinator. Late-initialised in the
    *  constructor so the deps closures resolve after VelocityGrid's own fields
    *  come online. */
-  private grouping!: GroupingCoordinator<TRow>;
+  grouping!: GroupingCoordinator<TRow>;
   /** Cycle 19 / Task 5a — pivot subsystem. Owns the canonical PivotState
    *  (pivotMode + pivotColumns + valueColumns) + the pivot-active flag
    *  + the saved primary column tree + the `cellSpecById` reverse index
@@ -1503,7 +1214,7 @@ export class VelocityGrid<TRow = any> {
    *  panel host fan-out, column tree swap) all live inside the engine.
    *  Late-initialised in the constructor after `workerCoord` +
    *  `pivotPanel` come online. */
-  private pivotEngine!: PivotEngine<TRow>;
+  pivotEngine!: PivotEngine<TRow>;
   /** Cycle 15 / Task 7 — main-thread mirror of the worker's persistent
    *  expanded-keys set.
    *    - `null` is the "every group expanded by default" sentinel:
@@ -1513,7 +1224,7 @@ export class VelocityGrid<TRow = any> {
    *      `setExpanded(key, false)` materialises against
    *      `knownGroupKeys` before mutating).
    *  Drives the `getExpandedKeys()` snapshot. */
-  private expandedKeys: Set<string> | null = null;
+  expandedKeys: Set<string> | null = null;
   /** Cycle 15 / Task 7 — list of every composite group key currently
    *  alive in the worker's tree. Refreshed off each `setGroupModel` /
    *  `setExpandedKeys` reply. Used to materialise `expandedKeys`
@@ -1521,13 +1232,13 @@ export class VelocityGrid<TRow = any> {
    *  `setExpanded(key, false)` while the mirror is still at the
    *  default-all sentinel) and as the source of truth for
    *  `getExpandedKeys()`'s "everything's expanded" snapshot. */
-  private knownGroupKeys: string[] = [];
+  knownGroupKeys: string[] = [];
   /** Stashed `expandedRouteIds` from `setState` / persist restore.
    *  Applied after the worker `setGroupModel` reply lands — applying
    *  during `setState` is a no-op when grouping hasn't materialised
    *  yet (and a later `setGroupModel` would wipe it). `null` = none
    *  pending; array (possibly empty) = restore this exact open set. */
-  private pendingExpandedRouteIds: string[] | null = null;
+  pendingExpandedRouteIds: string[] | null = null;
   /**
    * Deferred column-group overlay from `setState` / persist restore.
    * Rehydrating against placeholder / incomplete `columnDefs` (common in
@@ -1545,9 +1256,9 @@ export class VelocityGrid<TRow = any> {
    *  the SelectionModel calls to cascade selection + recompute
    *  tri-state. Empty when grouping bypasses OR when
    *  `groupSelectsChildren` is off. */
-  private groupDescendantsByKey: Map<string, readonly string[]> = new Map();
+  groupDescendantsByKey: Map<string, readonly string[]> = new Map();
 
-  constructor(container: HTMLElement, private options: VelocityGridOptions<TRow>) {
+  constructor(container: HTMLElement, public options: VelocityGridOptions<TRow>) {
     if (!options.getRowId) throw new Error('[velocity-grid] options.getRowId is required');
     this.readyPromise = new Promise<void>((resolve) => {
       this.resolveReady = resolve;
@@ -1898,7 +1609,7 @@ export class VelocityGrid<TRow = any> {
         const live = this.viewportManager.state;
         const dx = curLeft - this.lastPaintedScrollLeft;
         const dy = curTop - this.lastPaintedScrollTop;
-        const layerScrollOk = this.paintCacheActive()
+        const layerScrollOk = this.paintDriver.paintCacheActive()
           && this.paintCacheLayerAnchored
           && !this.paintCacheDeferLayer;
         if (!layerScrollOk) {
@@ -2071,11 +1782,11 @@ export class VelocityGrid<TRow = any> {
       getDevicePixelRatio: () => this.cgridCanvas?.devicePixelRatio ?? 1,
       // Cycle 22 / Task 2 — Tier-1 cell-bitmap cache handle. Read fresh
       // per paint (gates on the option + availability, tracks dpr).
-      getRasterCells: () => this.getRasterCellsCtx(),
+      getRasterCells: () => this.paintDriver.getRasterCellsCtx(),
       // Cycle 22 / Task 3 — Tier-2 row-strip handle for the layer band
       // raster. Same gating discipline as Tier-1; also owns the
       // horizontal-scroll layoutEpoch bump (see `getRasterStripsCtx`).
-      getRasterStrips: () => this.getRasterStripsCtx(),
+      getRasterStrips: () => this.paintDriver.getRasterStripsCtx(),
     });
 
     // Task 4 (paint-cache layer) — construct the retained offscreen layer
@@ -2093,7 +1804,7 @@ export class VelocityGrid<TRow = any> {
     // failed/unsupported canvas degrades to `available = false`, and
     // `getRasterCellsCtx()` gates every use), so this is safe headless.
     if (this.options.rasterCache !== false) {
-      this.buildRasterCaches();
+      this.paintDriver.buildRasterCaches();
     }
 
     // 7. Canvas wrapper — owns the <canvas>, gc cache, RAF + resize polling.
@@ -2110,7 +1821,7 @@ export class VelocityGrid<TRow = any> {
         const widthChanged = b.width !== this.canvasBounds.width;
         const heightChanged = b.height !== this.canvasBounds.height;
         if (this.rasterStrips !== null && widthChanged) {
-          this.stripLayoutEpochBump();
+          this.paintDriver.stripLayoutEpochBump();
         }
         this.canvasBounds.width = b.width;
         this.canvasBounds.height = b.height;
@@ -2125,7 +1836,7 @@ export class VelocityGrid<TRow = any> {
         // clusters). Always full-damage on a real size change; paintNow
         // runs synchronously from resize() right after this callback.
         if (widthChanged || heightChanged) {
-          this.invalidateRetainedPaintForColumnLayout();
+          this.paintDriver.invalidateRetainedPaintForColumnLayout();
           this.damageLedger.add({ kind: 'full' });
         }
         // Only request viewport once the worker is connected; before that, the
@@ -2151,7 +1862,7 @@ export class VelocityGrid<TRow = any> {
         const t0 = performance.now();
         // Cycle 25 / Task 7 — rebuild the flash alpha mask once per paint
         // so `cellAt` can index instead of Map-lookup per cell.
-        this.rebuildFlashAlphaMaskForPaint();
+        this.paintDriver.rebuildFlashAlphaMaskForPaint();
         // Task 4 (paint-cache layer) — `paintCache: false` (or a layer
         // whose offscreen-canvas construction failed) short-circuits to
         // the EXISTING shipped pipeline below, byte-for-byte unchanged —
@@ -2173,7 +1884,7 @@ export class VelocityGrid<TRow = any> {
         // Column-resize drag: force cache-off. Width changes faster than a
         // full layer rebuild; presenting retained rows mid-drag is what
         // produces the staircase misalignment the user sees while dragging.
-        const cacheOn = this.paintCacheActive()
+        const cacheOn = this.paintDriver.paintCacheActive()
           && !this.options.suppressPartialRepaint
           && !this.columnResizeDragActive;
         // Snapshot BEFORE planLayer — a bootstrap `reset` sets
@@ -2264,7 +1975,7 @@ export class VelocityGrid<TRow = any> {
             const qdy = Math.round(layerPlan.dy * dpr) / dpr;
             layer.shift(qdy);
           }
-          layerVs = this.buildLayerViewport(layer.geometry());
+          layerVs = this.paintDriver.buildLayerViewport(layer.geometry());
         }
         // Damage-region rendering — `suppressPartialRepaint` forces every
         // paint through the full-surface path regardless of what's on the
@@ -2284,7 +1995,7 @@ export class VelocityGrid<TRow = any> {
         // over an already-correct canvas. Always drain via `takeResolved`
         // (discarding the result while suppressed) so the ledger stays
         // honest regardless of which branch actually painted.
-        const resolved = this.damageLedger.takeResolved(this.buildDamageResolveCtx());
+        const resolved = this.damageLedger.takeResolved(this.paintDriver.buildDamageResolveCtx());
         const damage = this.options.suppressPartialRepaint
           ? { full: true as const, chromeRects: [], dataRects: [], blit: null }
           : resolved;
@@ -2354,7 +2065,7 @@ export class VelocityGrid<TRow = any> {
               const qdy = Math.round(layerPlan.dy * dpr) / dpr;
               layer.shift(qdy);
             }
-            layerVs = this.buildLayerViewport(layer.geometry());
+            layerVs = this.paintDriver.buildLayerViewport(layer.geometry());
           }
           const layer = this.paintCacheLayer!;
           const vsNow = this.viewport;
@@ -2399,7 +2110,7 @@ export class VelocityGrid<TRow = any> {
             } else {
               if (plan.kind === 'shift') {
                 for (const b of plan.rasterBands) {
-                  const snapped = this.snapContentBandToRows(b.top, b.bottom);
+                  const snapped = this.paintDriver.snapContentBandToRows(b.top, b.bottom);
                   if (snapped.bottom > snapped.top) layer.addPending(snapped.top, snapped.bottom);
                 }
               }
@@ -2457,7 +2168,7 @@ export class VelocityGrid<TRow = any> {
             // content is thus never presentable BY CONSTRUCTION, since
             // the check lives at the consumer (present) site, not any
             // producer site above.
-            this.syncFillLayerPending(layer, layerCtx, vsNow, vs2);
+            this.paintDriver.syncFillLayerPending(layer, layerCtx, vsNow, vs2);
           }
 
           // 3. Present — one `drawImage` of the layer's visible slice.
@@ -2505,7 +2216,7 @@ export class VelocityGrid<TRow = any> {
           // idle (`waitSettled`/pixel-invariance need a "settled" grid to
           // mean zero pending, not just "no NEW damage").
           if (layerCtx && layer.hasPendingBands()) {
-            this.drainLayerPendingBands(layer, layerCtx, vsNow, vs2);
+            this.paintDriver.drainLayerPendingBands(layer, layerCtx, vsNow, vs2);
           }
           s.layerBacklogPx = layer.pendingBacklogPx();
         }
@@ -2843,7 +2554,7 @@ export class VelocityGrid<TRow = any> {
       // `repaintRows` helper so `OnHover` (hover) and future row-scoped
       // features reach the ledger through `VelocityGridLike` instead of a
       // blanket `canvas.requestRepaint()`.
-      repaintRows: (rows) => this.repaintRows(rows),
+      repaintRows: (rows) => this.paintDriver.repaintRows(rows),
       // Cycle 23 / Task 4 — cell keyboard events. The CellKeyboardEvents
       // feature sits at the HEAD of the chain; it returns the
       // `event.defaultPrevented` flag back upstream so the chain can
@@ -3105,13 +2816,13 @@ export class VelocityGrid<TRow = any> {
       // ledger damage, NO Tier-2 strip bookkeeping): a fade frame carries
       // no content change, so per-rAF version bumps + re-patches of the
       // same settled span (~90 frames per 1.5s fade) are pure waste.
-      requestRepaint: () => this.repaintCellsFlashFade(this.flashRegistry.activeCells()),
+      requestRepaint: () => this.paintDriver.repaintCellsFlashFade(this.flashRegistry.activeCells()),
       // Cycle 22 / closeout I-3 — when a row's LAST flash expires it is
       // strip-eligible again: re-capture it if its strip is missing/stale
       // (the tick-time patch bailed — icon cell, last-in-band column,
       // fractional geometry...). One row repaint per flash generation,
       // replacing "stays cold and paints live at every subsequent raster".
-      onRowsSettled: (rowIds) => this.recaptureSettledFlashRows(rowIds),
+      onRowsSettled: (rowIds) => this.paintDriver.recaptureSettledFlashRows(rowIds),
     });
 
     // Live-tick deferral: pause async txs + flash fade for the scroll
@@ -3464,7 +3175,7 @@ export class VelocityGrid<TRow = any> {
       // construction view (columns + initialState) is live, so a synthesized
       // Default captures the as-built baseline. Idempotent: the lazy getter
       // no-ops if a layout API call already created it.
-      this.getLayoutManager();
+      this.persistence.getLayoutManager();
       // Cycle 21i / Phase 1 — persistState: restore the saved snapshot
       // (AFTER initialState so the user's last session wins over the
       // app default), then arm the debounced autosave. Autosave only
@@ -3477,7 +3188,7 @@ export class VelocityGrid<TRow = any> {
           const { StatePersistenceController } = await import('./core/statePersistence');
           const persistOpts = options.persistState === true ? {} : options.persistState;
           this.statePersistence = new StatePersistenceController(options.gridId, persistOpts, {
-            applyState: (state) => this.restorePersistedBlob(state),
+            applyState: (state) => this.persistence.restorePersistedBlob(state),
             // Grid Layouts (A5) — fold the layouts bundle into the saved blob
             // under the reserved `layouts` field (spec §11). The adapter is
             // unchanged; normal view-restore ignores the extra field.
@@ -3629,7 +3340,7 @@ export class VelocityGrid<TRow = any> {
       }
 
       if (rangesChanged) {
-        this.repaintFull();
+        this.paintDriver.repaintFull();
       } else if (rowSelectionChanged) {
         // I2 fix — a single emit can carry BOTH a row-selection delta AND
         // a focus move (the model-rebuild emit that re-resolves selection
@@ -3645,16 +3356,16 @@ export class VelocityGrid<TRow = any> {
         const tooLarge = lastSelDamage.selectedRowIndices === 'all'
           || newSelSnapshot === 'all'
           || rowDelta.length > 24;
-        if (tooLarge) this.repaintFull();
-        else this.repaintRows(rowDelta);
+        if (tooLarge) this.paintDriver.repaintFull();
+        else this.paintDriver.repaintRows(rowDelta);
       } else if (focusChanged) {
         const focusRows = Array.from(new Set(
           [oldFocusRowForDamage, state.focusedRowIndex].filter((n): n is number => n !== null),
         ));
-        if (focusRows.length) this.repaintRows(focusRows);
-        else this.repaintFull();
+        if (focusRows.length) this.paintDriver.repaintRows(focusRows);
+        else this.paintDriver.repaintFull();
       } else {
-        this.repaintFull();
+        this.paintDriver.repaintFull();
       }
       lastSelDamage = { selectedRowIndices: newSelSnapshot, rangesKey };
 
@@ -4585,7 +4296,7 @@ export class VelocityGrid<TRow = any> {
     // permutes row positions, and zebra parity (dataIdx % 2) is baked
     // into every strip's pixels — belt-and-suspenders over the chunk
     // window-diff (which also degrades to a full wipe for big reorders).
-    if (this.rasterStrips !== null) this.stripLayoutEpochBump();
+    if (this.rasterStrips !== null) this.paintDriver.stripLayoutEpochBump();
     // SSRM sparse path — sort is applied by the datasource on the next getRows.
     // Client-pipeline mode uses the CSRM SortPass below.
     if (this.ssrm && !this.ssrmClientPipeline) {
@@ -5053,7 +4764,7 @@ export class VelocityGrid<TRow = any> {
       const prevTerms = this.quickFilterLowerTerms;
       if (prevTerms.length !== nextQuickFilterTerms.length
         || nextQuickFilterTerms.some((t, i) => t !== prevTerms[i])) {
-        this.stripLayoutEpochBump();
+        this.paintDriver.stripLayoutEpochBump();
       }
     }
     this.quickFilterLowerTerms = nextQuickFilterTerms;
@@ -5111,7 +4822,7 @@ export class VelocityGrid<TRow = any> {
    *  tint matching cells with `theme.quickFilterMatchBg`. Kept in sync
    *  with `applyQuickFilter` so the highlight set always matches the
    *  worker's visible row set. */
-  private quickFilterLowerTerms: readonly string[] = [];
+  quickFilterLowerTerms: readonly string[] = [];
 
   /** Cycle 7 / Task 8 — main-side cache of every row that's been shipped
    *  to the worker. Keyed by rowId. Kept in sync by `setRowData` and
@@ -5121,7 +4832,7 @@ export class VelocityGrid<TRow = any> {
    *  its rowId, doubling the protocol traffic for an external filter
    *  pass. The cache lives as long as the grid; entries drop on
    *  `applyTransaction.remove` and are wiped on every `setRowData`. */
-  private rowDataById: Map<string, TRow> = new Map();
+  rowDataById: Map<string, TRow> = new Map();
   /** Cycle 7 / Task 8 — monotonic request id for in-flight `refilter`
    *  round-trips. Bumped at the head of every `onFilterChanged` /
    *  external-filter trigger; stale replies (id mismatch) are dropped
@@ -5582,7 +5293,7 @@ export class VelocityGrid<TRow = any> {
     );
   }
 
-  private enableSsrmClientPipeline(): Promise<void> {
+  enableSsrmClientPipeline(): Promise<void> {
     if (!this.ssrm || this.destroyed) return Promise.resolve();
     if (this.ssrmClientPipeline) return Promise.resolve();
     const run = async (): Promise<void> => {
@@ -5628,7 +5339,7 @@ export class VelocityGrid<TRow = any> {
   }
 
   /** GroupingCoordinator seam — ensure SSRM can host GroupPass first. */
-  private setWorkerGroupModelForSsrm(g: GroupModel): ReturnType<WorkerCoordinator['setGroupModel']> {
+  setWorkerGroupModelForSsrm(g: GroupModel): ReturnType<WorkerCoordinator['setGroupModel']> {
     // Sparse SSRM (v2 skeleton, or v1 with the pipeline explicitly off) —
     // the host owns group/agg. Purge so the next fetch reflects the new
     // rowGroupCols (v2: skeleton refetch); worker GroupPass stays off.
@@ -5649,577 +5360,172 @@ export class VelocityGrid<TRow = any> {
   }
 
   /** Drop client pipeline only when neither grouping nor pivot needs it. */
-  private disableSsrmClientPipelineIfIdle(): Promise<void> {
+  disableSsrmClientPipelineIfIdle(): Promise<void> {
     if (this.pivotEngine.isPivotMode()) return Promise.resolve();
     if (this.grouping.getRowGroupColumns().length > 0) return Promise.resolve();
     return this.disableSsrmClientPipeline();
   }
 
-  // ─── Cycle 18 / Task 3 — pivot API + render wiring ─────────────────────
 
-  isPivotMode(): boolean { return this.pivotEngine.isPivotMode(); }
-  setPivotMode(pivotMode: boolean, opts?: { discardSettings?: boolean }): void {
-    if (this.destroyed) return;
-    if (this.ssrm && pivotMode) {
-      // Sparse Perspective SSRM cannot build a pivot matrix (no full hydrate
-      // while grouped; sample forces client pipeline off). Fail closed so
-      // the Columns panel doesn't show Pivot ON with an empty/wrong grid.
-      const sparsePerspective = this.ssrmExpressionHost != null
-        && this.options.serverSideEnableClientSidePipeline === false;
-      if (sparsePerspective) {
-        console.warn(
-          '[velocity-grid] Pivot mode is not supported on sparse Perspective SSRM. '
-          + 'Use clientSide, or set serverSideEnableClientSidePipeline: true (full hydrate).',
-        );
-        return;
-      }
-      void this.enableSsrmClientPipeline().then(() => {
-        if (this.destroyed) return;
-        if (!this.ssrmClientPipeline) {
-          console.warn(
-            '[velocity-grid] Pivot mode aborted — SSRM could not fully hydrate for the client pipeline.',
-          );
-          return;
-        }
-        this.applyPivotModeChange(true, opts);
-      });
-      return;
-    }
-    if (this.ssrm && !pivotMode) {
-      void this.disableSsrmClientPipelineIfIdle();
-    }
-    this.applyPivotModeChange(pivotMode, opts);
-  }
+  // ── analytics facade ───────────────────────────────────────────────────
+  // Pivot, row grouping, value columns and group expansion live in
+  // `host/analyticsFacade.ts`. These keep the host's published surface and
+  // its internal collaborators intact; the bodies moved wholesale.
 
-  /** Shared body of setPivotMode after SSRM hydrate gating. */
-  private applyPivotModeChange(
-    pivotMode: boolean,
-    opts?: { discardSettings?: boolean },
-  ): void {
-    // Cycle 21i / Phase 1 (user directive) — `discardSettings` (passed by
-    // the Pivot Mode toggle in the columns tool panel, i.e. a user-driven
-    // switch) gives a clean slate on the mode change so table-mode state
-    // never leaks into pivot and vice versa. Programmatic setup
-    // (`setPivotColumns(...); setPivotMode(true)`) omits it and keeps the
-    // configured pivot. Clears the data-shaping config (row groups, pivot
-    // + value roles, sort, filter); on → table every column becomes
-    // visible with no grouping; on → pivot every role is cleared so the
-    // tool panel reads "all deselected". Layout (widths/order/pinning) is
-    // preserved.
-    if (opts?.discardSettings && this.pivotEngine.isPivotMode() !== pivotMode) {
-      this.setRowGroupColumns([]);
-      this.setPivotColumns([]);
-      for (const v of this.getValueColumns()) this.removeValueColumn(v.colId);
-      this.setSortModel([]);
-      this.setFilterModel({});
-      if (!pivotMode) {
-        const primaryIds = this.getColumnState()
-          .map((c) => c.colId)
-          .filter((id) => !isAutoGroupColumnId(id) && !id.startsWith('pivotcol'));
-        this.setColumnsVisible(primaryIds, true);
-      }
-    }
-    this.pivotEngine.setPivotMode(pivotMode);
-  }
-  getPivotColumns(): string[] { return this.pivotEngine.getPivotColumns(); }
-  setPivotColumns(colIds: string[]): void {
-    if (!this.destroyed) this.pivotEngine.setPivotColumns(colIds);
-  }
   addPivotColumn(colId: string): void {
-    if (!this.destroyed) this.pivotEngine.addPivotColumn(colId);
+    this.analytics.addPivotColumn(colId);
   }
-  removePivotColumn(colId: string): void {
-    if (!this.destroyed) this.pivotEngine.removePivotColumn(colId);
+
+  addRowGroupColumn(colId: string): void {
+    this.analytics.addRowGroupColumn(colId);
   }
-  movePivotColumn(from: number, to: number): void {
-    if (!this.destroyed) this.pivotEngine.movePivotColumn(from, to);
+
+  addRowGroupColumns(colIds: string[]): void {
+    this.analytics.addRowGroupColumns(colIds);
   }
-  getValueColumns(): Array<{ colId: string; aggFunc: string }> {
-    return this.pivotEngine.getValueColumnsApiShape();
-  }
+
   addValueColumn(colId: string, aggFunc: string): void {
-    if (!this.destroyed) this.pivotEngine.addValueColumn(colId, aggFunc);
-  }
-  removeValueColumn(colId: string): void {
-    if (!this.destroyed) this.pivotEngine.removeValueColumn(colId);
-  }
-  /** Reorder a value column in-place — `from` and `to` are indices
-   *  into the current `getValueColumns()` order. Drives the
-   *  drag-to-reorder gesture inside the columns side-panel Values
-   *  zone. */
-  moveValueColumn(from: number, to: number): void {
-    if (!this.destroyed) this.pivotEngine.moveValueColumn(from, to);
-  }
-  setValueColumnAggFunc(colId: string, aggFunc: string): void {
-    if (!this.destroyed) this.pivotEngine.setValueColumnAggFunc(colId, aggFunc);
-  }
-  setValueColumns(list: Array<{ colId: string; aggFunc: string }>): void {
-    if (!this.destroyed) this.pivotEngine.setValueColumns(list);
-  }
-  /** Synthesized pivot result column IDs — the cross-tabbed
-   *  `pivot_<pivotKey>_<valueColId>` colIds the worker emits when
-   *  pivot is active. Returns `[]` when pivot is inactive. Mirrors
-   *  AG-Grid's `gridApi.getPivotResultColumns()`. */
-  getPivotResultColumns(): string[] {
-    return this.pivotEngine.getPivotResultColumns();
+    this.analytics.addValueColumn(colId, aggFunc);
   }
 
-  /** Cycle 19 / Task 5a — PivotEngine deps bundle. Threaded into the
-   *  engine at construction so every reach into VelocityGrid state is
-   *  explicit + auditable. The panel / worker fields are read at
-   *  call-time closures — the engine is constructed BEFORE both
-   *  come online, but mutation-driven callbacks only fire after the
-   *  wiring lands. */
-  private makePivotEngineDeps(): PivotEngineDeps<TRow> {
-    return {
-      events: this.events,
-      isDestroyed: () => this.destroyed,
-      getOptions: (): PivotEngineOptions => ({
-        pivotDefaultExpanded: this.options.pivotDefaultExpanded,
-        pivotGrandTotals: this.options.pivotGrandTotals,
-        pivotRowTotals: this.options.pivotRowTotals ?? null,
-        pivotColumnGroupTotals: this.options.pivotColumnGroupTotals ?? null,
-        processPivotResultColDef: this.options.processPivotResultColDef as
-          PivotEngineOptions['processPivotResultColDef'],
-        processPivotResultColGroupDef: this.options.processPivotResultColGroupDef as
-          PivotEngineOptions['processPivotResultColGroupDef'],
-      }),
-      workerColumns: () => this.workerColumns(),
-      updateWorkerColumns: (cols) =>
-        this.workerCoord.updateColumns(cols as WorkerColumn[]),
-      setWorkerPivotModel: (model) => this.workerCoord.setPivotModel(model),
-      setWorkerPivotMaxGeneratedColumns: (cap) =>
-        this.workerCoord.setPivotMaxGeneratedColumns(cap),
-      setWorkerStrictPivotColumnOrder: (strict) =>
-        this.workerCoord.setStrictPivotColumnOrder(strict),
-      requestViewport: () => this.requestViewport(),
-      getPivotPanel: () => this.pivotPanel,
-      getColumnTree: () => this.columnTree,
-      setColumnTree: (tree) => { this.columnTree = tree; this.colGroupPathCache = null; },
-      getColumnGroupState: () => this.columnGroupState,
-      setColumnGroupState: (state) => { this.columnGroupState = state; },
-      getColumnDefsMap: () => this.columnDefsMap,
-      setColumnDefsMap: (map) => { this.columnDefsMap = map; },
-      getAutoGroupColumns: () => this.grouping.getAutoGroupColumns(),
-      subscribeColumnGroupState: () => this.subscribeColumnGroupState(),
-      computeVisibleColumnOrder: () => this.computeVisibleColumnOrder(),
-      setColumnOrder: (order) => { this.columnOrder = order; },
-      getLayoutWidth: () =>
-        this.canvasBounds.width || this.scroller.clientWidth || 800,
-      setColumnLayout: (layout) => { this.columnLayout = layout; },
-      rebuildSubgridStack: () => this.rebuildSubgridStack(),
-      recomputeViewport: () => this.recomputeViewport(),
-      requestRepaint: () => { this.cgridCanvas?.requestRepaint(); },
-      applyVerticalInsets: () => this.applyVerticalInsets(),
-      // Task 5b — pivot mode toggle drives the primary auto-hide pass
-      // through the same seam the panel + `applyColumnState` use.
-      setColumnsVisible: (colIds, visible) => this.setColumnsVisible(colIds, visible),
-    };
+  private async applyGroupSelectsChildren(enabled: boolean): Promise<void> {
+    return this.analytics.applyGroupSelectsChildren(enabled);
   }
 
-  /** Cycle 19 / Task 5-Grouping — GroupingCoordinator deps bundle.
-   *  Threaded into the coordinator at construction so every reach into
-   *  VelocityGrid state is explicit + auditable. The panel field is read at
-   *  call-time closure — the coordinator is constructed BEFORE the row
-   *  group panel comes online, but state-change callbacks only fire
-   *  after the wiring lands. */
-  private makeGroupingCoordinatorDeps(): GroupingCoordinatorDeps<TRow> {
-    return {
-      events: this.events,
-      isDestroyed: () => this.destroyed,
-      getOptions: (): GroupingCoordinatorOptions => ({
-        suppressGroupChangesColumnVisibility: this.options.suppressGroupChangesColumnVisibility,
-        groupDisplayType: this.options.groupDisplayType,
-        autoGroupColumnDef: this.options.autoGroupColumnDef as
-          GroupingCoordinatorOptions['autoGroupColumnDef'],
-        groupRowRenderer: this.options.groupRowRenderer,
-      }),
-      workerColumns: () => this.workerColumns(),
-      updateWorkerColumns: (cols) =>
-        this.workerCoord.updateColumns(cols as WorkerColumn[]),
-      setWorkerGroupModel: (g) => this.setWorkerGroupModelForSsrm(g),
-      getRowGroupPanel: () => this.rowGroupPanel,
-      getColumnTree: () => this.columnTree,
-      getColumnDefsMap: () => this.columnDefsMap,
-      computeVisibleColumnOrder: () => this.computeVisibleColumnOrder(),
-      setColumnOrder: (order) => { this.columnOrder = order; },
-      getLayoutWidth: () =>
-        this.canvasBounds.width || this.scroller.clientWidth || 800,
-      setColumnLayout: (layout) => { this.columnLayout = layout; },
-      recomputeViewport: () => this.recomputeViewport(),
-      requestRepaint: () => { this.cgridCanvas?.requestRepaint(); },
-      requestViewport: () => this.requestViewport(),
-      setExpandedKeys: (keys) => { this.expandedKeys = keys; },
-      getExpandedKeysMirror: () => this.expandedKeys,
-      flushPendingExpandedRoutes: () => this.flushPendingExpandedRoutes(),
-      hasPendingExpandedRoutes: () => this.hasPendingExpandedRoutes(),
-      shipExpandedKeys: (keys) => this.shipExpandedKeys(keys),
-      setKnownGroupKeys: (keys) => { this.knownGroupKeys = keys; },
-      updateGroupDescendantsCache: (keys, desc) =>
-        this.updateGroupDescendantsCache(keys, desc),
-      setRowCount: (n) => { this.rowCount = n; },
-      invalidateRowHeightIndex: () => { this.rowHeightIndex = null; },
-      groupCellContextAt: (rowIndex) => this.groupCellContextAt(rowIndex),
-      setColumnsVisible: (colIds, visible) => this.setColumnsVisible(colIds, visible),
-      isPivotMode: () => this.pivotEngine.isPivotMode(),
-      getSortModel: () => this.sortModel,
-      setSortModel: (model) => this.setSortModel(model),
-    };
+  collapseAll(): void {
+    this.analytics.collapseAll();
   }
 
-  /** Cycle 15 / Task 7 — flip every group to expanded. Ships the
-   *  "default = all" sentinel to the worker so the slicer derives
-   *  the all-keys set itself; fires `expandOrCollapseAll` once with
-   *  `expanded: true`. No-op when grouping bypasses
-   *  (`rowGroupCols.length === 0`) — the event still fires so apps
-   *  with a "toggle grouping" UX don't have to special-case the
-   *  ungrouped grid. */
-  /** Cycle 15.5 / Task 6 — scroll a row by zero-based display index into
-   *  view. Wraps the private `ensureRowIndexVisible` so callers that know
-   *  the index (e.g. keyboard nav code that already has the row index in
-   *  front of it) don't need to round-trip to the worker for the ID. */
   ensureIndexVisible(
     index: number,
     position: 'auto' | 'top' | 'middle' | 'bottom' = 'auto',
   ): void {
-    if (this.destroyed) return;
-    this.ensureRowIndexVisible(index, position);
-  }
-
-  /** Cycle 15.5 / Task 6 — reset all row group expansion state back to
-   *  the initial defaults (`groupDefaultExpanded` / `groupDefaultExpandedKeys`
-   *  / `isGroupOpenByDefault`). Discards every user-driven expand / collapse
-   *  toggle and re-runs `setGroupModel` with the current model so the worker
-   *  re-seeds `expandedKeys` from defaults. */
-  resetRowGroupExpansion(): void {
-    if (this.destroyed) return;
-    this.expandedKeys = null;
-    // Re-submit the current group model; the worker will re-apply the
-    // groupDefaultExpanded / groupDefaultExpandedKeys defaults it was
-    // initialised with, producing a fresh expandedKeys set.
-    this.setGroupModel(this.grouping.getGroupModel());
+    this.analytics.ensureIndexVisible(index, position);
   }
 
   expandAll(): void {
-    if (this.destroyed) return;
-    // Sparse SSRM — the null sentinel maps to the DEFAULT expansion set,
-    // not expand-all; ship an explicit all-keys set instead.
-    if (this.isSparseSsrm()) {
-      this.expandedKeys = new Set(this.knownGroupKeys);
-      this.shipExpandedKeys(Array.from(this.expandedKeys));
-    } else {
-      this.expandedKeys = null;
-      this.shipExpandedKeys(null);
-    }
-    this.events.emit({ type: 'expandOrCollapseAll', expanded: true });
+    this.analytics.expandAll();
   }
 
-  /** Cycle 15 / Task 7 — flip every group to collapsed. The mirror
-   *  holds an empty Set (the canonical "explicit, with no expanded
-   *  keys" state); the worker mirrors. Fires `expandOrCollapseAll`
-   *  with `expanded: false`. */
-  collapseAll(): void {
-    if (this.destroyed) return;
-    this.expandedKeys = new Set();
-    this.shipExpandedKeys([]);
-    this.events.emit({ type: 'expandOrCollapseAll', expanded: false });
+  flushPendingExpandedRoutes(): boolean {
+    return this.analytics.flushPendingExpandedRoutes();
   }
 
-  /**
-   * Sparse SSRM with host-owned grouping + `groupDefaultExpanded: 0`.
-   * In that mode `expandedKeys === null` means "not yet toggled — all
-   * collapsed", matching `getRows` / painted chevrons. CSRM (and SSRM
-   * client pipeline) still treat null as the expand-all sentinel.
-   */
-  /**
-   * Sparse-SSRM default expansion for the null sentinel — mirrors the
-   * worker GroupPass rules over `knownGroupKeys` (AG semantics:
-   * `isGroupOpenByDefault` wins, then `groupDefaultExpandedKeys`, then
-   * `groupDefaultExpanded`: -1/'all' = everything, N = number of LEVELS
-   * open, 0/other negatives = nothing). Depth derives from the composite
-   * key's segment count.
-   */
-  private sparseDefaultExpandedKeys(): Set<string> {
-    const cb = this.options.isGroupOpenByDefault;
-    if (cb) {
-      const set = new Set<string>();
-      for (const key of this.knownGroupKeys) {
-        const route = parseCompositeGroupKey(key).map((s) => s.value);
-        try {
-          if (cb({ key, route })) set.add(key);
-        } catch { /* skip */ }
-      }
-      return set;
-    }
-    if (this.options.groupDefaultExpandedKeys !== undefined) {
-      return new Set(this.options.groupDefaultExpandedKeys);
-    }
-    const d = this.options.groupDefaultExpanded ?? 0;
-    if (d === 'all' || d === -1) return new Set(this.knownGroupKeys);
-    if (typeof d === 'number' && d > 0) {
-      const set = new Set<string>();
-      for (const key of this.knownGroupKeys) {
-        const depth = key.split('::').length - 1;
-        if (depth < d) set.add(key);
-      }
-      return set;
-    }
-    return new Set();
-  }
-
-  /** Under the null sentinel, is `groupKey` expanded? CSRM: yes (null =
-   *  expand-all). Sparse SSRM: membership in the default expansion set. */
-  private isKeyExpandedUnderNullSentinel(groupKey: string): boolean {
-    if (this.isSparseSsrm()) return this.sparseDefaultExpandedKeys().has(groupKey);
-    return true;
-  }
-
-  /** Host-owned-grouping SSRM: v2 skeleton datasource, or v1 with the
-   *  client pipeline explicitly disabled. Falls back to the construction
-   *  options before the controller mounts (the grouping coordinator can
-   *  ship the initial group model earlier in construction). */
-  private isSparseSsrm(): boolean {
-    if (this.options.rowModelType !== 'serverSide') return false;
-    if (this.options.serverSideEnableClientSidePipeline === false) return true;
-    if (this.ssrm !== null) return this.ssrmV2 && !this.ssrmClientPipeline;
-    return isServerSideDatasourceV2(this.options.serverSideDatasource);
-  }
-
-  /** Materialise an explicit set when leaving the null sentinel. */
-  private materializeExpandedKeysFromNull(): Set<string> {
-    if (this.isSparseSsrm()) return this.sparseDefaultExpandedKeys();
-    return new Set(this.knownGroupKeys);
-  }
-
-  /** Cycle 15 / Task 7 — toggle a specific group's expanded state.
-   *  When the mirror is at the default-all sentinel AND the call
-   *  collapses a single group, we materialise against
-   *  `knownGroupKeys` first so the worker receives an explicit set
-   *  (otherwise the worker would interpret the null sentinel as
-   *  "expand everything" and clobber the toggle). Idempotent — no
-   *  event fires when the state didn't change. Unknown keys (a
-   *  stale key from a prior model) no-op AFTER the materialisation
-   *  attempt; this preserves the lossless mirror in either
-   *  direction. */
-  setExpanded(groupKey: string, expanded: boolean): void {
-    if (this.destroyed) return;
-    // Materialise the mirror if we're entering explicit mode from
-    // the null sentinel.
-    let next: Set<string>;
-    if (this.expandedKeys === null) {
-      const defaultExpanded = this.isKeyExpandedUnderNullSentinel(groupKey);
-      if (expanded === defaultExpanded) return;
-      next = this.materializeExpandedKeysFromNull();
-    } else {
-      next = new Set(this.expandedKeys);
-    }
-    const wasExpanded = next.has(groupKey);
-    if (wasExpanded === expanded) return;
-    if (expanded) next.add(groupKey);
-    else next.delete(groupKey);
-    this.expandedKeys = next;
-    this.shipExpandedKeys(Array.from(next));
-    this.events.emit({
-      type: 'rowGroupOpened',
-      key: groupKey,
-      expanded,
-      source: 'api',
-    });
-  }
-
-  /** Cycle 15 / Task 7 — snapshot of the currently-expanded composite
-   *  group key set. Returns a fresh `Set` each call (mutations don't
-   *  affect grid state). When the mirror is at the default-all
-   *  sentinel we materialise via `knownGroupKeys` so the snapshot is
-   *  honest about which keys are open. Sparse SSRM with
-   *  `groupDefaultExpanded: 0` treats null as all-collapsed. */
   getExpandedKeys(): Set<string> {
-    if (this.expandedKeys === null) {
-      return this.materializeExpandedKeysFromNull();
-    }
-    return new Set(this.expandedKeys);
+    return this.analytics.getExpandedKeys();
   }
 
-  /** Cycle 15 / Task 7 — internal ship-to-worker for the expanded-keys
-   *  set. Refreshes `knownGroupKeys` from the reply (a transaction
-   *  that landed mid-flight could have added / removed groups) and
-   *  drives the next viewport request so the chunk reflects the
-   *  collapsed / expanded set.
-   *
-   *  Cycle 15 / Task 8 — also refreshes the descendant cache from
-   *  `groupDescendants` when the worker is emitting them. The
-   *  selection model's membership resolver reads from this cache. */
-  private shipExpandedKeys(keys: string[] | null): void {
-    // Sparse SSRM — expansion state drives the flattened order. v2: local
-    // skeleton reflow (same frame). v1: `refreshExpansion` drops the whole
-    // block cache (a toggle shifts every flattened index below it;
-    // band-only invalidation left stale rows to rehydrate at old offsets).
-    if (this.ssrm && !this.ssrmClientPipeline && this.isSparseSsrm()) {
-      void this.ssrm.refreshExpansion().then(() => {
-        if (this.destroyed) return;
-        this.rowHeightIndex = null;
-        this.recomputeViewport();
-        this.cgridCanvas.requestRepaint();
-        this.requestViewport();
-      }).catch((err) => { if (!this.destroyed) console.error('[velocity-grid]', err); });
-      return;
-    }
-    this.workerCoord
-      .setExpandedKeys(keys)
-      .then(({ visibleCount, groupKeys, groupDescendants }) => {
-        if (this.destroyed) return;
-        this.knownGroupKeys = groupKeys;
-        this.updateGroupDescendantsCache(groupKeys, groupDescendants);
-        this.rowCount = visibleCount;
-        this.rowHeightIndex = null;
-        this.recomputeViewport();
-        this.cgridCanvas.requestRepaint();
-        this.requestViewport();
-      })
-      .catch((err) => { if (!this.destroyed) console.error('[velocity-grid]', err); });
+  getPivotColumns(): string[] {
+    return this.analytics.getPivotColumns();
   }
 
-  /** Apply stashed `expandedRouteIds` from `setState` once grouping is
-   *  active on the main thread. Returns true when pending keys were
-   *  consumed (including the empty "all collapsed" set). Returns false
-   *  only when there is nothing pending — callers must not seed
-   *  groupDefaultExpanded in that case when a restore is still queued
-   *  behind a failed worker round-trip; use `hasPendingExpandedRoutes`. */
-  private flushPendingExpandedRoutes(): boolean {
-    if (this.pendingExpandedRouteIds === null) return false;
-    if (this.grouping.getRowGroupColumns().length === 0) {
-      // Ungrouped restore — drop the stash; nothing to expand.
-      this.pendingExpandedRouteIds = null;
-      this.expandedKeys = new Set();
-      return true;
-    }
-    const ids = this.pendingExpandedRouteIds;
-    this.pendingExpandedRouteIds = null;
-    this.expandedKeys = new Set(ids);
-    this.shipExpandedKeys(ids);
-    return true;
+  getPivotResultColumns(): string[] {
+    return this.analytics.getPivotResultColumns();
   }
 
-  /** True while `setState` has stashed expand/collapse keys that have
-   *  not yet been flushed to the worker. */
+  getRowGroupColumns(): string[] {
+    return this.analytics.getRowGroupColumns();
+  }
+
+  getValueColumns(): Array<{ colId: string; aggFunc: string }> {
+    return this.analytics.getValueColumns();
+  }
+
   private hasPendingExpandedRoutes(): boolean {
-    return this.pendingExpandedRouteIds !== null;
+    return this.analytics.hasPendingExpandedRoutes();
   }
 
-  /** Cycle 15 / Task 8 — re-fetch the worker's descendant snapshot
-   *  without flipping the emission flag. Used after `modelUpdated`
-   *  pushes (data transactions / sort / filter) when
-   *  `groupSelectsChildren` is on, so the membership cache stays in
-   *  lockstep with the worker's tree. Fire-and-forget; a stale paint
-   *  for one frame is acceptable while the round-trip resolves. */
+  isPivotMode(): boolean {
+    return this.analytics.isPivotMode();
+  }
+
+  private isSparseSsrm(): boolean {
+    return this.analytics.isSparseSsrm();
+  }
+
+  private makeGroupingCoordinatorDeps(): GroupingCoordinatorDeps<TRow> {
+    return this.analytics.makeGroupingCoordinatorDeps();
+  }
+
+  private makePivotEngineDeps(): PivotEngineDeps<TRow> {
+    return this.analytics.makePivotEngineDeps();
+  }
+
+  movePivotColumn(from: number, to: number): void {
+    this.analytics.movePivotColumn(from, to);
+  }
+
+  moveRowGroupColumn(from: number, to: number): void {
+    this.analytics.moveRowGroupColumn(from, to);
+  }
+
+  moveValueColumn(from: number, to: number): void {
+    this.analytics.moveValueColumn(from, to);
+  }
+
   private refreshGroupDescendantsCache(): void {
-    this.workerCoord
-      .setEmitGroupDescendants(true)
-      .then(({ groupKeys, groupDescendants }) => {
-        if (this.destroyed) return;
-        this.knownGroupKeys = groupKeys;
-        this.updateGroupDescendantsCache(groupKeys, groupDescendants);
-        this.cgridCanvas?.requestRepaint();
-      })
-      .catch((err) => {
-        if (!this.destroyed) console.error('[velocity-grid] refreshGroupDescendantsCache:', err);
-      });
+    this.analytics.refreshGroupDescendantsCache();
   }
 
-  /** Cycle 15 / Task 8 — apply a `groupKeysSnapshot` reply's parallel
-   *  `groupKeys` + `groupDescendants` arrays to the main-side cache the
-   *  `GroupMembershipResolver` reads from. An empty `groupDescendants`
-   *  array clears the cache (the worker isn't emitting descendants
-   *  right now — the resolver collapses to `'none'` for every key,
-   *  which is the correct paint default for "I don't know"). */
+  removePivotColumn(colId: string): void {
+    this.analytics.removePivotColumn(colId);
+  }
+
+  removeRowGroupColumn(colId: string): void {
+    this.analytics.removeRowGroupColumn(colId);
+  }
+
+  removeRowGroupColumns(colIds: string[]): void {
+    this.analytics.removeRowGroupColumns(colIds);
+  }
+
+  removeValueColumn(colId: string): void {
+    this.analytics.removeValueColumn(colId);
+  }
+
+  resetRowGroupExpansion(): void {
+    this.analytics.resetRowGroupExpansion();
+  }
+
+  setExpanded(groupKey: string, expanded: boolean): void {
+    this.analytics.setExpanded(groupKey, expanded);
+  }
+
+  setPivotColumns(colIds: string[]): void {
+    this.analytics.setPivotColumns(colIds);
+  }
+
+  setPivotMode(pivotMode: boolean, opts?: { discardSettings?: boolean }): void {
+    this.analytics.setPivotMode(pivotMode, opts);
+  }
+
+  setRowGroupColumnSort(colId: string, direction: 'asc' | 'desc' | null): void {
+    this.analytics.setRowGroupColumnSort(colId, direction);
+  }
+
+  setRowGroupColumns(columns: string[]): void {
+    this.analytics.setRowGroupColumns(columns);
+  }
+
+  setValueColumnAggFunc(colId: string, aggFunc: string): void {
+    this.analytics.setValueColumnAggFunc(colId, aggFunc);
+  }
+
+  setValueColumns(list: Array<{ colId: string; aggFunc: string }>): void {
+    this.analytics.setValueColumns(list);
+  }
+
+  private shipExpandedKeys(keys: string[] | null): void {
+    this.analytics.shipExpandedKeys(keys);
+  }
+
   private updateGroupDescendantsCache(
     groupKeys: readonly string[],
     groupDescendants: readonly (readonly string[])[] | undefined,
   ): void {
-    if (!groupDescendants || groupDescendants.length === 0) {
-      // Either grouping bypasses OR the worker isn't emitting
-      // descendants (Tasks 1-7 path); clear so the resolver returns
-      // empty arrays and the renderer defaults to 'none'.
-      if (this.groupDescendantsByKey.size > 0) this.groupDescendantsByKey.clear();
-      return;
-    }
-    const next = new Map<string, readonly string[]>();
-    for (let i = 0; i < groupKeys.length; i++) {
-      const key = groupKeys[i]!;
-      next.set(key, groupDescendants[i] ?? []);
-    }
-    this.groupDescendantsByKey = next;
+    this.analytics.updateGroupDescendantsCache(groupKeys, groupDescendants);
   }
 
-  /** Cycle 15 / Task 8 — toggle the tri-state cascading machinery.
-   *
-   *  Wiring:
-   *    1. Toggles the worker's per-snapshot descendant emission so
-   *       subsequent `setGroupModel` / `setExpandedKeys` replies carry
-   *       (or omit) the `groupDescendants` array.
-   *    2. The current snapshot reply primes the main-side cache.
-   *    3. Wires (or detaches) the SelectionModel's membership resolver
-   *       so its `setGroupSelected` / `getGroupSelectionState` paths
-   *       light up with cascade semantics.
-   *    4. Triggers a paint so auto-group cells re-render with the
-   *       new checkbox slot wide / hidden.
-   *
-   *  Resolves once the worker has acked the toggle so callers awaiting
-   *  the runtime swap know the first paint after the resolve carries
-   *  the new behaviour. */
-  private async applyGroupSelectsChildren(enabled: boolean): Promise<void> {
-    if (this.destroyed) return;
-    try {
-      const { groupKeys, groupDescendants } = await this.workerCoord
-        .setEmitGroupDescendants(enabled);
-      if (this.destroyed) return;
-      this.knownGroupKeys = groupKeys;
-      this.updateGroupDescendantsCache(groupKeys, enabled ? groupDescendants : undefined);
-    } catch (err) {
-      if (!this.destroyed) console.error('[velocity-grid] setEmitGroupDescendants:', err);
-      return;
-    }
-    if (enabled) {
-      this.selection.setGroupSelectsChildren(true, {
-        getDescendantRowIds: (key) => this.groupDescendantsByKey.get(key) ?? [],
-      });
-    } else {
-      this.selection.setGroupSelectsChildren(false, null);
-    }
-    this.cgridCanvas?.requestRepaint();
-  }
-
-  /** Cycle 19 / Task 5-Grouping — primitive grouping API delegates.
-   *  The coordinator owns the `GroupingState` primitive; the
-   *  `groupingStateChanged` handler downstream ships the model swap
-   *  to the worker (or merges the per-level sort into the sort model
-   *  on a pure-sort change). */
-  setRowGroupColumns(columns: string[]): void {
-    if (!this.destroyed) this.grouping.setRowGroupColumns(columns);
-  }
-  addRowGroupColumn(colId: string): void {
-    if (!this.destroyed) this.grouping.addRowGroupColumn(colId);
-  }
-  removeRowGroupColumn(colId: string): void {
-    if (!this.destroyed) this.grouping.removeRowGroupColumn(colId);
-  }
-  /** AG v33 plural form — appends each column in order. */
-  addRowGroupColumns(colIds: string[]): void {
-    for (const colId of colIds) this.addRowGroupColumn(colId);
-  }
-  /** AG v33 plural form — removes each listed column. */
-  removeRowGroupColumns(colIds: string[]): void {
-    for (const colId of colIds) this.removeRowGroupColumn(colId);
-  }
-  moveRowGroupColumn(from: number, to: number): void {
-    if (!this.destroyed) this.grouping.moveRowGroupColumn(from, to);
-  }
-  setRowGroupColumnSort(colId: string, direction: 'asc' | 'desc' | null): void {
-    if (!this.destroyed) this.grouping.setRowGroupColumnSort(colId, direction);
-  }
-  getRowGroupColumns(): string[] {
-    return this.grouping.getRowGroupColumns();
-  }
 
   /** Cycle 15.5 / Task 2 — class-level mirror of the public-API getter.
    *  Lives here too (not just on `makeApi()`) so the default main-menu
@@ -6795,1268 +6101,104 @@ export class VelocityGrid<TRow = any> {
     }).catch((err) => { if (!this.destroyed) console.error('[velocity-grid] setSelectedRowIds:', err); });
   }
 
-  getFocusedCell(): { rowId: string; colId: string } | null {
-    const { focusedRowIndex, focusedColId } = this.selection.state;
-    if (focusedColId == null) return null;
-    // Prefer the persistent rowId from an API-driven setFocusedCell. Falls
-    // back to the synthetic id when focus came from a click — same caveat
-    // as getSelectedRowIds.
-    const persistent = this.selection.getPersistentFocusedRowId();
-    if (persistent !== null) return { rowId: persistent, colId: focusedColId };
-    if (focusedRowIndex == null) return null;
-    const rowId = this.rowIdAt(focusedRowIndex);
-    return rowId ? { rowId, colId: focusedColId } : null;
-  }
 
-  /** Focus the cell at (`rowId`, `colId`). Scrolls the row into view, then
-   *  records both the persistent id and the paint index so subsequent re-sorts
-   *  keep the focus on the same logical cell. No-op for unknown row / column.
-   *  Observers see the change via `selectionChanged`. */
-  setFocusedCell(rowId: string, colId: string): void {
-    if (this.destroyed) return;
-    if (!this.columnDefsMap.has(colId)) return;
-    this.workerCoord.getRowIndicesForIds([rowId]).then((idx) => {
-      if (this.destroyed) return;
-      const resolved = idx.length > 0 ? idx[0]! : -1;
-      if (resolved >= 0) this.ensureRowIndexVisible(resolved);
-      this.ensureColIdVisible(colId);
-      this.selection.setFocusByRowId(rowId, colId, resolved);
-    }).catch((err) => { if (!this.destroyed) console.error('[velocity-grid] setFocusedCell:', err); });
-  }
+  // ── selection / clipboard / export facade ──────────────────────────────
+  // Focused cell, cell ranges, the clipboard round trip and the CSV/Excel
+  // export paths live in `host/selectionFacade.ts`. These keep the host's
+  // published surface intact; internal call sites go straight to the facade.
 
-  /** Snapshot of the currently-selected cell ranges. Cycle 9 / Task 6. */
-  getCellRanges(): SelectionRange[] {
-    return this.selection.getRanges();
-  }
-
-  /** Append a range to the selection (disjoint-add). Cycle 9 / Task 6. */
   addCellRange(range: SelectionRange): void {
-    if (this.destroyed) return;
-    this.selection.addRange(range);
-    // Programmatic mutation = instantaneous; both started + finished true.
-    this.emitRangeSelectionChanged(true, true);
+    this.selectionFacade.addCellRange(range);
   }
 
-  /** Drop every range. Row selection + focused cell unaffected.
-   *  Cycle 9 / Task 6. */
   clearCellRanges(): void {
-    if (this.destroyed) return;
-    const hadRanges = this.selection.getRanges().length > 0;
-    this.selection.clearRanges();
-    // No emit when the call was a no-op (already empty). `started: false`
-    // because a clear is the END of a selection, not the START — there's
-    // no anchor to drag from.
-    if (hadRanges) this.emitRangeSelectionChanged(false, true);
+    this.selectionFacade.clearCellRanges();
   }
 
-  /** Cycle 10 / Task 3 — TSV / CSV encode the current cell-range
-   *  selection on the worker and forward the result to
-   *  `navigator.clipboard.writeText`. Honors the runtime-mutable
-   *  `clipboardDelimiter` (default `'\t'`). Rejects with `'no-ranges'`
-   *  when nothing is selected; the keyboard handler swallows that
-   *  rejection so the user doesn't see a console error for a stray
-   *  Ctrl+C on an empty selection.
-   *
-   *  Resolves AFTER `clipboard.writeText` completes (so apps that await
-   *  this method can immediately read back via `clipboard.readText`).
-   *  Splits the work three ways: worker does the per-cell value lookup
-   *  + RFC-4180 quoting + buffer joins (off the main thread); main
-   *  does the clipboard write inside the caller's user-gesture stack. */
   async copySelectedRangesToClipboard(opts?: { includeHeaders?: boolean }): Promise<void> {
-    if (this.destroyed) return;
-    // Cycle 10 / Task 6 — `suppressClipboardApi` rejects every clipboard
-    // entry point before any work happens. Apps that ship their own
-    // clipboard layer use this to take over without competing with the
-    // worker round-trip + writeText path here. A one-time warn surfaces
-    // the gate on first invocation (per method) so developers see the
-    // wiring; subsequent rejections are silent.
-    if (this.options.suppressClipboardApi === true) {
-      this.warnClipboardSuppressed('copySelectedRangesToClipboard');
-      throw new Error('clipboard-suppressed');
-    }
-    const ranges = this.getCellRanges();
-    if (ranges.length === 0) throw new Error('no-ranges');
-    const delimiter = this.options.clipboardDelimiter ?? '\t';
-    // Cycle 10 / Task 5 — `processCellForClipboard` must run on the
-    // main thread (apps reference DOM / domain state from the callback).
-    // When the option is set, fetch the source rows here and run
-    // `serializeRanges` main-side with the callback wired as
-    // `transformCell`. Without the option, the worker still owns the
-    // serialise hop (the perf-budgeted path).
-    const transform = this.options.processCellForClipboard;
-    // Cycle 21i / Phase 1 — under active pivot the visible cells are
-    // cross-tab aggregates that live in the chunk (not in the leaf source
-    // rows the worker/main-side leaf serializers read), so those paths
-    // return blank cells. Serialize "what you see" via `cellAt`, which
-    // resolves pivot result cells + the auto-group column + formatting.
-    const body = this.pivotEngine.isPivotActive()
-      ? this.serializeRangesViaCellAt(ranges, delimiter, transform)
-      : transform
-        ? await this.serializeRangesMainSide(ranges, delimiter, transform)
-        : await this.workerCoord.clipboardSerialize(ranges, delimiter);
-    // Cycle 21i / Phase 1 — "Copy with Headers" prepends a header row of
-    // the selected columns' header names (in column order), delimiter- and
-    // newline-joined to match the body TSV.
-    const tsv = opts?.includeHeaders
-      ? `${this.clipboardHeaderLine(ranges, delimiter)}\n${body}`
-      : body;
-    // `navigator.clipboard.writeText` requires a user gesture in every
-    // mainstream browser; the keyboard / menu handlers already run
-    // inside one. Apps that invoke this from a `setTimeout` get a
-    // rejected promise back — that's the expected platform behavior.
-    if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
-      throw new Error('clipboard-unavailable');
-    }
-    // Cycle 21c / Task 15 — multi-format write when the copied range
-    // touches a composite column. text/plain stays byte-identical to
-    // the plain path (the worker/main-side TSV above); text/html adds
-    // styled <span> runs per composite fragment so Excel / Sheets
-    // paste keeps the formatting. Feature-detected: environments
-    // without ClipboardItem / clipboard.write fall back to writeText.
-    const hasComposite = ranges.some((range) =>
-      range.colIds.some((colId) => this.columnDefsMap.get(colId)?._compositeProgram !== undefined),
-    );
-    if (hasComposite) {
-      const clip = navigator.clipboard as Clipboard & { write?: (items: ClipboardItem[]) => Promise<void> };
-      if (typeof ClipboardItem !== 'undefined' && typeof clip.write === 'function') {
-        const html = await this.serializeRangesToHtml(ranges, opts?.includeHeaders === true);
-        const item = new ClipboardItem({
-          'text/plain': new Blob([tsv], { type: 'text/plain' }),
-          'text/html': new Blob([html], { type: 'text/html' }),
-        });
-        await clip.write([item]);
-        return;
-      }
-      console.debug('[cgrid.clipboard] rich copy unavailable, using plain text');
-    }
-    await navigator.clipboard.writeText(tsv);
+    return this.selectionFacade.copySelectedRangesToClipboard(opts);
   }
 
-  /** Cycle 21i / Phase 1 — serialize ranges from the painter's own cell
-   *  resolver (`cellAt`), so pivot cross-tab cells, group/auto-group
-   *  cells, and totals serialize as their displayed value. Reuses the
-   *  pure serializer by projecting each cell's value onto a per-row
-   *  object keyed by colId (field === colId). Cells outside the loaded
-   *  chunk resolve to '' (the pivot matrix is small and typically fully
-   *  loaded). `transform` (processCellForClipboard) still applies. */
-  private serializeRangesViaCellAt(
-    ranges: SelectionRange[],
-    delimiter: string,
-    transform: VelocityGridOptions<TRow>['processCellForClipboard'],
-  ): string {
-    const rows: Array<Record<string, unknown> | undefined> = [];
-    const colIds = new Set<string>();
-    for (const range of ranges) {
-      for (const id of range.colIds) colIds.add(id);
-      for (let rowIndex = range.rowStart; rowIndex <= range.rowEnd; rowIndex++) {
-        if (rows[rowIndex] !== undefined) continue;
-        const obj: Record<string, unknown> = {};
-        for (const id of range.colIds) {
-          const cell = this.cellAt(rowIndex, id);
-          // Primitive value (pivot aggregate number, plain text) copies
-          // raw so it pastes as a number; the auto-group / group cells
-          // carry an object value whose label lives in valueFormatted.
-          obj[id] = cell == null
-            ? ''
-            : (cell.value !== null && typeof cell.value === 'object'
-                ? cell.valueFormatted
-                : cell.value);
-        }
-        rows[rowIndex] = obj;
-      }
-    }
-    const columnsById = new Map<string, { field?: string }>();
-    for (const id of colIds) columnsById.set(id, { field: id });
-    return serializeRangesPure(rows, columnsById, ranges, delimiter, transform
-      ? (params) => transform({
-          value: params.value,
-          node: { rowIndex: params.node.rowIndex, data: params.node.data as TRow },
-          column: { colId: params.column.colId },
-        })
-      : undefined);
-  }
-
-  /** Cycle 21i / Phase 1 — the header row for "Copy with Headers": the
-   *  distinct column headerNames touched by `ranges`, ordered by the
-   *  grid's column order, joined by `delimiter`. */
-  private clipboardHeaderLine(ranges: SelectionRange[], delimiter: string): string {
-    const orderIdx = new Map(this.columnOrder.map((c, i) => [c.colId, i]));
-    const ids = [...new Set(ranges.flatMap((r) => r.colIds))].sort(
-      (a, b) => (orderIdx.get(a) ?? 0) - (orderIdx.get(b) ?? 0),
-    );
-    return ids
-      .map((id) => this.columnDefsMap.get(id)?.headerName ?? id)
-      .join(delimiter);
-  }
-
-  /** Cycle 21c / Task 15 — build the text/html clipboard flavor for
-   *  ranges that include composite columns. Fetches the touched rows
-   *  main-side (composite programs are main-thread closures — they
-   *  don't cross postMessage), resolves fragments per composite cell,
-   *  and falls back to formatted plain text for regular columns. */
-  private async serializeRangesToHtml(ranges: SelectionRange[], includeHeaders = false): Promise<string> {
-    const rowIndexSet = new Set<number>();
-    for (const range of ranges) {
-      for (let i = range.rowStart; i <= range.rowEnd; i++) rowIndexSet.add(i);
-    }
-    const indexArr = Array.from(rowIndexSet);
-    const fetched = await Promise.all(indexArr.map((rowIndex) =>
-      this.workerCoord.getRowByIndex(rowIndex).then((r) => ({ rowIndex, ...r })),
-    ));
-    if (this.destroyed) return '';
-    const rowsByIndex = new Map<number, Record<string, unknown>>();
-    for (const r of fetched) {
-      if (r.data != null) rowsByIndex.set(r.rowIndex, r.data as Record<string, unknown>);
-    }
-
-    const out: RowExport[] = [];
-    for (const range of ranges) {
-      for (let rowIndex = range.rowStart; rowIndex <= range.rowEnd; rowIndex++) {
-        const rowData = rowsByIndex.get(rowIndex) ?? {};
-        const cells: RowExport['cells'] = [];
-        for (const colId of range.colIds) {
-          const def = this.columnDefsMap.get(colId);
-          if (!def) {
-            cells.push({ text: '' });
-            continue;
-          }
-          const value = rowData[(def.field as string | undefined) ?? colId];
-          const program = def._compositeProgram;
-          if (program) {
-            // Cycle 21e / final-review fix — rule-aware ctx so copied
-            // composite fragments carry resolved rule:<ruleId> colors,
-            // matching what the painter shows.
-            const evalCtx = buildFormatEvalCtx({
-              value,
-              data: rowData,
-              colId,
-              rowId: this.stringRowIdAt(rowIndex) ?? undefined,
-              themeKind: this.getThemeKind(),
-            });
-            const fragments = program.resolveFragments(evalCtx);
-            cells.push({
-              text: program.formatText(evalCtx),
-              fragments: (fragments ?? []).map((f) => ({
-                text: f.text,
-                style: (f.style ?? {}) as Record<string, string | number | undefined>,
-              })),
-            });
-            continue;
-          }
-          const text = def.valueFormatter
-            ? def.valueFormatter({ value, data: rowData as TRow, colId })
-            : value == null ? '' : String(value);
-          cells.push({ text });
-        }
-        out.push({ cells });
-      }
-    }
-    if (includeHeaders) {
-      const orderIdx = new Map(this.columnOrder.map((c, i) => [c.colId, i]));
-      const ids = [...new Set(ranges.flatMap((r) => r.colIds))].sort(
-        (a, b) => (orderIdx.get(a) ?? 0) - (orderIdx.get(b) ?? 0),
-      );
-      out.unshift({
-        cells: ids.map((id) => ({ text: this.columnDefsMap.get(id)?.headerName ?? id })),
-      });
-    }
-    return serializeToHtml(out);
-  }
-
-  // ─── Cycle 20 / Task 3 — public export API ────────────────────────────
-
-  /** Build the per-column metadata maps the worker needs (header
-   *  names + type hints by colId). The worker doesn't keep its own
-   *  copy of headerName / type, so we resolve here and ship. */
-  private buildExportColumnMaps(): { headerNames: Record<string, string>; types: Record<string, 'text' | 'number'> } {
-    const headerNames: Record<string, string> = {};
-    const types: Record<string, 'text' | 'number'> = {};
-    for (const leaf of this.columnTree.leaves) {
-      headerNames[leaf.colId] = leaf.headerName ?? leaf.colId;
-      // `cellDataType` is the canonical type hint on the resolved
-      // column. Anything non-'number' falls back to 'text' in the
-      // writer (numeric XLSX columns get `<c t="n">`).
-      types[leaf.colId] = leaf.cellDataType === 'number' ? 'number' : 'text';
-    }
-    return { headerNames, types };
-  }
-
-  /** Resolve which export route to use. When any `process*Callback`
-   *  is referenced, we fetch rows back to main and run the writer
-   *  there so the callbacks (which can't postMessage to the worker)
-   *  can fire. Otherwise we keep the worker-side fast path. */
-  private hasExportCallback(params: ExportCsvParams | ExportExcelParams): boolean {
-    return Boolean(
-      (params as ExportCsvParams).processCellCallback
-      || (params as ExportCsvParams).processHeaderCallback,
-    );
-  }
-
-  /** Apply the resolved cell/header callbacks main-side and serialise
-   *  through the matching writer. Returns the bytes. */
-  private async exportViaMainSide(
-    format: 'csv' | 'xlsx',
-    params: ExportCsvParams | ExportExcelParams,
-  ): Promise<Uint8Array> {
-    const { headerNames, types } = this.buildExportColumnMaps();
-    const callbacks = this.options.exportCallbacks ?? {};
-    const cellCb = callbacks[(params as ExportCsvParams).processCellCallback ?? ''];
-    const headerCb = callbacks[(params as ExportCsvParams).processHeaderCallback ?? ''];
-    const rows = await this.workerCoord.getExportRows({
-      selectedRowIds: params.onlySelected ? this.getSelectedRowIds() : undefined,
-    });
-
-    // Build column list, mapping each header through `headerCb` once.
-    const cols = this.columnTree.leaves.map((leaf) => ({
-      colId: leaf.colId,
-      field: (leaf as { field?: string }).field ?? leaf.colId,
-      headerName: headerCb
-        ? String(headerCb({
-            value: headerNames[leaf.colId] ?? leaf.colId,
-            colId: leaf.colId,
-            kind: 'header' as const,
-          }))
-        : (headerNames[leaf.colId] ?? leaf.colId),
-      type: types[leaf.colId] ?? 'text' as const,
-    }));
-
-    // Transform per-cell when `cellCb` is configured. We mutate a
-    // fresh copy per row so the worker's row store isn't disturbed.
-    const transformedRows = cellCb
-      ? rows.map((row) => {
-          const out: Record<string, unknown> = {};
-          for (const c of cols) {
-            out[c.field] = cellCb({
-              value: row[c.field],
-              colId: c.colId,
-              kind: 'cell',
-              node: row,
-            });
-          }
-          return out;
-        })
-      : rows;
-
-    if (format === 'csv') {
-      const { writeCsv } = await import('./worker/export/csv');
-      return writeCsv(transformedRows, cols, params as ExportCsvParams);
-    }
-    const { writeXlsx } = await import('./worker/export/xlsx');
-    return writeXlsx(transformedRows, cols, params as ExportExcelParams);
-  }
-
-  /** Return the current data as a CSV string. Worker-side serialization
-   *  when no callback is set; main-side serialization when one is. */
-  async getDataAsCsv(params: ExportCsvParams = {}): Promise<string> {
-    if (this.destroyed) return '';
-    if (this.hasExportCallback(params)) {
-      const bytes = await this.exportViaMainSide('csv', params);
-      return new TextDecoder('utf-8').decode(bytes);
-    }
-    const { headerNames, types } = this.buildExportColumnMaps();
-    const buffer = await this.workerCoord.exportData({
-      format: 'csv',
-      headerNames,
-      types,
-      options: params as unknown as Record<string, unknown>,
-      selectedRowIds: params.onlySelected ? this.getSelectedRowIds() : undefined,
-    });
-    return new TextDecoder('utf-8').decode(buffer);
-  }
-
-  /** Export the current data as CSV + trigger a browser download. */
-  async exportDataAsCsv(params: ExportCsvParams = {}): Promise<void> {
-    if (this.destroyed) return;
-    let buffer: ArrayBuffer;
-    if (this.hasExportCallback(params)) {
-      const bytes = await this.exportViaMainSide('csv', params);
-      // Copy out of the writer's possibly-shared scratch into an owned ArrayBuffer.
-      buffer = bytes.slice().buffer as ArrayBuffer;
-    } else {
-      const { headerNames, types } = this.buildExportColumnMaps();
-      buffer = await this.workerCoord.exportData({
-        format: 'csv',
-        headerNames,
-        types,
-        options: params as unknown as Record<string, unknown>,
-      });
-    }
-    triggerDownload(buffer, params.fileName ?? 'export.csv', 'text/csv;charset=utf-8');
-  }
-
-  /** Return the current data as an XLSX `Blob`. */
-  async getDataAsExcel(params: ExportExcelParams = {}): Promise<Blob> {
-    if (this.destroyed) return new Blob([]);
-    if (this.hasExportCallback(params)) {
-      const bytes = await this.exportViaMainSide('xlsx', params);
-      return new Blob([bytes.slice().buffer as ArrayBuffer], { type: XLSX_MIME });
-    }
-    const { headerNames, types } = this.buildExportColumnMaps();
-    const buffer = await this.workerCoord.exportData({
-      format: 'xlsx',
-      headerNames,
-      types,
-      options: params as unknown as Record<string, unknown>,
-      selectedRowIds: params.onlySelected ? this.getSelectedRowIds() : undefined,
-    });
-    return new Blob([buffer], { type: XLSX_MIME });
-  }
-
-  /** Export the current data as XLSX + trigger a browser download. */
-  async exportDataAsExcel(params: ExportExcelParams = {}): Promise<void> {
-    if (this.destroyed) return;
-    let buffer: ArrayBuffer;
-    if (this.hasExportCallback(params)) {
-      const bytes = await this.exportViaMainSide('xlsx', params);
-      buffer = bytes.slice().buffer as ArrayBuffer;
-    } else {
-      const { headerNames, types } = this.buildExportColumnMaps();
-      buffer = await this.workerCoord.exportData({
-        format: 'xlsx',
-        headerNames,
-        types,
-        options: params as unknown as Record<string, unknown>,
-      });
-    }
-    triggerDownload(buffer, params.fileName ?? 'export.xlsx', XLSX_MIME);
-  }
-
-  /** Cycle 10 / Task 5 — main-side serialise used when
-   *  `processCellForClipboard` is configured. Batches `getRowByIndex`
-   *  for every unique row in `ranges` so the callback sees the row's
-   *  current `data` (matches ag-grid). Wraps the user callback in the
-   *  `SerializeCellTransform` shape (`{ value, node, column }`) and
-   *  hands off to the same pure `serializeRanges` the worker uses, so
-   *  RFC-4180 quoting + delimiter + disjoint-range layout stay in
-   *  exactly one place. */
-  private async serializeRangesMainSide(
-    ranges: SelectionRange[],
-    delimiter: string,
-    transform: NonNullable<VelocityGridOptions<TRow>['processCellForClipboard']>,
-  ): Promise<string> {
-    // Collect every visible row index touched by any range; batch-fetch
-    // the rows in one Promise.all to keep the worker round-trips parallel.
-    const rowIndexSet = new Set<number>();
-    for (const range of ranges) {
-      for (let i = range.rowStart; i <= range.rowEnd; i++) rowIndexSet.add(i);
-    }
-    const indexArr = Array.from(rowIndexSet);
-    const fetched = await Promise.all(indexArr.map((rowIndex) =>
-      this.workerCoord.getRowByIndex(rowIndex).then((r) => ({ rowIndex, ...r })),
-    ));
-    if (this.destroyed) return '';
-    // Build the sparse `rows` array `serializeRanges` consumes — keyed
-    // by visible-row index, with `undefined` for rows past the bottom
-    // (the pure function treats those as a row of blank cells).
-    const rows: Array<Record<string, unknown> | undefined> = [];
-    for (const r of fetched) {
-      if (r.data != null) rows[r.rowIndex] = r.data as Record<string, unknown>;
-    }
-    const columnsById = new Map<string, { field?: string }>();
-    for (const def of this.columnOrder) {
-      columnsById.set(def.colId, { field: def.field as string | undefined });
-    }
-    return serializeRangesPure(rows, columnsById, ranges, delimiter, (params) =>
-      transform({
-        value: params.value,
-        node: { rowIndex: params.node.rowIndex, data: params.node.data as TRow },
-        column: { colId: params.column.colId },
-      }),
-    );
-  }
-
-  /** Cycle 10 / Task 4 — read the system clipboard, parse the payload on
-   *  the worker, and apply via `applyTransaction({ update })` rooted at
-   *  the focused cell. Resolves quietly (no throw) when the paste is a
-   *  semantic no-op:
-   *  - no cell is focused
-   *  - clipboard is empty
-   *  - parsed grid covers no rows / cells
-   *
-   *  Rejects when `navigator.clipboard.readText` rejects (no gesture,
-   *  permission denied, insecure context without a polyfill).
-   *
-   *  Anchor algorithm: the parsed `string[][]` is positioned with its
-   *  (0, 0) cell at the focused cell. For each parsed row `r` we
-   *  resolve the target row at visible index `focusedRowIndex + r`
-   *  (via `workerClient.getRowByIndex`, mirroring Cycle 9 / Task 5's
-   *  fill handle); for each parsed cell `c` we write into the visible
-   *  column at index `focusedColIndex + c` in `this.columnOrder`. Rows
-   *  past the bottom or columns past the right edge are silently
-   *  dropped — paste never inserts rows / columns. */
-  async pasteFromClipboard(): Promise<void> {
-    if (this.destroyed) return;
-    // Cycle 10 / Task 6 — `suppressClipboardApi` rejects (apps own the
-    // surface); `suppressClipboardPaste` silently no-ops (paste is
-    // disabled but copy / cut still work). API wins over paste-only —
-    // an app gating both still gets the clearer rejection.
-    if (this.options.suppressClipboardApi === true) {
-      this.warnClipboardSuppressed('pasteFromClipboard');
-      throw new Error('clipboard-suppressed');
-    }
-    if (this.options.suppressClipboardPaste === true) return;
-    const focusedRowIndex = this.selection.state.focusedRowIndex;
-    const focusedColId = this.selection.state.focusedColId;
-    if (focusedRowIndex === null || focusedColId === null) return;
-    if (typeof navigator === 'undefined' || !navigator.clipboard?.readText) {
-      throw new Error('clipboard-unavailable');
-    }
-    const text = await navigator.clipboard.readText();
-    if (text === '') return;
-    const delimiter = this.options.clipboardDelimiter ?? '\t';
-    const parsed = await this.workerCoord.clipboardDeserialize(text, delimiter);
-    if (parsed.length === 0) return;
-    // Resolve the focused column's render-order index. When the focused
-    // column has been hidden between the focus event and the paste,
-    // we drop back to "no anchor" → no-op.
-    const focusedColIdx = this.columnOrder.findIndex((c) => c.colId === focusedColId);
-    if (focusedColIdx === -1) return;
-    // Fetch every target row via the worker so the update set ships full
-    // TRow objects (RowStore.apply REPLACES rows by id; the unchanged
-    // fields must be present on the update payload). Off-bottom rows
-    // (rowIndex >= rowCount) skip — the worker returns rowId === null.
-    const targetRowIndices: number[] = [];
-    for (let r = 0; r < parsed.length; r++) targetRowIndices.push(focusedRowIndex + r);
-    const fetches = targetRowIndices.map((rowIndex) =>
-      this.workerCoord.getRowByIndex(rowIndex).then((fetched) => ({ rowIndex, fetched })),
-    );
-    const results = await Promise.all(fetches);
-    if (this.destroyed) return;
-    // Cycle 10 / Task 5 — `processCellFromClipboard` transforms each
-    // parsed string AFTER worker parse + BEFORE the per-cell write. Runs
-    // on the main thread for the same reason copy's transform does. We
-    // pre-compute the transformed values via the pure `mapPasteCells`
-    // helper so the loop below is a straight write per cell. Without the
-    // option, `transformedRows` is `null` and we use the raw parsed
-    // strings — keeps the no-callback path allocation-free.
-    const transform = this.options.processCellFromClipboard;
-    let transformedRows: Array<Array<unknown>> | null = null;
-    if (transform) {
-      const rowDataByIndex = new Map<number, unknown>();
-      for (const r of results) {
-        if (r.fetched.data != null) rowDataByIndex.set(r.rowIndex, r.fetched.data);
-      }
-      const visibleColIds = this.columnOrder.map((c) => c.colId);
-      transformedRows = mapPasteCells(
-        parsed,
-        focusedRowIndex,
-        focusedColIdx,
-        visibleColIds,
-        rowDataByIndex,
-        (params) => transform({
-          value: params.value,
-          node: { rowIndex: params.node.rowIndex, data: params.node.data as TRow },
-          column: { colId: params.column.colId },
-        }),
-      );
-    }
-    const updates: TRow[] = [];
-    for (let i = 0; i < results.length; i++) {
-      const fetched = results[i]!.fetched;
-      if (!fetched.rowId || fetched.data == null) continue;
-      const rowData = fetched.data as Record<string, unknown>;
-      const parsedRow = parsed[i]!;
-      const transformedRow = transformedRows?.[i];
-      for (let c = 0; c < parsedRow.length; c++) {
-        const targetColIdx = focusedColIdx + c;
-        if (targetColIdx >= this.columnOrder.length) break;
-        const def = this.columnOrder[targetColIdx]!;
-        const newValue: unknown = transformedRow !== undefined
-          ? transformedRow[c]
-          : parsedRow[c]!;
-        if (def.valueSetter) {
-          const field = def.field as string | undefined;
-          const oldValue = field !== undefined ? rowData[field] : undefined;
-          def.valueSetter({
-            data: rowData as TRow, newValue, oldValue, colDef: def as any,
-          });
-        } else if (def.field) {
-          rowData[def.field as string] = newValue;
-        }
-      }
-      updates.push(rowData as TRow);
-    }
-    if (updates.length === 0) return;
-    this.applyTransaction({ update: updates });
-  }
-
-  /** Cycle 10 / Task 5 — copy the current ranges to the system clipboard
-   *  and clear the source cells in a single follow-up transaction.
-   *  Atomicity: the copy fires first; only when its `writeText` resolves
-   *  does the clear `applyTransaction({ update })` follow. If copy
-   *  rejects (no ranges, clipboard unavailable, permission denied), the
-   *  source cells stay untouched — there is no partial-cut state.
-   *
-   *  Cleared cells go through `valueSetter` when the column defines one
-   *  (so apps with rich coercion see the empty string), falling back to
-   *  a direct field assignment of `''`. Rows touched by multiple ranges
-   *  are merged into one update entry per rowId so `applyTransaction`
-   *  sees each row at most once. */
   async cutSelectedRanges(): Promise<void> {
-    if (this.destroyed) return;
-    // Cycle 10 / Task 6 — gate FIRST so the rejection error message is
-    // `clipboard-suppressed` (clearer than the downstream rejection
-    // `copySelectedRangesToClipboard` would emit with the same flag).
-    // The dedup logic on `warnClipboardSuppressed` keeps the console
-    // quiet when both paths fire back-to-back from a Ctrl+X loop.
-    if (this.options.suppressClipboardApi === true) {
-      this.warnClipboardSuppressed('cutSelectedRanges');
-      throw new Error('clipboard-suppressed');
-    }
-    const ranges = this.getCellRanges();
-    if (ranges.length === 0) throw new Error('no-ranges');
-    // Copy first — atomicity hinges on this resolving before we touch
-    // the data. Any rejection (`no-ranges`, `clipboard-unavailable`,
-    // browser permission denial) propagates and the clear never fires.
-    await this.copySelectedRangesToClipboard();
-    if (this.destroyed) return;
-    // Build the union of (rowIndex) across every range, fetch each row
-    // once, and apply the clear in a single transaction. Multiple
-    // ranges hitting the same row + different cols share the same row
-    // object so the column-iteration step accumulates cleared fields.
-    const rowIndexSet = new Set<number>();
-    for (const range of ranges) {
-      for (let i = range.rowStart; i <= range.rowEnd; i++) rowIndexSet.add(i);
-    }
-    const indexArr = Array.from(rowIndexSet);
-    const fetched = await Promise.all(indexArr.map((rowIndex) =>
-      this.workerCoord.getRowByIndex(rowIndex).then((r) => ({ rowIndex, ...r })),
-    ));
-    if (this.destroyed) return;
-    const byIndex = new Map<number, { rowId: string | null; data: unknown | null }>();
-    for (const r of fetched) byIndex.set(r.rowIndex, { rowId: r.rowId, data: r.data });
-    const updatesByRowId = new Map<string, TRow>();
-    for (const range of ranges) {
-      for (let ri = range.rowStart; ri <= range.rowEnd; ri++) {
-        const entry = byIndex.get(ri);
-        if (!entry || !entry.rowId || entry.data == null) continue;
-        // Reuse the already-mutated rowData for ranges that touch the
-        // same row — cleared fields accumulate across iterations.
-        const existing = updatesByRowId.get(entry.rowId);
-        const rowData = (existing ?? entry.data) as Record<string, unknown>;
-        for (const colId of range.colIds) {
-          const def = this.columnDefsMap.get(colId);
-          if (!def) continue;
-          if (def.valueSetter) {
-            const field = def.field as string | undefined;
-            const oldValue = field !== undefined ? rowData[field] : undefined;
-            def.valueSetter({
-              data: rowData as TRow, newValue: '', oldValue, colDef: def as any,
-            });
-          } else if (def.field) {
-            rowData[def.field as string] = '';
-          }
-        }
-        updatesByRowId.set(entry.rowId, rowData as TRow);
-      }
-    }
-    if (updatesByRowId.size === 0) return;
-    this.applyTransaction({ update: Array.from(updatesByRowId.values()) });
+    return this.selectionFacade.cutSelectedRanges();
   }
 
-  /** Cycle 10 / Task 6 — resolved `suppressClipboardPaste`. Reads the
-   *  option live so a runtime `setGridOption('suppressClipboardPaste',
-   *  true)` shows up immediately. Mirrors the boolean shape on
-   *  `DefaultMenuGrid`. */
-  isClipboardPasteSuppressed(): boolean {
-    return this.options.suppressClipboardPaste === true;
-  }
-
-  /** Cycle 10 / Task 6 — emit a one-time `console.warn` per clipboard
-   *  API method gated by `suppressClipboardApi`. Subsequent rejections
-   *  from the same method stay silent so a Ctrl+C polling loop or a
-   *  retry handler doesn't flood the console. */
-  private warnClipboardSuppressed(method: string): void {
-    if (this.clipboardSuppressedWarned.has(method)) return;
-    this.clipboardSuppressedWarned.add(method);
-    console.warn(`[velocity-grid] ${method} suppressed by suppressClipboardApi`);
-  }
-
-  /** Cycle 9 / Task 7 — fan `rangeSelectionChanged` out to listeners and
-   *  drive the `cellSelectionChanged` debounce. Called from feature code
-   *  (RangeSelection / FillHandle) at gesture start / mid / end, and from
-   *  the programmatic mutation paths (`addCellRange`, `clearCellRanges`,
-   *  `selectColumn`). The ranges snapshot is fresh on every call so
-   *  listeners that retain the payload don't see later mutations.
-   *  `cellSelectionChanged` fires only when `finished: true` AND the
-   *  range set is actually different from the last finished emission. */
   private emitRangeSelectionChanged(started: boolean, finished: boolean): void {
-    if (this.destroyed) return;
-    const ranges = this.selection.getRanges();
-    this.events.emit({ type: 'rangeSelectionChanged', ranges, started, finished });
-    if (!finished) return;
-    if (rangesEqual(ranges, this.lastEmittedCellSelectionRanges)) return;
-    // Deep-clone so a later in-place mutation on the SelectionModel can't
-    // false-equal the snapshot and silently suppress a future event.
-    this.lastEmittedCellSelectionRanges = ranges.map((r) => ({
-      rowStart: r.rowStart,
-      rowEnd: r.rowEnd,
-      colIds: r.colIds.slice(),
-    }));
-    this.events.emit({ type: 'cellSelectionChanged', ranges: this.selection.getRanges() });
+    this.selectionFacade.emitRangeSelectionChanged(started, finished);
   }
+
+  async exportDataAsCsv(params: ExportCsvParams = {}): Promise<void> {
+    return this.selectionFacade.exportDataAsCsv(params);
+  }
+
+  async exportDataAsExcel(params: ExportExcelParams = {}): Promise<void> {
+    return this.selectionFacade.exportDataAsExcel(params);
+  }
+
+  getCellRanges(): SelectionRange[] {
+    return this.selectionFacade.getCellRanges();
+  }
+
+  async getDataAsCsv(params: ExportCsvParams = {}): Promise<string> {
+    return this.selectionFacade.getDataAsCsv(params);
+  }
+
+  async getDataAsExcel(params: ExportExcelParams = {}): Promise<Blob> {
+    return this.selectionFacade.getDataAsExcel(params);
+  }
+
+  getFocusedCell(): { rowId: string; colId: string } | null {
+    return this.selectionFacade.getFocusedCell();
+  }
+
+  isClipboardPasteSuppressed(): boolean {
+    return this.selectionFacade.isClipboardPasteSuppressed();
+  }
+
+  async pasteFromClipboard(): Promise<void> {
+    return this.selectionFacade.pasteFromClipboard();
+  }
+
+  setFocusedCell(rowId: string, colId: string): void {
+    this.selectionFacade.setFocusedCell(rowId, colId);
+  }
+
 
   refresh(): void { this.cgridCanvas.requestRepaint(); }
 
-  /**
-   * Damage-region rendering — record a full-surface repaint on the ledger
-   * and request the next frame. Equivalent to today's `refresh()`/
-   * `requestRepaint()` but goes through the ledger so a `suppressPartialRepaint`
-   * flip mid-frame-batch can't leave stale partial damage queued underneath
-   * a full one (`DamageLedger.add({kind:'full'})` clears any pending entries).
-   */
-  private repaintFull(): void {
-    this.damageLedger.add({ kind: 'full' });
-    this.cgridCanvas?.requestRepaint();
-  }
+  // ── paint driver facade ────────────────────────────────────────────────
+  // The frame pipeline lives in `host/paintDriver.ts`. These keep the host's
+  // published surface intact; internal call sites go straight to the driver.
 
-  /**
-   * Damage-region rendering — record damage for a set of DATA-row indices
-   * (same index space as `cellAt`'s `rowIndex` / the chunk's `rowStart`-
-   * relative local index) and request the next frame. `suppressPartialRepaint`
-   * degrades this to a full repaint. No call site migrates to this helper
-   * in this task — it's plumbed for later tasks (hover/selection/scroll).
-   */
+  private repaintFull(): void { this.paintDriver.repaintFull(); }
+
   private repaintRows(rowIndices: number[]): void {
-    // Cycle 22 / Task 3 — rowVersionByRowId contract: 'rows' damage bumps
-    // every damaged row's strip version, so a Tier-2 strip captured before
-    // this damage can never be consumed again (the next layer raster of
-    // the row paints live and re-captures). Deliberately ABOVE the
-    // suppressPartialRepaint short-circuit: while suppressed the grid
-    // paints through the legacy full path (strips dormant), but retained
-    // strips + versions must keep tracking damage or flipping the option
-    // back off would consume pre-flip pixels at matching versions. Zero
-    // cost when strips are off.
-    if (this.rasterStrips !== null) {
-      for (const r of rowIndices) {
-        const id = this.stringRowIdAt(r);
-        if (id !== null && id !== '') {
-          this.rowVersionByRowId.set(id, (this.rowVersionByRowId.get(id) ?? 0) + 1);
-        }
-      }
-    }
-    if (this.options.suppressPartialRepaint) { this.repaintFull(); return; }
-    this.damageLedger.add({ kind: 'rows', rowIndices });
-    this.cgridCanvas.requestRepaint();
+    this.paintDriver.repaintRows(rowIndices);
   }
 
-  /**
-   * Damage-region rendering — record damage for a set of (rowId, colId)
-   * cells and request the next frame. `suppressPartialRepaint` degrades
-   * this to a full repaint. No call site migrates to this helper in this
-   * task — it's plumbed for later tasks (flash, cell edits, formula recalc).
-   */
   private repaintCells(cells: Array<{ rowId: number; colId: string }>): void {
-    // Cycle 22 / Task 3 — rowVersionByRowId contract ('cells' damage) +
-    // patch-on-tick. Runs BEFORE the ledger add / repaint request, so the
-    // layer raster that consumes the resolved cell rects on the next frame
-    // already sees the advanced versions (and, when the patch succeeded,
-    // an up-to-date strip that HITS at the new version instead of forcing
-    // a full row re-raster). ABOVE the suppressPartialRepaint
-    // short-circuit for the same reason as `repaintRows` — retained
-    // strips must keep tracking damage while suppressed.
-    if (this.rasterStrips !== null && cells.length > 0) {
-      this.applyStripCellDamage(cells);
-    }
-    if (this.options.suppressPartialRepaint) { this.repaintFull(); return; }
-    this.damageLedger.add({ kind: 'cells', cells });
-    this.cgridCanvas.requestRepaint();
+    this.paintDriver.repaintCells(cells);
   }
 
-  /**
-   * Cycle 22 / closeout I-4 — the flash-fade per-rAF repaint path.
-   * Identical to `repaintCells` MINUS the Tier-2 strip bookkeeping: a fade
-   * frame carries NO content change — the ORIGINAL tick's damage already
-   * bumped the row version and patched (or dropped) the strip — so per-rAF
-   * version bumps and re-patches of the same settled span (~90 frames per
-   * 1.5s fade, `localByNumericId` rebuilt O(chunk) each) are pure hot-path
-   * waste, and a version bump WITHOUT the matching patch would force a
-   * needless full-row re-raster at fade settle. While the fade runs the
-   * row is strip-ineligible (live flash) and paints live; at settle the
-   * strip patched at tick time hits at the still-current version. Visible
-   * fade behavior is untouched — same ledger damage, same repaint request.
-   * (`api.flashCells` without a data change is also correct here: nothing
-   * changed, so the retained strip's settled pixels stay valid.)
-   */
-  private repaintCellsFlashFade(cells: Array<{ rowId: number; colId: string }>): void {
-    if (this.options.suppressPartialRepaint) { this.repaintFull(); return; }
-    this.damageLedger.add({ kind: 'cells', cells });
-    this.cgridCanvas.requestRepaint();
+  private getRasterCellsCtx(): RasterCellsCtx | null {
+    return this.paintDriver.getRasterCellsCtx();
   }
 
-  /**
-   * Cycle 22 / closeout I-3 — re-capture seam for rows whose tick-time
-   * strip patch BAILED (icon cell, last-in-band damaged column, fractional
-   * geometry — the strip was dropped, correctly). While such a row keeps
-   * flashing it is strip-ineligible, and once settled nothing ever damages
-   * it full-width again: cell-sized fade rects can never re-capture, so
-   * the row would paint live at EVERY subsequent raster — the exact
-   * "stripPatches = 0 and strips stay cold under steady ticking" shape the
-   * closeout measured on the live feed. Called from the flash registry
-   * when a row's last flash expires (it is eligible again): if the strip
-   * is still current (the tick-time patch SUCCEEDED), do nothing — a row
-   * repaint would only bump the version and waste the patch. Otherwise
-   * issue one row-level repaint; the resulting full-width raster of the
-   * settled row re-captures it, and every later raster HITS.
-   */
-  private recaptureSettledFlashRows(rowIds: number[]): void {
-    const strips = this.rasterStrips;
-    const chunk = this.chunk;
-    if (strips === null || !strips.available || chunk === null) return;
-    let rowIndices: number[] | null = null;
-    for (const nid of rowIds) {
-      // O(chunk) per settled row is fine: settle batches are small (a few
-      // rows per flash generation) and this runs once per generation, not
-      // per rAF.
-      let local = -1;
-      for (let i = 0; i < chunk.rowCount; i++) {
-        if (chunk.rowIds[i] === nid) { local = i; break; }
-      }
-      if (local === -1) continue; // scrolled out of the window — nothing retained to warm
-      const sid = chunk.stringRowIds?.[local];
-      if (sid === undefined || sid === null || sid === '') continue;
-      const version = this.rowVersionByRowId.get(sid) ?? 0;
-      if (strips.get(sid, version, this.stripLayoutEpoch) !== null) continue; // patched & current — keep it
-      (rowIndices ??= []).push(chunk.rowStart + local);
-    }
-    if (rowIndices !== null) this.repaintRows(rowIndices);
+  private getRasterStripsCtx(): RasterStripsCtx | null {
+    return this.paintDriver.getRasterStripsCtx();
   }
 
-  /**
-   * Cycle 22 / Task 3 — the cell-damage half of the Tier-2 bookkeeping.
-   * For every damaged (numeric rowId, colId) cell that resolves into the
-   * current chunk window:
-   *  1. bump the row's `rowVersionByRowId` entry (once per row per call);
-   *  2. when a strip is retained for the row, PATCH the damaged cell spans
-   *     in place — repaint just those spans inside the strip via the live
-   *     cell painter (flash suppressed: a strip must only ever hold the
-   *     row's SETTLED pixels) and advance the stored version so the next
-   *     consume hits without a full row re-raster;
-   *  3. when ANY span can't be patched safely (column not fully visible in
-   *     its band, last-in-band right edge, icon/rule-indicator cell,
-   *     fractional geometry, a live cross-column dependency — see
-   *     `stripPatchCrossColumnSafe`), drop the strip instead — a bypass is
-   *     a perf miss, a stale strip is a bug.
-   */
-  private applyStripCellDamage(cells: Array<{ rowId: number; colId: string }>): void {
-    const strips = this.rasterStrips;
-    const chunk = this.chunk;
-    if (strips === null || chunk === null) return;
-    // numeric rowId → chunk-local index (numeric ids are the damage keys;
-    // strips + versions key on string rowIds).
-    const localByNumericId = new Map<number, number>();
-    for (let i = 0; i < chunk.rowCount; i++) localByNumericId.set(chunk.rowIds[i]!, i);
-    const colsByLocal = new Map<number, string[]>();
-    for (const c of cells) {
-      const local = localByNumericId.get(c.rowId);
-      if (local === undefined) continue;
-      const list = colsByLocal.get(local);
-      if (list === undefined) colsByLocal.set(local, [c.colId]);
-      else if (!list.includes(c.colId)) list.push(c.colId);
-    }
-    // Carry-forward (Task 1): `patch` maps CSS-px spans onto the strip's
-    // device backing store — it MUST receive the LIVE dpr or strips
-    // corrupt at dpr≠1. Same read discipline as `getRasterCellsCtx`.
-    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
-    // Cycle 22 / closeout I-2 (adjudicated BYPASS) — at non-integer dpr the
-    // patch rounds its span origin (`x0 = round(xCss*dpr)`), so painter
-    // output can land sub-pixel-shifted vs the live raster. Never patch:
-    // drop the strip instead (versions keep tracking; the next full-row
-    // raster re-captures). Capture/consume stay on — they are pure
-    // integer-device-px copies of the layer's own raster.
-    const dprPatchable = Number.isInteger(dpr);
-    // Cycle 22 / closeout N-1 — cross-column dependency bail. The damage
-    // this helper receives is RAW-FIELD-granular (the tick seam derives it
-    // from the worker's flashMask = diffRowFields ∧ column.field), yet a
-    // committed patch advances the strip to FULL-ROW validity at the final
-    // version. Any column whose pixels can change WITHOUT its own field
-    // being flagged — a calc column computed from the ticked field
-    // (fieldless, never flagged by construction) or a row-scope rule STYLE
-    // repainting an unflagged span (the `ruleIndicator` bail in
-    // `patchStripCells` covers indicators only) — would keep PRE-TICK
-    // pixels in its span, and the settle/scroll consume would serve them
-    // at rest. While either hazard is live, never patch: drop the strip
-    // (versions keep tracking; the `onRowsSettled` recapture heals the row
-    // with one full-width raster — Run C measured recapture alone as
-    // sufficient to sustain the Tier-2 win). A bypass is a perf miss, a
-    // stale strip is a bug.
-    const crossColumnSafe = this.stripPatchCrossColumnSafe();
-    for (const [local, colIds] of colsByLocal) {
-      const rowId = chunk.stringRowIds?.[local];
-      if (rowId === undefined || rowId === null || rowId === '') continue;
-      const rowIndex = chunk.rowStart + local;
-      const newVersion = (this.rowVersionByRowId.get(rowId) ?? 0) + 1;
-      this.rowVersionByRowId.set(rowId, newVersion);
-      if (!strips.available || !strips.has(rowId)) continue;
-      if (!dprPatchable || !crossColumnSafe
-        || !this.patchStripCells(strips, rowIndex, rowId, newVersion, colIds, dpr)) {
-        strips.invalidateRow(rowId);
-      }
-    }
+  buildLayerViewport(geometry: LayerGeometry): ViewportState {
+    return this.paintDriver.buildLayerViewport(geometry);
   }
 
-  /**
-   * Cycle 22 / closeout N-1 — is a cell-granular strip patch safe against
-   * cross-column dependencies? `false` (BYPASS — the caller drops the
-   * strip instead of patching) whenever:
-   *  - a calc-column provider is registered AND at least one of its
-   *    synthesized (fieldless) calc columns is VISIBLE: its value can
-   *    change when a raw input field ticks, but the flashMask never flags
-   *    it, so its span would survive a patch with pre-tick pixels;
-   *  - a rule engine is registered with ≥1 rule — row-scope rule styles
-   *    can repaint spans whose own field never ticked. An engine that
-   *    doesn't expose `getRules` (a paint-only adapter) has an UNKNOWN
-   *    rule set — ambiguous, and ambiguous means BYPASS;
-   *  - ANY visible column carries a compiled format program (string-DSL
-   *    `_formatProgram` or composite `_compositeProgram`): every program
-   *    evaluates against the FULL row (`FormatEvalCtxShape.row` — e.g.
-   *    `[color=[qty] > 100]` on the price column), so a tick on field A
-   *    can restyle column B's span without B ever being flagged. The
-   *    `tiers` flags CANNOT prove row-independence — the `=expr`
-   *    value-formatter form is tier0-flagged yet evaluates against the
-   *    row — so per the house rule (ambiguous means BYPASS) ANY compiled
-   *    program bails; a compile-time `usesRowFields` flag on
-   *    `FormatProgramShape` (precedented by `hasRuleRefs`) is the filed
-   *    refinement that would re-enable patching for value-only programs.
-   * Cheap: runs once per damage batch (not per span); the format scan is
-   * O(visible columns), and all three slots are empty for grids that
-   * never wire @wellsfargo-starui/velocity-grid-format / @wellsfargo-starui/velocity-grid-calc / @wellsfargo-starui/velocity-grid-rules.
-   */
-  private stripPatchCrossColumnSafe(): boolean {
-    const engine = getRuleEngine();
-    if (engine !== null) {
-      const rules = engine.getRules?.();
-      if (rules === undefined || rules.length > 0) return false;
-    }
-    const visible = this.viewport.visibleColumns;
-    for (const col of visible) {
-      const def = this.columnDefsMap.get(col.colId);
-      if (def !== undefined
-        && (def._formatProgram !== undefined || def._compositeProgram !== undefined)) {
-        return false;
-      }
-    }
-    const provider = getCalcProvider();
-    if (provider !== null) {
-      const synthesized = provider.synthesizedColDefs();
-      if (synthesized.length > 0) {
-        for (const def of synthesized) {
-          const colId = def.colId;
-          if (typeof colId === 'string' && visible.some((c) => c.colId === colId)) return false;
-        }
-      }
-    }
-    return true;
-  }
+  /** Damage-region rendering — snapshot of cumulative paint telemetry. See
+   *  `PaintStats` for field semantics. Returns a shallow copy so callers
+   *  can't mutate the live counters. */
+  getPaintStats(): PaintStats { return this.paintDriver.getPaintStats(); }
 
-  /**
-   * Cycle 22 / Task 3 — patch every damaged cell span of one retained
-   * strip in place. Reproduces EXACTLY what the live layer raster lays
-   * down for that span, in the same order: row bg fill → cell painter
-   * (the Tier-1/live cell paint, bounds rebased to the span origin, flash
-   * suppressed) → the span's slice of the row's bottom horizontal
-   * gridline → the column's interior right-edge vertical. Returns `false`
-   * on ANY ambiguity — the caller drops the strip so it can never go
-   * stale (the version was already bumped; the next full-row raster
-   * re-captures).
-   */
-  private patchStripCells(
-    strips: RowStripCache,
-    rowIndex: number,
-    rowId: string,
-    newVersion: number,
-    colIds: string[],
-    dpr: number,
-  ): boolean {
-    const vs = this.viewport;
-    const theme = this.theme;
-    // NOTE: deliberately NOT gated on `stripRowEligible` — a FLASHING
-    // row's strip is exactly what patch-on-tick exists for: the row
-    // paints live (bypass) while the flash runs, and the patched strip
-    // (settled pixels, new version) hits the moment the flash fades. An
-    // active quick filter can't reach here: activating it bumps the
-    // layout epoch (wiping every strip), so `strips.has()` upstream
-    // already returned false.
-    const hCss = this.rowHeightAt(rowIndex);
-    // The strip's device height must match what this row's patch assumes,
-    // and the gridline math below assumes integer CSS geometry (the
-    // overwhelmingly common case — fractional layouts bypass).
-    if (!Number.isInteger(hCss) || hCss <= 0) return false;
-    // Closeout M-3 — the capture rounds its DEVICE origin from the row's
-    // absolute top, while the patch paints its bottom hairline at
-    // span-local `hCss - 1`: with a FRACTIONAL row top (measured/wrapped
-    // heights somewhere above this row) the two roundings can disagree by
-    // one device px at dpr > 1. Same conservative bypass as fractional
-    // heights — a bail is a perf miss, a shifted hairline is a bug.
-    const rowTopCss = this.rowHeightIndex !== null
-      ? this.rowHeightIndex.topOf(rowIndex)
-      : rowIndex * (this.options.rowHeight ?? this.theme.rowHeight);
-    if (!Number.isInteger(rowTopCss)) return false;
-    // Band split mirrors byRows: a column's interior right-edge vertical
-    // only exists for non-last-in-band columns; the last column's right
-    // edge is a band boundary (pinned-edge borderColor line / canvas edge)
-    // — conservative bypass rather than reproducing that logic here.
-    const leftPinned: typeof vs.visibleColumns = [];
-    const center: typeof vs.visibleColumns = [];
-    const rightPinned: typeof vs.visibleColumns = [];
-    for (const col of vs.visibleColumns) {
-      if (col.pinned === 'left') leftPinned.push(col);
-      else if (col.pinned === 'right') rightPinned.push(col);
-      else center.push(col);
-    }
-    const rowData = this.rowDataSnapshotAt(rowIndex);
-    const ruleRow = (this.rowDataById.get(rowId) as Record<string, unknown> | undefined) ?? rowData;
-    // Closeout I-3 — count spans locally and commit to PaintStats only when
-    // the WHOLE row patched: a later column's bail drops the strip, so
-    // spans painted before it never serve a pixel. Committing per-span
-    // inflated `stripPatches` on rows that ultimately bailed (the live-feed
-    // probe run showed 55 "patches" from rows that all bailed last-in-band
-    // — semantically zero).
-    let patchedSpans = 0;
-    for (const colId of colIds) {
-      const col = vs.visibleColumns.find((c) => c.colId === colId);
-      if (col === undefined) return false; // column not visible → span unknown
-      const band = col.pinned === 'left' ? leftPinned : col.pinned === 'right' ? rightPinned : center;
-      if (band[band.length - 1] === col) return false; // last-in-band → band-edge line, bypass
-      // Center-band cells clipped at a pinned boundary paint partially
-      // live — a full-span patch would repaint clipped pixels. Bypass.
-      if (col.pinned === undefined && (col.left < vs.bodyLeft || col.right > vs.bodyRight)) return false;
-      if (!Number.isInteger(col.left) || !Number.isInteger(col.width)) return false;
-      const def = this.columnDefsMap.get(colId);
-      if (def === undefined) return false;
-      const cell = this.cellAt(rowIndex, colId);
-      const value = cell?.value ?? '';
-      const valueFormatted = cell?.valueFormatted ?? '';
-      // Closeout I-3 — bail only when a cell icon WOULD DRAW for this
-      // cell's current value (byRows' exact decision, shared via
-      // `resolveDrawableCellIcon`): the icon draws OVER the painter at
-      // live coords, which the patch closure does not reproduce. The old
-      // `typeof def.cellIcon === 'function'` existence test killed
-      // patch-on-tick in production (stripPatches=0 on the live feed):
-      // format-compiled columns synthesize the fn on EVERY def — it
-      // returns null unless the format carries an icon() — and every
-      // ticking numeric column is format-compiled, so the first tick
-      // dropped the strip and cell-sized rasters could never recapture.
-      if (resolveDrawableCellIcon(def as ResolvedColDef, {
-        value, data: (rowData ?? {}) as never, colId,
-        rowId, themeKind: this.getThemeKind(),
-      }) !== null) return false; // icon draws over the painter — live only
-      let rendererName: string;
-      let params: unknown;
-      if (def.cellRendererSelector) {
-        const selected = def.cellRendererSelector({ value, colId, data: null });
-        rendererName = selected?.component ?? def.cellRenderer;
-        params = selected?.params !== undefined ? selected.params : def.cellRendererParams;
-      } else {
-        rendererName = def.cellRenderer;
-        params = def.cellRendererParams;
-      }
-      // Strip rows are eligible-only (plain data rows), so the bg is the
-      // plain zebra — never hover/selection (those rows have no strips).
-      const rowBg = rowIndex % 2 === 1 ? theme.rowAltBg : theme.bg;
-      const config: CellPaintConfig = {
-        value: '', valueFormatted: '',
-        bounds: { x: 0, y: 0, w: 0, h: 0 },
-        font: '', fg: '', bg: '', borderColor: '',
-        halign: 'left', prefillColor: '',
-        isFocused: false, isSelected: false, isHovered: false, isHeader: false,
-      };
-      applyCellProps(config, {
-        theme,
-        colDef: def as ResolvedColDef,
-        value,
-        valueFormatted,
-        // Span-origin bounds — the patch CTM (`setTransform(dpr,0,0,dpr,
-        // x0,0)`) lands (0,0,w,h) exactly on the cell's device span, the
-        // same rebase discipline as a Tier-1 miss render.
-        x: 0, y: 0, w: col.width, h: hCss,
-        rowBg,
-        prefillColor: rowBg,
-        isFocused: false, isSelected: false, isHovered: false, isHeader: false,
-        iconColor: theme.focusRingColor,
-        // Flash suppressed by contract: the strip holds the SETTLED cell.
-        // While the flash is live the row is ineligible and paints live;
-        // once it fades, the next consume blits this settled patch.
-        flashAlpha: undefined,
-        params,
-        rowData,
-        rowIndex,
-        rowId,
-        ruleRow,
-        themeKind: this.getThemeKind(),
-      });
-      if (config.ruleIndicator !== undefined) return false; // indicator icon → live only
-      const painter = this.cellRenderers.get(rendererName);
-      const wCss = col.width;
-      const colLeft = col.left;
-      const colRight = col.right;
-      const gridLineColor = theme.gridLineColor;
-      const ok = strips.patch(rowId, newVersion, colLeft, wCss, (sgc) => {
-        // Task 4 — flatten over the opaque surface first (the Tier-1 miss
-        // scratch's exact discipline, see `paintCellThroughCache`):
-        // `patch` CLEARS the span to transparent, so opening directly
-        // with a translucent rowBg (cursor-dark's 2%-alpha zebra) would
-        // store double-composited premultiplied pixels that diverge from
-        // the live raster by a few LSB at the next consume. The live
-        // layer raster's op order is: band `theme.bg` fill → row-bg
-        // bundle (only when the row bg differs) → cell painter →
-        // gridlines on top; reproduce it verbatim.
-        sgc.cache.fillStyle = theme.bg;
-        sgc.fillRect(0, 0, wCss, hCss);
-        if (rowBg !== theme.bg) {
-          sgc.cache.fillStyle = rowBg;
-          sgc.fillRect(0, 0, wCss, hCss);
-        }
-        painter.paint(sgc, config);
-        sgc.cache.fillStyle = gridLineColor;
-        // The row's bottom horizontal hairline slice (every in-body data
-        // row paints one at round(row.bottom)-1 → span-local hCss-1).
-        sgc.fillRect(0, hCss - 1, wCss, 1);
-        // The column's interior right-edge vertical at round(col.right)-1
-        // — span-local, exact against the patch's own x0 rounding.
-        const lineX = (dpr * (Math.round(colRight) - 1) - Math.round(colLeft * dpr)) / dpr;
-        sgc.fillRect(lineX, 0, 1, hCss);
-      }, dpr);
-      if (!ok) return false;
-      patchedSpans++;
-    }
-    this.paintStats.stripPatches += patchedSpans;
-    return true;
-  }
+  resetPaintStats(): void { this.paintDriver.resetPaintStats(); }
 
-  /**
-   * Damage-region rendering — builds the live-viewport resolution context
-   * the ledger needs to turn semantic damage (row indices / rowId+colId
-   * cells) into merged clip rects at paint time. Reading `this.viewport` /
-   * `this.chunk` / `this.canvasBounds` fresh on every paint (rather than
-   * caching) means damage recorded before a scroll or column resize still
-   * resolves against CURRENT geometry.
-   */
-  private buildDamageResolveCtx(): DamageResolveCtx {
-    const vs = this.viewport;
-    // M3 (closeout review, SKIPPED — not cheap) — assumes every sticky
-    // ancestor row paints at the uniform `theme.rowHeight`. Under
-    // variable/autoHeight row heights, a taller ancestor row makes this
-    // underestimate the band, so the scroll-redamage band
-    // (`DamageLedger.takeResolved`'s unconditional sticky-band push) can
-    // fall short and leave a stale lower sticky row for one frame. A real
-    // fix needs a source row index on `StickyAncestor` (currently only
-    // `depth`/`key`/`colId`/`value`/`childCount`/`isExpanded` — see
-    // `worker/protocol.ts`) threaded from the worker's
-    // `computeStickyAncestors` so this could sum `RowHeightIndex` entries
-    // instead of multiplying by a constant — a worker↔main wire-protocol
-    // change out of scope for this fix wave's Minor-severity bar. The
-    // renderer's own `paintStickyGroups` makes the identical
-    // uniform-height assumption (`ancestors.length * rowH`), so this stays
-    // internally consistent (the redamage band matches what's painted)
-    // even though both are wrong together under autoHeight groups.
-    const stickyBandBottom = this.stickyAncestors.length > 0
-      ? vs.bodyTop + this.stickyAncestors.length * this.theme.rowHeight
-      : null;
-    return {
-      canvasWidth: this.canvasBounds.width,
-      canvasHeight: this.canvasBounds.height,
-      dpr: (typeof window !== 'undefined' && window.devicePixelRatio) || 1,
-      bodyTop: vs.bodyTop,
-      bodyBottom: vs.bodyBottom,
-      bodyLeft: vs.bodyLeft,
-      bodyRight: vs.bodyRight,
-      // Two-domain damage (Task 2/4) — `scrollTop` pivots the screen↔
-      // content transform (`screenYToContentY`/`dataRectToScreen`).
-      // `layerTop`/`layerHeight` feed the data-domain area cap
-      // (`DamageLedger.takeResolved`) against the LAYER's real extent —
-      // when the retained layer is active this frame, the paint closure
-      // has already applied this paint's `planLayer` decision (reset/
-      // shift geometry mutation) BEFORE calling this method, so
-      // `this.paintCacheLayer.geometry()` reflects the anchor THIS
-      // frame's raster/present will actually use. When the layer isn't
-      // active (option off, unavailable, or construction-time default),
-      // this degrades to the Task-2 placeholder — `layerTop` mirrors the
-      // live scroll position and `layerHeight` mirrors today's body
-      // height, exactly reproducing pre-Task-4 behavior.
-      scrollTop: vs.scrollTop,
-      layerTop: this.paintCacheActive() ? this.paintCacheLayer!.geometry().layerTop : vs.scrollTop,
-      layerHeight: this.paintCacheActive()
-        ? this.paintCacheLayer!.geometry().layerHeight
-        : vs.bodyBottom - vs.bodyTop,
-      // Task 4 — gates the ledger's scroll-exposed-band push (see
-      // `DamageResolveCtx.paintCacheLayerActive`'s doc). While hybrid-
-      // deferred or un-anchored the layer is NOT serving pixels — treat
-      // it inactive so scroll/partial damage still expands correctly and
-      // cannot assume a valid retained present.
-      paintCacheLayerActive: this.paintCacheActive()
-        && this.paintCacheLayerAnchored
-        && !this.paintCacheDeferLayer,
-      stickyBandBottom,
-      // Task 5 — totals-row / static-pinned-row bands (top or bottom
-      // position), derived from the live viewport's non-data subgrid rows.
-      pinnedBandRects: this.buildPinnedBandRects(vs),
-      rowBand: (localRowIndex) => {
-        const row = vs.visibleRows.find(
-          (r) => r.subgrid.isData && r.localRowIndex === localRowIndex,
-        );
-        return row ? { top: row.top, bottom: row.bottom } : null;
-      },
-      rowIndexForRowId: (rowId) => {
-        const chunk = this.chunk;
-        if (!chunk) return null;
-        for (let i = 0; i < chunk.rowIds.length; i++) {
-          if (chunk.rowIds[i] === rowId) return chunk.rowStart + i;
-        }
-        return null;
-      },
-      colBounds: (colId) => {
-        const col = vs.visibleColumns.find((c) => c.colId === colId);
-        return col ? { x: col.left, w: col.width } : null;
-      },
-      // Task 6 (pixel-invariance harness fix) — any visible row (not just
-      // data rows, unlike `rowBand` above) whose band strictly contains
-      // `y`. Lets `DamageLedger.expand()` snap a bleed-expanded edge that
-      // lands mid-row out to that row's full bounds instead of clipping
-      // through the middle of its content.
-      rowBoundsAtY: (y) => {
-        const row = vs.visibleRows.find((r) => y > r.top && y < r.bottom);
-        return row ? { top: row.top, bottom: row.bottom } : null;
-      },
-      // I1 fix — horizontal mirror of `rowBoundsAtY`: the visible column
-      // whose bounds strictly contain `x`, so `DamageLedger.expand()` can
-      // snap a bleed-expanded vertical edge out to full column bounds.
-      colBoundsAtX: (x) => {
-        const col = vs.visibleColumns.find((c) => x > c.left && x < c.right);
-        return col ? { left: col.left, right: col.right } : null;
-      },
-    };
-  }
-
-  /** Task 5 — pinned/totals band rects for the damage-resolve ctx. Any
-   *  non-data subgrid whose rows are a totals row OR a static pinned row
-   *  (top or bottom position — see `rebuildSubgridStack`'s stack-order
-   *  comment) contributes one full-width rect spanning the min/max
-   *  top/bottom of its visible rows THIS frame. Header + floating-filter
-   *  subgrids are excluded — they sit entirely above `bodyTop`, never
-   *  touched by the scroll blit, so redamaging them every scroll frame
-   *  would be pure waste. Returns `[]` when the grid has neither (the
-   *  common case) so the ledger's band-atomic-extend logic (§4.4) and the
-   *  Task 5 unconditional-scroll-redamage are both no-ops. */
-  private buildPinnedBandRects(vs: ViewportState): Rect[] {
-    const bands = new Map<Subgrid, { top: number; bottom: number }>();
-    for (const row of vs.visibleRows) {
-      const sg = row.subgrid;
-      if (sg.isData) continue;
-      if (!sg.isTotals && !(sg instanceof PinnedRowsSubgrid)) continue;
-      const cur = bands.get(sg);
-      if (!cur) bands.set(sg, { top: row.top, bottom: row.bottom });
-      else {
-        if (row.top < cur.top) cur.top = row.top;
-        if (row.bottom > cur.bottom) cur.bottom = row.bottom;
-      }
-    }
-    const rects: Rect[] = [];
-    for (const b of bands.values()) {
-      rects.push({ x: 0, y: b.top, w: this.canvasBounds.width, h: b.bottom - b.top });
-    }
-    return rects;
-  }
 
   /** Cycle 11 / Task 5 — re-render a mounted tool panel. Forwards to
    *  the live instance's `refresh()`; silent no-op when no side bar
@@ -8341,7 +6483,7 @@ export class VelocityGrid<TRow = any> {
    *  status bar → pivot panel → row group panel → column headers →
    *  body. Bottom inset is `statusBarInsets.bottom` alone (no
    *  panel contribution). */
-  private applyVerticalInsets(): void {
+  applyVerticalInsets(): void {
     // AG-Grid parity — in pivot mode, the row group panel and pivot
     // panel share ONE 32-px strip side-by-side (row groups on the
     // left half, column labels on the right half, separated by a
@@ -8443,7 +6585,7 @@ export class VelocityGrid<TRow = any> {
     // strips hold the OLD painter's pixels at unchanged keys. Harmless at
     // boot (the store is empty). Tier 1 needs no bump: an override clears
     // `cacheableNames`, so those cells bypass the bitmap cache entirely.
-    if (this.rasterStrips !== null) this.stripLayoutEpochBump();
+    if (this.rasterStrips !== null) this.paintDriver.stripLayoutEpochBump();
     this.cgridCanvas?.requestRepaint();
   }
 
@@ -8497,7 +6639,7 @@ export class VelocityGrid<TRow = any> {
     // swapping) the rule engine post-boot activates the rule fold for
     // every cell, but retained strips hold pre-fold pixels at unchanged
     // keys. Harmless at boot (the store is empty).
-    if (this.rasterStrips !== null) this.stripLayoutEpochBump();
+    if (this.rasterStrips !== null) this.paintDriver.stripLayoutEpochBump();
     this.cgridCanvas?.requestRepaint();
   }
 
@@ -8604,9 +6746,9 @@ export class VelocityGrid<TRow = any> {
           || next.rowAltBg !== this.theme.rowAltBg;
         if (changed) {
           this.theme = next;
-          this.rasterCacheEpochBump();
+          this.paintDriver.rasterCacheEpochBump();
           this.recomputeViewport();
-          this.repaintFull();
+          this.paintDriver.repaintFull();
           return;
         }
         if (framesLeft > 0) attempt(framesLeft - 1);
@@ -8631,7 +6773,7 @@ export class VelocityGrid<TRow = any> {
     // Cycle 22 / Task 2 — any theme re-read is a raster-cache epoch: the
     // per-cell keys cover fg/bg/font, but theme-scoped colors
     // (checkboxCheckedBg, group*, emptyFg, palette) ride the epoch.
-    this.rasterCacheEpochBump();
+    this.paintDriver.rasterCacheEpochBump();
     this.recomputeViewport();
     this.cgridCanvas.requestRepaint();
     // Cycle 21i / Phase 1 — theme-token overrides ride in the GridState
@@ -8766,7 +6908,7 @@ export class VelocityGrid<TRow = any> {
     this.theme = this.cssReader.read();
     // Cycle 22 / Task 2 — theme mode swap is a raster-cache epoch (same
     // trigger family as the paint-cache layer reset below).
-    this.rasterCacheEpochBump();
+    this.paintDriver.rasterCacheEpochBump();
     this.recomputeViewport();
     // Task 4 (paint-cache layer) — a theme swap is one of the layer's
     // required reset triggers; `repaintFull()` (not a bare
@@ -8775,7 +6917,7 @@ export class VelocityGrid<TRow = any> {
     // so the paint closure's `damage.full`-driven layer reset actually
     // fires. Also closes a latent gap in the base damage system itself —
     // previously a theme swap relied on the ledger happening to be empty.
-    this.repaintFull();
+    this.paintDriver.repaintFull();
   }
 
   /** Theming Task 6/7 — imperatively force the active `themeObject` to
@@ -8806,12 +6948,12 @@ export class VelocityGrid<TRow = any> {
     this.theme = this.cssReader.read();
     // Cycle 22 / Task 2 — theme swap is a raster-cache epoch (same
     // trigger family as the paint-cache layer reset below).
-    this.rasterCacheEpochBump();
+    this.paintDriver.rasterCacheEpochBump();
     this.options.theme = theme;
     this.recomputeViewport();
     // Task 4 — see `applyThemeModeSwap`'s doc: a theme change is a
     // required paint-cache-layer reset trigger.
-    this.repaintFull();
+    this.paintDriver.repaintFull();
   }
 
   /** Cycle 22 / Task 2 — swap the density-mode class on the root.
@@ -8832,13 +6974,13 @@ export class VelocityGrid<TRow = any> {
     // Cycle 22 / Task 2 — density re-reads the theme (row heights change
     // cell bounds — already in the key — but padding/font tokens can move
     // too): raster-cache epoch.
-    this.rasterCacheEpochBump();
+    this.paintDriver.rasterCacheEpochBump();
     this.recomputeViewport();
     // Task 4 — density changes row/header height, which is functionally
     // a resize for the paint-cache layer (its own reset condition already
     // fires on a `layerHeight` mismatch, but forcing full here keeps the
     // BASE damage system honest too — see `applyThemeModeSwap`'s doc).
-    this.repaintFull();
+    this.paintDriver.repaintFull();
   }
 
   /** Read any grid option (runtime or initial). Mirrors ag-grid's
@@ -9041,7 +7183,7 @@ export class VelocityGrid<TRow = any> {
         // `getGridOption('pinnedBottomRowData')` keeps moving.
         this.rebuildSubgridStack();
         this.recomputeViewport();
-        this.repaintFull();
+        this.paintDriver.repaintFull();
         this.cgridCanvas?.paintNow();
       },
       /** Value-only pinned-row refresh — no stack remount. */
@@ -9070,8 +7212,8 @@ export class VelocityGrid<TRow = any> {
       updateRowGroupPanelSuppressSort: (suppress) =>
         this.rowGroupPanel?.setRenderOptions({ suppressSort: suppress }),
       updateGroupSelectsChildren: (enabled) => this.applyGroupSelectsChildren(enabled),
-      resetPaintCacheLayer: () => this.resetPaintCacheLayer(),
-      resetRasterCache: () => this.resetRasterCache(),
+      resetPaintCacheLayer: () => this.paintDriver.resetPaintCacheLayer(),
+      resetRasterCache: () => this.paintDriver.resetRasterCache(),
     };
   }
 
@@ -9132,7 +7274,7 @@ export class VelocityGrid<TRow = any> {
     // resolved geometry differing (which is why the `columnLayout`
     // setter's equality guard alone can't cover this site) — bump
     // unconditionally.
-    if (this.rasterStrips !== null) this.stripLayoutEpochBump();
+    if (this.rasterStrips !== null) this.paintDriver.stripLayoutEpochBump();
     const prevLeaves = this.columnDefsMap as Map<string, ResolvedColDef<TRow>> | undefined;
     // Cycle 21d / Task 9 — same calc-provider fold as the constructor path.
     this.columnTree = resolveColumnTree(foldCalcColumnDefs<CColDef<TRow> | CColGroupDef<TRow>>(this.options.columnDefs), defaultColDef ?? this.options.defaultColDef, this.options.columnTypes);
@@ -9177,8 +7319,8 @@ export class VelocityGrid<TRow = any> {
     // equal — the setter's geometry guard would skip wipe. Always
     // invalidate retained paint + full-paint so alignment/move never
     // leave staggered cells from a warm layer or partial tick.
-    this.invalidateRetainedPaintForColumnLayout();
-    this.repaintFull();
+    this.paintDriver.invalidateRetainedPaintForColumnLayout();
+    this.paintDriver.repaintFull();
   }
 
   /** Rebuild the subgrid stack so the header-group row count matches the
@@ -9231,7 +7373,7 @@ export class VelocityGrid<TRow = any> {
     return height;
   }
 
-  private rebuildSubgridStack(): void {
+  rebuildSubgridStack(): void {
     const stack: Subgrid[] = [];
     // Collapse group-header rows when every group is empty of visible
     // leaves (no groups, or all groups unchecked/hidden) so the header
@@ -9344,7 +7486,7 @@ export class VelocityGrid<TRow = any> {
    */
   private repaintPinnedRowBands(): void {
     if (this.options.suppressPartialRepaint) {
-      this.repaintFull();
+      this.paintDriver.repaintFull();
       this.cgridCanvas?.paintNow();
       return;
     }
@@ -9709,8 +7851,8 @@ export class VelocityGrid<TRow = any> {
       isColumnFilterPresent: () => this.isColumnFilterPresent(),
       destroyFilter: (c) => this.destroyFilter(c),
       flashCells: (p) => this.flashCells(p),
-      getPaintStats: () => this.getPaintStats(),
-      resetPaintStats: () => this.resetPaintStats(),
+      getPaintStats: () => this.paintDriver.getPaintStats(),
+      resetPaintStats: () => this.paintDriver.resetPaintStats(),
       ensureRowVisible: (id, pos) => this.ensureRowVisible(id, pos),
       ensureColumnVisible: (id, pos) => this.ensureColumnVisible(id, pos),
       ensureColumnGroupVisible: (id, pos) => this.ensureColumnGroupVisible(id, pos),
@@ -9922,7 +8064,7 @@ export class VelocityGrid<TRow = any> {
    *  (pivot synthesis swaps the tree). Disposes the prior subscription
    *  (if any) so we never accumulate stale listeners. */
   private columnGroupStateUnsubscribe: (() => void) | null = null;
-  private subscribeColumnGroupState(): void {
+  subscribeColumnGroupState(): void {
     if (this.columnGroupStateUnsubscribe) this.columnGroupStateUnsubscribe();
     this.columnGroupStateUnsubscribe = this.columnGroupState.onChange((changed) => {
       // Cycle 22 / Task 3 — layoutEpoch contract: COLUMN-GROUP OPEN/CLOSE
@@ -9930,12 +8072,12 @@ export class VelocityGrid<TRow = any> {
       // geometry; bump explicitly (the `columnLayout` setter below also
       // catches the geometric case, but a toggle whose layout happens to
       // resolve identically must still never reuse pre-toggle strips).
-      if (this.rasterStrips !== null) this.stripLayoutEpochBump();
+      if (this.rasterStrips !== null) this.paintDriver.stripLayoutEpochBump();
       this.columnOrder = this.computeVisibleColumnOrder();
       this.columnLayout = resolveColumnWidths(this.columnOrder, this.canvasBounds.width || this.scroller.clientWidth || 800);
       this.recomputeViewport();
       // columnLayout setter already wiped retained paint; force full.
-      this.repaintFull();
+      this.paintDriver.repaintFull();
       for (const c of changed) {
         this.events.emit({ type: 'columnGroupOpened', groupId: c.groupId, open: c.open });
       }
@@ -9967,7 +8109,7 @@ export class VelocityGrid<TRow = any> {
    *  so column-state mutations remove them from the visible-leaf order
    *  (header + body + layout + hit-test). Hidden leaves still ride
    *  `getColumnState()` so the round-trip is symmetric. */
-  private computeVisibleColumnOrder(): ResolvedColDef<TRow>[] {
+  computeVisibleColumnOrder(): ResolvedColDef<TRow>[] {
     const ids = resolveVisibleLeaves(this.columnTree, this.columnGroupState);
     // The `hide` flag is the sole authority for column visibility —
     // pivot mode is not a special case. Whatever the columns side
@@ -10223,11 +8365,11 @@ export class VelocityGrid<TRow = any> {
     // set (per-key — must NOT materialise knownGroupKeys wholesale, which
     // would expand every other desk when the user clicks the first).
     const currentlyExpanded = this.expandedKeys === null
-      ? this.isKeyExpandedUnderNullSentinel(groupKey)
+      ? this.analytics.isKeyExpandedUnderNullSentinel(groupKey)
       : this.expandedKeys.has(groupKey);
     const next = !currentlyExpanded;
     const materialised = this.expandedKeys === null
-      ? this.materializeExpandedKeysFromNull()
+      ? this.analytics.materializeExpandedKeysFromNull()
       : new Set(this.expandedKeys);
     if (next) materialised.add(groupKey);
     else materialised.delete(groupKey);
@@ -10321,7 +8463,7 @@ export class VelocityGrid<TRow = any> {
    *  row is not currently chunked. Shared by the multipleColumns
    *  per-cell path (`cellAt` for an auto-group column) and the
    *  groupRows full-row strip lookup. */
-  private groupCellContextAt(rowIndex: number): GroupCellValue | null {
+  groupCellContextAt(rowIndex: number): GroupCellValue | null {
     if (!this.chunk) return null;
     const localIndex = rowIndex - this.chunk.rowStart;
     if (localIndex < 0 || localIndex >= this.chunk.rowCount) return null;
@@ -10494,8 +8636,8 @@ export class VelocityGrid<TRow = any> {
    * batch re-triggered ~1.5s of full-repaint-per-frame from the flash
    * fade loop, for a row nobody could see).
    */
-  private repaintGroupFlash(): void {
-    if (this.options.suppressPartialRepaint) { this.repaintFull(); return; }
+  repaintGroupFlash(): void {
+    if (this.options.suppressPartialRepaint) { this.paintDriver.repaintFull(); return; }
     const rows = this.groupFlashRowIndices();
     const band = this.groupFlashTotalsBand();
     if (rows.length === 0 && !band) return;
@@ -10523,8 +8665,8 @@ export class VelocityGrid<TRow = any> {
    * the sticky band (C4) since a changed group total may belong to a
    * pinned ancestor.
    */
-  private repaintAggregateDamage(changedGroupKeys: Set<string>, grandTotalChanged: boolean): void {
-    if (this.options.suppressPartialRepaint) { this.repaintFull(); return; }
+  repaintAggregateDamage(changedGroupKeys: Set<string>, grandTotalChanged: boolean): void {
+    if (this.options.suppressPartialRepaint) { this.paintDriver.repaintFull(); return; }
     const chunk = this.chunk;
     if (chunk && changedGroupKeys.size > 0) {
       const rows: number[] = [];
@@ -10578,7 +8720,7 @@ export class VelocityGrid<TRow = any> {
   isGroupExpanded(groupKey: string): boolean {
     if (this.expandedKeys === null) {
       // CSRM expand-all sentinel; sparse SSRM → per-key default set.
-      return this.isKeyExpandedUnderNullSentinel(groupKey);
+      return this.analytics.isKeyExpandedUnderNullSentinel(groupKey);
     }
     return this.expandedKeys.has(groupKey);
   }
@@ -10611,7 +8753,7 @@ export class VelocityGrid<TRow = any> {
     return [...left, ...center, ...right];
   }
 
-  private workerColumns(): WorkerColumn[] {
+  workerColumns(): WorkerColumn[] {
     // Start from the visible column order. When auto-hide is active (grouped
     // columns are hidden from display), the grouping columns are missing from
     // `columnOrder` but the worker's GroupPass still needs them in its colIndex
@@ -10699,974 +8841,82 @@ export class VelocityGrid<TRow = any> {
     });
   }
 
-  /** Cycle 5 / Task 8 — apply heights pushed from the worker's autoHeight
-   *  pass. Updates the Fenwick index for the affected range and requests a
-   *  repaint. Skips when the index has been wiped between request and
-   *  response (sort/filter/transaction landed in between) — the next
-   *  viewport fetch rebuilds it cleanly. */
-  private onHeightsChanged(rowStart: number, heights: Float32Array): void {
-    const idx = this.rowHeightIndex;
-    if (!idx) return;
-    const fallback = clampRowHeight(this.options.rowHeight ?? this.theme.rowHeight);
-    let any = false;
-    for (let i = 0; i < heights.length; i++) {
-      const globalIdx = rowStart + i;
-      if (globalIdx >= idx.length()) break;
-      const raw = heights[i]!;
-      const resolved = clampRowHeight(raw > 0 ? raw : fallback);
-      if (idx.heightAt(globalIdx) !== resolved) {
-        idx.update(globalIdx, resolved);
-        any = true;
-      }
-    }
-    if (any) {
-      // Mirror into the chunk so DataSubgrid.getRowHeight (which reads
-      // chunk.heights for in-window rows) picks up the new values without
-      // refetching the chunk.
-      if (this.chunk) {
-        for (let i = 0; i < heights.length; i++) {
-          const localIdx = rowStart + i - this.chunk.rowStart;
-          if (localIdx >= 0 && localIdx < this.chunk.heights.length) {
-            this.chunk.heights[localIdx] = clampRowHeight(
-              heights[i]! > 0 ? heights[i]! : fallback,
-            );
-          }
-        }
-      }
-      this.recomputeViewport();
-      this.cgridCanvas.requestRepaint();
-    }
-  }
 
-  /** Cycle 5 / Task 8 — main-thread fallback for `OffscreenCanvas.measureText`.
-   *  Runs the same greedy word-wrap the worker would, using a regular
-   *  `<canvas>` 2D context so Safari 15.4–16.3 + Firefox 100–104 still get
-   *  autoHeight without blocking the worker pipeline. */
-  private onMeasureTextRequest(batchId: number, items: import('./worker/protocol').MeasureTextItem[]): void {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      // No 2D context anywhere — best effort: zero-height response so the
-      // worker resolves and the autoHeight pass exits cleanly.
-      void this.workerCoord.measureTextResponse(batchId, new Float32Array(items.length));
-      return;
-    }
-    const heights = new Float32Array(items.length);
-    let lastFont = '';
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i]!;
-      if (item.font !== lastFont) {
-        ctx.font = item.font;
-        lastFont = item.font;
-      }
-      const measure = (s: string) => ctx.measureText(s).width;
-      heights[i] = wrapTextToHeight(item.text, item.width, item.lineHeight, item.padding, measure);
-    }
-    void this.workerCoord.measureTextResponse(batchId, heights);
-  }
+  // ── data-plane facade ──────────────────────────────────────────────────
+  // Viewport requests, worker chunk ingest, row heights and scroll live in
+  // `host/dataPlaneFacade.ts`. These keep the host's published surface and
+  // its internal collaborators intact; the bodies moved wholesale.
 
-  /** Cycle 19 / Task 2 — delegates to `ViewportManager.recompute`. Kept as
-   *  a thin wrapper so the 50+ internal `this.recomputeViewport()` callsites
-   *  still compile unchanged. The manager owns `computeCurrentViewport` +
-   *  `syncSizer` + `detectVirtualColumnsChanged` + the floating-filter
-   *  re-pin (via the `afterRecompute` dep). */
-  private recomputeViewport(afterScroll: boolean = false): void {
-    this.viewport = this.viewportManager.recompute(afterScroll);
-    // Horizontal-scroll staleness fix (Cycle 22 closeout) — the viewport
-    // now carries a scrollLeft the canvas was NOT last painted at: the
-    // scroll handler's queued FULL damage was consumed by a paint that
-    // ran BEFORE this recompute (the async fetch→chunk round-trip), so it
-    // re-rendered the OLD position and the damage is spent. A diff-armed
-    // chunk reply (`touchedRows` defined — any grid that has ever applied
-    // a transaction, i.e. every live-ticking blotter) then resolves to
-    // row-level damage only, leaving the surface at the old scrollLeft
-    // forever while later row repaints land at the new one — per-row
-    // horizontal misalignment, persistent at rest. Re-queue the full
-    // repaint HERE, the single choke point where `this.viewport` moves,
-    // so no scroll entry point (wheel, API, clamp) can miss it. The
-    // ledger's 'full' entry absorbs/coalesces with any damage already
-    // queued, so the common fast path (chunk lands before the paint, or
-    // an undiffed reply that already resolves 'full') costs nothing
-    // extra. `cgridCanvas` is unassigned during the constructor's first
-    // recompute — nothing has painted yet, the first paint is full anyway.
-    if (
-      this.viewport.scrollLeft !== this.lastPaintedViewportScrollLeft
-      && this.cgridCanvas
-      && !this.destroyed
-    ) {
-      this.repaintFull();
-    }
-    // Column-geometry / style-layout staleness — keep forcing full until a
-    // damage.full paint stamps `lastPaintedLayoutPaintEpoch`. Do NOT
-    // re-bump the epoch here (scroll recomputes every tick); invalidation
-    // sites already advanced it.
-    if (
-      this.layoutPaintEpoch !== this.lastPaintedLayoutPaintEpoch
-      && this.cgridCanvas
-      && !this.destroyed
-    ) {
-      this.repaintFull();
-    }
-  }
-
-  /**
-   * Wipe retained surfaces that embed absolute column x / cell style
-   * (paint-cache layer pixels + layer-viewport memo) and advance
-   * `layoutPaintEpoch` so `recomputeViewport` keeps re-queuing full
-   * paints until a real full frame lands. Does not itself request a
-   * repaint — callers pair with `repaintFull()`.
-   */
-  private invalidateRetainedPaintForColumnLayout(): void {
-    this.layoutPaintEpoch++;
-    this.layerViewportCache = null;
-    this.paintCacheLayerAnchored = false;
-    // Stay on legacy for the whole resize drag — clearing defer here would
-    // let the next frame rebuild/present the layer with mixed widths.
-    this.paintCacheDeferLayer = this.columnResizeDragActive ? true : false;
-    const layer = this.paintCacheLayer;
-    if (layer?.available) {
-      layer.reset(layer.geometry().layerTop);
-    }
-  }
-
-  /** Task 4 (paint-cache layer) — `true` when the retained layer is
-   *  actually usable THIS paint: the option isn't explicitly `false` AND
-   *  the layer's own offscreen-canvas construction succeeded. Every call
-   *  site that decides between the retained-layer frame algorithm and the
-   *  legacy `Renderer.paint()` escape hatch gates on this, never on a bare
-   *  `this.paintCacheLayer !== null` (which stays non-null even for an
-   *  inert, construction-failed instance). */
-  private paintCacheActive(): boolean {
-    return this.options.paintCache !== false && (this.paintCacheLayer?.available ?? false);
-  }
-
-  /** Task 4 (paint-cache layer) — runtime `paintCache` / `paintCacheOverscan`
-   *  flip handler (wired via `RuntimeOptionTarget.resetPaintCacheLayer`).
-   *  Disposes any existing layer instance and, when the option is now
-   *  active, constructs a fresh one — a flip is treated as a full
-   *  teardown/rebuild per the spec (`paintCacheOverscan` changing the
-   *  layer's target height is ALSO a `planLayer` reset condition on its
-   *  own, but disposing here is simpler than trying to reuse a
-   *  differently-sized backing store across an option change apps make
-   *  rarely, if ever, at runtime). `paintCacheLayerAnchored = false` +
-   *  `repaintFull()` force the next paint through a full layer reset +
-   *  full chrome raster, so the flip is never a stale-present frame. */
-  private resetPaintCacheLayer(): void {
-    this.paintCacheLayer?.dispose();
-    this.paintCacheLayer = this.options.paintCache !== false ? new PaintCacheLayer() : null;
-    this.paintCacheLayerAnchored = false;
-    this.paintCacheDeferLayer = false;
-    this.layerViewportCache = null;
-    this.layoutPaintEpoch++;
-    this.repaintFull();
-  }
-
-  /** Cycle 22 / Task 2 — construct both raster-cache tiers from ONE
-   *  shared `RasterBudget` sized by `rasterCacheBudgetMB` (default 48).
-   *  Both stores use the same platform-canvas policy the paint-cache
-   *  layer uses (`defaultCanvasFactory`); construction never throws. */
-  private buildRasterCaches(): void {
-    const mb = this.options.rasterCacheBudgetMB ?? 48;
-    const budget = new RasterBudget(Math.max(1, mb) * 1024 * 1024);
-    this.rasterBudget = budget;
-    this.rasterCells = new CellBitmapCache(budget, defaultCanvasFactory);
-    this.rasterStrips = new RowStripCache(budget, defaultCanvasFactory);
-    this.rasterCellsDpr = 0;
-  }
-
-  /** Cycle 22 / Task 2 — the per-paint Tier-1 handle for the byRows cell
-   *  seam. `null` (⇒ every cell paints live, the exact shipped pipeline)
-   *  when `rasterCache: false` or the store's canvas construction failed.
-   *  Also owns the DPR epoch: a devicePixelRatio change invalidates every
-   *  cached bitmap (they were rasterized at the old dpr — blitting them
-   *  under the new CTM would scale/blur, the C1 lesson's cousin). Reads
-   *  `window.devicePixelRatio` fresh (NOT `cgridCanvas.devicePixelRatio`)
-   *  because the paint closure can run synchronously from inside
-   *  `VelocityGridCanvas`'s own constructor, before `this.cgridCanvas` exists —
-   *  the same gotcha the layer's own dpr read documents. */
-  private getRasterCellsCtx(): RasterCellsCtx | null {
-    const cache = this.rasterCells;
-    if (this.options.rasterCache === false || cache === null || !cache.available) return null;
-    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
-    // Cycle 22 / closeout I-2 (adjudicated BYPASS) — at non-integer dpr
-    // (Windows 125%/150% scaling) the hit blit's CSS-px dest rect maps to a
-    // FRACTIONAL device origin, so `drawImage` resamples: hit pixels would
-    // not be byte-identical to a live paint. Tier 1 goes fully dormant
-    // (every cell paints live — the shipped pipeline). Gated BEFORE the
-    // dpr-epoch tracking below so an integer→fractional→same-integer round
-    // trip keeps its still-valid integer-dpr bitmaps. Strip capture/consume
-    // stay on at any dpr (integer-device-px copies of the layer's own
-    // raster); the strip PATCH path carries its own gate — see
-    // `applyStripCellDamage`. A bypass is a perf miss, a stale blit is a bug.
-    if (!Number.isInteger(dpr)) return null;
-    if (dpr !== this.rasterCellsDpr) {
-      if (this.rasterCellsDpr !== 0) this.rasterCacheEpochBump();
-      this.rasterCellsDpr = dpr;
-    }
-    // Task 4 — `surfaceBg` (the opaque base the miss scratch flattens
-    // over) is read fresh per paint; it only moves on a theme swap, which
-    // already bumps the epoch, so stale bitmaps can never be served
-    // against a new surface color.
-    return { cache, dpr, surfaceBg: this.theme.bg, stats: this.paintStats };
-  }
-
-  /** Cycle 22 / Task 2 — theme/dpr epoch: invalidate EVERY cached raster
-   *  in both tiers (bytes return to the shared budget immediately; the
-   *  backing canvases land in the reuse pools). Wired at the same sites
-   *  the paint-cache layer already resets on: every theme re-read
-   *  (`setTheme` / `setThemeMode` / `setThemeParams` / `setDensity` /
-   *  `setState`'s themeParams clear) and a devicePixelRatio change
-   *  (detected in `getRasterCellsCtx`). Theme-scoped colors deliberately
-   *  OUTSIDE `cellStyleSignature`'s key (`checkboxCheckedBg/Fg`,
-   *  `group*`, `emptyFg`, `palette`) ride exactly this epoch. */
-  private rasterCacheEpochBump(): void {
-    this.rasterCells?.epochBump();
-    // Cycle 22 / Task 3 — layoutEpoch contract: THEME changes (every
-    // caller of this method) and DPR changes (`getRasterCellsCtx`'s
-    // detector) stale every strip's pixels; `stripLayoutEpochBump` both
-    // advances the epoch counter and drops the store.
-    this.stripLayoutEpochBump();
-  }
-
-  /** Cycle 22 / Task 3 — advance the Tier-2 strip layout epoch AND drop
-   *  every retained strip. THE single mechanism behind every "layoutEpoch
-   *  contract" call site: column width/order/visibility/pin (the
-   *  `columnLayout` setter), column-group open/close
-   *  (`subscribeColumnGroupState`), theme + dpr (`rasterCacheEpochBump`),
-   *  canvas width (`setBounds`), horizontal scroll
-   *  (`getRasterStripsCtx`), quick-filter term change
-   *  (`applyQuickFilter`), sort change (`setSortModel`), def-level
-   *  rule/format/renderer changes (`rebuildColumns`), and the
-   *  unknown-diff chunk wipe (`handleViewportChunk`). */
-  private stripLayoutEpochBump(): void {
-    this.stripLayoutEpoch++;
-    this.rasterStrips?.layoutEpochBump();
-  }
-
-  /** Cycle 22 / Task 3 — the per-paint Tier-2 handle for the retained
-   *  layer's band raster. `null` (⇒ the strip path is fully dormant,
-   *  byte-identical call sequence to the shipped pipeline) when
-   *  `rasterCache: false` or the store's canvas construction failed.
-   *  Also owns the HORIZONTAL-SCROLL layoutEpoch bump: strips are
-   *  absolute-x device-px snapshots of full layer rows, and `scrollLeft`
-   *  shifts every column's pixels, so any change stales the whole store
-   *  (the vertical axis needs no such bump — strips are re-anchored per
-   *  row at blit time). Checked here, at the consume site, so no scroll
-   *  entry point can be missed. */
-  private getRasterStripsCtx(): RasterStripsCtx | null {
-    const cache = this.rasterStrips;
-    if (this.options.rasterCache === false || cache === null || !cache.available) return null;
-    // layoutEpoch contract — horizontal scroll.
-    const sl = this.viewport.scrollLeft;
-    if (sl !== this.stripScrollLeft) {
-      this.stripScrollLeft = sl;
-      this.stripLayoutEpochBump();
-    }
-    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
-    let ctx = this.stripsCtxMemo;
-    if (ctx === null || ctx.cache !== cache) {
-      ctx = {
-        cache,
-        dpr,
-        rowVersionOf: (rowIndex) => {
-          const id = this.stringRowIdAt(rowIndex);
-          if (id === null || id === '') return null;
-          return this.rowVersionByRowId.get(id) ?? 0;
-        },
-        stringRowIdAt: (rowIndex) => this.stringRowIdAt(rowIndex),
-        eligible: (rowIndex) => this.stripRowEligible(rowIndex),
-        layoutEpoch: () => this.stripLayoutEpoch,
-        stats: this.paintStats,
-      };
-      this.stripsCtxMemo = ctx;
-    } else {
-      ctx.dpr = dpr;
-      // `resetPaintStats` swaps the whole object — re-point every read.
-      ctx.stats = this.paintStats;
-    }
-    return ctx;
-  }
-
-  /** Cycle 22 / Task 3 — the BINDING Tier-2 eligibility contract,
-   *  enforced identically on capture and consume (the renderer calls this
-   *  once per candidate row per layer raster). A row is strip-cacheable
-   *  only when it is a PLAIN data row:
-   *   - no active quick-filter terms (the match tint is data+term
-   *     dependent, not captured in the version key);
-   *   - inside the current chunk window with rowKind 0 (group=1 and
-   *     footer=3 rows carry structural chrome; totals/pinned/sticky rows
-   *     never reach here — they are not DataSubgrid rows);
-   *   - NOT immediately above a footer row (`groupFooterBorderTop`
-   *     overpaints this row's bottom pixel line with the footer border —
-   *     that line must never ride a strip);
-   *   - not holding the focused cell, not selected, not hovered;
-   *   - no live flash on any of its cells.
-   *  Anything else paints live: a bypass is a perf miss, a stale strip is
-   *  a bug. */
-  private stripRowEligible(rowIndex: number): boolean {
-    if (this.quickFilterLowerTerms.length > 0) return false;
-    const chunk = this.chunk;
-    if (chunk === null) return false;
-    const local = rowIndex - chunk.rowStart;
-    if (local < 0 || local >= chunk.rowCount) return false;
-    if ((chunk.rowKinds[local] ?? 0) !== 0) return false;
-    if (local + 1 < chunk.rowCount && (chunk.rowKinds[local + 1] ?? 0) === 3) return false;
-    const sel = this.selection.state;
-    if (sel.focusedRowIndex === rowIndex) return false;
-    if (sel.selectedRowIndices.has(rowIndex)) return false;
-    if (!this.options.suppressRowHoverHighlight && this.hoveredRowIndex === rowIndex) return false;
-    if (this.flashRegistry.size() > 0) {
-      const nid = chunk.rowIds[local];
-      if (nid !== undefined && this.flashRegistry.hasRow(nid)) return false;
-    }
-    return true;
-  }
-
-  /** Cycle 22 / Task 2 — runtime `rasterCache` / `rasterCacheBudgetMB`
-   *  flip handler (wired via `RuntimeOptionTarget.resetRasterCache`).
-   *  Disposes BOTH tiers (every byte credited back, stores permanently
-   *  inert) and, when the option is now active, rebuilds them under a
-   *  fresh shared budget. `repaintFull()` so the flip lands on the next
-   *  frame either way. */
-  private resetRasterCache(): void {
-    this.rasterCells?.dispose();
-    this.rasterStrips?.dispose();
-    this.rasterCells = null;
-    this.rasterStrips = null;
-    this.rasterBudget = null;
-    this.rasterCellsDpr = 0;
-    // Cycle 22 / Task 3 — Tier-2 bookkeeping restarts with the stores.
-    this.rowVersionByRowId.clear();
-    this.stripsCtxMemo = null;
-    this.stripLayoutEpoch++;
-    if (this.options.rasterCache !== false) {
-      this.buildRasterCaches();
-    }
-    this.repaintFull();
-  }
-
-  /** Task 3 (paint-cache layer, spec §1 "Layer layout") — the synthetic
-   *  second `computeViewport` call that lays out rows for the retained
-   *  offscreen layer, independent of the on-screen viewport. Mirrors the
-   *  real recompute's argument construction (`ViewportManager.
-   *  computeCurrentViewport`) — same columnLayout / subgrids / scrollLeft /
-   *  dataRowHeightIndex / column-virtualisation suppression — but re-
-   *  anchored to the layer's own coverage: `scrollTop: layerTop`,
-   *  `containerHeight: bodyTop + layerHeight` (so the returned
-   *  `bodyHeight` is exactly `layerHeight`), `overscanRows: 0` (the
-   *  layer's own extent IS its buffer — no additional row padding), and
-   *  `suppressRowVirtualisation: false` (unlike whatever the live grid
-   *  option says — the layer always virtualises to its own bounded
-   *  coverage, never "every row").
-   *
-   *  Memoized on (the live `this.viewport` object reference, `layerTop`,
-   *  `layerHeight`) — `recomputeViewport()` always assigns a NEW
-   *  `ViewportState` object, so reference equality alone detects "the real
-   *  viewport changed since the last build" without a separate generation
-   *  counter. Returns the same object back-to-back for the same geometry
-   *  against the same real-viewport snapshot. */
-  buildLayerViewport(geometry: LayerGeometry): ViewportState {
-    const vs = this.viewport;
-    const cached = this.layerViewportCache;
-    const layoutPaintEpoch = this.layoutPaintEpoch;
-    if (
-      cached
-      && cached.vs === vs
-      && cached.layerTop === geometry.layerTop
-      && cached.layerHeight === geometry.layerHeight
-      && cached.layoutPaintEpoch === layoutPaintEpoch
-    ) {
-      return cached.result;
-    }
-    const containerWidth =
-      this.canvasBounds.width || this.scroller.clientWidth || this.root.clientWidth || 800;
-    const result = computeViewport({
-      columnLayout: this.columnLayout,
-      subgrids: this.subgrids,
-      containerWidth,
-      containerHeight: vs.bodyTop + geometry.layerHeight,
-      scrollLeft: vs.scrollLeft,
-      scrollTop: geometry.layerTop,
-      overscanRows: 0,
-      suppressColumnVirtualisation:
-        this.options.suppressColumnVirtualisation || this.options.domLayout === 'print',
-      suppressRowVirtualisation: false,
-      dataRowHeightIndex: this.rowHeightIndex ?? undefined,
-    });
-    this.layerViewportCache = {
-      vs,
-      layerTop: geometry.layerTop,
-      layerHeight: geometry.layerHeight,
-      layoutPaintEpoch,
-      result,
-    };
-    return result;
-  }
-
-  /** Closeout directive B / M-2 — row-align a CONTENT-space band (a
-   *  shift's newly-exposed edge, or a chunk carved off during the
-   *  budgeted drain) to the FULL bounds of whichever row(s) its edges
-   *  land inside, using the same widened live-viewport row list
-   *  `rowBand`/`rowBoundsAtY` already resolve against
-   *  (`this.viewport.visibleRows` — Task 3's overscan-widened set, which
-   *  by the fetch-window-coupling design already spans the retained
-   *  layer's own coverage). Snapping OUTWARD only (never inward) keeps
-   *  every layer raster row-atomic, avoiding the T6 mid-glyph clip-AA
-   *  class this same widening already fixed for the damage ledger's own
-   *  bleed expansion (`DamageLedger.expand`'s row-atomic-bleed comment).
-   *  A boundary that resolves to no row (an edge case right at the very
-   *  top/bottom of data, or outside the widened viewport's own range) is
-   *  left unsnapped — fails open, the same conservatism `rowBoundsAtY`
-   *  itself already uses. */
-  private snapContentBandToRows(top: number, bottom: number): { top: number; bottom: number } {
-    if (bottom <= top) return { top, bottom };
-    const vs = this.viewport;
-    const t = { scrollTop: vs.scrollTop, bodyTop: vs.bodyTop };
-    const topScreen = dataRectToScreen({ x: 0, y: top, w: 0, h: 0 }, t).y;
-    const bottomScreen = dataRectToScreen({ x: 0, y: bottom, w: 0, h: 0 }, t).y;
-    const topRow = vs.visibleRows.find((r) => topScreen >= r.top && topScreen < r.bottom);
-    // `bottom` is an EXCLUSIVE band edge — look up the row containing the
-    // last INCLUDED px (a hair below `bottomScreen`) so an edge already
-    // exactly on a row seam doesn't spuriously pull in the row below.
-    const lastIncludedScreen = bottomScreen - 0.01;
-    const bottomRow = vs.visibleRows.find((r) => lastIncludedScreen >= r.top && lastIncludedScreen < r.bottom);
-    const snappedTopScreen = topRow ? Math.min(topScreen, topRow.top) : topScreen;
-    const snappedBottomScreen = bottomRow ? Math.max(bottomScreen, bottomRow.bottom) : bottomScreen;
-    return {
-      top: screenYToContentY(snappedTopScreen, t),
-      bottom: screenYToContentY(snappedBottomScreen, t),
-    };
-  }
-
-  /** Closeout directive B.2 — the present-safety sync-fill invariant.
-   *  Runs unconditionally right before `presentLayer`, on every cache-on
-   *  frame: intersects the about-to-be-presented range
-   *  (`[scrollTop, scrollTop+bodyHeight]`, widened by one row-height
-   *  margin each side per the directive) against the layer's pending-band
-   *  ledger, and rasters SYNCHRONOUSLY whatever overlaps THIS frame,
-   *  before the present blit runs. This is the hard guarantee ("unrastered
-   *  content is thus never presentable BY CONSTRUCTION") — it does not
-   *  depend on the budgeted drain (`drainLayerPendingBands`) having caught
-   *  up; a scroll that outruns the drain's own budget just pays for a
-   *  bigger synchronous fill here instead of ever presenting stale/blank
-   *  pixels. Counted via `PaintStats.layerSyncFills` — the "scroll outran
-   *  the budget" signal. */
-  private syncFillLayerPending(
-    layer: PaintCacheLayer, layerCtx: CachedContext2D, vsNow: ViewportState, layerVs: ViewportState,
-  ): void {
-    if (!layer.hasPendingBands()) return;
-    const rowFallback = this.options.rowHeight ?? this.theme.rowHeight;
-    const queryTop = vsNow.scrollTop - rowFallback;
-    const queryBottom = vsNow.scrollTop + vsNow.bodyHeight + rowFallback;
-    let pieces: Array<{ top: number; bottom: number }>;
-    try {
-      pieces = layer.takePendingIntersecting(queryTop, queryBottom);
-    } catch {
-      // Conservative fallback (directive B.2) — any ambiguity drains the
-      // FULL pending set rather than risk presenting unrastered content.
-      pieces = layer.takeAllPending();
-    }
-    if (pieces.length === 0) return;
-    this.paintStats.layerSyncFills++;
-    const geom = layer.geometry();
-    const rects = pieces
-      .map((p) => this.snapContentBandToRows(p.top, p.bottom))
-      .filter((p) => p.bottom > p.top)
-      .map((p) => ({ x: 0, y: p.top, w: this.canvasBounds.width, h: p.bottom - p.top }));
-    if (rects.length === 0) return;
-    const localRects = rects.map((r) => dataRectToScreen(r, { scrollTop: geom.layerTop, bodyTop: vsNow.bodyTop }));
-    layerCtx.cache.save();
-    layerCtx.translate(0, -vsNow.bodyTop);
-    this.renderer.paintLayer(layerCtx, layerVs, false, localRects);
-    layerCtx.cache.restore();
-  }
-
-  /** Closeout directive B.3 — the budgeted drain. Runs AFTER present +
-   *  chrome (so it never delays what's actually on-screen this frame),
-   *  spending a small (~3ms) time budget rastering pending bands
-   *  nearest-viewport-first, in row-aligned chunks of at least 4 rows
-   *  (`PaintCacheLayer.takePendingNearest`). Requests another frame
-   *  (`cgridCanvas.requestRepaint()`) while any backlog remains so the
-   *  grid keeps draining at idle — REQUIRED so `waitSettled`/pixel-
-   *  invariance still observe a fully-converged grid (a "settled" grid
-   *  must have zero pending; see the paint-cache closeout review,
-   *  adjudication B, point 3). */
-  private drainLayerPendingBands(
-    layer: PaintCacheLayer, layerCtx: CachedContext2D, vsNow: ViewportState, layerVs: ViewportState,
-  ): void {
-    const BUDGET_MS = 3;
-    const rowFallback = this.options.rowHeight ?? this.theme.rowHeight;
-    const minChunkPx = Math.max(4 * rowFallback, 1);
-    const anchor = vsNow.scrollTop + vsNow.bodyHeight / 2;
-    const geom = layer.geometry();
-    const t0 = performance.now();
-    while (layer.hasPendingBands() && (performance.now() - t0) < BUDGET_MS) {
-      const chunk = layer.takePendingNearest(anchor, minChunkPx);
-      if (!chunk) break;
-      const snapped = this.snapContentBandToRows(chunk.top, chunk.bottom);
-      const h = snapped.bottom - snapped.top;
-      if (h <= 0) continue;
-      const rect = { x: 0, y: snapped.top, w: this.canvasBounds.width, h };
-      const localRect = dataRectToScreen(rect, { scrollTop: geom.layerTop, bodyTop: vsNow.bodyTop });
-      layerCtx.cache.save();
-      layerCtx.translate(0, -vsNow.bodyTop);
-      this.renderer.paintLayer(layerCtx, layerVs, false, [localRect]);
-      layerCtx.cache.restore();
-    }
-    if (layer.hasPendingBands()) {
-      this.cgridCanvas.requestRepaint();
-    }
-  }
-
-  /** Cycle 19 / Task 4 — delegating wrapper. The viewport-tick anchor +
-   *  band-clip close lives in `EditController.syncOpenEditorPosition`. */
-  private syncOpenEditorPosition(): void {
-    this.editController.syncOpenEditorPosition();
-  }
-
-  /** Cycle 19 / Task 2 — delegating wrappers. The clamp + scroller drive +
-   *  belt-and-suspenders happy-dom fallback live in `ViewportManager`. */
-  private setScroll(x: number, y: number): void {
-    this.viewportManager.setScroll(x, y);
-  }
-  /** Cycle 19 / Task 2 — back-compat shim for tests + downstream code that
-   *  reach in via `(grid as any).onScrollerScroll(x, y)` to simulate a scroll
-   *  event. The real handler is registered inside `ViewportManager`. */
-  private onScrollerScroll(x: number, y: number): void {
-    this.viewportManager.onScrollerScroll(x, y);
-  }
-  /** Cycle 19 / Task 2 — back-compat getters so E2E + integration tests that
-   *  read `(grid as any).scrollTop` / `.scrollLeft` keep working. The real
-   *  scroll state lives on `ViewportManager`. */
-  private get scrollLeft(): number { return this.viewportManager.scrollLeft; }
-  private get scrollTop(): number { return this.viewportManager.scrollTop; }
-  private ensureRowIndexVisible(
-    rowIndex: number,
-    position: 'auto' | 'top' | 'middle' | 'bottom' = 'auto',
-  ): void {
-    this.viewportManager.ensureRowIndexVisible(rowIndex, position);
-  }
-  private ensureColIdVisible(
+  ensureColIdVisible(
     colId: string,
     position: 'auto' | 'start' | 'middle' | 'end' = 'auto',
   ): void {
-    this.viewportManager.ensureColIdVisible(colId, position);
+    this.dataPlane.ensureColIdVisible(colId, position);
   }
 
-  /** Set only while a model-reorder `rebuildIndices` is running (see
-   *  `rebuildIndicesWithoutAutoScroll`), so the selection `onChange` handler
-   *  skips its `ensureRowIndexVisible` / `ensureColIdVisible` auto-scroll for
-   *  a focus-index shift the user didn't cause. */
-  private suppressFocusEnsure = false;
-
-  /** Apply `rebuildIndices` without letting the resulting focus-index change
-   *  auto-scroll the viewport. `SelectionModel.emit()` runs listeners
-   *  synchronously, so the flag reliably brackets the `onChange` emit. */
-  private rebuildIndicesWithoutAutoScroll(rowIdToIndex: ReadonlyMap<string, number>): void {
-    this.suppressFocusEnsure = true;
-    try {
-      this.selection.rebuildIndices(rowIdToIndex);
-    } finally {
-      this.suppressFocusEnsure = false;
-    }
+  ensureRowIndexVisible(
+    rowIndex: number,
+    position: 'auto' | 'top' | 'middle' | 'bottom' = 'auto',
+  ): void {
+    this.dataPlane.ensureRowIndexVisible(rowIndex, position);
   }
 
-  /** After the worker model changes (sort / filter / transaction / column
-   *  swap), re-resolve every persistent selection rowId to its new visible
-   *  index and apply it to the paint set. No worker round-trip when no
-   *  persistent ids are tracked — keeps the common no-selection case free. */
-  private rebuildSelectionFromPersistentIds(): void {
-    const selectedIds = this.selection.getPersistentSelectedRowIds();
-    const focusedId = this.selection.getPersistentFocusedRowId();
-    const allIds: string[] = [...selectedIds];
-    if (focusedId !== null && !selectedIds.includes(focusedId)) allIds.push(focusedId);
-    if (allIds.length === 0) {
-      // Nothing selected or focused — clear any stale paint indices immediately,
-      // no worker round-trip needed.
-      this.rebuildIndicesWithoutAutoScroll(new Map());
-      return;
-    }
-    this.workerCoord.getRowIndicesForIds(allIds).then((indices) => {
-      if (this.destroyed) return;
-      const map = new Map<string, number>();
-      for (let i = 0; i < allIds.length; i++) map.set(allIds[i]!, indices[i]!);
-      this.rebuildIndicesWithoutAutoScroll(map);
-    }).catch((err) => { if (!this.destroyed) console.error('[velocity-grid] rebuildSelectionFromPersistentIds:', err); });
-  }
-
-  /** Walk the column tree to collect the ancestor groupIds (root → parent)
-   *  of `groupId`. Excludes `groupId` itself. Empty for top-level groups. */
   private findGroupAncestors(groupId: string): string[] {
-    const path: string[] = [];
-    const visit = (node: import('./core/columnTree').ColumnTreeNode, trail: string[]): boolean => {
-      if (node.kind !== 'group') return false;
-      if (node.groupId === groupId) {
-        path.push(...trail);
-        return true;
-      }
-      const nextTrail = [...trail, node.groupId];
-      for (const child of node.children) {
-        if (visit(child, nextTrail)) return true;
-      }
-      return false;
-    };
-    for (const root of this.columnTree.roots) {
-      if (visit(root, [])) break;
-    }
-    return path;
+    return this.dataPlane.findGroupAncestors(groupId);
   }
 
-  /** Cycle 19 / Task 2 — viewport-fetch entry point. Delegates to
-   *  `ViewportManager.request`; the manager handles coalescing + the
-   *  velocity-driven prefetch math and invokes `handleViewportChunk` (the
-   *  chunk-processing tail below) via the `dispatchViewportRequest` dep.
-   *  Cycle 19 / Task 3 will absorb both halves into `WorkerCoordinator`. */
-  private requestViewport(aggSource: AggregationChangedSource | null = null): void {
-    this.viewportManager.request(aggSource);
-  }
-
-  /** Cycle 19 / Task 3 — chunk-arrival side-effects. Invoked from the
-   *  WorkerCoordinator's `onViewportChunk` dep after every successful
-   *  `getViewport` round-trip ViewportManager triggered. The worker call +
-   *  request coalescing live in the coordinator; this method owns the
-   *  main-side fan-out:
-   *    LRU caching, pivot column sync, per-cell + per-group flash,
-   *    row-height index refresh, recompute + repaint, a11y update,
-   *    `aggregationChanged` (gated on `consumePendingAggSource`),
-   *    `firstDataRendered` latch.
-   *  Returns a Promise the coordinator awaits before resolving
-   *  `dispatchViewportRequest`, so ViewportManager's coalescing flag
-   *  releases after the mutation lands. */
   private async handleViewportChunk(
     opts: { rowStart: number; rowEnd: number; columns: string[]; seq?: number },
     chunk: ViewportChunk,
     stickyAncestors: StickyAncestor[],
   ): Promise<void> {
-    const { rowStart, rowEnd, columns: cols } = opts;
-    // Latest-wins (Deephaven subscription.setViewport): drop superseded
-    // replies, and also drop replies that miss the live fetch window
-    // entirely (coalesced in-flight can still resolve for an old range).
-    if (
-      opts.seq !== undefined
-      && opts.seq < this.viewportManager.viewportReqSeq
-    ) {
-      return;
-    }
-    const liveVs = this.viewportManager.state;
-    if (
-      liveVs.lastRow >= 0
-      && !chunkIntersectsRowRange(chunk, liveVs.firstRow, liveVs.lastRow)
-    ) {
-      return;
-    }
-    // Capture the previous chunk's totals + full row identity BEFORE
-    // overwriting `this.chunk` — the aggregate diff (C3) and the
-    // positional-identity window diff (C2 / adjudication B) both compare
-    // against the OLD chunk.
-    const prevChunk = this.chunk;
-    const prevGroupTotals = prevChunk?.groupTotals;
-    const prevChunkTotals = prevChunk?.totals;
-    this.chunk = chunk;
-    this.stickyAncestors = stickyAncestors;
-    this.decodedTextCols.clear();
-    // Cycle 25 / Task 10 — park the chunk in the LRU. WeakRef retention means
-    // GC can reclaim if real memory pressure builds; the LRU's own eviction
-    // kicks in when our running sum exceeds `memoryBudgetMB`. Cache lookup on
-    // subsequent requests is intentionally NOT wired here — keying on model
-    // versions (sort/filter/group/pivot) needs more surface than this cycle
-    // delivers. Foundation only.
-    if (this.chunkLRU) {
-      const key = `${rowStart}:${rowEnd}:${cols.join(',')}`;
-      this.chunkLRU.set(key, chunk, estimateChunkBytes(chunk));
-    }
-    // Cycle 18 / Task 3 — (re)synthesize or drop the pivot result columns
-    // from the freshly-arrived pivot tree before the layout + paint below
-    // run off the new column order.
-    this.pivotEngine.maybeSyncPivotColumns(chunk);
-    // Cycle 18 / Task 8a — surface the cap breach as a public event. The
-    // chunk already arrived with no pivot output when this is set (PivotPass
-    // bypassed early); the grid paints primary columns normally. Apps can
-    // listen + raise the cap / narrow the filter. Emit ONCE per chunk that
-    // carries the field — no debounce needed since the worker only sets the
-    // field when the breach actually happened (not on every chunk).
-    if (chunk.pivotMaxColumnsReached !== undefined) {
-      this.events.emit({
-        type: 'pivotMaxColumnsReached',
-        generatedColumns: chunk.pivotMaxColumnsReached.generatedColumns,
-        cap: chunk.pivotMaxColumnsReached.cap,
-      });
-    }
-    // Cycle 4 / Task 11 (cell-flash patch) — drain the worker's per-cell
-    // flashMask into the registry. The chunk's `rowIds` are numeric (the
-    // worker's stable mapping); the painter's cellData callback reads
-    // `registry.getAlpha(numericRowId, colId, now)` to produce flashAlpha
-    // per visible cell.
-    // Cycle 22 / closeout I-3 — patch-on-tick's PRODUCTION seam. The
-    // worker's flashMask IS the tick's cell-granular diff (row-major bits
-    // over rowIds × cols): collect the changed cells here so the
-    // diff-armed branch below can patch retained strips ONCE per tick
-    // (after `repaintRows` has bumped the touched rows, so the patch lands
-    // at the row's FINAL post-tick version and the strip HITS at fade
-    // settle). Before this seam existed, the only caller of the patch path
-    // was the flash-fade rAF loop — whose first attempt died on the
-    // cellIcon-existence bail (see `patchStripCells`) and whose per-rAF
-    // churn was closeout I-4 — so `stripPatches` was 0 in production.
-    let tickDamagedCells: Array<{ rowId: number; colId: string }> | null = null;
-    if (chunk.flashMask && this.rasterStrips !== null) {
-      const mask = chunk.flashMask;
-      const rowCount = chunk.rowIds.length;
-      const colCount = cols.length;
-      for (let r = 0; r < rowCount; r++) {
-        for (let c = 0; c < colCount; c++) {
-          const bitIdx = r * colCount + c;
-          if (((mask[bitIdx >>> 3] ?? 0) & (1 << (bitIdx & 7))) === 0) continue;
-          (tickDamagedCells ??= []).push({ rowId: chunk.rowIds[r]!, colId: cols[c]! });
-        }
-      }
-    }
-    if (chunk.flashMask) {
-      // Cycle 21e / Task 13 — join per-call flashCells overrides by the
-      // chunk's string rowIds. Zero-cost when the override map is empty
-      // (the common case): no lookup closure is even passed.
-      //
-      // Style-rule flash ownership — when an enabled style rule has
-      // `flash.enabled` for a column (or whole row), default worker
-      // cell-change flash is suppressed for that cell. Rule / API flash
-      // still paints: `flashCells` stages an override marker that
-      // `shouldFlash` admits.
-      const hasOverrides = this.flashOverrides.size > 0;
-      const owned = ruleFlashOwnership(getRuleEngine()?.getRules?.());
-      const suppressDefault = owned.allColumns || owned.colIds.size > 0;
-      const needSid = hasOverrides || suppressDefault;
-      this.flashRegistry.ingestMask({
-        rowIds: chunk.rowIds,
-        colIds: cols,
-        mask: chunk.flashMask,
-        stringRowIds: needSid ? chunk.stringRowIds : undefined,
-        getOverride: hasOverrides
-          ? (sid, colId) =>
-              this.flashOverrides.get(`${sid}\0${colId}`)
-                ?? this.flashOverrides.get(`${sid}\0*`)
-          : undefined,
-        shouldFlash: suppressDefault
-          ? (sid, colId) => {
-              if (!isRuleFlashOwned(owned, colId)) return true;
-              return this.flashOverrides.has(`${sid}\0${colId}`)
-                || this.flashOverrides.has(`${sid}\0*`);
-            }
-          : undefined,
-      });
-      this.startFlashTickLoop();
-    }
-    // Flash aggregate cells whose groupTotals or grand totals changed vs the
-    // previous chunk. Data-row flashes come from the worker's flashMask
-    // (keyed by rowId); group/footer rows carry no rowId so we diff the
-    // totals records here on the main thread. groupTotals covers per-group
-    // group rows AND per-group footer rows. chunk.totals covers the grand-
-    // total footer (groupKey='').
-    // C3 fix — this diff used to run ONLY inside `enableCellChangeFlash`,
-    // which meant it was the ONLY thing that routed changed totals into
-    // damage — a flash-disabled grid (the DEFAULT) never repainted a
-    // changed aggregate on the partial path at all. `diffAggregates` now
-    // runs unconditionally; `enableCellChangeFlash` only gates whether the
-    // change ALSO drives the visual flash-fade effect.
-    const { changedGroupKeys, grandTotalChanged } =
-      diffAggregates(chunk, prevGroupTotals, prevChunkTotals);
-    const aggregatesChanged = changedGroupKeys.size > 0 || grandTotalChanged;
-    // Damage-region rendering (Task 3, extended Task 6) — did THIS chunk
-    // add any group/footer flash entries? Those cells live on group/footer
-    // rows, which carry no rowId and so never appear in `touchedRows` —
-    // the partial branch below calls `repaintGroupFlash()` (flash-enabled
-    // path) or `repaintAggregateDamage()` (C3's flash-disabled path)
-    // instead of degrading to full.
-    let groupFlashChanged = false;
-    if (this.options.enableCellChangeFlash) {
-      const now = performance.now();
-      for (const groupKey of changedGroupKeys) {
-        const oldRec = prevGroupTotals?.[groupKey];
-        const newRec = chunk.groupTotals![groupKey]!;
-        for (const colId of Object.keys(newRec)) {
-          if (oldRec?.[colId] !== newRec[colId]) {
-            this.groupFlashMap.set(`${groupKey}\0${colId}`, now);
-            groupFlashChanged = true;
-          }
-        }
-      }
-      // Grand-total footer (groupKey='') sources from chunk.totals, not
-      // groupTotals. Diff it separately; store under the '' key so
-      // groupFlashAlpha('', colId) resolves for rowKind=3 + empty key.
-      if (grandTotalChanged && chunk.totals) {
-        for (const colId of Object.keys(chunk.totals)) {
-          if (prevChunkTotals?.[colId] !== chunk.totals[colId]) {
-            this.groupFlashMap.set(`\0${colId}`, now);
-            groupFlashChanged = true;
-          }
-        }
-      }
-      if (this.groupFlashMap.size > 0) this.startFlashTickLoop();
-    }
-    // Build / refresh the cumulative row-height index (Cycle 5 / Task 7).
-    // Initial build seeds every row with the grid-level fallback; subsequent
-    // chunks layer their per-row heights in. A rowCount change (sort /
-    // filter / transaction) discards the existing index so per-row entries
-    // that shifted slots aren't read at their old positions — the next
-    // chunks rebuild it. Done before recomputeViewport so the index is
-    // current for the first paint after the chunk lands.
-    this.refreshRowHeightIndex(chunk);
-    // Recompute the viewport so DataSubgrid.getRowHeight reads the new
-    // chunk's per-row heights (Cycle 5 / Task 6). Without this the
-    // visibleRows array carries heights from BEFORE the chunk arrived and
-    // variable-height rows paint at the fallback until the next scroll
-    // triggers another recompute.
-    this.recomputeViewport();
-    // Thumb-drag hybrid defer can stick across a full-damage streak. Once
-    // a covering chunk lands, drop deferral and force a clean layer
-    // re-anchor so the next scrolls return to present/shift instead of
-    // lean full-paints.
-    if (
-      this.paintCacheActive()
-      && this.paintCacheDeferLayer
-      && chunkCoversOnScreenRows(chunk, this.viewport)
-    ) {
-      this.paintCacheDeferLayer = false;
-      this.paintCacheLayerAnchored = false;
-    }
-    // C2 + adjudication B — `resolveWindowDamage` replaces the old bare
-    // `sameWindow` (rowStart+rowCount) check, which trusted `touchedRows`
-    // at face value whenever the window looked unchanged. That's unsafe
-    // under an active sort: a tick can permute the visible order while
-    // rowStart/rowCount stay put, displacing rows that `touchedRows` (named
-    // at their NEW positions) never flags — their old content just sits
-    // there stale. The position-diff below compares row IDENTITY
-    // (rowId+rowKind+groupKey) at every overlapping position (shifted by
-    // the window-move delta), so a reorder, a filter-driven window move,
-    // AND an ordinary scroll-driven window move all resolve through the
-    // same mechanism — closing both C2 (reorder-under-sort) and the
-    // scroll-driven full-repaint gap in one guard. Column-set changes
-    // (group expand / showColumns) also force 'full' here — otherwise a
-    // live-feed empty `touchedRows` leaves newly revealed cells blank.
-    // See `resolveWindowDamage` doc for the exact bail conditions (every
-    // one degrades to full, never to under-painting).
-    const windowDamage = resolveWindowDamage(chunk, prevChunk);
-    if (windowDamage === 'full') {
-      // Cycle 22 / Task 3 — unknown-diff chunk: no touchedRows (untracked
-      // data apply — setRowData, filter/sort/group model change — OR a
-      // plain window move with nothing staged), a height change, or a
-      // diff past the cap. Any of these can reorder rows (zebra parity is
-      // baked into a strip's pixels) or change content invisibly, so
-      // EVERY retained strip is untrusted — wipe the store and the
-      // version map together (fresh captures restart at version 0). A
-      // stale strip is a bug; re-capturing is a cheap drawImage per row.
-      if (this.rasterStrips !== null) {
-        this.stripLayoutEpochBump();
-        this.rowVersionByRowId.clear();
-      }
-      this.repaintFull();
-    } else {
-      if (windowDamage.length > 0) {
-        this.repaintRows(windowDamage.map((r) => chunk.rowStart + r));
-      }
-      // Cycle 22 / closeout I-3 — patch-on-tick, at the tick itself.
-      // AFTER `repaintRows` (which bumped every touched row) so the patch
-      // advances each patched row to its final post-tick version: the
-      // strip holds the SETTLED pixels (flash suppressed) through the
-      // fade and HITS the moment the row is eligible again, instead of
-      // forcing a full-row live re-raster that cell-sized fade rects can
-      // never recapture. Runs under `suppressPartialRepaint` too — same
-      // keep-tracking contract as the version bumps in `repaintRows`.
-      if (tickDamagedCells !== null) {
-        this.applyStripCellDamage(tickDamagedCells);
-      }
-      if (groupFlashChanged) {
-        this.repaintGroupFlash();
-      } else if (aggregatesChanged) {
-        // C3 — flash disabled (or suppressed), but a total still changed:
-        // damage the changed aggregate cells directly instead of relying
-        // on `groupFlashMap`, which stays empty when flash is off.
-        this.repaintAggregateDamage(changedGroupKeys, grandTotalChanged);
-      }
-    }
-    this.updateA11y();
-    // Cycle 14 / Task 6 — emit `aggregationChanged` ONLY when the mutation
-    // that drove this fetch actually changed the totals (data / filter /
-    // aggFuncs / column aggFunc / explicit API). Cosmetic re-fetches
-    // (scroll, sort, theme, column move / visible / pin / resize) call
-    // `requestViewport()` with no source so the manager's pending source
-    // stays null and we skip the event — listeners that want every paint
-    // subscribe to `viewportChanged` instead. Consume only when totals
-    // exist so a chunk that lacks totals doesn't clear a pending source
-    // queued for the next totals-bearing chunk.
-    if (chunk.totals) {
-      const source = this.viewportManager.consumePendingAggSource();
-      if (source !== null) {
-        this.events.emit({
-          type: 'aggregationChanged',
-          totals: chunk.totals,
-          source,
-        });
-      }
-    }
-    // firstDataRendered: latch once per grid instance, the first time a
-    // non-empty chunk has landed and a repaint has been scheduled. Empty
-    // chunks (e.g. setRowData([]) or filter-out-everything) don't count.
-    if (!this.firstDataFired && chunk.rowCount > 0) {
-      this.firstDataFired = true;
-      this.events.emit({ type: 'firstDataRendered' });
-    }
+    return await this.dataPlane.handleViewportChunk(opts, chunk, stickyAncestors);
   }
 
-  /** Build the cumulative-height index from scratch when `rowCount` changed,
-   *  then merge the chunk's per-row heights into it. The 0 sentinel in
-   *  `chunk.heights` means "no per-row override" — we leave those at the
-   *  fallback so rows without explicit heights stay at the grid-level
-   *  `rowHeight`. Cycle 5 / Task 7. */
+  private onHeightsChanged(rowStart: number, heights: Float32Array): void {
+    this.dataPlane.onHeightsChanged(rowStart, heights);
+  }
+
+  private onMeasureTextRequest(batchId: number, items: import('./worker/protocol').MeasureTextItem[]): void {
+    this.dataPlane.onMeasureTextRequest(batchId, items);
+  }
+
+  private onScrollerScroll(x: number, y: number): void {
+    this.dataPlane.onScrollerScroll(x, y);
+  }
+
+  private rebuildIndicesWithoutAutoScroll(rowIdToIndex: ReadonlyMap<string, number>): void {
+    this.dataPlane.rebuildIndicesWithoutAutoScroll(rowIdToIndex);
+  }
+
+  private rebuildSelectionFromPersistentIds(): void {
+    this.dataPlane.rebuildSelectionFromPersistentIds();
+  }
+
+  recomputeViewport(afterScroll: boolean = false): void {
+    this.dataPlane.recomputeViewport(afterScroll);
+  }
+
   private refreshRowHeightIndex(chunk: ViewportChunk): void {
-    const fallback = clampRowHeight(this.options.rowHeight ?? this.theme.rowHeight);
-    if (!this.rowHeightIndex || this.rowHeightIndex.length() !== this.rowCount) {
-      this.rowHeightIndex = new RowHeightIndex(this.rowCount, () => fallback);
-    }
-    const idx = this.rowHeightIndex;
-    for (let i = 0; i < chunk.heights.length; i++) {
-      const globalIdx = chunk.rowStart + i;
-      if (globalIdx >= idx.length()) break;
-      const raw = chunk.heights[i]!;
-      const resolved = clampRowHeight(raw > 0 ? raw : fallback);
-      if (idx.heightAt(globalIdx) !== resolved) {
-        idx.update(globalIdx, resolved);
-      }
-    }
+    this.dataPlane.refreshRowHeightIndex(chunk);
   }
 
-  /** Resolve the height of the data row at `localRowIndex`. When the row is
-   *  present in the current viewport chunk and has a non-zero per-row entry,
-   *  use that; otherwise fall back to the grid-level `rowHeight`. The 0
-   *  sentinel in `chunk.heights` means "no per-row override" — substitute
-   *  the fallback so columns with mixed-heights row sets don't shrink to 0.
-   *  Task 7's Fenwick tree extends this with O(log n) global coverage. */
-  private rowHeightAt(localRowIndex: number): number {
-    const fallback = clampRowHeight(this.options.rowHeight ?? this.theme.rowHeight);
-    if (!this.chunk) return fallback;
-    const i = localRowIndex - this.chunk.rowStart;
-    if (i < 0 || i >= this.chunk.heights.length) {
-      // Under active pivot mode, rows outside the chunk are always leaves
-      // (the slicer only ships group rows + footer entries into the chunk).
-      // Returning 0 collapses the data subgrid's extent to just the visible
-      // group rows — which is what makes the bottom-pinned Grand Total row
-      // visible without forcing the user to scroll past hundreds of empty
-      // leaf rows.
-      //
-      // Exception: when NO chunk has arrived yet (heights.length === 0) the
-      // grid hasn't seen its visible window. Returning 0 here would
-      // collapse the data subgrid to zero rows, the viewport would request
-      // `[0, 0)`, the worker would ship an empty chunk, and the loop would
-      // never break. Use the fallback so the initial request for the
-      // visible window has a non-zero range.
-      if (this.pivotEngine.isPivotActive() && this.chunk.heights.length > 0) return 0;
-      return fallback;
-    }
-    const h = this.chunk.heights[i]!;
-    return clampRowHeight(h > 0 ? h : fallback);
+  requestViewport(aggSource: AggregationChangedSource | null = null): void {
+    this.dataPlane.requestViewport(aggSource);
   }
+
+  rowHeightAt(localRowIndex: number): number {
+    return this.dataPlane.rowHeightAt(localRowIndex);
+  }
+
+  private setScroll(x: number, y: number): void {
+    this.dataPlane.setScroll(x, y);
+  }
+
+  private syncOpenEditorPosition(): void {
+    this.dataPlane.syncOpenEditorPosition();
+  }
+
 
   /** Cycle 4 / Task 11 (cell-flash patch) — rAF handle for the
    *  self-sustaining flash tick. Held so a chunk that arrives while
@@ -11701,7 +8951,7 @@ export class VelocityGrid<TRow = any> {
    *  repaint when any remain. The loop self-cancels when the
    *  registry empties. Idempotent — already-running ticks aren't
    *  re-scheduled. */
-  private startFlashTickLoop(): void {
+  startFlashTickLoop(): void {
     if (this.flashTickHandle !== null) return;
     if (typeof requestAnimationFrame !== 'function') return;
     // Don't compete with scroll paints — resume from bodyScrollEnd.
@@ -11806,66 +9056,8 @@ export class VelocityGrid<TRow = any> {
       .catch((err) => { if (!this.destroyed) console.error('[velocity-grid] flashCells:', err); });
   }
 
-  /** Damage-region rendering — snapshot of cumulative paint telemetry. See
-   *  `PaintStats` for field semantics. Returns a shallow copy so callers
-   *  can't mutate the live counters. */
-  getPaintStats(): PaintStats {
-    return { ...this.paintStats };
-  }
 
-  /** Damage-region rendering — zero the running `PaintStats` counters. */
-  resetPaintStats(): void {
-    this.paintStats = {
-      paints: 0, fullPaints: 0, partialPaints: 0, blits: 0,
-      presents: 0, layerShifts: 0, layerResets: 0, layerRasterMs: 0,
-      lastRects: 0, lastAreaPct: 100, avgPaintMs: 0, worstPaintMs: 0,
-      layerSyncFills: 0, layerBacklogPx: 0,
-      cellCacheHits: 0, cellCacheMisses: 0, cellCacheBypasses: 0,
-      stripHits: 0, stripMisses: 0, stripMissesUncoverable: 0, stripCaptures: 0, stripPatches: 0,
-      rasterCacheBytes: 0, rasterCachePooledBytes: 0,
-    };
-  }
-
-  /**
-   * Cycle 25 / Task 7 — build (or reuse) the per-paint flash alpha mask
-   * for the current chunk × visible columns. No-op when flash is off or
-   * there is no chunk.
-   */
-  private rebuildFlashAlphaMaskForPaint(): void {
-    if (!this.chunk || !this.options.enableCellChangeFlash) {
-      this.flashAlphaMask = null;
-      return;
-    }
-    const colIds = this.viewport.visibleColumns.map((c) => c.colId);
-    if (colIds.length === 0) {
-      this.flashAlphaMask = null;
-      return;
-    }
-    // Rebuild the colId → index map only when the visible set changes.
-    let colsChanged = colIds.length !== this.flashAlphaMaskColIds.length;
-    if (!colsChanged) {
-      for (let i = 0; i < colIds.length; i++) {
-        if (colIds[i] !== this.flashAlphaMaskColIds[i]) {
-          colsChanged = true;
-          break;
-        }
-      }
-    }
-    if (colsChanged) {
-      this.flashAlphaMaskColIds = colIds;
-      this.flashAlphaMaskColIndex = new Map(colIds.map((id, i) => [id, i]));
-    }
-    this.flashAlphaMask = buildFlashAlphaMask({
-      registry: this.flashRegistry,
-      rowIds: this.chunk.rowIds,
-      colIds,
-      now: performance.now(),
-      out: this.flashAlphaMaskOut,
-    });
-    this.flashAlphaMaskOut = this.flashAlphaMask;
-  }
-
-  private cellAt(rowIndex: number, colId: string): { value: unknown; valueFormatted: string; flashAlpha?: number; flashColor?: string } | null {
+  cellAt(rowIndex: number, colId: string): { value: unknown; valueFormatted: string; flashAlpha?: number; flashColor?: string } | null {
     if (!this.chunk) return null;
     const localIndex = rowIndex - this.chunk.rowStart;
     if (localIndex < 0 || localIndex >= this.chunk.rowCount) return null;
@@ -12030,7 +9222,7 @@ export class VelocityGrid<TRow = any> {
    *  signature/contract (always returns a non-null string for any in-range
    *  index) while making on-screen interactions agree with what the paint
    *  path — and therefore renderer hit-testing — actually used. */
-  private rowIdAt(rowIndex: number): string | null {
+  rowIdAt(rowIndex: number): string | null {
     const real = this.stringRowIdAt(rowIndex);
     return real ? real : `row-${rowIndex}`;
   }
@@ -12040,7 +9232,7 @@ export class VelocityGrid<TRow = any> {
    *  chunk window and '' for non-data rows (group / footer). Also the
    *  source `rowIdAt` (above) now delegates to, for pointer/keyboard event
    *  payloads. */
-  private stringRowIdAt(rowIndex: number): string | null {
+  stringRowIdAt(rowIndex: number): string | null {
     if (!this.chunk) return null;
     const localIndex = rowIndex - this.chunk.rowStart;
     if (localIndex < 0 || localIndex >= this.chunk.rowCount) return null;
@@ -12210,7 +9402,7 @@ export class VelocityGrid<TRow = any> {
     return 1 - fadeElapsed / fadeDur;
   }
 
-  private updateA11y(): void {
+  updateA11y(): void {
     const { focusedRowIndex, focusedColId } = this.selection.state;
     const focusedRowData = focusedRowIndex == null ? []
       : this.viewport.visibleColumns
@@ -12280,7 +9472,7 @@ export class VelocityGrid<TRow = any> {
     this.columnLayout = resolveColumnWidths(this.columnOrder, this.root.clientWidth);
     this.recomputeViewport();
     this.paintCacheDeferLayer = true;
-    this.repaintFull();
+    this.paintDriver.repaintFull();
     // Per-frame emission during a drag: finished:false so apps can defer
     // persistence to the mouseup `finished:true` event. Cycle 6 / Task 5.
     if (colId) {
@@ -12308,8 +9500,8 @@ export class VelocityGrid<TRow = any> {
     this.columnResizeDragActive = false;
     this.columnResizeFlushColId = null;
     // Rebuild retained paint cleanly now that geometry is stable.
-    this.invalidateRetainedPaintForColumnLayout();
-    this.repaintFull();
+    this.paintDriver.invalidateRetainedPaintForColumnLayout();
+    this.paintDriver.repaintFull();
     const def = this.columnDefsMap.get(colId);
     if (!def || def.width == null) return;
     this.events.emit({
@@ -12378,760 +9570,162 @@ export class VelocityGrid<TRow = any> {
     return this.colStateManager.getColumnState();
   }
 
-  /** Cycle 21i Phase 2 / T2 — register a named, versioned engine-state
-   *  slice that folds into `GridState.modules` and rides the
-   *  persistState autosave. `get()` returning `undefined` omits the
-   *  slice; `set(data, version)` restores it (throwing skips that
-   *  slice only). Returns an unregister function. After a mutation
-   *  that has no mapped grid event, call
-   *  `notifyModuleStateChanged(id)` so the autosave runs. */
-  registerStateModule(module: StateModule): () => void {
-    return this.moduleStateRegistry.register(module);
+
+  // ── persistence facade ─────────────────────────────────────────────────
+  // Grid state, layouts, templates, and rules live in
+  // `host/persistenceFacade.ts`. These keep the published API on the grid.
+
+  addRule(rule: ConditionalRuleShape): void {
+    this.persistence.addRule(rule);
   }
 
-  /** Cycle 21i Phase 2 / T2 — signal that a registered module's state
-   *  changed. Emits the typed `moduleStateChanged` event, which the
-   *  stateUpdated bus maps to the `modules` snapshot key (debounced
-   *  autosave follows when `persistState` is on). */
-  notifyModuleStateChanged(moduleId: string): void {
-    this.moduleStateRegistry.notifyChanged(moduleId);
+  applyTemplate(colId: string, templateId: string): void {
+    this.persistence.applyTemplate(colId, templateId);
   }
 
-  /** Cycle 23 / Task 5 — full grid state snapshot. Includes columnState,
-   *  filter / sort / group model, pivot mode + cols, expanded routes,
-   *  side bar + selection + scroll position. Round-trippable through
-   *  `setState` (Task 6); pair with `stateUpdated` (Task 7) to drive
-   *  persistence. Empty fields are omitted so snapshots stay compact —
-   *  apps can serialize the result through `JSON.stringify` without
-   *  pre-pruning. */
-  getState(): GridState {
-    return buildSnapshot({
-      getColumnState: () => this.getColumnState(),
-      getModuleState: () => this.moduleStateRegistry.snapshot(),
-      getFilterModel: () => this.getFilterModel(),
-      getSortModel: () => this.getSortModel(),
-      getRowGroupColumns: () => this.getRowGroupColumns(),
-      getExpandedKeys: () => this.getExpandedKeys(),
-      isPivotMode: () => this.isPivotMode(),
-      getPivotColumns: () => this.getPivotColumns(),
-      isSideBarVisible: () => this.isSideBarVisible(),
-      getOpenedToolPanel: () => this.getOpenedToolPanel(),
-      getCellRanges: () => this.getCellRanges(),
-      getFocusedCell: () => this.getFocusedCell(),
-      getSelectedRowIds: () => this.getSelectedRowIds(),
-      getScrollPosition: () => this.viewportManager.getScrollPosition(),
-      getRuntimeOptions: () => Object.fromEntries(this.runtimeTouchedOptions),
-      getThemeParams: () => this.getThemeParams(),
-      getToolPanelPopoutRect: () => this.popoutRect,
-    });
+  clearPersistedState(): void {
+    this.persistence.clearPersistedState();
   }
 
-  /** Cycle 23 / Task 6 — restore a state snapshot. Applied in the
-   *  dependency order documented in the design notes: columnState →
-   *  filter → sort → row-group → pivot → expanded → selection →
-   *  side-bar → scroll. Each step is a no-op when the snapshot omits
-   *  the corresponding field, so partial snapshots restore only the
-   *  fields they carry.
-   *
-   *  Migrates the snapshot forward through `STATE_MIGRATIONS` when
-   *  its `version` is older than the current schema. */
-  setState(snapshot: GridState, opts?: { exhaustive?: boolean }): void {
-    const migrated = migrateSnapshot(snapshot);
-    // Grid Layouts (A6) — `exhaustive` makes a restore a full REPLACE: every
-    // view field the snapshot omits is reset to empty rather than left as-is.
-    // A partial `setState` (the default, public API) restores only what it
-    // carries; switching layouts needs the target's empties to actually
-    // clear the outgoing layout's filter / sort / pivot / side-bar / etc.
-    // (spec §1: a layout is a self-contained view). Grid-tier module slices
-    // are still left untouched — see the modules note below.
-    const exhaustive = opts?.exhaustive === true;
-    // Cycle 23 / Task 7 — tag the cascade so the next coalesced
-    // stateUpdated event reads source: 'api'. The cascade of internal
-    // events (filterChanged + sortChanged + ...) collapses into one
-    // emission via the bus's rAF debounce.
-    this.stateUpdatedBus?.setNextSource('api');
-
-    // 0. runtime options (Cycle 21i / Phase 1) — FIRST so option-driven
-    // layout (row heights, panels, defaultColDef) settles before column
-    // state applies on top. Each key applies independently; one bad
-    // value degrades to a warning, not a dropped restore.
-    if (migrated.gridOptions) {
-      for (const [key, value] of Object.entries(migrated.gridOptions)) {
-        try {
-          this.setGridOption(key as keyof VelocityGridOptions<TRow>, value as never);
-        } catch (err) {
-          console.warn(`[velocity-grid] setState: skipped gridOptions['${key}']`, err);
-        }
-      }
-    }
-
-    // 0b. theme token overrides (Cycle 21i / Phase 1) — data colours.
-    if (migrated.themeParams) {
-      this.setThemeParams(migrated.themeParams);
-    } else if (exhaustive && Object.keys(this.getThemeParams()).length > 0) {
-      themeParamsClear(this.root);
-      this.theme = this.cssReader.read();
-      // Cycle 22 / Task 2 — theme-token clear is a raster-cache epoch.
-      this.rasterCacheEpochBump();
-      this.recomputeViewport();
-      this.cgridCanvas.requestRepaint();
-      this.stateUpdatedBus?.markChanged('themeParams');
-    }
-
-    // 0d. Floating-panel rect (non-persist-of-open) — only the last
-    // position/size is restored; the float itself is NEVER auto-reopened
-    // on `setState`/load.
-    if (migrated.toolPanelPopoutRect) {
-      this.popoutRect = migrated.toolPanelPopoutRect;
-      this.stateUpdatedBus?.markChanged('toolPanelPopoutRect');
-    } else if (exhaustive && this.popoutRect !== undefined) {
-      this.popoutRect = undefined;
-      this.stateUpdatedBus?.markChanged('toolPanelPopoutRect');
-    }
-
-    // 0c. module slices (Cycle 21i Phase 2 / T2) — engine-owned state
-    // envelopes, including the kernel's own `columnGroups` slice (the
-    // Task 6/8 overlay relocated behind the registry; legacy top-level
-    // `columnGroupDefs`/`columnGroupOpen` fields arrive here via the
-    // v3→v4 migrator). Positioned BEFORE columnState so structural
-    // slices (group hierarchy) settle before per-leaf width/hide/pinned
-    // apply on top. The columnGroups slice reuses the exact
-    // `updateGridOptions({ columnDefs })` path the panel's Apply uses —
-    // that path re-fires `columnDefsChanged`, which re-marks the
-    // `modules` key dirty; harmless (the bus coalesces per rAF frame and
-    // this restore's own emit is tagged with the 'api'/'init' source set
-    // above, matching how the sibling restores below re-dirty their own
-    // keys). Restore degrades gracefully per-slice: unknown module ids
-    // and throwing `set()`s warn + skip without dropping the rest.
-    // Exhaustive (layout switch / persisted restore): CLEAR the layout-tier
-    // module slices the incoming snapshot omits, so a layout without calc
-    // columns / template assignments doesn't leak the outgoing layout's
-    // slices (Grid Layouts / Phase B / B5). Grid-tier ids (editSettings,
-    // templates — shared) are preserved. Modules that can't clear from
-    // `undefined` (columnGroups) no-op, unchanged. Cleared BEFORE the restore
-    // so present slices below re-apply on a clean base.
-    if (exhaustive) {
-      const present = new Set(Object.keys(migrated.modules ?? {}));
-      const preserve = new Set(this.options.layoutGridLevelModules ?? DEFAULT_GRID_LEVEL_MODULES);
-      this.moduleStateRegistry.clearAbsent(present, preserve);
-    }
-    if (migrated.modules) {
-      this.moduleStateRegistry.restore(migrated.modules);
-    }
-
-    // 1. columnState (defines columns + their geometry).
-    if (migrated.columnState) {
-      this.applyColumnState({ state: migrated.columnState, applyOrder: true });
-    }
-
-    // 2. filterModel — filters rows.
-    if (migrated.filterModel) {
-      this.setFilterModel(migrated.filterModel);
-    } else if (exhaustive) {
-      this.setFilterModel({});
-    }
-
-    // 3. sortModel — orders rows.
-    if (migrated.sortModel) {
-      this.setSortModel(migrated.sortModel);
-    } else if (exhaustive) {
-      this.setSortModel([]);
-    }
-
-    // 4→6. Stash expanded routes BEFORE mutating the group model so a
-    // fast `setGroupModel` reply can still consume them. Exhaustive +
-    // omitted field means "all collapsed".
-    if (migrated.expandedRouteIds) {
-      this.pendingExpandedRouteIds = [...migrated.expandedRouteIds];
-    } else if (exhaustive) {
-      this.pendingExpandedRouteIds = [];
-    } else {
-      this.pendingExpandedRouteIds = null;
-    }
-
-    // 4. row-group columns.
-    if (migrated.rowGroupColumns) {
-      this.setRowGroupColumns(migrated.rowGroupColumns);
-    } else if (exhaustive) {
-      this.setRowGroupColumns([]);
-    }
-
-    // 5. pivot mode + cols.
-    if (migrated.pivotMode !== undefined) {
-      this.setPivotMode(migrated.pivotMode);
-    } else if (exhaustive && this.isPivotMode()) {
-      this.setPivotMode(false);
-    }
-    if (migrated.pivotCols) {
-      this.setPivotColumns(migrated.pivotCols);
-    } else if (exhaustive) {
-      this.setPivotColumns([]);
-    }
-
-    // 6. expanded routes (group / tree) — best-effort immediate apply when
-    // grouping is already live (layout switch on a warm grid). Otherwise
-    // the `setGroupModel` reply path calls `flushPendingExpandedRoutes`.
-    this.flushPendingExpandedRoutes();
-
-    // 7. cell + row selection.
-    if (migrated.cellSelection) {
-      this.clearCellRanges();
-      for (const range of migrated.cellSelection.ranges) {
-        this.addCellRange(range);
-      }
-    } else if (exhaustive) {
-      this.clearCellRanges();
-    }
-    if (migrated.rowSelection) {
-      this.setSelectedRowIds(migrated.rowSelection);
-    } else if (exhaustive) {
-      this.setSelectedRowIds([]);
-    }
-
-    // 8. side bar.
-    if (migrated.sideBar) {
-      this.setSideBarVisible(migrated.sideBar.visible);
-      if (migrated.sideBar.openedToolPanel) {
-        this.openToolPanel(migrated.sideBar.openedToolPanel);
-      } else if (exhaustive) {
-        this.closeToolPanel();
-      }
-    } else if (exhaustive) {
-      this.closeToolPanel();
-      this.setSideBarVisible(false);
-    }
-
-    // 9. scroll — last so viewport math runs after every model that
-    // affects layout has settled.
-    if (migrated.scroll) {
-      this.scroller.scrollTo({ top: migrated.scroll.top, left: migrated.scroll.left });
-    } else if (exhaustive) {
-      this.scroller.scrollTo({ top: 0, left: 0 });
-    }
-  }
-
-  /** The grid's complete configuration in one object: the full live options
-   *  (columnDefs, defaultColDef, callbacks, and every runtime-updated option)
-   *  with the current runtime + view state embedded as `initialState`. Pass
-   *  it straight to `new VelocityGrid(host, grid.getConfig())` to reconstruct the
-   *  grid exactly, or to `setConfig` to apply it to a live grid.
-   *
-   *  This is a SHALLOW copy — `columnDefs` / `defaultColDef` and any function
-   *  options are shared by reference (so the result is not pure-JSON; use
-   *  `getState()` for the serialisable view-state slice). Treat it as
-   *  read-only or clone before mutating. */
-  getConfig(): VelocityGridOptions<TRow> {
-    return { ...this.options, initialState: this.getState() };
-  }
-
-  /** Apply a config object (as produced by `getConfig`) to this live grid.
-   *  The embedded `initialState` restores via `setState`; the remaining
-   *  options are applied via `updateGridOptions`. Initial-only keys
-   *  (`gridId`, `getRowId`, `worker`, …) and any non-runtime keys can't
-   *  change on a live grid, so they're skipped — construct a new grid from
-   *  `getConfig()` when you need those to differ. */
-  setConfig(config: VelocityGridOptions<TRow>): void {
-    const initialState = config.initialState;
-    const src = config as unknown as Record<string, unknown>;
-    const applicable: Record<string, unknown> = {};
-    for (const k of Object.keys(src)) {
-      if (k === 'initialState') continue;
-      if (INITIAL_ONLY_OPTIONS.has(k as keyof VelocityGridOptions<any>)) continue;
-      // Only columnDefs (handled specially by updateGridOptions) and known
-      // runtime options can apply mid-session; everything else (callbacks,
-      // construction-time flags) would be rejected by setGridOption.
-      if (k === 'columnDefs' || isRuntimeOption(k)) {
-        applicable[k] = src[k];
-      }
-    }
-    this.updateGridOptions(applicable as Partial<VelocityGridOptions<TRow>>);
-    if (initialState) this.setState(initialState);
-  }
-
-  // ── Grid Layouts (Phase A / A3) ─────────────────────────────────────
-  //
-  // Thin delegation to the LayoutManager (core/layoutManager.ts), which
-  // owns the registry / active id / Default invariants / tier filtering.
-  // VelocityGrid supplies the live-grid seam (capture = getState, apply =
-  // reset-options-then-setState) and fans a `layoutChanged` event.
-
-  /** Build the LayoutManager on first use, capturing the as-constructed
-   *  view as the baseline. Called eagerly at the end of construction so the
-   *  baseline is the post-`initialState` view, and lazily as a guard for a
-   *  layout API call that races construction. */
-  private getLayoutManager(): LayoutManager {
-    if (!this.layoutManager) {
-      // Options touched at construction (via `initialState` / the seeded
-      // options) are the APP baseline — record their current value so a
-      // layout switch resets to the app default, not the kernel default.
-      // Their lazy pre-change capture in `setGridOption` was `undefined`
-      // (they were set before any layout existed); overwrite with the live
-      // value. Safe because this runs eagerly at construction end, before any
-      // user interaction, so `runtimeTouchedOptions` holds only those.
-      for (const [key, value] of this.runtimeTouchedOptions) {
-        this.optionBaselines.set(key, structuredClone(value));
-      }
-      this.layoutManager = new LayoutManager(this.layoutHost, {
-        baseline: this.getState(),
-        layouts: this.options.layouts,
-        activeLayoutId: this.options.activeLayoutId,
-        layoutGridLevelModules: this.options.layoutGridLevelModules,
-      });
-    }
-    return this.layoutManager;
-  }
-
-  /** Restore a layout snapshot: first reset every runtime option the target
-   *  does NOT override back to its baseline (kernel `setState` layers
-   *  options additively — spec §7), then `setState` the snapshot (which
-   *  layers the target's option overrides + restores layout-tier modules;
-   *  grid-tier module slices, absent from the snapshot, are left as-is). */
-  private applyLayoutSnapshot(snapshot: GridState): void {
-    // Migrate up front so an un-migratable (newer-than-build) snapshot throws
-    // BEFORE any side effect — no half-reset options, no half-switched view.
-    const migrated = migrateSnapshot(snapshot);
-    // Strip grid-tier modules (incl. data-provider) so a polluted legacy
-    // layout snapshot cannot overwrite the live shared selection / edits /
-    // templates / alerts. Capture already omits these via
-    // DEFAULT_GRID_LEVEL_MODULES; this hardens apply for older bundles.
-    const preserve = new Set(this.options.layoutGridLevelModules ?? DEFAULT_GRID_LEVEL_MODULES);
-    if (migrated.modules) {
-      const mods = { ...migrated.modules };
-      for (const id of preserve) delete mods[id];
-      migrated.modules = Object.keys(mods).length > 0 ? mods : undefined;
-    }
-    const targetOptions = migrated.gridOptions ?? {};
-    for (const key of [...this.runtimeTouchedOptions.keys()]) {
-      if (key in targetOptions) continue;
-      try {
-        this.setGridOption(key as keyof VelocityGridOptions<TRow>, this.optionBaselines.get(key) as never);
-      } catch (err) {
-        console.warn(`[velocity-grid] layout apply: could not reset gridOptions['${key}']`, err);
-      }
-      // `setGridOption` re-records the touch; un-record so a value equal to
-      // baseline is no longer treated as an override on the next capture.
-      this.runtimeTouchedOptions.delete(key);
-    }
-    // Exhaustive: a layout switch must CLEAR view state the target omits.
-    this.setState(migrated, { exhaustive: true });
-  }
-
-  private emitLayoutChanged(source: LayoutChangeSource): void {
-    this.events.emit({
-      type: 'layoutChanged',
-      activeLayoutId: this.getLayoutManager().getActiveLayoutId(),
-      source,
-    });
-  }
-
-  /** All layouts (Default always present). */
-  getLayouts(): GridLayout[] {
-    return this.getLayoutManager().getLayouts();
-  }
-  getActiveLayoutId(): string {
-    return this.getLayoutManager().getActiveLayoutId();
-  }
-  getActiveLayout(): GridLayout {
-    return this.getLayoutManager().getActiveLayout();
-  }
-  /** Capture the current view as a new named layout (activates by default). */
-  saveLayout(name: string, opts?: SaveLayoutOptions): GridLayout {
-    const layout = this.getLayoutManager().saveLayout(name, opts);
-    this.emitLayoutChanged('save');
-    return layout;
-  }
-  /** Recapture the current view into an existing layout (default: active). */
-  updateLayout(id?: string): GridLayout {
-    const layout = this.getLayoutManager().updateLayout(id);
-    this.emitLayoutChanged('update');
-    return layout;
-  }
-  /** Activate a layout and restore its view. */
-  loadLayout(id: string): GridLayout {
-    const layout = this.getLayoutManager().loadLayout(id);
-    this.emitLayoutChanged('load');
-    return layout;
-  }
-  /** Delete a layout (Default undeletable; active-delete → Default). */
   deleteLayout(id: string): void {
-    this.getLayoutManager().deleteLayout(id);
-    this.emitLayoutChanged('delete');
+    this.persistence.deleteLayout(id);
   }
-  /** Rename a layout's display name (unique). */
-  renameLayout(id: string, name: string): GridLayout {
-    const layout = this.getLayoutManager().renameLayout(id, name);
-    this.emitLayoutChanged('rename');
-    return layout;
+
+  deleteRule(id: string): void {
+    this.persistence.deleteRule(id);
   }
-  /** Clone a layout under a new unique name (no activation by default). */
+
+  deleteTemplate(templateId: string): void {
+    this.persistence.deleteTemplate(templateId);
+  }
+
   duplicateLayout(id: string, name: string, opts?: SaveLayoutOptions): GridLayout {
-    const layout = this.getLayoutManager().duplicateLayout(id, name, opts);
-    this.emitLayoutChanged('duplicate');
-    return layout;
-  }
-  /** Reset a layout (default: active) to the construction baseline. */
-  resetLayout(id?: string): GridLayout {
-    const layout = this.getLayoutManager().resetLayout(id);
-    this.emitLayoutChanged('reset');
-    return layout;
+    return this.persistence.duplicateLayout(id, name, opts);
   }
 
-  /** The grid-level baseline config (spec §8): the stored baseline
-   *  (`gridOptions` + whatever was last set) overlaid with the LIVE
-   *  `editSettings` / `templates` module slices (templates lights up in
-   *  Phase B). */
-  getGridConfig(): GridBaselineConfig {
-    const out = this.getLayoutManager().getGridConfig();
-    if (out.gridOptions && Object.keys(out.gridOptions).length === 0) delete out.gridOptions;
-    // Clone the LIVE module envelopes so a consumer mutating the returned
-    // config / exported bundle can't reach into engine-owned module state.
-    const modules = this.moduleStateRegistry.snapshot();
-    if (modules?.editSettings) out.editing = structuredClone(modules.editSettings);
-    // Templates: when calc is wired the LIVE library is authoritative — an
-    // EMPTY library must override any stale `LayoutManager.gridConfig.templates`
-    // (which materializeTemplates populates but delete/rename never prune), so a
-    // deleted template can't resurrect in an export/reload (M2). `getTemplates`
-    // is defensively cloned and returns `[]` when empty. Only when calc is NOT
-    // wired do we fall through to the manager's stored library.
-    if (getCalcProvider()?.getTemplates) out.templates = this.getTemplates();
-    return out;
+  editColumn(colId: string, patch: import('@wellsfargo-starui/velocity-grid-calc').ColumnEditPatch): void {
+    this.persistence.editColumn(colId, patch);
   }
 
-  /** Set the grid-level baseline (spec §7/§8): apply it to the live grid
-   *  and store it in the LayoutManager so it rides the exported bundle. */
-  setGridConfig(config: GridBaselineConfig): void {
-    this.applyGridConfigLive(config);
-    this.getLayoutManager().setGridConfig(config);
-    this.emitLayoutChanged('setGridConfig');
-  }
-
-  /** Apply a grid-level config to the LIVE grid (no manager write / event):
-   *  `gridOptions` become the new option baseline (applied + recorded so
-   *  layout resets return to them, not treated as an override); `editing` /
-   *  `templates` restore their module slices. Shared by `setGridConfig` and
-   *  the import path. */
-  private applyGridConfigLive(config: GridBaselineConfig): void {
-    if (config.gridOptions) {
-      for (const [key, value] of Object.entries(config.gridOptions)) {
-        try {
-          this.setGridOption(key as keyof VelocityGridOptions<TRow>, value as never);
-          // Clone so a later mutation of a caller's object-valued option
-          // (e.g. defaultColDef) can't corrupt the stored baseline.
-          this.optionBaselines.set(key, structuredClone(value)); // new baseline
-          this.runtimeTouchedOptions.delete(key);                 // baseline ≠ override
-        } catch (err) {
-          console.warn(`[velocity-grid] setGridConfig: skipped gridOptions['${key}']`, err);
-        }
-      }
-    }
-    if (config.editing) {
-      this.moduleStateRegistry.restore({ editSettings: config.editing });
-    }
-    if (config.templates) {
-      this.moduleStateRegistry.restore({ templates: { version: 1, data: config.templates } });
-    }
-  }
-
-  // ── Import / export (A4 + B4) ───────────────────────────────────────
-
-  /** Export a single layout, bundling the template defs its columns
-   *  reference (Phase B / B4) — resolved against the LIVE grid-level library
-   *  so the export is self-contained across grids. */
   exportLayout(id: string): GridLayout {
-    return this.getLayoutManager().exportLayout(id, this.getGridConfig().templates ?? []);
+    return this.persistence.exportLayout(id);
   }
-  /** Export the full bundle: layouts + active id + the live grid config
-   *  (whose `templates` carries the whole shared library). */
+
   exportLayouts(): GridLayoutsBundle {
-    const bundle = this.getLayoutManager().exportLayouts();
-    bundle.grid = this.getGridConfig(); // overlay live editing/templates modules
-    return bundle;
+    return this.persistence.exportLayouts();
   }
-  /** Import a single layout (collision → new id unless `overwrite`),
-   *  optionally activating (and applying) it. Bundled template defs are
-   *  re-materialized into the LIVE library (add-if-absent) so an activated
-   *  layout's template assignments resolve (Phase B / B4). */
+
+  getActiveLayout(): GridLayout {
+    return this.persistence.getActiveLayout();
+  }
+
+  getActiveLayoutId(): string {
+    return this.persistence.getActiveLayoutId();
+  }
+
+  getConfig(): VelocityGridOptions<TRow> {
+    return this.persistence.getConfig();
+  }
+
+  getGridConfig(): GridBaselineConfig {
+    return this.persistence.getGridConfig();
+  }
+
+  getLayouts(): GridLayout[] {
+    return this.persistence.getLayouts();
+  }
+
+  getRules(): ConditionalRuleShape[] {
+    return this.persistence.getRules();
+  }
+
+  getState(): GridState {
+    return this.persistence.getState();
+  }
+
+  getTemplates(): ColumnTemplate[] {
+    return this.persistence.getTemplates();
+  }
+
   importLayout(layout: GridLayout, opts?: { overwrite?: boolean; activate?: boolean }): GridLayout {
-    const mgr = this.getLayoutManager();
-    const imported = mgr.importLayout(layout, opts); // folds defs into the bundle library
-    this.materializeTemplatesLive(layout.templates); // …and into the live engine
-    if (opts?.activate) mgr.loadLayout(imported.id); // apply to the live grid
-    this.emitLayoutChanged('import');
-    return imported;
+    return this.persistence.importLayout(layout, opts);
   }
-  /** Import a bundle (`'merge'` default / `'replace'`), then resync the live
-   *  grid to the (possibly new) grid config + active layout view.
-   *  `{ apply: false }` on replace reseeds only (emits `restore`) — used when
-   *  a following `setState` is the authoritative view restore. */
+
   importLayouts(
     bundle: GridLayoutsBundle,
     opts?: { mode?: 'replace' | 'merge'; overwrite?: boolean; apply?: boolean },
   ): void {
-    const mgr = this.getLayoutManager();
-    mgr.importLayouts(bundle, opts);
-    // Only `'replace'` swaps the active layout + config → resync the live grid.
-    // `'merge'` folds layouts in WITHOUT disturbing the current (possibly
-    // unsaved) on-screen view; the merged config is stored for later resets.
-    if ((opts?.mode ?? 'merge') === 'replace') {
-      // Grid config first (sets the option baseline) so the active view's
-      // reset-to-baseline in loadLayout lands on the imported baseline. The
-      // replaced config's `templates` restores the whole library to the engine.
-      this.applyGridConfigLive(mgr.getGridConfig());
-      if (opts?.apply === false) {
-        // Registry + baseline only — caller will setState the saved view.
-        // Emit `restore` (not `import`) so Ext layout-save auto-persist does
-        // not write getState() before grid-tier modules (data-provider) restore.
-        this.emitLayoutChanged('restore');
-        return;
-      }
-      mgr.loadLayout(mgr.getActiveLayoutId());
-    } else {
-      // Merge: fold the bundle library into the LIVE engine (add-if-absent) so
-      // a later loadLayout of a merged layout resolves its assignments —
-      // without a full library replace that would disturb live own-templates.
-      // Covers BOTH the bundle-level library AND per-layout bundled defs (a
-      // bundle assembled from `exportLayout()` objects carries defs on each
-      // layout, not in `grid.templates`) — M4.
-      this.materializeTemplatesLive(bundle.grid?.templates);
-      for (const l of bundle.layouts ?? []) this.materializeTemplatesLive(l.templates);
-    }
-    this.emitLayoutChanged('import');
+    this.persistence.importLayouts(bundle, opts);
   }
 
-  /** Fold template defs into the LIVE engine library (add-if-absent) — the
-   *  runtime half of the manager's `materializeTemplates`. Skips ids already
-   *  present (never clobbers a live/customized def); no-op without calc. */
-  private materializeTemplatesLive(templates: ColumnTemplate[] | undefined): void {
-    if (!templates || templates.length === 0) return;
-    const have = new Set(this.getTemplates().map((t) => t.id));
-    for (const t of templates) {
-      if (!have.has(t.id)) this.saveTemplate(t);
-    }
+  loadLayout(id: string): GridLayout {
+    return this.persistence.loadLayout(id);
   }
 
-  // ── Styling templates (Phase B / B3) ────────────────────────────────
-  // The shared styling-template library, routed to the calc provider
-  // (registered by @wellsfargo-starui/velocity-grid-calc's wireIntoKernel). No provider (calc not
-  // wired) → `getTemplates` returns `[]` and the mutators no-op without an
-  // event. The engine is Date-free, so save/rename stamp `Date.now()` here.
-  // Mutations that change a column's resolved def (save/apply/remove) trigger
-  // the kernel colDef rebuild via the provider's onColumnsChanged wiring;
-  // every op fires `templatesChanged` for switchers/editors to re-sync.
-
-  private emitTemplatesChanged(source: TemplateChangeSource, templateId?: string): void {
-    this.events.emit({ type: 'templatesChanged', source, templateId });
+  notifyModuleStateChanged(moduleId: string): void {
+    this.persistence.notifyModuleStateChanged(moduleId);
   }
 
-  /** The shared styling-template library (defensive clones; `[]` when no
-   *  calc engine is wired). */
-  getTemplates(): ColumnTemplate[] {
-    return (getCalcProvider()?.getTemplates?.() ?? []) as unknown as ColumnTemplate[];
+  registerStateModule(module: StateModule): () => void {
+    return this.persistence.registerStateModule(module);
   }
-  /** Create-or-replace a template by id (kernel stamps timestamps). */
-  saveTemplate(spec: TemplateSaveInput): void {
-    const provider = getCalcProvider();
-    if (!provider?.saveTemplate) return;
-    provider.saveTemplate({
-      id: spec.id, name: spec.name, description: spec.description,
-      overrides: spec.overrides as Record<string, unknown>, now: Date.now(),
-    });
-    this.emitTemplatesChanged('save', spec.id);
-  }
-  /** Rename a template's display name (grid-wide unique; throws on collision). */
-  renameTemplate(templateId: string, name: string): void {
-    const provider = getCalcProvider();
-    if (!provider?.renameTemplate) return;
-    provider.renameTemplate(templateId, name, Date.now()); // throws propagate (no event)
-    this.emitTemplatesChanged('rename', templateId);
-  }
-  /** Delete a template from the library (assignments become dangling refs). */
-  deleteTemplate(templateId: string): void {
-    const provider = getCalcProvider();
-    if (!provider?.deleteTemplate) return;
-    provider.deleteTemplate(templateId);
-    this.emitTemplatesChanged('delete', templateId);
-  }
-  /** Assign a template to a single column (appends to its chain). */
-  applyTemplate(colId: string, templateId: string): void {
-    const provider = getCalcProvider();
-    if (!provider?.applyTemplate) return;
-    provider.applyTemplate(colId, templateId);
-    this.emitTemplatesChanged('apply', templateId);
-  }
-  /** Unassign a template from a single column (library entry kept). */
+
   removeTemplate(colId: string, templateId: string): void {
-    const provider = getCalcProvider();
-    if (!provider?.removeTemplate) return;
-    provider.removeTemplate(colId, templateId);
-    this.emitTemplatesChanged('remove', templateId);
-  }
-  /** Auto-template-on-edit (spec §3.1): patch a column's editable attributes
-   *  into its OWN template (forking from any shared template). Fires
-   *  `templatesChanged` (source `'save'` — it writes the column's own
-   *  template). No-op without a calc engine. */
-  editColumn(colId: string, patch: import('@wellsfargo-starui/velocity-grid-calc').ColumnEditPatch): void {
-    const provider = getCalcProvider();
-    if (!provider?.editColumn) return;
-    // Gate the event on the engine's result — a rejected edit (e.g. a
-    // non-compiling format) changes nothing, so it must not fire
-    // `templatesChanged` (M1).
-    const ok = provider.editColumn(colId, patch as Record<string, unknown>, Date.now());
-    if (ok) this.emitTemplatesChanged('save');
+    this.persistence.removeTemplate(colId, templateId);
   }
 
-  // ── Conditional styling rules (Phase C / C3) ────────────────────────────
-  // The active layout's conditional-rule set, routed to the @wellsfargo-starui/velocity-grid-rules
-  // RuleEngine via the rule-engine provider (registered by @wellsfargo-starui/velocity-grid-rules'
-  // wireIntoKernel). No engine wired → `getRules` returns `[]` and the
-  // mutators no-op without an event. The kernel owns the CRUD semantics as
-  // pure array transforms over getRules()/setRules() (like LayoutManager owns
-  // layout CRUD) — the engine stays the paint + validation owner. Every
-  // mutation fires `rulesChanged` (→ persist bus `'modules'` → autosave, since
-  // rules ride the layout-tier `rules` module) and repaints (rule style is
-  // evaluated live in the paint fold, so a rule change needs a fresh frame).
-
-  private emitRulesChanged(source: RuleChangeSource, ruleId?: string): void {
-    this.events.emit({ type: 'rulesChanged', source, ruleId });
-    // Cycle 22 / closeout C-2 — layoutEpoch contract: a rule mutation
-    // changes matching cells' resolved fg/bg/indicator with NO data change,
-    // column rebuild, or geometry change — rowVersionByRowId and the strip
-    // keys all stand still, so retained strips would keep serving pre-rule
-    // pixels at rest. All five VelocityGridApi rule mutators route through here.
-    // (Tier 1 is safe without this: rule-resolved styles and ruleIndicator
-    // are cellStyleSignature fields, so the key itself changes.)
-    if (this.rasterStrips !== null) this.stripLayoutEpochBump();
-    // Rule style changes every matching cell's pixels with no data /
-    // geometry change — wipe retained layer + force full.
-    this.invalidateRetainedPaintForColumnLayout();
-    this.repaintFull();
+  renameLayout(id: string, name: string): GridLayout {
+    return this.persistence.renameLayout(id, name);
   }
 
-  /** The active layout's conditional-rule set (`[]` when no rules engine is
-   *  wired). Order is the application order (stable tiebreak for equal
-   *  priority; `reorderRules` rewrites it). */
-  getRules(): ConditionalRuleShape[] {
-    return getRuleEngine()?.getRules?.() ?? [];
+  renameTemplate(templateId: string, name: string): void {
+    this.persistence.renameTemplate(templateId, name);
   }
-  /** Append a rule to the set. No-op (no event) when a rule with the same `id`
-   *  already exists — ids must be unique (the engine keys match state + counts
-   *  by id, so a duplicate would corrupt update/delete/enable); use
-   *  `updateRule` to change an existing rule. */
-  addRule(rule: ConditionalRuleShape): void {
-    const engine = getRuleEngine();
-    if (!engine?.setRules) return;
-    const current = this.getRules();
-    if (current.some((r) => r.id === rule.id)) return;
-    engine.setRules([...current, rule]);
-    this.emitRulesChanged('add', rule.id);
-  }
-  /** Shallow-merge a patch into the rule with `id` (its `id` is preserved). The
-   *  patch may carry any rule field — `enabled` / `priority` / `condition` /
-   *  `style` / … (the engine re-validates). No-op (no event) when the id is
-   *  unknown. */
-  updateRule(id: string, patch: Partial<ConditionalRuleShape> | Record<string, unknown>): void {
-    const engine = getRuleEngine();
-    if (!engine?.setRules) return;
-    const current = this.getRules();
-    if (!current.some((r) => r.id === id)) return;
-    engine.setRules(current.map((r) => (r.id === id ? { ...r, ...patch, id } : r)));
-    this.emitRulesChanged('update', id);
-  }
-  /** Remove the rule with `id`. No-op (no event) when the id is unknown. */
-  deleteRule(id: string): void {
-    const engine = getRuleEngine();
-    if (!engine?.setRules) return;
-    const current = this.getRules();
-    const next = current.filter((r) => r.id !== id);
-    if (next.length === current.length) return;
-    engine.setRules(next);
-    this.emitRulesChanged('delete', id);
-  }
-  /** Toggle a rule's `enabled` flag. No-op (no event) when the id is unknown or
-   *  the rule is already in that state (avoids a needless recompile + autosave). */
-  setRuleEnabled(id: string, enabled: boolean): void {
-    const engine = getRuleEngine();
-    if (!engine?.setRules) return;
-    const current = this.getRules();
-    const target = current.find((r) => r.id === id);
-    if (!target || target.enabled === enabled) return;
-    engine.setRules(current.map((r) => (r.id === id ? { ...r, enabled } : r)));
-    this.emitRulesChanged('enable', id);
-  }
-  /** Reorder the rule set to match `orderedIds` (application order — the
-   *  stable tiebreak for equal priority). Ids not present in `orderedIds`
-   *  keep their relative order after the listed ones; unknown ids are
-   *  ignored. No-op (no event) without a rules engine. */
+
   reorderRules(orderedIds: string[]): void {
-    const engine = getRuleEngine();
-    if (!engine?.setRules) return;
-    const current = this.getRules();
-    const byId = new Map(current.map((r) => [r.id, r]));
-    const seen = new Set<string>();
-    const next: ConditionalRuleShape[] = [];
-    for (const id of orderedIds) {
-      const r = byId.get(id);
-      if (r && !seen.has(id)) { next.push(r); seen.add(id); }
-    }
-    for (const r of current) if (!seen.has(r.id)) next.push(r);
-    // No-op if the order is unchanged (avoids a needless recompile + autosave).
-    if (next.every((r, i) => r.id === current[i]?.id)) return;
-    engine.setRules(next);
-    this.emitRulesChanged('reorder');
+    this.persistence.reorderRules(orderedIds);
   }
 
-  /** Grid Layouts (A5) — restore a persisted blob (`{ ...viewState, layouts?
-   *  }`). The reserved `layouts` bundle (when present) reseeds the manager
-   *  — taking PRECEDENCE over `options.layouts` (spec §11) — and its grid
-   *  config baseline is applied to the live grid; then the top-level view
-   *  state restores the last-seen view on top. No `layouts` field → a plain
-   *  view-state restore (older blobs, or grids that never used layouts). */
-  private restorePersistedBlob(blob: GridState): void {
-    this.stateUpdatedBus?.setNextSource('init');
-    const { layouts, ...viewState } = blob as GridState & { layouts?: GridLayoutsBundle };
-    if (layouts) {
-      // Pure reseed (no view apply — the view is restored below).
-      this.getLayoutManager().importLayouts(layouts, { mode: 'replace' });
-      this.applyGridConfigLive(this.getLayoutManager().getGridConfig());
-    }
-    // Exhaustive so persisted state fully defines the view — any leftover
-    // from `initialState` (applied earlier in construction) is cleared:
-    // persisted state wins (spec §11).
-    this.setState(viewState as GridState, { exhaustive: true });
-    // Let app UI (layout switchers) re-sync to the restored set. Fired after
-    // the view settles; listeners attached before construction's async
-    // restore (the common case) receive it.
-    if (layouts) this.emitLayoutChanged('restore');
-  }
-
-  /** Cycle 23 / Task 6 — restore the construction-time defaults.
-   *  Walks the same setters `setState` uses but with empty / cleared
-   *  values across the board; column state replays through the
-   *  dedicated `resetColumnState` path so the as-coded layout
-   *  (sort, pin, visibility) comes back exactly as the constructor
-   *  saw it. */
-  /** Cycle 21i / Phase 1 — delete the persisted snapshot for this grid's
-   *  `gridId` (and cancel any pending autosave write). Does not change the
-   *  live grid state; pair with `resetState()` + a reload for a full
-   *  factory reset. No-op when persistence isn't enabled. */
-  clearPersistedState(): void {
-    this.statePersistence?.clear();
+  resetLayout(id?: string): GridLayout {
+    return this.persistence.resetLayout(id);
   }
 
   resetState(): void {
-    this.resetColumnState();
-    this.setFilterModel({});
-    this.setSortModel([]);
-    this.setRowGroupColumns([]);
-    this.setPivotColumns([]);
-    if (this.isPivotMode()) this.setPivotMode(false);
-    // Collapse every currently-expanded group.
-    for (const key of Array.from(this.getExpandedKeys())) {
-      this.setExpanded(key, false);
-    }
-    this.clearCellRanges();
-    this.setSelectedRowIds([]);
-    this.scroller.scrollTo({ top: 0, left: 0 });
+    this.persistence.resetState();
   }
+
+  saveLayout(name: string, opts?: SaveLayoutOptions): GridLayout {
+    return this.persistence.saveLayout(name, opts);
+  }
+
+  saveTemplate(spec: TemplateSaveInput): void {
+    this.persistence.saveTemplate(spec);
+  }
+
+  setConfig(config: VelocityGridOptions<TRow>): void {
+    this.persistence.setConfig(config);
+  }
+
+  setGridConfig(config: GridBaselineConfig): void {
+    this.persistence.setGridConfig(config);
+  }
+
+  setRuleEnabled(id: string, enabled: boolean): void {
+    this.persistence.setRuleEnabled(id, enabled);
+  }
+
+  setState(snapshot: GridState, opts?: { exhaustive?: boolean }): void {
+    this.persistence.setState(snapshot, opts);
+  }
+
+  updateLayout(id?: string): GridLayout {
+    return this.persistence.updateLayout(id);
+  }
+
+  updateRule(id: string, patch: Partial<ConditionalRuleShape> | Record<string, unknown>): void {
+    this.persistence.updateRule(id, patch);
+  }
+
 
   /** Cycle 19 / Task 5-ColState — column-state restore delegates. See
    *  `ColumnStateManager.applyColumnState` / `resetColumnState` for the
@@ -13169,7 +9763,7 @@ export class VelocityGrid<TRow = any> {
     if (changes.length === 0) return;
     this.columnLayout = resolveColumnWidths(this.columnOrder, containerWidth);
     this.recomputeViewport();
-    this.repaintFull();
+    this.paintDriver.repaintFull();
     for (const c of changes) {
       this.events.emit({
         type: 'columnResized',
@@ -13312,7 +9906,7 @@ export class VelocityGrid<TRow = any> {
       this.canvasBounds.width || this.scroller.clientWidth || 800,
     );
     this.recomputeViewport();
-    this.repaintFull();
+    this.paintDriver.repaintFull();
     for (const c of changes) {
       this.events.emit({
         type: 'columnResized',
@@ -13709,7 +10303,7 @@ export class VelocityGrid<TRow = any> {
     // the header stack so group-header rows drop and height reverts.
     this.rebuildSubgridStack();
     this.recomputeViewport();
-    this.repaintFull();
+    this.paintDriver.repaintFull();
   }
 
   /** Cycle 19 / Task 5-ColState — ColumnStateManager deps bundle.
@@ -13743,8 +10337,8 @@ export class VelocityGrid<TRow = any> {
       // Column-state relayout — wipe retained paint + full (style/order
       // can change without a columnLayout identity change in edge cases).
       requestRepaint: () => {
-        this.invalidateRetainedPaintForColumnLayout();
-        this.repaintFull();
+        this.paintDriver.invalidateRetainedPaintForColumnLayout();
+        this.paintDriver.repaintFull();
       },
       workerColumns: () => this.workerColumns(),
       updateWorkerColumns: (cols) =>
@@ -13806,7 +10400,7 @@ export class VelocityGrid<TRow = any> {
    *  when the row hasn't been chunked yet. The real `getRowByIndex`
    *  worker round-trip is used at commit time; this synchronous flavour
    *  is what predicates / suppressKeyboardEvent callbacks see. */
-  private rowDataSnapshotAt(rowIndex: number): Record<string, unknown> {
+  rowDataSnapshotAt(rowIndex: number): Record<string, unknown> {
     const snapshot: Record<string, unknown> = {};
     for (const col of this.viewport.visibleColumns) {
       const cell = this.cellAt(rowIndex, col.colId);
@@ -14058,58 +10652,7 @@ export class VelocityGrid<TRow = any> {
 }
 
 // ─── Cycle 20 / Task 3 — export support ─────────────────────────────────────
-
-/** Caller-facing CSV export params. Mirrors AG-Grid's
- *  `CsvExportParams` for the subset the worker writer respects. */
-export interface ExportCsvParams {
-  fileName?: string;
-  columnSeparator?: string;
-  columnKeys?: string[];
-  skipColumnHeaders?: boolean;
-  suppressQuotes?: boolean;
-  withBOM?: boolean;
-  prependContent?: string;
-  appendContent?: string;
-  /** Name of an `exportCallbacks` entry to transform each cell. */
-  processCellCallback?: string;
-  /** Name of an `exportCallbacks` entry to transform each header. */
-  processHeaderCallback?: string;
-  /** Cycle 20 / Task 5 — limit the export to currently-selected rows. */
-  onlySelected?: boolean;
-}
-
-/** Caller-facing XLSX export params. */
-export interface ExportExcelParams {
-  fileName?: string;
-  sheetName?: string;
-  columnKeys?: string[];
-  skipColumnHeaders?: boolean;
-  freezeRows?: number;
-  freezeColumns?: number;
-  author?: string;
-  processCellCallback?: string;
-  processHeaderCallback?: string;
-  /** Cycle 20 / Task 5 — limit the export to currently-selected rows. */
-  onlySelected?: boolean;
-}
-
-const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-
-/** Trigger a browser download for an ArrayBuffer. Builds a Blob,
- *  creates an object-URL, dispatches an anchor click, then revokes
- *  the URL on a microtask so the browser has time to start the
- *  download before we drop the handle. */
-function triggerDownload(buffer: ArrayBuffer, fileName: string, mime: string): void {
-  if (typeof document === 'undefined' || typeof URL === 'undefined') return;
-  const blob = new Blob([buffer], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName;
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  // Revoke once the browser has had a chance to fetch the blob.
-  setTimeout(() => URL.revokeObjectURL(url), 0);
-}
+// The params types moved with the export implementation into
+// `host/selectionFacade.ts`; re-exported here so the published surface is
+// unchanged for callers importing them from the grid entry point.
+export type { ExportCsvParams, ExportExcelParams } from './host/selectionFacade';

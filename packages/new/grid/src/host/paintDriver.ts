@@ -21,7 +21,7 @@
 
 import type { VelocityGridOptions } from '../types';
 import type { PaintStats } from '../types/api';
-import { applyCellProps, type ResolvedColDef, type CellPaintConfig } from '../core/propertyChain';
+import { applyCellProps, type ResolvedColDef } from '../core/propertyChain';
 import type { ColumnLayout } from '../core/layout';
 import { computeViewport, type ViewportState } from '../core/viewport';
 import type { RowHeightIndex } from '../core/rowHeightIndex';
@@ -34,14 +34,14 @@ import {
 } from '../core/damageLedger';
 import { getRuleEngine } from '../core/ruleEngineSlot';
 import { getCalcProvider } from '../core/calcSlot';
-import { PaintCacheLayer, planLayer, defaultCanvasFactory, type LayerGeometry, type LayerPlan } from '../core/paintCache';
+import { PaintCacheLayer, defaultCanvasFactory, type LayerGeometry } from '../core/paintCache';
 import type { FlashRegistry } from '../core/flashRegistry';
 import { buildFlashAlphaMask } from '../core/flashAlphaMask';
 import type { VelocityGridCanvas } from '../core/canvas';
 import { PinnedRowsSubgrid, type Subgrid } from '../core/subgrid';
 import { RasterBudget, CellBitmapCache, RowStripCache } from '../renderer/rasterCache';
 import type { RasterCellsCtx, RasterStripsCtx } from '../renderer/painters/types';
-import type { CellRendererRegistry } from '../renderer/cellRenderers/registry';
+import type { CellRendererRegistry, CellPaintConfig } from '../renderer/cellRenderers/registry';
 import type { CachedContext2D } from '../renderer/gc';
 import type { Renderer } from '../renderer/renderer';
 import { resolveDrawableCellIcon } from '../renderer/painters/byRows';

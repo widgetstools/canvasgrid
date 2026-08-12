@@ -18,12 +18,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { FilterPass, RowStore } from '../src/worker/dataPipeline';
-// PORT-NOTE: import path only. `applyTrimInputToModel` lives in
-// `src/interaction/filters/textFilter.ts` (a DOM popup module, unported —
-// outside the worker scope); the worker port carries the DOM-free helper at
-// `src/worker/interop/trimInput.ts`. Implementation is verbatim; assertions
-// below are untouched.
-import { applyTrimInputToModel } from '../src/worker/interop/trimInput';
+import { applyTrimInputToModel } from '../src/interaction/filters/textFilter';
 import type { WorkerColumn } from '../src/worker/protocol';
 
 interface Row { id: string; name: string }
