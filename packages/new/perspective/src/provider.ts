@@ -147,6 +147,10 @@ export class StompPerspectiveProvider implements IServerSideDatasourceV2<Positio
 
     void this.book.registerView({ id: this.viewId, label: config.label });
     this.book.connect();
+    void this.book.whenSnapshotReady().then(() => {
+      if (this.destroyed || !this.attachedGrid) return;
+      try { this.attachedGrid.refreshServerSide({ purge: false }); } catch { /* */ }
+    });
 
     if (config.providerId) {
       this.unregFeed = registerDataProviderFeedControl(config.providerId, {
@@ -188,6 +192,9 @@ export class StompPerspectiveProvider implements IServerSideDatasourceV2<Positio
   attach(grid: AttachableGrid): () => void {
     this.attachedGrid = grid;
     try { grid.setSsrmExpressionHost?.(this); } catch { /* optional */ }
+    if (this.book.isSnapshotComplete()) {
+      try { grid.refreshServerSide({ purge: false }); } catch { /* */ }
+    }
     const detach = (): void => {
       if (this.attachedGrid === grid) this.attachedGrid = null;
       try { grid.setSsrmExpressionHost?.(null); } catch { /* optional */ }

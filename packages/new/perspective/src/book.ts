@@ -81,6 +81,7 @@ export class PerspectiveBook {
   private stomp: Client | null = null;
   private updateBuffer: PositionRow[] = [];
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
+  private snapshotWaiters: Array<() => void> = [];
 
   constructor(private readonly opts: PerspectiveBookOptions = {}) {
     this.schemaKey = opts.schemaKey ?? 'positions';
@@ -106,6 +107,36 @@ export class PerspectiveBook {
 
   getFeedRole(): FeedRole {
     return this.leadership.getRole();
+  }
+
+  isSnapshotComplete(): boolean {
+    return this.snapshotComplete;
+  }
+
+  /**
+   * Resolves when the initial snapshot is in the book (or the feed has
+   * failed/stopped). SSRM getRows must wait on this — answering with
+   * rowCount 0 while still connecting makes the grid cache an empty
+   * model and never ask again.
+   */
+  whenSnapshotReady(): Promise<void> {
+    if (
+      this.snapshotComplete
+      || this.destroyed
+      || this.phase === 'error'
+      || this.phase === 'disconnected'
+    ) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      this.snapshotWaiters.push(resolve);
+    });
+  }
+
+  private resolveSnapshotWaiters(): void {
+    if (!this.snapshotWaiters.length) return;
+    const waiters = this.snapshotWaiters.splice(0);
+    for (const resolve of waiters) resolve();
   }
 
   isFeedStopped(): boolean {
@@ -328,6 +359,7 @@ export class PerspectiveBook {
     filterModel?: Record<string, unknown>;
     columnKeys?: string[];
   }): Promise<{ rows: PositionRow[]; rowCount: number }> {
+    await this.whenSnapshotReady();
     void viewId;
     void req.filterModel;
     let rows = this.sortedRows(req.sortModel);
@@ -352,6 +384,7 @@ export class PerspectiveBook {
     sortModel?: SsrmSortModel;
     filterModel?: Record<string, unknown>;
   }): Promise<{ groups: Array<{ path: string[]; leafCount: number; aggregates?: Record<string, unknown> }> }> {
+    await this.whenSnapshotReady();
     void viewId;
     void req.filterModel;
     const cols = req.rowGroupCols;
@@ -410,6 +443,7 @@ export class PerspectiveBook {
     sortModel?: SsrmSortModel;
     columnKeys?: string[];
   }): Promise<{ rows: PositionRow[] }> {
+    await this.whenSnapshotReady();
     void viewId;
     const cols = req.rowGroupCols;
     let rows = this.sortedRows(req.sortModel).filter((row) =>
@@ -435,6 +469,7 @@ export class PerspectiveBook {
     groupPath: string[];
     rowGroupCols: string[];
   }): Promise<{ ids: string[] }> {
+    await this.whenSnapshotReady();
     void viewId;
     const cols = req.rowGroupCols;
     const ids = this.sortedRows().filter((row) =>
@@ -659,10 +694,14 @@ export class PerspectiveBook {
   private setPhase(p: BookPhase): void {
     this.phase = p;
     this.opts.onPhase?.(p);
+    if (p === 'live' || p === 'error' || p === 'disconnected') {
+      this.resolveSnapshotWaiters();
+    }
   }
 
   destroy(): void {
     this.destroyed = true;
+    this.resolveSnapshotWaiters();
     this.stopSeed();
     this.deactivateStomp();
     this.leadership.release();

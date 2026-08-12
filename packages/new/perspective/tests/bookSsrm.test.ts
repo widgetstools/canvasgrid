@@ -2,6 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { PerspectiveBook } from '../src/book';
 
 describe('PerspectiveBook sparse SSRM queries', () => {
+  it('getSsrmRows waits for the seed snapshot instead of returning rowCount 0', async () => {
+    const book = new PerspectiveBook({ snapshotRows: 25, feed: 'seed' });
+    await book.registerView({ id: 'v' });
+    const pending = book.getSsrmRows('v', { startRow: 0, endRow: 25 });
+    void book.connect();
+    const page = await pending;
+    expect(page.rowCount).toBe(25);
+    expect(page.rows).toHaveLength(25);
+    book.destroy();
+  });
   it('serves flat windows with stable rowCount', async () => {
     const book = new PerspectiveBook({ snapshotRows: 40, feed: 'seed' });
     await book.registerView({ id: 'v1' });
