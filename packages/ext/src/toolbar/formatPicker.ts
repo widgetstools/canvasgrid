@@ -6,6 +6,7 @@
  * and the Custom tab's quick-inserts keep the panel open.
  */
 import { menu, svg } from './ui';
+import { injectTitleBarStyles } from './titleBar';
 import { compileFormat } from '@wellsfargo-starui/velocity-grid-format';
 import {
   CATEGORY_LABELS, CURRENCY_QUICK_INSERT, EXCEL_EXAMPLES,
@@ -42,6 +43,16 @@ export function previewFormat(format: string, sample: unknown): string {
   } catch { return '·'; }
 }
 
+/** Prefer the Customize drawer editor pane / sheet body so the picker
+ *  clamps into the visible settings surface rather than the viewport. */
+export function formatPickerFitContainer(anchor: HTMLElement): HTMLElement | null {
+  return anchor.closest<HTMLElement>('.ckp-pane')
+    ?? anchor.closest<HTMLElement>('.ckp-flat-body')
+    ?? anchor.closest<HTMLElement>('.vgext-sheet-body')
+    ?? anchor.closest<HTMLElement>('.ckp')
+    ?? anchor.closest<HTMLElement>('.vgext-sheet');
+}
+
 export function formatPickerMenu(
   anchor: HTMLElement,
   host: FormatPickerHost,
@@ -50,11 +61,16 @@ export function formatPickerMenu(
     fitTo?: HTMLElement | (() => HTMLElement | null | undefined);
   },
 ): { toggle(): void; destroy(): void } {
+  injectTitleBarStyles();
   injectFormatPickerStyles();
+  const fitTo = opts?.fitTo;
   return menu(anchor, (close) => buildPanel(host, close), undefined, {
     preferWidth: 456,
-    compactBelow: 380,
-    fitTo: opts?.fitTo,
+    // Drawer panes are typically ~400–450px — stack tabs before the
+    // side-rail layout crushes the preset list.
+    compactBelow: fitTo ? 440 : 380,
+    align: fitTo ? 'left' : undefined,
+    fitTo,
   });
 }
 
@@ -294,7 +310,7 @@ export function injectFormatPickerStyles(): void {
 
 const FMT_CSS = `
 /* Trading-desk quiet: hairline structure, restrained accent, tabular previews.
- * Width is set at open time (prefer 456px, clamped to fitTo / viewport). */
+ * Width / max-height are set at open time (prefer 456px, clamped to fitTo / viewport). */
 .vgext-menu.vgext-fmt {
   width: 456px;
   max-width: min(456px, calc(100vw - 16px));
@@ -302,6 +318,11 @@ const FMT_CSS = `
   overflow: hidden;
   border-radius: var(--vg-radius, 2px);
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  /* Above .vgext-sheet (200) — body-mounted picker must remain interactive
+     when opened from Customize drawer tabs. */
+  z-index: 1100;
 }
 .vgext-fmt-header {
   display: flex;
@@ -310,6 +331,7 @@ const FMT_CSS = `
   padding: 12px 14px 12px;
   border-bottom: 1px solid color-mix(in srgb, var(--vg-border-color, #2a3140) 88%, transparent);
   background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 2.5%, transparent);
+  flex: 0 0 auto;
 }
 .vgext-fmt-caps {
   font-size: 10px;
@@ -411,7 +433,10 @@ const FMT_CSS = `
   display: flex;
   gap: 0;
   min-height: 236px;
+  min-width: 0;
   padding: 8px 8px 10px;
+  flex: 1 1 auto;
+  overflow: hidden;
 }
 .vgext-fmt.is-compact .vgext-fmt-main {
   flex-direction: column;
@@ -445,9 +470,6 @@ const FMT_CSS = `
 }
 .vgext-fmt.is-compact .vgext-fmt-tab.is-active {
   box-shadow: inset 0 -2px 0 var(--vg-accent-color, #4f9cf9);
-}
-.vgext-fmt.is-compact .vgext-fmt-body {
-  max-height: min(280px, 50vh);
 }
 .vgext-fmt.is-compact .vgext-fmt-row-code {
   max-width: 140px;
@@ -499,10 +521,15 @@ const FMT_CSS = `
 .vgext-fmt-body {
   flex: 1 1 auto;
   min-width: 0;
+  min-height: 0;
   max-height: 328px;
   overflow-y: auto;
   padding: 0 2px 2px 4px;
   scrollbar-width: auto;
+}
+.vgext-fmt.is-compact .vgext-fmt-body {
+  max-height: none;
+  flex: 1 1 auto;
 }
 .vgext-fmt-list { display: flex; flex-direction: column; gap: 1px; }
 .vgext-fmt-row {

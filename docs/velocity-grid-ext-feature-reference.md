@@ -708,7 +708,7 @@ Same controls as §5.4 (`Apply` / `Edit…` / `Manage…` / `Refresh`). Hint: `A
 | 9 | band `01` `Expression` | band | — | — | — | — | Section |
 | 10 | (expression editor) | editor | `expression` | `''` | — | CSRM placeholder `[price] * [quantity]`; PSP `// MyCalc\n"pnl" + "dailyPnl"` | Formula |
 | 11 | band `02` `Value formatter` | band | — | — | — | — | Section |
-| 12 | `Format` / preview | format picker | `format` | unset; title `No format` | format picker | — | Draft format string |
+| 12 | `Format` / preview | format picker | `format` | unset; title `No format` | format picker (`fitTo` pane, compact under ~440px) | — | Draft format string |
 | 13 | band `03` `Placement` | band | — | — | — | — | Section |
 | 14 | `Data type` | select | `cellDataType` | `number` | labels UPPER: `NUMBER` `CURRENCY` `PERCENT` `DATE` `DATETIME` `STRING` `BOOLEAN` | — | Type |
 | 15 | `Width` | number | `initialWidth` | unset | — | placeholder `auto`; suffix `PX` | Width |
@@ -765,9 +765,9 @@ Confirm: `Discard unsaved column changes?`
 | 26 | icon tiles | icon grid | `indicator.iconName` | color `#ef4444`, target `cell`, position `after` | groups Direction/Alert/Status/Lifecycle/Favorite/Classification | tile title = icon name | Set indicator |
 | 27 | `Clear` | button | — | — | — | — | Clear indicator |
 | 28 | `Target` | pills | `indicator.target` | `cell` | `cell`→`Cells`, `row-start`→`Row start`, `row-end`→`Row end` | — | Badge target |
-| 29 | `Position` | pills | `indicator.position` | `after` | `before`→`Before`, `after`→`After` | — | Before/after text |
+| 29 | `Position` | placement menu | `indicator.position` | `after` | Inline: `before`→`Prefix`, `after`→`Suffix`; Positional: `tl`/`tr`/`bl`/`br`/`ml`/`mr` | same slots as Formatting toolbar icon picker | Icon placement |
 | 30 | indicator colour | color | `indicator.color` | `#ef4444` | — | — | Icon colour |
-| 31 | band `09` `Value formatter` | band | `valueFormatter` | unset | Format picker | title `No formatter` | Match-time format |
+| 31 | band `09` `Value formatter` | band | `valueFormatter` | unset | Format picker (`fitTo` pane, above sheet z-index) | title `No formatter` | Match-time format |
 
 Confirm: `Discard unsaved rule changes?`
 

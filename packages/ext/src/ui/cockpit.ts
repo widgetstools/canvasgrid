@@ -139,6 +139,27 @@ export function row(label: string, control: HTMLElement, hint?: string): HTMLEle
   return root;
 }
 
+/** Capture `.ckp-pane-body` scroll before a full pane rebuild. */
+export function takePaneScroll(pane: HTMLElement): number {
+  return (pane.querySelector('.ckp-pane-body') as HTMLElement | null)?.scrollTop ?? 0;
+}
+
+/** Restore scroll after rebuilding sticky head + body chrome. */
+export function restorePaneScroll(pane: HTMLElement, top: number): void {
+  const body = pane.querySelector('.ckp-pane-body') as HTMLElement | null;
+  if (body) body.scrollTop = top;
+}
+
+/**
+ * Append sticky Save/Reset head + scrollable body. Content goes on the
+ * returned body so the action bar stays pinned while bands scroll.
+ */
+export function appendPaneChrome(pane: HTMLElement, head: HTMLElement): HTMLElement {
+  const body = el('div', 'ckp-pane-body');
+  pane.append(head, body);
+  return body;
+}
+
 export function textInput(value: string, onInput: (v: string) => void, opts?: { placeholder?: string; mono?: boolean; className?: string }): HTMLInputElement {
   const i = el('input', `ckp-input${opts?.mono ? ' mono' : ''}${opts?.className ? ` ${opts.className}` : ''}`);
   i.type = 'text';
@@ -258,8 +279,10 @@ export function injectCockpitStyles(): void {
 }
 .ckp.ckp-flat > .ckp-pane-head {
   flex: 0 0 auto;
-  margin-bottom: 16px;
-  padding-bottom: 14px;
+  margin-bottom: 0;
+  padding: 0 0 14px;
+  background: transparent;
+  z-index: 2;
 }
 .ckp.ckp-flat > .ckp-flat-body {
   flex: 1 1 auto;
@@ -325,11 +348,24 @@ ${vguiCapsCss('.ckp-caps', CKP_TOKENS)}
   transition: color 110ms ease, background 110ms ease;
 }
 .ckp-mini:hover { color: var(--vg-fg-color, #e5e9f0); background: var(--ckp-surface); }
-/* pane */
-.ckp-pane { min-width: 0; min-height: 0; overflow-y: auto; padding: 18px 22px 32px; scrollbar-width: auto; }
+/* pane — sticky action head; bands scroll underneath */
+.ckp-pane {
+  min-width: 0; min-height: 0;
+  display: flex; flex-direction: column;
+  overflow: hidden; padding: 0;
+}
 .ckp-pane-head {
-  display: flex; gap: 10px; align-items: center; margin-bottom: 16px; padding-bottom: 14px;
+  flex: 0 0 auto;
+  display: flex; gap: 10px; align-items: center;
+  margin: 0; padding: 16px 22px 14px;
   border-bottom: 1px solid var(--ckp-border);
+  background: color-mix(in srgb, var(--vg-bg-color, #12161e) 88%, var(--vg-fg-color, #e5e9f0) 6%);
+  z-index: 2;
+}
+.ckp-pane-body {
+  flex: 1 1 auto; min-height: 0;
+  overflow-y: auto; padding: 16px 22px 32px;
+  scrollbar-width: auto;
 }
 .ckp-title {
   flex: 1 1 auto; font-size: 14px; font-weight: 600; letter-spacing: -0.015em;
@@ -449,8 +485,9 @@ ${vguiSwitchCss({ root: 'ckp-switch', knob: 'ckp-switch-knob', on: 'on' }, CKP_T
 }
 .ckp-tile:hover { border-color: color-mix(in srgb, var(--ckp-muted) 55%, transparent); }
 .ckp-tile.on {
-  border-color: color-mix(in srgb, #ef4444 55%, transparent); color: #ef4444;
-  background: color-mix(in srgb, #ef4444 12%, transparent);
+  border-color: color-mix(in srgb, var(--ckp-accent) 45%, var(--ckp-border));
+  color: var(--vg-fg-color, #e5e9f0);
+  background: color-mix(in srgb, var(--ckp-accent) 10%, transparent);
 }
 /* color field */
 .ckp-colorfield {
@@ -515,6 +552,27 @@ ${vguiSwitchCss({ root: 'ckp-switch', knob: 'ckp-switch-knob', on: 'on' }, CKP_T
   border-color: color-mix(in srgb, var(--ckp-accent) 45%, var(--ckp-border));
   background: color-mix(in srgb, var(--ckp-accent) 6%, transparent);
 }
+/* Placement menu (shared with Formatting toolbar icon picker). Shell from
+   .vgext-menu (titleBar styles); this only shapes the list itself. */
+.vgext-ip-placemenu {
+  font-size: 12px; min-width: 158px;
+  display: flex; flex-direction: column;
+}
+.vgext-ip-placehead {
+  font-size: 9.5px; font-weight: 650; letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--vg-muted-fg-color, #7f8ba0); padding: 7px 8px 3px;
+}
+.vgext-ip-placehead:first-child { padding-top: 3px; }
+.vgext-ip-placeitem {
+  appearance: none; -webkit-appearance: none; border: none; background: transparent; border-radius: 2px;
+  padding: 6px 10px; text-align: left; font: inherit; font-size: 12px;
+  color: var(--vg-fg-color, #d6dce8); cursor: pointer;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  transition: background 90ms ease, color 90ms ease;
+}
+.vgext-ip-placeitem:hover { background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 18%, transparent); }
+.vgext-ip-placeitem.is-active { color: var(--vg-accent-color, #4f9cf9); background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 12%, transparent); }
+.vgext-ip-placeitem.is-active::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--vg-accent-color, #4f9cf9); flex: 0 0 auto; }
 @media (prefers-reduced-motion: reduce) {
   .ckp-rail-row, .ckp-input, .ckp-actbtn, .ckp-switch-knob, .ckp-pill, .ckp-tile, .ckp-toggle, .ckp-fmtbtn { transition: none; }
 }

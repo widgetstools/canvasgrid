@@ -16,6 +16,54 @@ implement the same interface later.
 
 ---
 
+## Shared transport (`IStorage`)
+
+All three planes persist through one KV interface from
+`@wellsfargo-starui/velocity-grid-storage`. Domain APIs stay; only the byte
+store is shared.
+
+| Impl | Role |
+|------|------|
+| **`LocalStore`** | Browser `localStorage` (default) |
+| **`RestStore`** | Generic document KV over HTTP (`GET/PUT/DELETE {base}/kv/{key}`) |
+| **`MemoryStore`** | Tests / ephemeral |
+
+Stable keys (unchanged):
+
+| Plane | Key |
+|-------|-----|
+| AppData | `vg-appdata` / `vg-appdata:<ns>` |
+| Provider catalog | `vg-data:provider-catalog` |
+| Grid instance | `velocity-grid:instance:<gridId>` |
+
+Host injection (one store for all planes):
+
+```ts
+import { LocalStore } from '@wellsfargo-starui/velocity-grid-storage';
+import { LocalStorageConfigBackend } from '@wellsfargo-starui/velocity-grid-data';
+import { PersistedAppDataStore } from '@wellsfargo-starui/velocity-grid-appdata';
+import { VelocityGridExt } from '@wellsfargo-starui/velocity-grid-ext';
+
+const storage = new LocalStore(); // or new RestStore({ baseUrl: 'https://…/api/' })
+
+const catalog = new LocalStorageConfigBackend({ storage });
+const appData = new PersistedAppDataStore('default', { storage });
+
+new VelocityGridExt(el, {
+  gridId: 'blotter-1',
+  // Prefer Ext ConfigSession over kernel persistState when both would write.
+  ext: { storage },
+});
+```
+
+`createDefaultConfigBackend()` now returns `LocalStorageConfigBackend` (LocalStore).
+`IndexedDbConfigBackend` is deprecated — do not introduce a second default path.
+
+Kernel `persistState` (`velocity-grid:state:<gridId>`) remains a separate optional
+path; prefer Ext ConfigSession **or** kernel persistState, not both.
+
+---
+
 ## `getConfig` name collision
 
 | API | Meaning |
@@ -33,14 +81,18 @@ Do not use kernel `getConfig` for persistence.
 ## Provider catalog ≠ Config Manager
 
 [`ConfigBackend`](../../packages/data/src/catalog/ConfigBackend.ts) in
-`velocity-grid-data` stores **provider definitions** only (`vg-data-catalog` /
-`vg-data:provider-catalog`). It is **not** Markets Config Manager.
+`velocity-grid-data` stores **provider definitions** only (`vg-data:provider-catalog`).
+It is **not** Markets Config Manager.
 
 - Persist **active selection** as a pointer: StateModule `data-provider` →
   `{ activeProviderId }` (and optionally `gridLevelData.liveProviderId` /
   `historicalProviderId` on the instance bundle).
 - Persist **definition bodies** in the provider catalog.
 - Never embed full `DataProviderConfig` into layout/config JSON.
+
+Domain REST catalog (`RestConfigBackend`) remains for Markets-style
+`/providers` APIs. Hosts that want **all three planes** on one remote KV use
+`RestStore` under `LocalStorageConfigBackend` / ConfigSession / AppData instead.
 
 ---
 
@@ -81,12 +133,15 @@ Storage key (default adapter): `velocity-grid:instance:<gridId>`.
 
 Dexie / REST / identity / visibility / BroadcastChannel stay **out of** the
 kernel. Implement them as a `ConfigSession` (or `ProfileStore`) behind the same
-Ext wiring:
+Ext wiring — or implement `IStorage` and keep the default adapters:
 
 ```ts
 new VelocityGridExt(el, {
   gridId: 'blotter-1',
-  ext: { profiles: { store: new HostConfigManagerSession({ … }) } },
+  ext: {
+    storage, // shared LocalStore / RestStore / custom IStorage
+    // or: profiles: { store: new HostConfigManagerSession({ … }) },
+  },
 });
 ```
 

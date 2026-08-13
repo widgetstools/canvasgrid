@@ -23,7 +23,9 @@ export {
 } from './store';
 
 export {
+  PersistedAppDataStore,
   LocalStorageAppDataStore,
   appDataStorageKey,
   APPDATA_STORAGE_PREFIX,
+  type PersistedAppDataStoreOptions,
 } from './localStorageStore';

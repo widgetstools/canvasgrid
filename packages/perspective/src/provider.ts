@@ -451,8 +451,12 @@ export class StompPerspectiveProvider implements IServerSideDatasourceV2<Positio
     });
     unsubs.push(() => this.entry.tickHandlers.delete(this.viewId));
 
+    // Purge once when the book is usable (`live`). Purging on both
+    // `snapshot` and `live` blanked the viewport twice (flicker / lost
+    // scroll) on every Apply/connect — seed+STOMP always emit snapshot
+    // then live in sequence.
     this.entry.phaseHandlers.set(this.viewId, (phase) => {
-      if (phase === 'live' || phase === 'snapshot') {
+      if (phase === 'live') {
         try { grid.refreshServerSide({ purge: true }); } catch { /* grid tearing down */ }
       }
     });

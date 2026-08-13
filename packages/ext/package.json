@@ -28,6 +28,7 @@
     "@wellsfargo-starui/velocity-grid-renderers": "*",
     "@wellsfargo-starui/velocity-grid-rules": "*",
     "@wellsfargo-starui/velocity-grid-perspective": "*",
+    "@wellsfargo-starui/velocity-grid-storage": "*",
     "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/commands": "^6.10.4",
     "@codemirror/language": "^6.12.4",

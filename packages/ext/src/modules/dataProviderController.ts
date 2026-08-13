@@ -227,6 +227,10 @@ export class DataProviderController {
     if (typeof grid.whenReady === 'function') {
       return grid.whenReady();
     }
+    // No readiness API (tests / thin hosts) — bind immediately.
+    if (typeof grid.addEventListener !== 'function') {
+      return Promise.resolve();
+    }
     return new Promise<void>((resolve) => {
       let settled = false;
       const finish = (): void => {
@@ -234,11 +238,11 @@ export class DataProviderController {
         settled = true;
         resolve();
       };
-      const unsub = grid.addEventListener?.('gridReady', () => {
+      const unsub = grid.addEventListener('gridReady', () => {
         unsub?.();
         finish();
       });
-      // Missed-event fallback (attach after ready): brief poll then resolve.
+      // Missed-event fallback (attach after ready): resolve after deadline.
       const deadline = Date.now() + 15_000;
       const poll = (): void => {
         if (settled) return;
@@ -257,11 +261,17 @@ export class DataProviderController {
     if (!this.ctx) return;
 
     if (cfg.rowModel === 'serverSide') {
-      console.warn(
-        `[velocity-grid-ext] hub data provider "${cfg.providerId}" uses rowModel=serverSide; `
-          + 'hub SSRM was removed — binding as clientSide. Use StompPerspectiveProvider for SSRM.',
+      // Refuse silent CSRM fallback — that made Apply look like SSRM while
+      // binding a full in-memory hub path (memory / tick semantics diverge).
+      throw new Error(
+        `Provider "${cfg.providerId}" is rowModel=serverSide; the hub binder is clientSide only. `
+          + 'Use the Perspective / StompPerspectiveProvider path for SSRM, or change the catalog entry to clientSide.',
       );
     }
+
+    // Don't bind before the grid can accept setRowData (missed first paint).
+    if (this.gridReadyWait) await this.gridReadyWait;
+    if (epoch !== this.activateEpoch) return;
 
     const resolved = this.appDataLookup
       ? resolveProviderConfig(cfg, this.appDataLookup)

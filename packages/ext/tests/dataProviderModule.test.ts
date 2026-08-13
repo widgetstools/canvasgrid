@@ -151,6 +151,32 @@ describe('DataProviderController', () => {
     ctl.detach();
   });
 
+  it('rejects hub bind for rowModel=serverSide instead of silent CSRM fallback', async () => {
+    reset();
+    registerDefaultTransports();
+    const catalog = new MemoryConfigBackend();
+    await catalog.save({
+      providerId: 'ssrm-pos',
+      name: 'SSRM Positions',
+      providerType: 'mock',
+      rowModel: 'serverSide',
+      config: { keyColumn: 'positionId', rowCount: 10, tickMs: 0, throttleEnabled: false },
+    });
+
+    const grid = {
+      setRowData: vi.fn(),
+      whenReady: async () => {},
+    };
+    const ctx = mockCtx(grid);
+    const ctl = new DataProviderController({ catalog, inProcess: true });
+    ctl.attach(ctx);
+
+    await expect(ctl.setActiveProvider('ssrm-pos')).rejects.toThrow(/serverSide/i);
+    expect(grid.setRowData).not.toHaveBeenCalled();
+
+    ctl.detach();
+  });
+
   it('coalesces duplicate fromState restores of the same provider', async () => {
     reset();
     registerDefaultTransports();

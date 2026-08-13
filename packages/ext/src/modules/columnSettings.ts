@@ -15,7 +15,19 @@ import {
   type FlagKey,
 } from '../toolbar/columnPanel';
 import {
-  band, caps, chip, el, injectCockpitStyles, lucideSvg, row, select, switchToggle, textInput,
+  band,
+  caps,
+  chip,
+  el,
+  injectCockpitStyles,
+  lucideSvg,
+  row,
+  select,
+  switchToggle,
+  textInput,
+  appendPaneChrome,
+  takePaneScroll,
+  restorePaneScroll,
 } from '../ui/cockpit';
 
 interface ColItem {
@@ -292,6 +304,7 @@ export function columnSettingsModule(): SettingsModule {
       };
 
       const renderPane = (): void => {
+        const scrollTop = takePaneScroll(pane);
         pane.replaceChildren();
         if (!draft) {
           pane.appendChild(el('div', 'ckp-empty', 'Select a column to edit its settings'));
@@ -325,7 +338,7 @@ export function columnSettingsModule(): SettingsModule {
         }, { className: 'ckp-title', placeholder: 'Caption' });
         nameIn.setAttribute('aria-label', 'Column caption');
         head.append(nameIn, resetBtn, saveBtn);
-        pane.appendChild(head);
+        const body = appendPaneChrome(pane, head);
 
         const chips = el('div', 'ckp-chips-strip');
         chips.append(
@@ -334,7 +347,7 @@ export function columnSettingsModule(): SettingsModule {
           chip('Pinned', d.pinned ? d.pinned.toUpperCase() : 'OFF', d.pinned ? 'info' : 'neutral').root,
           chip('Hidden', d.hide ? 'YES' : 'NO', d.hide ? 'warning' : 'neutral').root,
         );
-        pane.appendChild(chips);
+        body.appendChild(chips);
 
         const sync = (): void => { renderRail(); renderPane(); };
 
@@ -352,7 +365,7 @@ export function columnSettingsModule(): SettingsModule {
           row('Col id', colIdIn, 'Read-only · column identifier'),
           row('Caption', captionIn, 'Header label shown on the grid'),
         );
-        pane.appendChild(headerBand.root);
+        body.appendChild(headerBand.root);
 
         const filterBand = band('02', 'Filter');
         filterBand.body.append(
@@ -369,14 +382,14 @@ export function columnSettingsModule(): SettingsModule {
             (v) => { d.filter = v; sync(); },
           )),
         );
-        pane.appendChild(filterBand.root);
+        body.appendChild(filterBand.root);
 
         const groupBand = band('03', 'Grouping');
         groupBand.body.append(
           row('Groupable', switchToggle(d.enableRowGroup, (v) => { d.enableRowGroup = v; sync(); })),
           row('Pivotable', switchToggle(d.enablePivot, (v) => { d.enablePivot = v; sync(); })),
         );
-        pane.appendChild(groupBand.root);
+        body.appendChild(groupBand.root);
 
         const aggBand = band('04', 'Aggregation');
         const aggChoices: Array<[string, string]> = [
@@ -391,7 +404,7 @@ export function columnSettingsModule(): SettingsModule {
             d.aggFunc === 'none' ? 'Requires an aggregation function' : undefined,
           ),
         );
-        pane.appendChild(aggBand.root);
+        body.appendChild(aggBand.root);
 
         const behBand = band('05', 'Behavior');
         behBand.body.append(
@@ -409,7 +422,9 @@ export function columnSettingsModule(): SettingsModule {
           )),
           row('Hidden', switchToggle(d.hide, (v) => { d.hide = v; sync(); }), 'Hide the column on the grid'),
         );
-        pane.appendChild(behBand.root);
+        body.appendChild(behBand.root);
+
+        restorePaneScroll(pane, scrollTop);
       };
 
       const renderAll = (): void => {

@@ -97,11 +97,14 @@ export function menu(
       : Math.round(r.right - width);
     left = Math.max(bounds.left, Math.min(left, bounds.right - width));
     // Prefer below the anchor; flip above when the fitted box would clip.
-    const h = panel.offsetHeight;
+    const availH = Math.max(160, bounds.bottom - bounds.top);
+    panel.style.maxHeight = `${Math.round(availH)}px`;
+    // Read height after maxHeight so flip/clamp use the constrained size.
+    const h = Math.min(panel.offsetHeight, availH);
     if (top + h > bounds.bottom && r.top - 4 - h >= bounds.top) {
       top = Math.round(r.top - 4 - h);
     }
-    top = Math.max(bounds.top, Math.min(top, Math.max(bounds.top, bounds.bottom - Math.min(h, bounds.bottom - bounds.top))));
+    top = Math.max(bounds.top, Math.min(top, Math.max(bounds.top, bounds.bottom - h)));
 
     panel.style.setProperty('--vgext-menu-top', `${top}px`);
     panel.style.setProperty('--vgext-menu-left', `${left}px`);

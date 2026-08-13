@@ -11,6 +11,9 @@ import { cellMatchesAnyQuickFilterTerm } from '../../worker/dataPipeline';
 import { isPivotResultGroupId } from '../../core/pivotColumns';
 import { resolveIcon as resolveIconPath } from '../../icons/registry';
 import { bumpFormatEvalGeneration } from '../../core/formatEvalMemo';
+import type { DecoratorPosition } from '../../types';
+
+const RULE_INDICATOR_POSITIONAL = new Set<string>(['tl', 'tr', 'bl', 'br', 'ml', 'mr']);
 
 /** Task 10 — `true` when toggling `groupDef`'s open/closed state has a
  *  visible effect on the columns underneath it, i.e. AG-Grid's rule for
@@ -1127,6 +1130,9 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
       // the first / last visible data column of the matching row (the
       // engine returns the indicator on every cell of a row-scope match;
       // byRows owns column order, so the filter lives here).
+      // Placement mirrors the Formatting toolbar icon picker: inline
+      // before/after (Prefix/Suffix) claim an edge slot; positional
+      // tl/tr/bl/br/ml/mr fold onto cellStyle.decorators overlays.
       let ruleIconRef: { name: string; color?: string; position?: 'leading' | 'trailing' } | null = null;
       const ri = config.ruleIndicator;
       if (ri && row.subgrid.isData && !isFooterRow[r]) {
@@ -1135,11 +1141,25 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
           || (ri.target === 'row-start' && col.colId === ctx.firstVisibleColId)
           || (ri.target === 'row-end' && col.colId === ctx.lastVisibleColId);
         if (placed) {
-          ruleIconRef = {
-            name: ri.iconName,
-            color: ri.color,
-            position: ri.position === 'after' ? 'trailing' : 'leading',
-          };
+          const place = ri.position ?? 'before';
+          if (RULE_INDICATOR_POSITIONAL.has(place)) {
+            config.decorators = [
+              ...(config.decorators ?? []),
+              {
+                position: place as DecoratorPosition,
+                kind: 'icon' as const,
+                icon: ri.iconName,
+                color: ri.color,
+                size: 12,
+              },
+            ];
+          } else {
+            ruleIconRef = {
+              name: ri.iconName,
+              color: ri.color,
+              position: place === 'after' ? 'trailing' : 'leading',
+            };
+          }
         }
       }
       if (ruleIconRef !== null || (row.subgrid.isData && !isFooterRow[r])) {

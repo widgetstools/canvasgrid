@@ -15,7 +15,9 @@
     "@wellsfargo-starui/velocity-grid-perspective": "*",
     "@wellsfargo-starui/velocity-grid-format": "*",
     "@wellsfargo-starui/velocity-grid-calc": "*",
-    "@wellsfargo-starui/velocity-grid-rules": "*"
+    "@wellsfargo-starui/velocity-grid-rules": "*",
+    "@wellsfargo-starui/velocity-grid-data": "*",
+    "@wellsfargo-starui/velocity-grid-storage": "*"
   },
   "devDependencies": {
     "typescript": "~5.9.3",

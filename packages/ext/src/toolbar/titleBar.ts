@@ -720,7 +720,7 @@ const TITLEBAR_CSS = `
 }
 
 .vgext-menu {
-  position: fixed; z-index: 60; min-width: 220px;
+  position: fixed; z-index: 1100; min-width: 220px;
   top: var(--vgext-menu-top, 0);
   left: var(--vgext-menu-left, 0);
   padding: var(--vgext-space-2);

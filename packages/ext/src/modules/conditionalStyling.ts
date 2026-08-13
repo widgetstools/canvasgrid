@@ -14,6 +14,7 @@ import {
   wireIntoKernel as wireRules,
   type ConditionalStyleRule,
   type RuleBorderSpec,
+  type RuleIndicatorPlacement,
   type StyleSlice,
 } from '@wellsfargo-starui/velocity-grid-rules';
 import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
@@ -21,12 +22,28 @@ import { mountFormatterStyleChrome } from '../toolbar/styleChrome';
 import { ExpressionEditor } from '../ui/expressionEditor';
 import { editorColumns, leafColumns, schemaFromGrid } from '../ui/gridSchema';
 import {
-  band, caps, chip, colorField, el, iconTile, injectCockpitStyles, lucideSvg,
-  numberInput, pillGroup, row, select, switchToggle, textInput,
+  appendPaneChrome, band, caps, chip, colorField, el, iconTile, injectCockpitStyles, lucideSvg,
+  numberInput, pillGroup, restorePaneScroll, row, select, switchToggle, takePaneScroll, textInput,
 } from '../ui/cockpit';
-import { formatPickerMenu, previewFormat } from '../toolbar/formatPicker';
+import { formatPickerMenu, formatPickerFitContainer, previewFormat } from '../toolbar/formatPicker';
 import type { FormatDataType } from '../toolbar/formatPresets';
 import { lucideBundle } from '@wellsfargo-starui/velocity-grid/icons/lucide.generated';
+import { menu } from '../toolbar/ui';
+import { injectTitleBarStyles } from '../toolbar/titleBar';
+
+/** Same placement slots as the Formatting toolbar icon picker (Prefix/Suffix + corners/middles). */
+const INDICATOR_PLACE_GROUPS: Array<[string, Array<[RuleIndicatorPlacement, string]>]> = [
+  ['Inline', [['before', 'Prefix'], ['after', 'Suffix']]],
+  ['Positional', [
+    ['tl', 'Top-left'], ['tr', 'Top-right'], ['bl', 'Bottom-left'], ['br', 'Bottom-right'],
+    ['ml', 'Middle-left'], ['mr', 'Middle-right'],
+  ]],
+];
+const INDICATOR_PLACE_LABEL: Record<RuleIndicatorPlacement, string> = {
+  before: 'Prefix', after: 'Suffix',
+  tl: 'Top-left', tr: 'Top-right', bl: 'Bottom-left', br: 'Bottom-right',
+  ml: 'Middle-left', mr: 'Middle-right',
+};
 
 interface RulesGrid {
   getRules(): ConditionalStyleRule[];
@@ -86,6 +103,7 @@ export function conditionalStylingModule(): SettingsModule {
       let draftIsNew = false;
       let editor: ExpressionEditor | null = null;
       let fmtMenu: { toggle(): void; destroy(): void } | null = null;
+      let placeMenu: { toggle(): void; destroy(): void } | null = null;
       let styleChromeDispose: (() => void) | null = null;
 
       const root = el('div', 'ckp');
@@ -143,6 +161,7 @@ export function conditionalStylingModule(): SettingsModule {
         }
         editor?.destroy(); editor = null;
         fmtMenu?.destroy(); fmtMenu = null;
+        placeMenu?.destroy(); placeMenu = null;
         selectedId = id;
         draftIsNew = asNew;
         draft = seed ? clone(seed) : id ? clone(rules.find((r) => r.id === id) ?? newRule(rules.length)) : null;
@@ -209,6 +228,7 @@ export function conditionalStylingModule(): SettingsModule {
       };
 
       const renderPane = (): void => {
+        const scrollTop = takePaneScroll(pane);
         // Re-renders replace the pane DOM — the previous CM view and the
         // body-mounted format menu must go with it or their tooltip/menu
         // containers leak onto document.body (page-level scrollbars).
@@ -216,6 +236,8 @@ export function conditionalStylingModule(): SettingsModule {
         editor = null;
         fmtMenu?.destroy();
         fmtMenu = null;
+        placeMenu?.destroy();
+        placeMenu = null;
         styleChromeDispose?.();
         styleChromeDispose = null;
         pane.replaceChildren();
@@ -225,7 +247,7 @@ export function conditionalStylingModule(): SettingsModule {
         }
         const d = draft;
 
-        // Title row: name + RESET/SAVE.
+        // Sticky title row: name + RESET/SAVE (pinned while bands scroll).
         const head = el('div', 'ckp-pane-head');
         const nameIn = textInput(d.name, (v) => { d.name = v; syncDirty(); }, { className: 'ckp-title' });
         const resetBtn = el('button', 'ckp-actbtn');
@@ -239,7 +261,7 @@ export function conditionalStylingModule(): SettingsModule {
         saveBtn.innerHTML = `${lucideSvg('save', 12)}<span>Save</span>`;
         saveBtn.addEventListener('click', save);
         head.append(nameIn, resetBtn, saveBtn);
-        pane.appendChild(head);
+        const body = appendPaneChrome(pane, head);
 
         // Summary chips.
         const chipsStrip = el('div', 'ckp-chips-strip');
@@ -248,7 +270,7 @@ export function conditionalStylingModule(): SettingsModule {
         const prioChip = chip('Priority', String(d.priority));
         const appliedChip = chip('Applied', draftIsNew ? '—' : appliedCount(d), 'warning');
         chipsStrip.append(statusChip.root, scopeChip.root, prioChip.root, appliedChip.root);
-        pane.appendChild(chipsStrip);
+        body.appendChild(chipsStrip);
 
         // Controls strip: STATUS switch · SCOPE select · PRIORITY input.
         const controls = el('div', 'ckp-controls-strip');
@@ -273,7 +295,7 @@ export function conditionalStylingModule(): SettingsModule {
             syncDirty();
           })),
         );
-        pane.appendChild(controls);
+        body.appendChild(controls);
 
         const syncDirty = (): void => {
           const dirty = isDirty();
@@ -310,7 +332,7 @@ export function conditionalStylingModule(): SettingsModule {
           onCommit: () => { if (isDirty()) save(); },
         });
         expr.body.append(editorHost, errBox, el('div', 'ckp-hint', 'Type [ for columns · ⌘↵ to save · [col.old] / [col.new] compare against the previous tick'));
-        pane.appendChild(expr.root);
+        body.appendChild(expr.root);
 
         // 02 TARGET COLUMNS (cell scope).
         if (d.scope.kind === 'cell') {
@@ -362,7 +384,7 @@ export function conditionalStylingModule(): SettingsModule {
             syncDirty();
           });
           tgt.body.append(chips, picker);
-          pane.appendChild(tgt.root);
+          body.appendChild(tgt.root);
         }
 
         // 03 STYLE — the formatter toolbar's Font/Borders chrome (same
@@ -406,7 +428,7 @@ export function conditionalStylingModule(): SettingsModule {
         });
         styleBand.body.appendChild(chromeHost);
         styleBand.body.appendChild(el('div', 'ckp-hint', 'Bold / italic / underline / strike · text + fill colour · per-side borders (pick a side, then width / style / colour · eraser clears the side)'));
-        pane.appendChild(styleBand.root);
+        body.appendChild(styleBand.root);
 
         // 07 FLASH ON MATCH + STYLE WINDOW.
         const flash = band('07', 'Flash on match');
@@ -427,7 +449,7 @@ export function conditionalStylingModule(): SettingsModule {
           numberInput(d.activeDurationMs, (v) => { d.activeDurationMs = v; syncDirty(); }, { placeholder: 'persistent', suffix: 'MS' }),
           'Optional — match styling auto-reverts after this interval. Leave blank for persistent.',
         ));
-        pane.appendChild(flash.root);
+        body.appendChild(flash.root);
 
         // 08 INDICATOR.
         const ind = band('08', 'Indicator');
@@ -438,10 +460,16 @@ export function conditionalStylingModule(): SettingsModule {
           if (i) {
             const tile = el('span', 'ckp-tile on');
             tile.innerHTML = lucideSvg(i.iconName) || '?';
+            // Preview uses the rule's indicator colour; grid selection chrome stays neutral.
+            tile.style.color = i.color;
             current.append(
               tile,
               caps(i.iconName.replace(/-/g, ' ')),
-              colorField(i.color, (v) => { i.color = v ?? '#ef4444'; syncDirty(); }),
+              colorField(i.color, (v) => {
+                i.color = v ?? '#ef4444';
+                tile.style.color = i.color;
+                syncDirty();
+              }),
             );
             const clear = el('button', 'ckp-actbtn', 'Clear');
             clear.type = 'button';
@@ -460,11 +488,46 @@ export function conditionalStylingModule(): SettingsModule {
             i.target,
             (v) => { i.target = v as typeof i.target; syncDirty(); },
           )));
-          ind.body.appendChild(row('Position', pillGroup(
-            [['before', 'Before'], ['after', 'After']],
-            i.position,
-            (v) => { i.position = v as typeof i.position; syncDirty(); },
-          )));
+          // Placement matches Formatting toolbar icon picker: Inline
+          // Prefix/Suffix + Positional corners/middles.
+          injectTitleBarStyles();
+          const placeWrap = el('div', 'ckp-pills');
+          const placePill = el('button', 'ckp-pill on', INDICATOR_PLACE_LABEL[i.position] ?? i.position);
+          placePill.type = 'button';
+          placePill.title = 'Icon placement';
+          placeMenu = menu(placePill, (close) => {
+            const list = document.createElement('div');
+            list.className = 'vgext-ip-placemenu';
+            list.setAttribute('role', 'menu');
+            for (const [heading, entries] of INDICATOR_PLACE_GROUPS) {
+              const headEl = document.createElement('div');
+              headEl.className = 'vgext-ip-placehead';
+              headEl.textContent = heading;
+              list.append(headEl);
+              for (const [value, itemLabel] of entries) {
+                const item = document.createElement('button');
+                item.type = 'button';
+                item.className = 'vgext-ip-placeitem' + (value === i.position ? ' is-active' : '');
+                item.textContent = itemLabel;
+                item.setAttribute('role', 'menuitemradio');
+                item.setAttribute('aria-checked', String(value === i.position));
+                item.addEventListener('click', () => {
+                  i.position = value;
+                  placePill.textContent = itemLabel;
+                  syncDirty();
+                  close();
+                });
+                list.append(item);
+              }
+            }
+            return list;
+          }, undefined, {
+            align: 'left',
+            fitTo: () => placePill.closest<HTMLElement>('.ckp-pane') ?? placePill.closest<HTMLElement>('.ckp'),
+          });
+          placePill.addEventListener('click', () => placeMenu?.toggle());
+          placeWrap.appendChild(placePill);
+          ind.body.appendChild(row('Position', placeWrap));
         }
         for (const [label, icons] of ICON_GROUPS) {
           const present = icons.filter((n) => n in lucideBundle);
@@ -473,20 +536,32 @@ export function conditionalStylingModule(): SettingsModule {
           const gridEl = el('div', 'ckp-tilegrid');
           for (const name of present) {
             gridEl.appendChild(iconTile(name, d.indicator?.iconName === name, () => {
+              const hadIndicator = !!d.indicator;
               d.indicator = {
                 iconName: name,
                 color: d.indicator?.color ?? '#ef4444',
                 target: d.indicator?.target ?? 'cell',
                 position: d.indicator?.position ?? 'after',
               };
-              renderPane();
+              // First pick needs Target/Position rows; later picks only
+              // refresh preview + tile selection (preserves scroll).
+              if (!hadIndicator) {
+                renderPane();
+                syncDirty();
+                return;
+              }
+              renderCurrent();
+              ind.body.querySelectorAll('.ckp-tilegrid .ckp-tile').forEach((node) => {
+                const btn = node as HTMLElement;
+                btn.classList.toggle('on', btn.title === name);
+              });
               syncDirty();
             }));
           }
           ind.body.appendChild(gridEl);
         }
-        ind.body.appendChild(el('div', 'ckp-hint', 'Shown as a 12×12 badge on every cell currently matching this rule.'));
-        pane.appendChild(ind.root);
+        ind.body.appendChild(el('div', 'ckp-hint', 'Inline Prefix/Suffix flow with the value; positional slots overlay the cell corners and middles.'));
+        body.appendChild(ind.root);
 
         // 09 VALUE FORMATTER.
         const fmt = band('09', 'Value formatter');
@@ -505,17 +580,25 @@ export function conditionalStylingModule(): SettingsModule {
           return t === 'date' ? 'date' : t === 'boolean' ? 'boolean' : t === 'text' || t === 'string' ? 'text' : 'number';
         };
         fmtMenu = formatPickerMenu(fmtBtn, {
-          targetCols: () => (d.scope.kind === 'cell' ? d.scope.columnIds : ['__row__']),
+          // Sentinel keeps the picker usable before target columns are chosen
+          // (row scope / empty cell scope still need a format string editor).
+          targetCols: () => (
+            d.scope.kind === 'cell' && d.scope.columnIds.length > 0
+              ? d.scope.columnIds
+              : ['__rule__']
+          ),
           currentFormat: () => d.valueFormatter,
           applyFormat: (format) => { d.valueFormatter = format; syncFmtBtn(); syncDirty(); },
           clearFormat: () => { d.valueFormatter = undefined; syncFmtBtn(); syncDirty(); },
           dataType: firstTargetType,
         }, {
-          fitTo: () => fmtBtn.closest<HTMLElement>('.ckp-pane') ?? fmtBtn.closest<HTMLElement>('.ckp'),
+          fitTo: () => formatPickerFitContainer(fmtBtn),
         });
         fmtBtn.addEventListener('click', () => fmtMenu?.toggle());
         fmt.body.append(fmtBtn, el('div', 'ckp-hint', "Applied to cells where this rule matches — overrides the column's own formatter."));
-        pane.appendChild(fmt.root);
+        body.appendChild(fmt.root);
+
+        restorePaneScroll(pane, scrollTop);
       };
 
       const renderAll = (): void => {
@@ -536,6 +619,7 @@ export function conditionalStylingModule(): SettingsModule {
           (offRules as unknown as () => void)?.();
           editor?.destroy();
           fmtMenu?.destroy();
+          placeMenu?.destroy();
           styleChromeDispose?.();
           host.replaceChildren();
         },

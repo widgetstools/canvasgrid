@@ -6,7 +6,19 @@ import type { ShortcutDefinition, ShortcutsSettings } from '@wellsfargo-starui/v
 import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import { leafColumns } from '../ui/gridSchema';
 import {
-  band, caps, el, injectCockpitStyles, lucideSvg, numberInput, pillGroup, row, switchToggle, textInput,
+  band,
+  caps,
+  el,
+  injectCockpitStyles,
+  lucideSvg,
+  numberInput,
+  pillGroup,
+  row,
+  switchToggle,
+  textInput,
+  appendPaneChrome,
+  takePaneScroll,
+  restorePaneScroll,
 } from '../ui/cockpit';
 import { clone, editHandle } from './editHandle';
 
@@ -190,6 +202,7 @@ export function shortcutsModule(): SettingsModule {
       };
 
       const renderPane = (): void => {
+        const scrollTop = takePaneScroll(pane);
         pane.replaceChildren();
         if (!settingsDraft) {
           pane.appendChild(el('div', 'ckp-empty', 'Shortcuts requires wireEditIntoKernel(grid).'));
@@ -209,7 +222,7 @@ export function shortcutsModule(): SettingsModule {
         saveBtn.disabled = !isDirty();
         saveBtn.addEventListener('click', save);
         head.append(title, resetBtn, saveBtn);
-        pane.appendChild(head);
+        const body = appendPaneChrome(pane, head);
 
         const glob = band('00', 'Global');
         glob.body.append(
@@ -222,10 +235,10 @@ export function shortcutsModule(): SettingsModule {
             renderAll();
           })),
         );
-        pane.appendChild(glob.root);
+        body.appendChild(glob.root);
 
         if (!draft) {
-          pane.appendChild(el('div', 'ckp-empty', 'Select a shortcut, or add one with +'));
+          body.appendChild(el('div', 'ckp-empty', 'Select a shortcut, or add one with +'));
           return;
         }
         const d = draft;
@@ -267,15 +280,17 @@ export function shortcutsModule(): SettingsModule {
             resetBtn.disabled = !isDirty();
           }, { placeholder: 'colIds, comma-separated (empty = all)' })),
         );
-        pane.appendChild(band1.root);
+        body.appendChild(band1.root);
 
         const cols = leafColumns(ctx.grid)
           .map((c) => c.colId ?? c.field)
           .filter((id): id is string => !!id)
           .slice(0, 8);
         const more = leafColumns(ctx.grid).length > 8 ? '…' : '';
-        pane.appendChild(el('div', 'ckp-hint',
+        body.appendChild(el('div', 'ckp-hint',
           `Letter shortcuts apply to focused numeric cells. Columns: ${cols.join(', ') || '—'} ${more}`));
+
+        restorePaneScroll(pane, scrollTop);
       };
 
       const renderAll = (): void => {
