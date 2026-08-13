@@ -575,7 +575,7 @@ Bridge: `wireIntoKernel` → `{ rules, alerts }` · Kernel: `registerRuleEngine`
 | `scope` | `{ kind:'cell', columnIds }` \| `{ kind:'row' }` |
 | `style` | Theme-aware `{ base, light, dark }` — color, bg, weight, style, decoration, borders |
 | `flash` | `{ enabled, target:'cell'\|'row', mode:'fade'\|'pulse'\|'glow', color, durationMs }` |
-| `indicator` | Lucide `{ iconName, color, target:'cell'\|'row-start'\|'row-end', position }` |
+| `indicator` | Lucide `{ iconName, color, target:'cell'\|'row-start'\|'row-end', position }` — `before`/`after` (Prefix/Suffix) or positional `tl`/`tr`/`bl`/`br`/`ml`/`mr` |
 | `valueFormatter` | Format-DSL override when matched |
 | `activeDurationMs` | Auto-expire after false→true |
 

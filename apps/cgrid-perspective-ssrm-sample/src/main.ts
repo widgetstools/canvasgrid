@@ -14,6 +14,7 @@ import {
   LocalStorageConfigBackend,
   registerDefaultTransports,
 } from '@wellsfargo-starui/velocity-grid-data';
+import { LocalStore } from '@wellsfargo-starui/velocity-grid-storage';
 import {
   PerspectiveDataProviderController,
   type BookTelemetry,
@@ -39,8 +40,11 @@ const host = document.getElementById('grid-host');
 if (!host) throw new Error('#grid-host missing');
 const statusEl = document.getElementById('status');
 
+/** One shared KV transport for catalog + Ext ConfigSession. */
+const storage = new LocalStore();
+
 /** Same catalog backend as hub DataProvider editor. */
-const catalog = new LocalStorageConfigBackend();
+const catalog = new LocalStorageConfigBackend({ storage });
 
 function paintStatus(t: BookTelemetry): void {
   if (!statusEl) return;
@@ -90,6 +94,7 @@ const options = {
   grandTotalRow: 'pinnedBottom',
   groupDisplayType: 'singleColumn',
   ext: {
+    storage,
     extensions: [
       { remove: 'settings-launcher' },
       { remove: 'save' },
@@ -146,6 +151,7 @@ void (async () => {
   ext,
   grid: ext.grid,
   catalog,
+  storage,
   dataController,
   providerId: PERSPECTIVE_SSRM_PROVIDER_ID,
   async applySeeded() {

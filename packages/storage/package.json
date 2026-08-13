@@ -1,5 +1,5 @@
 {
-  "name": "@wellsfargo-starui/velocity-grid-appdata",
+  "name": "@wellsfargo-starui/velocity-grid-storage",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -12,12 +12,9 @@
     }
   },
   "scripts": {
-    "build": "echo '@wellsfargo-starui/velocity-grid-appdata ships source' && exit 0",
+    "build": "echo '@wellsfargo-starui/velocity-grid-storage ships source' && exit 0",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@wellsfargo-starui/velocity-grid-storage": "*"
   },
   "devDependencies": {
     "typescript": "~5.9.3",

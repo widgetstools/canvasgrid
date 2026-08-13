@@ -10,6 +10,13 @@
  * surface later. See docs/starui-platform/03-config-planes.md.
  */
 import type { GridState, GridLayoutsBundle } from '@wellsfargo-starui/velocity-grid';
+import {
+  LocalStore,
+  storageGetSync,
+  storageSetSync,
+  storageRemoveSync,
+  type IStorage,
+} from '@wellsfargo-starui/velocity-grid-storage';
 import type { ProfileMeta, ProfileSnapshot, ProfileStore } from '../extension/types';
 
 /** Host-level pointers shared across layouts (not full provider defs). */
@@ -270,14 +277,19 @@ export interface ConfigSession extends ProfileStore {
  * today; async methods delegate to them.
  */
 export class LocalStorageConfigSession implements ConfigSession {
+  private readonly storage: IStorage;
+
   constructor(
     readonly gridId: string,
     private opts: {
       /** Legacy ProfileStore namespace to import (default velocity-grid-ext). */
       legacyProfilesNamespace?: string;
+      /** Shared transport (default: new LocalStore()). Sync store required for sync helpers. */
+      storage?: IStorage;
     } = {},
   ) {
     if (!gridId) throw new Error('LocalStorageConfigSession requires gridId');
+    this.storage = opts.storage ?? new LocalStore();
   }
 
   private get key(): string {
@@ -286,7 +298,7 @@ export class LocalStorageConfigSession implements ConfigSession {
 
   private readRaw(): InstanceConfigDoc | null {
     try {
-      const raw = localStorage.getItem(this.key);
+      const raw = storageGetSync(this.storage, this.key);
       if (!raw) return null;
       return normalizeInstanceDoc(JSON.parse(raw));
     } catch {
@@ -307,7 +319,7 @@ export class LocalStorageConfigSession implements ConfigSession {
       ...workspace,
     };
     if (meta) payload.meta = meta;
-    localStorage.setItem(this.key, JSON.stringify(payload));
+    storageSetSync(this.storage, this.key, JSON.stringify(payload));
   }
 
   /** True when the on-disk JSON still uses the legacy profiles[] shape. */
@@ -325,7 +337,7 @@ export class LocalStorageConfigSession implements ConfigSession {
     const existing = this.readRaw();
     if (existing) {
       // Persist migration when old profiles[] (or missing docVersion) was read
-      if (this.needsRewrite(localStorage.getItem(this.key))) {
+      if (this.needsRewrite(storageGetSync(this.storage, this.key))) {
         this.writeRaw(existing);
       }
       return existing;
@@ -351,7 +363,7 @@ export class LocalStorageConfigSession implements ConfigSession {
     const doc = emptyDoc();
 
     try {
-      const raw = localStorage.getItem(`${LEGACY_CONFIG_PREFIX}${this.gridId}`);
+      const raw = storageGetSync(this.storage, `${LEGACY_CONFIG_PREFIX}${this.gridId}`);
       if (raw) {
         const cfg = JSON.parse(raw) as WorkspaceConfig;
         if (cfg && typeof cfg === 'object') {
@@ -374,7 +386,7 @@ export class LocalStorageConfigSession implements ConfigSession {
     const ns = this.opts.legacyProfilesNamespace ?? 'velocity-grid-ext';
     for (const pk of [`${ns}:profiles`, LEGACY_PROFILES_KEY]) {
       try {
-        const raw = localStorage.getItem(pk);
+        const raw = storageGetSync(this.storage, pk);
         if (!raw) continue;
         const map = JSON.parse(raw) as Record<string, ProfileSnapshot>;
         if (!map || typeof map !== 'object') continue;
@@ -510,12 +522,12 @@ export class LocalStorageConfigSession implements ConfigSession {
   }
 
   clearWorkspaceSync(): void {
-    localStorage.removeItem(this.key);
+    storageRemoveSync(this.storage, this.key);
   }
 
   hasWorkspaceSync(): boolean {
-    if (localStorage.getItem(this.key) != null) return true;
-    return localStorage.getItem(`${LEGACY_CONFIG_PREFIX}${this.gridId}`) != null;
+    if (storageGetSync(this.storage, this.key) != null) return true;
+    return storageGetSync(this.storage, `${LEGACY_CONFIG_PREFIX}${this.gridId}`) != null;
   }
 
   // ── async ProfileStore / ConfigSession surface ─────────────────────────

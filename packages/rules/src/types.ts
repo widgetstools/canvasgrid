@@ -59,12 +59,34 @@ export interface FlashConfig {
   durationMs: number;
 }
 
+export type RuleIndicatorPlacement =
+  | 'before' | 'after'                 // inline Prefix / Suffix (legacy names)
+  | 'tl' | 'tr' | 'bl' | 'br'         // corner overlays
+  | 'ml' | 'mr';                       // middle-left / middle-right overlays
+
+export const RULE_INDICATOR_INLINE: ReadonlyArray<RuleIndicatorPlacement> = ['before', 'after'];
+export const RULE_INDICATOR_POSITIONAL: ReadonlyArray<RuleIndicatorPlacement> = [
+  'tl', 'tr', 'bl', 'br', 'ml', 'mr',
+];
+
+export function isRuleIndicatorPositional(
+  position: RuleIndicatorPlacement | string | undefined,
+): boolean {
+  return position === 'tl' || position === 'tr' || position === 'bl'
+    || position === 'br' || position === 'ml' || position === 'mr';
+}
+
 export interface RuleIndicator {
   /** Lucide icon name resolved through the kernel icon registry. */
   iconName: string;
   color: string;
   target: 'cell' | 'row-start' | 'row-end';
-  position: 'before' | 'after';
+  /**
+   * Placement inside the target cell — same slots as the Formatting toolbar
+   * icon picker: inline `before`/`after` (Prefix/Suffix) or positional
+   * corners / middles (`tl`…`mr`).
+   */
+  position: RuleIndicatorPlacement;
 }
 
 export type RuleScope =

@@ -7,7 +7,18 @@ import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../
 import { ExpressionEditor } from '../ui/expressionEditor';
 import { editorColumns } from '../ui/gridSchema';
 import {
-  band, caps, el, injectCockpitStyles, lucideSvg, numberInput, row, switchToggle, textInput,
+  band,
+  caps,
+  el,
+  injectCockpitStyles,
+  lucideSvg,
+  numberInput,
+  row,
+  switchToggle,
+  textInput,
+  appendPaneChrome,
+  takePaneScroll,
+  restorePaneScroll,
 } from '../ui/cockpit';
 import { clone, editHandle } from './editHandle';
 
@@ -183,6 +194,7 @@ export function plusMinusModule(): SettingsModule {
       };
 
       const renderPane = (): void => {
+        const scrollTop = takePaneScroll(pane);
         editor?.destroy();
         editor = null;
         pane.replaceChildren();
@@ -204,7 +216,7 @@ export function plusMinusModule(): SettingsModule {
         saveBtn.disabled = !isDirty();
         saveBtn.addEventListener('click', save);
         head.append(title, resetBtn, saveBtn);
-        pane.appendChild(head);
+        const body = appendPaneChrome(pane, head);
 
         const glob = band('00', 'Global');
         glob.body.append(
@@ -217,10 +229,10 @@ export function plusMinusModule(): SettingsModule {
             renderAll();
           })),
         );
-        pane.appendChild(glob.root);
+        body.appendChild(glob.root);
 
         if (!draft) {
-          pane.appendChild(el('div', 'ckp-empty', 'Select a nudge, or add one with +'));
+          body.appendChild(el('div', 'ckp-empty', 'Select a nudge, or add one with +'));
           return;
         }
         const d = draft;
@@ -241,7 +253,7 @@ export function plusMinusModule(): SettingsModule {
             renderAll();
           }), 'Optional — defaults to increment'),
         );
-        pane.appendChild(nb.root);
+        body.appendChild(nb.root);
 
         const expr = band('02', 'Expression gate');
         const mount = el('div');
@@ -259,7 +271,9 @@ export function plusMinusModule(): SettingsModule {
           },
         });
         expr.body.appendChild(el('div', 'ckp-hint', 'Falsy / throw skips the nudge for that row'));
-        pane.appendChild(expr.root);
+        body.appendChild(expr.root);
+
+        restorePaneScroll(pane, scrollTop);
       };
 
       const renderAll = (): void => {

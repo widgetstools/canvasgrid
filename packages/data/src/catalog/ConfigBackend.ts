@@ -1,4 +1,10 @@
 import type { DataProviderConfig } from '../types';
+import {
+  LocalStore,
+  storageGet,
+  storageSet,
+  type IStorage,
+} from '@wellsfargo-starui/velocity-grid-storage';
 
 export interface ConfigBackend {
   list(userId?: string): Promise<DataProviderConfig[]>;
@@ -8,13 +14,31 @@ export interface ConfigBackend {
   remove(providerId: string): Promise<void>;
 }
 
-const LS_KEY = 'vg-data:provider-catalog';
+export const PROVIDER_CATALOG_STORAGE_KEY = 'vg-data:provider-catalog';
 
-/** Simple localStorage catalog — fine for small configs / demos. */
+export type LocalStorageConfigBackendOptions = {
+  /** Shared transport (default: new LocalStore()). */
+  storage?: IStorage;
+  /** Override catalog document key (default: vg-data:provider-catalog). */
+  key?: string;
+};
+
+/**
+ * Provider catalog backed by {@link IStorage} (default {@link LocalStore}).
+ * Same key as the historical localStorage catalog so existing data keeps working.
+ */
 export class LocalStorageConfigBackend implements ConfigBackend {
-  private read(): DataProviderConfig[] {
+  private readonly storage: IStorage;
+  private readonly key: string;
+
+  constructor(opts?: LocalStorageConfigBackendOptions) {
+    this.storage = opts?.storage ?? new LocalStore();
+    this.key = opts?.key ?? PROVIDER_CATALOG_STORAGE_KEY;
+  }
+
+  private async read(): Promise<DataProviderConfig[]> {
     try {
-      const raw = localStorage.getItem(LS_KEY);
+      const raw = await storageGet(this.storage, this.key);
       if (!raw) return [];
       const parsed = JSON.parse(raw) as unknown;
       return Array.isArray(parsed) ? parsed as DataProviderConfig[] : [];
@@ -23,35 +47,35 @@ export class LocalStorageConfigBackend implements ConfigBackend {
     }
   }
 
-  private write(rows: DataProviderConfig[]): void {
-    localStorage.setItem(LS_KEY, JSON.stringify(rows));
+  private async write(rows: DataProviderConfig[]): Promise<void> {
+    await storageSet(this.storage, this.key, JSON.stringify(rows));
   }
 
   async list(userId?: string): Promise<DataProviderConfig[]> {
-    const all = this.read();
+    const all = await this.read();
     return userId ? all.filter((r) => !r.userId || r.userId === userId) : all;
   }
 
   async get(providerId: string): Promise<DataProviderConfig | null> {
-    return this.read().find((r) => r.providerId === providerId) ?? null;
+    return (await this.read()).find((r) => r.providerId === providerId) ?? null;
   }
 
   async getByName(name: string): Promise<DataProviderConfig | null> {
-    return this.read().find((r) => r.name === name) ?? null;
+    return (await this.read()).find((r) => r.name === name) ?? null;
   }
 
   async save(cfg: DataProviderConfig): Promise<DataProviderConfig> {
-    const rows = this.read();
+    const rows = await this.read();
     const next = { ...cfg, updatedAt: new Date().toISOString() };
     const i = rows.findIndex((r) => r.providerId === cfg.providerId);
     if (i >= 0) rows[i] = next;
     else rows.push(next);
-    this.write(rows);
+    await this.write(rows);
     return next;
   }
 
   async remove(providerId: string): Promise<void> {
-    this.write(this.read().filter((r) => r.providerId !== providerId));
+    await this.write((await this.read()).filter((r) => r.providerId !== providerId));
   }
 }
 
@@ -73,7 +97,10 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
-/** IndexedDB catalog — preferred for OpenFin multi-window same-origin sharing. */
+/**
+ * @deprecated Prefer {@link LocalStorageConfigBackend} with a shared {@link IStorage}
+ * (LocalStore / RestStore). Kept for hosts that already seeded IndexedDB.
+ */
 export class IndexedDbConfigBackend implements ConfigBackend {
   async list(userId?: string): Promise<DataProviderConfig[]> {
     const db = await openDb();
@@ -154,7 +181,7 @@ export class MemoryConfigBackend implements ConfigBackend {
   }
 }
 
-/** REST / enterprise config-service backend. */
+/** REST / enterprise config-service backend (domain provider API, not generic KV). */
 export class RestConfigBackend implements ConfigBackend {
   constructor(
     private readonly baseUrl: string,
@@ -209,9 +236,9 @@ export class RestConfigBackend implements ConfigBackend {
   }
 }
 
-export function createDefaultConfigBackend(): ConfigBackend {
-  if (typeof indexedDB !== 'undefined') return new IndexedDbConfigBackend();
-  return new LocalStorageConfigBackend();
+/** Default catalog — shared {@link LocalStore} key `vg-data:provider-catalog`. */
+export function createDefaultConfigBackend(storage?: IStorage): ConfigBackend {
+  return new LocalStorageConfigBackend({ storage });
 }
 
 /**
@@ -220,4 +247,3 @@ export function createDefaultConfigBackend(): ConfigBackend {
  * See docs/starui-platform/03-config-planes.md.
  */
 export type ProviderCatalogBackend = ConfigBackend;
-

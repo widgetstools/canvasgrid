@@ -923,7 +923,12 @@ function wireFormattingToolbar(ctx: VelocityGridExtContext, r: FormattingRefs): 
 
   const applyStyle = (patch: Record<string, unknown>): void => {
     const cols = targetCols();
-    if (!cols.length) return;
+    if (!cols.length) {
+      r.selPill.title = 'Select a cell or column first';
+      r.selPill.classList.add('vgext-rb-sel--need');
+      window.setTimeout(() => r.selPill.classList.remove('vgext-rb-sel--need'), 900);
+      return;
+    }
     const key = target === 'header' ? 'headerStyle' : 'cellStyle';
     withHistory(() => {
       for (const colId of cols) {
@@ -935,7 +940,12 @@ function wireFormattingToolbar(ctx: VelocityGridExtContext, r: FormattingRefs): 
   };
   const applyFormat = (format: string): void => {
     const cols = targetCols();
-    if (!cols.length) return;
+    if (!cols.length) {
+      r.selPill.title = 'Select a cell or column first';
+      r.selPill.classList.add('vgext-rb-sel--need');
+      window.setTimeout(() => r.selPill.classList.remove('vgext-rb-sel--need'), 900);
+      return;
+    }
     withHistory(() => {
       for (const colId of cols) {
         try { grid.editColumn(colId, { format }); } catch { /* non-compiling / unknown */ }
@@ -1932,6 +1942,10 @@ const RIBBON_CSS = `
 .vgext-rb-selpill {
   max-width: 64px; min-width: 28px; padding: 0 6px;
   font-size: 11px; font-weight: 550;
+}
+.vgext-rb-selpill.vgext-rb-sel--need {
+  outline: 2px solid var(--vg-accent-color, #4f9cf9);
+  outline-offset: 1px;
 }
 .vgext-rb-selpill > span {
   overflow: hidden; text-overflow: ellipsis; min-width: 0;

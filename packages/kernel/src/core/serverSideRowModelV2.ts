@@ -191,36 +191,46 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     // refresh durations, so the cadence self-tunes to what the datasource
     // actually sustains instead of hammering it every tick.
     const soft = params.purge === false;
-    if (soft && this.pendingSoftRefresh !== null) {
+    if (!soft) {
+      // Invalidate any queued/paced soft refresh so it cannot run after a
+      // structural purge (or race a blank hydrate with a soft band reload).
+      this.softRefreshEpoch++;
+      this.pendingSoftRefresh = null;
+      return this.enqueue(() => this.refreshInner(params));
+    }
+    if (this.pendingSoftRefresh !== null) {
       return this.pendingSoftRefresh;
     }
-    if (soft) {
-      let p: Promise<void> | null = null;
-      const run = (): Promise<void> => this.enqueue(async () => {
-        if (this.pendingSoftRefresh === p) this.pendingSoftRefresh = null;
-        const t0 = Date.now();
-        try {
-          await this.refreshInner(params);
-        } finally {
-          this.lastSoftRefreshEnd = Date.now();
-          this.softRefreshDurations.push(this.lastSoftRefreshEnd - t0);
-          if (this.softRefreshDurations.length > 5) this.softRefreshDurations.shift();
-        }
-      });
-      const wait = Math.max(0, this.lastSoftRefreshEnd + this.softRefreshAvgMs() - Date.now());
-      p = wait > 16
-        ? new Promise<void>((resolve, reject) => {
-            setTimeout(() => { run().then(resolve, reject); }, wait);
-          })
-        : run();
-      this.pendingSoftRefresh = p;
-      return p;
-    }
-    return this.enqueue(() => this.refreshInner(params));
+    const epoch = this.softRefreshEpoch;
+    let p: Promise<void> | null = null;
+    const run = (): Promise<void> => this.enqueue(async () => {
+      if (this.pendingSoftRefresh === p) this.pendingSoftRefresh = null;
+      if (epoch !== this.softRefreshEpoch) return;
+      const t0 = Date.now();
+      try {
+        await this.refreshInner(params);
+      } finally {
+        this.lastSoftRefreshEnd = Date.now();
+        this.softRefreshDurations.push(this.lastSoftRefreshEnd - t0);
+        if (this.softRefreshDurations.length > 5) this.softRefreshDurations.shift();
+      }
+    });
+    const wait = Math.max(0, this.lastSoftRefreshEnd + this.softRefreshAvgMs() - Date.now());
+    p = wait > 16
+      ? new Promise<void>((resolve, reject) => {
+          setTimeout(() => { run().then(resolve, reject); }, wait);
+        })
+      : run();
+    this.pendingSoftRefresh = p;
+    return p;
   }
 
   /** Conflation handle — at most one QUEUED soft refresh at a time. */
   private pendingSoftRefresh: Promise<void> | null = null;
+  /** Bumped on purge to cancel paced soft refreshes still waiting on setTimeout. */
+  private softRefreshEpoch = 0;
+  /** Per-block fetch tokens — force reloads must not ride a stale in-flight getRows. */
+  private readonly blockFetchSeq = new Map<string, number>();
   /** Last 5 soft-refresh durations (ms) — the pacing signal. */
   private readonly softRefreshDurations: number[] = [];
   private lastSoftRefreshEnd = 0;
@@ -387,6 +397,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
       this.index = null;
       this.groupBaseRows.clear();
       this.leafCaches.clear();
+      this.blockFetchSeq.clear();
       this.cacheEpoch++;
       this.flatRowCount = 0;
       this.host.setGrandTotals?.(null);
@@ -621,9 +632,14 @@ export class ServerSideRowModelV2Controller<TRow = any> {
       this.leafCaches.set(node.key, cache);
     }
     const existing = cache.get(blockIdx);
-    if (existing && existing.state === 'loading') {
+    const fetchKey = `leaf:${node.key}:${blockIdx}`;
+    // Non-force: coalesce onto the in-flight request. Force (soft refresh /
+    // column refill): mint a new fetch token so the stale reply is dropped.
+    if (existing && existing.state === 'loading' && !force) {
       return this.waitUntil(() => cache!.get(blockIdx)?.state !== 'loading' || gen !== this.dataGen);
     }
+    const fetchId = (this.blockFetchSeq.get(fetchKey) ?? 0) + 1;
+    this.blockFetchSeq.set(fetchKey, fetchId);
     // Keep prior rows visible while reloading (column-window refill). Wiping
     // to `[]` blanked the canvas between drop and success — black voids.
     const preserved = existing?.rows ?? [];
@@ -632,9 +648,6 @@ export class ServerSideRowModelV2Controller<TRow = any> {
       state: 'loading',
       touch: ++this.touchClock,
     });
-    // `force` is informational for callers; existing loaded blocks are only
-    // re-entered via forceReload* which always calls load with force=true.
-    void force;
 
     const startRow = blockIdx * this.blockSize;
     const endRow = Math.min(node.leafCount, startRow + this.blockSize);
@@ -659,8 +672,11 @@ export class ServerSideRowModelV2Controller<TRow = any> {
         },
         success: (result) => {
           this.inflight = Math.max(0, this.inflight - 1);
-          if (gen !== this.dataGen || this.host.isDestroyed()) {
-            cache!.delete(blockIdx);
+          if (
+            gen !== this.dataGen
+            || this.host.isDestroyed()
+            || this.blockFetchSeq.get(fetchKey) !== fetchId
+          ) {
             resolve();
             return;
           }
@@ -684,6 +700,10 @@ export class ServerSideRowModelV2Controller<TRow = any> {
         },
         fail: () => {
           this.inflight = Math.max(0, this.inflight - 1);
+          if (this.blockFetchSeq.get(fetchKey) !== fetchId) {
+            resolve();
+            return;
+          }
           cache!.set(blockIdx, {
             rows: preserved,
             state: 'failed',
@@ -873,9 +893,15 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     if (!ds) return Promise.resolve();
     const cache = this.flatCache();
     const existing = cache.get(blockIdx);
-    if (existing && existing.state === 'loading') {
+    const fetchKey = `flat:${blockIdx}`;
+    // Non-force: coalesce onto the in-flight request. Force (soft refresh /
+    // column-window refill): mint a new fetch token so a stale in-flight
+    // reply cannot satisfy the reload (was: waitUntil loading → wrong band).
+    if (existing && existing.state === 'loading' && !force) {
       return this.waitUntil(() => cache.get(blockIdx)?.state !== 'loading' || gen !== this.dataGen);
     }
+    const fetchId = (this.blockFetchSeq.get(fetchKey) ?? 0) + 1;
+    this.blockFetchSeq.set(fetchKey, fetchId);
     // Preserve painted rows while the column-window (or soft) reload is in
     // flight — empty loading rows were the flicker/void source.
     const preserved = existing?.rows ?? [];
@@ -884,7 +910,6 @@ export class ServerSideRowModelV2Controller<TRow = any> {
       state: 'loading',
       touch: ++this.touchClock,
     });
-    void force;
     const startRow = blockIdx * this.blockSize;
     const endRow = startRow + this.blockSize;
 
@@ -909,8 +934,11 @@ export class ServerSideRowModelV2Controller<TRow = any> {
         },
         success: (result) => {
           this.inflight = Math.max(0, this.inflight - 1);
-          if (gen !== this.dataGen || this.host.isDestroyed()) {
-            cache.delete(blockIdx);
+          if (
+            gen !== this.dataGen
+            || this.host.isDestroyed()
+            || this.blockFetchSeq.get(fetchKey) !== fetchId
+          ) {
             resolve();
             return;
           }
@@ -943,6 +971,10 @@ export class ServerSideRowModelV2Controller<TRow = any> {
         },
         fail: () => {
           this.inflight = Math.max(0, this.inflight - 1);
+          if (this.blockFetchSeq.get(fetchKey) !== fetchId) {
+            resolve();
+            return;
+          }
           cache.set(blockIdx, {
             rows: preserved,
             state: 'failed',

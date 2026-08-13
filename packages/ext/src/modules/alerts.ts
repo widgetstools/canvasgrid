@@ -19,8 +19,21 @@ import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../
 import { ExpressionEditor } from '../ui/expressionEditor';
 import { editorColumns, leafColumns } from '../ui/gridSchema';
 import {
-  band, caps, chip, el, injectCockpitStyles, lucideSvg, numberInput,
-  pillGroup, row, select, switchToggle, textInput,
+  band,
+  caps,
+  chip,
+  el,
+  injectCockpitStyles,
+  lucideSvg,
+  numberInput,
+  pillGroup,
+  row,
+  select,
+  switchToggle,
+  textInput,
+  appendPaneChrome,
+  takePaneScroll,
+  restorePaneScroll,
 } from '../ui/cockpit';
 
 interface AlertsGrid {
@@ -266,12 +279,15 @@ export function alertsModule(): SettingsModule {
       };
 
       const renderPane = (): void => {
+        const scrollTop = takePaneScroll(pane);
         editor?.destroy();
         editor = null;
         pane.replaceChildren();
-        renderGlobal(pane);
         if (!draft) {
-          pane.appendChild(el('div', 'ckp-empty', 'Select an alert, or add one with +'));
+          const emptyBody = el('div', 'ckp-pane-body');
+          pane.appendChild(emptyBody);
+          renderGlobal(emptyBody);
+          emptyBody.appendChild(el('div', 'ckp-empty', 'Select an alert, or add one with +'));
           return;
         }
         const d = draft;
@@ -294,7 +310,8 @@ export function alertsModule(): SettingsModule {
           resetBtn.disabled = !dirty;
         });
         head.append(nameIn, resetBtn, saveBtn);
-        pane.appendChild(head);
+        const body = appendPaneChrome(pane, head);
+        renderGlobal(body);
 
         const chips = el('div', 'ckp-chips-strip');
         chips.append(
@@ -302,13 +319,13 @@ export function alertsModule(): SettingsModule {
           chip('Trigger', d.trigger.kind, 'neutral').root,
           chip('Enabled', d.enabled ? 'YES' : 'NO', d.enabled ? 'positive' : 'neutral').root,
         );
-        pane.appendChild(chips);
+        body.appendChild(chips);
 
         const ruleBand = band('01', 'Rule');
         ruleBand.body.append(
           row('Enabled', switchToggle(d.enabled, (v) => { d.enabled = v; renderAll(); })),
         );
-        pane.appendChild(ruleBand.root);
+        body.appendChild(ruleBand.root);
 
         const sev = band('02', 'Severity');
         sev.body.append(
@@ -318,7 +335,7 @@ export function alertsModule(): SettingsModule {
             (v) => { d.severity = v as AlertSeverity; renderAll(); },
           ),
         );
-        pane.appendChild(sev.root);
+        body.appendChild(sev.root);
 
         const trig = band('03', 'Trigger');
         trig.body.append(
@@ -402,14 +419,14 @@ export function alertsModule(): SettingsModule {
             )),
           );
         }
-        pane.appendChild(trig.root);
+        body.appendChild(trig.root);
 
         const msg = band('04', 'Message');
         msg.body.append(
           row('Template', textInput(d.message, (v) => { d.message = v; renderAll(); }, { placeholder: '{rule} fired on {rowId}' })),
           el('div', 'ckp-hint lc', 'Placeholders: {rule} {rowId} {column} {value} {prev}'),
         );
-        pane.appendChild(msg.root);
+        body.appendChild(msg.root);
 
         const chBand = band('05', 'Channels');
         for (const c of CHANNELS) {
@@ -425,7 +442,7 @@ export function alertsModule(): SettingsModule {
           }
           chBand.body.append(row(c, sw));
         }
-        pane.appendChild(chBand.root);
+        body.appendChild(chBand.root);
 
         const deb = band('06', 'Debounce');
         deb.body.append(
@@ -438,7 +455,9 @@ export function alertsModule(): SettingsModule {
             '0 = use global default',
           ),
         );
-        pane.appendChild(deb.root);
+        body.appendChild(deb.root);
+
+        restorePaneScroll(pane, scrollTop);
       };
 
       const renderAll = (): void => {

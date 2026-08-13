@@ -105,14 +105,18 @@ export { RowCache, LivePipeline, composeRowId } from './hub/rowCache';
 
 export { inferFieldsFromRows, fieldsToColumnDefinitions } from './schema/infer';
 
-export type { ConfigBackend,
-  ProviderCatalogBackend } from './catalog/ConfigBackend';
+export type {
+  ConfigBackend,
+  ProviderCatalogBackend,
+  LocalStorageConfigBackendOptions,
+} from './catalog/ConfigBackend';
 export {
   LocalStorageConfigBackend,
   IndexedDbConfigBackend,
   RestConfigBackend,
   MemoryConfigBackend,
   createDefaultConfigBackend,
+  PROVIDER_CATALOG_STORAGE_KEY,
 } from './catalog/ConfigBackend';
 
 export { connectHub, _resetHubConnectionForTests } from './client/hubConnection';

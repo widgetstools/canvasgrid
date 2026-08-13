@@ -45,7 +45,8 @@ interface RuleIndicator {
   iconName: string;                            // from INDICATOR_ICONS (24 lucide icons)
   color: string;
   target: 'cell' | 'row-start' | 'row-end';
-  position: 'before' | 'after' | 'left' | 'right';
+  position: 'before' | 'after'                 // Prefix / Suffix (inline)
+         | 'tl' | 'tr' | 'bl' | 'br' | 'ml' | 'mr';  // positional overlays
 }
 ```
 

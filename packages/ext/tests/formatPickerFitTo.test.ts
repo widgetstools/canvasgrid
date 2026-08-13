@@ -32,9 +32,39 @@ describe('formatPickerMenu fitTo container', () => {
     expect(panel.classList.contains('is-compact')).toBe(true);
     // 320px pane − 16px margins = 304px max
     expect(parseFloat(panel.style.width)).toBeLessThanOrEqual(304);
+    expect(parseFloat(panel.style.maxHeight)).toBeLessThanOrEqual(660);
     const left = parseFloat(panel.style.getPropertyValue('--vgext-menu-left'));
     expect(left).toBeGreaterThanOrEqual(108); // pane.left + 8
     expect(left + parseFloat(panel.style.width)).toBeLessThanOrEqual(412); // pane.right − 8
+  });
+
+  it('uses compact layout for typical Customize drawer pane widths (~420px)', () => {
+    const pane = document.createElement('div');
+    pane.className = 'ckp-pane';
+    Object.defineProperty(pane, 'getBoundingClientRect', {
+      value: () => ({
+        left: 200, top: 80, right: 620, bottom: 780,
+        width: 420, height: 700, x: 200, y: 80, toJSON: () => ({}),
+      }),
+    });
+    const anchor = document.createElement('button');
+    Object.defineProperty(anchor, 'getBoundingClientRect', {
+      value: () => ({
+        left: 220, top: 200, right: 320, bottom: 232,
+        width: 100, height: 32, x: 220, y: 200, toJSON: () => ({}),
+      }),
+    });
+    pane.appendChild(anchor);
+    document.body.appendChild(pane);
+
+    const host = new FakeFormatHost();
+    const m = formatPickerMenu(anchor, host, { fitTo: () => pane });
+    disposers.push(() => m.destroy());
+    m.toggle();
+
+    const panel = document.querySelector<HTMLElement>('.vgext-menu.vgext-fmt')!;
+    expect(panel.classList.contains('is-compact')).toBe(true);
+    expect(parseFloat(panel.style.width)).toBeLessThanOrEqual(404); // 420 − 16
   });
 
   it('keeps the ribbon-sized panel when fitTo is omitted', () => {

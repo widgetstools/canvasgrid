@@ -11,6 +11,7 @@ import {
 } from '../src/profiles/configSession';
 import type { ProfileSnapshot } from '../src/extension/types';
 import type { GridState } from '@wellsfargo-starui/velocity-grid';
+import { MemoryStore } from '@wellsfargo-starui/velocity-grid-storage';
 import {
   saveConfigToLocalStorage,
   loadConfigFromLocalStorage,
@@ -297,5 +298,21 @@ describe('configStorage helpers route through ConfigSession', () => {
     expect(loaded.layouts).toBeTruthy();
     clearConfigFromLocalStorage('grid1');
     expect(hasConfigInLocalStorage('grid1')).toBe(false);
+  });
+
+  it('accepts an injected MemoryStore shared across helpers', () => {
+    const storage = new MemoryStore();
+    const config = {
+      version: 4,
+      modules: { 'data-provider': { version: 1, data: { activeProviderId: 'mem' } } },
+    };
+    saveConfigToLocalStorage('grid-mem', config, storage);
+    expect(hasConfigInLocalStorage('grid-mem', storage)).toBe(true);
+    expect(storage.getItem(instanceStorageKey('grid-mem'))).toBeTruthy();
+    expect(localStorage.getItem(instanceStorageKey('grid-mem'))).toBeNull();
+    const loaded = loadConfigFromLocalStorage('grid-mem', storage) as any;
+    expect(loaded.modules['data-provider'].data.activeProviderId).toBe('mem');
+    clearConfigFromLocalStorage('grid-mem', storage);
+    expect(hasConfigInLocalStorage('grid-mem', storage)).toBe(false);
   });
 });

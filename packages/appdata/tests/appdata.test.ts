@@ -111,4 +111,16 @@ describe('LocalStorageAppDataStore', () => {
       resolveTemplate('{{SessionContext.userId}}/{{positions.asOfDate}}', b.lookup),
     ).toBe('jdoe/2026-04-01');
   });
+
+  it('accepts an injected MemoryStore', async () => {
+    const { PersistedAppDataStore, appDataStorageKey } = await import('../src/localStorageStore');
+    const { MemoryStore } = await import('@wellsfargo-starui/velocity-grid-storage');
+    const storage = new MemoryStore();
+    const a = new PersistedAppDataStore('mem-ns', { storage });
+    a.set('SessionContext', 'userId', 'alice');
+    expect(storage.getItem(appDataStorageKey('mem-ns'))).toContain('alice');
+    const b = new PersistedAppDataStore('mem-ns', { storage });
+    expect(b.get('SessionContext', 'userId')).toBe('alice');
+    expect(localStorage.getItem(appDataStorageKey('mem-ns'))).toBeNull();
+  });
 });

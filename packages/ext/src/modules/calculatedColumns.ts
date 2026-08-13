@@ -28,10 +28,22 @@ import {
 } from '../ui/expressionEditor';
 import { editorColumns, schemaFromGrid } from '../ui/gridSchema';
 import {
-  band, caps, chip, el, injectCockpitStyles, lucideSvg, numberInput,
-  pillGroup, row, select, textInput,
+  band,
+  caps,
+  chip,
+  el,
+  injectCockpitStyles,
+  lucideSvg,
+  numberInput,
+  pillGroup,
+  row,
+  select,
+  textInput,
+  appendPaneChrome,
+  takePaneScroll,
+  restorePaneScroll,
 } from '../ui/cockpit';
-import { formatPickerMenu, previewFormat } from '../toolbar/formatPicker';
+import { formatPickerMenu, formatPickerFitContainer, previewFormat } from '../toolbar/formatPicker';
 import type { FormatDataType } from '../toolbar/formatPresets';
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
@@ -388,6 +400,7 @@ export function calculatedColumnsModule(): SettingsModule {
       };
 
       const renderPane = (): void => {
+        const scrollTop = takePaneScroll(pane);
         editor?.destroy();
         editor = null;
         fmtMenu?.destroy();
@@ -414,7 +427,7 @@ export function calculatedColumnsModule(): SettingsModule {
         saveBtn.innerHTML = `${lucideSvg('save', 12)}<span>Save</span>`;
         saveBtn.addEventListener('click', save);
         head.append(nameIn, resetBtn, saveBtn);
-        pane.appendChild(head);
+        const body = appendPaneChrome(pane, head);
 
         const chipsStrip = el('div', 'ckp-chips-strip');
         const idChip = chip('Column id', d.colId, 'warning');
@@ -423,7 +436,7 @@ export function calculatedColumnsModule(): SettingsModule {
         const fmtChip = chip('Formatter', d.format ? 'SET' : '—');
         const widthChip = chip('Width', d.initialWidth ? `${d.initialWidth}PX` : 'AUTO');
         chipsStrip.append(idChip.root, refsChip.root, fmtChip.root, widthChip.root);
-        pane.appendChild(chipsStrip);
+        body.appendChild(chipsStrip);
 
         const syncDirty = (): void => {
           const dirty = isDirty();
@@ -437,7 +450,7 @@ export function calculatedColumnsModule(): SettingsModule {
         syncDirty();
 
         const idIn = textInput(d.colId, (v) => { d.colId = v.trim(); idChip.set(d.colId, 'warning'); syncDirty(); }, { mono: true });
-        pane.appendChild(row('Column id', idIn, psp
+        body.appendChild(row('Column id', idIn, psp
           ? 'Perspective expression alias — must not collide with table fields'
           : 'Unique — must not collide with data fields'));
 
@@ -471,7 +484,7 @@ export function calculatedColumnsModule(): SettingsModule {
               : "Type [ for columns · ⌘↵ to save · aggregates take a scope: SUM([price], 'group') · PREV([col]) for prior tick",
           ),
         );
-        pane.appendChild(expr.root);
+        body.appendChild(expr.root);
 
         const fmt = band('02', 'Value formatter');
         const fmtBtn = el('button', 'ckp-fmtbtn');
@@ -488,11 +501,11 @@ export function calculatedColumnsModule(): SettingsModule {
           clearFormat: () => { d.format = undefined; syncFmtBtn(); syncDirty(); },
           dataType: () => toFormatDataType(d.cellDataType),
         }, {
-          fitTo: () => fmtBtn.closest<HTMLElement>('.ckp-pane') ?? fmtBtn.closest<HTMLElement>('.ckp'),
+          fitTo: () => formatPickerFitContainer(fmtBtn),
         });
         fmtBtn.addEventListener('click', () => fmtMenu?.toggle());
         fmt.body.appendChild(fmtBtn);
-        pane.appendChild(fmt.root);
+        body.appendChild(fmt.root);
 
         const place = band('03', 'Placement');
         place.body.appendChild(row('Data type', select(
@@ -508,9 +521,11 @@ export function calculatedColumnsModule(): SettingsModule {
           (v) => { d.initialPinned = (v || undefined) as CalculatedColumnDef['initialPinned']; syncDirty(); },
         )));
         place.body.appendChild(row('Position', numberInput(d.position, (v) => { d.position = v; syncDirty(); }), 'Insertion order among calculated columns'));
-        pane.appendChild(place.root);
+        body.appendChild(place.root);
 
-        pane.appendChild(errBox);
+        body.appendChild(errBox);
+
+        restorePaneScroll(pane, scrollTop);
       };
 
       const renderAll = (): void => {

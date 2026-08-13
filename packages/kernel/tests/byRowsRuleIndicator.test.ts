@@ -188,6 +188,23 @@ describe('byRows — rule indicator paint (Cycle 21e / Task 14)', () => {
     expect(gc.translate as any).toHaveBeenCalledWith(178, 7);
   });
 
+  it('positional indicator paints as a cell decorator overlay (no text shift)', () => {
+    registerIconSet('lucide', { 'trending-up': 'M0 0' });
+    registerRuleEngine(engineWithIndicator({
+      iconName: 'trending-up', color: '#c62828', target: 'cell', position: 'tl',
+    }));
+    const gc = fakeGc();
+    const strokeStyles: string[] = [];
+    (gc.stroke as any).mockImplementation(() => strokeStyles.push(String((gc as any).strokeStyle)));
+    paint(gc, [baseDef('a')]);
+    expect(gc.stroke as any).toHaveBeenCalled();
+    expect(strokeStyles).toContain('#c62828');
+    // tl decorator: center (8,8) → translate to (2,2); text stays at default left pad.
+    expect(gc.translate as any).toHaveBeenCalledWith(2, 2);
+    const [, textX] = (gc.fillText as any).mock.calls[0]!;
+    expect(textX).toBe(6);
+  });
+
   it('no engine / ruleIndicator null → colDef cellIcon path unchanged (regression)', () => {
     registerIconSet('lucide', { star: 'M1 1' });
     const gc = fakeGc();
