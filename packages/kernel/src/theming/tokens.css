@@ -19,7 +19,25 @@
   background-color: var(--vg-bg-color);
 }
 
-.vg-theme-quartz {
+/* ==========================================================================
+ * Shared light / dark palettes — Cursor-IDE inspired.
+ *
+ * Quartz / StarUI / Cursor class names remain for API compatibility, but all
+ * three light classes share one Cursor Light palette and all three dark
+ * classes share one Cursor Dark palette. High-contrast AAA themes below are
+ * unchanged (black/yellow/blue a11y).
+ *
+ * Palette extracted from Cursor IDE's bundled "Cursor Dark Anysphere" /
+ * "Cursor Light" theme JSONs. Defining surface hierarchy: the DATA plane
+ * (editor.background) is the brightest surface in dark mode and chrome
+ * (header, panels, popups) recedes one step below. Hover/selection washes
+ * are NEUTRAL foreground-alpha; nordic blue primary (#2778C1 light /
+ * #81A1C1 dark) is reserved for focus, primary actions, and links.
+ * Radius is a flat 2px everywhere.
+ * ========================================================================== */
+.vg-theme-quartz,
+.vg-theme-starui,
+.vg-theme-cursor {
   /* Tells the UA to render native form controls (date-picker calendar,
    * number-input spinners, autofill chrome) in light mode. The date
    * filter popup mounts a native `<input type="date">` whose calendar
@@ -34,432 +52,6 @@
   /* Monospace stack reserved for canvas-painted DATA cells so
    * numbers, CUSIPs, tickers, and other fixed-width tokens stay
    * column-aligned even when the chrome font is proportional. */
-  --vg-cell-font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Consolas, monospace;
-  --vg-font-size: 13px;
-  --vg-font-size-sm: 12px;
-  --vg-row-height: 32px;
-  --vg-header-height: 40px;
-  --vg-fg-color: #1a1f24;
-  --vg-bg-color: #ffffff;
-  --vg-row-alt-bg: #ffffff;
-  --vg-header-bg: #f4f6f8;
-  --vg-header-fg: #1a1f24;
-  --vg-border-color: #c0c8d1;
-  --vg-grid-line-color: #d6dce2;
-  --vg-row-hover-bg: #eef1f3;
-  --vg-row-selected-bg: rgb(56 132 195 / 22%);
-  /* Cycle 21i / Phase 1 — monochromatic UI chrome: the accent is a neutral
-   * mid-grey (foreground mixed toward the background), so toggles / tabs /
-   * pills / checkboxes / focus rings read as one grey system — no pure
-   * black/white highlights. Data colours (row selection, cell range, flash)
-   * keep their own configurable tokens below. */
-  --vg-chrome-accent: color-mix(in srgb, var(--vg-fg-color) 60%, var(--vg-bg-color));
-  --vg-focus-ring-color: var(--vg-chrome-accent);
-  --vg-focus-ring-width: 2px;
-  --vg-editor-invalid-color: var(--vg-neg-color);
-  --vg-flash-from-color: #fef3c7;
-  --vg-flash-to-color: rgba(254, 243, 199, 0);
-  --vg-resizer-hot-zone: 4px;
-  --vg-scrollbar-thickness: 6px;
-  --vg-floating-filter-bg: #ffffff;
-  --vg-floating-filter-border: #d5dbe0;
-  --vg-floating-filter-placeholder: #94a3b8;
-  /* Cycle 7 / Task 7 — background tint applied behind any cell whose
-   * value contains an active quick-filter term. Warm pale yellow keeps
-   * legible contrast with --vg-fg-color (#1a1f24) on light theme. */
-  --vg-quick-filter-match-bg: #fff3b8;
-  /* Cycle 8 / Task 5 — color for the faint up/down chevron pair that
-   * the header painter draws on `unSortIcon: true` columns that
-   * aren't currently sorted. The painter additionally clamps the
-   * icon to 50% global alpha, so this declared color renders at
-   * ~24% effective opacity on light theme. */
-  --vg-unsort-icon-color: rgba(26, 31, 36, 0.48);
-  /* Cycle 9 / Task 3 — translucent fill behind each active cell-range
-   * selection. Roughly 22% alpha of the focus ring color so the
-   * underlying cell content stays readable through the wash. */
-  --vg-range-fill-color: rgb(59 130 246 / 22%);
-  --vg-range-border-color: #3b82f6;
-  /* Cycle 14 / Task 1 — totals (grand-total) row tokens.
-   * Design plan: docs/superpowers/plans/notes/cycle-14-aggregation-design.md
-   * The "hairline lift" signature: 3% tint over body, +1 weight stop,
-   * 1px rule above. Nothing else. The token family is consumed by
-   * cssReader → ResolvedTheme → byRows/gridLines painters (Task 1)
-   * and the polished `'totals'` cell renderer (Task 5). */
-  --vg-totals-bg: #f7f9fb;
-  --vg-totals-fg: #0f172a;
-  --vg-totals-border-top: #cbd5e1;
-  --vg-totals-fg-muted: #475569;
-  --vg-totals-font-weight: 500;
-  /* Cycle 14 / Task 2 — pinned-row tokens.
-   * Design plan: docs/superpowers/plans/notes/cycle-14-aggregation-design.md
-   * § Task 2.
-   * Shared structure with totals (1px structural border, same row
-   * height, same monospace) but a WARM 3% tint (vs totals' slate)
-   * and NO weight bump. The bg signals "static reference row" via
-   * temperature; the absence of a weight stop preserves the +1 weight
-   * cue as the totals-only marker of "this is a computed synthesis".
-   * Border color aliases to --vg-totals-border-top — single source for
-   * the "outside-the-scrolling-body" boundary. */
-  --vg-pinned-row-bg: #fbf8f3;
-  --vg-pinned-row-fg: var(--vg-fg-color);
-  --vg-pinned-row-border: var(--vg-totals-border-top);
-  /* Cycle 15 / Task 4 — auto-group column tokens.
-   * Design plan: docs/superpowers/plans/notes/cycle-15-grouping-design.md
-   * § Task 4.
-   * The "spine, not strip" pattern — group rows carry chrome only in
-   * the auto-group cell (chevron + indent + value + count), never via
-   * a row-wide bg or border. The two colours alias to the muted slate
-   * the totals renderer reserves for empty / muted text; vocabulary
-   * continuity across cycles. The indent unit is one chevron-width
-   * (14 px) per depth level so the chevron stacks visually. */
-  --vg-group-chevron-color: var(--vg-totals-fg-muted);
-  --vg-group-count-color: var(--vg-totals-fg-muted);
-  --vg-group-indent: 14px;
-  /* Cycle 15 / Task 5 — row-bg shift applied to group rows in
-   * `'groupRows'` / `'custom'` modes only. A ~1.5% slate cast — far
-   * lighter than --vg-totals-bg (3% lift + top border + weight bump)
-   * so the synthesis-row signature stays reserved for per-group
-   * footers in Task 12. Design plan:
-   * docs/superpowers/plans/notes/cycle-15-grouping-design.md § Task 5. */
-  --vg-group-row-bg: #f1f5f9;
-  /* Cycle 15 / Task 8 — tri-state checkbox tokens for the auto-group
-   * column's group rows. All four default to var(--vg-fg-color) so
-   * the box reads exactly like the existing checkboxCell painter — one
-   * checkbox vocabulary across the grid. The indeterminate (partial)
-   * and 'all' states differentiate by interior SHAPE (horizontal dash
-   * vs check √), not by colour or fill. Apps that want a filled
-   * brand-accent checkbox override --vg-group-checkbox-fill plus
-   * --vg-group-checkbox-check-color together. Design plan:
-   * docs/superpowers/plans/notes/cycle-15-grouping-design.md § Task 8. */
-  --vg-group-checkbox-border-color: var(--vg-fg-color);
-  --vg-group-checkbox-check-color: var(--vg-fg-color);
-  --vg-group-checkbox-indeterminate-color: var(--vg-fg-color);
-  --vg-group-checkbox-fill: transparent;
-  /* Cycle 15 / Task 12 — per-group footer row tokens. INHERIT the
-   * totals signature by default (same 3% slate tint, same +1 weight
-   * stop, same hairline rule color) so a grouped grid reads with one
-   * synthesis vocabulary across data → group spine → footer → grand
-   * total. Apps that want to break the parity (e.g. footer at 2%
-   * tint, grand total at 4%) override the four `--vg-group-footer-*`
-   * tokens and leave the `--vg-totals-*` tokens untouched. Design
-   * plan: docs/superpowers/plans/notes/cycle-15-grouping-design.md
-   * § Task 12. */
-  --vg-group-footer-bg: var(--vg-totals-bg);
-  --vg-group-footer-fg: var(--vg-totals-fg);
-  --vg-group-footer-border-top: var(--vg-totals-border-top);
-  --vg-group-footer-font-weight: var(--vg-totals-font-weight);
-  /* Cycle 22 / Task 1 — input chrome (floating filters, cell editors,
-   * tool-panel search). Defaults align to body bg/fg + the focus ring
-   * so an undeclared theme still reads "matches the grid". */
-  --vg-input-bg: #ffffff;
-  --vg-input-fg: #1a1f24;
-  --vg-input-border: #d1d5db;
-  --vg-input-focus-border: var(--vg-focus-ring-color);
-  --vg-input-disabled-bg: #f3f4f6;
-  /* Cycle 22 / Task 1 — tooltip overlay (shared sparkline tooltip + any
-   * future hover popovers). Near-opaque slate so the tooltip reads as a
-   * popover, not a chip. */
-  --vg-tooltip-bg: rgba(15, 23, 42, 0.95);
-  --vg-tooltip-fg: #ffffff;
-  --vg-tooltip-border: rgba(255, 255, 255, 0.08);
-  /* Cycle 22 / Task 1 — filled-checkbox accent. `transparent` ships the
-   * existing outlined-only look; apps wanting a brand-accent checkbox
-   * set bg + fg together so the interior glyph stays legible. */
-  --vg-checkbox-checked-bg: transparent;
-  --vg-checkbox-checked-fg: var(--vg-fg-color);
-  /* Cycle 22 / Task 1 — optional vertical rule between adjacent columns.
-   * `transparent` (default) keeps the grid lineless on the X axis. */
-  --vg-cell-horizontal-border-color: transparent;
-  /* Cycle 22 / Task 1 — popup / context-menu chrome. Shared across the
-   * filter popup, the context menu, and tool-panel popups. */
-  --vg-popup-bg: #ffffff;
-  --vg-popup-border: #d1d5db;
-  --vg-menu-hover-bg: var(--vg-row-hover-bg);
-  /* Cycle 22 / Task 2 — density-mode tokens. The three density classes
-   * (.vg-density-compact / .vg-density-normal / .vg-density-comfortable)
-   * override row + header height and the cell horizontal padding;
-   * declared here so apps that don't apply a density class still get a
-   * stable baseline. */
-  --vg-cell-padding-x: 8px;
-}
-
-.vg-theme-quartz-dark {
-  /* Quartz dark — mirrors AG Grid's own Default Quartz dark theme
-   * (node_modules/ag-grid-community/styles/ag-theme-quartz.css). AG derives
-   * everything by color-mix from three base tokens: --ag-background-color
-   * = color-mix(#fff, #182230 97%) ≈ #1F2936 (navy data plane),
-   * --ag-foreground-color ≈ #fff (rendered here as a soft near-white),
-   * --ag-active-color #2196f3 (blue accent driving hover/selection/focus).
-   * Borders are rgba(255,255,255,0.16); AG Quartz does not zebra-stripe.
-   * Surfaces below are AG's values × 0.95 (5% darker) for a deeper canvas. */
-  color-scheme: dark;
-  /* Inter (chrome / DOM panels / canvas-painted headers). Falls
-   * back to the system UI sans-serif when Inter isn't loaded —
-   * `system-ui` is SF Pro on macOS and Segoe UI on Windows, both
-   * close enough that a missing Inter won't look broken. */
-  --vg-font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  /* Monospace stack reserved for canvas-painted DATA cells so
-   * numbers, CUSIPs, tickers, and other fixed-width tokens stay
-   * column-aligned even when the chrome font is proportional. */
-  --vg-cell-font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Consolas, monospace;
-  --vg-font-size: 13px;
-  --vg-font-size-sm: 12px;
-  --vg-row-height: 32px;
-  --vg-header-height: 40px;
-  --vg-fg-color: #E6E8EC;
-  --vg-bg-color: #1A232E;
-  --vg-row-alt-bg: #1A232E;
-  /* Header chrome — darker than the cell plane so the band reads as
-   * structure, not another row of data. */
-  --vg-header-bg: #161D26;
-  --vg-header-fg: rgb(255 255 255 / 78%);
-  --vg-border-color: rgb(255 255 255 / 16%);
-  --vg-grid-line-color: rgb(255 255 255 / 11%);
-  --vg-row-hover-bg: rgb(33 150 243 / 15%);
-  --vg-row-selected-bg: rgb(33 150 243 / 26%);
-  --vg-chrome-accent: #2196f3;
-  --vg-focus-ring-color: #2196f3;
-  --vg-focus-ring-width: 2px;
-  --vg-editor-invalid-color: var(--vg-neg-color);
-  --vg-flash-from-color: #b8860b;
-  --vg-flash-to-color: rgba(184, 134, 11, 0);
-  --vg-resizer-hot-zone: 4px;
-  --vg-scrollbar-thickness: 6px;
-  --vg-floating-filter-bg: #1A232E;
-  --vg-floating-filter-border: var(--vg-border-color);
-  --vg-floating-filter-placeholder: rgb(255 255 255 / 40%);
-  --vg-quick-filter-match-bg: #493400;
-  --vg-unsort-icon-color: rgb(255 255 255 / 40%);
-  --vg-range-fill-color: rgb(33 150 243 / 20%);
-  --vg-range-border-color: #2196f3;
-  /* Totals / pinned / group — match the darker header band. */
-  --vg-totals-bg: #161D26;
-  --vg-totals-fg: #E6E8EC;
-  --vg-totals-border-top: rgb(255 255 255 / 16%);
-  --vg-totals-fg-muted: rgb(255 255 255 / 55%);
-  --vg-totals-font-weight: 500;
-  --vg-pinned-row-bg: #161D26;
-  --vg-pinned-row-fg: var(--vg-fg-color);
-  --vg-pinned-row-border: var(--vg-totals-border-top);
-  --vg-group-chevron-color: var(--vg-totals-fg-muted);
-  --vg-group-count-color: var(--vg-totals-fg-muted);
-  --vg-group-indent: 14px;
-  --vg-group-row-bg: #161D26;
-  --vg-group-checkbox-border-color: var(--vg-fg-color);
-  --vg-group-checkbox-check-color: var(--vg-fg-color);
-  --vg-group-checkbox-indeterminate-color: var(--vg-fg-color);
-  --vg-group-checkbox-fill: transparent;
-  --vg-group-footer-bg: var(--vg-totals-bg);
-  --vg-group-footer-fg: var(--vg-totals-fg);
-  --vg-group-footer-border-top: var(--vg-totals-border-top);
-  --vg-group-footer-font-weight: var(--vg-totals-font-weight);
-  /* Cycle 22 / Task 1 — dark-mode counterparts. Inputs match header
-   * chrome; tooltip/popup stay a step above body for floating panels. */
-  --vg-input-bg: #161D26;
-  --vg-input-fg: var(--vg-fg-color);
-  --vg-input-border: var(--vg-border-color);
-  --vg-input-focus-border: var(--vg-focus-ring-color);
-  --vg-input-disabled-bg: #1A232E;
-  --vg-tooltip-bg: #242E3A;
-  --vg-tooltip-fg: #E6E8EC;
-  --vg-tooltip-border: rgb(255 255 255 / 20%);
-  --vg-checkbox-checked-bg: #2196f3;
-  --vg-checkbox-checked-fg: #FFFFFF;
-  --vg-cell-horizontal-border-color: transparent;
-  --vg-popup-bg: #242E3A;
-  --vg-popup-border: rgb(255 255 255 / 20%);
-  --vg-menu-hover-bg: rgb(255 255 255 / 8%);
-  /* Cycle 22 / Task 2 — density baseline. Overridden per density class. */
-  --vg-cell-padding-x: 8px;
-}
-
-/* ==========================================================================
- * StarUI theme — vendored from @starui/design-system (MarketsUI FI design
- * system). Colours are baked as oklch() literals straight from that system's
- * OKLCH source of truth (starui-tokens.css: --card / --foreground /
- * --grid-border / --primary / …), so cgrid carries no cross-repo dependency.
- * Keep the light/dark palettes below in sync with that source if it moves.
- *
- * The mapping mirrors the design system's own `adapters/velocityGrid.ts`
- * (--vg-bg-color → card, --vg-border-color → grid-border, accent → primary,
- * row states → primary at low alpha) and extends it to every root token so a
- * grid themed with a SINGLE `vg-theme-starui[-dark]` class is fully styled —
- * component tokens (status bar, chips, panels, modals) inherit through the
- * `var(--vg-header-bg)` / `var(--vg-focus-ring-color)` derivations already in
- * this file. Structural tokens (heights, sizes, spacing) match quartz so this
- * is a pure colour reskin; density remains a separate axis.
- * ========================================================================== */
-.vg-theme-starui {
-  /* Light — VS Code "Light Modern" neutrals + cyan FI accent. */
-  color-scheme: light;
-  --vg-font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --vg-cell-font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Consolas, monospace;
-  --vg-font-size: 13px;
-  --vg-font-size-sm: 12px;
-  --vg-row-height: 32px;
-  --vg-header-height: 40px;
-  /* Flat 2px corners everywhere — the design system's global --radius.
-   * Chrome border-radius reads `var(--vg-radius, <quartz-px>)`, so quartz
-   * keeps its rounder corners via the fallback and StarUI flattens to 2px. */
-  --vg-radius: 2px;
-  /* Surfaces + text — foreground / card / grid-border. */
-  --vg-fg-color: oklch(0.345 0.004 256);
-  --vg-bg-color: oklch(1 0 0);
-  --vg-row-alt-bg: oklch(0.54 0.135 220 / 0.022);
-  --vg-header-bg: oklch(1 0 0);
-  --vg-header-fg: oklch(0.345 0.004 256);
-  --vg-border-color: oklch(0.932 0.003 256);
-  --vg-grid-line-color: oklch(0.932 0.003 256 / 0.7);
-  --vg-row-hover-bg: oklch(0.54 0.135 220 / 0.07);
-  --vg-row-selected-bg: oklch(0.54 0.135 220 / 0.12);
-  /* Accent — the one cyan brand colour drives every chrome highlight. */
-  --vg-chrome-accent: oklch(0.54 0.135 220);
-  --vg-focus-ring-color: oklch(0.54 0.135 220);
-  --vg-focus-ring-width: 2px;
-  --vg-editor-invalid-color: var(--vg-neg-color);
-  --vg-flash-from-color: oklch(0.72 0.17 78 / 0.4);
-  --vg-flash-to-color: oklch(0.72 0.17 78 / 0);
-  --vg-resizer-hot-zone: 4px;
-  /* 14px matches the vendored StarUI scrollbar width below so the
-   * canvas reserves the right gutter (cssReader reads this token). */
-  --vg-scrollbar-thickness: 14px;
-  --vg-floating-filter-bg: oklch(1 0 0);
-  --vg-floating-filter-border: oklch(0.932 0.003 256);
-  --vg-floating-filter-placeholder: oklch(0.52 0.004 256);
-  --vg-quick-filter-match-bg: oklch(0.72 0.17 78 / 0.28);
-  --vg-unsort-icon-color: oklch(0.52 0.004 256 / 0.6);
-  --vg-range-fill-color: oklch(0.54 0.135 220 / 0.14);
-  --vg-range-border-color: oklch(0.54 0.135 220 / 0.5);
-  /* Totals — secondary surface + strong hairline. */
-  --vg-totals-bg: oklch(0.959 0.002 256);
-  --vg-totals-fg: oklch(0.345 0.004 256);
-  --vg-totals-border-top: oklch(0.853 0.004 256);
-  --vg-totals-fg-muted: oklch(0.52 0.004 256);
-  --vg-totals-font-weight: 500;
-  --vg-pinned-row-bg: oklch(0.94 0.002 256);
-  --vg-pinned-row-fg: var(--vg-fg-color);
-  --vg-pinned-row-border: var(--vg-totals-border-top);
-  --vg-group-chevron-color: var(--vg-totals-fg-muted);
-  --vg-group-count-color: var(--vg-totals-fg-muted);
-  --vg-group-indent: 14px;
-  --vg-group-row-bg: oklch(0.955 0.002 256);
-  --vg-group-checkbox-border-color: var(--vg-fg-color);
-  --vg-group-checkbox-check-color: var(--vg-fg-color);
-  --vg-group-checkbox-indeterminate-color: var(--vg-fg-color);
-  --vg-group-checkbox-fill: transparent;
-  --vg-group-footer-bg: var(--vg-totals-bg);
-  --vg-group-footer-fg: var(--vg-totals-fg);
-  --vg-group-footer-border-top: var(--vg-totals-border-top);
-  --vg-group-footer-font-weight: var(--vg-totals-font-weight);
-  --vg-input-bg: oklch(1 0 0);
-  --vg-input-fg: oklch(0.345 0.004 256);
-  --vg-input-border: oklch(0.853 0.004 256);
-  --vg-input-focus-border: var(--vg-focus-ring-color);
-  --vg-input-disabled-bg: oklch(0.94 0.002 256);
-  --vg-tooltip-bg: oklch(1 0 0);
-  --vg-tooltip-fg: oklch(0.345 0.004 256);
-  --vg-tooltip-border: oklch(0.92 0.003 256);
-  /* Filled cyan checkbox — the design system's brand-fill control. */
-  --vg-checkbox-checked-bg: oklch(0.54 0.135 220);
-  --vg-checkbox-checked-fg: oklch(0.99 0.012 220);
-  --vg-cell-horizontal-border-color: transparent;
-  --vg-popup-bg: oklch(1 0 0);
-  --vg-popup-border: oklch(0.92 0.003 256);
-  --vg-menu-hover-bg: oklch(0.54 0.135 220 / 0.07);
-  --vg-cell-padding-x: 8px;
-}
-
-.vg-theme-starui-dark {
-  /* Dark — blue-graphite (the design system's default mode) + bright cyan. */
-  color-scheme: dark;
-  --vg-font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --vg-cell-font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Consolas, monospace;
-  --vg-font-size: 13px;
-  --vg-font-size-sm: 12px;
-  --vg-row-height: 32px;
-  --vg-header-height: 40px;
-  --vg-radius: 2px;
-  --vg-fg-color: oklch(0.96 0.006 258);
-  --vg-bg-color: oklch(0.203 0.0185 258);
-  --vg-row-alt-bg: oklch(0.72 0.145 218 / 0.03);
-  /* Header + chrome sit one step (L +10%) above the data surface so the
-   * column headers, side bar, and title-bar chrome separate from cells. */
-  --vg-header-bg: oklch(0.223 0.0185 258);
-  --vg-header-fg: oklch(0.96 0.006 258);
-  --vg-border-color: oklch(0.365 0.019 258);
-  --vg-grid-line-color: oklch(0.365 0.019 258 / 0.7);
-  --vg-row-hover-bg: oklch(0.72 0.145 218 / 0.09);
-  --vg-row-selected-bg: oklch(0.72 0.145 218 / 0.16);
-  --vg-chrome-accent: oklch(0.72 0.145 218);
-  --vg-focus-ring-color: oklch(0.72 0.145 218);
-  --vg-focus-ring-width: 2px;
-  --vg-editor-invalid-color: var(--vg-neg-color);
-  --vg-flash-from-color: oklch(0.85 0.17 88 / 0.35);
-  --vg-flash-to-color: oklch(0.85 0.17 88 / 0);
-  --vg-resizer-hot-zone: 4px;
-  --vg-scrollbar-thickness: 14px;
-  --vg-floating-filter-bg: color-mix(in srgb, var(--vg-header-bg) 60%, transparent);
-  --vg-floating-filter-border: var(--vg-border-color);
-  --vg-floating-filter-placeholder: oklch(0.7 0.015 258);
-  --vg-quick-filter-match-bg: oklch(0.85 0.17 88 / 0.22);
-  --vg-unsort-icon-color: oklch(0.96 0.006 258 / 0.4);
-  --vg-range-fill-color: oklch(0.72 0.145 218 / 0.16);
-  --vg-range-border-color: oklch(0.72 0.145 218 / 0.6);
-  --vg-totals-bg: oklch(0.26 0.023 258);
-  --vg-totals-fg: oklch(0.96 0.006 258);
-  --vg-totals-border-top: oklch(0.425 0.02 258);
-  --vg-totals-fg-muted: oklch(0.7 0.015 258);
-  --vg-totals-font-weight: 500;
-  --vg-pinned-row-bg: oklch(0.251 0.023 258);
-  --vg-pinned-row-fg: var(--vg-fg-color);
-  --vg-pinned-row-border: var(--vg-totals-border-top);
-  --vg-group-chevron-color: var(--vg-totals-fg-muted);
-  --vg-group-count-color: var(--vg-totals-fg-muted);
-  --vg-group-indent: 14px;
-  --vg-group-row-bg: oklch(0.233 0.021 258);
-  --vg-group-checkbox-border-color: var(--vg-fg-color);
-  --vg-group-checkbox-check-color: var(--vg-fg-color);
-  --vg-group-checkbox-indeterminate-color: var(--vg-fg-color);
-  --vg-group-checkbox-fill: transparent;
-  --vg-group-footer-bg: var(--vg-totals-bg);
-  --vg-group-footer-fg: var(--vg-totals-fg);
-  --vg-group-footer-border-top: var(--vg-totals-border-top);
-  --vg-group-footer-font-weight: var(--vg-totals-font-weight);
-  --vg-input-bg: oklch(0.176 0.017 258);
-  --vg-input-fg: oklch(0.96 0.006 258);
-  --vg-input-border: oklch(0.355 0.019 258);
-  --vg-input-focus-border: var(--vg-focus-ring-color);
-  --vg-input-disabled-bg: oklch(0.176 0.017 258);
-  --vg-tooltip-bg: oklch(0.217 0.02 258);
-  --vg-tooltip-fg: oklch(0.96 0.006 258);
-  --vg-tooltip-border: oklch(0.425 0.02 258);
-  --vg-checkbox-checked-bg: oklch(0.72 0.145 218);
-  --vg-checkbox-checked-fg: oklch(0.16 0.04 222);
-  --vg-cell-horizontal-border-color: transparent;
-  --vg-popup-bg: oklch(0.217 0.02 258);
-  --vg-popup-border: var(--vg-border-color);
-  --vg-menu-hover-bg: oklch(0.72 0.145 218 / 0.09);
-  --vg-cell-padding-x: 8px;
-}
-
-/* ==========================================================================
- * Cursor theme — palette extracted verbatim from Cursor IDE's bundled
- * "Cursor Dark Anysphere" / "Cursor Light" theme JSONs (theme-cursor
- * extension). The defining move is Cursor's surface hierarchy: the DATA
- * plane (editor.background) is the brightest surface in dark mode and every
- * piece of chrome — header band, tool panels, popups, status bar — recedes
- * one step below it (sideBar/titleBar background). Hairlines are the
- * foreground at 7.5% alpha (#F0F0F013 / #14141413), never a solid grey, so
- * they read at the same optical weight on every surface. Hover/selection
- * washes are NEUTRAL foreground-alpha (Cursor's list tokens), not accent
- * tints; the nordic blue primary (Cursor Dark Anysphere button.background
- * #81A1C1 / Cursor Light #2778C1, with matching button.foreground) is
- * reserved for focus, primary actions, and links. Radius is a flat 2px
- * everywhere.
- * ========================================================================== */
-.vg-theme-cursor {
-  color-scheme: light;
-  --vg-font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --vg-cell-font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Consolas, monospace;
   --vg-font-size: 13px;
   --vg-font-size-sm: 12px;
@@ -537,9 +129,17 @@
   --vg-popup-bg: #FFFFFF;
   --vg-popup-border: #E5E5E5;
   --vg-menu-hover-bg: #F2F2F2;
+  /* Scrollbar — Cursor Light scrollbarSlider (#141414 @ ~12/19/28%). */
+  --vg-scrollbar-thumb: rgb(20 20 20 / 12%);
+  --vg-scrollbar-thumb-hover: rgb(20 20 20 / 19%);
+  --vg-scrollbar-thumb-active: rgb(20 20 20 / 28%);
+  --vg-scrollbar-track: transparent;
+  --vg-scrollbar-firefox: #c9c9c9;
   --vg-cell-padding-x: 8px;
 }
 
+.vg-theme-quartz-dark,
+.vg-theme-starui-dark,
 .vg-theme-cursor-dark {
   color-scheme: dark;
   --vg-font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -549,22 +149,21 @@
   --vg-row-height: 32px;
   --vg-header-height: 40px;
   --vg-radius: 2px;
-  /* Surfaces — verbatim from Cursor's bundled Default Dark Modern
-   * (theme-defaults/themes/dark_modern.json): editor.background #1F1F1F is the
-   * data plane; sideBar/tabs/titleBar #181818 is the chrome; foreground
-   * #CCCCCC. Cursor does not zebra its lists, so row-alt matches the bg. */
+  /* Surfaces — Cursor Default Dark Modern neutrals with a very slight
+   * cool-blue cast (~+3–5 on B) so chrome reads cooler than pure grey.
+   * Base: editor #1F1F1F → #1E1F24; sideBar #181818 → #17191E. */
   --vg-fg-color: #CCCCCC;
-  --vg-bg-color: #1F1F1F;
-  --vg-row-alt-bg: #1F1F1F;
-  --vg-header-bg: #181818;
+  --vg-bg-color: #1E1F24;
+  --vg-row-alt-bg: #1E1F24;
+  --vg-header-bg: #17191E;
   --vg-header-fg: #CCCCCC;
-  /* panel.border #2B2B2B (section dividers) / editorGroup.border #FFFFFF17
+  /* panel.border nudged cool / editorGroup.border #FFFFFF17
    * (~9% white — Cursor's own inter-pane line) for the cell gridlines. */
-  --vg-border-color: #2B2B2B;
+  --vg-border-color: #2A2C32;
   --vg-grid-line-color: rgb(255 255 255 / 9%);
-  /* list.hoverBackground #2A2D2E / list.inactiveSelectionBackground #37373D. */
-  --vg-row-hover-bg: #2A2D2E;
-  --vg-row-selected-bg: #37373D;
+  /* list.hover / list.inactiveSelection — cool-shifted. */
+  --vg-row-hover-bg: #2A2D33;
+  --vg-row-selected-bg: #363A43;
   /* Accent — Cursor Dark Anysphere primary button / link:
    * button.background #81A1C1, button.foreground #191c22,
    * textLink.foreground #81A1C1. (Not VS Code Modern #0078D4.) */
@@ -576,27 +175,26 @@
   --vg-flash-to-color: rgb(241 180 103 / 0%);
   --vg-resizer-hot-zone: 4px;
   --vg-scrollbar-thickness: 10px;
-  --vg-floating-filter-bg: #1F1F1F;
-  --vg-floating-filter-border: #3C3C3C;
+  --vg-floating-filter-bg: #1E1F24;
+  --vg-floating-filter-border: #3A3D44;
   --vg-floating-filter-placeholder: #989898;
   --vg-quick-filter-match-bg: rgb(241 180 103 / 20%);
   --vg-unsort-icon-color: #9D9D9D;
   --vg-range-fill-color: rgb(129 161 193 / 14%);
   --vg-range-border-color: rgb(129 161 193 / 55%);
-  /* Totals / pinned — editorWidget.background #202020, one step above the
-   * #1F1F1F editor plane, mirroring how Cursor lifts widget surfaces. */
-  --vg-totals-bg: #202020;
+  /* Totals / pinned — one step above the editor plane. */
+  --vg-totals-bg: #1F2126;
   --vg-totals-fg: #CCCCCC;
-  --vg-totals-border-top: #2B2B2B;
+  --vg-totals-border-top: #2A2C32;
   --vg-totals-fg-muted: #9D9D9D;
   --vg-totals-font-weight: 500;
-  --vg-pinned-row-bg: #202020;
+  --vg-pinned-row-bg: #1F2126;
   --vg-pinned-row-fg: var(--vg-fg-color);
   --vg-pinned-row-border: var(--vg-totals-border-top);
   --vg-group-chevron-color: var(--vg-totals-fg-muted);
   --vg-group-count-color: var(--vg-totals-fg-muted);
   --vg-group-indent: 14px;
-  --vg-group-row-bg: #181818;
+  --vg-group-row-bg: #17191E;
   --vg-group-checkbox-border-color: rgb(240 240 240 / 40%);
   --vg-group-checkbox-check-color: var(--vg-fg-color);
   --vg-group-checkbox-indeterminate-color: var(--vg-fg-color);
@@ -605,23 +203,28 @@
   --vg-group-footer-fg: var(--vg-totals-fg);
   --vg-group-footer-border-top: var(--vg-totals-border-top);
   --vg-group-footer-font-weight: var(--vg-totals-font-weight);
-  /* Inputs — input.background #313131 / input.border #3C3C3C. */
-  --vg-input-bg: #313131;
+  /* Inputs — cool-shifted from #313131 / #3C3C3C. */
+  --vg-input-bg: #2F3239;
   --vg-input-fg: #CCCCCC;
-  --vg-input-border: #3C3C3C;
+  --vg-input-border: #3A3D44;
   --vg-input-focus-border: var(--vg-focus-ring-color);
-  --vg-input-disabled-bg: #2A2A2A;
-  /* Popups / tooltips — editorWidget.background #202020 / menu.background
-   * #1F1F1F, panel.border #2B2B2B. */
-  --vg-tooltip-bg: #202020;
+  --vg-input-disabled-bg: #292B31;
+  /* Popups / tooltips. */
+  --vg-tooltip-bg: #1F2126;
   --vg-tooltip-fg: #CCCCCC;
-  --vg-tooltip-border: #2B2B2B;
+  --vg-tooltip-border: #2A2C32;
   --vg-checkbox-checked-bg: #81A1C1;
   --vg-checkbox-checked-fg: #191c22;
   --vg-cell-horizontal-border-color: transparent;
-  --vg-popup-bg: #1F1F1F;
-  --vg-popup-border: #2B2B2B;
-  --vg-menu-hover-bg: #2A2D2E;
+  --vg-popup-bg: #1E1F24;
+  --vg-popup-border: #2A2C32;
+  --vg-menu-hover-bg: #2A2D33;
+  /* Scrollbar — Cursor Dark scrollbarSlider (#F0F0F0 @ ~7/12/19%). */
+  --vg-scrollbar-thumb: rgb(240 240 240 / 6.7%);
+  --vg-scrollbar-thumb-hover: rgb(240 240 240 / 11.8%);
+  --vg-scrollbar-thumb-active: rgb(240 240 240 / 19%);
+  --vg-scrollbar-track: transparent;
+  --vg-scrollbar-firefox: #393B42;
   --vg-cell-padding-x: 8px;
 }
 
@@ -656,6 +259,7 @@
   --vg-row-hover-bg: #cccccc;
   --vg-row-selected-bg: #ffff00;
   --vg-focus-ring-color: #0000ff;
+  --vg-chrome-accent: var(--vg-focus-ring-color);
   --vg-focus-ring-width: 3px;
   --vg-flash-from-color: #ffff00;
   --vg-flash-to-color: rgba(255, 255, 0, 0);
@@ -699,6 +303,11 @@
   --vg-popup-bg: #ffffff;
   --vg-popup-border: #000000;
   --vg-menu-hover-bg: #ffff00;
+  --vg-scrollbar-thumb: #000000;
+  --vg-scrollbar-thumb-hover: #000000;
+  --vg-scrollbar-thumb-active: #000000;
+  --vg-scrollbar-track: #ffffff;
+  --vg-scrollbar-firefox: #000000;
   --vg-cell-padding-x: 8px;
 }
 .vg-theme-high-contrast { background-color: var(--vg-bg-color); }
@@ -729,6 +338,7 @@
   --vg-row-hover-bg: #333333;
   --vg-row-selected-bg: #ffff00;
   --vg-focus-ring-color: #ffff00;
+  --vg-chrome-accent: var(--vg-focus-ring-color);
   --vg-focus-ring-width: 3px;
   --vg-flash-from-color: #ffff00;
   --vg-flash-to-color: rgba(255, 255, 0, 0);
@@ -768,6 +378,11 @@
   --vg-popup-bg: #000000;
   --vg-popup-border: #ffffff;
   --vg-menu-hover-bg: #ffff00;
+  --vg-scrollbar-thumb: #ffffff;
+  --vg-scrollbar-thumb-hover: #ffffff;
+  --vg-scrollbar-thumb-active: #ffffff;
+  --vg-scrollbar-track: #000000;
+  --vg-scrollbar-firefox: #ffffff;
   --vg-cell-padding-x: 8px;
 }
 .vg-theme-high-contrast-dark { background-color: var(--vg-bg-color); }
@@ -792,29 +407,29 @@
  * deeper/more saturated on light for contrast. Split out of the shared block
  * so light and dark themes get mode-appropriate shades; vg-theme-auto's dark
  * override lives in its prefers-color-scheme media block below. */
+/* Cursor-inspired semantic pair (progressBar green / errorForeground rose)
+ * shared by Quartz / StarUI / Cursor class aliases. High-contrast + auto keep
+ * the prior teal/rose invariant. */
 .vg-theme-quartz,
 .vg-theme-starui,
+.vg-theme-cursor {
+  --vg-pos-color: #1F8A65;
+  --vg-neg-color: #CF2D56;
+}
+.vg-theme-quartz-dark,
+.vg-theme-starui-dark,
+.vg-theme-cursor-dark {
+  --vg-pos-color: #3FA266;
+  --vg-neg-color: #E34671;
+}
 .vg-theme-high-contrast,
 .vg-theme-auto {
   --vg-pos-color: #0d9488;
   --vg-neg-color: #e11d48;
 }
-.vg-theme-quartz-dark,
-.vg-theme-starui-dark,
 .vg-theme-high-contrast-dark {
   --vg-pos-color: #2dd4bf;
   --vg-neg-color: #fb7185;
-}
-/* Cursor themes use Cursor's own semantic pair (progressBar green /
- * errorForeground rose) — already teal- and rose-leaning, so formatting
- * colors stay in the palette's family. */
-.vg-theme-cursor {
-  --vg-pos-color: #1F8A65;
-  --vg-neg-color: #CF2D56;
-}
-.vg-theme-cursor-dark {
-  --vg-pos-color: #3FA266;
-  --vg-neg-color: #E34671;
 }
 
 .vg-theme-quartz,
@@ -899,64 +514,53 @@
 }
 
 /* Cycle 22 / Task 4 — `vg-theme-auto` follows the OS `prefers-color-
- * scheme` setting. Defaults to the same light bundle as
- * `vg-theme-quartz`; a single `@media (prefers-color-scheme: dark)`
- * block then re-resolves the same tokens to the dark bundle. No JS
- * listener — the CSS engine reacts to the system preference change
- * and the next paint frame picks up the new computed values via the
- * existing `cssReader.read()` path. Apps that want explicit control
- * stay on `vg-theme-quartz` / `vg-theme-quartz-dark`; apps that want
- * "follow the user" switch to `vg-theme-auto`. */
+ * scheme` setting. Defaults to Cursor Light; dark media query uses Cursor
+ * Dark. Explicit apps stay on `vg-theme-cursor` / `vg-theme-cursor-dark`. */
 .vg-theme-auto {
   color-scheme: light dark;
-  /* Inter (chrome / DOM panels / canvas-painted headers). Falls
-   * back to the system UI sans-serif when Inter isn't loaded —
-   * `system-ui` is SF Pro on macOS and Segoe UI on Windows, both
-   * close enough that a missing Inter won't look broken. */
   --vg-font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  /* Monospace stack reserved for canvas-painted DATA cells so
-   * numbers, CUSIPs, tickers, and other fixed-width tokens stay
-   * column-aligned even when the chrome font is proportional. */
   --vg-cell-font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Consolas, monospace;
   --vg-font-size: 13px;
   --vg-font-size-sm: 12px;
   --vg-row-height: 32px;
   --vg-header-height: 40px;
-  --vg-fg-color: #1a1f24;
-  --vg-bg-color: #ffffff;
-  --vg-row-alt-bg: #ffffff;
-  --vg-header-bg: #f4f6f8;
-  --vg-header-fg: #1a1f24;
-  --vg-border-color: #c0c8d1;
-  --vg-grid-line-color: #d6dce2;
-  --vg-row-hover-bg: #eef1f3;
-  --vg-row-selected-bg: rgb(56 132 195 / 22%);
-  --vg-focus-ring-color: #3b82f6;
+  --vg-radius: 2px;
+  --vg-fg-color: #3B3B3B;
+  --vg-bg-color: #FFFFFF;
+  --vg-row-alt-bg: #FFFFFF;
+  --vg-header-bg: #F8F8F8;
+  --vg-header-fg: #3B3B3B;
+  --vg-border-color: #E5E5E5;
+  --vg-grid-line-color: #E5E5E5;
+  --vg-row-hover-bg: #F2F2F2;
+  --vg-row-selected-bg: #E8E8E8;
+  --vg-chrome-accent: #2778C1;
+  --vg-focus-ring-color: #2778C1;
   --vg-focus-ring-width: 2px;
-  --vg-flash-from-color: #fef3c7;
-  --vg-flash-to-color: rgba(254, 243, 199, 0);
+  --vg-flash-from-color: rgb(192 133 50 / 30%);
+  --vg-flash-to-color: rgb(192 133 50 / 0%);
   --vg-resizer-hot-zone: 4px;
-  --vg-scrollbar-thickness: 6px;
-  --vg-floating-filter-bg: #ffffff;
-  --vg-floating-filter-border: #d5dbe0;
-  --vg-floating-filter-placeholder: #94a3b8;
-  --vg-quick-filter-match-bg: #fff3b8;
-  --vg-unsort-icon-color: rgba(26, 31, 36, 0.48);
-  --vg-range-fill-color: rgb(59 130 246 / 22%);
-  --vg-range-border-color: #3b82f6;
-  --vg-totals-bg: #f7f9fb;
-  --vg-totals-fg: #0f172a;
-  --vg-totals-border-top: #cbd5e1;
-  --vg-totals-fg-muted: #475569;
+  --vg-scrollbar-thickness: 10px;
+  --vg-floating-filter-bg: #FFFFFF;
+  --vg-floating-filter-border: #CECECE;
+  --vg-floating-filter-placeholder: #767676;
+  --vg-quick-filter-match-bg: rgb(192 133 50 / 20%);
+  --vg-unsort-icon-color: #6E7681;
+  --vg-range-fill-color: rgb(39 120 193 / 12%);
+  --vg-range-border-color: rgb(39 120 193 / 55%);
+  --vg-totals-bg: #F8F8F8;
+  --vg-totals-fg: #3B3B3B;
+  --vg-totals-border-top: #E5E5E5;
+  --vg-totals-fg-muted: #6E7681;
   --vg-totals-font-weight: 500;
-  --vg-pinned-row-bg: #fbf8f3;
+  --vg-pinned-row-bg: #F8F8F8;
   --vg-pinned-row-fg: var(--vg-fg-color);
   --vg-pinned-row-border: var(--vg-totals-border-top);
   --vg-group-chevron-color: var(--vg-totals-fg-muted);
   --vg-group-count-color: var(--vg-totals-fg-muted);
   --vg-group-indent: 14px;
-  --vg-group-row-bg: #f1f5f9;
-  --vg-group-checkbox-border-color: var(--vg-fg-color);
+  --vg-group-row-bg: #F3F3F3;
+  --vg-group-checkbox-border-color: rgb(20 20 20 / 40%);
   --vg-group-checkbox-check-color: var(--vg-fg-color);
   --vg-group-checkbox-indeterminate-color: var(--vg-fg-color);
   --vg-group-checkbox-fill: transparent;
@@ -964,21 +568,28 @@
   --vg-group-footer-fg: var(--vg-totals-fg);
   --vg-group-footer-border-top: var(--vg-totals-border-top);
   --vg-group-footer-font-weight: var(--vg-totals-font-weight);
-  --vg-input-bg: #ffffff;
-  --vg-input-fg: #1a1f24;
-  --vg-input-border: #d1d5db;
+  --vg-input-bg: #FFFFFF;
+  --vg-input-fg: #3B3B3B;
+  --vg-input-border: #CECECE;
   --vg-input-focus-border: var(--vg-focus-ring-color);
-  --vg-input-disabled-bg: #f3f4f6;
-  --vg-tooltip-bg: rgba(15, 23, 42, 0.95);
-  --vg-tooltip-fg: #ffffff;
-  --vg-tooltip-border: rgba(255, 255, 255, 0.08);
-  --vg-checkbox-checked-bg: transparent;
-  --vg-checkbox-checked-fg: var(--vg-fg-color);
+  --vg-input-disabled-bg: #F8F8F8;
+  --vg-tooltip-bg: #F8F8F8;
+  --vg-tooltip-fg: #3B3B3B;
+  --vg-tooltip-border: #E5E5E5;
+  --vg-checkbox-checked-bg: #2778C1;
+  --vg-checkbox-checked-fg: #FCFCFC;
   --vg-cell-horizontal-border-color: transparent;
-  --vg-popup-bg: #ffffff;
-  --vg-popup-border: #d1d5db;
-  --vg-menu-hover-bg: var(--vg-row-hover-bg);
+  --vg-popup-bg: #FFFFFF;
+  --vg-popup-border: #E5E5E5;
+  --vg-menu-hover-bg: #F2F2F2;
   --vg-cell-padding-x: 8px;
+  --vg-pos-color: #1F8A65;
+  --vg-neg-color: #CF2D56;
+  --vg-scrollbar-thumb: rgb(20 20 20 / 12%);
+  --vg-scrollbar-thumb-hover: rgb(20 20 20 / 19%);
+  --vg-scrollbar-thumb-active: rgb(20 20 20 / 28%);
+  --vg-scrollbar-track: transparent;
+  --vg-scrollbar-firefox: #c9c9c9;
 }
 .vg-theme-auto {
   background-color: var(--vg-bg-color);
@@ -989,42 +600,51 @@
 
 @media (prefers-color-scheme: dark) {
   .vg-theme-auto {
-    /* Dark-mode teal/rose (brighter) — overrides the light values set above. */
-    --vg-pos-color: #2dd4bf;
-    --vg-neg-color: #fb7185;
-    --vg-fg-color: #d4d4d4;
-    --vg-bg-color: #1e1e1e;
-    --vg-row-alt-bg: #1e1e1e;
-    --vg-header-bg: #252526;
-    --vg-header-fg: #d4d4d4;
-    --vg-border-color: #454545;
-    --vg-grid-line-color: #373a3b;
-    --vg-row-hover-bg: #2a2d2e;
-    --vg-row-selected-bg: rgb(38 79 120 / 50%);
-    --vg-focus-ring-color: #007fd4;
-    --vg-flash-from-color: #b8860b;
-    --vg-flash-to-color: rgba(184, 134, 11, 0);
-    --vg-floating-filter-bg: color-mix(in srgb, var(--vg-header-bg) 60%, transparent);
-    --vg-floating-filter-border: color-mix(in srgb, var(--vg-border-color) 80%, transparent);
-    --vg-floating-filter-placeholder: #6e7681;
-    --vg-quick-filter-match-bg: #4d3700;
-    --vg-unsort-icon-color: rgba(212, 212, 212, 0.4);
-    --vg-range-fill-color: rgb(0 127 212 / 20%);
-    --vg-range-border-color: #007fd4;
-    --vg-totals-bg: #252526;
-    --vg-totals-fg: #e8e8e8;
-    --vg-totals-border-top: #454545;
-    --vg-totals-fg-muted: #858585;
-    --vg-pinned-row-bg: #2c2c2c;
-    --vg-group-row-bg: #252526;
-    --vg-input-bg: #2a2d2e;
-    --vg-input-fg: var(--vg-fg-color);
-    --vg-input-border: var(--vg-border-color);
-    --vg-input-disabled-bg: #232323;
-    --vg-tooltip-bg: rgba(40, 44, 52, 0.96);
-    --vg-tooltip-fg: #f8fafc;
-    --vg-popup-bg: #252526;
-    --vg-popup-border: var(--vg-border-color);
+    --vg-pos-color: #3FA266;
+    --vg-neg-color: #E34671;
+    --vg-fg-color: #CCCCCC;
+    --vg-bg-color: #1E1F24;
+    --vg-row-alt-bg: #1E1F24;
+    --vg-header-bg: #17191E;
+    --vg-header-fg: #CCCCCC;
+    --vg-border-color: #2A2C32;
+    --vg-grid-line-color: rgb(255 255 255 / 9%);
+    --vg-row-hover-bg: #2A2D33;
+    --vg-row-selected-bg: #363A43;
+    --vg-chrome-accent: #81A1C1;
+    --vg-focus-ring-color: #81A1C1;
+    --vg-flash-from-color: rgb(241 180 103 / 28%);
+    --vg-flash-to-color: rgb(241 180 103 / 0%);
+    --vg-floating-filter-bg: #1E1F24;
+    --vg-floating-filter-border: #3A3D44;
+    --vg-floating-filter-placeholder: #989898;
+    --vg-quick-filter-match-bg: rgb(241 180 103 / 20%);
+    --vg-unsort-icon-color: #9D9D9D;
+    --vg-range-fill-color: rgb(129 161 193 / 14%);
+    --vg-range-border-color: rgb(129 161 193 / 55%);
+    --vg-totals-bg: #1F2126;
+    --vg-totals-fg: #CCCCCC;
+    --vg-totals-border-top: #2A2C32;
+    --vg-totals-fg-muted: #9D9D9D;
+    --vg-pinned-row-bg: #1F2126;
+    --vg-group-row-bg: #17191E;
+    --vg-input-bg: #2F3239;
+    --vg-input-fg: #CCCCCC;
+    --vg-input-border: #3A3D44;
+    --vg-input-disabled-bg: #292B31;
+    --vg-tooltip-bg: #1F2126;
+    --vg-tooltip-fg: #CCCCCC;
+    --vg-tooltip-border: #2A2C32;
+    --vg-checkbox-checked-bg: #81A1C1;
+    --vg-checkbox-checked-fg: #191c22;
+    --vg-popup-bg: #1E1F24;
+    --vg-popup-border: #2A2C32;
+    --vg-menu-hover-bg: #2A2D33;
+    --vg-scrollbar-thumb: rgb(240 240 240 / 6.7%);
+    --vg-scrollbar-thumb-hover: rgb(240 240 240 / 11.8%);
+    --vg-scrollbar-thumb-active: rgb(240 240 240 / 19%);
+    --vg-scrollbar-track: transparent;
+    --vg-scrollbar-firefox: #393B42;
   }
 }
 
@@ -1062,144 +682,101 @@
  * the scroller element) hides the tracks when nothing scrolls — the
  * fix for "scrollbars appear even when the grid has no data".
  *
+ * Thumb / track colours come from `--vg-scrollbar-*` theme tokens so
+ * light and dark (and high-contrast / auto) stay in sync. Fallbacks
+ * mix `--vg-fg-color` when a host has not set the tokens.
+ *
  * `-webkit-appearance: none` is what makes the visible scrollbar honour
- * our 12 px width on macOS instead of falling back to a 0-width overlay
- * that only flashes on scroll (regression flagged on 2026-06-26). */
-/* Cycle 21i / Phase 1 — ONE shared scrollbar class for every scrollable
- * grid surface: the body scroller AND all side-panel scrollers (columns,
- * filters, grid options) carry `vg-scrollbar`. 8px flat thumb (no radius),
- * themed off the same tokens so every scrollbar in the grid reads as one
- * system. `.vg-scroller` keeps the class too for the body viewport. */
-.vg-scrollbar::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+ * our thickness on macOS instead of falling back to a 0-width overlay
+ * that only flashes on scroll (regression flagged on 2026-06-26).
+ *
+ * Surfaces: grid body (`.vg-scrollbar`), Customize sheet body, cockpit
+ * rails/panes, and DataProvider editor scrollers. */
+.vg-scrollbar::-webkit-scrollbar,
+.vgext-sheet-body::-webkit-scrollbar,
+.ckp-rail::-webkit-scrollbar,
+.ckp-pane-body::-webkit-scrollbar,
+.ckp.ckp-flat > .ckp-flat-body::-webkit-scrollbar,
+.vg-dp-shell__sidebar::-webkit-scrollbar,
+.vg-dp-shell__list::-webkit-scrollbar,
+.vg-dp-editor__body::-webkit-scrollbar {
+  width: var(--vg-scrollbar-thickness, 10px);
+  height: var(--vg-scrollbar-thickness, 10px);
   -webkit-appearance: none;
 }
-.vg-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.4);
-  border-radius: 0;
+.vg-scrollbar::-webkit-scrollbar-track,
+.vgext-sheet-body::-webkit-scrollbar-track,
+.ckp-rail::-webkit-scrollbar-track,
+.ckp-pane-body::-webkit-scrollbar-track,
+.ckp.ckp-flat > .ckp-flat-body::-webkit-scrollbar-track,
+.vg-dp-shell__sidebar::-webkit-scrollbar-track,
+.vg-dp-shell__list::-webkit-scrollbar-track,
+.vg-dp-editor__body::-webkit-scrollbar-track {
+  background: var(--vg-scrollbar-track, transparent);
 }
-.vg-scrollbar::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.08);
-}
-.vg-theme-quartz-dark .vg-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.32);
-}
-.vg-theme-quartz-dark .vg-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.48);
-}
-.vg-theme-quartz-dark .vg-scrollbar::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.06);
-}
-.vg-theme-quartz-dark .vg-scrollbar::-webkit-scrollbar-corner {
-  background: rgba(255, 255, 255, 0.06);
-}
-.vg-theme-quartz .vg-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.4);
-}
-.vg-theme-quartz .vg-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.55);
-}
-.vg-theme-quartz .vg-scrollbar::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.08);
-}
-.vg-theme-quartz .vg-scrollbar::-webkit-scrollbar-corner {
-  background: rgba(0, 0, 0, 0.08);
-}
-
-/* StarUI scrollbar — vendored verbatim from @starui/design-system
- * `styles/scrollbar.css` (the `.ds-scrollbar` utility). 14px flat thumb
- * tinted from the foreground token via color-mix (so ONE rule covers
- * light + dark — `--vg-fg-color` flips with the theme), a 2px transparent
- * padding-box border insetting the thumb, hidden stepper buttons, and a
- * transparent track/corner. Deliberately NO `scrollbar-color` (Chromium
- * 121+ disables all ::-webkit-scrollbar styling the moment it is set).
- * Keep in sync with that source. */
-.vg-theme-starui .vg-scrollbar::-webkit-scrollbar,
-.vg-theme-starui-dark .vg-scrollbar::-webkit-scrollbar {
-  width: 14px;
-  height: 14px;
-  -webkit-appearance: none;
-}
-.vg-theme-starui .vg-scrollbar::-webkit-scrollbar-track,
-.vg-theme-starui-dark .vg-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-.vg-theme-starui .vg-scrollbar::-webkit-scrollbar-thumb,
-.vg-theme-starui-dark .vg-scrollbar::-webkit-scrollbar-thumb {
-  background-color: color-mix(in oklch, var(--vg-fg-color) 38%, transparent);
-  border-radius: 0;
+.vg-scrollbar::-webkit-scrollbar-thumb,
+.vgext-sheet-body::-webkit-scrollbar-thumb,
+.ckp-rail::-webkit-scrollbar-thumb,
+.ckp-pane-body::-webkit-scrollbar-thumb,
+.ckp.ckp-flat > .ckp-flat-body::-webkit-scrollbar-thumb,
+.vg-dp-shell__sidebar::-webkit-scrollbar-thumb,
+.vg-dp-shell__list::-webkit-scrollbar-thumb,
+.vg-dp-editor__body::-webkit-scrollbar-thumb {
+  background-color: var(
+    --vg-scrollbar-thumb,
+    color-mix(in srgb, var(--vg-fg-color, #3B3B3B) 18%, transparent)
+  );
+  border-radius: var(--vg-radius, 2px);
   border: 2px solid transparent;
   background-clip: padding-box;
   transition: background-color 120ms ease;
 }
-.vg-theme-starui .vg-scrollbar::-webkit-scrollbar-thumb:hover,
-.vg-theme-starui-dark .vg-scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: color-mix(in oklch, var(--vg-fg-color) 55%, transparent);
+.vg-scrollbar::-webkit-scrollbar-thumb:hover,
+.vgext-sheet-body::-webkit-scrollbar-thumb:hover,
+.ckp-rail::-webkit-scrollbar-thumb:hover,
+.ckp-pane-body::-webkit-scrollbar-thumb:hover,
+.ckp.ckp-flat > .ckp-flat-body::-webkit-scrollbar-thumb:hover,
+.vg-dp-shell__sidebar::-webkit-scrollbar-thumb:hover,
+.vg-dp-shell__list::-webkit-scrollbar-thumb:hover,
+.vg-dp-editor__body::-webkit-scrollbar-thumb:hover {
+  background-color: var(
+    --vg-scrollbar-thumb-hover,
+    color-mix(in srgb, var(--vg-fg-color, #3B3B3B) 28%, transparent)
+  );
 }
-.vg-theme-starui .vg-scrollbar::-webkit-scrollbar-thumb:active,
-.vg-theme-starui-dark .vg-scrollbar::-webkit-scrollbar-thumb:active {
-  background-color: color-mix(in oklch, var(--vg-fg-color) 72%, transparent);
+.vg-scrollbar::-webkit-scrollbar-thumb:active,
+.vgext-sheet-body::-webkit-scrollbar-thumb:active,
+.ckp-rail::-webkit-scrollbar-thumb:active,
+.ckp-pane-body::-webkit-scrollbar-thumb:active,
+.ckp.ckp-flat > .ckp-flat-body::-webkit-scrollbar-thumb:active,
+.vg-dp-shell__sidebar::-webkit-scrollbar-thumb:active,
+.vg-dp-shell__list::-webkit-scrollbar-thumb:active,
+.vg-dp-editor__body::-webkit-scrollbar-thumb:active {
+  background-color: var(
+    --vg-scrollbar-thumb-active,
+    color-mix(in srgb, var(--vg-fg-color, #3B3B3B) 40%, transparent)
+  );
 }
-.vg-theme-starui .vg-scrollbar::-webkit-scrollbar-button,
-.vg-theme-starui-dark .vg-scrollbar::-webkit-scrollbar-button {
+.vg-scrollbar::-webkit-scrollbar-button,
+.vgext-sheet-body::-webkit-scrollbar-button,
+.ckp-rail::-webkit-scrollbar-button,
+.ckp-pane-body::-webkit-scrollbar-button,
+.ckp.ckp-flat > .ckp-flat-body::-webkit-scrollbar-button,
+.vg-dp-shell__sidebar::-webkit-scrollbar-button,
+.vg-dp-shell__list::-webkit-scrollbar-button,
+.vg-dp-editor__body::-webkit-scrollbar-button {
   display: none;
   width: 0;
   height: 0;
 }
-.vg-theme-starui .vg-scrollbar::-webkit-scrollbar-corner,
-.vg-theme-starui-dark .vg-scrollbar::-webkit-scrollbar-corner {
-  background: transparent;
-}
-
-/* Cursor scrollbar — Cursor IDE's slim neutral slider: transparent track,
- * foreground-alpha thumb (scrollbarSlider.background #F0F0F011 dark /
- * #1414141E light, stepping up on hover/active), no buttons, flat 2px
- * corners. 10px matches --vg-scrollbar-thickness above so the canvas
- * reserves the exact gutter. */
-.vg-theme-cursor .vg-scrollbar::-webkit-scrollbar,
-.vg-theme-cursor-dark .vg-scrollbar::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-  -webkit-appearance: none;
-}
-.vg-theme-cursor .vg-scrollbar::-webkit-scrollbar-track,
-.vg-theme-cursor-dark .vg-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-.vg-theme-cursor .vg-scrollbar::-webkit-scrollbar-thumb {
-  background-color: rgb(20 20 20 / 12%);
-}
-.vg-theme-cursor-dark .vg-scrollbar::-webkit-scrollbar-thumb {
-  background-color: rgb(240 240 240 / 6.7%);
-}
-.vg-theme-cursor .vg-scrollbar::-webkit-scrollbar-thumb,
-.vg-theme-cursor-dark .vg-scrollbar::-webkit-scrollbar-thumb {
-  border-radius: 2px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
-  transition: background-color 120ms ease;
-}
-.vg-theme-cursor .vg-scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: rgb(20 20 20 / 19%);
-}
-.vg-theme-cursor-dark .vg-scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: rgb(240 240 240 / 11.8%);
-}
-.vg-theme-cursor .vg-scrollbar::-webkit-scrollbar-thumb:active {
-  background-color: rgb(20 20 20 / 28%);
-}
-.vg-theme-cursor-dark .vg-scrollbar::-webkit-scrollbar-thumb:active {
-  background-color: rgb(240 240 240 / 19%);
-}
-.vg-theme-cursor .vg-scrollbar::-webkit-scrollbar-button,
-.vg-theme-cursor-dark .vg-scrollbar::-webkit-scrollbar-button {
-  display: none;
-  width: 0;
-  height: 0;
-}
-.vg-theme-cursor .vg-scrollbar::-webkit-scrollbar-corner,
-.vg-theme-cursor-dark .vg-scrollbar::-webkit-scrollbar-corner {
+.vg-scrollbar::-webkit-scrollbar-corner,
+.vgext-sheet-body::-webkit-scrollbar-corner,
+.ckp-rail::-webkit-scrollbar-corner,
+.ckp-pane-body::-webkit-scrollbar-corner,
+.ckp.ckp-flat > .ckp-flat-body::-webkit-scrollbar-corner,
+.vg-dp-shell__sidebar::-webkit-scrollbar-corner,
+.vg-dp-shell__list::-webkit-scrollbar-corner,
+.vg-dp-editor__body::-webkit-scrollbar-corner {
   background: transparent;
 }
 
@@ -1208,25 +785,19 @@
  * to Chromium (Chrome 121+ silently disables ALL ::-webkit-scrollbar
  * pseudo-element styling on any element that sets `scrollbar-color`,
  * which reverts macOS to its 0-width overlay scrollbar). The @supports
- * gate uses Firefox-only `-moz-appearance` so Chromium skips the block.
- * StarUI is omitted here on purpose — its source stylesheet documents the
- * same Chromium caveat and never sets `scrollbar-color`. */
+ * gate uses Firefox-only `-moz-appearance` so Chromium skips the block. */
 @supports (-moz-appearance: none) {
-  .vg-theme-quartz-dark .vg-scrollbar {
+  .vg-scrollbar,
+  .vgext-sheet-body,
+  .ckp-rail,
+  .ckp-pane-body,
+  .ckp.ckp-flat > .ckp-flat-body,
+  .vg-dp-shell__sidebar,
+  .vg-dp-shell__list,
+  .vg-dp-editor__body {
     scrollbar-width: thin;
-    scrollbar-color: #4a5b7a #0d1a33;
-  }
-  .vg-theme-quartz .vg-scrollbar {
-    scrollbar-width: thin;
-    scrollbar-color: #b5bdc6 #eceff2;
-  }
-  .vg-theme-cursor-dark .vg-scrollbar {
-    scrollbar-width: thin;
-    scrollbar-color: #3a3a3a transparent;
-  }
-  .vg-theme-cursor .vg-scrollbar {
-    scrollbar-width: thin;
-    scrollbar-color: #c9c9c9 transparent;
+    scrollbar-color: var(--vg-scrollbar-firefox, #c9c9c9)
+      var(--vg-scrollbar-track, transparent);
   }
 }
 
@@ -1838,7 +1409,7 @@
    * group is introduced. */
   padding: 7px 10px 7px calc(8px + var(--vg-indent, 0) * 16px);
   margin: 1px 6px;
-  border-radius: var(--vg-radius, 6px);
+  border-radius: var(--vg-radius, 2px);
   cursor: pointer;
   user-select: none;
 }
@@ -2556,7 +2127,7 @@
   padding: 8px;
   background: color-mix(in srgb, var(--vg-bg-color) 90%, white 10%);
   border: 1px solid var(--vg-border-color);
-  border-radius: var(--vg-radius, 3px);
+  border-radius: var(--vg-radius, 2px);
 }
 
 /* Cycle 21i / Phase 1 — settings form + Grid Options tool panel.
@@ -2580,7 +2151,7 @@
   font-family: var(--vg-font-family);
   font-size: var(--vg-font-size);
   overflow: hidden;
-  --vg-settings-accent: var(--vg-focus-ring-color);
+  --vg-settings-accent: var(--vg-chrome-accent);
 }
 .vg-settings-panel-header {
   display: flex;
@@ -2682,59 +2253,62 @@
   background: var(--vg-settings-accent);
   border-radius: 999px;
 }
+/* Settings row — same grammar as vguiRowCss / customizer cgc-field:
+ * label(+help) | control, help under the label, modified = inset accent. */
 .vg-settings-row {
   position: relative;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 14px;
   align-items: center;
-  gap: 8px;
-  padding: 5px 10px 5px 12px;
+  padding: 9px 16px;
+  margin: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--vg-border-color) 70%, transparent);
+  transition: background 120ms ease, border-color 120ms ease;
 }
 .vg-settings-row:hover {
   background: var(--vg-row-hover-bg);
 }
-/* The diff rail — a 2px accent tick marking changed-from-baseline rows. */
-.vg-settings-row[data-modified]::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 4px;
-  bottom: 4px;
-  width: 2px;
-  border-radius: 1px;
-  background: var(--vg-settings-accent);
+.vg-settings-row[data-modified] {
+  box-shadow: inset 2px 0 0 var(--vg-settings-accent);
 }
 .vg-settings-row-label {
-  flex: 1 1 auto;
-  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
+  min-width: 0;
+  padding-left: 10px;
 }
 .vg-settings-row-label label {
-  font-size: var(--vg-font-size-sm);
-  line-height: 1.35;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: 0;
+  text-transform: none;
   cursor: pointer;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 .vg-settings-row-hint {
-  font-size: 10px;
-  line-height: 1.3;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.45;
+  letter-spacing: 0;
+  text-transform: none;
   color: color-mix(in srgb, var(--vg-fg-color) 50%, transparent);
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.vg-settings-row-control {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 4px;
 }
 /* Permanently reserved action gutter — the reset button toggles
  * VISIBILITY only, never layout, so every row's control shares the same
  * right edge whether or not the ↺ is showing. */
+.vg-settings-row-control {
+  min-height: 28px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+}
 .vg-settings-row-actions {
   flex: 0 0 auto;
   width: 18px;
@@ -2762,35 +2336,6 @@
 .vg-settings-row-reset:hover {
   color: var(--vg-fg-color);
   background: color-mix(in srgb, var(--vg-fg-color) 10%, transparent);
-}
-/* Toggle — same vocabulary as the columns panel's Pivot Mode switch. */
-.vg-settings-toggle {
-  position: relative;
-  width: 28px;
-  height: 16px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--vg-fg-color) 30%, transparent);
-  border: none;
-  cursor: pointer;
-  padding: 0;
-  flex: 0 0 auto;
-  transition: background 120ms ease;
-}
-.vg-settings-toggle[aria-pressed="true"] {
-  background: var(--vg-settings-accent);
-}
-.vg-settings-toggle-knob {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--vg-bg-color);
-  transition: transform 120ms ease;
-}
-.vg-settings-toggle[aria-pressed="true"] .vg-settings-toggle-knob {
-  transform: translateX(12px);
 }
 .vg-settings-checkbox {
   /* Paint comes from the shared `.vg-checkbox` rules. */
@@ -2822,9 +2367,7 @@
   cursor: pointer;
 }
 @media (prefers-reduced-motion: reduce) {
-  .vg-settings-band-chevron,
-  .vg-settings-toggle,
-  .vg-settings-toggle-knob {
+  .vg-settings-band-chevron {
     transition: none;
   }
 }
@@ -2964,7 +2507,7 @@
   font-family: var(--vg-font-family);
   font-size: var(--vg-font-size);
   overflow: hidden;
-  --vg-settings-accent: var(--vg-focus-ring-color);
+  --vg-settings-accent: var(--vg-chrome-accent);
 }
 /* Master–detail body: groups list (left) + selected-group editor (right). */
 .vg-colgroups-body {
@@ -3454,7 +2997,7 @@
 /* Style editor — per-group header styling in the right-hand editor pane. */
 .vg-colgroups-style {
   padding: 8px 10px 8px;
-  --vg-settings-accent: var(--vg-focus-ring-color);
+  --vg-settings-accent: var(--vg-chrome-accent);
 }
 /* Remaining native selects in this panel (Side / Style) — force option
  * colors from tokens where the browser honors them; color-scheme follows
@@ -4636,14 +4179,14 @@
   height: 28px;
   border-radius: 50%;
   border: 2.5px solid color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 18%, transparent);
-  border-top-color: var(--vg-chrome-accent, var(--vg-focus-ring-color, #4f9cf9));
+  border-top-color: var(--vg-chrome-accent, var(--vg-focus-ring-color));
   animation: vg-loading-spin 0.75s linear infinite;
 }
 @keyframes vg-loading-spin {
   to { transform: rotate(360deg); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .vg-loading-spinner { animation: none; border-top-color: var(--vg-chrome-accent, #4f9cf9); }
+  .vg-loading-spinner { animation: none; border-top-color: var(--vg-chrome-accent); }
 }
 
 /* ── Excel-style edit sub-mode indicator ─────────────────────────────────── */

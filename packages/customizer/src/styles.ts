@@ -21,7 +21,7 @@ export const chromeBase = css`
     font-family: var(--vg-font-family);
     font-size: var(--vg-font-size);
     color: var(--vg-fg-color);
-    --cgc-accent: var(--vg-settings-accent, var(--vg-focus-ring-color));
+    --cgc-accent: var(--vg-chrome-accent);
   }
   *,
   *::before,
@@ -45,7 +45,7 @@ export const bandStyles = css`
     font-family: var(--vg-font-family);
     font-size: 11px;
     font-weight: 600;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
     color: color-mix(in srgb, var(--vg-fg-color) 62%, transparent);
     background: transparent;
@@ -78,101 +78,104 @@ export const bandStyles = css`
   }
 `;
 
-/** Field row — mirrors .vg-settings-row*. */
+/** Field row — mirrors .vg-settings-row (vguiRowCss grammar). */
 export const rowStyles = css`
   :host {
     position: relative;
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 14px;
     align-items: center;
-    gap: 8px;
-    padding: 5px 10px 5px 12px;
+    padding: 9px 16px;
+    margin: 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--vg-border-color) 70%, transparent);
+    transition: background 120ms ease, border-color 120ms ease;
   }
   :host(:hover) {
     background: var(--vg-row-hover-bg);
   }
-  :host([modified])::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 4px;
-    bottom: 4px;
-    width: 2px;
-    border-radius: 1px;
-    background: var(--cgc-accent);
+  :host([modified]) {
+    box-shadow: inset 2px 0 0 var(--cgc-accent);
   }
   .label {
-    flex: 1 1 auto;
-    min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 1px;
+    gap: 2px;
+    min-width: 0;
+    padding-left: 10px;
   }
   .label-text {
-    font-size: var(--vg-font-size-sm);
-    line-height: 1.35;
+    font-size: 12.5px;
+    font-weight: 500;
+    line-height: 1.4;
+    letter-spacing: 0;
+    text-transform: none;
     cursor: default;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
   }
   .hint {
-    font-size: 10px;
-    line-height: 1.3;
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.45;
+    letter-spacing: 0;
+    text-transform: none;
     color: color-mix(in srgb, var(--vg-fg-color) 50%, transparent);
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
   }
   .control {
-    flex: 0 0 auto;
+    min-height: 28px;
+    min-width: 0;
     display: flex;
     align-items: center;
+    justify-content: flex-start;
     gap: 4px;
   }
 `;
 
-/** Toggle switch — mirrors .vg-settings-toggle*. */
+/** Canonical `.vg-checkbox` paint — cloned into shadow DOM. */
 export const switchStyles = css`
   :host {
     display: inline-flex;
+    align-items: center;
+    min-height: 28px;
   }
-  button {
-    position: relative;
-    width: 28px;
-    height: 16px;
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--vg-fg-color) 30%, transparent);
-    border: none;
-    cursor: pointer;
-    padding: 0;
+  .vg-checkbox {
     flex: 0 0 auto;
-    transition: background 120ms ease;
+    appearance: none;
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    border: 1.5px solid color-mix(in srgb, var(--vg-fg-color) 40%, transparent);
+    border-radius: 2px;
+    background: transparent;
+    cursor: pointer;
+    position: relative;
+    transition: background 120ms ease, border-color 120ms ease;
   }
-  button[aria-checked='true'] {
-    background: var(--cgc-accent);
+  .vg-checkbox:hover {
+    border-color: color-mix(in srgb, var(--vg-fg-color) 65%, transparent);
   }
-  button:focus-visible {
+  .vg-checkbox:checked {
+    background: var(--cgc-accent, var(--vg-chrome-accent));
+    border-color: var(--cgc-accent, var(--vg-chrome-accent));
+  }
+  .vg-checkbox:checked::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    box-sizing: border-box;
+    width: 5px;
+    height: 9px;
+    border: solid var(--vg-bg-color);
+    border-width: 0 2px 2px 0;
+    transform: translate(-50%, -58%) rotate(45deg);
+  }
+  .vg-checkbox:focus-visible {
     outline: 2px solid var(--vg-focus-ring-color);
     outline-offset: 1px;
-  }
-  .knob {
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: var(--vg-bg-color);
-    transition: transform 120ms ease;
-  }
-  button[aria-checked='true'] .knob {
-    transform: translateX(12px);
-  }
-  @media (prefers-reduced-motion: reduce) {
-    button,
-    .knob {
-      transition: none;
-    }
   }
 `;
 

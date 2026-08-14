@@ -371,8 +371,8 @@ const FMT_CSS = `
 }
 .vgext-fmt-current-chip.has-format {
   color: var(--vg-fg-color, #e5e9f0);
-  border-color: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 55%, var(--vg-border-color, #2a3140));
-  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 8%, transparent);
+  border-color: color-mix(in srgb, var(--vg-chrome-accent) 55%, var(--vg-border-color, #2a3140));
+  background: color-mix(in srgb, var(--vg-chrome-accent) 8%, transparent);
 }
 .vgext-fmt-clear {
   appearance: none;
@@ -394,7 +394,7 @@ const FMT_CSS = `
   border-color: color-mix(in srgb, var(--vg-neg-color, #e2606c) 28%, transparent);
 }
 .vgext-fmt-clear:focus-visible {
-  outline: 2px solid var(--vg-accent-color, #4f9cf9);
+  outline: 2px solid var(--vg-chrome-accent);
   outline-offset: 1px;
 }
 .vgext-fmt-clear:disabled { opacity: 0.35; cursor: default; }
@@ -411,9 +411,9 @@ const FMT_CSS = `
   transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
 }
 .vgext-fmt-search:focus-within {
-  border-color: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 70%, var(--vg-border-color, #2a3140));
-  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 6%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 16%, transparent);
+  border-color: color-mix(in srgb, var(--vg-chrome-accent) 70%, var(--vg-border-color, #2a3140));
+  background: color-mix(in srgb, var(--vg-chrome-accent) 6%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vg-chrome-accent) 16%, transparent);
   color: var(--vg-fg-color, #e5e9f0);
 }
 .vgext-fmt-search input {
@@ -469,7 +469,7 @@ const FMT_CSS = `
   font-size: 12px;
 }
 .vgext-fmt.is-compact .vgext-fmt-tab.is-active {
-  box-shadow: inset 0 -2px 0 var(--vg-accent-color, #4f9cf9);
+  box-shadow: inset 0 -2px 0 var(--vg-chrome-accent);
 }
 .vgext-fmt.is-compact .vgext-fmt-row-code {
   max-width: 140px;
@@ -498,17 +498,17 @@ const FMT_CSS = `
   background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 5%, transparent);
 }
 .vgext-fmt-tab:focus-visible {
-  outline: 2px solid var(--vg-accent-color, #4f9cf9);
+  outline: 2px solid var(--vg-chrome-accent);
   outline-offset: 0;
 }
 .vgext-fmt-tab.is-active {
   color: var(--vg-fg-color, #e5e9f0);
-  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 14%, transparent);
-  box-shadow: inset 2px 0 0 var(--vg-accent-color, #4f9cf9);
+  background: color-mix(in srgb, var(--vg-chrome-accent) 14%, transparent);
+  box-shadow: inset 2px 0 0 var(--vg-chrome-accent);
 }
 .vgext-fmt-tab.is-active .vgext-fmt-count,
 .vgext-fmt-tab.is-active > svg {
-  color: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 88%, var(--vg-fg-color, #e5e9f0));
+  color: color-mix(in srgb, var(--vg-chrome-accent) 88%, var(--vg-fg-color, #e5e9f0));
   opacity: 1;
 }
 .vgext-fmt-count {
@@ -552,12 +552,12 @@ const FMT_CSS = `
   background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 5%, transparent);
 }
 .vgext-fmt-row:focus-visible {
-  outline: 2px solid var(--vg-accent-color, #4f9cf9);
+  outline: 2px solid var(--vg-chrome-accent);
   outline-offset: 0;
 }
 .vgext-fmt-row.is-active {
-  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 10%, transparent);
-  border-color: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 42%, transparent);
+  background: color-mix(in srgb, var(--vg-chrome-accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--vg-chrome-accent) 42%, transparent);
 }
 .vgext-fmt-row-main {
   display: flex;
@@ -597,7 +597,7 @@ const FMT_CSS = `
 }
 .vgext-fmt-row.is-active .vgext-fmt-row-preview {
   color: var(--vg-fg-color, #e5e9f0);
-  border-left-color: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 35%, transparent);
+  border-left-color: color-mix(in srgb, var(--vg-chrome-accent) 35%, transparent);
 }
 .vgext-fmt-empty {
   padding: 28px 14px;
@@ -633,11 +633,11 @@ const FMT_CSS = `
   transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
 }
 .vgext-fmt-symbol:hover {
-  border-color: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 50%, var(--vg-border-color, #2a3140));
-  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 10%, transparent);
+  border-color: color-mix(in srgb, var(--vg-chrome-accent) 50%, var(--vg-border-color, #2a3140));
+  background: color-mix(in srgb, var(--vg-chrome-accent) 10%, transparent);
 }
 .vgext-fmt-symbol:focus-visible {
-  outline: 2px solid var(--vg-accent-color, #4f9cf9);
+  outline: 2px solid var(--vg-chrome-accent);
   outline-offset: 1px;
 }
 .vgext-fmt-custom-input {
@@ -653,8 +653,8 @@ const FMT_CSS = `
   transition: border-color 140ms ease, box-shadow 140ms ease;
 }
 .vgext-fmt-custom-input:focus-within {
-  border-color: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 65%, var(--vg-border-color, #2a3140));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 14%, transparent);
+  border-color: color-mix(in srgb, var(--vg-chrome-accent) 65%, var(--vg-border-color, #2a3140));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vg-chrome-accent) 14%, transparent);
 }
 .vgext-fmt-custom-input input {
   flex: 1 1 auto;
@@ -681,10 +681,10 @@ const FMT_CSS = `
   cursor: pointer;
   transition: background 120ms ease, border-color 120ms ease, opacity 120ms ease;
 }
-.vgext-fmt-custom-apply { color: var(--vg-accent-color, #4f9cf9); }
+.vgext-fmt-custom-apply { color: var(--vg-chrome-accent); }
 .vgext-fmt-custom-apply:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 12%, transparent);
-  border-color: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 28%, transparent);
+  background: color-mix(in srgb, var(--vg-chrome-accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--vg-chrome-accent) 28%, transparent);
 }
 .vgext-fmt-custom-apply:disabled { opacity: 0.35; cursor: default; }
 .vgext-fmt-custom-clear { color: var(--vg-neg-color, #e2606c); }
@@ -722,7 +722,7 @@ const FMT_CSS = `
   background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 5%, transparent);
 }
 .vgext-fmt-ref-row:focus-visible {
-  outline: 2px solid var(--vg-accent-color, #4f9cf9);
+  outline: 2px solid var(--vg-chrome-accent);
   outline-offset: 0;
 }
 .vgext-fmt-ref-row:disabled { opacity: 0.5; cursor: default; }
@@ -733,7 +733,7 @@ const FMT_CSS = `
   font-variant-numeric: tabular-nums;
 }
 .vgext-fmt-ref-code {
-  color: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 82%, var(--vg-fg-color, #e5e9f0));
+  color: color-mix(in srgb, var(--vg-chrome-accent) 82%, var(--vg-fg-color, #e5e9f0));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -13,7 +13,7 @@ import { validatePhase1 } from './perspective/validatePhase1';
 import { renderVisualizer } from './ui/visualizer';
 import { mountBlotter, type BlotterMount } from './ui/blotterHost';
 
-const THEME = 'vg-theme-starui-dark';
+const THEME = 'vg-theme-cursor-dark';
 const ENGINE = 'perspective' as const;
 /** Default `seed` — starui STOMP is optional via `?feed=stomp`. */
 const FEED =

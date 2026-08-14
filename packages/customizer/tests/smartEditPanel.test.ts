@@ -69,7 +69,7 @@ describe('SmartEditPanel', () => {
     const enabledField = el.shadowRoot.querySelector('cgc-field[label="Enabled"]')!;
     const sw = enabledField.querySelector('cgc-switch') as HTMLElement & { shadowRoot: ShadowRoot };
     await flushLit();
-    (sw.shadowRoot.querySelector('button') as HTMLButtonElement).click();
+    (sw.shadowRoot.querySelector('input.vg-checkbox') as HTMLInputElement).click();
     await flushLit();
     expect(patches).toEqual([{ smartEdit: { enabled: false } }]);
     expect(handle.getSettings().smartEdit.enabled).toBe(false);

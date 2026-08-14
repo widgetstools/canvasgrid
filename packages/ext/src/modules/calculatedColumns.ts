@@ -42,6 +42,7 @@ import {
   appendPaneChrome,
   takePaneScroll,
   restorePaneScroll,
+  emptyState,
 } from '../ui/cockpit';
 import { formatPickerMenu, formatPickerFitContainer, previewFormat } from '../toolbar/formatPicker';
 import type { FormatDataType } from '../toolbar/formatPresets';
@@ -408,7 +409,11 @@ export function calculatedColumnsModule(): SettingsModule {
         pane.replaceChildren();
         errBox.style.display = 'none';
         if (!draft) {
-          pane.appendChild(el('div', 'ckp-empty', 'Select a calculated column, or add one with +'));
+          pane.appendChild(emptyState({
+            title: 'No column selected',
+            description: 'Select a calculated column, or add one with +.',
+            icon: 'square-sigma',
+          }));
           return;
         }
         const d = draft;
@@ -416,17 +421,13 @@ export function calculatedColumnsModule(): SettingsModule {
 
         const head = el('div', 'ckp-pane-head');
         const nameIn = textInput(d.headerName, (v) => { d.headerName = v; syncDirty(); }, { className: 'ckp-title', placeholder: 'Header name' });
-        const resetBtn = el('button', 'ckp-actbtn');
+        const resetBtn = el('button', 'ckp-actbtn ckp-btn-secondary');
         resetBtn.type = 'button';
         resetBtn.innerHTML = `${lucideSvg('rotate-ccw', 12)}<span>Reset</span>`;
         resetBtn.addEventListener('click', () => {
           selectColumn(draftIsNew ? (columns[0]?.colId ?? null) : selectedId, false, undefined, true);
         });
-        const saveBtn = el('button', 'ckp-actbtn');
-        saveBtn.type = 'button';
-        saveBtn.innerHTML = `${lucideSvg('save', 12)}<span>Save</span>`;
-        saveBtn.addEventListener('click', save);
-        head.append(nameIn, resetBtn, saveBtn);
+        head.append(nameIn, resetBtn);
         const body = appendPaneChrome(pane, head);
 
         const chipsStrip = el('div', 'ckp-chips-strip');
@@ -440,7 +441,6 @@ export function calculatedColumnsModule(): SettingsModule {
 
         const syncDirty = (): void => {
           const dirty = isDirty();
-          saveBtn.disabled = !dirty;
           resetBtn.disabled = !dirty && !draftIsNew;
           const n = psp ? countPerspectiveColumnRefs(d.expression) : countRefs(d.expression);
           refsChip.set(`${n} COLS`, 'info');
@@ -454,7 +454,7 @@ export function calculatedColumnsModule(): SettingsModule {
           ? 'Perspective expression alias — must not collide with table fields'
           : 'Unique — must not collide with data fields'));
 
-        const expr = band('01', 'Expression');
+        const expr = band('Expression');
         const editorHost = el('div', 'ckp-editor');
         editor = new ExpressionEditor(editorHost, {
           value: d.expression,
@@ -486,7 +486,7 @@ export function calculatedColumnsModule(): SettingsModule {
         );
         body.appendChild(expr.root);
 
-        const fmt = band('02', 'Value formatter');
+        const fmt = band('Value formatter');
         const fmtBtn = el('button', 'ckp-fmtbtn');
         fmtBtn.type = 'button';
         const syncFmtBtn = (): void => {
@@ -507,7 +507,7 @@ export function calculatedColumnsModule(): SettingsModule {
         fmt.body.appendChild(fmtBtn);
         body.appendChild(fmt.root);
 
-        const place = band('03', 'Placement');
+        const place = band('Placement');
         place.body.appendChild(row('Data type', select(
           (['number', 'currency', 'percent', 'date', 'datetime', 'string', 'boolean'] as CellDataType[])
             .map((t): [string, string] => [t, t.toUpperCase()]),
@@ -542,6 +542,7 @@ export function calculatedColumnsModule(): SettingsModule {
           fmtMenu?.destroy();
           host.replaceChildren();
         },
+        commit() { if (isDirty()) save(); },
         refresh() {
           load();
           renderAll();

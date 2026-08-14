@@ -1,12 +1,22 @@
 import { el } from './dom';
 
-/** Titled section card (Connection / Behaviour / Diagnostics groups). */
+/** Titled section card (Connection / Behaviour / Diagnostics groups).
+ *  Title chevron collapses sibling content — same affordance as cockpit bands. */
 export function createCard(
   title: string,
   fill?: (card: HTMLElement) => void,
 ): HTMLElement {
   const card = el('section', 'vg-dp-card');
-  card.appendChild(el('h3', 'vg-dp-card__title', title));
+  const head = el('button', {
+    type: 'button',
+    className: 'vg-dp-card__title',
+    'aria-expanded': 'true',
+  }, title);
+  head.addEventListener('click', () => {
+    const collapsed = card.classList.toggle('is-collapsed');
+    head.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  });
+  card.appendChild(head);
   fill?.(card);
   return card;
 }

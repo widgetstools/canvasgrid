@@ -116,11 +116,11 @@ describe('Lit panel registration through the kernel tool-panel registry', () => 
     const sw = el.shadowRoot!.querySelector('cgc-switch') as CgcSwitch;
     expect(sw).not.toBeNull();
     await flushLit();
-    expect(sw.shadowRoot!.querySelector('button[role="switch"]')).not.toBeNull();
+    expect(sw.shadowRoot!.querySelector('input.vg-checkbox')).not.toBeNull();
 
-    // User flips the switch → panel writes through the api tier.
+    // User flips the checkbox → panel writes through the api tier.
     expect(api.getGridOption('animateRows')).not.toBe(true);
-    (sw.shadowRoot!.querySelector('button') as HTMLButtonElement).click();
+    (sw.shadowRoot!.querySelector('input.vg-checkbox') as HTMLInputElement).click();
     await flushLit();
     expect(api.getGridOption('animateRows')).toBe(true);
 

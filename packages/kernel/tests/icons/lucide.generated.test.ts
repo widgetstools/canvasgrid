@@ -50,6 +50,18 @@ describe('Lucide bundle smoke test', () => {
     expect(Object.keys(lucideBundle).length).toBeGreaterThanOrEqual(1000);
   });
 
+  it('circle-only icons (circle, circle-dot, target) are present', () => {
+    expect(lucideBundle['circle']).toBeDefined();
+    expect(lucideBundle['circle-dot']).toBeDefined();
+    expect(lucideBundle['target']).toBeDefined();
+  });
+
+  it('circle-check includes the circle ring, not just the tick', () => {
+    const d = lucideBundle['circle-check'];
+    expect(d).toBeDefined();
+    expect(d).toMatch(/a10,10/);
+  });
+
   it('line-only icons like crosshair + battery + voicemail are present (regression: build-lucide line regex)', () => {
     expect(lucideBundle['crosshair']).toBeDefined();
     expect(lucideBundle['battery']).toBeDefined();

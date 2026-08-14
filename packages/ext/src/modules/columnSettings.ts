@@ -23,11 +23,12 @@ import {
   lucideSvg,
   row,
   select,
-  switchToggle,
+  checkbox,
   textInput,
   appendPaneChrome,
   takePaneScroll,
   restorePaneScroll,
+  emptyState,
 } from '../ui/cockpit';
 
 interface ColItem {
@@ -285,7 +286,13 @@ export function columnSettingsModule(): SettingsModule {
           : columns;
 
         if (filtered.length === 0) {
-          rail.appendChild(el('div', 'ckp-empty', columns.length === 0 ? 'No columns.' : 'No matches.'));
+          rail.appendChild(emptyState({
+            title: columns.length === 0 ? 'No columns' : 'No matches',
+            description: columns.length === 0
+              ? 'This grid has no leaf columns to configure.'
+              : 'Try a different filter.',
+            icon: 'columns-3',
+          }));
           return;
         }
 
@@ -307,26 +314,24 @@ export function columnSettingsModule(): SettingsModule {
         const scrollTop = takePaneScroll(pane);
         pane.replaceChildren();
         if (!draft) {
-          pane.appendChild(el('div', 'ckp-empty', 'Select a column to edit its settings'));
+          pane.appendChild(emptyState({
+            title: 'No column selected',
+            description: 'Select a column to edit its settings.',
+            icon: 'columns-3',
+          }));
           return;
         }
         const d = draft;
 
         const head = el('div', 'ckp-pane-head');
         const dirtyChip = chip('Dirty', isDirty() ? 'YES' : '—', isDirty() ? 'warning' : 'neutral');
-        const resetBtn = el('button', 'ckp-actbtn');
+        const resetBtn = el('button', 'ckp-actbtn ckp-btn-secondary');
         resetBtn.type = 'button';
         resetBtn.innerHTML = `${lucideSvg('rotate-ccw', 12)}<span>Reset</span>`;
         resetBtn.disabled = !isDirty();
         resetBtn.addEventListener('click', reset);
-        const saveBtn = el('button', 'ckp-actbtn');
-        saveBtn.type = 'button';
-        saveBtn.innerHTML = `${lucideSvg('save', 12)}<span>Save</span>`;
-        saveBtn.disabled = !isDirty();
-        saveBtn.addEventListener('click', save);
         const syncDirty = (): void => {
           const dirty = isDirty();
-          saveBtn.disabled = !dirty;
           resetBtn.disabled = !dirty;
           dirtyChip.set(dirty ? 'YES' : '—', dirty ? 'warning' : 'neutral');
         };
@@ -337,7 +342,7 @@ export function columnSettingsModule(): SettingsModule {
           syncDirty();
         }, { className: 'ckp-title', placeholder: 'Caption' });
         nameIn.setAttribute('aria-label', 'Column caption');
-        head.append(nameIn, resetBtn, saveBtn);
+        head.append(nameIn, resetBtn);
         const body = appendPaneChrome(pane, head);
 
         const chips = el('div', 'ckp-chips-strip');
@@ -351,7 +356,7 @@ export function columnSettingsModule(): SettingsModule {
 
         const sync = (): void => { renderRail(); renderPane(); };
 
-        const headerBand = band('01', 'Header');
+        const headerBand = band('Header');
         const colIdIn = textInput(d.colId, () => {}, { mono: true });
         colIdIn.readOnly = true;
         colIdIn.setAttribute('aria-label', 'Column id');
@@ -367,9 +372,9 @@ export function columnSettingsModule(): SettingsModule {
         );
         body.appendChild(headerBand.root);
 
-        const filterBand = band('02', 'Filter');
+        const filterBand = band('Filter');
         filterBand.body.append(
-          row('Floating filter', switchToggle(d.floatingFilter, (v) => { d.floatingFilter = v; sync(); })),
+          row('Floating filter', checkbox(d.floatingFilter, (v) => { d.floatingFilter = v; sync(); })),
           row('Filter type', select(
             [
               ['auto', 'Auto'],
@@ -384,14 +389,14 @@ export function columnSettingsModule(): SettingsModule {
         );
         body.appendChild(filterBand.root);
 
-        const groupBand = band('03', 'Grouping');
+        const groupBand = band('Grouping');
         groupBand.body.append(
-          row('Groupable', switchToggle(d.enableRowGroup, (v) => { d.enableRowGroup = v; sync(); })),
-          row('Pivotable', switchToggle(d.enablePivot, (v) => { d.enablePivot = v; sync(); })),
+          row('Groupable', checkbox(d.enableRowGroup, (v) => { d.enableRowGroup = v; sync(); })),
+          row('Pivotable', checkbox(d.enablePivot, (v) => { d.enablePivot = v; sync(); })),
         );
         body.appendChild(groupBand.root);
 
-        const aggBand = band('04', 'Aggregation');
+        const aggBand = band('Aggregation');
         const aggChoices: Array<[string, string]> = [
           ['none', 'None'],
           ...aggFuncChoices(grid).map((v): [string, string] => [v, v]),
@@ -400,17 +405,17 @@ export function columnSettingsModule(): SettingsModule {
           row('Function', select(aggChoices, d.aggFunc, (v) => { d.aggFunc = v; sync(); })),
           row(
             'Show in header',
-            switchToggle(d.showAggInHeader, (v) => { d.showAggInHeader = v; sync(); }),
+            checkbox(d.showAggInHeader, (v) => { d.showAggInHeader = v; sync(); }),
             d.aggFunc === 'none' ? 'Requires an aggregation function' : undefined,
           ),
         );
         body.appendChild(aggBand.root);
 
-        const behBand = band('05', 'Behavior');
+        const behBand = band('Behavior');
         behBand.body.append(
-          row('Sortable', switchToggle(d.sortable, (v) => { d.sortable = v; sync(); })),
-          row('Resizable', switchToggle(d.resizable, (v) => { d.resizable = v; sync(); })),
-          row('Editable', switchToggle(d.editable, (v) => { d.editable = v; sync(); })),
+          row('Sortable', checkbox(d.sortable, (v) => { d.sortable = v; sync(); })),
+          row('Resizable', checkbox(d.resizable, (v) => { d.resizable = v; sync(); })),
+          row('Editable', checkbox(d.editable, (v) => { d.editable = v; sync(); })),
           row('Pinned', select(
             [
               ['', 'None'],
@@ -420,7 +425,7 @@ export function columnSettingsModule(): SettingsModule {
             d.pinned,
             (v) => { d.pinned = v as ColumnDraft['pinned']; sync(); },
           )),
-          row('Hidden', switchToggle(d.hide, (v) => { d.hide = v; sync(); }), 'Hide the column on the grid'),
+          row('Hidden', checkbox(d.hide, (v) => { d.hide = v; sync(); }), 'Hide the column on the grid'),
         );
         body.appendChild(behBand.root);
 
@@ -439,6 +444,7 @@ export function columnSettingsModule(): SettingsModule {
         destroy() {
           host.replaceChildren();
         },
+        commit() { if (isDirty()) save(); },
         refresh() {
           loadColumns();
           if (selectedId && !columns.some((c) => c.id === selectedId)) {

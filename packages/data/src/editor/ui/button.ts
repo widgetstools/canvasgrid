@@ -14,13 +14,15 @@ export type ButtonOpts = {
 
 /** Shared action button used by footer, toolbar, sidebar, modals. */
 export function createButton(opts: ButtonOpts): HTMLButtonElement {
-  const variant = opts.variant ?? 'default';
+  const variant = opts.variant ?? 'secondary';
+  const rung = variant === 'ghost' ? 'quiet' : variant === 'default' ? 'secondary' : variant;
   const className = [
     'vg-dp-btn',
-    variant !== 'default' ? `vg-dp-btn--${variant}` : '',
+    `vg-dp-btn--${rung}`,
     // Legacy class names still styled in editor CSS / shell.
     variant === 'primary' ? 'primary' : '',
-    variant === 'secondary' ? 'secondary' : '',
+    variant === 'secondary' || variant === 'default' ? 'secondary' : '',
+    variant === 'ghost' ? 'vg-dp-btn--ghost' : '',
     opts.className ?? '',
   ].filter(Boolean).join(' ');
 

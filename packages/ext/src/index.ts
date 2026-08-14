@@ -22,7 +22,8 @@ export {
 } from './profiles/configSession';
 export { ProfilesController, type ProfilesOptions } from './profiles/controller';
 export { createExtContext, createExtEventBus } from './extension/context';
-export { ShellLayout, groupModulesForNav } from './shell/shell';
+export { ShellLayout, groupModulesForNav, tabForModule } from './shell/shell';
+export type { CustomizerTabId } from './shell/shell';
 export {
   VelocityGridExt,
   type VelocityGridExtOptions,

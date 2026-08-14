@@ -4,12 +4,12 @@
  *
  * Settings ride `@wellsfargo-starui/velocity-grid-edit`'s `editSettings` state module via the wired
  * edit handle. Journal stacks are session-only (never persisted). Suspend
- * syncs live; other fields wait for Save.
+ * syncs live; other fields wait for Done.
  */
 import type { DataChangeHistorySettings, EditJournalEntry, EditSource } from '@wellsfargo-starui/velocity-grid-edit';
 import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import {
-  band, chip, el, injectCockpitStyles, lucideSvg, numberInput, row, switchToggle,
+  band, chip, el, injectCockpitStyles, lucideSvg, numberInput, row, checkbox, emptyState,
 } from '../ui/cockpit';
 import { clone, editHandle } from './editHandle';
 
@@ -120,12 +120,20 @@ export function dataChangeHistoryModule(): SettingsModule {
         body.replaceChildren();
         const handle = editHandle(ctx.grid);
         if (!handle) {
-          body.appendChild(el('div', 'ckp-empty', 'Edit engine is not wired.'));
+          body.appendChild(emptyState({
+            title: 'Edit engine not wired',
+            description: 'Wire the edit engine to record a journal.',
+            icon: 'history',
+          }));
           return;
         }
         const entries = [...handle.journal.monitorEntries()].reverse();
         if (entries.length === 0) {
-          body.appendChild(el('div', 'ckp-empty', 'No edits recorded this session.'));
+          body.appendChild(emptyState({
+            title: 'No edits yet',
+            description: 'Edits recorded this session will show up here.',
+            icon: 'history',
+          }));
           return;
         }
         const list = el('div', 'ckp-monitor-list');
@@ -155,7 +163,11 @@ export function dataChangeHistoryModule(): SettingsModule {
         root.replaceChildren();
         const handle = editHandle(ctx.grid);
         if (!handle || !draft) {
-          root.appendChild(el('div', 'ckp-empty', 'Edit History requires wireEditIntoKernel(grid).'));
+          root.appendChild(emptyState({
+            title: 'Edit engine not wired',
+            description: 'Edit History requires wireEditIntoKernel(grid).',
+            icon: 'history',
+          }));
           return;
         }
 
@@ -165,29 +177,24 @@ export function dataChangeHistoryModule(): SettingsModule {
         title.style.alignItems = 'center';
         title.style.gap = '10px';
         title.appendChild(chip('Stack', String(handle.journal.entries().length), 'info').root);
-        const resetBtn = el('button', 'ckp-actbtn') as HTMLButtonElement;
+        const resetBtn = el('button', 'ckp-actbtn ckp-btn-secondary') as HTMLButtonElement;
         resetBtn.type = 'button';
         resetBtn.innerHTML = `${lucideSvg('rotate-ccw', 12)}<span>Reset</span>`;
         resetBtn.addEventListener('click', reset);
-        const saveBtn = el('button', 'ckp-actbtn') as HTMLButtonElement;
-        saveBtn.type = 'button';
-        saveBtn.innerHTML = `${lucideSvg('save', 12)}<span>Save</span>`;
-        saveBtn.addEventListener('click', save);
         const dirty = isDirty();
-        saveBtn.disabled = !dirty;
         resetBtn.disabled = !dirty;
-        head.append(title, resetBtn, saveBtn);
+        head.append(title, resetBtn);
         root.appendChild(head);
 
         const scroll = el('div', 'ckp-flat-body');
 
-        const global = band('01', 'Global');
+        const global = band('Global');
         global.body.append(
-          row('Enabled', switchToggle(draft.enabled, (v) => { draft!.enabled = v; renderAll(); })),
+          row('Enabled', checkbox(draft.enabled, (v) => { draft!.enabled = v; renderAll(); })),
           row(
             'Suspended',
-            switchToggle(draft.suspended, setSuspendedLive),
-            'Pauses recording immediately — does not wait for Save',
+            checkbox(draft.suspended, setSuspendedLive),
+            'Pauses recording immediately — does not wait for Done',
           ),
           row(
             'Max Entries',
@@ -199,18 +206,18 @@ export function dataChangeHistoryModule(): SettingsModule {
           ),
           row(
             'Unify Undo',
-            switchToggle(draft.unifyUndo, (v) => { draft!.unifyUndo = v; renderAll(); }),
+            checkbox(draft.unifyUndo, (v) => { draft!.unifyUndo = v; renderAll(); }),
             'Edit journal owns undo; disable native cell undo when available',
           ),
         );
         scroll.appendChild(global.root);
 
-        const sources = band('02', 'Record Sources');
+        const sources = band('Record Sources');
         for (const src of RECORD_SOURCE_ROWS) {
           sources.body.append(
             row(
               src.label,
-              switchToggle(draft.recordSources[src.key], (v) => {
+              checkbox(draft.recordSources[src.key], (v) => {
                 draft!.recordSources[src.key] = v;
                 renderAll();
               }),
@@ -222,7 +229,7 @@ export function dataChangeHistoryModule(): SettingsModule {
         root.appendChild(scroll);
 
         const monitorWrap = el('div', 'ckp-flat-foot ckp-monitor-wrap');
-        const monitor = band('03', 'Monitor');
+        const monitor = band('Monitor');
         renderMonitor(monitor.body);
         monitorWrap.appendChild(monitor.root);
         root.appendChild(monitorWrap);
@@ -246,6 +253,7 @@ export function dataChangeHistoryModule(): SettingsModule {
           root.replaceChildren();
           root.remove();
         },
+        commit() { if (isDirty()) save(); },
         refresh() {
           load();
           renderAll();

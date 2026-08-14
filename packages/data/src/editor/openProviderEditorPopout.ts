@@ -161,9 +161,9 @@ html[data-vg-theme-mode="light"] {
   --vg-input-fg: #1a1f24;
   --vg-row-alt-bg: #f7f9fb;
   --vg-radius: 2px;
-  --vg-chrome-accent: #4f9cf9;
-  --vg-accent-color: #4f9cf9;
-  --vg-primary-color: #4f9cf9;
+  --vg-chrome-accent: #2778C1;
+  --vg-accent-color: var(--vg-chrome-accent);
+  --vg-primary-color: var(--vg-chrome-accent);
   --vg-primary-fg: #ffffff;
   --vg-accent-fg: #ffffff;
   --vg-font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -180,9 +180,9 @@ html[data-vg-theme-mode="dark"] {
   --vg-input-fg: #E6E8EC;
   --vg-row-alt-bg: #1A232E;
   --vg-radius: 2px;
-  --vg-chrome-accent: #4f9cf9;
-  --vg-accent-color: #4f9cf9;
-  --vg-primary-color: #4f9cf9;
+  --vg-chrome-accent: #81A1C1;
+  --vg-accent-color: var(--vg-chrome-accent);
+  --vg-primary-color: var(--vg-chrome-accent);
   --vg-primary-fg: #ffffff;
   --vg-accent-fg: #ffffff;
   --vg-font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;

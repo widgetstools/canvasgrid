@@ -223,30 +223,13 @@ export class SettingsForm {
     commit: (value: unknown) => void,
   ): { control: HTMLElement; sync: () => void } {
     switch (field.type) {
-      case 'switch': {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.id = controlId;
-        btn.className = 'vg-settings-toggle';
-        btn.setAttribute('aria-label', field.label);
-        const knob = document.createElement('span');
-        knob.className = 'vg-settings-toggle-knob';
-        btn.appendChild(knob);
-        btn.addEventListener('click', () => {
-          const next = btn.getAttribute('aria-pressed') !== 'true';
-          btn.setAttribute('aria-pressed', String(next));
-          commit(next);
-        });
-        return {
-          control: btn,
-          sync: () => btn.setAttribute('aria-pressed', String(field.get() === true)),
-        };
-      }
+      case 'switch':
       case 'checkbox': {
         const input = document.createElement('input');
         input.type = 'checkbox';
         input.id = controlId;
         input.className = 'vg-checkbox vg-settings-checkbox';
+        input.setAttribute('aria-label', field.label);
         input.addEventListener('change', () => commit(input.checked));
         return { control: input, sync: () => { input.checked = field.get() === true; } };
       }

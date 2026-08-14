@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { themeQuartz, themeStarui, baseTheme } from '../../src/theming/theme/builtins';
+import { themeQuartz, themeStarui, themeCursor, baseTheme } from '../../src/theming/theme/builtins';
 
 describe('themeQuartz — byte-identical to the quartz CSS class', () => {
   it('compiles to empty vars (no auto-derivations without a dependency present)', () => {
@@ -34,9 +34,9 @@ describe('themeStarui — starui baseClass pair', () => {
   });
 });
 
-describe('baseTheme — alias for themeQuartz', () => {
-  it('is the same neutral starting point as themeQuartz', () => {
-    expect(baseTheme).toBe(themeQuartz);
+describe('baseTheme — alias for themeCursor', () => {
+  it('is the same product default as themeCursor', () => {
+    expect(baseTheme).toBe(themeCursor);
   });
 });
 

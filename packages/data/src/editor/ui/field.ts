@@ -1,6 +1,6 @@
 import { el } from './dom';
 
-/** Labeled field — cockpit row layout (caps label left, control + help right). */
+/** Labeled field — label + help stacked left, control right on a fixed column edge. */
 export function createField(opts: {
   label: string;
   control: HTMLElement;
@@ -9,19 +9,16 @@ export function createField(opts: {
   className?: string;
 }): HTMLElement {
   const block = el('div', opts.className ?? 'vg-dp-field');
-  const lab = el(
-    'label',
-    'vg-dp-field__label',
-    opts.required ? `${opts.label} *` : opts.label,
-  );
-  const main = el('div', 'vg-dp-field__main');
-  main.appendChild(opts.control);
+  const lab = el('div', 'vg-dp-field__label');
+  lab.appendChild(el('span', 'vg-dp-field__title', opts.required ? `${opts.label} *` : opts.label));
   if (opts.help) {
     const help = el('p', 'vg-dp-field__help');
     if (typeof opts.help === 'string') help.textContent = opts.help;
     else help.appendChild(opts.help);
-    main.appendChild(help);
+    lab.appendChild(help);
   }
+  const main = el('div', 'vg-dp-field__main');
+  main.appendChild(opts.control);
   block.append(lab, main);
   return block;
 }

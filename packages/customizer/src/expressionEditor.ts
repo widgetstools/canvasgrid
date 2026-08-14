@@ -31,7 +31,7 @@ export class CgcExpressionEditor extends LitElement {
         padding: 8px 10px;
       }
       textarea:focus {
-        outline: 2px solid color-mix(in srgb, var(--vg-accent-color, #5b8def) 55%, transparent);
+        outline: 2px solid color-mix(in srgb, var(--vg-chrome-accent) 55%, transparent);
         outline-offset: 1px;
       }
       textarea.is-invalid {

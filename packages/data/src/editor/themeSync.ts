@@ -32,6 +32,12 @@ const THEME_VARS = [
   '--vg-font-family',
   '--vg-radius',
   '--vg-menu-hover-bg',
+  '--vg-scrollbar-thickness',
+  '--vg-scrollbar-thumb',
+  '--vg-scrollbar-thumb-hover',
+  '--vg-scrollbar-thumb-active',
+  '--vg-scrollbar-track',
+  '--vg-scrollbar-firefox',
 ] as const;
 
 /** Find the best themed node in the opener document. */

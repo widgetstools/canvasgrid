@@ -412,15 +412,15 @@ const TPL_CSS = `
 }
 .vgext-tpl-row:hover { background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 5%, transparent); }
 .vgext-tpl-row.is-active {
-  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 10%, transparent);
+  background: color-mix(in srgb, var(--vg-chrome-accent) 10%, transparent);
 }
 .vgext-tpl-row.is-active::before {
   content: ''; position: absolute; left: 2px; top: 6px; bottom: 6px; width: 2px;
-  border-radius: 2px; background: var(--vg-accent-color, #4f9cf9);
+  border-radius: 2px; background: var(--vg-chrome-accent);
 }
 .vgext-tpl-lead {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 14px; flex: 0 0 auto; color: var(--vg-accent-color, #4f9cf9);
+  width: 14px; flex: 0 0 auto; color: var(--vg-chrome-accent);
 }
 .vgext-tpl-dot {
   width: 5px; height: 5px; border-radius: 50%;
@@ -433,7 +433,7 @@ const TPL_CSS = `
 }
 .vgext-tpl-rename {
   flex: 1 1 auto; min-width: 0; height: 24px; padding: 0 8px;
-  border: 1px solid var(--vg-accent-color, #4f9cf9); border-radius: var(--vg-radius, 2px);
+  border: 1px solid var(--vg-chrome-accent); border-radius: var(--vg-radius, 2px);
   background: transparent; color: var(--vg-fg-color, #e5e9f0);
   font: inherit; font-size: 12px; outline: none;
 }
@@ -464,11 +464,11 @@ const TPL_CSS = `
   color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: 12px; outline: none;
 }
 .vgext-tpl-save-input:focus {
-  border-color: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 65%, var(--vg-border-color, #2a3140));
+  border-color: color-mix(in srgb, var(--vg-chrome-accent) 65%, var(--vg-border-color, #2a3140));
 }
 .vgext-tpl-save-input.is-flash {
-  border-color: var(--vg-accent-color, #4f9cf9);
-  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 10%, transparent);
+  border-color: var(--vg-chrome-accent);
+  background: color-mix(in srgb, var(--vg-chrome-accent) 10%, transparent);
 }
 .vgext-tpl-hint {
   font-size: 10.5px; letter-spacing: 0.02em;

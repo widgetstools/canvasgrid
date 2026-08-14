@@ -27,7 +27,7 @@ describe('dataChangeHistoryModule', () => {
     host.remove();
   });
 
-  it('Save commits history settings through the edit handle', () => {
+  it('Done commits history settings through the edit handle', () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const ext = new VelocityGridExt(host, {
@@ -38,16 +38,14 @@ describe('dataChangeHistoryModule', () => {
     const edit = wireEditIntoKernel(ext.grid);
 
     ext.openSettings('data-change-history');
-    const switches = host.querySelectorAll('.ckp-switch');
+    const switches = host.querySelectorAll('.vg-checkbox');
     // Last record-source toggle is Stream (default off) — flip then Save.
-    const streamSwitch = Array.from(switches).at(-1) as HTMLButtonElement | undefined;
+    const streamSwitch = Array.from(switches).at(-1) as HTMLInputElement | undefined;
     expect(streamSwitch).toBeTruthy();
     streamSwitch!.click();
-    const save = Array.from(host.querySelectorAll('.ckp-actbtn')).find((b) => b.textContent?.includes('Save')) as
-      | HTMLButtonElement
-      | undefined;
-    expect(save && !save.disabled).toBe(true);
-    save!.click();
+    const done = host.querySelector('[data-testid="vgext-sheet-done"]') as HTMLButtonElement;
+    expect(done).toBeTruthy();
+    done.click();
     expect(edit.getSettings().history.recordSources.stream).toBe(true);
     ext.destroy();
     host.remove();
@@ -65,7 +63,7 @@ describe('dataChangeHistoryModule', () => {
     ext.openSettings('data-change-history');
 
     // Global band: Enabled (0), Suspended (1), …
-    const suspended = host.querySelectorAll('.ckp-switch')[1] as HTMLButtonElement;
+    const suspended = host.querySelectorAll('.vg-checkbox')[1] as HTMLInputElement;
     suspended.click();
     expect(edit.getSettings().history.suspended).toBe(true);
     ext.destroy();

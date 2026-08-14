@@ -73,8 +73,8 @@ const STYLE = `
 }
 .vgext-dp__row select:focus {
   outline: none;
-  border-color: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 70%, var(--vg-border-color, #c5d0d8));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 16%, transparent);
+  border-color: color-mix(in srgb, var(--vg-chrome-accent) 70%, var(--vg-border-color, #c5d0d8));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vg-chrome-accent) 16%, transparent);
 }
 .vgext-dp__row button {
   display: inline-flex;
@@ -100,7 +100,7 @@ const STYLE = `
 }
 .vgext-dp__row button.primary {
   color: var(--vg-primary-fg, var(--vg-accent-fg, #ffffff));
-  background: var(--vg-primary-color, var(--vg-accent-color, #4f9cf9));
+  background: var(--vg-primary-color, var(--vg-chrome-accent));
   border-color: transparent;
 }
 .vgext-dp__row button.primary:hover:not(:disabled) {

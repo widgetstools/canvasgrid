@@ -7,17 +7,17 @@
  * cockpit kit can't drift.
  */
 import {
-  vguiSwitchCss,
-  vguiCapsCss,
   vguiInputInteractionCss,
+  vguiRowCss,
+  vguiButtonCss,
   type VguiTokens,
 } from '@wellsfargo-starui/velocity-grid/ui/primitives';
 
 const DP_TOKENS: VguiTokens = {
   accent: 'var(--vg-dp-accent)',
-  border: 'var(--vg-dp-border)',
+  border: 'var(--vg-dp-input-border)',
   muted: 'var(--vg-dp-muted)',
-  surface: 'var(--vg-dp-surface)',
+  surface: 'var(--vg-dp-input-bg)',
   radius: 'var(--vg-dp-radius)',
 };
 
@@ -27,14 +27,16 @@ export const EDITOR_CSS = `
   /* Cockpit-aligned aliases over VelocityGrid --vg-* theme tokens. */
   --vg-dp-fg: var(--vg-fg-color, #1a1f24);
   --vg-dp-muted: var(--vg-muted-fg-color, #8a93a6);
-  --vg-dp-border: color-mix(in srgb, var(--vg-border-color, #c5d0d8) 92%, transparent);
-  --vg-dp-accent: var(--vg-accent-color, var(--vg-chrome-accent, #4f9cf9));
+  /* Pane hairlines — solid theme border, then +10% fg for readable opacity. */
+  --vg-dp-border: color-mix(in srgb, var(--vg-border-color, #c5d0d8) 90%, var(--vg-dp-fg) 10%);
+  --vg-dp-accent: var(--vg-chrome-accent);
   --vg-dp-accent-fg: var(--vg-accent-fg, var(--vg-primary-fg, #ffffff));
   --vg-dp-bg: var(--vg-popup-bg, var(--vg-bg-color, #f3f6f8));
   --vg-dp-surface: color-mix(in srgb, var(--vg-dp-fg) 3.5%, transparent);
   --vg-dp-surface-2: color-mix(in srgb, var(--vg-dp-fg) 5.5%, transparent);
   --vg-dp-panel: color-mix(in srgb, var(--vg-dp-fg) 1.5%, transparent);
   --vg-dp-input-bg: var(--vg-input-bg, var(--vg-dp-surface));
+  --vg-dp-input-border: color-mix(in srgb, var(--vg-input-border, var(--vg-border-color, #c5d0d8)) 90%, var(--vg-dp-fg) 10%);
   --vg-dp-radius: var(--vg-radius, 2px);
   --vg-dp-card: transparent;
   --vg-dp-row-sel: color-mix(in srgb, var(--vg-dp-accent) 12%, transparent);
@@ -45,6 +47,66 @@ export const EDITOR_CSS = `
   color: var(--vg-dp-fg);
   background: var(--vg-dp-bg);
   color-scheme: inherit;
+}
+
+/* Theme-aware scrollbars (popout has no tokens.css — mirror kernel rules). */
+.vg-dp-shell__sidebar::-webkit-scrollbar,
+.vg-dp-shell__list::-webkit-scrollbar,
+.vg-dp-editor__body::-webkit-scrollbar {
+  width: var(--vg-scrollbar-thickness, 10px);
+  height: var(--vg-scrollbar-thickness, 10px);
+  -webkit-appearance: none;
+}
+.vg-dp-shell__sidebar::-webkit-scrollbar-track,
+.vg-dp-shell__list::-webkit-scrollbar-track,
+.vg-dp-editor__body::-webkit-scrollbar-track {
+  background: var(--vg-scrollbar-track, transparent);
+}
+.vg-dp-shell__sidebar::-webkit-scrollbar-thumb,
+.vg-dp-shell__list::-webkit-scrollbar-thumb,
+.vg-dp-editor__body::-webkit-scrollbar-thumb {
+  background-color: var(
+    --vg-scrollbar-thumb,
+    color-mix(in srgb, var(--vg-fg-color, var(--vg-dp-fg)) 18%, transparent)
+  );
+  border-radius: var(--vg-dp-radius, 2px);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.vg-dp-shell__sidebar::-webkit-scrollbar-thumb:hover,
+.vg-dp-shell__list::-webkit-scrollbar-thumb:hover,
+.vg-dp-editor__body::-webkit-scrollbar-thumb:hover {
+  background-color: var(
+    --vg-scrollbar-thumb-hover,
+    color-mix(in srgb, var(--vg-fg-color, var(--vg-dp-fg)) 28%, transparent)
+  );
+}
+.vg-dp-shell__sidebar::-webkit-scrollbar-thumb:active,
+.vg-dp-shell__list::-webkit-scrollbar-thumb:active,
+.vg-dp-editor__body::-webkit-scrollbar-thumb:active {
+  background-color: var(
+    --vg-scrollbar-thumb-active,
+    color-mix(in srgb, var(--vg-fg-color, var(--vg-dp-fg)) 40%, transparent)
+  );
+}
+.vg-dp-shell__sidebar::-webkit-scrollbar-button,
+.vg-dp-shell__list::-webkit-scrollbar-button,
+.vg-dp-editor__body::-webkit-scrollbar-button {
+  display: none; width: 0; height: 0;
+}
+.vg-dp-shell__sidebar::-webkit-scrollbar-corner,
+.vg-dp-shell__list::-webkit-scrollbar-corner,
+.vg-dp-editor__body::-webkit-scrollbar-corner {
+  background: transparent;
+}
+@supports (-moz-appearance: none) {
+  .vg-dp-shell__sidebar,
+  .vg-dp-shell__list,
+  .vg-dp-editor__body {
+    scrollbar-width: thin;
+    scrollbar-color: var(--vg-scrollbar-firefox, color-mix(in srgb, var(--vg-fg-color, #3B3B3B) 35%, transparent))
+      var(--vg-scrollbar-track, transparent);
+  }
 }
 
 .vg-dp-shell {
@@ -61,14 +123,13 @@ export const EDITOR_CSS = `
 .vg-dp-shell * { box-sizing: border-box; }
 
 .vg-dp-shell__sidebar {
-  width: 248px;
+  width: 228px;
   flex-shrink: 0;
   border-right: 1px solid var(--vg-dp-border);
   background: var(--vg-dp-panel);
   display: flex;
   flex-direction: column;
   min-height: 0;
-  scrollbar-width: thin;
 }
 .vg-dp-shell__sidebar-head {
   padding: 16px 14px 14px;
@@ -125,7 +186,7 @@ export const EDITOR_CSS = `
 .vg-dp-shell__sidebar-head input[type="search"] {
   width: 100%;
   padding: 7px 10px;
-  border: 1px solid var(--vg-dp-border);
+  border: 1px solid var(--vg-dp-input-border);
   border-radius: var(--vg-dp-radius);
   background: var(--vg-dp-input-bg);
   color: var(--vg-dp-fg);
@@ -138,7 +199,6 @@ export const EDITOR_CSS = `
   min-height: 0;
   overflow: auto;
   padding: 10px 10px 16px;
-  scrollbar-width: thin;
 }
 .vg-dp-shell__ul {
   list-style: none;
@@ -209,6 +269,8 @@ export const EDITOR_CSS = `
   background: transparent;
   color: var(--vg-dp-muted);
   cursor: pointer;
+  height: auto;
+  min-height: 0;
   padding: 2px 4px;
   font: inherit;
   font-size: 12px;
@@ -268,87 +330,42 @@ export const EDITOR_CSS = `
   background: transparent;
 }
 
-/* Action buttons — cockpit actbtn language (caps, quiet secondary / solid primary).
-   Excludes MultiSelect internals and the switch pill. */
-.vg-dp-shell button:not(.vg-dp-switch):not(.vg-dp-ms__trigger):not(.vg-dp-ms__option):not(.vg-dp-ms__chip-x),
-.vg-dp-shell .vg-dp-btn,
-.vg-dp-editor button[type="button"]:not(.vg-dp-editor__tab):not(.vg-dp-editor__actions button):not(.vg-dp-switch):not(.vg-dp-ms__trigger):not(.vg-dp-ms__option):not(.vg-dp-ms__chip-x),
-.vg-dp-editor .vg-dp-btn:not(.vg-dp-editor__tab) {
+/* Action buttons — four-rung ladder (vguiButtonCss). No uppercase chrome.
+   Excludes MultiSelect internals, tabs, and the add-control. */
+.vg-dp-shell button:not(.vg-dp-switch):not(.vg-dp-ms__trigger):not(.vg-dp-ms__option):not(.vg-dp-ms__chip-x):not(.vg-dp-addbtn),
+.vg-dp-shell .vg-dp-btn:not(.vg-dp-addbtn),
+.vg-dp-editor button[type="button"]:not(.vg-dp-editor__tab):not(.vg-dp-editor__actions button):not(.vg-dp-switch):not(.vg-dp-ms__trigger):not(.vg-dp-ms__option):not(.vg-dp-ms__chip-x):not(.vg-dp-addbtn),
+.vg-dp-editor .vg-dp-btn:not(.vg-dp-editor__tab):not(.vg-dp-addbtn) {
   appearance: none;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--vg-dp-muted);
-  padding: 6px 10px;
-  border-radius: var(--vg-dp-radius);
   cursor: pointer;
   font: inherit;
-  font-size: 10.5px;
-  font-weight: 650;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  transition: color 110ms ease, background 110ms ease, border-color 110ms ease, filter 110ms ease;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  box-sizing: border-box;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
 }
-.vg-dp-shell button:not(.vg-dp-switch):not(.vg-dp-ms__trigger):not(.vg-dp-ms__option):not(.vg-dp-ms__chip-x):hover:not(:disabled),
-.vg-dp-shell .vg-dp-btn:hover:not(:disabled),
-.vg-dp-editor button[type="button"]:not(.vg-dp-editor__tab):not(.vg-dp-editor__actions button):not(.vg-dp-switch):not(.vg-dp-ms__trigger):not(.vg-dp-ms__option):not(.vg-dp-ms__chip-x):hover:not(:disabled),
-.vg-dp-editor .vg-dp-btn:hover:not(:disabled) {
-  color: var(--vg-dp-fg);
-  background: var(--vg-dp-surface);
-  border-color: var(--vg-dp-border);
-}
-.vg-dp-shell button.primary,
-.vg-dp-shell .vg-dp-btn--primary,
-.vg-dp-shell__empty-main button.primary,
-.vg-dp-shell__empty-main .vg-dp-btn--primary,
-.vg-dp-editor .vg-dp-btn--primary {
-  background: var(--vg-primary-color, var(--vg-dp-accent));
-  color: var(--vg-primary-fg, var(--vg-dp-accent-fg));
-  border-color: transparent;
-}
-.vg-dp-shell button.primary:hover:not(:disabled),
 .vg-dp-shell .vg-dp-btn--primary:hover:not(:disabled),
 .vg-dp-editor .vg-dp-btn--primary:hover:not(:disabled) {
   filter: brightness(1.08);
-  border-color: transparent;
-  color: var(--vg-primary-fg, var(--vg-dp-accent-fg));
-  background: var(--vg-primary-color, var(--vg-dp-accent));
-}
-
-.vg-dp-btn--secondary,
-.vg-dp-btn.secondary {
-  background: transparent;
-  color: var(--vg-dp-muted);
-  border-color: transparent;
 }
 .vg-dp-btn--ghost {
   border-color: transparent;
   background: transparent;
   box-shadow: none;
 }
-.vg-dp-btn--danger,
-.vg-dp-btn.destructive,
-.vg-dp-modal__footer button.destructive {
-  background: color-mix(in srgb, #dc2626 14%, transparent);
-  color: color-mix(in srgb, #dc2626 88%, var(--vg-dp-fg));
-  border-color: color-mix(in srgb, #dc2626 40%, transparent);
-}
-.vg-dp-btn--danger:hover:not(:disabled),
-.vg-dp-btn.destructive:hover:not(:disabled) {
-  background: color-mix(in srgb, #dc2626 22%, transparent);
-  color: color-mix(in srgb, #dc2626 95%, var(--vg-dp-fg));
-  filter: none;
-}
 .vg-dp-btn:disabled {
-  opacity: 0.4;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 .vg-dp-search {
   width: 100%;
   padding: 7px 10px;
-  border: 1px solid var(--vg-dp-border);
+  border: 1px solid var(--vg-dp-input-border);
   border-radius: var(--vg-dp-radius);
   background: var(--vg-dp-input-bg);
   color: var(--vg-dp-fg);
@@ -423,7 +440,7 @@ export const EDITOR_CSS = `
   width: 100%;
   min-width: 0;
   padding: 7px 10px;
-  border: 1px solid var(--vg-dp-border);
+  border: 1px solid var(--vg-dp-input-border);
   border-radius: var(--vg-dp-radius);
   background: var(--vg-dp-input-bg);
   color: var(--vg-dp-fg);
@@ -436,41 +453,43 @@ export const EDITOR_CSS = `
   color: var(--vg-dp-muted);
   opacity: 0.85;
 }
-/* Tab strip — Customize sheet-nav language (uppercase, accent wash when active). */
+/* Tab strip — underline active (screenshot grammar). */
 .vg-dp-editor__tabs {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 8px 18px;
+  flex-wrap: nowrap;
+  gap: 0;
+  padding: 0 14px;
   border-bottom: 1px solid var(--vg-dp-border);
   background: color-mix(in srgb, var(--vg-dp-fg) 2%, transparent);
   flex-shrink: 0;
+  overflow-x: auto;
 }
 .vg-dp-editor__tab {
   appearance: none;
-  border: 1px solid transparent;
+  border: none;
   background: transparent;
-  height: 30px;
+  height: 36px;
   padding: 0 12px;
   cursor: pointer;
   color: var(--vg-dp-muted);
-  border-radius: var(--vg-dp-radius);
+  border-radius: 0;
   margin: 0;
   font: inherit;
   font-size: 11px;
   font-weight: 650;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  transition: color 110ms ease, background 110ms ease, border-color 110ms ease;
+  white-space: nowrap;
+  box-shadow: inset 0 -2px 0 transparent;
+  transition: color 120ms ease, box-shadow 120ms ease;
 }
 .vg-dp-editor__tab:hover {
   color: var(--vg-dp-fg);
-  background: var(--vg-dp-surface);
 }
 .vg-dp-editor__tab[aria-selected="true"] {
   color: var(--vg-dp-fg);
-  background: color-mix(in srgb, var(--vg-dp-accent) 10%, transparent);
-  border-color: color-mix(in srgb, var(--vg-dp-accent) 35%, transparent);
+  background: transparent;
+  box-shadow: inset 0 -2px 0 var(--vg-dp-accent);
   font-weight: 650;
 }
 .vg-dp-editor__body {
@@ -478,7 +497,6 @@ export const EDITOR_CSS = `
   flex: 1;
   overflow: auto;
   min-height: 0;
-  scrollbar-width: thin;
 }
 /* Columns tab owns its own scroll region so the table can fill the viewport. */
 .vg-dp-editor__body:has(> .vg-dp-editor__columns-tab) {
@@ -503,7 +521,7 @@ export const EDITOR_CSS = `
 .vg-dp-field textarea,
 .vg-dp-editor__inline-actions input {
   padding: 7px 10px;
-  border: 1px solid var(--vg-dp-border);
+  border: 1px solid var(--vg-dp-input-border);
   border-radius: var(--vg-dp-radius);
   background: var(--vg-dp-input-bg);
   color: var(--vg-dp-fg);
@@ -515,7 +533,7 @@ export const EDITOR_CSS = `
 .vg-dp-editor__add-column-row input,
 .vg-dp-editor__add-column-row select {
   padding: 7px 10px;
-  border: 1px solid var(--vg-dp-border);
+  border: 1px solid var(--vg-dp-input-border);
   border-radius: var(--vg-dp-radius);
   background: var(--vg-dp-input-bg);
   color: var(--vg-dp-fg);
@@ -564,23 +582,51 @@ ${vguiInputInteractionCss([
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: 44px;
-  padding: 10px 18px;
+  min-height: 28px;
+  padding: 12px 16px;
   border-top: 1px solid var(--vg-dp-border);
   background: color-mix(in srgb, var(--vg-dp-fg) 2.5%, transparent);
   flex-shrink: 0;
+  flex-wrap: nowrap;
 }
 .vg-dp-editor__actions-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   font-size: 10px;
   letter-spacing: 0.04em;
   color: var(--vg-dp-muted);
   min-width: 0;
+  flex: 1 1 auto;
 }
+.vg-dp-editor__actions-status.is-saved,
 .vg-dp-editor__actions-left.is-saved {
   color: color-mix(in srgb, #4ade80 85%, var(--vg-dp-fg));
 }
+.vg-dp-editor__actions-status.is-error,
 .vg-dp-editor__actions-left.is-error {
   color: color-mix(in srgb, #dc2626 85%, var(--vg-dp-fg));
+}
+.vg-dp-editor__actions-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+}
+.vg-dp-editor__actions-tools .vg-dp-btn,
+.vg-dp-editor__actions-tools button {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--vg-dp-muted);
+  background: transparent;
+  border-color: transparent;
+}
+.vg-dp-editor__actions-tools .vg-dp-btn:hover:not(:disabled),
+.vg-dp-editor__actions-tools button:hover:not(:disabled) {
+  color: var(--vg-dp-fg);
+  background: var(--vg-dp-surface);
 }
 .vg-dp-editor__actions-right {
   display: flex;
@@ -594,54 +640,33 @@ ${vguiInputInteractionCss([
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--vg-dp-muted);
-  padding: 6px 10px;
+  height: 28px;
+  padding: 0 13px;
   border-radius: var(--vg-dp-radius);
   cursor: pointer;
   font: inherit;
-  font-size: 10.5px;
-  font-weight: 650;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  transition: color 110ms ease, background 110ms ease, border-color 110ms ease, filter 110ms ease;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  box-sizing: border-box;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
 }
 .vg-dp-editor__actions button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
-.vg-dp-editor__actions button:hover:not(:disabled) {
+.vg-dp-editor__actions button:hover:not(:disabled):not(.vg-dp-btn--primary):not(.primary):not(.vg-dp-btn--danger) {
   color: var(--vg-dp-fg);
   background: var(--vg-dp-surface);
-  border-color: var(--vg-dp-border);
 }
 .vg-dp-editor__actions button.primary,
 .vg-dp-editor__actions .vg-dp-btn--primary {
-  border-color: transparent;
-  background: var(--vg-primary-color, var(--vg-dp-accent));
-  color: var(--vg-primary-fg, var(--vg-dp-accent-fg));
   min-width: 0;
 }
 .vg-dp-editor__actions button.primary:hover:not(:disabled),
 .vg-dp-editor__actions .vg-dp-btn--primary:hover:not(:disabled) {
   filter: brightness(1.08);
-  border-color: transparent;
-  color: var(--vg-primary-fg, var(--vg-dp-accent-fg));
-  background: var(--vg-primary-color, var(--vg-dp-accent));
-}
-.vg-dp-editor__actions button.secondary,
-.vg-dp-editor__actions .vg-dp-btn--secondary {
-  background: transparent;
-  color: var(--vg-dp-muted);
-  border-color: transparent;
-}
-.vg-dp-editor__actions button.secondary:hover:not(:disabled),
-.vg-dp-editor__actions .vg-dp-btn--secondary:hover:not(:disabled) {
-  color: var(--vg-dp-fg);
-  background: var(--vg-dp-surface);
-  border-color: var(--vg-dp-border);
-  filter: none;
 }
 .vg-dp-editor table {
   width: 100%;
@@ -701,38 +726,61 @@ ${vguiInputInteractionCss([
 }
 .vg-dp-card:last-child { margin-bottom: 8px; }
 .vg-dp-card__title {
+  appearance: none;
   margin: 0;
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 10.5px;
-  font-weight: 650;
-  letter-spacing: 0.12em;
+  gap: 8px;
+  width: 100%;
+  height: 26px;
+  padding: 0 16px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
+  text-align: left;
+  color: var(--vg-dp-fg);
+  background: var(--vg-dp-surface);
+  border: none;
+  border-bottom: 1px solid var(--vg-dp-border);
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.vg-dp-card__title:hover {
+  background: var(--vg-dp-surface-2);
   color: var(--vg-dp-fg);
 }
-/* Trailing hairline rule — matches the ext cockpit band header (TITLE ────). */
-.vg-dp-card__title::after {
+.vg-dp-card__title:hover::before {
+  color: var(--vg-dp-fg);
+}
+.vg-dp-card__title:focus-visible {
+  outline: 2px solid var(--vg-dp-accent);
+  outline-offset: -2px;
+}
+.vg-dp-card__title::before {
   content: "";
-  flex: 1 1 auto;
-  height: 1px;
-  background: var(--vg-dp-border);
+  width: 0; height: 0; flex: 0 0 auto;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  color: var(--vg-dp-muted);
+  transition: transform 140ms ease;
 }
-.vg-dp-field {
-  display: grid;
-  grid-template-columns: 140px minmax(0, 1fr);
-  gap: 12px 14px;
-  align-items: start;
-  margin: 0 0 12px;
+.vg-dp-card.is-collapsed > .vg-dp-card__title::before {
+  transform: rotate(-90deg);
 }
-.vg-dp-field:last-child { margin-bottom: 0; }
-.vg-dp-field__main {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0;
+.vg-dp-card.is-collapsed > :not(.vg-dp-card__title) {
+  display: none !important;
 }
+${vguiRowCss({
+  root: 'vg-dp-field',
+  label: 'vg-dp-field__label',
+  title: 'vg-dp-field__title',
+  help: 'vg-dp-field__help',
+  control: 'vg-dp-field__main',
+}, DP_TOKENS, { labelCol: '210px' })}
+.vg-dp-field:last-child { border-bottom: 0; }
 .vg-dp-field__main > input,
 .vg-dp-field__main > select,
 .vg-dp-field__main > textarea,
@@ -740,12 +788,14 @@ ${vguiInputInteractionCss([
   width: 100%;
   max-width: 420px;
 }
-.vg-dp-field__main > .vg-dp-switch { margin-top: 2px; }
-${vguiCapsCss('.vg-dp-field__label', DP_TOKENS)}
+.vg-dp-field__label {
+  font-size: 12.5px; font-weight: 500; letter-spacing: 0; text-transform: none;
+  color: var(--vg-dp-fg);
+}
 .vg-dp-field__help {
-  margin: 6px 0 0;
+  margin: 0;
   font-size: 11px;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
   color: var(--vg-dp-muted);
   line-height: 1.45;
   text-transform: none;
@@ -765,9 +815,12 @@ ${vguiCapsCss('.vg-dp-field__label', DP_TOKENS)}
   background: var(--vg-dp-surface);
 }
 
-/* Switch toggle — geometry + states from the shared kernel primitive so this
-   kit and the ext cockpit switch (.ckp-switch) can't drift. */
-${vguiSwitchCss({ root: 'vg-dp-switch', knob: 'vg-dp-switch__knob', on: 'is-on' }, DP_TOKENS)}
+${vguiButtonCss({
+  primary: 'vg-dp-btn--primary',
+  secondary: 'vg-dp-btn--secondary',
+  quiet: 'vg-dp-btn--quiet',
+  danger: 'vg-dp-btn--danger',
+}, DP_TOKENS)}
 .vg-dp-editor__switch-row {
   display: flex;
   align-items: center;
@@ -785,7 +838,6 @@ ${vguiSwitchCss({ root: 'vg-dp-switch', knob: 'vg-dp-switch__knob', on: 'is-on' 
   flex: 1;
   min-height: 0;
   overflow: auto;
-  scrollbar-width: thin;
   padding-right: 4px;
 }
 .vg-dp-editor__test-strip {
@@ -909,7 +961,6 @@ ${vguiSwitchCss({ root: 'vg-dp-switch', knob: 'vg-dp-switch__knob', on: 'is-on' 
   gap: 1px;
   max-height: 320px;
   overflow: auto;
-  scrollbar-width: thin;
   padding: 2px 0;
 }
 .vg-dp-editor__key-select { width: 100%; max-width: 36rem; }
@@ -1041,7 +1092,6 @@ ${vguiSwitchCss({ root: 'vg-dp-switch', knob: 'vg-dp-switch__knob', on: 'is-on' 
   max-height: 220px;
   overflow: auto;
   padding: 4px;
-  scrollbar-width: thin;
 }
 .vg-dp-ms__empty {
   padding: 16px 8px;
@@ -1167,7 +1217,6 @@ ${vguiSwitchCss({ root: 'vg-dp-switch', knob: 'vg-dp-switch__knob', on: 'is-on' 
   border: 1px solid var(--vg-dp-border);
   border-radius: var(--vg-dp-radius);
   background: var(--vg-dp-bg);
-  scrollbar-width: thin;
 }
 .vg-dp-editor__columns-table {
   width: max(100%, max-content);

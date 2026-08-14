@@ -14,11 +14,12 @@ import {
   lucideSvg,
   numberInput,
   row,
-  switchToggle,
+  checkbox,
   textInput,
   appendPaneChrome,
   takePaneScroll,
   restorePaneScroll,
+  emptyState,
 } from '../ui/cockpit';
 import { clone, editHandle } from './editHandle';
 
@@ -199,32 +200,31 @@ export function plusMinusModule(): SettingsModule {
         editor = null;
         pane.replaceChildren();
         if (!settingsDraft) {
-          pane.appendChild(el('div', 'ckp-empty', 'Plus / Minus requires wireEditIntoKernel(grid).'));
+          pane.appendChild(emptyState({
+            title: 'Edit engine not wired',
+            description: 'Plus / Minus requires wireEditIntoKernel(grid).',
+            icon: 'plus',
+          }));
           return;
         }
 
         const head = el('div', 'ckp-pane-head');
         const title = el('div', 'ckp-title', draft ? draft.name : 'Plus / Minus');
-        const resetBtn = el('button', 'ckp-actbtn') as HTMLButtonElement;
+        const resetBtn = el('button', 'ckp-actbtn ckp-btn-secondary') as HTMLButtonElement;
         resetBtn.type = 'button';
         resetBtn.innerHTML = `${lucideSvg('rotate-ccw', 12)}<span>Reset</span>`;
         resetBtn.disabled = !isDirty();
         resetBtn.addEventListener('click', reset);
-        const saveBtn = el('button', 'ckp-actbtn') as HTMLButtonElement;
-        saveBtn.type = 'button';
-        saveBtn.innerHTML = `${lucideSvg('save', 12)}<span>Save</span>`;
-        saveBtn.disabled = !isDirty();
-        saveBtn.addEventListener('click', save);
-        head.append(title, resetBtn, saveBtn);
+        head.append(title, resetBtn);
         const body = appendPaneChrome(pane, head);
 
-        const glob = band('00', 'Global');
+        const glob = band('Global');
         glob.body.append(
-          row('Enabled', switchToggle(settingsDraft.enabled, (v) => {
+          row('Enabled', checkbox(settingsDraft.enabled, (v) => {
             settingsDraft!.enabled = v;
             renderAll();
           }), 'When enabled, +/- keys use these nudges'),
-          row('Record history', switchToggle(settingsDraft.recordHistory, (v) => {
+          row('Record history', checkbox(settingsDraft.recordHistory, (v) => {
             settingsDraft!.recordHistory = v;
             renderAll();
           })),
@@ -232,14 +232,18 @@ export function plusMinusModule(): SettingsModule {
         body.appendChild(glob.root);
 
         if (!draft) {
-          body.appendChild(el('div', 'ckp-empty', 'Select a nudge, or add one with +'));
+          body.appendChild(emptyState({
+            title: 'No nudge selected',
+            description: 'Select a nudge, or add one with +.',
+            icon: 'plus',
+          }));
           return;
         }
         const d = draft;
-        const nb = band('01', 'Nudge');
+        const nb = band('Nudge');
         nb.body.append(
           row('Name', textInput(d.name, (v) => { d.name = v; renderAll(); })),
-          row('Enabled', switchToggle(d.enabled, (v) => { d.enabled = v; renderAll(); })),
+          row('Enabled', checkbox(d.enabled, (v) => { d.enabled = v; renderAll(); })),
           row('Columns', textInput(formatCols(d.scope.columnIds), (v) => {
             d.scope.columnIds = parseCols(v);
           }, { placeholder: 'colIds, comma-separated (empty = all numeric)' })),
@@ -255,7 +259,7 @@ export function plusMinusModule(): SettingsModule {
         );
         body.appendChild(nb.root);
 
-        const expr = band('02', 'Expression gate');
+        const expr = band('Expression gate');
         const mount = el('div');
         expr.body.appendChild(mount);
         editor = new ExpressionEditor(mount, {
@@ -266,7 +270,6 @@ export function plusMinusModule(): SettingsModule {
           columnsProvider: () => editorColumns(ctx.grid),
           onChange: (v) => {
             d.expression = v.trim() ? v : undefined;
-            saveBtn.disabled = !isDirty();
             resetBtn.disabled = !isDirty();
           },
         });
@@ -296,6 +299,7 @@ export function plusMinusModule(): SettingsModule {
           root.replaceChildren();
           root.remove();
         },
+        commit() { if (isDirty()) save(); },
         refresh() {
           load();
           if (selectedId && !draftIsNew && !nudges.some((n) => n.id === selectedId)) {

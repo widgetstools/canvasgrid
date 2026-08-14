@@ -411,15 +411,37 @@ export class ProviderEditor {
 
     const left = document.createElement('div');
     left.className = 'vg-dp-editor__actions-left';
+    const status = document.createElement('span');
+    status.className = 'vg-dp-editor__actions-status';
     if (this.saveError) {
-      left.classList.add('is-error');
-      left.textContent = this.saveError;
+      status.classList.add('is-error');
+      status.textContent = this.saveError;
     } else if (this.savedAt) {
-      left.classList.add('is-saved');
-      left.textContent = 'Saved';
+      status.classList.add('is-saved');
+      status.textContent = 'Saved';
     } else {
-      left.textContent = `Unsaved changes are kept locally until you click ${this.saveLabel()}.`;
+      status.textContent = `Unsaved changes are kept locally until you click ${this.saveLabel()}.`;
     }
+    left.appendChild(status);
+
+    // Demoted utilities — quiet strip, not primary chrome.
+    const tools = document.createElement('div');
+    tools.className = 'vg-dp-editor__actions-tools';
+    tools.appendChild(createButton({
+      label: 'Export',
+      onClick: () => exportProviderConfig(this.cfg),
+      variant: 'ghost',
+      title: 'Download this provider config (including unsaved edits) as a JSON file',
+    }));
+    if (this.onClone) {
+      tools.appendChild(createButton({
+        label: 'Duplicate',
+        onClick: () => this.onClone?.(),
+        variant: 'ghost',
+        title: 'Copy this provider into a new draft you can edit and save separately',
+      }));
+    }
+    left.appendChild(tools);
 
     const right = document.createElement('div');
     right.className = 'vg-dp-editor__actions-right';
@@ -428,21 +450,7 @@ export class ProviderEditor {
       right.appendChild(createButton({
         label: 'Cancel',
         onClick: () => this.onCancel?.(),
-        variant: 'secondary',
-      }));
-    }
-    right.appendChild(createButton({
-      label: 'Export',
-      onClick: () => exportProviderConfig(this.cfg),
-      variant: 'secondary',
-      title: 'Download this provider config (including unsaved edits) as a JSON file',
-    }));
-    if (this.onClone) {
-      right.appendChild(createButton({
-        label: 'Duplicate',
-        onClick: () => this.onClone?.(),
-        variant: 'secondary',
-        title: 'Copy this provider into a new draft you can edit and save separately',
+        variant: 'ghost',
       }));
     }
     right.appendChild(createButton({
@@ -883,11 +891,11 @@ export class ProviderEditor {
     });
     toolbar.append(
       count,
-      createButton({ label: 'Export JSON', onClick: () => exportColumnDefs(cols) }),
-      createButton({ label: 'Import JSON', onClick: () => fileInput.click() }),
+      createButton({ label: 'Export JSON', variant: 'secondary', onClick: () => exportColumnDefs(cols) }),
+      createButton({ label: 'Import JSON', variant: 'secondary', onClick: () => fileInput.click() }),
       createButton({
         label: 'Clear all columns',
-        variant: 'secondary',
+        variant: 'danger',
         onClick: () => {
           if (!window.confirm('Clear all columns? You can re-select them from the Fields tab.')) return;
           this.patchConfig({ columnDefinitions: [], keyColumn: undefined });

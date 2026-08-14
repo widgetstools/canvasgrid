@@ -244,7 +244,7 @@ function decimalIcon(kind: 'fewer' | 'more'): string {
   const digit = (x: number, y: number, s: string) =>
     `<text x="${x}" y="${y}" fill="currentColor" font-size="10" font-weight="700">${s}</text>`;
   const arrow = (d: string) =>
-    `<path d="${d}" fill="none" stroke="var(--vg-accent-color, #4f9cf9)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
+    `<path d="${d}" fill="none" stroke="var(--vg-chrome-accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
   const rows = kind === 'fewer'
     ? arrow('M9.5 4H1.5M4.5 1l-3 3 3 3') + digit(11.5, 7.5, '0') + digit(0.5, 17.5, '.00')
     : digit(0.5, 7.5, '.00') + arrow('M1.5 14h8M6.5 11l3 3-3 3') + digit(11.5, 17.5, '0');
@@ -274,17 +274,15 @@ function textInput(placeholder: string, size: 'sm' | 'md' = 'sm'): HTMLInputElem
 // column has NO explicit colour of its own (refresh() reverts to these).
 // Text + border track the theme foreground (not the chrome accent).
 const DEFAULT_FILL_COLOR = '#12333a';
-const DEFAULT_ICON_COLOR = '#4f9cf9';
 
-/** Resolve `--vg-fg-color` to a `#rrggbb` the native color input can hold. */
-function defaultForeColor(anchor?: HTMLElement | null): string {
-  const fallback = '#e5e9f0';
+/** Resolve a `--vg-*` color token to a `#rrggbb` the native color input can hold. */
+function themeColorHex(token: string, fallback: string, anchor?: HTMLElement | null): string {
   try {
     const root =
       anchor?.closest<HTMLElement>('.vgext-root')
       ?? document.querySelector<HTMLElement>('.vgext-root')
       ?? document.body;
-    const raw = getComputedStyle(root).getPropertyValue('--vg-fg-color').trim() || fallback;
+    const raw = getComputedStyle(root).getPropertyValue(token).trim() || fallback;
     if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw.toLowerCase();
     if (/^#[0-9a-fA-F]{3}$/.test(raw)) {
       const r = raw[1]!, g = raw[2]!, b = raw[3]!;
@@ -302,6 +300,15 @@ function defaultForeColor(anchor?: HTMLElement | null): string {
   } catch {
     return fallback;
   }
+}
+
+/** Resolve `--vg-fg-color` to a `#rrggbb` the native color input can hold. */
+function defaultForeColor(anchor?: HTMLElement | null): string {
+  return themeColorHex('--vg-fg-color', '#e5e9f0', anchor);
+}
+
+function defaultChromeAccent(anchor?: HTMLElement | null): string {
+  return themeColorHex('--vg-chrome-accent', '#2778C1', anchor);
 }
 
 /** Border-side segment: a faint frame with the chosen edge emphasized —
@@ -430,7 +437,7 @@ function ribbonItem(opts: RibbonExtensionsOpts = {}): ToolbarItem {
       // switch which slot is shown, never move an icon between slots.
       let iconApply: (sel: IconSelection) => void = () => {};
       const picker = createIconPicker({ onSelect: (sel) => iconApply(sel) });
-      const iconColor = ribbonColorSwatch(I.paintText, 'Icon color', DEFAULT_ICON_COLOR);
+      const iconColor = ribbonColorSwatch(I.paintText, 'Icon color', defaultChromeAccent());
       const iconColorBtn = iconColor.button;
       iconColorBtn.dataset.ip = 'color';
       const iconPlacePill = pill('Prefix'); iconPlacePill.dataset.ip = 'place';
@@ -1163,7 +1170,7 @@ function wireFormattingToolbar(ctx: VelocityGridExtContext, r: FormattingRefs): 
     r.iconPicker.button.disabled = none;
     r.iconPlacePill.disabled = none;
     // Icon colour reverts to its default swatch when the slot has none.
-    syncRibbonColor(r.iconColor, slot?.color, DEFAULT_ICON_COLOR);
+    syncRibbonColor(r.iconColor, slot?.color, defaultChromeAccent(r.iconColor.button));
   };
 
   // Target toggle (cell vs header styling) — shared stateToggle control;
@@ -1763,22 +1770,22 @@ const RIBBON_CSS = `
 .vgext-rb-btn[data-tb="edit-overflow"]:hover,
 .vgext-rb-btn[data-tb="format-overflow"]:hover {
   color: var(--vg-accent-fg, #ffffff);
-  background: var(--vg-accent-color, #4f9cf9);
-  border-color: var(--vg-accent-color, #4f9cf9);
+  background: var(--vg-chrome-accent);
+  border-color: var(--vg-chrome-accent);
 }
 .vgext-rb-btn[data-tb="edit-overflow"].is-open,
 .vgext-rb-btn[data-tb="format-overflow"].is-open,
 .vgext-rb-btn[data-tb="edit-overflow"].has-items,
 .vgext-rb-btn[data-tb="format-overflow"].has-items {
   color: var(--vg-fg-color, #e5e9f0);
-  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 28%, transparent);
-  border-color: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 70%, transparent);
+  background: color-mix(in srgb, var(--vg-chrome-accent) 28%, transparent);
+  border-color: color-mix(in srgb, var(--vg-chrome-accent) 70%, transparent);
 }
 .vgext-rb-btn[data-tb="edit-overflow"].is-open,
 .vgext-rb-btn[data-tb="format-overflow"].is-open {
   color: var(--vg-accent-fg, #ffffff);
-  background: var(--vg-accent-color, #4f9cf9);
-  border-color: var(--vg-accent-color, #4f9cf9);
+  background: var(--vg-chrome-accent);
+  border-color: var(--vg-chrome-accent);
 }
 /* Group decks still used by drawer style chrome (styleChrome.ts). */
 .vgext-rb-cluster {
@@ -1844,10 +1851,10 @@ const RIBBON_CSS = `
 }
 .vgext-rb-fmt-caret:hover,
 .vgext-rb-fmt-caret.is-set {
-  color: var(--vg-accent-color, #4f9cf9);
+  color: var(--vg-chrome-accent);
 }
 .vgext-rb-fmt-caret.is-set {
-  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 16%, transparent);
+  background: color-mix(in srgb, var(--vg-chrome-accent) 16%, transparent);
 }
 .vgext-ip-tools {
   display: flex;
@@ -1894,7 +1901,7 @@ const RIBBON_CSS = `
 .vgext-rb-bside { position: relative; }
 .vgext-rb-bside.has-border::after {
   content: ''; position: absolute; right: 2px; top: 2px; width: 4px; height: 4px;
-  border-radius: 50%; background: var(--vg-accent-color, #4f9cf9);
+  border-radius: 50%; background: var(--vg-chrome-accent);
 }
 .vgext-rb-bpreview {
   width: 20px; height: 20px; margin-left: 4px; border-radius: 2px; align-self: center;
@@ -1926,25 +1933,25 @@ const RIBBON_CSS = `
   display: inline-flex; align-items: center; justify-content: center;
   width: 32px; height: 32px; padding: 0; box-sizing: border-box;
   border: none; border-radius: 2px;
-  background: transparent; color: var(--vg-accent-color, #4f9cf9);
+  background: transparent; color: var(--vg-chrome-accent);
   cursor: pointer;
   transition: background 110ms ease, color 110ms ease;
 }
 .vgext-rb-targettoggle:hover {
   background: var(--vg-row-alt-bg, rgba(255,255,255,0.07));
-  color: var(--vg-accent-color, #4f9cf9);
+  color: var(--vg-chrome-accent);
 }
-.vgext-rb-targettoggle:focus-visible { outline: 2px solid var(--vg-accent-color, #4f9cf9); outline-offset: 1px; }
+.vgext-rb-targettoggle:focus-visible { outline: 2px solid var(--vg-chrome-accent); outline-offset: 1px; }
 .vgext-rb-targettoggle.is-header {
-  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 22%, transparent);
-  color: var(--vg-accent-color, #4f9cf9);
+  background: color-mix(in srgb, var(--vg-chrome-accent) 22%, transparent);
+  color: var(--vg-chrome-accent);
 }
 .vgext-rb-selpill {
   max-width: 64px; min-width: 28px; padding: 0 6px;
   font-size: 11px; font-weight: 550;
 }
 .vgext-rb-selpill.vgext-rb-sel--need {
-  outline: 2px solid var(--vg-accent-color, #4f9cf9);
+  outline: 2px solid var(--vg-chrome-accent);
   outline-offset: 1px;
 }
 .vgext-rb-selpill > span {
@@ -1958,7 +1965,7 @@ const RIBBON_CSS = `
   color: var(--vg-fg-color, #d3dbe7); cursor: pointer;
   transition: background 110ms ease, color 110ms ease;
 }
-.vgext-rb-btn:hover, .vgext-rb-toggle:hover { background: var(--vg-row-alt-bg, rgba(255,255,255,0.07)); color: var(--vg-accent-color, #4f9cf9); }
+.vgext-rb-btn:hover, .vgext-rb-toggle:hover { background: var(--vg-row-alt-bg, rgba(255,255,255,0.07)); color: var(--vg-chrome-accent); }
 .vgext-rb-btn:disabled, .vgext-rb-toggle:disabled { color: var(--vg-muted-fg-color, #9aa4b6); opacity: 0.45; cursor: default; }
 .vgext-rb-btn:disabled:hover, .vgext-rb-toggle:disabled:hover { background: transparent; }
 
@@ -1970,8 +1977,8 @@ const RIBBON_CSS = `
   background: var(--vgext-swatch, currentColor);
   box-shadow: inset 0 0 0 0.5px rgba(255,255,255,0.18);
 }
-.vgext-rb-btn:focus-visible, .vgext-rb-toggle:focus-visible { outline: 2px solid var(--vg-accent-color, #4f9cf9); outline-offset: 1px; }
-.vgext-rb-toggle.is-on { background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 22%, transparent); color: var(--vg-accent-color, #4f9cf9); }
+.vgext-rb-btn:focus-visible, .vgext-rb-toggle:focus-visible { outline: 2px solid var(--vg-chrome-accent); outline-offset: 1px; }
+.vgext-rb-toggle.is-on { background: color-mix(in srgb, var(--vg-chrome-accent) 22%, transparent); color: var(--vg-chrome-accent); }
 
 .vgext-rb-pill {
   appearance: none; -webkit-appearance: none;
@@ -1984,10 +1991,10 @@ const RIBBON_CSS = `
 /* Author display on .vgext-rb-pill otherwise overrides the UA [hidden]
  * rule — the filter-type pill is gated with hidden while floating filter is off. */
 .vgext-rb-pill[hidden] { display: none; }
-.vgext-rb-pill:hover { border-color: var(--vg-accent-color, #4f9cf9); }
+.vgext-rb-pill:hover { border-color: var(--vg-chrome-accent); }
 .vgext-rb-pill svg { color: var(--vg-muted-fg-color, #9aa4b6); }
 .vgext-rb-pill.vgext-rb-danger { color: var(--vg-neg-color, #e5646e); border-color: color-mix(in srgb, var(--vg-neg-color, #e5646e) 45%, var(--vg-border-color, #2a3140)); }
-.vgext-rb-pill.is-set { color: var(--vg-accent-color, #4f9cf9); }
+.vgext-rb-pill.is-set { color: var(--vg-chrome-accent); }
 
 .vgext-rb-input {
   appearance: none; -webkit-appearance: none;
@@ -1997,7 +2004,7 @@ const RIBBON_CSS = `
 }
 .vgext-rb-input--sm { width: 44px; }
 .vgext-rb-input--md { width: 96px; }
-.vgext-rb-input:focus { outline: none; border-color: var(--vg-accent-color, #4f9cf9); }
+.vgext-rb-input:focus { outline: none; border-color: var(--vg-chrome-accent); }
 
 .vgext-rb-stat { font-size: 12px; color: var(--vg-muted-fg-color, #7f8ba0); font-variant-numeric: tabular-nums; }
 
@@ -2032,8 +2039,8 @@ const RIBBON_CSS = `
   font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
   transition: border-color 110ms ease, background 110ms ease;
 }
-.vgext-ip-open:hover:not(:disabled) { border-color: var(--vg-accent-color, #4f9cf9); }
-.vgext-ip-open:focus-visible { outline: 2px solid var(--vg-accent-color, #4f9cf9); outline-offset: 1px; }
+.vgext-ip-open:hover:not(:disabled) { border-color: var(--vg-chrome-accent); }
+.vgext-ip-open:focus-visible { outline: 2px solid var(--vg-chrome-accent); outline-offset: 1px; }
 .vgext-ip-open > svg:last-child { color: var(--vg-muted-fg-color, #7f8ba0); flex: 0 0 auto; }
 .vgext-ip-well {
   width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center;
@@ -2042,10 +2049,10 @@ const RIBBON_CSS = `
   background: color-mix(in srgb, var(--vg-muted-fg-color, #7f8ba0) 10%, transparent);
 }
 .vgext-ip-well.has-icon {
-  color: var(--vg-accent-color, #4f9cf9);
-  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 14%, transparent);
+  color: var(--vg-chrome-accent);
+  background: color-mix(in srgb, var(--vg-chrome-accent) 14%, transparent);
 }
-.vgext-ip-open.is-open { border-color: var(--vg-accent-color, #4f9cf9); background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 12%, transparent); }
+.vgext-ip-open.is-open { border-color: var(--vg-chrome-accent); background: color-mix(in srgb, var(--vg-chrome-accent) 12%, transparent); }
 .vgext-ip-open:disabled,
 .vgext-rb-pill[data-ip="place"]:disabled,
 .vgext-rb-btn[data-ip="color"]:disabled,
@@ -2079,8 +2086,8 @@ const RIBBON_CSS = `
 }
 .vgext-ip-search::placeholder { color: var(--vg-muted-fg-color, #7f8ba0); }
 .vgext-ip-search:focus {
-  outline: none; border-color: var(--vg-accent-color, #4f9cf9);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 20%, transparent);
+  outline: none; border-color: var(--vg-chrome-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vg-chrome-accent) 20%, transparent);
 }
 .vgext-ip-search::-webkit-search-cancel-button { appearance: none; }
 
@@ -2105,7 +2112,7 @@ const RIBBON_CSS = `
 }
 .vgext-ip-tile:hover { background: var(--vg-row-alt-bg, rgba(255,255,255,0.08)); color: var(--vg-fg-color, #e5e9f0); transform: scale(1.14); }
 .vgext-ip-tile:active { transform: scale(0.96); }
-.vgext-ip-tile:focus-visible { outline: 2px solid var(--vg-accent-color, #4f9cf9); outline-offset: -2px; }
+.vgext-ip-tile:focus-visible { outline: 2px solid var(--vg-chrome-accent); outline-offset: -2px; }
 
 .vgext-ip-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 34px 0 30px; color: var(--vg-muted-fg-color, #7f8ba0); }
 .vgext-ip-empty[hidden] { display: none; }
@@ -2130,9 +2137,9 @@ const RIBBON_CSS = `
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   transition: background 90ms ease, color 90ms ease;
 }
-.vgext-ip-placeitem:hover { background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 18%, transparent); }
-.vgext-ip-placeitem.is-active { color: var(--vg-accent-color, #4f9cf9); background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 12%, transparent); }
-.vgext-ip-placeitem.is-active::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--vg-accent-color, #4f9cf9); flex: 0 0 auto; }
+.vgext-ip-placeitem:hover { background: color-mix(in srgb, var(--vg-chrome-accent) 18%, transparent); }
+.vgext-ip-placeitem.is-active { color: var(--vg-chrome-accent); background: color-mix(in srgb, var(--vg-chrome-accent) 12%, transparent); }
+.vgext-ip-placeitem.is-active::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--vg-chrome-accent); flex: 0 0 auto; }
 
 /* Flat 2px chrome — beat UA button/input rounding on Windows/Chromium. */
 .vgext-ribbon .vgext-rb-pill,

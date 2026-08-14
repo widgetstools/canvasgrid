@@ -519,15 +519,15 @@ const LAYOUTS_CSS = `
   color: var(--vg-fg-color, #e5e9f0); font-size: 12.5px;
 }
 .vgext-layouts-row:hover { background: var(--vg-row-alt-bg, rgba(255,255,255,0.06)); }
-.vgext-layouts-row.is-active { background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 14%, transparent); }
+.vgext-layouts-row.is-active { background: color-mix(in srgb, var(--vg-chrome-accent) 14%, transparent); }
 .vgext-layouts-row.is-active::before {
   content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; width: 2px;
-  border-radius: var(--vg-radius, 2px); background: var(--vg-accent-color, #4f9cf9);
+  border-radius: var(--vg-radius, 2px); background: var(--vg-chrome-accent);
 }
-.vgext-layouts-mark { width: 16px; display: inline-flex; justify-content: center; color: var(--vg-accent-color, #4f9cf9); }
+.vgext-layouts-mark { width: 16px; display: inline-flex; justify-content: center; color: var(--vg-chrome-accent); }
 .vgext-layouts-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--vg-muted-fg-color, #9aa4b6); opacity: 0.6; }
 .vgext-layouts-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; }
-.vgext-layouts-row:focus-visible { outline: 2px solid var(--vg-accent-color, #4f9cf9); outline-offset: -2px; }
+.vgext-layouts-row:focus-visible { outline: 2px solid var(--vg-chrome-accent); outline-offset: -2px; }
 /* visibility+opacity (not display:none) — the buttons must stay in the DOM
    flow and tabbable-when-visible so Tab can reach them once :focus-within
    reveals them (a display:none button can never receive focus at all). */
@@ -545,11 +545,11 @@ const LAYOUTS_CSS = `
   color: var(--vg-muted-fg-color, #9aa4b6); cursor: pointer;
 }
 .vgext-layouts-act:hover { background: var(--vg-row-alt-bg, rgba(255,255,255,0.08)); color: var(--vg-fg-color, #e5e9f0); }
-.vgext-layouts-act:focus-visible { outline: 2px solid var(--vg-accent-color, #4f9cf9); outline-offset: 1px; }
+.vgext-layouts-act:focus-visible { outline: 2px solid var(--vg-chrome-accent); outline-offset: 1px; }
 .vgext-layouts-lock { width: 24px; display: inline-flex; justify-content: center; color: var(--vg-muted-fg-color, #9aa4b6); opacity: 0.7; }
 .vgext-layouts-rename {
   flex: 1 1 auto; min-width: 0; height: 26px; padding: 0 8px;
-  border: 1px solid var(--vg-accent-color, #4f9cf9); border-radius: var(--vg-radius, 2px);
+  border: 1px solid var(--vg-chrome-accent); border-radius: var(--vg-radius, 2px);
   background: var(--vg-control-bg, rgba(0,0,0,0.25));
   color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: 12px;
 }
@@ -566,7 +566,7 @@ const LAYOUTS_CSS = `
   background: var(--vg-control-bg, rgba(0,0,0,0.25));
   color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: 12px;
 }
-.vgext-layouts-new input:focus { outline: none; border-color: var(--vg-accent-color, #4f9cf9); }
+.vgext-layouts-new input:focus { outline: none; border-color: var(--vg-chrome-accent); }
 .vgext-layouts-savenew {
   height: 28px; padding: 0 12px; white-space: nowrap;
   border: 1px solid var(--vg-border-color, #2a3140); border-radius: var(--vg-radius, 7px);
@@ -574,7 +574,7 @@ const LAYOUTS_CSS = `
   color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: 12px; font-weight: 550;
   cursor: pointer; transition: border-color 120ms ease;
 }
-.vgext-layouts-savenew:hover:not(:disabled) { border-color: var(--vg-accent-color, #4f9cf9); }
+.vgext-layouts-savenew:hover:not(:disabled) { border-color: var(--vg-chrome-accent); }
 .vgext-layouts-savenew:disabled { opacity: 0.45; cursor: default; }
 .vgext-layouts-foot { display: flex; gap: 8px; padding: 0 12px 12px; }
 .vgext-layouts-foot button {
@@ -585,6 +585,6 @@ const LAYOUTS_CSS = `
   color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: 12px; font-weight: 550;
   cursor: pointer; transition: border-color 120ms ease;
 }
-.vgext-layouts-foot button:hover { border-color: var(--vg-accent-color, #4f9cf9); }
+.vgext-layouts-foot button:hover { border-color: var(--vg-chrome-accent); }
 .vgext-layouts-foot button svg { color: var(--vg-muted-fg-color, #9aa4b6); }
 `;

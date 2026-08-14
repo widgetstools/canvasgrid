@@ -118,7 +118,7 @@ function build(): void {
   teardown();
   provider = new StompPerspectiveProvider(config);
   grid = new VelocityGrid(gridHost, {
-    theme: 'vg-theme-quartz-dark',
+    theme: 'vg-theme-cursor-dark',
     ...provider.gridOptions(),
   });
   detach = provider.attach(grid);

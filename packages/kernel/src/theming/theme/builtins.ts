@@ -31,6 +31,5 @@ export const themeCursor = createTheme({
   baseClass: { light: 'vg-theme-cursor', dark: 'vg-theme-cursor-dark' },
 });
 
-/** Alias for `themeQuartz` — the neutral starting point most consumers
- *  should `withParams`/`withPart` from. */
-export const baseTheme = themeQuartz;
+/** Alias for `themeCursor` — Cursor Light/Dark is the product default. */
+export const baseTheme = themeCursor;

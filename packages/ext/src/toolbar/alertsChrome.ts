@@ -17,7 +17,7 @@ interface AlertsHost {
 }
 
 const SEVERITY_TONE: Record<AlertSeverity, string> = {
-  info: '#4f9cf9',
+  info: 'var(--vg-chrome-accent)',
   success: '#3ecf8e',
   warning: '#f5a524',
   critical: '#f31260',
