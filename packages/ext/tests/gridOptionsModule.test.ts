@@ -38,14 +38,12 @@ describe('gridOptionsModule', () => {
     expect(panel.querySelector('.vg-settings-panel')).toBeTruthy();
     expect(panel.querySelector('.vg-settings-search')).toBeTruthy();
 
-    // Flip a boolean control if present; otherwise call setGridOption via the
-    // proxied API path used by the form by invoking a toggle click when found.
-    const toggle = panel.querySelector<HTMLButtonElement>('.vg-settings-toggle');
-    if (toggle) {
-      toggle.click();
-      expect(setOpt).toHaveBeenCalled();
-      expect(profiles.isDirty()).toBe(true);
-    }
+    const toggle = panel.querySelector<HTMLInputElement>('input.vg-checkbox.vg-settings-checkbox');
+    expect(toggle).toBeTruthy();
+    toggle!.checked = !toggle!.checked;
+    toggle!.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(setOpt).toHaveBeenCalled();
+    expect(profiles.isDirty()).toBe(true);
 
     inst.destroy();
     expect(panel.querySelector('.vg-settings-panel')).toBeNull();

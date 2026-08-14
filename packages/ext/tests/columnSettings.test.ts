@@ -77,7 +77,7 @@ function makeCtx(colDefs: Array<Record<string, unknown>> = [
 }
 
 describe('columnSettingsModule', () => {
-  it('edits stay in draft until Save, Reset restores, Save applies + marks dirty', () => {
+  it('edits stay in draft until commit, Reset restores; no per-pane Save', () => {
     const { ctx, edits, markDirty } = makeCtx();
     const host = document.createElement('div');
     const mod = columnSettingsModule();
@@ -86,9 +86,10 @@ describe('columnSettingsModule', () => {
 
     expect(host.querySelector('.ckp')).toBeTruthy();
     expect((host.querySelector('.ckp-title') as HTMLInputElement).value).toBe('Alpha');
+    expect([...host.querySelectorAll('.ckp-actbtn')].some((b) => b.textContent?.includes('Save'))).toBe(false);
 
     // Toggle sortable — draft only.
-    const switches = [...host.querySelectorAll<HTMLButtonElement>('.ckp-switch')];
+    const switches = [...host.querySelectorAll<HTMLInputElement>('.vg-checkbox')];
     const sortable = switches.find((s) => s.closest('.ckp-row')?.textContent?.includes('Sortable'));
     expect(sortable).toBeTruthy();
     const before = edits.length;
@@ -96,23 +97,20 @@ describe('columnSettingsModule', () => {
     expect(edits.length).toBe(before); // not applied yet
     expect(markDirty).not.toHaveBeenCalled();
 
-    const save = [...host.querySelectorAll<HTMLButtonElement>('.ckp-actbtn')]
-      .find((b) => b.textContent?.includes('Save'))!;
-    expect(save.disabled).toBe(false);
-    save.click();
+    inst.commit?.();
     expect(edits.some((e) => e.colId === 'a' && 'sortable' in e.patch)).toBe(true);
     expect(markDirty).toHaveBeenCalled();
 
     // Dirty again then Reset.
-    const sortable2 = [...host.querySelectorAll<HTMLButtonElement>('.ckp-switch')]
+    const sortable2 = [...host.querySelectorAll<HTMLInputElement>('.vg-checkbox')]
       .find((s) => s.closest('.ckp-row')?.textContent?.includes('Sortable'))!;
     sortable2.click();
     const reset = [...host.querySelectorAll<HTMLButtonElement>('.ckp-actbtn')]
       .find((b) => b.textContent?.includes('Reset'))!;
     reset.click();
-    const save2 = [...host.querySelectorAll<HTMLButtonElement>('.ckp-actbtn')]
-      .find((b) => b.textContent?.includes('Save'))!;
-    expect(save2.disabled).toBe(true);
+    const afterReset = edits.length;
+    inst.commit?.();
+    expect(edits.length).toBe(afterReset);
 
     inst.destroy();
   });
@@ -129,12 +127,12 @@ describe('columnSettingsModule', () => {
     expect((host.querySelector('.ckp-title') as HTMLInputElement).value).toBe('Beta');
   });
 
-  it('edits caption in draft and applies headerName on Save', () => {
+  it('edits caption in draft and applies headerName on commit', () => {
     const { ctx, markDirty, overrides } = makeCtx();
     const host = document.createElement('div');
     const mod = columnSettingsModule();
     mod.init();
-    mod.mount(host, ctx);
+    const inst = mod.mount(host, ctx);
 
     const caption = host.querySelector<HTMLInputElement>('input[aria-label="Caption"]')!;
     expect(caption.value).toBe('Alpha');
@@ -144,10 +142,7 @@ describe('columnSettingsModule', () => {
     const title = host.querySelector<HTMLInputElement>('.ckp-title')!;
     expect(title.value).toBe('Alpha Renamed');
 
-    const save = [...host.querySelectorAll<HTMLButtonElement>('.ckp-actbtn')]
-      .find((b) => b.textContent?.includes('Save'))!;
-    expect(save.disabled).toBe(false);
-    save.click();
+    inst.commit?.();
     expect(overrides.some((o) => o.colId === 'a' && o.headerName === 'Alpha Renamed')).toBe(true);
     expect(markDirty).toHaveBeenCalled();
     expect(host.querySelector('.ckp-rail-row.active')!.textContent).toContain('Alpha Renamed');

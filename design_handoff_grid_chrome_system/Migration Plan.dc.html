@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #181818; }
+  a { color: #81A1C1; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+</style>
+</helmet>
+
+<section style="min-height: 100vh; box-sizing: border-box; padding: 56px 48px 96px; background: #181818; font-family: 'Inter', system-ui, sans-serif; color: #CCCCCC; display: flex; flex-direction: column; gap: 48px; max-width: 1180px;">
+
+  <div style="display: flex; flex-direction: column; gap: 14px;">
+    <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: #9D9D9D;">canvasgrid · migration</div>
+    <h1 style="margin: 0; font-size: 38px; line-height: 1.1; letter-spacing: -0.025em; font-weight: 600;">Applying the system</h1>
+    <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #B0B0B0; text-wrap: pretty;">Six steps, ordered by leverage. The first changes one line and fixes the most visible problem in the product. Nothing here edits a settings module — the modules inherit, because they all call the same builders.</p>
+  </div>
+
+  <!-- THE SEAM -->
+  <div style="display: flex; flex-direction: column; gap: 16px; padding: 24px; background: #202020; border: 1px solid #2B2B2B; border-radius: 3px;">
+    <div style="font-size: 11px; font-weight: 650; letter-spacing: 0.12em; text-transform: uppercase; color: #81A1C1;">The seam already exists</div>
+    <p style="margin: 0; font-size: 13.5px; line-height: 1.6; color: #B0B0B0; text-wrap: pretty;">Someone started this work already. <code style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: #81A1C1;">packages/kernel/src/ui/primitives.ts</code> exists to be exactly this shared layer, and its own header comment states the problem in the same terms this review did:</p>
+    <blockquote style="margin: 0; padding: 14px 18px; border-left: 2px solid #81A1C1; background: #1F1F1F; font-family: 'JetBrains Mono', monospace; font-size: 12.5px; line-height: 1.65; color: #B0B0B0;">Both the ext cockpit kit (<span style="color: #CCCCCC;">.ckp-*</span>) and the data-provider editor kit (<span style="color: #CCCCCC;">.vg-dp-*</span>) were hand-rolled independently and drifted (e.g. the toggle switch); these generators let each kit keep its own class names, state classes, and layout CSS while sourcing the primitive look from one place, so they can no longer diverge.</blockquote>
+    <p style="margin: 0; font-size: 13.5px; line-height: 1.6; color: #B0B0B0; text-wrap: pretty;">It ships three generators — <code style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: #81A1C1;">vguiSwitchCss</code>, <code style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: #81A1C1;">vguiCapsCss</code>, <code style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: #81A1C1;">vguiInputInteractionCss</code> — and the cockpit already consumes all three. The plan is to widen it, not to build something new. Its stated design constraints (no shared class names, plain CSS strings, token-driven) hold for everything below.</p>
+  </div>
+
+  <!-- STEPS -->
+  <sc-for list="{{ steps }}" as="s" hint-placeholder-count="6">
+    <div style="display: flex; flex-direction: column; gap: 16px;">
+
+      <div style="display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;">
+        <span style="display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 2px; background: {{ s.numBg }}; color: {{ s.numFg }}; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600;">{{ s.n }}</span>
+        <span style="font-size: 20px; font-weight: 600; letter-spacing: -0.015em;">{{ s.title }}</span>
+        <span style="display: inline-flex; align-items: center; height: 20px; border: 1px solid {{ s.effRing }}; border-radius: 2px; overflow: hidden; font-family: 'JetBrains Mono', monospace; font-size: 10px;">
+          <span style="padding: 0 6px; color: #9D9D9D; background: #202020;">EFFORT</span>
+          <span style="padding: 0 6px; color: {{ s.effFg }}; background: {{ s.effBg }};">{{ s.effort }}</span>
+        </span>
+        <span style="display: inline-flex; align-items: center; height: 20px; border: 1px solid {{ s.riskRing }}; border-radius: 2px; overflow: hidden; font-family: 'JetBrains Mono', monospace; font-size: 10px;">
+          <span style="padding: 0 6px; color: #9D9D9D; background: #202020;">RISK</span>
+          <span style="padding: 0 6px; color: {{ s.riskFg }}; background: {{ s.riskBg }};">{{ s.risk }}</span>
+        </span>
+      </div>
+
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 28px; align-items: start;">
+
+        <div style="display: flex; flex-direction: column; gap: 14px; min-width: 0;">
+          <p style="margin: 0; font-size: 13.5px; line-height: 1.6; color: #B0B0B0; text-wrap: pretty;">{{ s.body }}</p>
+
+          <div style="border: 1px solid #2B2B2B; border-radius: 3px; overflow: hidden;">
+            <div style="display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; background: #202020; border-bottom: 1px solid #2B2B2B;">
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #B0B0B0;">{{ s.file }}</span>
+            </div>
+            <div style="background: #1F1F1F; padding: 10px 0;">
+              <sc-for list="{{ s.diff }}" as="d" hint-placeholder-count="6">
+                <div style="display: grid; grid-template-columns: 20px 1fr; gap: 8px; padding: 1px 12px; background: {{ d.bg }};">
+                  <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: {{ d.markFg }}; text-align: center;">{{ d.mark }}</span>
+                  <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.65; color: {{ d.fg }}; white-space: pre-wrap; word-break: break-word;">{{ d.text }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+          <div style="display: flex; flex-direction: column; gap: 8px; padding: 16px; background: #202020; border: 1px solid #2B2B2B; border-radius: 3px;">
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: #9D9D9D;">Blast radius</span>
+            <span style="font-size: 12.5px; line-height: 1.55; color: #B0B0B0;">{{ s.radius }}</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px; padding: 16px; background: #202020; border: 1px solid #2B2B2B; border-radius: 3px;">
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: #9D9D9D;">Fixes</span>
+            <span style="font-size: 12.5px; line-height: 1.55; color: #B0B0B0;">{{ s.fixes }}</span>
+          </div>
+          <sc-if value="{{ s.hasWatch }}" hint-placeholder-val="{{ true }}">
+            <div style="display: flex; flex-direction: column; gap: 8px; padding: 16px; background: rgba(204,167,0,0.08); border: 1px solid rgba(204,167,0,0.35); border-radius: 3px;">
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: #CCA700;">Watch out</span>
+              <span style="font-size: 12.5px; line-height: 1.55; color: #B0B0B0;">{{ s.watch }}</span>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+
+      <div style="height: 1px; background: #2B2B2B; margin-top: 6px;"></div>
+    </div>
+  </sc-for>
+
+  <!-- SEQUENCING -->
+  <div style="display: flex; flex-direction: column; gap: 18px;">
+    <h2 style="margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em;">Sequencing</h2>
+    <div style="display: grid; grid-template-columns: 120px 1fr 190px; border: 1px solid #2B2B2B; border-radius: 3px; overflow: hidden;">
+      <div style="grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; background: #202020; border-bottom: 1px solid #2B2B2B;">
+        <span style="padding: 9px 14px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9D9D9D;">Ship</span>
+        <span style="padding: 9px 14px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9D9D9D;">Contents</span>
+        <span style="padding: 9px 14px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9D9D9D;">Gate</span>
+      </div>
+      <sc-for list="{{ waves }}" as="w" hint-placeholder-count="4">
+        <div style="grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; border-bottom: 1px solid rgba(255,255,255,0.06); align-items: start;">
+          <span style="padding: 11px 14px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #81A1C1;">{{ w.wave }}</span>
+          <span style="padding: 11px 14px; font-size: 12.5px; line-height: 1.55; color: #CCCCCC;">{{ w.what }}</span>
+          <span style="padding: 11px 14px; font-size: 12.5px; line-height: 1.55; color: #9D9D9D;">{{ w.gate }}</span>
+        </div>
+      </sc-for>
+    </div>
+    <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #9D9D9D; max-width: 760px; text-wrap: pretty;">Steps 1–4 are invariance-preserving in structure: no DOM changes, no class renames, no test rewrites. Step 6 is the only one that changes behaviour, and it should be decided before wave A ships — the footer hint disappears with it, and that string is currently the only place the save model is documented.</p>
+  </div>
+
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1180,&quot;height&quot;:2600}}">
+const C = {
+  fg: '#CCCCCC', muted: '#9D9D9D',
+  addBg: 'rgba(78,201,176,0.10)', addFg: '#8FD9C7', addMark: '#4EC9B0',
+  delBg: 'rgba(241,76,76,0.10)', delFg: '#E8A0A0', delMark: '#F14C4C',
+  ctxFg: '#8A8A8A',
+};
+
+const del = (text) => ({ mark: '-', text, bg: C.delBg, fg: C.delFg, markFg: C.delMark });
+const add = (text) => ({ mark: '+', text, bg: C.addBg, fg: C.addFg, markFg: C.addMark });
+const ctx = (text) => ({ mark: ' ', text, bg: 'transparent', fg: C.ctxFg, markFg: 'transparent' });
+
+const TONE = {
+  low:  { ring: 'rgba(78,201,176,0.45)', bg: 'rgba(78,201,176,0.14)', fg: '#4EC9B0' },
+  med:  { ring: 'rgba(204,167,0,0.45)',  bg: 'rgba(204,167,0,0.14)',  fg: '#CCA700' },
+  high: { ring: 'rgba(241,76,76,0.45)',  bg: 'rgba(241,76,76,0.14)',  fg: '#F14C4C' },
+};
+
+class Component extends DCLogic {
+  renderVals() {
+    const step = (n, tone, o) => ({
+      n, ...o,
+      numBg: n === '01' ? '#81A1C1' : '#2B2B2B',
+      numFg: n === '01' ? '#191c22' : '#CCCCCC',
+      effRing: TONE[o.effortTone].ring, effBg: TONE[o.effortTone].bg, effFg: TONE[o.effortTone].fg,
+      riskRing: TONE[o.riskTone].ring, riskBg: TONE[o.riskTone].bg, riskFg: TONE[o.riskTone].fg,
+      hasWatch: !!o.watch,
+    });
+
+    const steps = [
+      step('01', null, {
+        title: 'Retarget the shared accent token',
+        effort: '1 LINE', effortTone: 'low', risk: 'LOW', riskTone: 'low',
+        body: 'VGUI_DEFAULT_TOKENS is the default token set every generator falls back to, and its accent is the hardcoded blue. The kernel went monochrome-then-themed and this line kept the old value alive underneath all three kits. Point it at the theme token and the drawer starts following vg-theme-cursor / vg-theme-cursor-dark with no other edit.',
+        file: 'packages/kernel/src/ui/primitives.ts · VGUI_DEFAULT_TOKENS',
+        diff: [
+          ctx('export const VGUI_DEFAULT_TOKENS: VguiTokens = {'),
+          del("  accent: 'var(--vg-accent-color, #4f9cf9)',"),
+          add("  accent: 'var(--vg-chrome-accent, var(--vg-focus-ring-color))',"),
+          ctx("  border: 'var(--vg-border-color, #2a3140)',"),
+          ctx('  …'),
+          ctx('};'),
+        ],
+        radius: 'Every kit that calls a vgui* generator without passing its own tokens. The cockpit passes CKP_TOKENS, so it needs step 2 as well.',
+        fixes: 'Finding 01 — two accent systems in one window.',
+      }),
+
+      step('02', null, {
+        title: 'Purge the #4f9cf9 fallbacks',
+        effort: '~40 SITES', effortTone: 'low', risk: 'LOW', riskTone: 'low',
+        body: 'SHELL_CSS and the cockpit stylesheet repeat var(--vg-accent-color, #4f9cf9) throughout — nav triggers, menu items, footer buttons, band numbers, focus rings. It is a mechanical find-and-replace. Do the alias declarations at the same time so the kits stop redeclaring what the theme already sets.',
+        file: 'packages/ext/src/shell/shell.ts · packages/ext/src/ui/cockpit.ts · packages/customizer/src/styles.ts',
+        diff: [
+          ctx('/* shell.ts — SHELL_CSS */'),
+          del('.vgext-sheet-nav-menu-item.is-active {'),
+          del('  color: var(--vg-accent-color, #4f9cf9);'),
+          del('  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 10%, transparent);'),
+          add('.vgext-sheet-nav-menu-item.is-active {'),
+          add('  color: var(--vg-chrome-accent);'),
+          add('  background: color-mix(in srgb, var(--vg-chrome-accent) 14%, transparent);'),
+          ctx('}'),
+          ctx(''),
+          ctx('/* cockpit.ts — the kit stops owning an accent, it aliases one */'),
+          del('  --ckp-accent: var(--vg-accent-color, #4f9cf9);'),
+          add('  --ckp-accent: var(--vg-chrome-accent);'),
+        ],
+        radius: 'Drawer chrome, cockpit panes, customizer panels. No DOM or class changes.',
+        fixes: 'Finding 01, and the 14% selected tint from the system spec lands everywhere at once.',
+        watch: 'shell.ts also pins --vg-radius: 2px on .vgext-root while the kernel columns panel asks for var(--vg-radius, 6px). Set the kernel fallbacks to 2px in the same pass or list rows stay inconsistent between the side bar and the drawer.',
+      }),
+
+      step('03', null, {
+        title: 'Widen primitives.ts with four more generators',
+        effort: '~1 DAY', effortTone: 'med', risk: 'LOW', riskTone: 'low',
+        body: 'Add the primitives the system defines but the file does not yet cover: the settings row, the four-rung button ladder, the status chip, the icon tile. Follow the existing signature convention exactly — caller supplies class names, generator supplies values — so no kit has to rename anything.',
+        file: 'packages/kernel/src/ui/primitives.ts',
+        diff: [
+          add('export interface VguiRowClasses {'),
+          add('  root: string; label: string; help: string; control: string;'),
+          add('}'),
+          add(''),
+          add('/** Settings row — label + help stacked left, control right on a'),
+          add(' *  fixed column edge. Help sits under the LABEL so long help never'),
+          add(' *  displaces the control column. */'),
+          add('export function vguiRowCss(c: VguiRowClasses, t = VGUI_DEFAULT_TOKENS): string { … }'),
+          add(''),
+          add("export function vguiButtonCss(c: { primary; secondary; quiet; danger }, t?): string { … }"),
+          add('export function vguiChipCss(c: { root; key; value; tones }, t?): string { … }'),
+          add('export function vguiTileCss(c: { root; on }, t?): string { … }'),
+        ],
+        radius: 'Nothing until a kit consumes them. Additive and independently testable.',
+        fixes: 'Sets up 04. Nothing visible on its own.',
+      }),
+
+      step('04', null, {
+        title: 'Change the cockpit builders, not the modules',
+        effort: '~2 DAYS', effortTone: 'med', risk: 'MED', riskTone: 'med',
+        body: 'row(), band(), switchToggle(), pillGroup(), chip() and iconTile() in cockpit.ts are called by every settings module. Editing the builders updates Column Settings, Calculated Columns, Styling Rules, Bulk Update and Smart Edit simultaneously, without opening any of them. Three changes carry most of the value.',
+        file: 'packages/ext/src/ui/cockpit.ts',
+        diff: [
+          ctx('/* a. help moves under the label */'),
+          del('export function row(label, control, hint?) {'),
+          del('  root.appendChild(caps(label));'),
+          del('  const main = el(\'div\', \'ckp-row-main\');'),
+          del('  main.appendChild(control);'),
+          del('  if (hint) main.appendChild(el(\'div\', \'ckp-hint\', hint));'),
+          add('export function row(label, control, help?) {'),
+          add('  const left = el(\'div\', \'ckp-row-label\');'),
+          add('  left.appendChild(el(\'span\', \'ckp-row-title\', label));'),
+          add('  if (help) left.appendChild(el(\'div\', \'ckp-help\', help));'),
+          add('  root.append(left, wrap(control));'),
+          ctx('}'),
+          ctx(''),
+          ctx('/* b. one boolean shape — the pill retires */'),
+          del('export function switchToggle(checked, onChange): HTMLElement {'),
+          del("  const root = el('button', `ckp-switch${checked ? ' on' : ''}`);"),
+          add('export function checkbox(checked, onChange): HTMLElement {'),
+          add("  const box = el('input', 'vg-checkbox');   // kernel's canonical class"),
+          ctx(''),
+          ctx('/* c. ordinal numbers go — sections are conditional */'),
+          del('export function band(num: string, title: string) {'),
+          del("  head.appendChild(el('span', 'ckp-band-num', num));"),
+          add('export function band(title: string) {'),
+        ],
+        radius: 'Every settings module, via the builders. Call sites need the dropped band() argument removed — a compiler-guided sweep, not a judgement call.',
+        fixes: 'Findings 02, 03, 08 and the uppercase-help half of 03.',
+        watch: 'switchToggle is exported and also used outside the cockpit. Keep it as a deprecated alias for one cycle rather than deleting it, and let the ext tests that assert .ckp-switch tell you the real call sites.',
+      }),
+
+      step('05', null, {
+        title: 'Fix the icon catalog and the odd control out',
+        effort: '~2 HOURS', effortTone: 'low', risk: 'LOW', riskTone: 'low',
+        body: 'ICON_GROUPS names three icons that do not exist in the generated bundle — circle-dot, circle and target are pure <circle> elements, and build-lucide keeps only <path> data, so the picker paints three empty buttons. Either drop them or teach the generator to emit circles. In the same file, POSITION is the only pick-one control rendered as a menu button.',
+        file: 'packages/ext/src/modules/conditionalStyling.ts · packages/kernel/src/icons/build-lucide.ts',
+        diff: [
+          ctx('const ICON_GROUPS: Array<[label: string, icons: string[]]> = ['),
+          del("  ['Status', ['circle-dot', 'circle', 'flag', 'flag-off', 'pin', …]],"),
+          add("  ['Status', ['flag', 'flag-off', 'pin', 'pin-off', 'bookmark', …]],"),
+          del("  ['Favorite', ['star', 'star-off', 'eye', 'heart', 'target', …]],"),
+          add("  ['Favorite', ['star', 'star-off', 'eye', 'heart', 'circle-dashed', …]],"),
+          ctx('];'),
+          ctx(''),
+          ctx('/* POSITION joins TARGET and MODE as a segmented group */'),
+          del("row('Position', menuButton(POSITIONS, value, onChange))"),
+          add("row('Position', pillGroup(POSITIONS, value, onChange),"),
+          add("    'Inline flows with the value; positional slots overlay the cell corners')"),
+        ],
+        radius: 'The Styling Rules indicator picker only.',
+        fixes: 'Findings 07 and 10.',
+        watch: 'The same path-only extraction silently degrades circle-check, circle-x, circle-alert and clock to a bare tick, cross, dot and pair of hands. Fixing build-lucide to emit <circle>/<line> geometry solves the blank tiles and those four at once, and is the better fix if you have the hour.',
+      }),
+
+      step('06', null, {
+        title: 'Collapse the three save models',
+        effort: '~1 WEEK', effortTone: 'high', risk: 'HIGH', riskTone: 'high',
+        body: 'The only step that changes behaviour rather than appearance. Today a pane owns RESET / SAVE, the drawer footer owns DISCARD / DONE, the title bar owns Save*, and the DataProvider editor owns UPDATE DATAPROVIDER. One dirty buffer per drawer session, committed once, removes the footer sentence that currently explains the hierarchy.',
+        file: 'packages/ext/src/profiles/configSession.ts · packages/ext/src/shell/shell.ts',
+        diff: [
+          ctx('/* the footer stops teaching the model, because there is one */'),
+          del("hint.textContent = 'Save cards in each tab · Title-bar Save* persists"),
+          del("  the profile · Esc closes';"),
+          add("hint.textContent = ctx.session.isDirty()"),
+          add("  ? `${ctx.session.pendingCount()} unsaved changes`"),
+          add("  : 'All changes saved';"),
+          ctx(''),
+          ctx('/* modules stage into the session instead of committing on their own */'),
+          del('onSave: () => grid.editColumn(id, patch)'),
+          add('onChange: (patch) => ctx.session.stage(moduleId, patch)'),
+        ],
+        radius: 'Every settings module\'s save path, plus ConfigSession and the profiles controller.',
+        fixes: 'Finding 11, and it is the reason findings 01 and 11 both point at the drawer.',
+        watch: 'Decide this before wave A ships. If it is not going to happen, the visual work should keep a per-pane Save and the footer hint has to stay — a redesigned drawer that still needs a sentence to explain saving is worse than the current one, not better.',
+      }),
+    ];
+
+    const waves = [
+      { wave: 'Wave A', what: 'Steps 01 + 02 — accent retarget and fallback purge', gate: 'None. Ship on its own.' },
+      { wave: 'Wave B', what: 'Steps 03 + 04 — widen primitives, change the builders', gate: 'Needs A. Snapshot tests will churn.' },
+      { wave: 'Wave C', what: 'Step 05 — icon catalog, POSITION control', gate: 'Independent. Any time.' },
+      { wave: 'Wave D', what: 'Step 06 — one save model', gate: 'Product decision, taken before A ships.' },
+    ];
+
+    return { steps, waves };
+  }
+}
+
+</script>
+</body>
+</html>

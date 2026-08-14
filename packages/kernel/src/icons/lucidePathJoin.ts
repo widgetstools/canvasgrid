@@ -108,5 +108,57 @@ export function extractPaths(svg: string): string[] {
   }
   for (const path of emittedLines) paths.push(path);
 
+  // <circle cx cy r> → two-arc path so stroke-only Lucide rings survive
+  // path-only bundling (circle, circle-dot, target, and the ring on
+  // circle-check / circle-x / circle-alert / clock).
+  const reCircle = /<circle\b[^>]*>/g;
+  while ((m = reCircle.exec(svg)) !== null) {
+    const tag = m[0];
+    const cx = Number(attr(tag, 'cx') ?? 0);
+    const cy = Number(attr(tag, 'cy') ?? 0);
+    const r = Number(attr(tag, 'r') ?? 0);
+    if (!(r > 0)) continue;
+    paths.push(`M${cx - r},${cy}a${r},${r} 0 1,0 ${2 * r},0a${r},${r} 0 1,0 ${-2 * r},0`);
+  }
+
+  // <rect x y width height rx ry>
+  const reRect = /<rect\b[^>]*>/g;
+  while ((m = reRect.exec(svg)) !== null) {
+    const tag = m[0];
+    const x = Number(attr(tag, 'x') ?? 0);
+    const y = Number(attr(tag, 'y') ?? 0);
+    const w = Number(attr(tag, 'width') ?? 0);
+    const h = Number(attr(tag, 'height') ?? 0);
+    if (!(w > 0 && h > 0)) continue;
+    const rx = Number(attr(tag, 'rx') ?? attr(tag, 'ry') ?? 0);
+    const ry = Number(attr(tag, 'ry') ?? attr(tag, 'rx') ?? 0);
+    paths.push(rectToPath(x, y, w, h, rx, ry));
+  }
+
   return paths;
+}
+
+function attr(tag: string, name: string): string | undefined {
+  const m = new RegExp(`\\b${name}="([^"]+)"`).exec(tag);
+  return m?.[1];
+}
+
+function rectToPath(x: number, y: number, w: number, h: number, rx: number, ry: number): string {
+  const rdx = Math.min(Math.max(rx, 0), w / 2);
+  const rdy = Math.min(Math.max(ry, 0), h / 2);
+  if (rdx === 0 && rdy === 0) {
+    return `M${x},${y}h${w}v${h}h${-w}z`;
+  }
+  return [
+    `M${x + rdx},${y}`,
+    `h${w - 2 * rdx}`,
+    `a${rdx},${rdy} 0 0 1 ${rdx},${rdy}`,
+    `v${h - 2 * rdy}`,
+    `a${rdx},${rdy} 0 0 1 ${-rdx},${rdy}`,
+    `h${-(w - 2 * rdx)}`,
+    `a${rdx},${rdy} 0 0 1 ${-rdx},${-rdy}`,
+    `v${-(h - 2 * rdy)}`,
+    `a${rdx},${rdy} 0 0 1 ${rdx},${-rdy}`,
+    'z',
+  ].join('');
 }

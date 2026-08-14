@@ -4,7 +4,7 @@
 import type { BulkUpdateSettings } from '@wellsfargo-starui/velocity-grid-edit';
 import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import {
-  band, el, injectCockpitStyles, lucideSvg, numberInput, row, switchToggle,
+  band, el, injectCockpitStyles, lucideSvg, numberInput, row, checkbox, emptyState,
 } from '../ui/cockpit';
 import { clone, editHandle } from './editHandle';
 
@@ -53,49 +53,48 @@ export function bulkUpdateModule(): SettingsModule {
       const render = (): void => {
         root.replaceChildren();
         if (!draft) {
-          root.appendChild(el('div', 'ckp-empty', 'Bulk Update requires wireEditIntoKernel(grid).'));
+          root.appendChild(emptyState({
+            title: 'Edit engine not wired',
+            description: 'Bulk Update requires wireEditIntoKernel(grid).',
+            icon: 'replace',
+          }));
           return;
         }
         const d = draft;
         const head = el('div', 'ckp-pane-head');
         const title = el('div', 'ckp-title', 'Bulk Update');
-        const resetBtn = el('button', 'ckp-actbtn') as HTMLButtonElement;
+        const resetBtn = el('button', 'ckp-actbtn ckp-btn-secondary') as HTMLButtonElement;
         resetBtn.type = 'button';
         resetBtn.innerHTML = `${lucideSvg('rotate-ccw', 12)}<span>Reset</span>`;
         resetBtn.disabled = !isDirty();
         resetBtn.addEventListener('click', reset);
-        const saveBtn = el('button', 'ckp-actbtn') as HTMLButtonElement;
-        saveBtn.type = 'button';
-        saveBtn.innerHTML = `${lucideSvg('save', 12)}<span>Save</span>`;
-        saveBtn.disabled = !isDirty();
-        saveBtn.addEventListener('click', save);
-        head.append(title, resetBtn, saveBtn);
+        head.append(title, resetBtn);
         root.appendChild(head);
 
         const body = el('div', 'ckp-flat-body');
 
-        const g = band('01', 'Global');
+        const g = band('Global');
         g.body.append(
-          row('Enabled', switchToggle(d.enabled, (v) => { d.enabled = v; render(); })),
+          row('Enabled', checkbox(d.enabled, (v) => { d.enabled = v; render(); })),
           row('Confirm threshold', numberInput(d.confirmThreshold, (v) => {
             if (v === undefined) return;
             d.confirmThreshold = Math.max(0, Math.floor(v));
             render();
           }), '0 = never'),
-          row('Single column', switchToggle(d.enforceSingleColumn, (v) => {
+          row('Single column', checkbox(d.enforceSingleColumn, (v) => {
             d.enforceSingleColumn = v;
             render();
           })),
-          row('Record history', switchToggle(d.recordHistory, (v) => {
+          row('Record history', checkbox(d.recordHistory, (v) => {
             d.recordHistory = v;
             render();
           }), 'Logs operations to the undo/redo journal'),
         );
         body.appendChild(g.root);
 
-        const drop = band('02', 'Dropdown');
+        const drop = band('Dropdown');
         drop.body.append(
-          row('Distinct values', switchToggle(d.showDistinctValues, (v) => {
+          row('Distinct values', checkbox(d.showDistinctValues, (v) => {
             d.showDistinctValues = v;
             render();
           })),
@@ -113,6 +112,7 @@ export function bulkUpdateModule(): SettingsModule {
       render();
       return {
         destroy() { root.replaceChildren(); root.remove(); },
+        commit() { if (isDirty()) save(); },
         refresh() { load(); render(); },
       };
     },

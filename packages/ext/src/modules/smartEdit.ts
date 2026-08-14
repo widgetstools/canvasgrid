@@ -1,11 +1,11 @@
 /**
  * Smart Edit — Customize sheet flat settings (starui customizer-ui #09).
- * GLOBAL / OPERATIONS / SAFETY bands; Save commits via edit handle.
+ * GLOBAL / OPERATIONS / SAFETY bands; Done commits via edit handle.
  */
 import type { SmartEditOp, SmartEditSettings } from '@wellsfargo-starui/velocity-grid-edit';
 import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import {
-  band, el, injectCockpitStyles, lucideSvg, numberInput, row, switchToggle,
+  band, el, injectCockpitStyles, lucideSvg, numberInput, row, checkbox, emptyState,
 } from '../ui/cockpit';
 import { clone, editHandle } from './editHandle';
 
@@ -63,43 +63,42 @@ export function smartEditModule(): SettingsModule {
       const render = (): void => {
         root.replaceChildren();
         if (!draft) {
-          root.appendChild(el('div', 'ckp-empty', 'Smart Edit requires wireEditIntoKernel(grid).'));
+          root.appendChild(emptyState({
+            title: 'Edit engine not wired',
+            description: 'Smart Edit requires wireEditIntoKernel(grid).',
+            icon: 'pencil',
+          }));
           return;
         }
         const d = draft;
         const head = el('div', 'ckp-pane-head');
         const title = el('div', 'ckp-title', 'Smart Edit');
-        const resetBtn = el('button', 'ckp-actbtn') as HTMLButtonElement;
+        const resetBtn = el('button', 'ckp-actbtn ckp-btn-secondary') as HTMLButtonElement;
         resetBtn.type = 'button';
         resetBtn.innerHTML = `${lucideSvg('rotate-ccw', 12)}<span>Reset</span>`;
         resetBtn.disabled = !isDirty();
         resetBtn.addEventListener('click', reset);
-        const saveBtn = el('button', 'ckp-actbtn') as HTMLButtonElement;
-        saveBtn.type = 'button';
-        saveBtn.innerHTML = `${lucideSvg('save', 12)}<span>Save</span>`;
-        saveBtn.disabled = !isDirty();
-        saveBtn.addEventListener('click', save);
-        head.append(title, resetBtn, saveBtn);
+        head.append(title, resetBtn);
         root.appendChild(head);
 
         const body = el('div', 'ckp-flat-body');
 
-        const g = band('01', 'Global');
+        const g = band('Global');
         g.body.append(
-          row('Enabled', switchToggle(d.enabled, (v) => { d.enabled = v; render(); })),
+          row('Enabled', checkbox(d.enabled, (v) => { d.enabled = v; render(); })),
           row('Increment step', numberInput(d.incrementStep, (v) => {
             if (v === undefined) return;
             d.incrementStep = v;
             render();
           })),
-          row('K/M/B shortcuts', switchToggle(d.magnitudeShortcutsEnabled, (v) => {
+          row('K/M/B shortcuts', checkbox(d.magnitudeShortcutsEnabled, (v) => {
             d.magnitudeShortcutsEnabled = v;
             render();
           }), 'Parse K/M/B suffixes in numeric cell editors'),
         );
         body.appendChild(g.root);
 
-        const ops = band('02', 'Operations');
+        const ops = band('Operations');
         const group = el('div', 'ckp-pills');
         for (const { op, label } of OPS) {
           const on = d.enabledOps.includes(op);
@@ -120,22 +119,22 @@ export function smartEditModule(): SettingsModule {
         ops.body.append(row('Toolbar ops', group));
         body.appendChild(ops.root);
 
-        const safety = band('03', 'Safety');
+        const safety = band('Safety');
         safety.body.append(
           row('Confirm above N', numberInput(d.confirmThreshold, (v) => {
             if (v === undefined) return;
             d.confirmThreshold = Math.max(0, Math.floor(v));
             render();
           }), '0 = never'),
-          row('Single column', switchToggle(d.enforceSingleColumn, (v) => {
+          row('Single column', checkbox(d.enforceSingleColumn, (v) => {
             d.enforceSingleColumn = v;
             render();
           })),
-          row('Preview before', switchToggle(d.previewBeforeApply, (v) => {
+          row('Preview before', checkbox(d.previewBeforeApply, (v) => {
             d.previewBeforeApply = v;
             render();
           })),
-          row('Record history', switchToggle(d.recordHistory, (v) => {
+          row('Record history', checkbox(d.recordHistory, (v) => {
             d.recordHistory = v;
             render();
           }), 'Logs operations to the undo/redo journal'),
@@ -148,6 +147,7 @@ export function smartEditModule(): SettingsModule {
       render();
       return {
         destroy() { root.replaceChildren(); root.remove(); },
+        commit() { if (isDirty()) save(); },
         refresh() { load(); render(); },
       };
     },

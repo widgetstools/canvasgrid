@@ -7,7 +7,7 @@ export const PSP_EDITOR_CSS = `
   --psp-fg: var(--vg-fg-color, #e6e8ec);
   --psp-muted: var(--vg-muted-fg-color, #9aa3b2);
   --psp-border: color-mix(in srgb, var(--psp-fg) 14%, transparent);
-  --psp-accent: var(--vg-accent-color, #4f9cf9);
+  --psp-accent: var(--vg-chrome-accent);
   --psp-bg: var(--vg-popup-bg, #141a22);
   --psp-surface: color-mix(in srgb, var(--psp-fg) 4%, transparent);
   --psp-input: color-mix(in srgb, var(--psp-fg) 6%, transparent);

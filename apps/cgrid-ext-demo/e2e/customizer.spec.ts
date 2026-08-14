@@ -111,7 +111,7 @@ test.describe('Options tab', () => {
     await openCustomizer(page, 'grid-options');
     const before = await gridOption<boolean>(page, 'animateRows');
     const row = page.locator('[data-field-key="animateRows"]');
-    await row.locator('.vg-settings-toggle').click();
+    await row.locator('input.vg-checkbox').click();
     await expect.poll(() => gridOption<boolean>(page, 'animateRows')).toBe(!before);
     await expect(page.locator('.vg-settings-panel')).toContainText(/Modified/i);
   });
@@ -121,9 +121,9 @@ test.describe('Options tab', () => {
     const row = page.locator('[data-field-key="floatingFilter"]');
     await expect(row).toBeVisible();
     // Default is on (undefined/true). Turn off.
-    const toggle = row.locator('.vg-settings-toggle');
-    const wasOn = await toggle.getAttribute('aria-checked');
-    if (wasOn !== 'false') await toggle.click();
+    const toggle = row.locator('input.vg-checkbox');
+    const wasOn = await toggle.isChecked();
+    if (wasOn) await toggle.click();
     await expect.poll(async () => {
       const v = await gridOption<boolean | undefined>(page, 'floatingFilter');
       return v === false;

@@ -8,7 +8,7 @@
  * done through the public API, that's a kernel gap to fix in the kernel,
  * never worked around here.
  */
-import { VelocityGrid, formatPrice32, DEFAULT_LAYOUT_ID, themeStarui, type CColDef, type CColGroupDef, type GridLayoutsBundle, type CgThemeParams } from '@wellsfargo-starui/velocity-grid';
+import { VelocityGrid, formatPrice32, DEFAULT_LAYOUT_ID, themeCursor, type CColDef, type CColGroupDef, type GridLayoutsBundle, type CgThemeParams } from '@wellsfargo-starui/velocity-grid';
 import '@wellsfargo-starui/velocity-grid/style.css';
 import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid-format';
 import { wireEditIntoKernel } from '@wellsfargo-starui/velocity-grid-edit';
@@ -168,7 +168,7 @@ const grid = new VelocityGrid<Position>(gridHost, {
   persistState: true,
   getRowId: (r) => r.positionId,
   columnDefs,
-  theme: dark ? 'vg-theme-starui-dark' : 'vg-theme-starui',
+  theme: dark ? 'vg-theme-cursor-dark' : 'vg-theme-cursor',
   // editable: true so the testbed can exercise the edit trigger (single /
   // double click) out of the box; group / totals / pivot cells stay
   // read-only via the editable predicate.
@@ -184,14 +184,14 @@ const grid = new VelocityGrid<Position>(gridHost, {
 wireFormat(grid);
 grid.updateGridOptions({ columnDefs });
 
-// Programmatic CgTheme demo hook — build a theme object from the starui
+// Programmatic CgTheme demo hook — build a theme object from the Cursor
 // built-in and apply it, so live re-tinting (accent → focus/hover/selection
 // derived via color-mix) can be exercised from the console:
 //   __cgTheme.apply({ accentColor: '#e0873a' })  // orange accent, everything re-tints
-//   __cgTheme.apply({})                            // back to plain starui
+//   __cgTheme.apply({})                            // back to plain Cursor
 //   __cgTheme.mode('dark' | 'light')
 (window as unknown as { __cgTheme: unknown }).__cgTheme = {
-  apply: (params: CgThemeParams = {}) => grid.setTheme(themeStarui.withParams(params)),
+  apply: (params: CgThemeParams = {}) => grid.setTheme(themeCursor.withParams(params)),
   mode: (m: 'light' | 'dark') => grid.setThemeMode(m),
 };
 
@@ -218,7 +218,7 @@ const { rules } = wireRules(grid);
 function applyTheme() {
   appEl.dataset.theme = dark ? 'dark' : 'light';
   themeBtn.textContent = dark ? 'Light theme' : 'Dark theme';
-  grid.setGridOption('theme', dark ? 'vg-theme-starui-dark' : 'vg-theme-starui');
+  grid.setGridOption('theme', dark ? 'vg-theme-cursor-dark' : 'vg-theme-cursor');
   localStorage.setItem('custdemo:theme', dark ? 'dark' : 'light');
 }
 applyTheme();

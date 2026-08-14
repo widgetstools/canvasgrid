@@ -699,7 +699,7 @@ export function createPositionsGrid(
     cellFlashDuration: 500,
     cellFadeDuration: 800,
     asyncTransactionWaitMillis: 50,
-    theme: 'vg-theme-starui-dark',
+    theme: 'vg-theme-cursor-dark',
     // Cycle 5 / Task 4 — turn on the click + key edit-triggers so the
     // editing.triggers E2E can exercise singleClickEdit and
     // enterNavigatesVerticallyAfterEdit. stopEditingWhenCellsLoseFocus

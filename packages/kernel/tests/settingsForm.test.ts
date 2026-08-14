@@ -54,6 +54,11 @@ const q = <T extends Element>(root: Element, sel: string): T => {
   return el;
 };
 
+function flipCheckbox(input: HTMLInputElement): void {
+  input.checked = !input.checked;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
 describe('SettingsForm', () => {
   it('renders bands + rows and commits control changes', () => {
     const { section, store } = makeSection();
@@ -63,8 +68,8 @@ describe('SettingsForm', () => {
     expect(form.root.querySelectorAll('.vg-settings-band')).toHaveLength(2);
     expect(form.root.querySelectorAll('.vg-settings-row')).toHaveLength(3);
 
-    const toggle = q<HTMLButtonElement>(form.root, '[data-field-key="alpha"] .vg-settings-toggle');
-    toggle.click();
+    const toggle = q<HTMLInputElement>(form.root, '[data-field-key="alpha"] input.vg-checkbox');
+    flipCheckbox(toggle);
     expect(store.alpha).toBe(true);
     expect(onChange).toHaveBeenCalled();
   });
@@ -76,7 +81,7 @@ describe('SettingsForm', () => {
     const row = q<HTMLElement>(form.root, '[data-field-key="alpha"]');
     expect(row.hasAttribute('data-modified')).toBe(false);
 
-    q<HTMLButtonElement>(row, '.vg-settings-toggle').click();
+    flipCheckbox(q<HTMLInputElement>(row, 'input.vg-checkbox'));
     expect(row.hasAttribute('data-modified')).toBe(true);
     expect(form.modifiedCount()).toBe(1);
 
@@ -119,7 +124,7 @@ describe('SettingsForm', () => {
     const { section } = makeSection();
     const form = new SettingsForm(section);
 
-    q<HTMLButtonElement>(form.root, '[data-field-key="alpha"] .vg-settings-toggle').click();
+    flipCheckbox(q<HTMLInputElement>(form.root, '[data-field-key="alpha"] input.vg-checkbox'));
     form.setModifiedOnly(true);
     expect(q<HTMLElement>(form.root, '[data-field-key="alpha"]').hidden).toBe(false);
     expect(q<HTMLElement>(form.root, '[data-field-key="beta"]').hidden).toBe(true);

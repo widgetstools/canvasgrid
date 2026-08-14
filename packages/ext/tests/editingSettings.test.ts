@@ -37,26 +37,24 @@ describe('editing settings modules', () => {
     host.remove();
   });
 
-  it('Smart Edit Save writes settings and syncs history.recordSources.smartEdit', () => {
+  it('Smart Edit Done writes settings and syncs history.recordSources.smartEdit', () => {
     const { host, ext, edit } = mountExt();
     ext.openSettings('smart-edit');
     // Toggle Record history off (last switch in Safety band) then Save.
-    const switches = Array.from(host.querySelectorAll('.ckp-switch'));
-    const record = switches.at(-1) as HTMLButtonElement;
+    const switches = Array.from(host.querySelectorAll('.vg-checkbox'));
+    const record = switches.at(-1) as HTMLInputElement;
     expect(edit.getSettings().smartEdit.recordHistory).toBe(true);
     record.click();
-    const save = Array.from(host.querySelectorAll('.ckp-actbtn')).find((b) =>
-      b.textContent?.includes('Save'),
-    ) as HTMLButtonElement;
-    expect(save.disabled).toBe(false);
-    save.click();
+    const done = host.querySelector('[data-testid="vgext-sheet-done"]') as HTMLButtonElement;
+    expect(done).toBeTruthy();
+    done.click();
     expect(edit.getSettings().smartEdit.recordHistory).toBe(false);
     expect(edit.getSettings().history.recordSources.smartEdit).toBe(false);
     ext.destroy();
     host.remove();
   });
 
-  it('Plus / Minus can add a nudge via Save', () => {
+  it('Plus / Minus can add a nudge via Done', () => {
     const { host, ext, edit } = mountExt();
     ext.openSettings('plus-minus');
     (host.querySelector('.ckp-addbtn') as HTMLButtonElement).click();
@@ -64,23 +62,19 @@ describe('editing settings modules', () => {
     // First text input in nudge band is Name
     name.value = 'Qty step';
     name.dispatchEvent(new Event('input', { bubbles: true }));
-    const save = Array.from(host.querySelectorAll('.ckp-actbtn')).find((b) =>
-      b.textContent?.includes('Save'),
-    ) as HTMLButtonElement;
-    save.click();
+    const done = host.querySelector('[data-testid="vgext-sheet-done"]') as HTMLButtonElement;
+    done.click();
     expect(edit.getNudges().some((n) => n.name === 'Qty step' || n.name === 'New nudge')).toBe(true);
     ext.destroy();
     host.remove();
   });
 
-  it('Shortcuts can add a letter binding via Save', () => {
+  it('Shortcuts can add a letter binding via Done', () => {
     const { host, ext, edit } = mountExt();
     ext.openSettings('shortcuts');
     (host.querySelector('.ckp-addbtn') as HTMLButtonElement).click();
-    const save = Array.from(host.querySelectorAll('.ckp-actbtn')).find((b) =>
-      b.textContent?.includes('Save'),
-    ) as HTMLButtonElement;
-    save.click();
+    const done = host.querySelector('[data-testid="vgext-sheet-done"]') as HTMLButtonElement;
+    done.click();
     expect(edit.getShortcuts().length).toBeGreaterThan(0);
     expect(edit.getShortcuts()[0]!.shortcutKey).toMatch(/^[a-z]$/);
     ext.destroy();

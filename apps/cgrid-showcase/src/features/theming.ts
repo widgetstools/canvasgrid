@@ -19,6 +19,8 @@ import { makeRows } from '../seedData';
  */
 type Density = 'compact' | 'normal' | 'comfortable';
 type ThemeChoice =
+  | 'vg-theme-cursor'
+  | 'vg-theme-cursor-dark'
   | 'vg-theme-starui'
   | 'vg-theme-starui-dark'
   | 'vg-theme-quartz'
@@ -55,7 +57,7 @@ export const theming: Feature = {
     'entire grid inside an encapsulated DOM tree.',
 
   mount(gridHost, controls, theme) {
-    let activeTheme: ThemeChoice = (theme as ThemeChoice) ?? 'vg-theme-quartz';
+    let activeTheme: ThemeChoice = (theme as ThemeChoice) ?? 'vg-theme-cursor';
     let activeDensity: Density = 'normal';
     let shadowMode = false;
     let liveOverrides: Record<string, string> = {};
@@ -144,6 +146,8 @@ export const theming: Feature = {
 
     const themeButtons: Record<ThemeChoice, HTMLButtonElement> = {} as any;
     const themeLabels: Record<ThemeChoice, string> = {
+      'vg-theme-cursor': 'Cursor Light',
+      'vg-theme-cursor-dark': 'Cursor Dark',
       'vg-theme-starui': 'StarUI Light',
       'vg-theme-starui-dark': 'StarUI Dark',
       'vg-theme-quartz': 'Quartz Light',

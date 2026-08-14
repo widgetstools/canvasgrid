@@ -14,11 +14,12 @@ import {
   numberInput,
   pillGroup,
   row,
-  switchToggle,
+  checkbox,
   textInput,
   appendPaneChrome,
   takePaneScroll,
   restorePaneScroll,
+  emptyState,
 } from '../ui/cockpit';
 import { clone, editHandle } from './editHandle';
 
@@ -205,32 +206,31 @@ export function shortcutsModule(): SettingsModule {
         const scrollTop = takePaneScroll(pane);
         pane.replaceChildren();
         if (!settingsDraft) {
-          pane.appendChild(el('div', 'ckp-empty', 'Shortcuts requires wireEditIntoKernel(grid).'));
+          pane.appendChild(emptyState({
+            title: 'Edit engine not wired',
+            description: 'Shortcuts requires wireEditIntoKernel(grid).',
+            icon: 'keyboard',
+          }));
           return;
         }
 
         const head = el('div', 'ckp-pane-head');
         const title = el('div', 'ckp-title', draft ? draft.name : 'Shortcuts');
-        const resetBtn = el('button', 'ckp-actbtn') as HTMLButtonElement;
+        const resetBtn = el('button', 'ckp-actbtn ckp-btn-secondary') as HTMLButtonElement;
         resetBtn.type = 'button';
         resetBtn.innerHTML = `${lucideSvg('rotate-ccw', 12)}<span>Reset</span>`;
         resetBtn.disabled = !isDirty();
         resetBtn.addEventListener('click', reset);
-        const saveBtn = el('button', 'ckp-actbtn') as HTMLButtonElement;
-        saveBtn.type = 'button';
-        saveBtn.innerHTML = `${lucideSvg('save', 12)}<span>Save</span>`;
-        saveBtn.disabled = !isDirty();
-        saveBtn.addEventListener('click', save);
-        head.append(title, resetBtn, saveBtn);
+        head.append(title, resetBtn);
         const body = appendPaneChrome(pane, head);
 
-        const glob = band('00', 'Global');
+        const glob = band('Global');
         glob.body.append(
-          row('Enabled', switchToggle(settingsDraft.enabled, (v) => {
+          row('Enabled', checkbox(settingsDraft.enabled, (v) => {
             settingsDraft!.enabled = v;
             renderAll();
           }), 'Focus a numeric cell and press a letter key'),
-          row('Record history', switchToggle(settingsDraft.recordHistory, (v) => {
+          row('Record history', checkbox(settingsDraft.recordHistory, (v) => {
             settingsDraft!.recordHistory = v;
             renderAll();
           })),
@@ -238,11 +238,15 @@ export function shortcutsModule(): SettingsModule {
         body.appendChild(glob.root);
 
         if (!draft) {
-          body.appendChild(el('div', 'ckp-empty', 'Select a shortcut, or add one with +'));
+          body.appendChild(emptyState({
+            title: 'No shortcut selected',
+            description: 'Select a shortcut, or add one with +.',
+            icon: 'keyboard',
+          }));
           return;
         }
         const d = draft;
-        const band1 = band('01', 'Shortcut');
+        const band1 = band('Shortcut');
         const keyIn = textInput(d.shortcutKey, () => { /* validated below */ }, {
           placeholder: 'a-z',
         });
@@ -256,13 +260,12 @@ export function shortcutsModule(): SettingsModule {
           const v = keyIn.value.toLowerCase().replace(/[^a-z]/g, '').slice(0, 1);
           keyIn.value = v;
           d.shortcutKey = v || d.shortcutKey;
-          saveBtn.disabled = !isDirty();
           resetBtn.disabled = !isDirty();
         });
 
         band1.body.append(
           row('Name', textInput(d.name, (v) => { d.name = v; renderAll(); })),
-          row('Enabled', switchToggle(d.enabled, (v) => { d.enabled = v; renderAll(); })),
+          row('Enabled', checkbox(d.enabled, (v) => { d.enabled = v; renderAll(); })),
           row('Key', keyIn),
           row('Operation', pillGroup(
             OP_PILLS.map(([op, label]) => [op, label] as [string, string]),
@@ -276,7 +279,6 @@ export function shortcutsModule(): SettingsModule {
           })),
           row('Columns', textInput(d.scope.columnIds.join(', '), (v) => {
             d.scope.columnIds = parseCols(v);
-            saveBtn.disabled = !isDirty();
             resetBtn.disabled = !isDirty();
           }, { placeholder: 'colIds, comma-separated (empty = all)' })),
         );
@@ -308,6 +310,7 @@ export function shortcutsModule(): SettingsModule {
 
       return {
         destroy() { root.replaceChildren(); root.remove(); },
+        commit() { if (isDirty()) save(); },
         refresh() {
           loadDefs();
           if (selectedId && !draftIsNew && !defs.some((s) => s.id === selectedId)) {

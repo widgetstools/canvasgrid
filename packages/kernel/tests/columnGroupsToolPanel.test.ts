@@ -211,9 +211,10 @@ describe('ColumnGroupsToolPanel', () => {
       expect(style.getAttribute('data-for')).toBe('trade');
       expect((gui.querySelector('[data-vg-node="trade"]') as HTMLElement).hasAttribute('data-selected')).toBe(true);
 
-      const marry = style.querySelector('[data-vg-field="marryChildren"] .vg-settings-toggle') as HTMLButtonElement;
-      expect(marry.getAttribute('aria-pressed')).toBe('false');
-      marry.click();
+      const marry = style.querySelector('[data-vg-field="marryChildren"] input.vg-checkbox') as HTMLInputElement;
+      expect(marry.checked).toBe(false);
+      marry.checked = true;
+      marry.dispatchEvent(new Event('change', { bubbles: true }));
       const apply = gui.querySelector('[data-vg-apply]') as HTMLButtonElement;
       expect(apply.disabled).toBe(false);
     });
@@ -239,9 +240,13 @@ describe('ColumnGroupsToolPanel', () => {
       selectTrade(gui);
       let style = styleIn(gui)!;
 
-      (style.querySelector('[data-vg-field="marryChildren"] .vg-settings-toggle') as HTMLButtonElement).click();
+      const marryCb = style.querySelector('[data-vg-field="marryChildren"] input.vg-checkbox') as HTMLInputElement;
+      marryCb.checked = true;
+      marryCb.dispatchEvent(new Event('change', { bubbles: true }));
       style = styleIn(gui)!;
-      (style.querySelector('[data-vg-field="openByDefault"] .vg-settings-toggle') as HTMLButtonElement).click();
+      const openCb = style.querySelector('[data-vg-field="openByDefault"] input.vg-checkbox') as HTMLInputElement;
+      openCb.checked = true;
+      openCb.dispatchEvent(new Event('change', { bubbles: true }));
       style = styleIn(gui)!;
       (style.querySelector('[data-vg-field="fontWeight"]') as HTMLButtonElement).click();
 

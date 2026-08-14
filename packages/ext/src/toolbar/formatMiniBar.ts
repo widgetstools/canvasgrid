@@ -172,8 +172,8 @@ function injectMiniBarStyles(): void {
   border-color: var(--vg-border-color, #2a3140);
 }
 .vgext-minibar-btn.is-on {
-  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 22%, transparent);
-  border-color: var(--vg-accent-color, #4f9cf9);
+  background: color-mix(in srgb, var(--vg-chrome-accent) 22%, transparent);
+  border-color: var(--vg-chrome-accent);
 }
 .vgext-minibar .vg-colorpicker {
   position: absolute;

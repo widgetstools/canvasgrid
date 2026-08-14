@@ -2,6 +2,7 @@ import type { VelocityGrid, StateModule, GridState } from '@wellsfargo-starui/ve
 import type {
   VelocityGridExtContext, ExtEventBus, ExtEvent, ProfileController, ExtModalHost, Unsub,
 } from './types';
+import { DrawerSession } from '../profiles/drawerSession';
 
 export function createExtEventBus(): ExtEventBus {
   const map = new Map<string, Set<(e: ExtEvent) => void>>();
@@ -20,6 +21,17 @@ export function createExtEventBus(): ExtEventBus {
  *  ModalHost, which structurally satisfies `ExtModalHost`. */
 export function createExtContext(grid: VelocityGrid, profiles: ProfileController): VelocityGridExtContext {
   const events = createExtEventBus();
+  const session = new DrawerSession();
+  const save = profiles.save.bind(profiles);
+  profiles.save = async () => {
+    await save();
+    session.clear();
+  };
+  const discard = profiles.discard.bind(profiles);
+  profiles.discard = async () => {
+    await discard();
+    session.clear();
+  };
   return {
     grid,
     getState: () => grid.getState(),
@@ -33,5 +45,6 @@ export function createExtContext(grid: VelocityGrid, profiles: ProfileController
     modal: grid.getModal() as unknown as ExtModalHost,
     events,
     profiles,
+    session,
   };
 }

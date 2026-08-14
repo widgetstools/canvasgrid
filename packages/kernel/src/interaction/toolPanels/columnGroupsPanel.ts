@@ -1088,20 +1088,14 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     row.setAttribute('data-vg-field', key);
     const lbl = labelEl('vg-colgroups-switch-label');
     lbl.textContent = label;
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'vg-settings-toggle';
-    btn.setAttribute('aria-label', label);
-    btn.setAttribute('aria-pressed', String(active));
-    const knob = el('span', 'vg-settings-toggle-knob');
-    btn.appendChild(knob);
-    btn.addEventListener('click', () => {
-      const next = btn.getAttribute('aria-pressed') !== 'true';
-      btn.setAttribute('aria-pressed', String(next));
-      onToggle(next);
-    });
-    const btnId = uid(); btn.id = btnId; lbl.htmlFor = btnId;
-    row.append(lbl, btn);
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.className = 'vg-checkbox vg-settings-checkbox';
+    input.setAttribute('aria-label', label);
+    input.checked = active;
+    input.addEventListener('change', () => onToggle(input.checked));
+    const inputId = uid(); input.id = inputId; lbl.htmlFor = inputId;
+    row.append(lbl, input);
     return row;
   }
 

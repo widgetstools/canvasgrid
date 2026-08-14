@@ -58,6 +58,16 @@ export interface ProfileController {
   list(): Promise<ProfileMeta[]>;
 }
 
+/** One dirty buffer for the open Customize drawer. */
+export interface DrawerSession {
+  stage(moduleId: string, patch?: unknown): void;
+  unstage(moduleId: string): void;
+  isDirty(): boolean;
+  pendingCount(): number;
+  clear(): void;
+  onChange(fn: () => void): Unsub;
+}
+
 /** Handed to every extension's `init` and `mount`/`render`. Kernel is
  *  reached through its PUBLIC api only. */
 export interface VelocityGridExtContext {
@@ -68,6 +78,7 @@ export interface VelocityGridExtContext {
   modal: ExtModalHost;
   events: ExtEventBus;
   profiles: ProfileController;
+  session: DrawerSession;
 }
 
 export type ExtensionKind = 'settings-module' | 'toolbar-item' | 'service';
@@ -82,7 +93,12 @@ export interface VelocityGridExtension {
 export type ModuleCategory =
   | 'layout' | 'data' | 'format' | 'editing' | 'workspace';
 
-export interface ModuleInstance { destroy(): void; refresh?(): void }
+export interface ModuleInstance {
+  destroy(): void;
+  refresh?(): void;
+  /** Flush the pane draft into the grid. Drawer Done calls this once. */
+  commit?(): void;
+}
 
 export interface SettingsModule extends VelocityGridExtension {
   kind: 'settings-module';

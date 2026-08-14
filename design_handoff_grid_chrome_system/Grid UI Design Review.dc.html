@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #181818; }
+  a { color: #4daafc; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+</style>
+</helmet>
+
+<section style="min-height: 100vh; box-sizing: border-box; padding: 56px 48px 96px; background: {{ t.pageBg }}; font-family: 'Inter', system-ui, sans-serif; color: {{ t.fg }}; display: flex; flex-direction: column; gap: 56px;">
+
+  <!-- HEADER -->
+  <div style="display: flex; align-items: flex-start; gap: 40px; flex-wrap: wrap;">
+    <div style="display: flex; flex-direction: column; gap: 14px; flex: 1 1 620px; max-width: 840px;">
+      <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: {{ t.muted }};">canvasgrid · ext chrome + kernel tool panels</div>
+      <h1 style="margin: 0; font-size: 40px; line-height: 1.08; letter-spacing: -0.025em; font-weight: 600;">Chrome UI review</h1>
+      <p style="margin: 0; font-size: 15px; line-height: 1.6; color: {{ t.fg80 }}; text-wrap: pretty;">Read from the live screens: the DataProvider editor, the Customize drawer, and the two cockpit editors (Calculated Columns, Styling Rules). They were built at different times against three separate stylesheets, and it shows — the same decision is made a different way on almost every screen.</p>
+      <p style="margin: 0; font-size: 15px; line-height: 1.6; color: {{ t.fg80 }}; text-wrap: pretty;">Below: eleven specific inconsistencies with the evidence, the system that resolves them, and two screens rebuilt on it. The target palette is <strong style="color: {{ t.fg }}; font-weight: 600;">vg-theme-cursor</strong> / <strong style="color: {{ t.fg }}; font-weight: 600;">vg-theme-cursor-dark</strong>, already in <code style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: {{ t.accent }};">tokens.css</code>.</p>
+    </div>
+
+    <div style="flex: 0 0 auto; display: flex; flex-direction: column; gap: 12px; padding: 18px 20px; background: {{ t.card }}; border: 1px solid {{ t.border }}; border-radius: 3px; min-width: 280px;">
+      <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: {{ t.muted }};">Target theme</div>
+      <div style="display: flex; gap: 6px;">
+        <button type="button" onClick="{{ setLight }}" style="flex: 1 1 0; height: 32px; border: 1px solid {{ t.lightBtnBorder }}; border-radius: 2px; background: {{ t.lightBtnBg }}; color: {{ t.lightBtnFg }}; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;">Cursor Light</button>
+        <button type="button" onClick="{{ setDark }}" style="flex: 1 1 0; height: 32px; border: 1px solid {{ t.darkBtnBorder }}; border-radius: 2px; background: {{ t.darkBtnBg }}; color: {{ t.darkBtnFg }}; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;">Cursor Dark</button>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 2px;">
+        <div style="display: flex; justify-content: space-between; gap: 16px;"><span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: {{ t.muted }};">--vg-bg-color</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px;">{{ t.bg }}</span></div>
+        <div style="display: flex; justify-content: space-between; gap: 16px;"><span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: {{ t.muted }};">--vg-header-bg</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px;">{{ t.chrome }}</span></div>
+        <div style="display: flex; justify-content: space-between; gap: 16px;"><span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: {{ t.muted }};">--vg-chrome-accent</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px;">{{ t.accent }}</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="height: 1px; background: {{ t.border }};"></div>
+
+  <!-- 01 — INVENTORY -->
+  <div style="display: flex; flex-direction: column; gap: 24px;">
+    <div style="display: flex; flex-direction: column; gap: 8px; max-width: 800px;">
+      <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: {{ t.muted }};">01 — Inventory</div>
+      <h2 style="margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.02em;">Eleven inconsistencies, from the live screens</h2>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(430px, 1fr)); gap: 0 32px;">
+      <sc-for list="{{ findings }}" as="f" hint-placeholder-count="10">
+        <div style="display: grid; grid-template-columns: 26px 1fr; gap: 14px; padding: 16px 0; border-bottom: 1px solid {{ t.border }}; align-items: start;">
+          <span style="display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 2px; background: {{ f.chipBg }}; color: {{ f.chipFg }}; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600;">{{ f.n }}</span>
+          <div style="display: flex; flex-direction: column; gap: 5px;">
+            <div style="font-size: 14px; font-weight: 600; line-height: 1.35;">{{ f.title }}</div>
+            <div style="font-size: 12.5px; line-height: 1.55; color: {{ t.fg80 }}; text-wrap: pretty;">{{ f.body }}</div>
+            <div style="font-size: 11.5px; line-height: 1.5; color: {{ t.muted }};">{{ f.where }}</div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="height: 1px; background: {{ t.border }};"></div>
+
+  <!-- 02 — THE SYSTEM -->
+  <div style="display: flex; flex-direction: column; gap: 24px;">
+    <div style="display: flex; flex-direction: column; gap: 8px; max-width: 800px;">
+      <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: {{ t.muted }};">02 — The system</div>
+      <h2 style="margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.02em;">One row grammar, one button ladder, one chip</h2>
+      <p style="margin: 0; font-size: 14px; line-height: 1.6; color: {{ t.fg80 }}; text-wrap: pretty;">Every screen in the product is a list of settings. If the row is the same everywhere, the screens stop looking authored by different people.</p>
+    </div>
+
+    <!-- row grammar -->
+    <div style="display: flex; flex-direction: column; gap: 16px; padding: 24px; background: {{ t.card }}; border: 1px solid {{ t.border }}; border-radius: 3px;">
+      <div style="font-size: 11px; font-weight: 650; letter-spacing: 0.12em; text-transform: uppercase; color: {{ t.accent }};">Row grammar — label left, control right, help under the label</div>
+      <p style="margin: 0; font-size: 12.5px; line-height: 1.55; color: {{ t.fg80 }}; max-width: 720px;">Help text moves under the <em>label</em>, not under the control, so the control column stays a clean vertical edge and long help never pushes the next control down. Sentence case, never uppercase.</p>
+
+      <div style="display: grid; grid-template-columns: 240px 1fr; gap: 0; border: 1px solid {{ t.border }}; border-radius: 2px; background: {{ t.bg }};">
+        <sc-for list="{{ grammarRows }}" as="g" hint-placeholder-count="5">
+          <div style="grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: start; padding: 10px 14px; border-bottom: 1px solid {{ t.borderFaint }}; box-shadow: {{ g.mark }};">
+            <div style="display: flex; flex-direction: column; gap: 2px; padding-right: 20px; padding-left: 10px;">
+              <span style="font-size: 12.5px; color: {{ t.fg }};">{{ g.label }}</span>
+              <span style="font-size: 11.5px; line-height: 1.45; color: {{ t.muted }};">{{ g.help }}</span>
+            </div>
+            <div style="display: flex; align-items: center; min-height: 28px;">{{ g.control }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <!-- button ladder + chips -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px;">
+      <div style="display: flex; flex-direction: column; gap: 14px; padding: 22px; background: {{ t.card }}; border: 1px solid {{ t.border }}; border-radius: 3px;">
+        <div style="font-size: 11px; font-weight: 650; letter-spacing: 0.12em; text-transform: uppercase; color: {{ t.accent }};">Button ladder — four rungs, no more</div>
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <sc-for list="{{ buttonLadder }}" as="b" hint-placeholder-count="4">
+            <div style="display: flex; align-items: center; gap: 14px; padding: 8px 0; border-top: 1px solid {{ t.borderFaint }};">
+              <div style="width: 120px; flex: 0 0 auto;">{{ b.demo }}</div>
+              <div style="display: flex; flex-direction: column; gap: 1px;">
+                <span style="font-size: 12.5px; color: {{ t.fg }};">{{ b.name }}</span>
+                <span style="font-size: 11.5px; color: {{ t.muted }};">{{ b.use }}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        <p style="margin: 0; font-size: 11.5px; line-height: 1.5; color: {{ t.muted }};">Destructive actions are the only ones that ever go red, and they always confirm. Today CLEAR ALL COLUMNS looks exactly like EXPORT JSON.</p>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 14px; padding: 22px; background: {{ t.card }}; border: 1px solid {{ t.border }}; border-radius: 3px;">
+        <div style="font-size: 11px; font-weight: 650; letter-spacing: 0.12em; text-transform: uppercase; color: {{ t.accent }};">Status chip — one shape, semantic colour</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+          <sc-for list="{{ chipDemo }}" as="c" hint-placeholder-count="5">
+            <span style="display: inline-flex; align-items: center; height: 22px; border: 1px solid {{ c.ring }}; border-radius: 2px; overflow: hidden; font-family: 'JetBrains Mono', monospace; font-size: 10.5px;">
+              <span style="padding: 0 7px; color: {{ t.muted }}; background: {{ t.subtleSolid }};">{{ c.k }}</span>
+              <span style="padding: 0 7px; color: {{ c.fg }}; background: {{ c.soft }};">{{ c.v }}</span>
+            </span>
+          </sc-for>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 7px; padding-top: 4px;">
+          <sc-for list="{{ chipLegend }}" as="l" hint-placeholder-count="4">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="width: 10px; height: 10px; flex: 0 0 auto; border-radius: 2px; background: {{ l.c }};"></span>
+              <span style="font-size: 12px; color: {{ t.fg80 }};">{{ l.t }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <p style="margin: 0; font-size: 11.5px; line-height: 1.5; color: {{ t.muted }};">A chip is read-only. It never appears above a control that sets the same value — that duplication is finding 5.</p>
+      </div>
+    </div>
+
+    <!-- primitives strip -->
+    <div style="display: flex; flex-direction: column; gap: 16px; padding: 24px; background: {{ t.card }}; border: 1px solid {{ t.border }}; border-radius: 3px;">
+      <div style="font-size: 11px; font-weight: 650; letter-spacing: 0.12em; text-transform: uppercase; color: {{ t.accent }};">Primitives</div>
+      <div style="display: flex; flex-wrap: wrap; gap: 26px 32px; align-items: flex-start;">
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: {{ t.muted }};">Section head</div>
+          <div style="display: flex; align-items: center; gap: 10px; width: 260px;">
+            <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="{{ t.muted }}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="{{ ic.chevronDown }}"/></svg>
+            <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;">Expression</span>
+            <span style="flex: 1 1 auto; height: 1px; background: {{ t.border }};"></span>
+          </div>
+          <div style="font-size: 11.5px; color: {{ t.muted }}; width: 260px;">No ordinal numbers — they go stale the moment a section is hidden.</div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: {{ t.muted }};">Segmented — always, for 2–4 options</div>
+          <div style="display: inline-flex; height: 28px; border: 1px solid {{ t.border }}; border-radius: 2px; overflow: hidden; width: fit-content;">
+            <span style="display: inline-flex; align-items: center; padding: 0 12px; font-size: 12px; background: {{ t.accentSoft }}; color: {{ t.fg }}; box-shadow: inset 0 -2px 0 {{ t.accent }};">None</span>
+            <span style="display: inline-flex; align-items: center; padding: 0 12px; font-size: 12px; color: {{ t.muted }};">Left</span>
+            <span style="display: inline-flex; align-items: center; padding: 0 12px; font-size: 12px; color: {{ t.muted }};">Right</span>
+          </div>
+          <div style="font-size: 11.5px; color: {{ t.muted }}; width: 260px;">5 or more becomes a select. Never a button that opens a menu.</div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: {{ t.muted }};">Boolean — checkbox only</div>
+          <div style="display: flex; align-items: center; gap: 18px; height: 28px;">
+            <span style="display: inline-flex; align-items: center; gap: 8px; font-size: 12px;">
+              <span style="width: 16px; height: 16px; border-radius: 2px; background: {{ t.accent }}; position: relative;"><span style="position: absolute; left: 50%; top: 50%; width: 5px; height: 9px; border: solid {{ t.accentFg }}; border-width: 0 2px 2px 0; transform: translate(-50%,-58%) rotate(45deg);"></span></span>On
+            </span>
+            <span style="display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: {{ t.fg80 }};">
+              <span style="width: 16px; height: 16px; border-radius: 2px; border: 1.5px solid {{ t.border2 }};"></span>Off
+            </span>
+          </div>
+          <div style="font-size: 11.5px; color: {{ t.muted }}; width: 260px;">The pill toggle retires. One boolean shape across all four screens.</div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: {{ t.muted }};">Colour field</div>
+          <div style="display: inline-flex; align-items: center; height: 28px; border: 1px solid {{ t.inputBorder }}; border-radius: 2px; background: {{ t.inputBg }}; overflow: hidden; width: fit-content;">
+            <span style="width: 26px; height: 26px; background: #EF4444; border-right: 1px solid {{ t.inputBorder }};"></span>
+            <span style="padding: 0 10px; font-family: 'JetBrains Mono', monospace; font-size: 11.5px;">#EF4444</span>
+            <span style="display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 26px; color: {{ t.muted }}; border-left: 1px solid {{ t.inputBorder }};">
+              <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18 M6 6 l 12 12"/></svg>
+            </span>
+          </div>
+          <div style="font-size: 11.5px; color: {{ t.muted }}; width: 260px;">Swatch, hex, clear — one component, opens a curated palette first.</div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: {{ t.muted }};">Icon tile</div>
+          <div style="display: flex; gap: 4px;">
+            <sc-for list="{{ tileDemo }}" as="d" hint-placeholder-count="5">
+              <span style="display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; box-sizing: border-box; border: 1px solid {{ d.border }}; border-radius: 2px; background: {{ d.bg }}; color: {{ d.color }};">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="{{ d.d }}"/></svg>
+              </span>
+            </sc-for>
+          </div>
+          <div style="font-size: 11.5px; color: {{ t.muted }}; width: 260px;">30px, 4px gap, selected = accent fill. Down from 44px, so all six categories fit in the space one took.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="height: 1px; background: {{ t.border }};"></div>
+
+  <!-- 03 — BEFORE / AFTER -->
+  <div style="display: flex; flex-direction: column; gap: 32px;">
+    <div style="display: flex; flex-direction: column; gap: 8px; max-width: 800px;">
+      <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: {{ t.muted }};">03 — Applied</div>
+      <h2 style="margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.02em;">Two screens, before and after</h2>
+      <p style="margin: 0; font-size: 14px; line-height: 1.6; color: {{ t.fg80 }}; text-wrap: pretty;">Left is today, recreated from the screenshots. Right is the same screen and the same content on the system above — no features removed.</p>
+    </div>
+
+    <!-- A · Styling Rules -->
+    <div style="display: flex; flex-direction: column; gap: 14px;">
+      <div style="display: flex; align-items: baseline; gap: 12px;">
+        <span style="display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 2px; background: {{ t.accent }}; color: {{ t.accentFg }}; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600;">A</span>
+        <span style="font-size: 17px; font-weight: 600;">Styling Rules · Indicator</span>
+        <span style="font-size: 12.5px; color: {{ t.muted }};">chips, segmented, icon grid, colour</span>
+      </div>
+
+      <div style="display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start;">
+
+        <!-- BEFORE -->
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: {{ t.neg }};">Before</span>
+            <span style="font-size: 11.5px; color: {{ t.muted }};">recreated from screenshot</span>
+          </div>
+          <div style="width: 660px; height: 760px; display: flex; flex-direction: column; background: #1e2733; border: 1px solid #2c3846; color: #d6dde5; font-family: 'Inter', system-ui, sans-serif; overflow: hidden;">
+            <div style="flex: 0 0 auto; padding: 14px 18px 12px; display: flex; align-items: flex-start;">
+              <div style="flex: 1 1 auto; display: flex; flex-direction: column; gap: 3px;">
+                <span style="font-size: 10px; font-weight: 650; letter-spacing: 0.14em; text-transform: uppercase; color: #8b98a8;">Customize · Format</span>
+                <span style="font-size: 16px; font-weight: 650;">Styling Rules</span>
+              </div>
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#8b98a8" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18 M6 6 l 12 12"/></svg>
+            </div>
+            <div style="flex: 0 0 auto; display: flex; gap: 6px; padding: 8px 16px; border-top: 1px solid #2c3846; border-bottom: 1px solid #2c3846;">
+              <sc-for list="{{ beforeNav }}" as="n" hint-placeholder-count="4">
+                <span style="display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border: 1px solid {{ n.border }}; border-radius: 3px; background: {{ n.bg }}; color: {{ n.color }}; font-size: 11.5px; font-weight: 650; letter-spacing: 0.09em; text-transform: uppercase;">{{ n.label }}<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="{{ ic.chevronDown }}"/></svg></span>
+              </sc-for>
+            </div>
+            <div style="flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 224px 1fr;">
+              <div style="border-right: 1px solid #2c3846; display: flex; flex-direction: column;">
+                <div style="display: flex; align-items: center; gap: 10px; padding: 12px 14px;">
+                  <span style="flex: 1 1 auto; font-size: 12px; font-weight: 650; letter-spacing: 0.1em; text-transform: uppercase;">Rules</span>
+                  <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #8b98a8;">01</span>
+                  <span style="display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border: 1px solid #3b82d8; border-radius: 3px; color: #4a9eff;"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="{{ ic.plus }}"/></svg></span>
+                </div>
+                <div style="padding: 0 10px;">
+                  <div style="display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 10px; border: 1px solid #3b6ea8; border-left: 3px solid #4a9eff; border-radius: 3px; background: #1d3550;">
+                    <span style="flex: 1 1 auto; font-size: 13px;">new_rule1</span>
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#8b98a8" stroke-width="1.8"><path d="M4 4h5v5"/></svg>
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#8b98a8" stroke-width="1.8" stroke-linecap="round"><path d="M3 6h18 M8 6V4h8v2 M6 6l1 14h10l1-14"/></svg>
+                  </div>
+                </div>
+              </div>
+              <div style="min-height: 0; display: flex; flex-direction: column;">
+                <div style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid #2c3846;">
+                  <span style="flex: 1 1 auto; height: 32px; display: flex; align-items: center; padding: 0 10px; border: 1px solid #2c3846; border-radius: 3px; background: #172029; font-size: 13px;">new_rule1</span>
+                  <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: #8b98a8;"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="{{ ic.history }}"/></svg>Reset</span>
+                  <span style="display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border: 1px solid #3b82d8; border-radius: 3px; font-size: 12px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: #e6ecf3;">Save</span>
+                </div>
+                <div style="flex: 1 1 auto; min-height: 0; overflow: hidden; padding: 12px 14px; display: flex; flex-direction: column; gap: 12px;">
+                  <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                    <sc-for list="{{ beforeChips }}" as="c" hint-placeholder-count="4">
+                      <span style="display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 9px; border: 1px solid {{ c.ring }}; border-radius: 3px; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.06em;"><span style="color: #8b98a8;">{{ c.k }}</span><span style="color: {{ c.fg }};">{{ c.v }}</span></span>
+                    </sc-for>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 11px; font-weight: 650; letter-spacing: 0.1em; text-transform: uppercase; color: #8b98a8;">Status</span>
+                    <span style="position: relative; width: 34px; height: 18px; border-radius: 999px; background: #2f81d8;"><span style="position: absolute; top: 2px; left: 18px; width: 14px; height: 14px; border-radius: 50%; background: #fff;"></span></span>
+                    <span style="font-size: 11px; font-weight: 650; letter-spacing: 0.1em; text-transform: uppercase; color: #8b98a8; padding-left: 6px;">Scope</span>
+                    <span style="flex: 1 1 auto; max-width: 150px; height: 30px; display: flex; align-items: center; padding: 0 10px; border: 1px solid #2c3846; border-radius: 3px; background: #172029; font-size: 12.5px;">ROW</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px; font-weight: 600; color: #4a9eff;">08</span>
+                    <span style="font-size: 11.5px; font-weight: 650; letter-spacing: 0.11em; text-transform: uppercase;">Indicator</span>
+                    <span style="flex: 1 1 auto; height: 1px; background: #2c3846;"></span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                    <span style="display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border: 1px solid #3b82d8; border-radius: 3px; color: #ef4444;"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5 M5 12l7-7 7 7"/></svg></span>
+                    <span style="font-size: 11px; font-weight: 650; letter-spacing: 0.1em; text-transform: uppercase; color: #8b98a8;">Arrow up</span>
+                    <span style="display: inline-flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px 0 0; border: 1px solid #2c3846; border-radius: 3px; background: #172029;"><span style="width: 40px; height: 30px; background: #ef4444;"></span><span style="font-family: 'JetBrains Mono', monospace; font-size: 12px;">#EF4444</span><span style="color: #8b98a8;">—</span></span>
+                    <span style="font-size: 11px; font-weight: 650; letter-spacing: 0.09em; text-transform: uppercase; color: #8b98a8;">Clear</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="width: 84px; font-size: 11px; font-weight: 650; letter-spacing: 0.1em; text-transform: uppercase; color: #8b98a8;">Target</span>
+                    <span style="display: inline-flex; border: 1px solid #2c3846; border-radius: 3px; overflow: hidden;">
+                      <span style="padding: 6px 14px; font-size: 12px; background: #24435f; color: #e6ecf3;">CELLS</span>
+                      <span style="padding: 6px 14px; font-size: 12px; color: #8b98a8;">ROW START</span>
+                      <span style="padding: 6px 14px; font-size: 12px; color: #8b98a8;">ROW END</span>
+                    </span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="width: 84px; font-size: 11px; font-weight: 650; letter-spacing: 0.1em; text-transform: uppercase; color: #8b98a8;">Position</span>
+                    <span style="display: inline-flex; align-items: center; height: 32px; padding: 0 16px; border: 1px solid #3b82d8; border-radius: 3px; background: #24435f; font-size: 12px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase;">Suffix</span>
+                  </div>
+                  <div style="display: flex; flex-direction: column; gap: 7px;">
+                    <span style="font-size: 11px; font-weight: 650; letter-spacing: 0.1em; text-transform: uppercase; color: #8b98a8;">Direction</span>
+                    <div style="display: flex; gap: 7px; flex-wrap: wrap;">
+                      <sc-for list="{{ beforeTiles }}" as="d" hint-placeholder-count="11">
+                        <span style="display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border: 1px solid {{ d.border }}; border-radius: 3px; color: #cfd8e2;">
+                          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="{{ d.d }}"/></svg>
+                        </span>
+                      </sc-for>
+                    </div>
+                  </div>
+                </div>
+                <div style="flex: 0 0 auto; padding: 6px 14px 10px; font-size: 11px; line-height: 1.45; letter-spacing: 0.05em; text-transform: uppercase; color: #8b98a8;">Inline prefix/suffix flow with the value; positional slots overlay the cell corners and middles.</div>
+              </div>
+            </div>
+            <div style="flex: 0 0 auto; display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-top: 1px solid #2c3846;">
+              <span style="flex: 1 1 auto; font-size: 11.5px; color: #8b98a8;">Save cards in each tab · Title-bar Save* persists the profile · Esc closes</span>
+              <span style="font-size: 12px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: #8b98a8;">Discard</span>
+              <span style="display: inline-flex; align-items: center; height: 32px; padding: 0 18px; border-radius: 3px; background: #2f81d8; color: #fff; font-size: 12px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase;">Done</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- AFTER -->
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: {{ t.pos }};">After</span>
+            <span style="font-size: 11.5px; color: {{ t.muted }};">same content, one row grammar</span>
+          </div>
+          <div style="width: 660px; height: 760px; display: flex; flex-direction: column; background: {{ t.popup }}; border: 1px solid {{ t.border }}; color: {{ t.fg }}; font-family: 'Inter', system-ui, sans-serif; overflow: hidden;">
+            <div style="flex: 0 0 auto; display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 16px; background: {{ t.chrome }}; border-bottom: 1px solid {{ t.border }};">
+              <span style="font-size: 13px; font-weight: 600;">Customize</span>
+              <div style="flex: 1 1 auto; max-width: 220px; display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 9px; border: 1px solid {{ t.inputBorder }}; border-radius: 2px; background: {{ t.inputBg }};">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="{{ t.muted }}" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+                <span style="font-size: 12px; color: {{ t.muted }};">Search settings</span>
+              </div>
+              <span style="margin-left: auto; display: inline-flex; align-items: center; height: 22px; border: 1px solid {{ t.warnRing }}; border-radius: 2px; overflow: hidden; font-family: 'JetBrains Mono', monospace; font-size: 10.5px;"><span style="padding: 0 7px; color: {{ t.muted }}; background: {{ t.subtleSolid }};">UNSAVED</span><span style="padding: 0 7px; color: {{ t.warn }}; background: {{ t.warnSoft }};">2</span></span>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="{{ t.muted }}" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18 M6 6 l 12 12"/></svg>
+            </div>
+
+            <div style="flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 176px 1fr;">
+              <div style="border-right: 1px solid {{ t.border }}; background: {{ t.chrome }}; display: flex; flex-direction: column; padding: 8px 0;">
+                <sc-for list="{{ afterIndex }}" as="s" hint-placeholder-count="6">
+                  <div style="display: flex; align-items: center; gap: 9px; height: 28px; padding: 0 14px; color: {{ s.color }}; background: {{ s.bg }}; box-shadow: {{ s.mark }}; font-size: 12px; font-weight: {{ s.weight }};">
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.8;"><path d="{{ s.d }}"/></svg>
+                    <span style="flex: 1 1 auto;">{{ s.label }}</span>
+                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: {{ s.badge }};">{{ s.count }}</span>
+                  </div>
+                </sc-for>
+                <div style="margin-top: auto; padding: 8px 12px; border-top: 1px solid {{ t.border }};">
+                  <span style="display: flex; align-items: center; justify-content: center; gap: 6px; height: 26px; border: 1px dashed {{ t.border2 }}; border-radius: 2px; font-size: 11.5px; color: {{ t.muted }};">
+                    <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="{{ ic.plus }}"/></svg>New rule
+                  </span>
+                </div>
+              </div>
+
+              <div style="min-height: 0; display: flex; flex-direction: column; overflow: hidden;">
+                <div style="flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid {{ t.border }};">
+                  <span style="font-size: 13px; font-weight: 600;">new_rule1</span>
+                  <sc-for list="{{ afterChips }}" as="c" hint-placeholder-count="3">
+                    <span style="display: inline-flex; align-items: center; height: 20px; border: 1px solid {{ c.ring }}; border-radius: 2px; overflow: hidden; font-family: 'JetBrains Mono', monospace; font-size: 10px;"><span style="padding: 0 6px; color: {{ t.muted }}; background: {{ t.subtleSolid }};">{{ c.k }}</span><span style="padding: 0 6px; color: {{ c.fg }}; background: {{ c.soft }};">{{ c.v }}</span></span>
+                  </sc-for>
+                </div>
+
+                <div style="flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column;">
+                  <div style="display: flex; align-items: center; gap: 10px; height: 26px; padding: 0 16px; background: {{ t.subtleSolid }}; border-bottom: 1px solid {{ t.border }};">
+                    <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="{{ t.muted }}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="{{ ic.chevronDown }}"/></svg>
+                    <span style="font-size: 10.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;">Indicator</span>
+                  </div>
+
+                  <div style="display: grid; grid-template-columns: 210px 1fr;">
+                    <sc-for list="{{ afterRows }}" as="r" hint-placeholder-count="5">
+                      <div style="grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: start; padding: 9px 16px; border-bottom: 1px solid {{ t.borderFaint }}; box-shadow: {{ r.mark }};">
+                        <div style="display: flex; flex-direction: column; gap: 1px; padding-right: 18px; padding-left: 10px;">
+                          <span style="font-size: 12.5px;">{{ r.label }}</span>
+                          <span style="font-size: 11px; line-height: 1.4; color: {{ t.muted }};">{{ r.help }}</span>
+                        </div>
+                        <div style="display: flex; align-items: center; min-height: 28px;">{{ r.control }}</div>
+                      </div>
+                    </sc-for>
+                  </div>
+
+                  <div style="flex: 1 1 auto; min-height: 0; overflow: hidden; padding: 10px 16px 12px 26px; display: flex; flex-direction: column; gap: 10px;">
+                    <span style="font-size: 12.5px;">Badge icon</span>
+                    <sc-for list="{{ afterGroups }}" as="g" hint-placeholder-count="6">
+                      <div style="display: grid; grid-template-columns: 86px 1fr; gap: 10px; align-items: start;">
+                        <span style="font-size: 11px; color: {{ t.muted }}; padding-top: 8px;">{{ g.label }}</span>
+                        <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                          <sc-for list="{{ g.tiles }}" as="d" hint-placeholder-count="8">
+                            <span title="{{ d.name }}" style="display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; box-sizing: border-box; border: 1px solid {{ d.border }}; border-radius: 2px; background: {{ d.bg }}; color: {{ d.color }};">
+                              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="{{ d.d }}"/></svg>
+                            </span>
+                          </sc-for>
+                        </div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style="flex: 0 0 auto; display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 16px; border-top: 1px solid {{ t.border }}; background: {{ t.chrome }};">
+              <span style="flex: 1 1 auto; font-size: 11.5px; color: {{ t.muted }};">Changes apply on Save</span>
+              <span style="display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 2px; font-size: 12px; color: {{ t.fg80 }};">Discard</span>
+              <span style="display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border: 1px solid {{ t.border2 }}; border-radius: 2px; font-size: 12px; color: {{ t.fg }};">Reset rule</span>
+              <span style="display: inline-flex; align-items: center; height: 28px; padding: 0 14px; border-radius: 2px; background: {{ t.accent }}; color: {{ t.accentFg }}; font-size: 12px; font-weight: 600;">Save</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex: 1 1 300px; min-width: 280px; display: flex; flex-direction: column; gap: 12px; padding-top: 26px;">
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: {{ t.muted }};">What changed</div>
+          <sc-for list="{{ changesA }}" as="c" hint-placeholder-count="6">
+            <div style="display: grid; grid-template-columns: 14px 1fr; gap: 10px; align-items: start; padding: 7px 0; border-bottom: 1px solid {{ t.borderFaint }};">
+              <span style="width: 6px; height: 6px; margin-top: 6px; border-radius: 999px; background: {{ t.accent }};"></span>
+              <span style="font-size: 12.5px; line-height: 1.5; color: {{ t.fg80 }};">{{ c }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+
+    <!-- B · DataProvider Behaviour -->
+    <div style="display: flex; flex-direction: column; gap: 14px;">
+      <div style="display: flex; align-items: baseline; gap: 12px;">
+        <span style="display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 2px; background: {{ t.accent }}; color: {{ t.accentFg }}; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600;">B</span>
+        <span style="font-size: 17px; font-weight: 600;">DataProvider editor · Behaviour</span>
+        <span style="font-size: 12.5px; color: {{ t.muted }};">label / control / help</span>
+      </div>
+
+      <div style="display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start;">
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: {{ t.neg }};">Before</div>
+          <div style="width: 660px; height: 540px; display: flex; flex-direction: column; background: #1e2733; border: 1px solid #2c3846; color: #d6dde5; font-family: 'Inter', system-ui, sans-serif; overflow: hidden;">
+            <div style="flex: 0 0 auto; display: flex; gap: 24px; padding: 12px 22px; border-bottom: 1px solid #2c3846;">
+              <sc-for list="{{ beforeTabs }}" as="b" hint-placeholder-count="5">
+                <span style="font-size: 12px; font-weight: 650; letter-spacing: 0.1em; text-transform: uppercase; color: {{ b.color }};">{{ b.label }}</span>
+              </sc-for>
+            </div>
+            <div style="flex: 1 1 auto; min-height: 0; overflow: hidden; padding: 16px 22px; display: flex; flex-direction: column; gap: 18px;">
+              <div style="display: grid; grid-template-columns: 200px 1fr; gap: 6px 18px; align-items: start;">
+                <span style="font-size: 11.5px; font-weight: 650; letter-spacing: 0.11em; text-transform: uppercase; color: #8b98a8; line-height: 1.5;">Thin field-level deltas</span>
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                  <span style="position: relative; width: 42px; height: 22px; border-radius: 999px; background: #4b5666;"><span style="position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #c3ccd8;"></span></span>
+                  <span style="font-size: 13px; line-height: 1.5; color: #b6c1cd; max-width: 380px;">Ship only the fields that changed per row on live updates. Requires a key column; snapshots always ship full rows.</span>
+                </div>
+              </div>
+              <div style="display: grid; grid-template-columns: 200px 1fr; gap: 6px 18px; align-items: center;">
+                <span style="font-size: 11.5px; font-weight: 650; letter-spacing: 0.11em; text-transform: uppercase; color: #8b98a8;">Conflate updates</span>
+                <span style="position: relative; width: 42px; height: 22px; border-radius: 999px; background: #2f81d8;"><span style="position: absolute; top: 3px; left: 23px; width: 16px; height: 16px; border-radius: 50%; background: #fff;"></span></span>
+              </div>
+              <div style="display: grid; grid-template-columns: 200px 1fr; gap: 6px 18px; align-items: start;">
+                <span style="font-size: 11.5px; font-weight: 650; letter-spacing: 0.11em; text-transform: uppercase; color: #8b98a8;">Conflate by key</span>
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                  <span style="display: flex; align-items: center; height: 38px; padding: 0 12px; border: 1px solid #2c3846; border-radius: 3px; background: #172029; font-size: 14px; max-width: 400px;">positionId</span>
+                  <span style="font-size: 13px; line-height: 1.5; color: #b6c1cd; max-width: 380px;">Within each throttle window, collapse repeated updates for the same key to the latest.</span>
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 11.5px; font-weight: 650; letter-spacing: 0.11em; text-transform: uppercase;">Snapshot</span>
+                <span style="flex: 1 1 auto; height: 1px; background: #2c3846;"></span>
+              </div>
+              <div style="display: grid; grid-template-columns: 200px 1fr; gap: 6px 18px; align-items: start;">
+                <span style="font-size: 11.5px; font-weight: 650; letter-spacing: 0.11em; text-transform: uppercase; color: #8b98a8;">Chunk size (rows)</span>
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                  <span style="display: flex; align-items: center; height: 38px; padding: 0 12px; border: 1px solid #2c3846; border-radius: 3px; background: #172029; font-size: 14px; max-width: 400px;">500</span>
+                  <span style="font-size: 13px; line-height: 1.5; color: #b6c1cd;">Rows per worker→client frame when flushing the snapshot. Default 500.</span>
+                </div>
+              </div>
+            </div>
+            <div style="flex: 0 0 auto; display: flex; align-items: flex-start; gap: 18px; padding: 12px 22px; border-top: 1px solid #2c3846;">
+              <span style="flex: 1 1 auto; font-size: 12.5px; line-height: 1.45; color: #b6c1cd; max-width: 260px;">Unsaved changes are kept locally until you click Update DataProvider.</span>
+              <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 10px;">
+                <div style="display: flex; gap: 22px;">
+                  <sc-for list="{{ beforeFooter }}" as="b" hint-placeholder-count="4">
+                    <span style="font-size: 12px; font-weight: 650; letter-spacing: 0.09em; text-transform: uppercase; color: {{ b.color }};">{{ b.label }}</span>
+                  </sc-for>
+                </div>
+                <span style="font-size: 12px; font-weight: 650; letter-spacing: 0.09em; text-transform: uppercase; color: #d6dde5;">Update DataProvider</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: {{ t.pos }};">After</div>
+          <div style="width: 660px; height: 540px; display: flex; flex-direction: column; background: {{ t.popup }}; border: 1px solid {{ t.border }}; color: {{ t.fg }}; font-family: 'Inter', system-ui, sans-serif; overflow: hidden;">
+            <div style="flex: 0 0 auto; display: flex; gap: 2px; padding: 0 16px; background: {{ t.chrome }}; border-bottom: 1px solid {{ t.border }};">
+              <sc-for list="{{ afterTabs }}" as="b" hint-placeholder-count="5">
+                <span style="display: inline-flex; align-items: center; height: 34px; padding: 0 12px; font-size: 12px; font-weight: {{ b.weight }}; color: {{ b.color }}; box-shadow: {{ b.mark }};">{{ b.label }}</span>
+              </sc-for>
+            </div>
+            <div style="flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column;">
+              <div style="display: flex; align-items: center; gap: 10px; height: 26px; padding: 0 16px; background: {{ t.subtleSolid }}; border-bottom: 1px solid {{ t.border }};">
+                <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="{{ t.muted }}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="{{ ic.chevronDown }}"/></svg>
+                <span style="font-size: 10.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;">Realtime updates</span>
+              </div>
+              <div style="display: grid; grid-template-columns: 260px 1fr;">
+                <sc-for list="{{ afterProviderRows }}" as="r" hint-placeholder-count="4">
+                  <div style="grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: start; padding: 10px 16px; border-bottom: 1px solid {{ t.borderFaint }}; box-shadow: {{ r.mark }};">
+                    <div style="display: flex; flex-direction: column; gap: 2px; padding-right: 20px; padding-left: 10px;">
+                      <span style="font-size: 12.5px;">{{ r.label }}</span>
+                      <span style="font-size: 11px; line-height: 1.45; color: {{ t.muted }};">{{ r.help }}</span>
+                    </div>
+                    <div style="display: flex; align-items: center; min-height: 28px;">{{ r.control }}</div>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px; height: 26px; padding: 0 16px; background: {{ t.subtleSolid }}; border-top: 1px solid {{ t.border }}; border-bottom: 1px solid {{ t.border }};">
+                <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="{{ t.muted }}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="{{ ic.chevronDown }}"/></svg>
+                <span style="font-size: 10.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;">Snapshot</span>
+              </div>
+              <div style="display: grid; grid-template-columns: 260px 1fr;">
+                <sc-for list="{{ afterSnapRows }}" as="r" hint-placeholder-count="2">
+                  <div style="grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: start; padding: 10px 16px; border-bottom: 1px solid {{ t.borderFaint }}; box-shadow: {{ r.mark }};">
+                    <div style="display: flex; flex-direction: column; gap: 2px; padding-right: 20px; padding-left: 10px;">
+                      <span style="font-size: 12.5px;">{{ r.label }}</span>
+                      <span style="font-size: 11px; line-height: 1.45; color: {{ t.muted }};">{{ r.help }}</span>
+                    </div>
+                    <div style="display: flex; align-items: center; min-height: 28px;">{{ r.control }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="flex: 0 0 auto; display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 16px; border-top: 1px solid {{ t.border }}; background: {{ t.chrome }};">
+              <span style="flex: 1 1 auto; font-size: 11.5px; color: {{ t.muted }};">Kept locally until you update the provider</span>
+              <span style="display: inline-flex; align-items: center; height: 28px; padding: 0 12px; font-size: 12px; color: {{ t.fg80 }};">Cancel</span>
+              <span style="display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border: 1px solid {{ t.border2 }}; border-radius: 2px; font-size: 12px;">Export</span>
+              <span style="display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border: 1px solid {{ t.border2 }}; border-radius: 2px; font-size: 12px;">Duplicate</span>
+              <span style="display: inline-flex; align-items: center; height: 28px; padding: 0 14px; border-radius: 2px; background: {{ t.accent }}; color: {{ t.accentFg }}; font-size: 12px; font-weight: 600;">Update provider</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex: 1 1 300px; min-width: 280px; display: flex; flex-direction: column; gap: 12px; padding-top: 22px;">
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: {{ t.muted }};">What changed</div>
+          <sc-for list="{{ changesB }}" as="c" hint-placeholder-count="5">
+            <div style="display: grid; grid-template-columns: 14px 1fr; gap: 10px; align-items: start; padding: 7px 0; border-bottom: 1px solid {{ t.borderFaint }};">
+              <span style="width: 6px; height: 6px; margin-top: 6px; border-radius: 999px; background: {{ t.accent }};"></span>
+              <span style="font-size: 12.5px; line-height: 1.5; color: {{ t.fg80 }};">{{ c }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1760,&quot;height&quot;:2800}}">
+/* Cursor Default Light/Dark Modern — verbatim from kernel tokens.css
+ * (.vg-theme-cursor / .vg-theme-cursor-dark) */
+const DARK = {
+  bg: '#1F1F1F', chrome: '#181818', popup: '#1F1F1F', card: '#202020', pageBg: '#181818',
+  fg: '#CCCCCC', fg80: '#B0B0B0', muted: '#9D9D9D',
+  border: '#2B2B2B', border2: '#3C3C3C', borderFaint: 'rgba(255,255,255,0.06)',
+  accent: '#81A1C1', accentFg: '#191c22', accentSoft: 'rgba(129,161,193,0.14)',
+  inputBg: '#313131', inputBorder: '#3C3C3C',
+  hover: '#2A2D2E', subtleSolid: '#202020',
+  pos: '#4EC9B0', neg: '#F14C4C', warn: '#CCA700',
+  posSoft: 'rgba(78,201,176,0.14)', posRing: 'rgba(78,201,176,0.45)',
+  negSoft: 'rgba(241,76,76,0.14)', negRing: 'rgba(241,76,76,0.45)',
+  warnSoft: 'rgba(204,167,0,0.14)', warnRing: 'rgba(204,167,0,0.45)',
+  infoSoft: 'rgba(129,161,193,0.14)', infoRing: 'rgba(129,161,193,0.45)',
+};
+const LIGHT = {
+  bg: '#FFFFFF', chrome: '#F8F8F8', popup: '#FFFFFF', card: '#F8F8F8', pageBg: '#F8F8F8',
+  fg: '#3B3B3B', fg80: '#565656', muted: '#6E7681',
+  border: '#E5E5E5', border2: '#CECECE', borderFaint: '#F0F0F0',
+  accent: '#2778C1', accentFg: '#FCFCFC', accentSoft: 'rgba(39,120,193,0.12)',
+  inputBg: '#FFFFFF', inputBorder: '#CECECE',
+  hover: '#F2F2F2', subtleSolid: '#F3F3F3',
+  pos: '#0A7A54', neg: '#E51400', warn: '#BF8803',
+  posSoft: 'rgba(10,122,84,0.10)', posRing: 'rgba(10,122,84,0.38)',
+  negSoft: 'rgba(229,20,0,0.10)', negRing: 'rgba(229,20,0,0.38)',
+  warnSoft: 'rgba(191,136,3,0.12)', warnRing: 'rgba(191,136,3,0.40)',
+  infoSoft: 'rgba(39,120,193,0.10)', infoRing: 'rgba(39,120,193,0.38)',
+};
+
+/* Path data verbatim from packages/kernel/src/icons/lucide.generated.ts */
+const IC = {
+  chevronDown: 'm6 9 6 6 6-6',
+  plus: 'M5 12h14 M12 5v14',
+  x: 'M18 6 6 18 M6 6 l 12 12',
+  history: 'M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8 M3 3v5h5 M12 7v5l4 2',
+  palette: 'M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z',
+  calculator: 'M16 10h.01 M12 10h.01 M8 10h.01 M12 14h.01 M8 14h.01 M12 18h.01 M8 18h.01 M8,6 L16,6 M16,14 L16,18',
+  bell: 'M10.268 21a2 2 0 0 0 3.464 0 M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326',
+  columns: 'M9 3v18 M15 3v18',
+  layers: 'M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12 M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17',
+  zap: 'M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z',
+  flag: 'M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z M4,22 L4,15',
+  check: 'M20 6 9 17l-5-5',
+};
+
+/* Verbatim from packages/kernel/src/icons/lucide.generated.ts.
+ * Keys absent from that file render as an EMPTY tile in the live product,
+ * because moduleIconSvg/lucideSvg return '' on a miss — see finding 11. */
+const BUNDLE = {
+  'arrow-up': 'm5 12 7-7 7 7 M12 19V5',
+  'arrow-down': 'M12 5v14 M19 12 l-7 7-7-7',
+  'trending-up': 'M22,7 L13.5,15.5 L8.5,10.5 L2,17 M16,7 L22,7 L22,13',
+  'trending-down': 'M22,17 L13.5,8.5 L8.5,13.5 L2,7 M16,17 L22,17 L22,11',
+  'chevrons-up': 'm17 11-5-5-5 5 M17 18 l-5-5-5 5',
+  'chevrons-down': 'm7 6 5 5 5-5 M7 13 l 5 5 5-5',
+  'triangle': 'M13.73 4a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z',
+  'move-up': 'M8 6L12 2L16 6 M12 2V22',
+  'move-down': 'M8 18L12 22L16 18 M12 2V22',
+  'arrow-up-right': 'M7 7h10v10 M7 17 17 7',
+  'arrow-down-right': 'm7 7 10 10 M17 7v10H7',
+  'corner-right-down': 'M4 4h7a4 4 0 0 1 4 4v12 M10,15 L15,20 L20,15',
+  'triangle-alert': 'm21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3 M12 9v4 M12 17h.01',
+  'circle-alert': 'M12,8 L12,12 M12,16 L12.01,16',
+  'octagon-alert': 'M12 16h.01 M12 8v4 M15.312 2a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586l-4.688-4.688A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2z',
+  'zap': 'M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z',
+  'flame': 'M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z',
+  'bell': 'M10.268 21a2 2 0 0 0 3.464 0 M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326',
+  'bell-ring': 'M10.268 21a2 2 0 0 0 3.464 0 M22 8c0-2.3-.8-4.3-2-6 M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326 M4 2C2.8 3.7 2 5.7 2 8',
+  'siren': 'M7 18v-6a5 5 0 1 1 10 0v6 M5 21a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-1a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2z M21 12h1 M18.5 4.5 18 5 M2 12h1 M12 2v1 M4.929 4.929 l.707.707 M12 12v6',
+  'cloud-lightning': 'M6 16.326A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 .5 8.973 M13 12 l-3 5h4l-3 5',
+  'radiation': 'M12 12h.01 M7.5 4.2c-.3-.5-.9-.7-1.3-.4C3.9 5.5 2.3 8.1 2 11c-.1.5.4 1 1 1h5c0-1.5.8-2.8 2-3.4-1.1-1.9-2-3.5-2.5-4.4z M21 12c.6 0 1-.4 1-1-.3-2.9-1.8-5.5-4.1-7.1-.4-.3-1.1-.2-1.3.3-.6.9-1.5 2.5-2.6 4.3 1.2.7 2 2 2 3.5h5z M7.5 19.8c-.3.5-.1 1.1.4 1.3 2.6 1.2 5.6 1.2 8.2 0 .5-.2.7-.8.4-1.3-.5-.9-1.4-2.5-2.5-4.3-1.2.7-2.8.7-4 0-1.1 1.8-2 3.4-2.5 4.3z',
+  'skull': 'm12.5 17-.5-1-.5 1h1z M15 22a1 1 0 0 0 1-1v-1a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20v1a1 1 0 0 0 1 1z',
+  'bug': 'm8 2 1.88 1.88 M14.12 3.88 16 2 M9 7.13v-1a3.003 3.003 0 1 1 6 0v1 M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6 M12 20v-9 M6.53 9C4.6 8.8 3 7.1 3 5 M6 13H2 M3 21c0-2.1 1.7-3.9 3.8-4 M20.97 5c0 2.1-1.6 3.8-3.5 4 M22 13h-4 M17.2 17c2.1.1 3.8 1.9 3.8 4',
+  'circle-dot': null,
+  'circle': null,
+  'flag': 'M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z M4,22 L4,15',
+  'flag-off': 'M8 2c3 0 5 2 8 2s4-1 4-1v11 M4 22V4 M4 15s1-1 4-1 5 2 8 2 M2,2 L22,22',
+  'pin': 'M12 17v5 M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z',
+  'pin-off': 'M12 17v5 M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H7.89 M2 2 l 20 20 M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h11',
+  'bookmark': 'm19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z',
+  'bookmark-check': 'm19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2Z M9 10 l 2 2 4-4',
+  'circle-check': 'm9 12 2 2 4-4',
+  'circle-x': 'm15 9-6 6 M9 9 l 6 6',
+  'clock': 'M12,6 L12,12 L16,14',
+  'lock': 'M7 11V7a5 5 0 0 1 10 0v4',
+  'star': 'M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z',
+  'star-off': 'M8.34 8.34 2 9.27l5 4.87L5.82 21 12 17.77 18.18 21l-.59-3.43 M18.42 12.76 22 9.27l-6.91-1L12 2l-1.44 2.91 M2,2 L22,22',
+  'eye': 'M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0',
+  'heart': 'M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z',
+  'target': null,
+  'circle-dashed': 'M10.1 2.182a10 10 0 0 1 3.8 0 M13.9 21.818a10 10 0 0 1-3.8 0 M17.609 3.721a10 10 0 0 1 2.69 2.7 M2.182 13.9a10 10 0 0 1 0-3.8 M20.279 17.609a10 10 0 0 1-2.7 2.69 M21.818 10.1a10 10 0 0 1 0 3.8 M3.721 6.391a10 10 0 0 1 2.7-2.69 M6.391 20.279a10 10 0 0 1-2.69-2.7',
+  'sparkles': 'M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z M20 3v4 M22 5h-4 M4 17v2 M5 18H3',
+  'plus': 'M5 12h14 M12 5v14',
+  'tag': 'M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z',
+  'badge-check': 'M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z M9 12 l 2 2 4-4',
+};
+
+/* Verbatim from packages/ext/src/modules/conditionalStyling.ts ICON_GROUPS */
+const ICON_GROUPS = [
+  ['Direction', ['arrow-up', 'arrow-down', 'trending-up', 'trending-down', 'chevrons-up', 'chevrons-down', 'triangle', 'move-up', 'move-down', 'arrow-up-right', 'arrow-down-right', 'corner-right-down']],
+  ['Alert', ['triangle-alert', 'circle-alert', 'octagon-alert', 'zap', 'flame', 'bell', 'bell-ring', 'siren', 'cloud-lightning', 'radiation', 'skull', 'bug']],
+  ['Status', ['circle-dot', 'circle', 'flag', 'flag-off', 'pin', 'pin-off', 'bookmark', 'bookmark-check']],
+  ['Lifecycle', ['circle-check', 'circle-x', 'clock', 'lock']],
+  ['Favorite', ['star', 'star-off', 'eye', 'heart', 'target', 'circle-dashed', 'sparkles', 'plus']],
+  ['Classification', ['tag', 'badge-check']],
+];
+
+class Component extends DCLogic {
+  state = { mode: 'dark' };
+
+  renderVals() {
+    const dark = this.state.mode === 'dark';
+    const base = dark ? DARK : LIGHT;
+    const t = {
+      ...base,
+      lightBtnBg: dark ? 'transparent' : base.accentSoft,
+      lightBtnBorder: dark ? base.border2 : base.accent,
+      lightBtnFg: dark ? base.muted : base.fg,
+      darkBtnBg: dark ? base.accentSoft : 'transparent',
+      darkBtnBorder: dark ? base.accent : base.border2,
+      darkBtnFg: dark ? base.fg : base.muted,
+    };
+    const setLight = () => this.setState({ mode: 'light' });
+    const setDark = () => this.setState({ mode: 'dark' });
+
+    const hi = { chipBg: t.negSoft, chipFg: t.neg };
+    const med = { chipBg: t.warnSoft, chipFg: t.warn };
+
+    const findings = [
+      { n: '01', ...hi, title: 'Three navigation models, three shapes',
+        body: 'The DataProvider editor uses plain uppercase text tabs with no container. The Customize drawer uses boxed dropdown triggers with chevrons. The cockpit uses a left list rail. All three are "pick a section".',
+        where: 'DataProvider editor · Customize drawer · Calculated Columns / Styling Rules' },
+      { n: '02', ...hi, title: 'Section numbers that lie',
+        body: 'Styling Rules runs 01 EXPRESSION → 03 STYLE → 07 FLASH ON MATCH → 08 INDICATOR. Four numbers are missing because those sections are conditional. A user counting sections sees eight and finds four.',
+        where: 'Styling Rules · Calculated Columns numbers 01–03 with no gaps, so the two editors disagree too' },
+      { n: '03', ...hi, title: 'Uppercase body copy',
+        body: 'Help text is sentence case in the DataProvider editor and letterspaced uppercase in the cockpit — "OPTIONAL — MATCH STYLING AUTO-REVERTS AFTER THIS INTERVAL. LEAVE BLANK FOR PERSISTENT." The longest strings in the product got the least readable treatment.',
+        where: 'Styling Rules · Calculated Columns' },
+      { n: '04', ...hi, title: 'Text buttons carry no affordance or risk signal',
+        body: 'EXPORT JSON, IMPORT JSON and CLEAR ALL COLUMNS are rendered identically — same size, weight, colour, no border. One of them discards 131 column definitions.',
+        where: 'DataProvider editor · Columns' },
+      { n: '05', ...med, title: 'Chips duplicate the controls below them',
+        body: 'Styling Rules shows STATUS ACTIVE / SCOPE ROW / PRIORITY 0 as chips, then immediately renders a Status toggle, a Scope select and a Priority input for the same three values, 40px lower.',
+        where: 'Styling Rules · rule header' },
+      { n: '06', ...med, title: 'Four chip border colours, no legend',
+        body: 'Green (STATUS ACTIVE), blue (SCOPE, PRIORITY, REFS), amber (COLUMN ID, APPLIED), grey (FORMATTER, WIDTH). The colour encodes nothing consistent — amber is a warning on APPLIED and an identifier on COLUMN ID.',
+        where: 'Styling Rules · Calculated Columns' },
+      { n: '07', ...med, title: '"Pick one of N" has two different controls',
+        body: 'TARGET and MODE are segmented. POSITION is a single button that opens a dropdown of the same kind of choice. PINNED is segmented in Calculated Columns and a select in Column Settings.',
+        where: 'Styling Rules · Calculated Columns' },
+      { n: '08', ...med, title: 'Booleans are toggles here and checkboxes there',
+        body: 'Pill toggles for Public, Throttle updates, Conflate updates, Flash and Status. Square checkboxes for Select all and every field row. Same data type, two shapes, no rule distinguishing them.',
+        where: 'DataProvider editor · Fields · Styling Rules' },
+      { n: '09', ...med, title: 'Three empty states',
+        body: 'Fields has an icon, a heading, body copy, an inline sample-size select and a button. Styling Rules has one line of grey text. Calculated Columns has nothing at all.',
+        where: 'DataProvider Fields · Styling Rules · Calculated Columns' },
+      { n: '10', ...hi, title: 'Three icon tiles render blank',
+        body: 'ICON_GROUPS asks for circle-dot, circle and target. None of the three exists in the generated Lucide bundle — the generator keeps only <path> data, and those glyphs are pure <circle>. lucideSvg returns an empty string on a miss, so the picker paints three empty buttons. Icons built from a circle plus a mark (circle-check, circle-x, circle-alert, clock) lose their circle for the same reason and render as a bare tick, cross, dot or pair of hands.',
+        where: 'conditionalStyling.ts ICON_GROUPS → lucide.generated.ts · Styling Rules indicator picker' },
+      { n: '11', ...hi, title: 'Three save models on one screen',
+        body: 'The cockpit pane has RESET / SAVE, the drawer footer has DISCARD / DONE, the title bar has Save*, and the DataProvider editor has UPDATE DATAPROVIDER. The footer prints a sentence explaining the hierarchy.',
+        where: 'every Customize screen' },
+    ];
+
+    const S = React.createElement;
+
+    const seg = (opts, active, w) => S('span', {
+      style: { display: 'inline-flex', border: '1px solid ' + t.border, borderRadius: '2px', overflow: 'hidden' },
+    }, opts.map((o) => S('span', {
+      key: o,
+      style: {
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        height: '26px', padding: '0 ' + (w || 11) + 'px', fontSize: '11.5px',
+        color: o === active ? t.fg : t.muted,
+        background: o === active ? t.accentSoft : 'transparent',
+        boxShadow: o === active ? 'inset 0 -2px 0 ' + t.accent : 'none',
+      },
+    }, o)));
+
+    const box = (checked) => S('span', {
+      style: {
+        display: 'inline-block', width: '16px', height: '16px', borderRadius: '2px',
+        background: checked ? t.accent : 'transparent',
+        border: '1.5px solid ' + (checked ? t.accent : t.border2), position: 'relative',
+      },
+    }, checked ? S('span', { style: {
+      position: 'absolute', left: '50%', top: '50%', width: '5px', height: '9px',
+      border: 'solid ' + t.accentFg, borderWidth: '0 2px 2px 0', transform: 'translate(-50%,-58%) rotate(45deg)',
+    } }) : null);
+
+    const field = (text, w, mono) => S('span', {
+      style: {
+        display: 'inline-flex', alignItems: 'center', height: '26px', padding: '0 9px',
+        width: (w || 150) + 'px', boxSizing: 'border-box',
+        border: '1px solid ' + t.inputBorder, borderRadius: '2px', background: t.inputBg,
+        fontSize: '12px', fontFamily: mono ? "'JetBrains Mono', monospace" : 'inherit', color: t.fg,
+      },
+    }, text);
+
+    const selectField = (text, w) => S('span', {
+      style: {
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'space-between',
+        height: '26px', padding: '0 8px 0 9px', width: (w || 150) + 'px', boxSizing: 'border-box',
+        border: '1px solid ' + t.inputBorder, borderRadius: '2px', background: t.inputBg,
+        fontSize: '12px', color: t.fg,
+      },
+    }, text, S('svg', { viewBox: '0 0 24 24', width: 11, height: 11, fill: 'none', stroke: t.muted, strokeWidth: 2.4, strokeLinecap: 'round', strokeLinejoin: 'round' }, S('path', { d: IC.chevronDown })));
+
+    const colorField = (hex) => S('span', {
+      style: {
+        display: 'inline-flex', alignItems: 'center', height: '26px',
+        border: '1px solid ' + t.inputBorder, borderRadius: '2px', background: t.inputBg, overflow: 'hidden',
+      },
+    },
+      S('span', { style: { width: '24px', height: '24px', background: hex, borderRight: '1px solid ' + t.inputBorder } }),
+      S('span', { style: { padding: '0 9px', fontFamily: "'JetBrains Mono', monospace", fontSize: '11.5px', color: t.fg } }, hex),
+    );
+
+    const btn = (label, kind) => {
+      const styles = {
+        primary: { background: t.accent, color: t.accentFg, border: '1px solid ' + t.accent, fontWeight: 600 },
+        secondary: { background: 'transparent', color: t.fg, border: '1px solid ' + t.border2, fontWeight: 500 },
+        quiet: { background: 'transparent', color: t.fg80, border: '1px solid transparent', fontWeight: 500 },
+        danger: { background: 'transparent', color: t.neg, border: '1px solid ' + t.negRing, fontWeight: 500 },
+      };
+      return S('span', {
+        style: {
+          display: 'inline-flex', alignItems: 'center', height: '28px', padding: '0 13px',
+          borderRadius: '2px', fontSize: '12px', ...styles[kind],
+        },
+      }, label);
+    };
+
+    const tick = 'inset 2px 0 0 ' + t.accent;
+
+    const grammarRows = [
+      { label: 'Caption', help: 'Header text shown in the grid', control: field('Ticker'), mark: tick },
+      { label: 'Pinned', help: 'Freeze the column to an edge', control: seg(['None', 'Left', 'Right'], 'Left'), mark: 'none' },
+      { label: 'Editable', help: 'Allow in-cell editing', control: box(false), mark: 'none' },
+      { label: 'Conflate by key', help: 'Within each throttle window, collapse repeated updates for the same key to the latest. Defaults to the provider key when unset.', control: selectField('positionId'), mark: tick },
+      { label: 'Wire format', help: 'Codec for worker→window frames. Changing this needs a restart.', control: selectField('JSON'), mark: 'none' },
+    ];
+
+    const buttonLadder = [
+      { demo: btn('Save', 'primary'), name: 'Primary', use: 'One per screen. The commit.' },
+      { demo: btn('Export', 'secondary'), name: 'Secondary', use: 'Bordered. Real actions with no risk.' },
+      { demo: btn('Cancel', 'quiet'), name: 'Quiet', use: 'Dismiss and navigation only.' },
+      { demo: btn('Clear all', 'danger'), name: 'Destructive', use: 'Red outline, always confirms.' },
+    ];
+
+    const chipDemo = [
+      { k: 'STATUS', v: 'ACTIVE', ring: t.posRing, soft: t.posSoft, fg: t.pos },
+      { k: 'SCOPE', v: 'ROW', ring: t.border2, soft: 'transparent', fg: t.fg },
+      { k: 'APPLIED', v: '0 ROWS', ring: t.warnRing, soft: t.warnSoft, fg: t.warn },
+      { k: 'REFS', v: '2 COLS', ring: t.border2, soft: 'transparent', fg: t.fg },
+      { k: 'ERROR', v: 'PARSE', ring: t.negRing, soft: t.negSoft, fg: t.neg },
+    ];
+    const chipLegend = [
+      { c: t.pos, t: 'Green — healthy, running, applied' },
+      { c: t.warn, t: 'Amber — degraded, stale, needs attention' },
+      { c: t.neg, t: 'Red — failing, invalid' },
+      { c: t.border2, t: 'Neutral — plain metadata, no judgement' },
+    ];
+
+    const tileOn = { border: t.accent, bg: t.accent, color: t.accentFg };
+    const tileOff = { border: t.border2, bg: 'transparent', color: t.fg80 };
+    const tileDemo = ['arrow-up', 'arrow-down', 'trending-up', 'flag', 'star']
+      .map((n, i) => ({ d: BUNDLE[n], ...(i === 0 ? tileOn : tileOff) }));
+
+    /* ── Before: Styling Rules ── */
+    const beforeNav = ['Layout', 'Data', 'Format', 'Editing'].map((label) => (
+      label === 'Format'
+        ? { label, border: '#3b82d8', bg: '#22384f', color: '#e6ecf3' }
+        : { label, border: 'transparent', bg: 'transparent', color: '#8b98a8' }
+    ));
+    const beforeChips = [
+      { k: 'STATUS', v: 'ACTIVE', ring: '#3f8f6a', fg: '#4ade80' },
+      { k: 'SCOPE', v: 'ROW', ring: '#3b6ea8', fg: '#4a9eff' },
+      { k: 'PRIORITY', v: '0', ring: '#3b6ea8', fg: '#4a9eff' },
+      { k: 'APPLIED', v: '—', ring: '#a1802f', fg: '#d9a441' },
+    ];
+    const beforeTiles = ICON_GROUPS[0][1].map((n, i) => ({
+      d: BUNDLE[n] || '', border: i === 0 ? '#3b82d8' : '#2c3846',
+    }));
+
+    /* ── After: Styling Rules ── */
+    const selI = { color: t.fg, bg: t.accentSoft, mark: 'inset 2px 0 0 ' + t.accent, weight: '600', badge: t.accent };
+    const idleI = { color: t.fg80, bg: 'transparent', mark: 'none', weight: '400', badge: t.muted };
+    const afterIndex = [
+      { label: 'Expression', d: IC.calculator, count: '', ...idleI },
+      { label: 'Style', d: IC.palette, count: '', ...idleI },
+      { label: 'Flash', d: IC.zap, count: 'off', ...idleI },
+      { label: 'Indicator', d: IC.flag, count: '1', ...selI },
+    ];
+    const afterChips = [
+      { k: 'STATUS', v: 'ACTIVE', ring: t.posRing, soft: t.posSoft, fg: t.pos },
+      { k: 'SCOPE', v: 'ROW', ring: t.border2, soft: 'transparent', fg: t.fg },
+      { k: 'APPLIED', v: '—', ring: t.warnRing, soft: t.warnSoft, fg: t.warn },
+    ];
+    const afterRows = [
+      { label: 'Badge colour', help: 'Tint applied to the indicator glyph', control: colorField('#EF4444'), mark: tick },
+      { label: 'Target', help: 'Where the badge attaches', control: seg(['Cells', 'Row start', 'Row end'], 'Cells', 10), mark: 'none' },
+      { label: 'Position', help: 'Inline flows with the value; positional slots overlay the cell corners', control: seg(['Prefix', 'Suffix', 'Corner'], 'Suffix', 10), mark: tick },
+      { label: 'Style window', help: 'Match styling reverts after this interval. Blank stays persistent.', control: field('persistent', 120), mark: 'none' },
+    ];
+    /* All six groups, driven off ICON_GROUPS. Names missing from the bundle
+     * are surfaced as a flagged tile instead of rendering blank. */
+    const afterGroups = ICON_GROUPS.map(([label, names]) => ({
+      label,
+      count: String(names.length),
+      tiles: names.map((n) => {
+        const d = BUNDLE[n];
+        if (!d) return { d: '', name: n, ...tileOff, border: t.negRing, bg: t.negSoft, color: t.neg, missing: true };
+        return { d, name: n, ...(n === 'arrow-up' ? tileOn : tileOff), missing: false };
+      }),
+    }));
+    const changesA = [
+      'Section numbers dropped; sections become a left index that only lists what is actually present.',
+      'The three duplicate chips lose their control twins — Status, Scope and Priority now live once, in the rule header.',
+      'Chip colour becomes semantic: green healthy, amber attention, neutral metadata. Blue stops meaning "some value".',
+      'Position becomes segmented like Target, instead of a lone button opening a menu.',
+      'Icon tiles go 44px → 30px with a 4px gap, so all six categories fit in the space one used to take.',
+      'The three icon names with no bundle entry stop rendering as blank buttons and get flagged.',
+      'Uppercase help copy becomes sentence case and moves under its label.',
+      'One save: pane Reset/Save and drawer Discard/Done collapse into Discard · Reset rule · Save.',
+    ];
+
+    /* ── Before / After: DataProvider ── */
+    const beforeTabs = ['Connection', 'Fields', 'Columns', 'Behaviour', 'Diagnostics'].map((label) => ({
+      label, color: label === 'Behaviour' ? '#e6ecf3' : '#8b98a8',
+    }));
+    const beforeFooter = [
+      { label: 'Cancel', color: '#d6dde5' }, { label: 'Export', color: '#d6dde5' },
+      { label: 'Duplicate', color: '#d6dde5' }, { label: 'Update columns', color: '#5b6673' },
+    ];
+    const afterTabs = ['Connection', 'Fields', 'Columns', 'Behaviour', 'Diagnostics'].map((label) => (
+      label === 'Behaviour'
+        ? { label, color: t.fg, weight: '600', mark: 'inset 0 -2px 0 ' + t.accent }
+        : { label, color: t.muted, weight: '400', mark: 'none' }
+    ));
+    const afterProviderRows = [
+      { label: 'Throttle updates', help: 'Coalesce live deltas into a trailing-edge burst', control: box(true), mark: 'none' },
+      { label: 'Throttle window', help: '0 sends immediately with no batching', control: field('100 ms', 110), mark: tick },
+      { label: 'Thin field-level deltas', help: 'Ship only changed fields per row. Needs a key column; snapshots always ship full rows.', control: box(false), mark: 'none' },
+      { label: 'Conflate by key', help: 'Collapse repeated updates for the same key to the latest within each window', control: selectField('positionId', 170), mark: tick },
+    ];
+    const afterSnapRows = [
+      { label: 'Chunk size', help: 'Rows per worker→client frame when flushing. Default 500.', control: field('500 rows', 110), mark: 'none' },
+      { label: 'Wire format', help: 'Codec for worker→window frames. Changing this requires a restart.', control: selectField('JSON', 170), mark: 'none' },
+    ];
+    const changesB = [
+      'Help text moves under the label, so the control column becomes one clean vertical edge.',
+      'Uppercase letterspaced labels become sentence case at 12.5px — the same label style as every other screen.',
+      'Pill toggles become checkboxes, matching the Fields tab in the same editor.',
+      'Units move inside the field (100 ms, 500 rows) instead of floating beside it.',
+      'The footer stops wrapping onto two rows: one primary, two secondary, one quiet, left-aligned status text.',
+      'Tabs get a 2px underline instead of relying on text colour alone to show which is active.',
+    ];
+
+    return {
+      t, ic: IC, setLight, setDark,
+      findings, grammarRows, buttonLadder, chipDemo, chipLegend, tileDemo,
+      beforeNav, beforeChips, beforeTiles, afterIndex, afterChips, afterRows, afterGroups, changesA,
+      beforeTabs, beforeFooter, afterTabs, afterProviderRows, afterSnapRows, changesB,
+    };
+  }
+}
+
+</script>
+</body>
+</html>

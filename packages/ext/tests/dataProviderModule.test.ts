@@ -30,6 +30,14 @@ function mockCtx(grid: Record<string, unknown>): VelocityGridExtContext {
     },
     modal: { open() {}, close() {}, isOpen: () => false },
     events: { on: () => () => {}, emit() {} },
+    session: {
+      stage() {},
+      unstage() {},
+      isDirty: () => false,
+      pendingCount: () => 0,
+      clear() {},
+      onChange: () => () => {},
+    },
     profiles: {
       activeId: () => 'default',
       isDirty: () => false,

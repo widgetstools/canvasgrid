@@ -29,11 +29,12 @@ import {
   pillGroup,
   row,
   select,
-  switchToggle,
+  checkbox,
   textInput,
   appendPaneChrome,
   takePaneScroll,
   restorePaneScroll,
+  emptyState,
 } from '../ui/cockpit';
 
 interface AlertsGrid {
@@ -190,7 +191,7 @@ export function alertsModule(): SettingsModule {
           body.style.cssText = 'padding:4px 12px 12px;display:flex;flex-direction:column;gap:2px;';
           const s = liveSettings();
           body.append(
-            row('Alerts enabled', switchToggle(s.enabled, (v) => patchSettings({ enabled: v }))),
+            row('Alerts enabled', checkbox(s.enabled, (v) => patchSettings({ enabled: v }))),
             row(
               'Frequency',
               pillGroup(
@@ -216,7 +217,7 @@ export function alertsModule(): SettingsModule {
           ch.appendChild(caps('Channels'));
           for (const c of CHANNELS) {
             const disabled = c === 'openfin' && !openFinAvailable();
-            const sw = switchToggle(s.enabledChannels[c], (v) => {
+            const sw = checkbox(s.enabledChannels[c], (v) => {
               patchSettings({ enabledChannels: { ...s.enabledChannels, [c]: v } });
             });
             if (disabled) {
@@ -246,7 +247,11 @@ export function alertsModule(): SettingsModule {
         rail.appendChild(head);
 
         if (rules.length === 0 && !draftIsNew) {
-          rail.appendChild(el('div', 'ckp-empty', 'No alerts yet.'));
+          rail.appendChild(emptyState({
+            title: 'No alerts yet',
+            description: 'Add one with + to start watching the grid.',
+            icon: 'bell',
+          }));
           return;
         }
         for (const rule of rules) {
@@ -287,29 +292,26 @@ export function alertsModule(): SettingsModule {
           const emptyBody = el('div', 'ckp-pane-body');
           pane.appendChild(emptyBody);
           renderGlobal(emptyBody);
-          emptyBody.appendChild(el('div', 'ckp-empty', 'Select an alert, or add one with +'));
+          emptyBody.appendChild(emptyState({
+            title: 'No alert selected',
+            description: 'Select an alert, or add one with +.',
+            icon: 'bell',
+          }));
           return;
         }
         const d = draft;
 
         const head = el('div', 'ckp-pane-head');
         const nameIn = textInput(d.name, (v) => { d.name = v; }, { className: 'ckp-title', placeholder: 'Alert name' });
-        const resetBtn = el('button', 'ckp-actbtn') as HTMLButtonElement;
+        const resetBtn = el('button', 'ckp-actbtn ckp-btn-secondary') as HTMLButtonElement;
         resetBtn.type = 'button';
         resetBtn.innerHTML = `${lucideSvg('rotate-ccw', 12)}<span>Reset</span>`;
         resetBtn.disabled = !isDirty();
         resetBtn.addEventListener('click', reset);
-        const saveBtn = el('button', 'ckp-actbtn') as HTMLButtonElement;
-        saveBtn.type = 'button';
-        saveBtn.innerHTML = `${lucideSvg('save', 12)}<span>Save</span>`;
-        saveBtn.disabled = !isDirty();
-        saveBtn.addEventListener('click', save);
         nameIn.addEventListener('input', () => {
-          const dirty = isDirty();
-          saveBtn.disabled = !dirty;
-          resetBtn.disabled = !dirty;
+          resetBtn.disabled = !isDirty();
         });
-        head.append(nameIn, resetBtn, saveBtn);
+        head.append(nameIn, resetBtn);
         const body = appendPaneChrome(pane, head);
         renderGlobal(body);
 
@@ -321,13 +323,13 @@ export function alertsModule(): SettingsModule {
         );
         body.appendChild(chips);
 
-        const ruleBand = band('01', 'Rule');
+        const ruleBand = band('Rule');
         ruleBand.body.append(
-          row('Enabled', switchToggle(d.enabled, (v) => { d.enabled = v; renderAll(); })),
+          row('Enabled', checkbox(d.enabled, (v) => { d.enabled = v; renderAll(); })),
         );
         body.appendChild(ruleBand.root);
 
-        const sev = band('02', 'Severity');
+        const sev = band('Severity');
         sev.body.append(
           pillGroup(
             SEVERITIES.map((s) => [s, s] as [string, string]),
@@ -337,7 +339,7 @@ export function alertsModule(): SettingsModule {
         );
         body.appendChild(sev.root);
 
-        const trig = band('03', 'Trigger');
+        const trig = band('Trigger');
         trig.body.append(
           pillGroup(
             [['dataChange', 'Expression'], ['relativeChange', 'Δ Delta'], ['rowChange', 'Row']],
@@ -365,9 +367,7 @@ export function alertsModule(): SettingsModule {
             onChange: (v) => {
               if (d.trigger.kind !== 'dataChange') return;
               d.trigger.expression = v;
-              const dirty = isDirty();
-              saveBtn.disabled = !dirty;
-              resetBtn.disabled = !dirty;
+              resetBtn.disabled = !isDirty();
             },
             onCommit: () => { if (isDirty()) save(); },
           });
@@ -421,18 +421,18 @@ export function alertsModule(): SettingsModule {
         }
         body.appendChild(trig.root);
 
-        const msg = band('04', 'Message');
+        const msg = band('Message');
         msg.body.append(
           row('Template', textInput(d.message, (v) => { d.message = v; renderAll(); }, { placeholder: '{rule} fired on {rowId}' })),
           el('div', 'ckp-hint lc', 'Placeholders: {rule} {rowId} {column} {value} {prev}'),
         );
         body.appendChild(msg.root);
 
-        const chBand = band('05', 'Channels');
+        const chBand = band('Channels');
         for (const c of CHANNELS) {
           const on = d.channels.includes(c);
           const disabled = c === 'openfin' && !openFinAvailable();
-          const sw = switchToggle(on, (v) => {
+          const sw = checkbox(on, (v) => {
             d.channels = v ? [...new Set([...d.channels, c])] : d.channels.filter((x) => x !== c);
             renderAll();
           });
@@ -444,7 +444,7 @@ export function alertsModule(): SettingsModule {
         }
         body.appendChild(chBand.root);
 
-        const deb = band('06', 'Debounce');
+        const deb = band('Debounce');
         deb.body.append(
           row(
             'Debounce ms',
@@ -477,6 +477,7 @@ export function alertsModule(): SettingsModule {
           root.replaceChildren();
           root.remove();
         },
+        commit() { if (isDirty()) save(); },
         refresh() {
           loadRules();
           if (selectedId && !draftIsNew && !rules.some((r) => r.id === selectedId)) {

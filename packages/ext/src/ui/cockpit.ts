@@ -1,15 +1,17 @@
 /**
- * Cockpit UI kit — shared primitives for the customizer settings modules
- * (starui customizer visual language): numbered band headers with a
- * trailing rule, summary chips, toggle switches, pill groups, Lucide icon
- * tiles, caps micro-labels. One injected stylesheet.
+ * Cockpit UI kit — shared primitives for the customizer settings modules:
+ * section bands, summary chips, checkboxes, pill groups, Lucide icon
+ * tiles, settings rows. One injected stylesheet.
  */
 import { ColorPickerControl, parseColor, rgbaToString } from '@wellsfargo-starui/velocity-grid';
 import { lucideBundle } from '@wellsfargo-starui/velocity-grid/icons/lucide.generated';
 import {
-  vguiSwitchCss,
   vguiCapsCss,
   vguiInputInteractionCss,
+  vguiRowCss,
+  vguiButtonCss,
+  vguiChipCss,
+  vguiTileCss,
   type VguiTokens,
 } from '@wellsfargo-starui/velocity-grid/ui/primitives';
 
@@ -17,9 +19,9 @@ import {
  *  own tokens reproduces the exact prior rendering (invariance-preserving). */
 const CKP_TOKENS: VguiTokens = {
   accent: 'var(--ckp-accent)',
-  border: 'var(--ckp-border)',
+  border: 'var(--ckp-input-border)',
   muted: 'var(--ckp-muted)',
-  surface: 'var(--ckp-surface)',
+  surface: 'var(--ckp-input-bg)',
   radius: 'var(--vg-radius, 2px)',
 };
 
@@ -34,20 +36,28 @@ export function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-/** `01 EXPRESSION ────────` numbered band header + body. */
-export function band(num: string, title: string): { root: HTMLElement; body: HTMLElement } {
+/** Section head + body. Click the head to collapse/expand — the chevron is
+ *  the affordance, so it must work. No ordinal numbers. */
+export function band(title: string): { root: HTMLElement; body: HTMLElement } {
   const root = el('section', 'ckp-band');
-  const head = el('div', 'ckp-band-head');
-  head.appendChild(el('span', 'ckp-band-num', num));
+  const head = el('button', 'ckp-band-head') as HTMLButtonElement;
+  head.type = 'button';
+  head.setAttribute('aria-expanded', 'true');
+  const chev = el('span', 'ckp-band-chevron');
+  chev.setAttribute('aria-hidden', 'true');
+  head.appendChild(chev);
   head.appendChild(el('span', 'ckp-band-title', title));
-  head.appendChild(el('span', 'ckp-band-rule'));
+  head.addEventListener('click', () => {
+    const collapsed = root.classList.toggle('is-collapsed');
+    head.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  });
   root.appendChild(head);
   const body = el('div', 'ckp-band-body');
   root.appendChild(body);
   return { root, body };
 }
 
-export type ChipTone = 'positive' | 'info' | 'warning' | 'neutral';
+export type ChipTone = 'positive' | 'info' | 'warning' | 'negative' | 'neutral';
 
 /** `LABEL value` summary chip. Returns a setter for live updates. */
 export function chip(label: string, value: string, tone: ChipTone = 'neutral'): {
@@ -67,20 +77,18 @@ export function chip(label: string, value: string, tone: ChipTone = 'neutral'): 
   };
 }
 
-/** iOS-style toggle switch. */
+/** Canonical boolean — kernel `.vg-checkbox`. */
+export function checkbox(checked: boolean, onChange: (v: boolean) => void): HTMLInputElement {
+  const box = el('input', 'vg-checkbox') as HTMLInputElement;
+  box.type = 'checkbox';
+  box.checked = checked;
+  box.addEventListener('click', () => onChange(box.checked));
+  return box;
+}
+
+/** @deprecated Use {@link checkbox}. Kept one cycle so existing call sites compile. */
 export function switchToggle(checked: boolean, onChange: (v: boolean) => void): HTMLElement {
-  const root = el('button', `ckp-switch${checked ? ' on' : ''}`);
-  root.type = 'button';
-  root.setAttribute('role', 'switch');
-  root.setAttribute('aria-checked', String(checked));
-  root.appendChild(el('span', 'ckp-switch-knob'));
-  root.addEventListener('click', () => {
-    const next = !root.classList.contains('on');
-    root.classList.toggle('on', next);
-    root.setAttribute('aria-checked', String(next));
-    onChange(next);
-  });
-  return root;
+  return checkbox(checked, onChange);
 }
 
 /** Segmented pill group (single select). */
@@ -128,14 +136,32 @@ export function caps(text: string): HTMLElement {
   return el('span', 'ckp-caps', text);
 }
 
-/** LABEL + control row (label column left, control right). */
-export function row(label: string, control: HTMLElement, hint?: string): HTMLElement {
+/** LABEL + control row. Help stacks under the label so the control column stays flush. */
+export function row(label: string, control: HTMLElement, help?: string): HTMLElement {
   const root = el('div', 'ckp-row');
-  root.appendChild(caps(label));
-  const main = el('div', 'ckp-row-main');
-  main.appendChild(control);
-  if (hint) main.appendChild(el('div', 'ckp-hint', hint));
-  root.appendChild(main);
+  const left = el('div', 'ckp-row-label');
+  left.appendChild(el('span', 'ckp-row-title', label));
+  if (help) left.appendChild(el('div', 'ckp-help', help));
+  const wrap = el('div', 'ckp-row-control');
+  wrap.appendChild(control);
+  root.append(left, wrap);
+  return root;
+}
+
+/** Shared empty state — icon + heading + body + optional action. */
+export function emptyState(opts: {
+  title: string;
+  description?: string;
+  icon?: string;
+  action?: HTMLElement;
+}): HTMLElement {
+  const root = el('div', 'ckp-empty');
+  const icon = el('div', 'ckp-empty-icon');
+  icon.innerHTML = lucideSvg(opts.icon ?? 'inbox', 22);
+  root.appendChild(icon);
+  root.appendChild(el('h3', 'ckp-empty-title', opts.title));
+  if (opts.description) root.appendChild(el('p', 'ckp-empty-body', opts.description));
+  if (opts.action) root.appendChild(opts.action);
   return root;
 }
 
@@ -151,7 +177,7 @@ export function restorePaneScroll(pane: HTMLElement, top: number): void {
 }
 
 /**
- * Append sticky Save/Reset head + scrollable body. Content goes on the
+ * Append sticky pane head + scrollable body. Content goes on the
  * returned body so the action bar stays pinned while bands scroll.
  */
 export function appendPaneChrome(pane: HTMLElement, head: HTMLElement): HTMLElement {
@@ -260,11 +286,15 @@ export function injectCockpitStyles(): void {
   flex: 1 1 auto; display: grid; grid-template-columns: 228px 1fr; height: 100%; min-height: 0;
   font-size: 12.5px; line-height: 1.4;
   color: var(--vg-fg-color, #e5e9f0);
-  --ckp-accent: var(--vg-accent-color, #4f9cf9);
+  --ckp-accent: var(--vg-chrome-accent);
   --ckp-muted: var(--vg-muted-fg-color, #8a93a6);
-  --ckp-border: color-mix(in srgb, var(--vg-border-color, #2a3140) 92%, transparent);
+  /* Pane hairlines — solid theme border, then +10% fg for readable opacity. */
+  --ckp-border: color-mix(in srgb, var(--vg-border-color, #2a3140) 90%, var(--vg-fg-color, #e5e9f0) 10%);
   --ckp-surface: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 3.5%, transparent);
   --ckp-surface-2: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 5.5%, transparent);
+  /* Control fill/stroke — dedicated input tokens, +10% fg on the stroke. */
+  --ckp-input-bg: var(--vg-input-bg, var(--ckp-surface));
+  --ckp-input-border: color-mix(in srgb, var(--vg-input-border, var(--vg-border-color, #2a3140)) 90%, var(--vg-fg-color, #e5e9f0) 10%);
 }
 /* Flat settings panels (no list rail) — single column with real gutters.
    Master-detail modules keep the 2-col grid above; flat modules MUST add
@@ -273,7 +303,7 @@ export function injectCockpitStyles(): void {
   display: flex;
   flex-direction: column;
   grid-template-columns: unset;
-  padding: 18px 22px 28px;
+  padding: 16px 20px 24px;
   overflow: hidden;
   gap: 0;
 }
@@ -289,7 +319,6 @@ export function injectCockpitStyles(): void {
   min-height: 0;
   overflow-y: auto;
   padding-right: 4px;
-  scrollbar-width: auto;
 }
 .ckp.ckp-flat > .ckp-flat-foot {
   flex: 0 0 auto;
@@ -299,18 +328,21 @@ export function injectCockpitStyles(): void {
 }
 .ckp * { box-sizing: border-box; }
 ${vguiCapsCss('.ckp-caps', CKP_TOKENS)}
-.ckp-hint {
-  font-size: 11px; letter-spacing: 0.01em; color: var(--ckp-muted); margin-top: 6px;
-  line-height: 1.45; text-transform: none;
+${vguiCapsCss('.ckp-band-title', CKP_TOKENS)}
+${vguiRowCss({ root: 'ckp-row', label: 'ckp-row-label', title: 'ckp-row-title', help: 'ckp-help', control: 'ckp-row-control', modified: 'is-modified' }, CKP_TOKENS, { labelCol: '210px' })}
+${vguiButtonCss({ primary: 'ckp-btn-primary', secondary: 'ckp-btn-secondary', quiet: 'ckp-btn-quiet', danger: 'ckp-btn-danger' }, CKP_TOKENS)}
+${vguiChipCss({ root: 'ckp-chip', key: 'ckp-chip-label', value: 'ckp-chip-value', positive: 'positive', warning: 'warning', negative: 'negative', info: 'info' }, CKP_TOKENS)}
+${vguiTileCss({ root: 'ckp-tile', on: 'on' }, CKP_TOKENS)}
+.ckp-help, .ckp-hint {
+  font-size: 11px; letter-spacing: 0; color: var(--ckp-muted); margin-top: 2px;
+  line-height: 1.45; text-transform: none; font-weight: 400;
 }
-.ckp-hint:not(.lc) { letter-spacing: 0.04em; text-transform: uppercase; font-size: 10px; }
 /* rail */
 .ckp-rail {
   border-right: 1px solid var(--ckp-border);
   padding: 16px 14px 20px;
   overflow-y: auto; min-height: 0;
   background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 1.5%, transparent);
-  scrollbar-width: auto;
 }
 .ckp-rail-head { display: flex; align-items: center; gap: 8px; padding: 0 4px 14px; }
 .ckp-rail-head .ckp-caps { flex: 1 1 auto; color: var(--vg-fg-color, #e5e9f0); letter-spacing: 0.1em; }
@@ -335,7 +367,7 @@ ${vguiCapsCss('.ckp-caps', CKP_TOKENS)}
 }
 .ckp-rail-row:hover { background: var(--ckp-surface); }
 .ckp-rail-row.active {
-  background: color-mix(in srgb, var(--ckp-accent) 12%, transparent);
+  background: color-mix(in srgb, var(--ckp-accent) 14%, transparent);
   border-color: color-mix(in srgb, var(--ckp-accent) 28%, transparent);
   box-shadow: inset 2px 0 0 var(--ckp-accent);
 }
@@ -357,60 +389,21 @@ ${vguiCapsCss('.ckp-caps', CKP_TOKENS)}
 .ckp-pane-head {
   flex: 0 0 auto;
   display: flex; gap: 10px; align-items: center;
-  margin: 0; padding: 16px 22px 14px;
+  margin: 0; padding: 14px 20px 12px;
   border-bottom: 1px solid var(--ckp-border);
   background: color-mix(in srgb, var(--vg-bg-color, #12161e) 88%, var(--vg-fg-color, #e5e9f0) 6%);
   z-index: 2;
 }
 .ckp-pane-body {
   flex: 1 1 auto; min-height: 0;
-  overflow-y: auto; padding: 16px 22px 32px;
-  scrollbar-width: auto;
+  overflow-y: auto; padding: 14px 20px 28px;
 }
 .ckp-title {
   flex: 1 1 auto; font-size: 14px; font-weight: 600; letter-spacing: -0.015em;
   color: var(--vg-fg-color, #e5e9f0);
 }
-.ckp-actbtn {
-  display: inline-flex; gap: 6px; align-items: center;
-  background: transparent; border: 1px solid transparent;
-  color: var(--ckp-muted); font-size: 10.5px; font-weight: 650;
-  letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer;
-  padding: 6px 10px; border-radius: var(--vg-radius, 2px);
-  transition: color 110ms ease, background 110ms ease, border-color 110ms ease;
-}
-.ckp-actbtn:hover:not(:disabled) {
-  color: var(--vg-fg-color, #e5e9f0);
-  background: var(--ckp-surface);
-  border-color: var(--ckp-border);
-}
-.ckp-actbtn:disabled { opacity: 0.4; cursor: default; }
-.ckp-actbtn[data-primary],
-.ckp-pane-head .ckp-actbtn:last-of-type:not(:disabled) {
-  color: var(--vg-fg-color, #e5e9f0);
-  background: color-mix(in srgb, var(--ckp-accent) 16%, transparent);
-  border-color: color-mix(in srgb, var(--ckp-accent) 40%, transparent);
-}
-.ckp-actbtn[data-primary]:hover:not(:disabled),
-.ckp-pane-head .ckp-actbtn:last-of-type:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ckp-accent) 24%, transparent);
-}
 /* chips strip */
 .ckp-chips-strip { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-.ckp-chip {
-  display: inline-flex; gap: 6px; align-items: center;
-  border: 1px solid var(--ckp-border); border-radius: var(--vg-radius, 2px);
-  padding: 3px 9px; font-size: 10.5px; letter-spacing: 0.08em;
-  background: var(--ckp-surface);
-}
-.ckp-chip-label { text-transform: uppercase; color: var(--ckp-muted); font-weight: 600; }
-.ckp-chip-value { font-family: ui-monospace, Menlo, Consolas, monospace; text-transform: uppercase; font-variant-numeric: tabular-nums; }
-.ckp-chip.positive { border-color: color-mix(in srgb, #4ade80 50%, transparent); }
-.ckp-chip.positive .ckp-chip-value { color: #4ade80; }
-.ckp-chip.info { border-color: color-mix(in srgb, var(--ckp-accent) 50%, transparent); }
-.ckp-chip.info .ckp-chip-value { color: var(--ckp-accent); }
-.ckp-chip.warning { border-color: color-mix(in srgb, #f5b432 55%, transparent); }
-.ckp-chip.warning .ckp-chip-value { color: #f5b432; }
 .ckp-controls-strip { display: flex; flex-wrap: wrap; gap: 8px; row-gap: 8px; align-items: center; margin-bottom: 16px; }
 .ckp-controls-strip > * { flex: 0 0 auto; }
 .ckp-strip-pair { display: inline-flex; align-items: center; gap: 8px; }
@@ -419,81 +412,75 @@ ${vguiCapsCss('.ckp-caps', CKP_TOKENS)}
 .ckp-controls-strip > .ckp-caps { white-space: nowrap; }
 .ckp-controls-strip > * + .ckp-caps { margin-left: 10px; }
 /* bands */
-.ckp-band { margin: 0 0 22px; }
-.ckp-band:last-child { margin-bottom: 8px; }
-.ckp-band-head { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
-.ckp-band-num {
-  font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 600;
-  color: color-mix(in srgb, var(--ckp-accent) 75%, var(--ckp-muted));
-  font-variant-numeric: tabular-nums;
+/* bands — chevron means collapse; head is the control */
+.ckp-band { margin: 0; }
+.ckp-band-head {
+  appearance: none;
+  display: flex; gap: 8px; align-items: center;
+  width: 100%;
+  height: 26px; padding: 0 16px; margin: 0;
+  background: var(--ckp-surface); border: none;
+  border-bottom: 1px solid var(--ckp-border);
+  color: inherit; font: inherit; text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease;
 }
-.ckp-band-title { font-size: 10.5px; font-weight: 650; letter-spacing: 0.12em; text-transform: uppercase; color: var(--vg-fg-color, #e5e9f0); }
-.ckp-band-rule { flex: 1 1 auto; height: 1px; background: var(--ckp-border); }
-.ckp-band-body { padding-left: 0; max-width: 560px; }
-/* rows + inputs — fixed label column so toggles/inputs share one vertical axis */
-.ckp-row {
-  display: grid;
-  grid-template-columns: 140px minmax(0, 1fr);
-  gap: 12px 14px;
-  align-items: center;
-  margin-bottom: 12px;
+.ckp-band-head:hover { background: var(--ckp-surface-2); }
+.ckp-band-head:hover .ckp-band-chevron { color: var(--vg-fg-color, #e5e9f0); }
+.ckp-band-head:focus-visible { outline: 2px solid var(--ckp-accent); outline-offset: -2px; }
+.ckp-band-chevron {
+  width: 0; height: 0; flex: 0 0 auto;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  color: var(--ckp-muted);
+  transition: transform 140ms ease;
 }
-.ckp-row > .ckp-caps { padding-top: 0; }
-.ckp-row-main { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
+.ckp-band.is-collapsed .ckp-band-chevron {
+  transform: rotate(-90deg);
+}
+.ckp-band.is-collapsed .ckp-band-body { display: none; }
+.ckp-band-body { padding: 6px 0 10px; max-width: 560px; }
+/* rows + inputs — control column is a single vertical edge */
+.ckp-row-control > .ckp-input:not(.ckp-num),
+.ckp-row-control > .ckp-select { width: 100%; max-width: 420px; }
 .ckp-input {
-  background: var(--ckp-surface); color: inherit;
-  border: 1px solid var(--ckp-border); border-radius: var(--vg-radius, 2px);
-  padding: 7px 10px; font: inherit; width: 100%;
+  background: var(--ckp-input-bg); color: inherit;
+  border: 1px solid var(--ckp-input-border); border-radius: var(--vg-radius, 2px);
+  padding: 0 10px; font: inherit; width: 100%; height: 28px; box-sizing: border-box;
 }
 ${vguiInputInteractionCss(['.ckp-input'], CKP_TOKENS)}
-.ckp-input.mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px; }
+.ckp-input.mono { font-family: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px; }
 .ckp-num { width: 96px; max-width: 100%; }
 .ckp-numwrap { display: inline-flex; align-items: center; gap: 6px; width: auto; max-width: 100%; }
 .ckp-numwrap .ckp-num { flex: 0 0 auto; width: 96px; }
-.ckp-suffix { font-size: 9.5px; letter-spacing: 0.1em; color: var(--ckp-muted); font-weight: 650; }
-.ckp-select { width: auto; min-width: 110px; text-transform: uppercase; font-size: 11px; font-weight: 550; }
-/* Text / long inputs stay full band width */
-.ckp-row-main > .ckp-input:not(.ckp-num),
-.ckp-row-main > .ckp-select { width: 100%; max-width: 420px; }
-/* switch — fixed pill; never use flex-basis (row-main is a column flex).
-   Geometry + states come from the shared kernel primitive (invariance-preserving). */
-${vguiSwitchCss({ root: 'ckp-switch', knob: 'ckp-switch-knob', on: 'on' }, CKP_TOKENS)}
+.ckp-suffix { font-size: 11px; color: var(--ckp-muted); font-weight: 400; }
+.ckp-select { width: auto; min-width: 110px; font-size: 12px; font-weight: 500; }
 /* pills */
 .ckp-pills {
-  display: inline-flex; border: 1px solid var(--ckp-border); border-radius: var(--vg-radius, 2px);
-  overflow: hidden; background: var(--ckp-surface);
+  display: inline-flex; height: 28px; border: 1px solid var(--ckp-input-border); border-radius: var(--vg-radius, 2px);
+  overflow: hidden; background: var(--ckp-input-bg); box-sizing: border-box;
 }
 .ckp-pill {
-  background: transparent; border: none; border-right: 1px solid var(--ckp-border);
-  color: var(--ckp-muted); font-size: 10px; font-weight: 650;
-  letter-spacing: 0.08em; text-transform: uppercase; padding: 6px 12px; cursor: pointer;
-  transition: color 110ms ease, background 110ms ease;
+  background: transparent; border: none; border-right: 1px solid var(--ckp-input-border);
+  color: var(--ckp-muted); font-size: 12px; font-weight: 500;
+  padding: 0 12px; cursor: pointer; height: 100%;
+  transition: color 120ms ease, background 120ms ease;
 }
 .ckp-pill:last-child { border-right: none; }
-.ckp-pill:hover { color: var(--vg-fg-color, #e5e9f0); }
+.ckp-pill:hover { color: var(--vg-fg-color, #e5e9f0); background: var(--vg-row-hover-bg, var(--ckp-surface)); }
 .ckp-pill.on {
-  background: color-mix(in srgb, var(--ckp-accent) 18%, transparent);
+  background: color-mix(in srgb, var(--ckp-accent) 14%, transparent);
   color: var(--vg-fg-color, #e5e9f0);
+  box-shadow: inset 0 -2px 0 var(--ckp-accent);
 }
 /* icon tiles */
-.ckp-tilegrid { display: flex; flex-wrap: wrap; gap: 5px; margin: 4px 0 10px; }
-.ckp-tile {
-  width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center;
-  background: var(--ckp-surface); border: 1px solid var(--ckp-border); border-radius: var(--vg-radius, 2px);
-  color: var(--vg-fg-color, #cfd8e3); cursor: pointer; padding: 0;
-  transition: border-color 110ms ease, background 110ms ease, color 110ms ease;
-}
-.ckp-tile:hover { border-color: color-mix(in srgb, var(--ckp-muted) 55%, transparent); }
-.ckp-tile.on {
-  border-color: color-mix(in srgb, var(--ckp-accent) 45%, var(--ckp-border));
-  color: var(--vg-fg-color, #e5e9f0);
-  background: color-mix(in srgb, var(--ckp-accent) 10%, transparent);
-}
+.ckp-tilegrid { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 10px; }
 /* color field */
 .ckp-colorfield {
-  display: flex; align-items: center; gap: 0;
-  border: 1px solid var(--ckp-border); border-radius: var(--vg-radius, 2px);
-  overflow: hidden; background: var(--ckp-surface);
+  display: flex; align-items: center; gap: 0; height: 28px; box-sizing: border-box;
+  border: 1px solid var(--ckp-input-border); border-radius: var(--vg-radius, 2px);
+  overflow: hidden; background: var(--ckp-input-bg);
 }
 .ckp-colorfield .vg-colorpicker { flex: 0 0 auto; margin: 2px 0 2px 2px; }
 .ckp-colorfield .ckp-hex {
@@ -508,7 +495,7 @@ ${vguiSwitchCss({ root: 'ckp-switch', knob: 'ckp-switch-knob', on: 'on' }, CKP_T
 .ckp-typebar { display: flex; gap: 8px; align-items: center; }
 .ckp-toggle {
   width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
-  background: var(--ckp-surface); border: 1px solid var(--ckp-border); border-radius: var(--vg-radius, 2px);
+  background: var(--ckp-input-bg); border: 1px solid var(--ckp-input-border); border-radius: var(--vg-radius, 2px);
   color: var(--ckp-muted); cursor: pointer; font-size: 12px; padding: 0;
   transition: color 110ms ease, border-color 110ms ease, background 110ms ease;
 }
@@ -525,7 +512,7 @@ ${vguiSwitchCss({ root: 'ckp-switch', knob: 'ckp-switch-knob', on: 'on' }, CKP_T
   border: 1px solid color-mix(in srgb, var(--ckp-accent) 35%, transparent);
   border-radius: var(--vg-radius, 2px); padding: 3px 4px 3px 8px; font-size: 11px;
 }
-.ckp-warn { color: #f5b432; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 650; }
+.ckp-warn { color: var(--vg-warning-color, #f0b429); font-size: 11px; font-weight: 400; letter-spacing: 0; text-transform: none; }
 /* expression + errors */
 .ckp-editor .cm-editor { width: 100%; border-radius: var(--vg-radius, 2px); overflow: hidden; }
 .ckp-error {
@@ -535,7 +522,16 @@ ${vguiSwitchCss({ root: 'ckp-switch', knob: 'ckp-switch-knob', on: 'on' }, CKP_T
   background: color-mix(in srgb, #e2695f 8%, transparent);
   font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; white-space: pre-wrap;
 }
-.ckp-empty { color: var(--ckp-muted); padding: 36px 24px; text-align: center; line-height: 1.5; }
+.ckp-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; padding: 36px 24px; text-align: center; color: var(--ckp-muted); line-height: 1.5;
+}
+.ckp-empty-icon { opacity: 0.4; line-height: 1; color: var(--ckp-muted); }
+.ckp-empty-title {
+  margin: 0; font-size: 14px; font-weight: 600; letter-spacing: -0.015em;
+  color: var(--vg-fg-color, #e5e9f0);
+}
+.ckp-empty-body { margin: 0; max-width: 22rem; font-size: 12.5px; line-height: 1.45; }
 /* style chrome (ribbon Font/Borders cluster) embedded in the rules pane */
 .ckp-stylechrome .vgext-rb-stepper { display: none; }
 .ckp-stylechrome .vgext-rb-grp:has([data-vg-field='halign']) { display: none; }
@@ -543,13 +539,13 @@ ${vguiSwitchCss({ root: 'ckp-switch', knob: 'ckp-switch-knob', on: 'on' }, CKP_T
 /* format anchor */
 .ckp-fmtbtn {
   display: inline-flex; gap: 7px; align-items: center;
-  background: var(--ckp-surface); border: 1px solid var(--ckp-border); border-radius: var(--vg-radius, 2px);
+  background: var(--ckp-input-bg); border: 1px solid var(--ckp-input-border); border-radius: var(--vg-radius, 2px);
   color: inherit; font: inherit; font-size: 12px; font-weight: 500;
   padding: 7px 12px; cursor: pointer;
   transition: border-color 120ms ease, background 120ms ease;
 }
 .ckp-fmtbtn:hover {
-  border-color: color-mix(in srgb, var(--ckp-accent) 45%, var(--ckp-border));
+  border-color: color-mix(in srgb, var(--ckp-accent) 45%, var(--ckp-input-border));
   background: color-mix(in srgb, var(--ckp-accent) 6%, transparent);
 }
 /* Placement menu (shared with Formatting toolbar icon picker). Shell from
@@ -570,11 +566,11 @@ ${vguiSwitchCss({ root: 'ckp-switch', knob: 'ckp-switch-knob', on: 'on' }, CKP_T
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   transition: background 90ms ease, color 90ms ease;
 }
-.vgext-ip-placeitem:hover { background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 18%, transparent); }
-.vgext-ip-placeitem.is-active { color: var(--vg-accent-color, #4f9cf9); background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 12%, transparent); }
-.vgext-ip-placeitem.is-active::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--vg-accent-color, #4f9cf9); flex: 0 0 auto; }
+.vgext-ip-placeitem:hover { background: color-mix(in srgb, var(--vg-chrome-accent) 18%, transparent); }
+.vgext-ip-placeitem.is-active { color: var(--vg-chrome-accent); background: color-mix(in srgb, var(--vg-chrome-accent) 12%, transparent); }
+.vgext-ip-placeitem.is-active::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--vg-chrome-accent); flex: 0 0 auto; }
 @media (prefers-reduced-motion: reduce) {
-  .ckp-rail-row, .ckp-input, .ckp-actbtn, .ckp-switch-knob, .ckp-pill, .ckp-tile, .ckp-toggle, .ckp-fmtbtn { transition: none; }
+  .ckp-rail-row, .ckp-input, .ckp-actbtn, .ckp-pill, .ckp-tile, .ckp-toggle, .ckp-fmtbtn { transition: none; }
 }
 `;
 }

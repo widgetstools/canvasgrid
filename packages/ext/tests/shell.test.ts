@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { ShellLayout, groupModulesForNav } from '../src/shell/shell';
+import { ShellLayout, groupModulesForNav, tabForModule } from '../src/shell/shell';
 import type {
   VelocityGridExtContext,
   SettingsModule,
@@ -7,7 +7,23 @@ import type {
   ModuleCategory,
 } from '../src/extension/types';
 
-const ctx = {} as VelocityGridExtContext;
+const ctx = {
+  session: {
+    stage() {},
+    unstage() {},
+    isDirty: () => false,
+    pendingCount: () => 0,
+    clear() {},
+    onChange: () => () => {},
+  },
+  profiles: {
+    isDirty: () => false,
+    onDirtyChange: () => () => {},
+    markDirty() {},
+    save: async () => {},
+    discard: async () => {},
+  },
+} as unknown as VelocityGridExtContext;
 
 function toolbarItem(id: string, slot: any): ToolbarItem {
   return {
@@ -27,17 +43,30 @@ function settingsModule(
   };
 }
 
-describe('groupModulesForNav', () => {
-  it('buckets modules into category order and drops empty groups', () => {
+describe('groupModulesForNav / tabForModule', () => {
+  it('maps modules into Options/Columns/Styling/Editing/Data tabs', () => {
     const groups = groupModulesForNav([
       settingsModule('smart-edit', 'editing', 'Smart Edit'),
       settingsModule('grid-options', 'layout', 'Options'),
       settingsModule('alerts', 'format', 'Alerts'),
       settingsModule('column-settings', 'layout', 'Column Settings'),
+      settingsModule('calculated-columns', 'data', 'Calculated Columns'),
+      settingsModule('data-provider', 'data', 'Data Provider'),
     ]);
-    expect(groups.map((g) => g.id)).toEqual(['layout', 'format', 'editing']);
-    expect(groups[0]!.modules.map((m) => m.id)).toEqual(['grid-options', 'column-settings']);
-    expect(groups[0]!.label).toBe('Layout');
+    expect(groups.map((g) => g.id)).toEqual([
+      'options',
+      'columns',
+      'styling',
+      'editing',
+      'data',
+    ]);
+    expect(groups[0]!.modules.map((m) => m.id)).toEqual(['grid-options']);
+    expect(groups[1]!.modules.map((m) => m.id)).toEqual([
+      'column-settings',
+      'calculated-columns',
+    ]);
+    expect(groups[1]!.label).toBe('Columns');
+    expect(tabForModule(settingsModule('column-groups', 'layout'))).toBe('columns');
   });
 });
 
@@ -68,6 +97,7 @@ describe('ShellLayout', () => {
     expect(root.querySelector('.vgext-sheet')!.textContent).toContain('panel:grid-options');
     expect(root.querySelector('.vgext-sheet-nav')).toBeNull(); // single module → no nav
     expect(root.querySelector('.vgext-sheet-footer')).toBeTruthy();
+    expect(root.querySelector('.vgext-sheet-footer-hint')!.textContent).toBe('All changes saved');
     expect(root.querySelector('[data-testid="vgext-sheet-done"]')).toBeTruthy();
     // Entrance uses rAF — wait so close sees `is-open` and runs the exit path.
     await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
@@ -76,30 +106,85 @@ describe('ShellLayout', () => {
     expect(shell.isSettingsOpen()).toBe(false);
   });
 
-  it('shows category dropdowns and switches panels from a menu item', () => {
+  it('shows underline category tabs, breadcrumb, and switches panels', () => {
     const root = document.createElement('div');
     const shell = new ShellLayout(root);
     shell.mountSettingsModule(settingsModule('grid-options', 'layout', 'Options'), ctx);
     shell.mountSettingsModule(settingsModule('column-settings', 'layout', 'Column Settings'), ctx);
+    shell.mountSettingsModule(settingsModule('column-groups', 'layout', 'Column Groups'), ctx);
     shell.mountSettingsModule(settingsModule('smart-edit', 'editing', 'Smart Edit'), ctx);
     shell.openSettings('grid-options');
 
     const nav = root.querySelector('[data-testid="vgext-sheet-nav"]')!;
     expect(nav).toBeTruthy();
-    expect(root.querySelector('[data-testid="vgext-sheet-nav-group-layout"]')).toBeTruthy();
-    expect(root.querySelector('[data-testid="vgext-sheet-nav-group-editing"]')).toBeTruthy();
-    expect(root.querySelector('.vgext-sheet-nav-scroll--prev')).toBeNull();
-    expect(root.querySelector('.vgext-sheet-eyebrow')!.textContent).toBe('Customize · Layout');
+    expect(root.querySelector('[data-testid="vgext-sheet-nav-tab-options"]')).toBeTruthy();
+    expect(root.querySelector('[data-testid="vgext-sheet-nav-tab-columns"]')).toBeTruthy();
+    expect(root.querySelector('[data-testid="vgext-sheet-nav-tab-editing"]')).toBeTruthy();
+    expect(root.querySelector('.vgext-sheet-eyebrow')!.textContent).toBe('Customize');
+    expect(root.querySelector('[data-testid="vgext-sheet-nav-crumb"]')!.textContent)
+      .toContain('Options');
     expect(root.querySelector('.vgext-sheet-body')!.textContent).toBe('panel:grid-options');
 
-    // Open Editing menu and pick Smart Edit.
-    root.querySelector<HTMLButtonElement>('[data-testid="vgext-sheet-nav-group-editing"]')!.click();
-    const menu = root.querySelector('[data-testid="vgext-sheet-nav-menu-editing"]')!;
-    expect(menu.hidden).toBe(false);
-    root.querySelector<HTMLButtonElement>('[data-testid="vgext-sheet-nav-item-smart-edit"]')!.click();
+    // Sibling modules under Columns appear as a subnav when that tab is active.
+    root.querySelector<HTMLButtonElement>('[data-testid="vgext-sheet-nav-tab-columns"]')!.click();
+    expect(root.querySelector('.vgext-sheet-body')!.textContent).toBe('panel:column-settings');
+    expect(root.querySelector('[data-testid="vgext-sheet-subnav"]')).toBeTruthy();
+    expect(root.querySelector('[data-testid="vgext-sheet-nav-crumb"]')!.textContent)
+      .toMatch(/Columns/);
+    root.querySelector<HTMLButtonElement>('[data-testid="vgext-sheet-nav-item-column-groups"]')!.click();
+    expect(root.querySelector('.vgext-sheet-body')!.textContent).toBe('panel:column-groups');
+
+    root.querySelector<HTMLButtonElement>('[data-testid="vgext-sheet-nav-tab-editing"]')!.click();
     expect(root.querySelector('.vgext-sheet-body')!.textContent).toBe('panel:smart-edit');
     expect(root.querySelector('.vgext-sheet-title')!.textContent).toBe('Smart Edit');
-    expect(root.querySelector('.vgext-sheet-eyebrow')!.textContent).toBe('Customize · Editing');
+    expect(root.querySelector('[data-testid="vgext-sheet-nav-crumb"]')!.textContent)
+      .toMatch(/Editing/);
+  });
+
+  it('unsubscribes drawer footer listeners when remounting and closing', async () => {
+    let sessionSubs = 0;
+    let dirtySubs = 0;
+    const leakCtx = {
+      session: {
+        stage() {},
+        unstage() {},
+        isDirty: () => false,
+        pendingCount: () => 0,
+        clear() {},
+        onChange() {
+          sessionSubs += 1;
+          return () => { sessionSubs -= 1; };
+        },
+      },
+      profiles: {
+        isDirty: () => false,
+        onDirtyChange() {
+          dirtySubs += 1;
+          return () => { dirtySubs -= 1; };
+        },
+        markDirty() {},
+        save: async () => {},
+        discard: async () => {},
+      },
+    } as unknown as VelocityGridExtContext;
+
+    const root = document.createElement('div');
+    const shell = new ShellLayout(root);
+    shell.mountSettingsModule(settingsModule('grid-options', 'layout', 'Options'), leakCtx);
+    shell.mountSettingsModule(settingsModule('smart-edit', 'editing', 'Smart Edit'), leakCtx);
+    shell.openSettings('grid-options');
+    expect(sessionSubs).toBe(1);
+    expect(dirtySubs).toBe(1);
+
+    root.querySelector<HTMLButtonElement>('[data-testid="vgext-sheet-nav-tab-editing"]')!.click();
+    expect(sessionSubs).toBe(1);
+    expect(dirtySubs).toBe(1);
+
+    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+    shell.closeSettings();
+    await new Promise((r) => setTimeout(r, 200));
+    expect(sessionSubs).toBe(0);
+    expect(dirtySubs).toBe(0);
   });
 
   it('destroys mounted toolbar-item instances on teardown', () => {

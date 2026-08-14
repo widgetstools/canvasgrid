@@ -423,7 +423,7 @@ export class ExpressionEditor {
               minHeight: multiline ? `${lines * 20 + 12}px` : '26px',
               maxHeight: multiline ? '220px' : '26px',
             },
-            '&.cm-focused': { outline: 'none', borderColor: 'var(--vg-accent-color, #2d6cdf)' },
+            '&.cm-focused': { outline: 'none', borderColor: 'var(--vg-chrome-accent)' },
             '.cm-content': { padding: '4px 6px', caretColor: 'var(--vg-fg, #dfe6ee)' },
             '.cm-line': { padding: '0' },
             '.cm-scroller': { overflow: 'auto', lineHeight: '20px' },
@@ -443,7 +443,7 @@ export class ExpressionEditor {
               zIndex: '10300',
             },
             '.cm-tooltip-autocomplete ul li[aria-selected]': {
-              background: 'var(--vg-accent-color, #2d6cdf)',
+              background: 'var(--vg-chrome-accent)',
               color: '#fff',
             },
           }),

@@ -16,56 +16,80 @@ const MODULE_ICON_ALIAS: Record<string, string> = {
   wand: 'sparkles',
 };
 
-/** Display order for Customize drawer category menus. */
-const CATEGORY_ORDER: readonly ModuleCategory[] = [
-  'layout',
-  'data',
-  'format',
+/** Customize drawer top tabs — screenshot grammar (Cursor colors elsewhere). */
+export type CustomizerTabId =
+  | 'options'
+  | 'columns'
+  | 'styling'
+  | 'editing'
+  | 'data';
+
+const TAB_ORDER: readonly CustomizerTabId[] = [
+  'options',
+  'columns',
+  'styling',
   'editing',
-  'workspace',
+  'data',
 ];
 
-const CATEGORY_LABELS: Record<ModuleCategory, string> = {
-  layout: 'Layout',
-  data: 'Data',
-  format: 'Format',
+const TAB_LABELS: Record<CustomizerTabId, string> = {
+  options: 'Options',
+  columns: 'Columns',
+  styling: 'Styling',
   editing: 'Editing',
-  workspace: 'Workspace',
+  data: 'Data',
 };
 
+/** Prefer module id for COLUMNS vs OPTIONS; fall back to ModuleCategory. */
+export function tabForModule(mod: SettingsModule): CustomizerTabId {
+  switch (mod.id) {
+    case 'grid-options':
+      return 'options';
+    case 'column-settings':
+    case 'column-groups':
+    case 'calculated-columns':
+      return 'columns';
+    case 'conditional-styling':
+    case 'alerts':
+      return 'styling';
+    case 'data-provider':
+    case 'perspective-data-provider':
+    case 'expression-lab':
+      return 'data';
+    default:
+      break;
+  }
+  const cat: ModuleCategory = mod.category || 'workspace';
+  if (cat === 'format') return 'styling';
+  if (cat === 'editing') return 'editing';
+  if (cat === 'data') return 'data';
+  if (cat === 'layout') return 'options';
+  return 'options';
+}
+
 interface ModuleNavGroup {
-  id: string;
+  id: CustomizerTabId;
   label: string;
   modules: SettingsModule[];
 }
 
-/** Bucket registered modules into category dropdowns (empty groups dropped). */
+/** Bucket registered modules into Options/Columns/Styling/Editing/Data tabs. */
 export function groupModulesForNav(
   modules: Iterable<SettingsModule>,
 ): ModuleNavGroup[] {
-  const byCat = new Map<string, SettingsModule[]>();
+  const byTab = new Map<CustomizerTabId, SettingsModule[]>();
   for (const mod of modules) {
-    const key = mod.category || 'workspace';
-    const list = byCat.get(key);
+    const key = tabForModule(mod);
+    const list = byTab.get(key);
     if (list) list.push(mod);
-    else byCat.set(key, [mod]);
+    else byTab.set(key, [mod]);
   }
 
   const groups: ModuleNavGroup[] = [];
-  for (const id of CATEGORY_ORDER) {
-    const members = byCat.get(id);
+  for (const id of TAB_ORDER) {
+    const members = byTab.get(id);
     if (!members?.length) continue;
-    groups.push({ id, label: CATEGORY_LABELS[id], modules: members });
-    byCat.delete(id);
-  }
-  // Unknown / future categories — keep reachable under their raw id.
-  for (const [id, members] of byCat) {
-    if (!members.length) continue;
-    groups.push({
-      id,
-      label: id.charAt(0).toUpperCase() + id.slice(1),
-      modules: members,
-    });
+    groups.push({ id, label: TAB_LABELS[id], modules: members });
   }
   return groups;
 }
@@ -104,8 +128,11 @@ export class ShellLayout {
   private live: ModuleInstance | null = null;
   private activeId: string | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
-  /** Tear down dropdown listeners for the sheet category nav. */
-  private navCleanup: (() => void) | null = null;
+  /** Last module opened per customize tab (restore on tab re-click). */
+  private lastModuleByTab = new Map<CustomizerTabId, string>();
+  /** Footer session/profile subscriptions for the open sheet. */
+  private sheetUnsub: Array<() => void> = [];
+  private closeTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private root: HTMLElement) {
     injectShellStyles();
@@ -151,24 +178,38 @@ export class ShellLayout {
     });
   }
 
-  private renderSheet(id: string): void {
+  /** Drop the live pane and session listeners. Commit only when navigating
+   *  between modules so a draft is not lost; Esc/X must not flush. */
+  private detachSheet(opts: { commit: boolean }): void {
+    if (opts.commit) {
+      try { this.live?.commit?.(); } catch { /* draft flush is best-effort */ }
+    }
     this.live?.destroy();
     this.live = null;
-    this.navCleanup?.();
-    this.navCleanup = null;
+    for (const off of this.sheetUnsub) {
+      try { off(); } catch { /* */ }
+    }
+    this.sheetUnsub = [];
+  }
+
+  private renderSheet(id: string): void {
+    if (this.closeTimer) {
+      clearTimeout(this.closeTimer);
+      this.closeTimer = null;
+    }
+    this.detachSheet({ commit: true });
     this.sheet.replaceChildren();
     this.activeId = id;
     const entry = this.modules.get(id)!;
     const groups = groupModulesForNav([...this.modules.values()].map((m) => m.module));
     const activeGroup = groups.find((g) => g.modules.some((m) => m.id === id));
+    if (activeGroup) this.lastModuleByTab.set(activeGroup.id, id);
 
-    // Drawer header: quiet eyebrow + module title + close.
+    // Drawer header: product label + module title + close.
     const header = el('vgext-sheet-header');
     const titles = el('vgext-sheet-titles');
     const eyebrow = el('vgext-sheet-eyebrow');
-    eyebrow.textContent = activeGroup
-      ? `Customize · ${activeGroup.label}`
-      : 'Customize';
+    eyebrow.textContent = 'Customize';
     const title = el('vgext-sheet-title');
     title.id = 'vgext-sheet-title';
     title.textContent = entry.module.title;
@@ -181,152 +222,150 @@ export class ShellLayout {
     close.addEventListener('click', () => this.closeSettings());
     header.append(titles, close);
 
-    // Category dropdown menus — replaces the scrollable flat tab strip.
     const body = el('vgext-sheet-body');
     body.setAttribute('role', 'tabpanel');
     body.setAttribute('aria-labelledby', 'vgext-sheet-title');
+
     if (this.modules.size > 1) {
       const wrap = el('vgext-sheet-nav-wrap');
+
       const nav = el('vgext-sheet-nav');
-      nav.setAttribute('role', 'menubar');
+      nav.setAttribute('role', 'tablist');
       nav.setAttribute('aria-label', 'Settings categories');
       nav.setAttribute('data-testid', 'vgext-sheet-nav');
 
       for (const group of groups) {
         const containsActive = group.modules.some((m) => m.id === id);
-        const groupEl = el('vgext-sheet-nav-group');
-        groupEl.dataset.groupId = group.id;
+        const tab = document.createElement('button');
+        tab.type = 'button';
+        tab.className = 'vgext-sheet-nav-tab';
+        tab.setAttribute('role', 'tab');
+        tab.setAttribute('aria-selected', containsActive ? 'true' : 'false');
+        tab.setAttribute('data-testid', `vgext-sheet-nav-tab-${group.id}`);
+        tab.dataset.tabId = group.id;
+        if (containsActive) tab.classList.add('is-active');
+        tab.textContent = group.label;
+        tab.addEventListener('click', () => {
+          if (containsActive) return;
+          const remembered = this.lastModuleByTab.get(group.id);
+          const target =
+            (remembered && group.modules.some((m) => m.id === remembered)
+              ? remembered
+              : group.modules[0]?.id) ?? null;
+          if (target && target !== this.activeId) this.renderSheet(target);
+        });
+        nav.appendChild(tab);
+      }
 
-        const trigger = document.createElement('button');
-        trigger.type = 'button';
-        trigger.className = 'vgext-sheet-nav-group-trigger';
-        trigger.setAttribute('role', 'menuitem');
-        trigger.setAttribute('aria-haspopup', 'menu');
-        trigger.setAttribute('aria-expanded', 'false');
-        trigger.setAttribute('data-testid', `vgext-sheet-nav-group-${group.id}`);
-        trigger.dataset.groupId = group.id;
-        if (containsActive) trigger.classList.add('is-active');
-        const chevron = moduleIconSvg('chevron-down', 12);
-        trigger.innerHTML =
-          `<span class="vgext-sheet-nav-group-label">${group.label}</span>` +
-          (chevron
-            ? `<span class="vgext-sheet-nav-group-chevron" aria-hidden="true">${chevron}</span>`
-            : '');
+      const crumb = el('vgext-sheet-nav-crumb');
+      crumb.setAttribute('data-testid', 'vgext-sheet-nav-crumb');
+      const crumbCat = el('vgext-sheet-nav-crumb-cat');
+      crumbCat.textContent = activeGroup?.label ?? 'Customize';
+      const crumbSep = el('vgext-sheet-nav-crumb-sep');
+      crumbSep.textContent = '·';
+      crumbSep.setAttribute('aria-hidden', 'true');
+      const crumbMod = el('vgext-sheet-nav-crumb-mod');
+      crumbMod.textContent = entry.module.title;
+      crumb.append(crumbCat, crumbSep, crumbMod);
 
-        const menu = el('vgext-sheet-nav-menu');
-        menu.setAttribute('role', 'menu');
-        menu.setAttribute('aria-label', group.label);
-        menu.hidden = true;
-        menu.setAttribute('data-testid', `vgext-sheet-nav-menu-${group.id}`);
+      wrap.append(nav, crumb);
+      this.sheet.append(header, wrap);
 
-        for (const mod of group.modules) {
+      // Sibling modules within the active tab (e.g. Column Settings / Groups).
+      if (activeGroup && activeGroup.modules.length > 1) {
+        const sub = el('vgext-sheet-subnav');
+        sub.setAttribute('role', 'tablist');
+        sub.setAttribute('aria-label', `${activeGroup.label} modules`);
+        sub.setAttribute('data-testid', 'vgext-sheet-subnav');
+        for (const mod of activeGroup.modules) {
           const item = document.createElement('button');
           item.type = 'button';
-          item.className = 'vgext-sheet-nav-menu-item';
-          item.setAttribute('role', 'menuitem');
+          item.className = 'vgext-sheet-subnav-tab';
+          item.setAttribute('role', 'tab');
+          item.setAttribute('aria-selected', mod.id === id ? 'true' : 'false');
           item.setAttribute('data-testid', `vgext-sheet-nav-item-${mod.id}`);
           item.dataset.moduleId = mod.id;
           if (mod.id === id) item.classList.add('is-active');
-          const iconHtml = moduleIconSvg(mod.icon, 14);
-          item.innerHTML =
-            `${iconHtml ? `<span class="vgext-sheet-nav-icon">${iconHtml}</span>` : ''}` +
-            `<span class="vgext-sheet-nav-label">${mod.title}</span>`;
+          item.textContent = mod.title;
           item.addEventListener('click', () => {
-            if (mod.id === this.activeId) {
-              closeAllMenus();
-              return;
-            }
-            this.renderSheet(mod.id);
+            if (mod.id !== this.activeId) this.renderSheet(mod.id);
           });
-          menu.appendChild(item);
+          sub.appendChild(item);
         }
-
-        groupEl.append(trigger, menu);
-        nav.appendChild(groupEl);
+        this.sheet.append(sub);
       }
 
-      const closeAllMenus = (): void => {
-        for (const g of nav.querySelectorAll<HTMLElement>('.vgext-sheet-nav-group')) {
-          g.classList.remove('is-open');
-          const t = g.querySelector<HTMLButtonElement>('.vgext-sheet-nav-group-trigger');
-          const m = g.querySelector<HTMLElement>('.vgext-sheet-nav-menu');
-          if (t) t.setAttribute('aria-expanded', 'false');
-          if (m) m.hidden = true;
-        }
-      };
-
-      const onTriggerClick = (e: Event): void => {
-        const triggerEl = (e.currentTarget as HTMLElement);
-        const groupEl = triggerEl.closest<HTMLElement>('.vgext-sheet-nav-group');
-        if (!groupEl) return;
-        const wasOpen = groupEl.classList.contains('is-open');
-        closeAllMenus();
-        if (wasOpen) return;
-        groupEl.classList.add('is-open');
-        triggerEl.setAttribute('aria-expanded', 'true');
-        const menu = groupEl.querySelector<HTMLElement>('.vgext-sheet-nav-menu');
-        if (menu) menu.hidden = false;
-      };
-
-      for (const t of nav.querySelectorAll<HTMLButtonElement>('.vgext-sheet-nav-group-trigger')) {
-        t.addEventListener('click', onTriggerClick);
-      }
-
-      const onDocPointer = (e: Event): void => {
-        const target = e.target as Node | null;
-        if (target && nav.contains(target)) return;
-        closeAllMenus();
-      };
-      // Capture so we close before other handlers; ignore the opening click.
-      requestAnimationFrame(() => {
-        document.addEventListener('pointerdown', onDocPointer, true);
-      });
-
-      this.navCleanup = () => {
-        document.removeEventListener('pointerdown', onDocPointer, true);
-        for (const t of nav.querySelectorAll<HTMLButtonElement>('.vgext-sheet-nav-group-trigger')) {
-          t.removeEventListener('click', onTriggerClick);
-        }
-      };
-
-      wrap.appendChild(nav);
-      this.sheet.append(header, wrap, body);
+      this.sheet.append(body);
     } else {
       this.sheet.append(header, body);
     }
 
-    // Footer: Discard reverts unsaved profile edits; Done closes the drawer.
+    // Footer: live session status. Discard reverts; Done commits once.
     const footer = el('vgext-sheet-footer');
     const hint = el('vgext-sheet-footer-hint');
-    hint.textContent = 'Save cards in each tab · Title-bar Save* persists the profile · Esc closes';
+    const ctx = entry.ctx;
+    const renderHint = (): void => {
+      const n = ctx.session.pendingCount();
+      const dirty = ctx.session.isDirty() || ctx.profiles.isDirty();
+      hint.textContent = dirty
+        ? `${Math.max(n, 1)} unsaved change${Math.max(n, 1) === 1 ? '' : 's'}`
+        : 'All changes saved';
+    };
+    renderHint();
+    this.sheetUnsub.push(ctx.session.onChange(renderHint));
+    this.sheetUnsub.push(ctx.profiles.onDirtyChange(renderHint));
+    const shortcuts = el('vgext-sheet-footer-keys');
+    shortcuts.textContent = 'Esc · close';
     const discard = document.createElement('button');
     discard.type = 'button';
     discard.className = 'vgext-sheet-footbtn ghost';
     discard.textContent = 'Discard';
-    discard.title = 'Revert unsaved profile changes and close';
+    discard.title = 'Revert unsaved changes and close';
     discard.addEventListener('click', () => { void this.discardAndClose(); });
     const done = document.createElement('button');
     done.type = 'button';
     done.className = 'vgext-sheet-footbtn action';
     done.textContent = 'Done';
     done.setAttribute('data-testid', 'vgext-sheet-done');
-    done.addEventListener('click', () => this.closeSettings());
-    footer.append(hint, discard, done);
+    done.addEventListener('click', () => { void this.commitAndClose(); });
+    footer.append(hint, shortcuts, discard, done);
     this.sheet.append(footer);
 
-    this.live = entry.module.mount(body, entry.ctx);
+    const moduleCtx: VelocityGridExtContext = {
+      ...ctx,
+      profiles: {
+        ...ctx.profiles,
+        markDirty() {
+          ctx.profiles.markDirty();
+          ctx.session.stage(id);
+        },
+      },
+    };
+    this.live = entry.module.mount(body, moduleCtx);
   }
 
   private profilesCtx(): VelocityGridExtContext | null {
     return this.modules.values().next().value?.ctx ?? null;
   }
 
+  /** Persist staged drawer edits once, then close. */
+  private async commitAndClose(): Promise<void> {
+    try { this.live?.commit?.(); } catch { /* draft flush is best-effort */ }
+    const ctx = this.profilesCtx();
+    try {
+      if (ctx?.profiles.isDirty() || ctx?.session.isDirty()) await ctx.profiles.save();
+    } catch { /* store miss — still close */ }
+    ctx?.session.clear();
+    this.closeSettings();
+  }
+
   /** Reload the active profile snapshot (if dirty), then close. */
   private async discardAndClose(): Promise<void> {
-    const profiles = this.profilesCtx()?.profiles;
+    const ctx = this.profilesCtx();
     try {
-      if (profiles?.isDirty()) await profiles.discard();
+      if (ctx?.profiles.isDirty()) await ctx.profiles.discard();
     } catch { /* store miss — still close */ }
+    ctx?.session.clear();
     this.closeSettings();
   }
 
@@ -352,31 +391,34 @@ export class ShellLayout {
     this.sheet.classList.remove('is-open');
     this.sheet.setAttribute('aria-hidden', 'true');
     const finish = (): void => {
-      this.navCleanup?.();
-      this.navCleanup = null;
-      this.live?.destroy();
-      this.live = null;
+      this.closeTimer = null;
+      this.detachSheet({ commit: false });
       this.activeId = null;
       this.sheet.hidden = true;
       this.sheet.replaceChildren();
     };
+    if (this.closeTimer) {
+      clearTimeout(this.closeTimer);
+      this.closeTimer = null;
+    }
     const reduce = typeof matchMedia === 'function'
       && matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (reduce || !wasOpen) {
       finish();
       return;
     }
-    window.setTimeout(finish, 180);
+    this.closeTimer = setTimeout(finish, 180);
   }
 
   isSettingsOpen(): boolean { return !this.sheet.hidden; }
 
   destroy(): void {
     this.unbindEscape();
-    this.navCleanup?.();
-    this.navCleanup = null;
-    this.live?.destroy();
-    this.live = null;
+    if (this.closeTimer) {
+      clearTimeout(this.closeTimer);
+      this.closeTimer = null;
+    }
+    this.detachSheet({ commit: false });
     for (const inst of this.toolbarInstances) inst?.destroy();
     this.toolbarInstances = [];
     this.modules.clear();
@@ -506,13 +548,13 @@ const SHELL_CSS = `
   transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 .vgext-btn:hover { background: var(--vg-row-alt-bg, rgba(255, 255, 255, 0.06)); }
-.vgext-btn:focus-visible { outline: 2px solid var(--vg-accent-color, #4f9cf9); outline-offset: 1px; }
+.vgext-btn:focus-visible { outline: 2px solid var(--vg-chrome-accent); outline-offset: 1px; }
 .vgext-btn:disabled { color: var(--vg-muted-fg-color, #7f8798); cursor: default; opacity: 0.65; }
 .vgext-btn:disabled:hover { background: transparent; }
 /* Save button reflects a dirty profile — accent when actionable. */
 .vgext-btn.vgext-save:not(:disabled) {
-  background: var(--vg-primary-color, var(--vg-accent-color, #4f9cf9));
-  border-color: var(--vg-primary-color, var(--vg-accent-color, #4f9cf9));
+  background: var(--vg-primary-color, var(--vg-chrome-accent));
+  border-color: var(--vg-primary-color, var(--vg-chrome-accent));
   color: var(--vg-primary-fg, var(--vg-accent-fg, #ffffff));
 }
 .vgext-btn.vgext-save:not(:disabled):hover { filter: brightness(1.08); }
@@ -523,7 +565,7 @@ const SHELL_CSS = `
   top: 0;
   right: 0;
   bottom: 0;
-  width: min(680px, 92vw);
+  width: min(760px, 94vw);
   height: 100vh;
   height: 100dvh;
   max-height: 100vh;
@@ -604,141 +646,132 @@ const SHELL_CSS = `
   border-color: color-mix(in srgb, var(--vg-border-color, #2a3140) 80%, transparent);
   color: var(--vg-fg-color, #e5e9f0);
 }
-.vgext-sheet-close:focus-visible { outline: 2px solid var(--vg-accent-color, #4f9cf9); outline-offset: 1px; }
-/* Category menubar — few stable dropdowns instead of a long tab strip. */
+.vgext-sheet-close:focus-visible { outline: 2px solid var(--vg-chrome-accent); outline-offset: 1px; }
+/* Category underline tabs + right breadcrumb (screenshot grammar). */
 .vgext-sheet-nav-wrap {
   flex: 0 0 auto;
   display: flex;
   align-items: stretch;
-  gap: 0;
+  gap: 12px;
   min-width: 0;
   position: relative;
   z-index: 2;
   border-bottom: 1px solid color-mix(in srgb, var(--vg-border-color, #2a3140) 85%, transparent);
+  padding: 0 14px 0 10px;
   background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 2%, transparent);
 }
 .vgext-sheet-nav {
   flex: 1 1 auto;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: stretch;
-  gap: 2px;
+  gap: 0;
   min-width: 0;
-  padding: 6px 10px;
+  overflow-x: auto;
 }
-.vgext-sheet-nav-group {
-  position: relative;
-  flex: 0 0 auto;
-}
-.vgext-sheet-nav-group-trigger {
+.vgext-sheet-nav-tab {
   appearance: none;
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid transparent;
-  border-radius: var(--vg-radius, 2px);
+  height: 36px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 0;
   background: transparent;
   color: var(--vg-muted-fg-color, #8a93a6);
   font: inherit;
   font-size: 11px;
   font-weight: 650;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   white-space: nowrap;
   cursor: pointer;
-  transition: color 140ms ease, background 140ms ease, border-color 140ms ease;
+  box-shadow: inset 0 -2px 0 transparent;
+  transition: color 140ms ease, box-shadow 140ms ease;
 }
-.vgext-sheet-nav-group-chevron {
-  display: inline-flex;
-  opacity: 0.7;
-  transition: transform 140ms ease, opacity 140ms ease;
-}
-.vgext-sheet-nav-group-trigger:hover,
-.vgext-sheet-nav-group.is-open .vgext-sheet-nav-group-trigger {
+.vgext-sheet-nav-tab:hover {
   color: var(--vg-fg-color, #e5e9f0);
-  background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 5%, transparent);
-  border-color: color-mix(in srgb, var(--vg-border-color, #2a3140) 70%, transparent);
 }
-.vgext-sheet-nav-group-trigger.is-active {
+.vgext-sheet-nav-tab.is-active {
   color: var(--vg-fg-color, #e5e9f0);
-  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 10%, transparent);
-  border-color: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 35%, transparent);
+  box-shadow: inset 0 -2px 0 var(--vg-chrome-accent);
 }
-.vgext-sheet-nav-group.is-open .vgext-sheet-nav-group-chevron {
-  transform: rotate(180deg);
-  opacity: 1;
-}
-.vgext-sheet-nav-group-trigger:focus-visible {
-  outline: 2px solid var(--vg-accent-color, #4f9cf9);
-  outline-offset: 1px;
-}
-.vgext-sheet-nav-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  min-width: 200px;
-  max-width: min(280px, 80vw);
-  padding: 4px;
-  border: 1px solid color-mix(in srgb, var(--vg-border-color, #2a3140) 90%, transparent);
-  border-radius: var(--vg-radius, 2px);
-  background: var(--vg-popup-bg, #12161f);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
-  z-index: 5;
-}
-.vgext-sheet-nav-menu[hidden] { display: none !important; }
-.vgext-sheet-nav-menu-item {
-  appearance: none;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 32px;
-  padding: 0 10px;
-  border: none;
-  border-radius: var(--vg-radius, 2px);
-  background: transparent;
-  color: var(--vg-fg-color, #e5e9f0);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 550;
-  text-align: left;
-  cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
-}
-.vgext-sheet-nav-menu-item:hover {
-  background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 6%, transparent);
-}
-.vgext-sheet-nav-menu-item.is-active {
-  color: var(--vg-accent-color, #4f9cf9);
-  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 10%, transparent);
-}
-.vgext-sheet-nav-menu-item:focus-visible {
-  outline: 2px solid var(--vg-accent-color, #4f9cf9);
+.vgext-sheet-nav-tab:focus-visible {
+  outline: 2px solid var(--vg-chrome-accent);
   outline-offset: -2px;
 }
-.vgext-sheet-nav-icon {
+.vgext-sheet-nav-crumb {
+  flex: 0 1 auto;
   display: inline-flex;
-  opacity: 0.75;
-  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 42%;
+  margin-left: auto;
+  padding: 0 2px;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--vg-muted-fg-color, #8a93a6) 92%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.vgext-sheet-nav-menu-item.is-active .vgext-sheet-nav-icon,
-.vgext-sheet-nav-menu-item:hover .vgext-sheet-nav-icon {
-  opacity: 1;
-}
-.vgext-sheet-nav-label {
+.vgext-sheet-nav-crumb-cat { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.vgext-sheet-nav-crumb-sep { flex: 0 0 auto; opacity: 0.55; }
+.vgext-sheet-nav-crumb-mod {
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: var(--vg-fg-color, #e5e9f0);
+}
+.vgext-sheet-subnav {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 0 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--vg-border-color, #2a3140) 70%, transparent);
+  background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 1.25%, transparent);
+}
+.vgext-sheet-subnav-tab {
+  appearance: none;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 11px;
+  border: none;
+  background: transparent;
+  color: var(--vg-muted-fg-color, #8a93a6);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 550;
+  letter-spacing: 0.01em;
   white-space: nowrap;
+  cursor: pointer;
+  box-shadow: inset 0 -2px 0 transparent;
+  transition: color 120ms ease, box-shadow 120ms ease;
+}
+.vgext-sheet-subnav-tab:hover { color: var(--vg-fg-color, #e5e9f0); }
+.vgext-sheet-subnav-tab.is-active {
+  color: var(--vg-fg-color, #e5e9f0);
+  box-shadow: inset 0 -2px 0 var(--vg-chrome-accent);
+}
+.vgext-sheet-subnav-tab:focus-visible {
+  outline: 2px solid var(--vg-chrome-accent);
+  outline-offset: -2px;
 }
 .vgext-sheet-body {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
   padding: 16px 16px 24px;
-  scrollbar-width: auto;
 }
 /* Kernel tool panels (Options / Column Groups) fill the body edge-to-edge. */
 .vgext-sheet-body:has(> .vgext-sheet-toolpanel) {
@@ -782,20 +815,28 @@ const SHELL_CSS = `
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.vgext-sheet-footer-keys {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--vg-muted-fg-color, #8a93a6) 72%, transparent);
+  white-space: nowrap;
+}
 .vgext-sheet-footbtn {
   appearance: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   height: 28px;
-  padding: 0 12px;
+  padding: 0 13px;
   border: 1px solid transparent;
   border-radius: var(--vg-radius, 2px);
   font: inherit;
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
   cursor: pointer;
   flex: 0 0 auto;
   transition: background 120ms ease, border-color 120ms ease, color 120ms ease, filter 120ms ease;
@@ -809,19 +850,19 @@ const SHELL_CSS = `
   background: var(--vg-row-alt-bg, rgba(255, 255, 255, 0.06));
 }
 .vgext-sheet-footbtn.action {
-  background: var(--vg-primary-color, var(--vg-accent-color, #4f9cf9));
-  border-color: var(--vg-primary-color, var(--vg-accent-color, #4f9cf9));
-  color: var(--vg-primary-fg, var(--vg-accent-fg, #ffffff));
+  background: var(--vg-chrome-accent);
+  border-color: var(--vg-chrome-accent);
+  color: var(--vg-checkbox-checked-fg, #FCFCFC);
+  font-weight: 600;
 }
 .vgext-sheet-footbtn.action:hover { filter: brightness(1.08); }
-.vgext-sheet-footbtn:focus-visible { outline: 2px solid var(--vg-accent-color, #4f9cf9); outline-offset: 1px; }
+.vgext-sheet-footbtn:focus-visible { outline: 2px solid var(--vg-chrome-accent); outline-offset: 1px; }
 
 @media (prefers-reduced-motion: reduce) {
   .vgext-sheet { transition: none; }
-  .vgext-sheet-nav-group-chevron { transition: none; }
 }
 @media (prefers-reduced-motion: no-preference) {
-  .vgext-btn, .vgext-sheet-close, .vgext-sheet-nav-group-trigger, .vgext-sheet-nav-menu-item {
+  .vgext-btn, .vgext-sheet-close, .vgext-sheet-nav-tab, .vgext-sheet-subnav-tab {
     transition-duration: 120ms;
   }
 }

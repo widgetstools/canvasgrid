@@ -98,8 +98,8 @@ export class CgcField extends LitElement {
   }
 }
 
-/** Toggle switch. Controlled: renders `checked`, emits `cgc-change`
- *  with the flipped boolean. */
+/** Boolean control. Controlled: renders `checked`, emits `cgc-change`
+ *  with the flipped boolean. Canonical kernel `.vg-checkbox` paint. */
 export class CgcSwitch extends LitElement {
   static override styles = [chromeBase, switchStyles];
   static override properties = {
@@ -118,15 +118,13 @@ export class CgcSwitch extends LitElement {
 
   override render() {
     return html`
-      <button
-        type="button"
-        role="switch"
-        aria-checked=${this.checked ? 'true' : 'false'}
+      <input
+        type="checkbox"
+        class="vg-checkbox"
+        .checked=${this.checked}
         aria-label=${this.ariaLabelText || nothing}
         @click=${() => emitChange(this, !this.checked)}
-      >
-        <span class="knob"></span>
-      </button>
+      />
     `;
   }
 }

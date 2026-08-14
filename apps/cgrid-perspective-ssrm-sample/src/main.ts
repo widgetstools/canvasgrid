@@ -76,7 +76,7 @@ const dataController = new PerspectiveDataProviderController({
 
 const options = {
   gridId: 'perspective-ssrm-sample',
-  theme: 'vg-theme-quartz-dark',
+  theme: 'vg-theme-cursor-dark',
   defaultColDef: { resizable: true, sortable: true, minWidth: 80, floatingFilter: true, filter: true },
   columnDefs: [],
   rowModelType: 'serverSide',

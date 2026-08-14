@@ -131,7 +131,7 @@ export function mountCsrmFeature(
     getRowId: (r: LabRow) => r.id,
     columnDefs: feature.getColumnDefs(),
     defaultColDef: feature.defaultColDef ?? defaultColDef,
-    theme: 'vg-theme-quartz-dark',
+    theme: 'vg-theme-cursor-dark',
     rowData: rows,
     enableCellChangeFlash: true,
     rowGroupPanelShow: feature.id === 'live' || feature.id === 'renderers'

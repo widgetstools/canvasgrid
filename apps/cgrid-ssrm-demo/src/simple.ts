@@ -31,7 +31,7 @@ const provider = new StompPerspectiveProvider({
 });
 
 const grid = new VelocityGrid(document.getElementById('grid')!, {
-  theme: 'vg-theme-quartz-dark',
+  theme: 'vg-theme-cursor-dark',
   enableCellChangeFlash: true,
   cellSelection: { suppressHeader: true },
   rowSelection: 'multiple',

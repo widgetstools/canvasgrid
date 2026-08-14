@@ -16,7 +16,7 @@ window.__cgridReady = false;
 
 // ─── Theme state ──────────────────────────────────────────────────────────────
 
-let currentTheme = 'vg-theme-starui-dark';
+let currentTheme = 'vg-theme-cursor-dark';
 
 // ─── Build shell ──────────────────────────────────────────────────────────────
 
@@ -101,8 +101,8 @@ function mount(featureId: string): void {
 // ─── Theme toggle ─────────────────────────────────────────────────────────────
 
 themeToggle.addEventListener('click', () => {
-  const isDark = currentTheme === 'vg-theme-starui-dark';
-  currentTheme = isDark ? 'vg-theme-starui' : 'vg-theme-starui-dark';
+  const isDark = currentTheme === 'vg-theme-cursor-dark';
+  currentTheme = isDark ? 'vg-theme-cursor' : 'vg-theme-cursor-dark';
   themeToggle.textContent = isDark ? '☾' : '☀';
 
   // Apply to running grid

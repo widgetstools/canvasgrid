@@ -404,7 +404,7 @@ const COL_CSS = `
   transition: background 120ms ease, border-color 120ms ease;
 }
 .vgext-col-switch[aria-checked="true"] {
-  background: var(--vg-accent-color, #4f9cf9);
+  background: var(--vg-chrome-accent);
   border-color: transparent;
 }
 .vgext-col-knob {
@@ -414,7 +414,7 @@ const COL_CSS = `
 .vgext-col-switch[aria-checked="true"] .vgext-col-knob { left: 14px; }
 .vgext-col-switch.is-mixed { border: 1px dashed var(--vg-muted-fg-color, #9aa4b6); }
 .vgext-col-switch.is-mixed .vgext-col-knob { left: 7.5px; opacity: 0.6; }
-.vgext-col-switch:focus-visible { outline: 2px solid var(--vg-accent-color, #4f9cf9); outline-offset: 1px; }
+.vgext-col-switch:focus-visible { outline: 2px solid var(--vg-chrome-accent); outline-offset: 1px; }
 .vgext-col-seg { display: inline-flex; gap: 2px; }
 .vgext-col-seg > button {
   appearance: none; height: 22px; padding: 0 8px; border-radius: var(--vg-radius, 5px);
@@ -422,8 +422,8 @@ const COL_CSS = `
   color: var(--vg-muted-fg-color, #9aa4b6); font: inherit; font-size: 11.5px; cursor: pointer;
 }
 .vgext-col-seg > button.is-on {
-  color: var(--vg-accent-color, #4f9cf9); border-color: var(--vg-accent-color, #4f9cf9);
-  background: color-mix(in srgb, var(--vg-accent-color, #4f9cf9) 12%, transparent);
+  color: var(--vg-chrome-accent); border-color: var(--vg-chrome-accent);
+  background: color-mix(in srgb, var(--vg-chrome-accent) 12%, transparent);
 }
 .vgext-col-row.is-error { box-shadow: inset 0 0 0 1px var(--vg-neg-color, #e2606c); }
 .vgext-col-select {
