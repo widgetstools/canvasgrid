@@ -28,7 +28,13 @@ export interface IServerSideGetRowsRequest {
   rowGroupCols: string[];
   /** Lazy child-fetch route (AG parity). Empty = top-level window. */
   groupKeys: string[];
-  /** Expanded composite keys — cgrid extension for server-side tree materialization. */
+  /**
+   * @deprecated The v1 server-side tree-materialization protocol was removed
+   * with the v1 row-model controller. The kernel now always sends an empty
+   * array here; server-side grouping goes through `getGroupSkeleton` /
+   * `getLeafRows` (see {@link IServerSideDatasourceV2}). The field is kept so
+   * existing datasource implementations still typecheck.
+   */
   expandedGroupKeys: string[];
   /**
    * Optional column projection for the row window. When set, datasources

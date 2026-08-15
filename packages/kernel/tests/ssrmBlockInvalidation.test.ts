@@ -1,21 +1,32 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  ServerSideRowModelController,
-  type SsrmHost,
-} from '../src/core/serverSideRowModel';
-import type { IServerSideDatasource } from '../src/types/ssrm';
+  ServerSideRowModelV2Controller,
+  type SsrmDatasource,
+  type SsrmHostV2,
+} from '../src/core/serverSideRowModelV2';
 import type { FilterModel, SortModel } from '../src/types';
 
 /**
- * Sparse SSRM block-cache invalidation across expansion changes.
+ * Sparse SSRM block-cache invalidation across structural changes.
  *
- * Regression: an expand/collapse shifts the flattened index of every row
- * below the toggled group, but the soft refresh only invalidated blocks in
- * the viewport band — off-screen blocks kept pre-toggle rows and rehydrated
- * them at post-toggle indices (rows painted under the wrong groups after
- * scrolling). `refreshExpansion` must drop the whole cache; additionally,
- * any fetch that reports a changed total drops other loaded blocks (safety
- * net for server-side drift outside the toggle path).
+ * Regression (originally found on the v1 controller): a structural change
+ * shifts the flattened index of every row below it, but a soft refresh only
+ * invalidated blocks in the viewport band — off-screen blocks kept pre-change
+ * rows and rehydrated them at post-change indices (rows painted under the
+ * wrong groups after scrolling).
+ *
+ * These scenarios were migrated from the decommissioned v1 controller onto
+ * the v2 controller's FLAT path (`getRows`-only datasource, no skeleton),
+ * which is what such a datasource mounts on now. Two notes on the migration:
+ *
+ *  - v1's `refreshExpansion` ("drop the whole cache") has no flat-path
+ *    counterpart: expansion only exists on the skeleton path, where a toggle
+ *    is a local reflow over per-group caches and cannot shift leaf indices at
+ *    all. The equivalent flat entry point for "the book changed shape" is
+ *    `refresh({ purge: true })`, which the first test drives; the second
+ *    asserts `refreshExpansion` is inert on the flat path.
+ *  - the changed-total safety net (test 3) was carried over from v1 into the
+ *    v2 flat load path as part of the decommission.
  */
 
 interface Row {
@@ -39,19 +50,20 @@ function flatten(expandedA: boolean, expandedB: boolean): Row[] {
   return out;
 }
 
-describe('sparse SSRM block invalidation', () => {
+describe('sparse SSRM block invalidation (v2 flat path)', () => {
   let expandedA: boolean;
   let expandedB: boolean;
   let requests: number[];
   let hydrated: Array<{ startRow: number; ids: string[] }>;
-  let ctrl: ServerSideRowModelController<Row>;
+  let ctrl: ServerSideRowModelV2Controller<Row>;
 
-  function makeController(): ServerSideRowModelController<Row> {
-    const host: SsrmHost<Row> = {
+  function makeController(): ServerSideRowModelV2Controller<Row> {
+    const host: SsrmHostV2<Row> = {
       getRowId: (r) => r.id,
       getSortModel: () => [] as unknown as SortModel,
       getFilterModel: () => ({}) as FilterModel,
-      getRowGroupCols: () => ['g'],
+      // Flat path — a getRows-only datasource never owns grouping.
+      getRowGroupCols: () => [],
       getGroupKeys: () => [],
       getExpandedGroupKeys: () => {
         const keys: string[] = [];
@@ -68,7 +80,9 @@ describe('sparse SSRM block invalidation', () => {
       requestViewport: () => {},
       isDestroyed: () => false,
     };
-    const ds: IServerSideDatasource<Row> = {
+    // getRows only — no getGroupSkeleton / getLeafRows. Since the v1
+    // controller was decommissioned this is what such a datasource drives.
+    const ds: SsrmDatasource<Row> = {
       getRows: ({ request, success }) => {
         requests.push(request.startRow);
         const flat = flatten(expandedA, expandedB);
@@ -78,7 +92,8 @@ describe('sparse SSRM block invalidation', () => {
         });
       },
     };
-    const controller = new ServerSideRowModelController<Row>(host, {
+    const controller = new ServerSideRowModelV2Controller<Row>(host, {
+      rowIdField: 'id',
       cacheBlockSize: BLOCK,
     });
     controller.setDatasource(ds);
@@ -93,15 +108,15 @@ describe('sparse SSRM block invalidation', () => {
     ctrl = makeController();
   });
 
-  it('refreshExpansion drops the whole cache — no stale rows after a toggle + scroll', async () => {
-    // Both expanded: 202 rows. Block 5 (rows 50-59) = a50..a59.
+  it('a structural purge drops the whole cache — no stale rows after a shift + scroll', async () => {
+    // Both groups present: 202 rows. Block 5 (rows 50-59) starts at a50.
     await ctrl.ensureRange(0, BLOCK);
     await ctrl.ensureRange(50, 60);
     expect(hydrated.at(-1)!.ids[0]).toBe('a50');
 
-    // Collapse A: 102 rows. Rows 50-59 are now b49..b58.
+    // Book shrinks to 102 rows. Rows 50-59 are now b49..b58.
     expandedA = false;
-    await ctrl.refreshExpansion();
+    await ctrl.refresh({ purge: true });
 
     requests = [];
     hydrated = [];
@@ -110,6 +125,19 @@ describe('sparse SSRM block invalidation', () => {
     // The old block 5 must have been dropped (refetched, not served stale).
     expect(requests).toContain(50);
     expect(hydrated.at(-1)!.ids[0]).toBe('b49');
+  });
+
+  it('refreshExpansion is inert on the flat path (expansion is a skeleton-path concept)', async () => {
+    await ctrl.ensureRange(0, BLOCK);
+    await ctrl.ensureRange(50, 60);
+
+    requests = [];
+    await ctrl.refreshExpansion();
+    await ctrl.ensureRange(50, 60);
+
+    // No refetch of anything: flat rows carry no expansion state, so nothing
+    // shifted. (On the skeleton path a toggle reflows locally instead.)
+    expect(requests).toEqual([]);
   });
 
   it('plain soft refresh keeps off-band blocks when the total is unchanged', async () => {
@@ -129,8 +157,8 @@ describe('sparse SSRM block invalidation', () => {
     await ctrl.ensureRange(50, 60);
     expect(hydrated.at(-1)!.ids[0]).toBe('a50');
 
-    // Structure changes server-side WITHOUT going through refreshExpansion
-    // (e.g. a live tick that only soft-refreshes the band).
+    // Structure changes server-side WITHOUT a purge (e.g. a live tick that
+    // only soft-refreshes the band).
     expandedA = false;
     requests = [];
     hydrated = [];

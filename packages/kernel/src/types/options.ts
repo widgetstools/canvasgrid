@@ -101,6 +101,13 @@ export interface VelocityGridOptions<TRow = any> {
    */
   serverSideEnableClientSidePipeline?: boolean;
   /**
+   * Upper bound on row-holding SSRM blocks kept in the controller's cache
+   * (flat blocks and per-group leaf blocks alike). Evicted least-recently-
+   * touched first. Defaults to 500 blocks; the floor is 8. Lower it to cap
+   * memory on very wide rows, raise it to keep more of a big book resident.
+   */
+  serverSideMaxCachedLeafBlocks?: number;
+  /**
    * Default data-row height in CSS px. Clamped to at least
    * {@link MIN_ROW_HEIGHT_PX} (24) — shorter rows make scroll-blit seams
    * look like squashed / uneven row heights under HiDPI.

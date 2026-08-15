@@ -14,12 +14,13 @@
  * See docs/ssrm-group-skeleton-design.md.
  */
 
+import type { FilterModel, SortModel } from '../types';
 import type {
+  IServerSideDatasource,
   IServerSideDatasourceV2,
   RefreshServerSideParams,
   ServerSideTransaction,
 } from '../types/ssrm';
-import type { SsrmHost } from './serverSideRowModel';
 import { attachSsrmRowMeta, readSsrmRowMeta } from './ssrmRowMeta';
 import {
   FlattenIndex,
@@ -33,7 +34,40 @@ export const SSRM_GROUP_ROW_ID_PREFIX = '__grp__';
 export const SSRM_FOOTER_ROW_ID_PREFIX = '__footer__';
 export const SSRM_GRAND_TOTAL_ROW_ID = '__grand_total__';
 
-/** V2 host — v1 seam plus exact-group-key replacement (expandAll etc.). */
+/**
+ * Grid seam the SSRM controller drives. Relocated here when the v1
+ * controller (`core/serverSideRowModel.ts`) was decommissioned — v2 is the
+ * only server-side row model, and this is the only host contract.
+ */
+export interface SsrmHost<TRow> {
+  getRowId(row: TRow): string;
+  getSortModel(): SortModel;
+  getFilterModel(): FilterModel;
+  getRowGroupCols(): string[];
+  getGroupKeys(): string[];
+  getExpandedGroupKeys(): string[];
+  /**
+   * Optional column projection for getRows / getLeafRows. When omitted or
+   * empty, datasources return full rows (legacy behaviour).
+   */
+  getColumnKeys?(): string[] | undefined;
+  mergeGroupKeys?(keys: string[]): void;
+  setRowCount(count: number, prevCount?: number): void;
+  /** Row range to reload on soft refresh — typically the current viewport overscan. */
+  getRefreshRange?(): { rowStart: number; rowEnd: number };
+  /** Sparse hydrate into the worker — rows cover [startRow, startRow+rows.length). */
+  hydrateWindow(startRow: number, rows: TRow[], rowCount: number, reset?: boolean): Promise<void>;
+  /** Patch rows already present in the worker store (live ticks). */
+  applyTransaction(tx: {
+    add?: TRow[];
+    update?: TRow[];
+    remove?: TRow[];
+  }): void;
+  requestViewport(): void;
+  isDestroyed(): boolean;
+}
+
+/** V2 host — base seam plus exact-group-key replacement (expandAll etc.). */
 export interface SsrmHostV2<TRow> extends SsrmHost<TRow> {
   /** Replace (not merge) the known composite group keys from the skeleton. */
   setGroupKeys?(keys: string[]): void;
@@ -50,8 +84,18 @@ interface LeafBlock<TRow> {
   touch: number;
 }
 
+/**
+ * Datasource shape this controller drives. Since the v1 controller was
+ * decommissioned it serves BOTH shapes: a full v2 skeleton datasource, and a
+ * plain `getRows`-only datasource (flat path only — such a datasource's
+ * grouping, if any, is served by the worker CSRM pipeline over a fully
+ * hydrated book). The skeleton methods are therefore optional here.
+ */
+export type SsrmDatasource<TRow> =
+  IServerSideDatasource<TRow> & Partial<Omit<IServerSideDatasourceV2<TRow>, 'getRows'>>;
+
 export class ServerSideRowModelV2Controller<TRow = any> {
-  private datasource: IServerSideDatasourceV2<TRow> | null = null;
+  private datasource: SsrmDatasource<TRow> | null = null;
 
   /** Display-ordered skeleton; null until fetched for the current query. */
   private skeleton: SkeletonNode[] | null = null;
@@ -76,6 +120,10 @@ export class ServerSideRowModelV2Controller<TRow = any> {
   } | null = null;
 
   private flatRowCount = 0;
+  /** False while `flatRowCount` is an over-allocated ESTIMATE (unknown-total
+   *  datasource, one block past the loaded edge). Set once a reply declares
+   *  a `rowCount` or a short window pins the end of the book. */
+  private flatRowCountExact = false;
   private reportedRowCount = 0;
 
   /** Bumped on purge (sort/filter/groupBy/datasource change) — leaf and
@@ -123,7 +171,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     this.maintainOrder = opts.maintainOrder === true;
   }
 
-  setDatasource(ds: IServerSideDatasourceV2<TRow> | null): void {
+  setDatasource(ds: SsrmDatasource<TRow> | null): void {
     this.datasource?.destroy?.();
     this.datasource = ds;
     void this.refresh({ purge: true });
@@ -131,6 +179,19 @@ export class ServerSideRowModelV2Controller<TRow = any> {
 
   getRowCount(): number {
     return this.reportedRowCount;
+  }
+
+  /**
+   * True while the reported row count is an over-allocated ESTIMATE — a flat
+   * datasource that never declares `rowCount`, still discovering the end of
+   * the book. Deliberately NOT folded into `setRowCount`: every row-count
+   * consumer (status-bar count panels, `getTotalRowCount`,
+   * `getDisplayedRowCount`) takes a plain number, and an estimate that reads
+   * one block high is the standard infinite-scroll contract. Exposed so
+   * callers that want to render "N+" can ask.
+   */
+  isRowCountEstimated(): boolean {
+    return !this.grouped() && !this.flatRowCountExact && this.reportedRowCount > 0;
   }
 
   ensureRange(rowStart: number, rowEnd: number): Promise<void> {
@@ -280,7 +341,11 @@ export class ServerSideRowModelV2Controller<TRow = any> {
    *  Returns false when hydration is refused so the caller must NOT
    *  enable the client pipeline over the sparse store. */
   async ensureFullyHydrated(): Promise<boolean> {
-    if (this.host.getRowGroupCols().length > 0) {
+    // Only the SKELETON path refuses. A getRows-only datasource with a group
+    // model is NOT sparse — full hydrate is exactly how it serves grouping
+    // (worker CSRM pipeline), which is what the decommissioned v1 controller
+    // did. Gating on the raw group model here would break that path.
+    if (this.grouped()) {
       console.warn('[velocity-grid] SSRM v2: ensureFullyHydrated is unsupported while grouped — the skeleton path serves grouping natively');
       return false;
     }
@@ -415,6 +480,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
       this.blockFetchSeq.clear();
       this.cacheEpoch++;
       this.flatRowCount = 0;
+      this.flatRowCountExact = false;
       this.host.setGrandTotals?.(null);
       await this.host.hydrateWindow(0, [], Math.max(this.reportedRowCount, 0), true);
       if (this.host.isDestroyed()) return;
@@ -477,15 +543,32 @@ export class ServerSideRowModelV2Controller<TRow = any> {
 
   // ─── skeleton ────────────────────────────────────────────────────────
 
+  /**
+   * Does the mounted datasource speak the skeleton protocol? Since the v1
+   * controller was decommissioned this controller also serves plain
+   * `getRows`-only datasources, which have no `getGroupSkeleton` to call —
+   * those stay on the flat path regardless of the group model (grouping is
+   * then served by the worker CSRM pipeline over a fully hydrated book).
+   */
+  private skeletonCapable(): boolean {
+    return typeof this.datasource?.getGroupSkeleton === 'function';
+  }
+
+  /** Is the SKELETON path active? Requires both a group model and a
+   *  datasource that can answer skeleton queries. */
   private grouped(): boolean {
-    return this.host.getRowGroupCols().length > 0;
+    return this.host.getRowGroupCols().length > 0 && this.skeletonCapable();
   }
 
   private fetchSkeletonRaw(): Promise<import('../types/ssrm').SkeletonGroup[] | null> {
     const ds = this.datasource;
-    if (!ds) return Promise.resolve(null);
+    // Unreachable behind `grouped()`, which requires skeleton capability —
+    // the guard is what makes that fact checkable. Bound to a local because
+    // property narrowing does not survive into the promise callback.
+    const getGroupSkeleton = ds?.getGroupSkeleton?.bind(ds);
+    if (!getGroupSkeleton) return Promise.resolve(null);
     return new Promise((resolve) => {
-      ds.getGroupSkeleton({
+      getGroupSkeleton({
         request: {
           sortModel: this.host.getSortModel(),
           filterModel: this.host.getFilterModel(),
@@ -640,7 +723,11 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     force = false,
   ): Promise<void> {
     const ds = this.datasource;
-    if (!ds) return Promise.resolve();
+    // Leaf fetches only happen on the skeleton path (see `grouped()`), which
+    // guarantees the method exists; guarded so the type reflects that. Bound
+    // to a local because narrowing does not survive into the fetch callback.
+    const getLeafRows = ds?.getLeafRows?.bind(ds);
+    if (!getLeafRows) return Promise.resolve();
     let cache = this.leafCaches.get(node.key);
     if (!cache) {
       cache = new Map();
@@ -675,7 +762,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
       }
       this.inflight++;
       const columnKeys = this.host.getColumnKeys?.();
-      ds.getLeafRows({
+      getLeafRows({
         request: {
           groupPath: node.path.slice(),
           startRow,
@@ -957,10 +1044,47 @@ export class ServerSideRowModelV2Controller<TRow = any> {
             resolve();
             return;
           }
+          const requested = Math.max(0, endRow - startRow);
+          const prevFlatCount = this.flatRowCount;
+          const prevExact = this.flatRowCountExact;
           if (typeof result.rowCount === 'number' && Number.isFinite(result.rowCount)) {
             this.flatRowCount = Math.max(0, result.rowCount);
-          } else if (result.rowData.length > 0) {
-            this.flatRowCount = Math.max(this.flatRowCount, startRow + result.rowData.length);
+            this.flatRowCountExact = true;
+          } else if (result.rowData.length < requested) {
+            // Short window and no declared total = end of book. Clamp the
+            // count EXACTLY and stop over-allocating, so no further block is
+            // requested past this edge.
+            this.flatRowCount = startRow + result.rowData.length;
+            this.flatRowCountExact = true;
+          } else if (!this.flatRowCountExact) {
+            // Full window, total still unknown — over-allocate ONE block past
+            // the loaded edge so the viewport can scroll into it and trigger
+            // the next fetch. Without this the reported count equals the
+            // loaded edge exactly and infinite scroll dead-ends at the first
+            // block (B-C3). Never over-allocate once the total is known.
+            this.flatRowCount = Math.max(
+              this.flatRowCount,
+              startRow + result.rowData.length + this.blockSize,
+            );
+          }
+          // v1-parity safety net (migrated from the decommissioned
+          // controller): a DECLARED total that differs from a previously
+          // declared one means the server book shifted under the cache —
+          // blocks loaded against the old total would rehydrate stale rows at
+          // moved offsets. Drop them so scroll refetches. Estimate growth is
+          // not a declared total, so unknown-count discovery never thrashes.
+          if (
+            prevExact
+            && this.flatRowCountExact
+            && prevFlatCount > 0
+            && prevFlatCount !== this.flatRowCount
+          ) {
+            for (const [idx, blk] of cache) {
+              if (idx !== blockIdx && blk.state === 'loaded') {
+                cache.delete(idx);
+                this.cacheEpoch++;
+              }
+            }
           }
           // Flat mode has no skeleton root — the datasource may carry
           // grand totals on the load reply instead.

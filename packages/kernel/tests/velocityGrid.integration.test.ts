@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { VelocityGrid, inferRowIdField } from '../src/velocityGrid';
+import { VelocityGrid, inferRowIdField, SYNTHETIC_ROW_ID_FIELD } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
 
 // Stub Worker for happy-dom env. VelocityGrid accepts options.worker.url; in tests we inject a fake.
@@ -1504,20 +1504,27 @@ describe('VelocityGrid integration', () => {
   });
 });
 
+// B-A4 — these accessors used to THROW ("Foundation cycle only supports
+// row => row.<field>"). They now resolve to the synthetic field, which the
+// grid materializes per row on the way into the worker so the RowStore's flat
+// `row[rowIdField]` lookup still works. End-to-end coverage of the hydrate
+// side lives in tests/ssrmSyntheticRowId.test.ts.
 describe('inferRowIdField', () => {
   it('captures the field in a single-level accessor', () => {
     expect(inferRowIdField((row: { id: string }) => row.id)).toBe('id');
   });
 
-  it('throws for a nested accessor (row.meta.id) because RowStore does flat lookup', () => {
-    expect(() => inferRowIdField((row: { meta: { id: string } }) => row.meta.id)).toThrow(/nested/);
+  it('falls back to the synthetic field for a nested accessor (row.meta.id)', () => {
+    expect(inferRowIdField((row: { meta: { id: string } }) => row.meta.id))
+      .toBe(SYNTHETIC_ROW_ID_FIELD);
   });
 
-  it('throws for a deeply-nested accessor (row.deeply.nested.field)', () => {
-    expect(() => inferRowIdField((row: any) => row.deeply.nested.field)).toThrow(/nested/);
+  it('falls back to the synthetic field for a deeply-nested accessor', () => {
+    expect(inferRowIdField((row: any) => row.deeply.nested.field))
+      .toBe(SYNTHETIC_ROW_ID_FIELD);
   });
 
-  it('throws when no property access present', () => {
-    expect(() => inferRowIdField(() => 'literal')).toThrow(/Foundation cycle/);
+  it('falls back to the synthetic field when no property access present', () => {
+    expect(inferRowIdField(() => 'literal')).toBe(SYNTHETIC_ROW_ID_FIELD);
   });
 });

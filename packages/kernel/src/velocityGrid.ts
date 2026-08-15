@@ -17,14 +17,12 @@ import type { ToolPanel, SideBarDef } from './interaction/toolPanels/types';
 import { TypedEventEmitter } from './core/eventEmitter';
 import { DisposableRegistry } from './core/disposable';
 import { ViewportManager } from './core/viewportManager';
-import { ServerSideRowModelController } from './core/serverSideRowModel';
 import { ServerSideRowModelV2Controller, type SsrmHostV2 } from './core/serverSideRowModelV2';
 import { isServerSideDatasourceV2 } from './types/ssrm';
 import { buildSsrmColumnKeys } from './core/ssrmColumnKeys';
 import { parseCompositeGroupKey, readSsrmRowMeta as readSsrmMeta, splitGroupKey } from './core/ssrmRowMeta';
 import type {
   AnyServerSideDatasource,
-  IServerSideDatasource,
   IServerSideDatasourceV2,
   RefreshServerSideParams,
   ServerSideTransaction,
@@ -393,22 +391,29 @@ export type {
 export { registerIcon, registerIcons, hasIcon } from './renderer/icons';
 
 /**
+ * Synthetic row-id field. Injected onto rows on their way into the worker
+ * when `getRowId` is not a simple `row => row.<field>` accessor — the
+ * RowStore does a flat `row[rowIdField]` lookup, so an arbitrary function
+ * gets materialized into this field instead of being rejected.
+ */
+export const SYNTHETIC_ROW_ID_FIELD = '__vgRowId';
+
+/**
  * Infer the row-ID field name from a `(row) => row.<field>` style accessor.
  * Exported as a top-level function so it can be unit-tested independently of VelocityGrid.
  *
- * Foundation cycle: only top-level single-property accessors are supported.
- * Nested paths like `row.meta.id` are rejected with a clear error — the RowStore
- * does a flat `row[rowIdField]` lookup so nested paths would silently corrupt IDs.
+ * Arbitrary accessors (composite keys, nested paths, computed ids) no longer
+ * throw: they resolve to {@link SYNTHETIC_ROW_ID_FIELD}, and the grid
+ * evaluates `getRowId(row)` into that field as rows enter the worker. Only
+ * the single-top-level-property form is inferred directly — that stays a
+ * zero-cost passthrough with no per-row work.
  */
 export function inferRowIdField<T>(getRowId: (row: T) => string): string {
   const src = getRowId.toString();
   const matches = Array.from(src.matchAll(/\.(\w+)/g));
-  if (matches.length === 0) {
-    throw new Error('[velocity-grid] could not infer rowIdField from getRowId — Foundation cycle only supports `row => row.<field>` style');
-  }
-  if (matches.length > 1) {
-    throw new Error('[velocity-grid] Foundation cycle only supports top-level `row => row.<field>` getRowId — nested accessors like `row.meta.id` are deferred to a follow-up cycle');
-  }
+  // No property access at all, or a nested / composite expression — the flat
+  // `row[field]` lookup can't express it. Materialize a synthetic field.
+  if (matches.length !== 1) return SYNTHETIC_ROW_ID_FIELD;
   return matches[0]![1]!;
 }
 
@@ -1124,10 +1129,14 @@ export class VelocityGrid<TRow = any> {
   private chunkLRU: ChunkLRU<ViewportChunk> | null = null;
   private rowCount = 0;
   /** SSRM controller — present only when `rowModelType === 'serverSide'`.
-   *  v1 (flat block cache) or v2 (client-owned group skeleton) depending on
-   *  the installed datasource's shape. */
-  private ssrm: ServerSideRowModelController<TRow> | ServerSideRowModelV2Controller<TRow> | null = null;
-  /** True when `ssrm` is the v2 skeleton controller. */
+   *  Always the v2 controller since the v1 flat-block model was
+   *  decommissioned; `getRows`-only datasources drive its flat path. */
+  private ssrm: ServerSideRowModelV2Controller<TRow> | null = null;
+  /** True when the INSTALLED DATASOURCE speaks the v2 skeleton protocol
+   *  (`getGroupSkeleton`). Not a statement about the controller class — that
+   *  is always v2 now. Gates the sparse/host-owned-grouping behaviours:
+   *  without a skeleton, grouping is served by the worker CSRM pipeline over
+   *  a fully hydrated book. */
   private ssrmV2 = false;
   /** Perspective expression output aliases included in SSRM columnKeys. */
   private ssrmExpressionOutputIds: string[] = [];
@@ -3706,20 +3715,40 @@ export class VelocityGrid<TRow = any> {
     return this.readyPromise;
   }
 
-  /** Route a datasource to the matching controller kind, remounting the
-   *  controller when the kind (v1 flat-window vs v2 skeleton) changes. */
+  /** Install a datasource on the (always-v2) controller and record whether it
+   *  speaks the skeleton protocol. No remount is needed any more — one
+   *  controller class serves both shapes, and `setDatasource` purges. */
   private installServerSideDatasource(ds: AnyServerSideDatasource<TRow> | null): void {
-    const wantV2 = isServerSideDatasourceV2(ds);
-    if (ds !== null && this.ssrm !== null && wantV2 !== this.ssrmV2) {
-      this.ssrm.destroy();
-      this.mountSsrmController(wantV2);
+    if (ds !== null) {
+      this.ssrmV2 = isServerSideDatasourceV2(ds);
+      this.assertSsrmGroupingSupported(this.grouping.getRowGroupColumns().length);
     }
-    if (this.ssrmV2) {
-      (this.ssrm as ServerSideRowModelV2Controller<TRow>)
-        .setDatasource(ds as IServerSideDatasourceV2<TRow> | null);
-    } else {
-      (this.ssrm as ServerSideRowModelController<TRow>)
-        .setDatasource(ds as IServerSideDatasource<TRow> | null);
+    this.ssrm?.setDatasource(
+      // A getRows-only datasource is structurally a v2 datasource minus the
+      // skeleton methods; the controller's flat path never calls them.
+      ds as IServerSideDatasourceV2<TRow> | null,
+    );
+  }
+
+  /**
+   * The v1 `expandedGroupKeys` protocol was removed with the v1 controller.
+   * A datasource without `getGroupSkeleton` can only serve grouping through
+   * the worker CSRM pipeline (full hydrate) — so grouping + no skeleton +
+   * `serverSideEnableClientSidePipeline: false` has nobody left to group the
+   * data, and previously painted flat rows under active group chips.
+   */
+  private ssrmGroupingUnsupported(rowGroupColCount: number): boolean {
+    return rowGroupColCount > 0
+      && !this.ssrmV2
+      && this.options.serverSideEnableClientSidePipeline === false;
+  }
+
+  private assertSsrmGroupingSupported(rowGroupColCount: number): void {
+    if (this.ssrmGroupingUnsupported(rowGroupColCount)) {
+      throw new Error(
+        'VelocityGrid SSRM: grouped server-side data requires getGroupSkeleton (v2). '
+        + 'The v1 expandedGroupKeys protocol was removed.',
+      );
     }
   }
 
@@ -3788,6 +3817,10 @@ export class VelocityGrid<TRow = any> {
         // mirror so a long-lived blotter doesn't accumulate every row (and
         // every stale generation's synthetics) ever hydrated.
         if (reset) this.rowDataById.clear();
+        // Arbitrary `getRowId` (B-A4) — materialize the id into the synthetic
+        // field before the mirror AND the worker see the rows, so both key on
+        // the same value the worker's flat `row[rowIdField]` lookup will find.
+        rows = this.stampSyntheticRowIds(rows) ?? rows;
         // Keep main-side id mirror in sync for selection / external APIs.
         // Skeleton chrome (group/footer/grand-total rows) stays out of the
         // mirror — it is paint state, not data, and forEachNode/getRowNode
@@ -3844,32 +3877,31 @@ export class VelocityGrid<TRow = any> {
     };
   }
 
-  /** Instantiate the SSRM controller for the given datasource kind. */
-  private mountSsrmController(v2: boolean): void {
+  /**
+   * Instantiate the SSRM controller. Always v2 — the v1 flat-block
+   * controller was decommissioned; `getRows`-only datasources drive v2's
+   * flat path. `skeletonCapable` only records whether the datasource can
+   * answer skeleton queries (host-owned grouping).
+   */
+  private mountSsrmController(skeletonCapable: boolean): void {
     const host = this.buildSsrmHost();
-    this.ssrmV2 = v2;
-    if (v2) {
-      // In-scroll footer/grand-total config (pinned grandTotalRow variants
-      // ride the totals subgrid — see effectiveTotalsRowPosition).
-      const groupTotalRow = this.options.groupTotalRow
-        ?? (this.options.groupIncludeFooter === true ? 'bottom' : null);
-      const grandInScroll = this.options.grandTotalRow === 'top' || this.options.grandTotalRow === 'bottom'
-        ? this.options.grandTotalRow
-        : (this.options.groupIncludeTotalFooter === true ? 'bottom' : null);
-      this.ssrm = new ServerSideRowModelV2Controller<TRow>(host, {
-        rowIdField: inferRowIdField(this.options.getRowId),
-        cacheBlockSize: this.options.cacheBlockSize,
-        maxConcurrentDatasourceRequests: this.options.maxConcurrentDatasourceRequests,
-        groupTotalRow,
-        grandTotalRow: grandInScroll,
-        maintainOrder: this.options.groupMaintainOrder === true,
-      });
-    } else {
-      this.ssrm = new ServerSideRowModelController<TRow>(host, {
-        cacheBlockSize: this.options.cacheBlockSize,
-        maxConcurrentDatasourceRequests: this.options.maxConcurrentDatasourceRequests,
-      });
-    }
+    this.ssrmV2 = skeletonCapable;
+    // In-scroll footer/grand-total config (pinned grandTotalRow variants
+    // ride the totals subgrid — see effectiveTotalsRowPosition).
+    const groupTotalRow = this.options.groupTotalRow
+      ?? (this.options.groupIncludeFooter === true ? 'bottom' : null);
+    const grandInScroll = this.options.grandTotalRow === 'top' || this.options.grandTotalRow === 'bottom'
+      ? this.options.grandTotalRow
+      : (this.options.groupIncludeTotalFooter === true ? 'bottom' : null);
+    this.ssrm = new ServerSideRowModelV2Controller<TRow>(host, {
+      rowIdField: inferRowIdField(this.options.getRowId),
+      cacheBlockSize: this.options.cacheBlockSize,
+      maxConcurrentDatasourceRequests: this.options.maxConcurrentDatasourceRequests,
+      maxCachedLeafBlocks: this.options.serverSideMaxCachedLeafBlocks,
+      groupTotalRow,
+      grandTotalRow: grandInScroll,
+      maintainOrder: this.options.groupMaintainOrder === true,
+    });
     this.wireSsrmColumnWindowRefill();
   }
 
@@ -3879,6 +3911,11 @@ export class VelocityGrid<TRow = any> {
    * the H-scroll refill path — that caused black voids and flicker.
    */
   private isSsrmColumnWindowingActive(): boolean {
+    // A synthetic row id (arbitrary `getRowId`) is computed from fields we
+    // cannot name, so no projection can guarantee they come back. Never
+    // window columns in that mode — thin payloads would strand rows without
+    // resolvable ids.
+    if (this.usesSyntheticRowId()) return false;
     return this.ssrmExpressionHost != null
       || this.ssrmExpressionOutputIds.length > 0
       || this.ssrmClientWatchedColIds.length > 0;
@@ -4177,20 +4214,65 @@ export class VelocityGrid<TRow = any> {
     }, delay);
   }
 
+  /** Memo for {@link usesSyntheticRowId} — `getRowId.toString()` + regex is
+   *  not something the per-row hot paths should repeat. */
+  private syntheticRowIdMemo: boolean | null = null;
+
+  /** True when `getRowId` is an arbitrary function rather than a
+   *  `row => row.<field>` accessor, so rows must carry a materialized
+   *  {@link SYNTHETIC_ROW_ID_FIELD} for the worker's flat `row[field]` lookup. */
+  private usesSyntheticRowId(): boolean {
+    if (this.syntheticRowIdMemo === null) {
+      this.syntheticRowIdMemo =
+        inferRowIdField(this.options.getRowId) === SYNTHETIC_ROW_ID_FIELD;
+    }
+    return this.syntheticRowIdMemo;
+  }
+
+  /**
+   * Materialize `getRowId(row)` into the synthetic id field on rows heading
+   * into the worker. Returns the SAME array for the common inferred-field
+   * case, so this costs one boolean on every hot path that doesn't need it.
+   */
+  private stampSyntheticRowIds(rows: TRow[] | undefined): TRow[] | undefined {
+    if (rows === undefined || rows.length === 0) return rows;
+    if (!this.usesSyntheticRowId()) return rows;
+    const out: TRow[] = new Array(rows.length);
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      if (row === null || row === undefined || typeof row !== 'object') {
+        out[i] = row as TRow;
+        continue;
+      }
+      const existing = (row as Record<string, unknown>)[SYNTHETIC_ROW_ID_FIELD];
+      // SSRM skeleton chrome (group / footer / grand-total rows) is stamped by
+      // the controller; `getRowId` would not resolve against it.
+      if (typeof existing === 'string' && existing.length > 0) {
+        out[i] = row;
+        continue;
+      }
+      let id = '';
+      try { id = this.options.getRowId(row); } catch { id = ''; }
+      out[i] = { ...(row as object), [SYNTHETIC_ROW_ID_FIELD]: id } as TRow;
+    }
+    return out;
+  }
+
   setRowData(rows: TRow[]): void {
     if (this.ssrm) {
       console.warn('[velocity-grid] setRowData is ignored in serverSide row model — use the datasource');
       return;
     }
-    const heightsByRowId = this.resolveHeightsForRows(rows);
+    const stamped = this.stampSyntheticRowIds(rows) ?? rows;
+    const heightsByRowId = this.resolveHeightsForRows(stamped);
     // Cycle 7 / Task 8 — refresh the main-side row cache so the external
     // filter + alwaysPass predicates evaluate against current data.
     // setRowData is a full replace, so wipe the cache first.
     this.rowDataById.clear();
-    for (const row of rows) {
+    for (const row of stamped) {
       try { this.rowDataById.set(this.options.getRowId(row), row); } catch { /* skip bad rowId */ }
     }
-    this.workerCoord.setRowData(rows, heightsByRowId).then(({ visibleCount, groupKeys, expandedKeys }) => {
+    this.workerCoord.setRowData(stamped, heightsByRowId).then(({ visibleCount, groupKeys, expandedKeys }) => {
       if (this.destroyed) return;
       this.rowCount = visibleCount;
       // Cycle 15 / Task 7 — setRowData may have grown the set of
@@ -4228,11 +4310,13 @@ export class VelocityGrid<TRow = any> {
 
   applyTransaction(t: Tx<TRow>): TransactionResult {
     // Foundation: async only. For sync semantics, callers use the worker's sync path via separate cycle.
-    const heightsByRowId = this.resolveHeightsForRows([...(t.add ?? []), ...(t.update ?? [])]);
+    const add = this.stampSyntheticRowIds(t.add);
+    const update = this.stampSyntheticRowIds(t.update);
+    const heightsByRowId = this.resolveHeightsForRows([...(add ?? []), ...(update ?? [])]);
     this.updateRowDataCache(t, 'transaction');
     this.workerCoord.applyTransaction({
-      add: t.add,
-      update: t.update,
+      add,
+      update,
       remove: t.remove?.map((r) => this.options.getRowId(r)),
       async: false,
       heightsByRowId,
@@ -4272,11 +4356,13 @@ export class VelocityGrid<TRow = any> {
 
   /** Apply an async transaction immediately (bypasses scroll deferral). */
   private dispatchAsyncTransaction(t: Tx<TRow>): void {
-    const heightsByRowId = this.resolveHeightsForRows([...(t.add ?? []), ...(t.update ?? [])]);
+    const add = this.stampSyntheticRowIds(t.add);
+    const update = this.stampSyntheticRowIds(t.update);
+    const heightsByRowId = this.resolveHeightsForRows([...(add ?? []), ...(update ?? [])]);
     this.updateRowDataCache(t, 'transactionAsync');
     this.workerCoord.applyTransaction({
-      add: t.add,
-      update: t.update,
+      add,
+      update,
       remove: t.remove?.map((r) => this.options.getRowId(r)),
       async: true,
       heightsByRowId,
@@ -5642,6 +5728,23 @@ export class VelocityGrid<TRow = any> {
     // the host owns group/agg. Purge so the next fetch reflects the new
     // rowGroupCols (v2: skeleton refetch); worker GroupPass stays off.
     if (this.isSparseSsrm()) {
+      // Runtime counterpart of the install-time assert. Sync-throwing out of
+      // this seam would surface as an unhandled rejection mid-drag, so log
+      // loudly and leave the group model unapplied rather than painting flat
+      // rows under active group chips.
+      if (this.ssrmGroupingUnsupported(g.rowGroupCols.length)) {
+        console.error(
+          '[velocity-grid] SSRM: grouped server-side data requires getGroupSkeleton (v2). '
+          + 'The v1 expandedGroupKeys protocol was removed. Grouping was not applied — '
+          + 'supply a v2 datasource, or allow serverSideEnableClientSidePipeline.',
+        );
+        return Promise.resolve({
+          visibleCount: this.rowCount,
+          groupKeys: [],
+          groupDescendants: [],
+          expandedKeys: null,
+        });
+      }
       void this.ssrm?.refresh({ purge: true });
       return Promise.resolve({
         visibleCount: this.rowCount,
@@ -10205,8 +10308,8 @@ export class VelocityGrid<TRow = any> {
     // worker; resolve them through the datasource's optional
     // `getGroupLeafIds`, seed the descendant cache, then cascade through
     // the normal SelectionModel path (tri-state paint included).
-    if (this.ssrmV2 && this.ssrm instanceof ServerSideRowModelV2Controller) {
-      const ctrl = this.ssrm as ServerSideRowModelV2Controller<TRow>;
+    if (this.ssrmV2 && this.ssrm !== null) {
+      const ctrl = this.ssrm;
       void ctrl.fetchGroupLeafIds(groupKey).then((ids) => {
         if (this.destroyed) return;
         if (ids !== null) this.groupDescendantsByKey.set(groupKey, ids);
