@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DataServicesHub } from '../src/hub/DataServicesHub';
-import type { DataProviderConfig, HubRequest } from '../src/types';
+import type { DataProviderConfig } from '../src/types';
+import type { HubRequest } from '../src/protocol/messages';
 
 /**
  * Test suite for shared-consumer hub lifecycle fixes (Task 6).
@@ -19,10 +20,11 @@ describe('Hub lifecycle — shared-consumer scenarios', () => {
 
   const mockConfig = (providerId: string): DataProviderConfig => ({
     providerId,
+    name: providerId,
     providerType: 'mock',
     rowModel: 'clientSide',
     config: {
-      columnDefinitions: [{ colId: 'id', field: 'id' }],
+      columnDefinitions: [{ field: 'id' }],
       keyColumn: 'id',
     },
   });

@@ -1,4 +1,31 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { createStompTransport } from '../src/transports/stomp';
+import type { ProviderEmitEvent, StompTransportConfig, TransportContext } from '../src/types';
+
+/**
+ * Fake stompjs Client — records every instance so tests can inspect the
+ * config it was constructed with and assert on `activate`/`deactivate`
+ * calls without touching a real WebSocket. Hoisted so `vi.mock` (which
+ * Vitest hoists above imports) can close over it.
+ */
+const { stompClientInstances } = vi.hoisted(() => ({
+  stompClientInstances: [] as any[],
+}));
+
+vi.mock('@stomp/stompjs', () => {
+  class FakeStompClient {
+    activate = vi.fn();
+    deactivate = vi.fn(() => Promise.resolve());
+    subscribe = vi.fn();
+    publish = vi.fn();
+    onWebSocketClose?: () => void;
+    constructor(config: Record<string, unknown>) {
+      Object.assign(this, config);
+      stompClientInstances.push(this);
+    }
+  }
+  return { Client: FakeStompClient };
+});
 
 // Create a mock stomp client factory and transport test
 describe('STOMP Transport', () => {
@@ -6,14 +33,14 @@ describe('STOMP Transport', () => {
   describe('End-token matching', () => {
     it('should match exact end token', () => {
       const endToken = 'SUCCESS';
-      const body = 'SUCCESS';
+      const body: string = 'SUCCESS';
       const matches = body === endToken || body.startsWith(`${endToken}:`);
       expect(matches).toBe(true);
     });
 
     it('should match token: prefix', () => {
       const endToken = 'SUCCESS';
-      const body = 'SUCCESS: End of snapshot';
+      const body: string = 'SUCCESS: End of snapshot';
       const matches = body === endToken || body.startsWith(`${endToken}:`);
       expect(matches).toBe(true);
     });
@@ -27,7 +54,7 @@ describe('STOMP Transport', () => {
 
     it('should NOT match case variants with exact matching', () => {
       const endToken = 'SUCCESS';
-      const body = 'success'; // lowercase
+      const body: string = 'success'; // lowercase
       const matches = body === endToken || body.startsWith(`${endToken}:`);
       expect(matches).toBe(false);
     });
@@ -152,6 +179,62 @@ describe('STOMP Transport', () => {
       const fetch1 = fetchStart();
       handleStop(fetch1);
       expect(abortedGenerations).toContain(fetch1.currentGen);
+    });
+  });
+
+  // C-M2 regression guard (IMPORTANT 2): exceeding maxReconnectAttempts must
+  // deactivate the real stompjs client, not just null out the module's
+  // shared reference — otherwise stompjs keeps auto-reconnecting forever
+  // and the live WebSocket is leaked with no way to close it.
+  describe('Reconnect exhaustion', () => {
+    beforeEach(() => {
+      stompClientInstances.length = 0;
+    });
+
+    it('deactivates the underlying stompjs client once max reconnect attempts are exceeded', () => {
+      const emits: ProviderEmitEvent[] = [];
+      const cfg: StompTransportConfig = {
+        websocketUrl: 'ws://test.local/stomp',
+        listenerTopic: '/topic/test',
+        reconnect: { maxAttempts: 2 },
+      };
+      const ctx: TransportContext = { providerId: 'reconnect-test' };
+
+      createStompTransport(cfg, (e) => emits.push(e), ctx);
+
+      expect(stompClientInstances).toHaveLength(1);
+      const client = stompClientInstances[0];
+      expect(typeof client.onWebSocketClose).toBe('function');
+      expect(client.deactivate).not.toHaveBeenCalled();
+
+      // First two closes stay within the configured budget (maxAttempts=2).
+      client.onWebSocketClose();
+      client.onWebSocketClose();
+      expect(client.deactivate).not.toHaveBeenCalled();
+
+      // Third close exceeds the budget.
+      client.onWebSocketClose();
+
+      expect(client.deactivate).toHaveBeenCalledTimes(1);
+      const errorEmit = emits.find(
+        (e): e is Extract<ProviderEmitEvent, { status: string }> =>
+          'status' in e && e.status === 'error',
+      );
+      expect(errorEmit).toBeDefined();
+      expect(errorEmit?.error).toContain('Max reconnect attempts');
+    });
+
+    it('wires reconnect.maxDelayMs into the stompjs client as maxReconnectDelay', () => {
+      const cfg: StompTransportConfig = {
+        websocketUrl: 'ws://test.local/stomp',
+        listenerTopic: '/topic/test',
+        reconnect: { maxDelayMs: 12_345 },
+      };
+
+      createStompTransport(cfg, () => {}, { providerId: 'reconnect-delay-test' });
+
+      expect(stompClientInstances).toHaveLength(1);
+      expect(stompClientInstances[0].maxReconnectDelay).toBe(12_345);
     });
   });
 });

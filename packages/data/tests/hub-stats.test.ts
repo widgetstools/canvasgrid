@@ -70,21 +70,21 @@ describe('hub getStats', () => {
 describe('STOMP end-token matching (exact or ${token}: prefix)', () => {
   it('matches exact end token', () => {
     const token = 'SUCCESS';
-    const body = 'SUCCESS';
+    const body: string = 'SUCCESS';
     const matches = body === token || body.startsWith(`${token}:`);
     expect(matches).toBe(true);
   });
 
   it('matches token: prefix', () => {
     const token = 'SUCCESS';
-    const body = 'SUCCESS: End of snapshot';
+    const body: string = 'SUCCESS: End of snapshot';
     const matches = body === token || body.startsWith(`${token}:`);
     expect(matches).toBe(true);
   });
 
   it('does not match case-insensitive variants (case-sensitive now)', () => {
     const token = 'SUCCESS';
-    const body = 'success'; // lowercase
+    const body: string = 'success'; // lowercase
     const matches = body === token || body.startsWith(`${token}:`);
     expect(matches).toBe(false);
   });

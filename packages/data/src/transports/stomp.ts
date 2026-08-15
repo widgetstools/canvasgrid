@@ -43,6 +43,7 @@ export function createStompTransport(
     const c = new Client({
       brokerURL: cfg.websocketUrl,
       reconnectDelay,
+      maxReconnectDelay: maxReconnectDelayMs,
       heartbeatIncoming: cfg.heartbeat?.incoming ?? 4000,
       heartbeatOutgoing: cfg.heartbeat?.outgoing ?? 4000,
       onConnect: () => {
@@ -84,7 +85,12 @@ export function createStompTransport(
         clearSnapshotTimeout();
         reconnectAttempts++;
         if (reconnectAttempts > maxReconnectAttempts) {
+          // Stop stompjs's own auto-reconnect loop before dropping the shared
+          // reference — nulling `client` alone leaves `c` retrying forever
+          // and leaks the WebSocket (stop()/restart() see client === null and
+          // never call deactivate() on it).
           client = null;
+          try { void c.deactivate(); } catch { /* swallow */ }
           emit({ status: 'error', error: `Max reconnect attempts (${maxReconnectAttempts}) exceeded` });
         } else {
           emit({ status: 'disconnected' });

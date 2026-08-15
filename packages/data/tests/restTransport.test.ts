@@ -39,7 +39,7 @@ describe('REST Transport', () => {
 
     (global.fetch as any).mockReturnValue(fetchPromise);
 
-    const transport = createRestTransport(cfg, emit, {});
+    const transport = createRestTransport(cfg, emit, { providerId: 'test-provider' });
 
     // Stop the transport before fetch resolves
     vi.advanceTimersByTime(10);
@@ -64,7 +64,7 @@ describe('REST Transport', () => {
       new Response(JSON.stringify([{ id: '1', value: 100 }]), { status: 200 })
     );
 
-    const transport = createRestTransport(cfg, emit, {});
+    const transport = createRestTransport(cfg, emit, { providerId: 'test-provider' });
 
     // At this point, initial fetch should be in progress
     const initialFetchCount = (global.fetch as any).mock.calls.length;
@@ -97,7 +97,7 @@ describe('REST Transport', () => {
       });
     });
 
-    const transport = createRestTransport(cfg, emit, {});
+    const transport = createRestTransport(cfg, emit, { providerId: 'test-provider' });
 
     // Start first fetch
     vi.advanceTimersByTime(1);
@@ -108,23 +108,22 @@ describe('REST Transport', () => {
     transport.restart();
 
     // Now resolve them in reverse order (newer first, then older)
-    if (resolvers.length > 0) {
-      resolvers[0](new Response(JSON.stringify([{ id: '1', value: 200 }]), { status: 200 }));
-    }
+    const newResolve = resolvers[0];
+    if (!newResolve) throw new Error('expected a pending fetch resolver after restart');
+    newResolve(new Response(JSON.stringify([{ id: '1', value: 200 }]), { status: 200 }));
 
     // Resolve the old/stale fetch last
-    if (oldResolvers.length > 0) {
-      oldResolvers[0](new Response(JSON.stringify([{ id: '1', value: 100 }]), { status: 200 }));
-    }
+    const oldResolve = oldResolvers[0];
+    if (!oldResolve) throw new Error('expected a pending resolver for the original fetch');
+    oldResolve(new Response(JSON.stringify([{ id: '1', value: 100 }]), { status: 200 }));
 
     // Let microtasks settle
     await vi.runAllTimersAsync();
 
     // The final rows should be from the newer fetch (200), not the stale one (100)
     const rowsEmits = calls.filter(c => c.rows && c.rows.length > 0);
-    if (rowsEmits.length > 0) {
-      const lastRows = rowsEmits[rowsEmits.length - 1];
-      expect(lastRows.rows[0]?.value).toBe(200);
-    }
+    expect(rowsEmits.length).toBeGreaterThan(0);
+    const lastRows = rowsEmits[rowsEmits.length - 1];
+    expect(lastRows.rows[0]?.value).toBe(200);
   });
 });

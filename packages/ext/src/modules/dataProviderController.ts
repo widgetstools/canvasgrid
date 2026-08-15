@@ -63,6 +63,8 @@ export class DataProviderController {
   private activateEpoch = 0;
   /** Captured in attach() so restore never misses a already-fired gridReady. */
   private gridReadyWait: Promise<void> | null = null;
+  /** Handle for the missed-event poll in captureGridReady; cleared by detach(). */
+  private gridReadyPollTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(opts?: DataProviderControllerOptions) {
     registerDefaultTransports();
@@ -125,6 +127,10 @@ export class DataProviderController {
     this.unregState?.();
     this.unregState = null;
     this.gridReadyWait = null;
+    if (this.gridReadyPollTimer !== null) {
+      clearTimeout(this.gridReadyPollTimer);
+      this.gridReadyPollTimer = null;
+    }
     this.ctx = null;
   }
 
@@ -233,11 +239,13 @@ export class DataProviderController {
     }
     return new Promise<void>((resolve) => {
       let settled = false;
-      let pollTimer: ReturnType<typeof setTimeout> | null = null;
       const finish = (): void => {
         if (settled) return;
         settled = true;
-        if (pollTimer !== null) clearTimeout(pollTimer);
+        if (this.gridReadyPollTimer !== null) {
+          clearTimeout(this.gridReadyPollTimer);
+          this.gridReadyPollTimer = null;
+        }
         resolve();
       };
       const unsub = grid.addEventListener('gridReady', () => {
@@ -253,8 +261,9 @@ export class DataProviderController {
           finish();
           return;
         }
-        // C-m5: store timer handle so detach() can cancel the poll
-        pollTimer = setTimeout(poll, 16);
+        // C-m5: stored on the instance (not a local closure var) so
+        // detach() can genuinely cancel the poll mid-wait.
+        this.gridReadyPollTimer = setTimeout(poll, 16);
       };
       poll();
     });
