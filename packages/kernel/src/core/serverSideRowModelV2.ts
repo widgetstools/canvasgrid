@@ -80,6 +80,22 @@ interface LeafBlock<TRow> {
   state: 'loading' | 'loaded' | 'failed';
   /** LRU clock — larger = touched more recently. */
   touch: number;
+  /** B-C8 — consecutive failures (network `fail()` OR a short/incomplete
+   *  reply that stayed 'failed'). Reset to 0 on a complete 'loaded' result. */
+  failCount: number;
+  /** B-C8 — epoch ms before which a 'failed' block must NOT be treated as
+   *  missing again; 0 = no backoff in effect. Exponential per `failCount`
+   *  (1s/4s/15s, capped at 60s) — see `retryBackoffMs`. */
+  nextRetryAt: number;
+}
+
+/** B-C8 — per-block retry backoff schedule (ms), indexed by
+ *  `min(failCount, N) - 1`. */
+const SSRM_RETRY_BACKOFF_MS = [1000, 4000, 15000, 60000];
+
+function retryBackoffMs(failCount: number): number {
+  const idx = Math.min(Math.max(failCount, 1), SSRM_RETRY_BACKOFF_MS.length) - 1;
+  return SSRM_RETRY_BACKOFF_MS[idx]!;
 }
 
 /**
@@ -376,7 +392,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
         if (row === undefined) break;
         rows.push(row);
       }
-      await this.host.hydrateWindow(0, rows, this.flatRowCount, true);
+      await this.postHydrate(0, rows, this.flatRowCount, true, this.dataGen, this.index);
     });
     return true;
   }
@@ -473,6 +489,12 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     this.index = null;
     this.groupBaseRows.clear();
     this.leafCaches.clear();
+    // B-P5 — every pending `waitUntil` predicate ORs in `gen !==
+    // this.dataGen`; waking here is what settles them all instead of
+    // leaving them to poll (or, pre-fix, to poll forever now that nothing
+    // else will ever flip their block-state/inflight clause again). Slot
+    // waiters need their own drain — see `wakeOnGenChange`.
+    this.wakeOnGenChange();
   }
 
   // ─── op serialization ────────────────────────────────────────────────
@@ -498,8 +520,11 @@ export class ServerSideRowModelV2Controller<TRow = any> {
       this.flatRowCount = 0;
       this.flatRowCountExact = false;
       this.flatRowCountSource = 'unknown';
+      // B-P5 — wake every waiter gating on this purge's `gen` bump (see
+      // `destroy()`'s identical comment).
+      this.wakeOnGenChange();
       this.host.setGrandTotals?.(null);
-      await this.host.hydrateWindow(0, [], Math.max(this.reportedRowCount, 0), true);
+      await this.postHydrate(0, [], Math.max(this.reportedRowCount, 0), true, this.dataGen, this.index);
       if (this.host.isDestroyed()) return;
       const band = this.refreshBand();
       await this.ensureRangeInner(band.rowStart, band.rowEnd);
@@ -676,6 +701,19 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     this.cacheEpoch++;
   }
 
+  /** Get-or-create the live per-group leaf block map by key (B-C6). Always
+   *  re-resolves through `this.leafCaches` rather than trusting a
+   *  closure-captured reference — `dropGroupCache` can delete the map a
+   *  fetch started against while that fetch is still in flight. */
+  private resolveLeafCache(groupKey: string): Map<number, LeafBlock<TRow>> {
+    let cache = this.leafCaches.get(groupKey);
+    if (!cache) {
+      cache = new Map();
+      this.leafCaches.set(groupKey, cache);
+    }
+    return cache;
+  }
+
   // ─── range loading ───────────────────────────────────────────────────
 
   private async ensureRangeInner(rowStart: number, rowEnd: number): Promise<void> {
@@ -715,6 +753,12 @@ export class ServerSideRowModelV2Controller<TRow = any> {
       seen.add(tag);
       const cache = this.leafCaches.get(entry.node.key);
       const block = cache?.get(blockIdx);
+      // B-C8 — a 'failed' block within its backoff window is left alone:
+      // not re-fetched (that's the whole point), not waited on either
+      // (nothing is in flight for it). Whatever rows it holds still paint.
+      if (block?.state === 'failed' && block.nextRetryAt > Date.now()) {
+        continue;
+      }
       if (!block || block.state === 'failed') {
         missing.push({ node: entry.node, blockIdx });
       } else if (block.state === 'loading') {
@@ -762,10 +806,16 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     // Keep prior rows visible while reloading (column-window refill). Wiping
     // to `[]` blanked the canvas between drop and success — black voids.
     const preserved = existing?.rows ?? [];
+    // B-C8 — carry the prior failCount through the 'loading' placeholder so
+    // a failure on THIS attempt can compute the next backoff step; clear
+    // nextRetryAt since this attempt is the retry the backoff was gating.
+    const preservedFailCount = existing?.failCount ?? 0;
     cache.set(blockIdx, {
       rows: preserved,
       state: 'loading',
       touch: ++this.touchClock,
+      failCount: preservedFailCount,
+      nextRetryAt: 0,
     });
 
     const startRow = blockIdx * this.blockSize;
@@ -790,7 +840,10 @@ export class ServerSideRowModelV2Controller<TRow = any> {
           ...(columnKeys && columnKeys.length > 0 ? { columnKeys } : {}),
         },
         success: (result) => {
-          this.inflight = Math.max(0, this.inflight - 1);
+          // B-P5 — releases the slot to exactly one queued waiter (covers
+          // the early-return branches below too); block-state waiters wake
+          // separately once this block's new state is actually set.
+          this.releaseSlot();
           if (
             gen !== this.dataGen
             || this.host.isDestroyed()
@@ -799,7 +852,16 @@ export class ServerSideRowModelV2Controller<TRow = any> {
             resolve();
             return;
           }
-          const prevBlock = cache!.get(blockIdx);
+          // B-C6 — `cache` (closure-captured above) can reference a map
+          // `dropGroupCache` already deleted from `this.leafCaches` (a soft
+          // refresh whose skeleton fetch raced this leaf fetch and found the
+          // group's leafCount changed). Writing into that detached map
+          // strands the reply somewhere no future `ensureRange` will ever
+          // look. Re-resolve the LIVE map by key — recreating it if the
+          // drop left nothing behind — so the arriving data is visible on
+          // the very next lookup instead of triggering a silent re-fetch.
+          const liveCache = this.resolveLeafCache(node.key);
+          const prevBlock = liveCache.get(blockIdx);
           const rows = this.mergeBlockRows(prevBlock?.rows, result.rowData);
           // A short / empty window (server still loading, count drift
           // between skeleton and leaves) must stay RETRYABLE — caching it
@@ -808,37 +870,62 @@ export class ServerSideRowModelV2Controller<TRow = any> {
           // ensureRange / soft refresh; whatever rows DID arrive still
           // paint meanwhile (materialize reads rows regardless of state).
           const complete = rows.length >= endRow - startRow;
-          cache!.set(blockIdx, {
+          // B-C8 — backoff protects against a misbehaving/erroring
+          // datasource (the `fail()` callback below); ANY `success()` reply
+          // — complete or a short/incomplete one — proves the datasource is
+          // responsive, so it always clears backoff state, keeping a short
+          // reply immediately retryable (pre-existing contract — see
+          // "short/empty leaf results stay retryable").
+          liveCache.set(blockIdx, {
             rows,
             state: complete ? 'loaded' : 'failed',
             touch: ++this.touchClock,
+            failCount: 0,
+            nextRetryAt: 0,
           });
           this.cacheEpoch++;
           this.evictIfNeeded();
+          // B-P5 — this block's state just changed; wake anything waiting
+          // on it (or on the concurrency slot the inflight-- above freed).
+          this.wakeWaiters();
           resolve();
         },
         fail: () => {
-          this.inflight = Math.max(0, this.inflight - 1);
+          this.releaseSlot();
           if (this.blockFetchSeq.get(fetchKey) !== fetchId) {
             resolve();
             return;
           }
-          cache!.set(blockIdx, {
+          // Same detached-map hazard as `success` (B-C6) — re-resolve
+          // rather than writing through the closure-captured `cache`.
+          const liveCache = this.resolveLeafCache(node.key);
+          // B-C8 — per-block exponential backoff (1s/4s/15s, cap 60s) so a
+          // persistently failing block isn't hammered on every ensureRange.
+          const failCount = (liveCache.get(blockIdx)?.failCount ?? 0) + 1;
+          liveCache.set(blockIdx, {
             rows: preserved,
             state: 'failed',
             touch: ++this.touchClock,
+            failCount,
+            nextRetryAt: Date.now() + retryBackoffMs(failCount),
           });
           this.cacheEpoch++;
+          this.wakeWaiters();
           resolve();
         },
       });
     });
 
-    if (this.inflight >= this.maxConcurrent) {
-      return this.waitUntil(() => this.inflight < this.maxConcurrent || gen !== this.dataGen)
-        .then(run);
-    }
-    return run();
+    // B-P5 — dedicated slot queue, not a `waitUntil` predicate (see its
+    // block comment for why a broadcast wake would over-admit fetches).
+    // Checked inline (not folded into `acquireSlot` alone) so the common
+    // case — a slot is free — dispatches `run()` synchronously instead of
+    // picking up an extra microtask tick from `.then()` on an
+    // already-resolved promise; that tick previously shifted downstream
+    // await timing enough to break a same-tick test assertion elsewhere
+    // in this file (see `postHydrate`'s identical concern).
+    if (this.inflight < this.maxConcurrent || gen !== this.dataGen) return run();
+    return this.acquireSlot(gen).then(run);
   }
 
   /** Any block holding rows costs memory — 'loaded' AND 'failed' blocks
@@ -950,6 +1037,11 @@ export class ServerSideRowModelV2Controller<TRow = any> {
   private async ensureFlatRange(rowStart: number, rowEnd: number, gen: number): Promise<void> {
     const ds = this.datasource;
     if (!ds) return;
+    // Snapshot alongside `gen` (B-C4) — flat mode never sets `this.index`,
+    // so this is normally null, but capturing it here (rather than
+    // re-reading `this.index` at send time) is what makes `postHydrate`'s
+    // check meaningful if a grouped toggle races in mid-flight.
+    const index = this.index;
     const start = Math.max(0, Math.floor(rowStart));
     const end = Math.max(start + 1, Math.ceil(rowEnd));
     const first = Math.floor(start / this.blockSize);
@@ -967,6 +1059,9 @@ export class ServerSideRowModelV2Controller<TRow = any> {
         ));
         continue;
       }
+      // B-C8 — a 'failed' block within its backoff window is left alone
+      // (see `ensureRangeInner`'s identical comment).
+      if (cur?.state === 'failed' && cur.nextRetryAt > Date.now()) continue;
       if (cur && cur.state !== 'failed') continue;
       loads.push(this.loadFlatBlock(b, gen));
     }
@@ -986,11 +1081,13 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     let runStart = start;
     const flush = async (): Promise<void> => {
       if (run.length === 0) return;
-      await this.host.hydrateWindow(
+      await this.postHydrate(
         runStart,
         run,
         Math.max(this.flatRowCount, runStart + run.length),
         false,
+        gen,
+        index,
       );
       run = [];
     };
@@ -1024,10 +1121,14 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     // Preserve painted rows while the column-window (or soft) reload is in
     // flight — empty loading rows were the flicker/void source.
     const preserved = existing?.rows ?? [];
+    // B-C8 — see `loadLeafBlock`'s identical comment.
+    const preservedFailCount = existing?.failCount ?? 0;
     cache.set(blockIdx, {
       rows: preserved,
       state: 'loading',
       touch: ++this.touchClock,
+      failCount: preservedFailCount,
+      nextRetryAt: 0,
     });
     const startRow = blockIdx * this.blockSize;
     const endRow = startRow + this.blockSize;
@@ -1052,7 +1153,8 @@ export class ServerSideRowModelV2Controller<TRow = any> {
           ...(columnKeys && columnKeys.length > 0 ? { columnKeys } : {}),
         },
         success: (result) => {
-          this.inflight = Math.max(0, this.inflight - 1);
+          // B-P5 — see the identical comment in `loadLeafBlock`'s success.
+          this.releaseSlot();
           if (
             gen !== this.dataGen
             || this.host.isDestroyed()
@@ -1092,8 +1194,14 @@ export class ServerSideRowModelV2Controller<TRow = any> {
               // OTHER, already-covered block (e.g. an unrelated soft-refresh
               // band) proves nothing about that edge and must not demote an
               // otherwise-still-accurate inferred count back to "estimated".
+              // Strictly-greater (not >=): with block-aligned fetches, a
+              // full-window reply can land EXACTLY on the pinned edge only
+              // when an empty-tail pin (k=0) is followed by a re-fetch of
+              // the immediately preceding block — which proves nothing
+              // about the true edge, so `>=` would reopen an otherwise-
+              // accurate pin at that one boundary.
               this.flatRowCountSource === 'inferred'
-              && startRow + result.rowData.length >= this.flatRowCount
+              && startRow + result.rowData.length > this.flatRowCount
             )
           ) {
             // Full window, and the count is not a DECLARED fact — over-
@@ -1163,35 +1271,52 @@ export class ServerSideRowModelV2Controller<TRow = any> {
           // is refetched by the next ensureRange / soft refresh.
           const expected = Math.max(0, Math.min(this.blockSize, this.flatRowCount - startRow));
           const complete = rows.length >= expected;
+          // B-C8 — same success-always-clears-backoff rule as the grouped
+          // leaf path (see its comment): only the `fail()` callback below
+          // counts toward the backoff schedule.
           cache.set(blockIdx, {
             rows,
             state: complete ? 'loaded' : 'failed',
             touch: ++this.touchClock,
+            failCount: 0,
+            nextRetryAt: 0,
           });
           this.evictIfNeeded();
+          // B-P5 — see the identical comment in `loadLeafBlock`'s success.
+          this.wakeWaiters();
           resolve();
         },
         fail: () => {
-          this.inflight = Math.max(0, this.inflight - 1);
+          this.releaseSlot();
           if (this.blockFetchSeq.get(fetchKey) !== fetchId) {
             resolve();
             return;
           }
+          // B-C8 — per-block exponential backoff (1s/4s/15s, cap 60s).
+          const failCount = (cache.get(blockIdx)?.failCount ?? 0) + 1;
           cache.set(blockIdx, {
             rows: preserved,
             state: 'failed',
             touch: ++this.touchClock,
+            failCount,
+            nextRetryAt: Date.now() + retryBackoffMs(failCount),
           });
+          this.wakeWaiters();
           resolve();
         },
       });
     });
 
-    if (this.inflight >= this.maxConcurrent) {
-      return this.waitUntil(() => this.inflight < this.maxConcurrent || gen !== this.dataGen)
-        .then(run);
-    }
-    return run();
+    // B-P5 — dedicated slot queue, not a `waitUntil` predicate (see its
+    // block comment for why a broadcast wake would over-admit fetches).
+    // Checked inline (not folded into `acquireSlot` alone) so the common
+    // case — a slot is free — dispatches `run()` synchronously instead of
+    // picking up an extra microtask tick from `.then()` on an
+    // already-resolved promise; that tick previously shifted downstream
+    // await timing enough to break a same-tick test assertion elsewhere
+    // in this file (see `postHydrate`'s identical concern).
+    if (this.inflight < this.maxConcurrent || gen !== this.dataGen) return run();
+    return this.acquireSlot(gen).then(run);
   }
 
   // ─── assembly + hydrate ──────────────────────────────────────────────
@@ -1255,6 +1380,42 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     }) as TRow;
   }
 
+  /**
+   * B-C4 — single serialized dispatcher for every `host.hydrateWindow`
+   * post. Callers snapshot their own generation (`dataGen`) and, on the
+   * grouped/skeleton path, the `FlattenIndex` identity the window was
+   * computed against, at the point they decided the data was fresh; this
+   * method re-validates that snapshot immediately before the actual post —
+   * "at send time", not merely between an enclosing loop's iterations — so
+   * a window computed off a generation the controller has since moved past
+   * can never reach the worker. This is the one seam `refreshExpansion`'s
+   * same-frame fire-and-forget reflow posts through too (it calls
+   * `hydrateRange`, below, which routes every send here): that reflow
+   * paints outside the serialized op chain (`this.chain`) on purpose — a
+   * queued soft refresh must not block the chevron — so its sends need
+   * this out-of-band check instead of the chain's ordering guarantee.
+   */
+  private postHydrate(
+    startRow: number,
+    rows: TRow[],
+    rowCount: number,
+    reset: boolean,
+    gen: number,
+    index: FlattenIndex | null,
+  ): Promise<void> {
+    // Deliberately NOT `async` — an async wrapper would resolve its
+    // `Promise.resolve(undefined)` fast path (and the `await` inside it)
+    // one microtask tick later than calling `host.hydrateWindow` directly,
+    // shifting every caller's downstream await timing. Returning the
+    // callee's promise (or an already-resolved one) verbatim keeps this
+    // gate timing-neutral for callers that awaited `host.hydrateWindow`
+    // directly before this dispatcher existed.
+    if (gen !== this.dataGen || this.index !== index || this.host.isDestroyed()) {
+      return Promise.resolve();
+    }
+    return this.host.hydrateWindow(startRow, rows, rowCount, reset);
+  }
+
   /** Hydrate [start, end) from skeleton + caches as contiguous runs, plus
    *  the ancestor group rows above `start` so the sticky band always has
    *  its chain hydrated. */
@@ -1265,7 +1426,9 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     // or a toggle's same-frame index swap can land between awaits. Stale
     // hydrates must not reach the worker — they would reset ssrmRowCount
     // to the old count and place rows at indices of the dead tree (the
-    // flat path has the same guard).
+    // flat path has the same guard). The loop-level checks below stop
+    // wasted materialize() work early; `postHydrate` is the send-time gate
+    // that actually matters.
     const gen = this.dataGen;
     const stale = (): boolean =>
       gen !== this.dataGen || this.index !== index || this.host.isDestroyed();
@@ -1294,7 +1457,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     let cursor = start;
     const flush = async (): Promise<void> => {
       if (run.length > 0) {
-        await this.host.hydrateWindow(runStart, run, rowCount, false);
+        await this.postHydrate(runStart, run, rowCount, false, gen, index);
         run = [];
       }
     };
@@ -1314,7 +1477,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     if (stale()) return;
 
     if (rowCount === 0 && this.reportedRowCount === 0) {
-      await this.host.hydrateWindow(0, [], 0, false);
+      await this.postHydrate(0, [], 0, false, gen, index);
       return;
     }
 
@@ -1323,7 +1486,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
       if (anc.index >= start) continue;
       const row = this.materialize({ kind: 'group', node: anc.node }, expanded);
       if (row !== null) {
-        await this.host.hydrateWindow(anc.index, [row], rowCount, false);
+        await this.postHydrate(anc.index, [row], rowCount, false, gen, index);
       }
       if (stale()) return;
     }
@@ -1331,13 +1494,94 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     this.lastHydrate = { start, end, index, dataGen: this.dataGen, cacheEpoch: this.cacheEpoch };
   }
 
+  /** B-P5 — pending `waitUntil` predicates, re-checked on demand instead of
+   *  polled. `wakeWaiters()` is called at every site that could flip one:
+   *  block-state transitions (`loadLeafBlock`/`loadFlatBlock` success/fail)
+   *  and `dataGen` bumping (covers every waiter's `gen !== this.dataGen`
+   *  escape hatch in one call, including destroy — see `destroy()`, which
+   *  is what guarantees every waiter here is eventually settled and never
+   *  leaks a pending promise).
+   *
+   *  This is a broadcast: EVERY waiter whose predicate currently passes is
+   *  resolved in the same synchronous pass. That's correct for these
+   *  observer-style waiters (multiple callers coalesced onto "block X left
+   *  'loading'" all deserve to wake together — nothing is consumed by
+   *  waking one of them). It would be WRONG for the concurrency slot below
+   *  (`acquireSlot`/`releaseSlot`) — a scarce resource, where broadcasting
+   *  to every waiter whose `inflight < maxConcurrent` check reads the
+   *  not-yet-decremented count in the same pass would let more fetches
+   *  start than `maxConcurrentDatasourceRequests` allows (`inflight` isn't
+   *  re-incremented until each waiter's own `.then(run)` continuation runs
+   *  — a LATER microtask, invisible to this loop). That's why slots get
+   *  their own one-at-a-time queue instead of reusing this broadcast. */
+  private readonly waiters = new Set<{ pred: () => boolean; resolve: () => void }>();
+
   private waitUntil(pred: () => boolean): Promise<void> {
+    if (pred()) return Promise.resolve();
     return new Promise((resolve) => {
-      const tick = (): void => {
-        if (pred()) resolve();
-        else setTimeout(tick, 4);
-      };
-      tick();
+      this.waiters.add({ pred, resolve });
     });
+  }
+
+  /** Re-check every pending `waitUntil` predicate; settle and drop any that
+   *  now pass. Cheap to over-call — the waiter set is bounded by in-flight
+   *  fetches, not by dataset size. */
+  private wakeWaiters(): void {
+    if (this.waiters.size === 0) return;
+    for (const w of this.waiters) {
+      if (w.pred()) {
+        this.waiters.delete(w);
+        w.resolve();
+      }
+    }
+  }
+
+  /** FIFO queue of callers waiting on a concurrency slot (B-P5) — see the
+   *  block comment above `waiters` for why this can't just be another
+   *  `waitUntil` predicate. */
+  private readonly slotWaiters: Array<{ gen: number; resolve: () => void }> = [];
+
+  /** Resolves once a fetch slot is available for generation `gen` (or
+   *  immediately if `gen` is already stale — no point queuing doomed
+   *  work). Callers must `this.inflight++` themselves once this resolves,
+   *  exactly as the pre-existing `run()` bodies already do. */
+  private acquireSlot(gen: number): Promise<void> {
+    if (this.inflight < this.maxConcurrent || gen !== this.dataGen) return Promise.resolve();
+    return new Promise((resolve) => {
+      this.slotWaiters.push({ gen, resolve });
+    });
+  }
+
+  /** Decrement `inflight` and hand the freed slot to exactly one queued
+   *  waiter — never a broadcast (see `waiters`'s comment). A waiter whose
+   *  generation is already stale is drained for free (its `run()` aborts
+   *  without ever calling `this.inflight++`, so it wouldn't consume the
+   *  slot anyway) and the search continues until a live waiter claims it
+   *  or the queue empties. `isDestroyed()` drains the whole queue — no
+   *  more fetches will ever start, so nothing further is worth waiting for. */
+  private releaseSlot(): void {
+    this.inflight = Math.max(0, this.inflight - 1);
+    while (this.slotWaiters.length > 0) {
+      const next = this.slotWaiters.shift()!;
+      const live = next.gen === this.dataGen && !this.host.isDestroyed();
+      next.resolve();
+      if (live) break;
+    }
+  }
+
+  /** Called at every `dataGen` bump (purge, destroy) — wakes the generic
+   *  `waitUntil` broadcast AND drains every queued slot waiter. Slot
+   *  waiters can't rely on a LATER `releaseSlot()` to flush them: if the
+   *  fetch ahead of them in the queue never settles (destroyed mid-flight
+   *  with the datasource never calling back — the exact scenario a
+   *  destroy must not hang on), nothing would ever call `releaseSlot()`
+   *  again to drain them. Every queued slot waiter's captured `gen` is
+   *  necessarily stale the instant `dataGen` moves past it, so resolving
+   *  them all here immediately is always safe — their `run()` continuation
+   *  will see the mismatch and abort without consuming a slot, exactly
+   *  like a live `releaseSlot()` drain would have done for them anyway. */
+  private wakeOnGenChange(): void {
+    this.wakeWaiters();
+    while (this.slotWaiters.length > 0) this.slotWaiters.shift()!.resolve();
   }
 }

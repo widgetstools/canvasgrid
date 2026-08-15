@@ -9697,6 +9697,13 @@ export class VelocityGrid<TRow = any> {
       clearTimeout(this.ssrmResortTimer);
       this.ssrmResortTimer = null;
     }
+    // B-L3 — the column-window refill debounce (H-scroll-driven) was never
+    // cleared here, only `ssrmResortTimer` was; a destroy mid-debounce left
+    // the timer firing after teardown, touching a torn-down controller.
+    if (this.ssrmColumnRefillTimer != null) {
+      clearTimeout(this.ssrmColumnRefillTimer);
+      this.ssrmColumnRefillTimer = null;
+    }
     this.ssrmResortFirstAt = null;
     this.ssrm?.destroy();
     this.ssrm = null;
