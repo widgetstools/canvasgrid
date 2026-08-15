@@ -311,6 +311,67 @@ describe('SSRM v2 skeleton controller', () => {
     flat.destroy();
   });
 
+  it('B-C4: a flat-range flush after the host is destroyed mid-hydrate does not post again', async () => {
+    // `ensureFlatRange` checks staleness ONCE before its multi-post flush
+    // loop, not once per `flush()` — the gap `postHydrate` (B-C4) closes.
+    // Block 1 fails (empty), which splits the [0,30) window into two
+    // contiguous runs (block 0, block 2) and therefore two `flush()` calls.
+    // Flipping `isDestroyed()` true from inside the FIRST post must stop
+    // the second — only `postHydrate`'s send-time gate can see that,
+    // because it re-checks `isDestroyed()` immediately before each send.
+    let destroyed = false;
+    // `setDatasource` itself enqueues an implicit `refresh({ purge: true })`
+    // (its own reset post, plus a band refill of block 0 via
+    // `getRefreshRange`) — that unrelated hydrate must not arm the
+    // destroy-flip below, or it fires before our own `ensureRange` call
+    // even starts. Gate recording/flipping until after that settles.
+    let armed = false;
+    const hydrateCalls: Array<{ startRow: number; ids: string[] }> = [];
+    const flatHost: SsrmHostV2<Row> = {
+      getRowId: (r) => r.id,
+      getSortModel: () => [] as unknown as SortModel,
+      getFilterModel: () => ({}) as FilterModel,
+      getRowGroupCols: () => [],
+      getExpandedGroupKeys: () => [],
+      setRowCount: () => {},
+      getRefreshRange: () => ({ rowStart: 0, rowEnd: BLOCK }),
+      hydrateWindow: async (startRow, rows) => {
+        if (!armed) return;
+        hydrateCalls.push({ startRow, ids: rows.map((r) => r.id) });
+        destroyed = true;
+      },
+      applyTransaction: () => {},
+      requestViewport: () => {},
+      isDestroyed: () => destroyed,
+    };
+    const flat = new ServerSideRowModelV2Controller<Row>(flatHost, {
+      rowIdField: 'id',
+      cacheBlockSize: BLOCK,
+    });
+    const all = makeLeaves('r', 100);
+    flat.setDatasource({
+      getRows: ({ request, success, fail }) => {
+        const blockIdx = Math.floor(request.startRow / BLOCK);
+        if (blockIdx === 1) {
+          fail();
+          return;
+        }
+        success({ rowData: all.slice(request.startRow, request.endRow), rowCount: 100 });
+      },
+      getGroupSkeleton: ({ success }) => success({ groups: [] }),
+      getLeafRows: ({ success }) => success({ rowData: [] }),
+    });
+    // Drain the implicit purge (chain-serialized ahead of anything below).
+    await flat.ensureRange(0, BLOCK);
+
+    armed = true;
+    await flat.ensureRange(0, 3 * BLOCK);
+
+    expect(hydrateCalls.length).toBe(1);
+    expect(hydrateCalls[0]?.startRow).toBe(0);
+    expect(hydrateCalls[0]?.ids.slice(0, 2)).toEqual(['r1', 'r2']);
+  });
+
   it('B-C6: a leaf reply that lands after dropGroupCache still reaches the LIVE map', async () => {
     // dropGroupCache deletes the per-group Map from `leafCaches` (a soft
     // refresh whose skeleton found this group's leafCount changed). A leaf

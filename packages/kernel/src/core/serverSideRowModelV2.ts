@@ -382,6 +382,13 @@ export class ServerSideRowModelV2Controller<TRow = any> {
       return false;
     }
     await this.enqueue(async () => {
+      // Captured HERE, not re-read at the `postHydrate` call below — a
+      // purge (`destroy()` bumps `dataGen` outside the chain) can land in
+      // either `await ensureRangeInner` below. Reading `this.dataGen`/
+      // `this.index` fresh at send time would compare the post-purge value
+      // to itself and never catch it — see `postHydrate`'s doc comment.
+      const gen = this.dataGen;
+      const index = this.index;
       if (this.flatRowCount <= 0) await this.ensureRangeInner(0, this.blockSize);
       if (this.flatRowCount <= 0) return;
       await this.ensureRangeInner(0, this.flatRowCount);
@@ -392,7 +399,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
         if (row === undefined) break;
         rows.push(row);
       }
-      await this.postHydrate(0, rows, this.flatRowCount, true, this.dataGen, this.index);
+      await this.postHydrate(0, rows, this.flatRowCount, true, gen, index);
     });
     return true;
   }
@@ -489,6 +496,14 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     this.index = null;
     this.groupBaseRows.clear();
     this.leafCaches.clear();
+    // Mirrors `refreshInner`'s purge branch, which clears this on every
+    // purge — without this, a late `fail()`/`success()` for a fetch begun
+    // before this `destroy()` could still pass the `blockFetchSeq` fetchId
+    // check (a stale entry left behind) even though the `gen`/
+    // `isDestroyed()` guard above it already independently stops it;
+    // belt-and-suspenders against the same resurrection class the `fail()`
+    // guard closes.
+    this.blockFetchSeq.clear();
     // B-P5 — every pending `waitUntil` predicate ORs in `gen !==
     // this.dataGen`; waking here is what settles them all instead of
     // leaving them to poll (or, pre-fix, to poll forever now that nothing
@@ -520,11 +535,21 @@ export class ServerSideRowModelV2Controller<TRow = any> {
       this.flatRowCount = 0;
       this.flatRowCountExact = false;
       this.flatRowCountSource = 'unknown';
+      // Captured HERE, immediately after our own bump above, rather than
+      // re-read at the `postHydrate` call below — `setGrandTotals` is a
+      // synchronous call into host code, and if it were to reenter (e.g.
+      // a synchronous `destroy()`) before returning, reading `this.dataGen`
+      // fresh at send time would compare that later value to itself and
+      // never notice; `postHydrate`'s own `isDestroyed()` check still
+      // covers that specific case, but this keeps the gen/index half of
+      // the gate meaningful too (see `postHydrate`'s doc comment).
+      const gen = this.dataGen;
+      const index = this.index;
       // B-P5 — wake every waiter gating on this purge's `gen` bump (see
       // `destroy()`'s identical comment).
       this.wakeOnGenChange();
       this.host.setGrandTotals?.(null);
-      await this.postHydrate(0, [], Math.max(this.reportedRowCount, 0), true, this.dataGen, this.index);
+      await this.postHydrate(0, [], Math.max(this.reportedRowCount, 0), true, gen, index);
       if (this.host.isDestroyed()) return;
       const band = this.refreshBand();
       await this.ensureRangeInner(band.rowStart, band.rowEnd);
@@ -762,8 +787,15 @@ export class ServerSideRowModelV2Controller<TRow = any> {
       if (!block || block.state === 'failed') {
         missing.push({ node: entry.node, blockIdx });
       } else if (block.state === 'loading') {
+        // B-C6 — re-resolve the LIVE map by key on every re-check, not the
+        // `cache` closure captured above. `dropGroupCache` can delete that
+        // map while this fetch is still in flight; the reply then lands
+        // (via `resolveLeafCache`) in a freshly-recreated live map that this
+        // predicate must also see, or it can never become true again — see
+        // `resolveLeafCache`'s doc comment. A missing map reads as "not
+        // loading", which is correct: nothing is in flight against it here.
         waiting.push(this.waitUntil(
-          () => cache!.get(blockIdx)?.state !== 'loading' || gen !== this.dataGen,
+          () => this.leafCaches.get(entry.node.key)?.get(blockIdx)?.state !== 'loading' || gen !== this.dataGen,
         ));
       }
     }
@@ -799,7 +831,9 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     // Non-force: coalesce onto the in-flight request. Force (soft refresh /
     // column refill): mint a new fetch token so the stale reply is dropped.
     if (existing && existing.state === 'loading' && !force) {
-      return this.waitUntil(() => cache!.get(blockIdx)?.state !== 'loading' || gen !== this.dataGen);
+      // B-C6 — same live-map re-resolution as the identical predicate in
+      // `ensureRangeInner`, above; see its comment.
+      return this.waitUntil(() => this.leafCaches.get(node.key)?.get(blockIdx)?.state !== 'loading' || gen !== this.dataGen);
     }
     const fetchId = (this.blockFetchSeq.get(fetchKey) ?? 0) + 1;
     this.blockFetchSeq.set(fetchKey, fetchId);
@@ -824,6 +858,13 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     const run = (): Promise<void> => new Promise<void>((resolve) => {
       if (gen !== this.dataGen || this.host.isDestroyed()) {
         cache!.delete(blockIdx);
+        // Only reachable via `isDestroyed()`-with-unchanged-gen (a `gen`
+        // mismatch already went through `wakeOnGenChange()` at the bump
+        // site) — wake here too so a waiter coalesced onto this exact
+        // block doesn't sit until the controller's own `destroy()` bumps
+        // `dataGen` for an unrelated reason. Consistent with "wake at every
+        // state transition" rather than a documented exemption.
+        this.wakeWaiters();
         resolve();
         return;
       }
@@ -892,15 +933,29 @@ export class ServerSideRowModelV2Controller<TRow = any> {
         },
         fail: () => {
           this.releaseSlot();
-          if (this.blockFetchSeq.get(fetchKey) !== fetchId) {
+          // Guarded the same way as `success`, above — a late `fail()`
+          // after a purge/destroy must not resurrect a cache entry
+          // `destroy()`/purge just cleared (`resolveLeafCache` below would
+          // otherwise recreate it in the live `leafCaches` map).
+          if (
+            gen !== this.dataGen
+            || this.host.isDestroyed()
+            || this.blockFetchSeq.get(fetchKey) !== fetchId
+          ) {
             resolve();
             return;
           }
           // Same detached-map hazard as `success` (B-C6) — re-resolve
           // rather than writing through the closure-captured `cache`.
           const liveCache = this.resolveLeafCache(node.key);
-          // B-C8 — per-block exponential backoff (1s/4s/15s, cap 60s) so a
-          // persistently failing block isn't hammered on every ensureRange.
+          // B-C8 — per-block exponential backoff (1s/4s/15s, cap 60s).
+          // Consulted only by `ensureRangeInner`/`ensureFlatRange` (the
+          // "not re-fetched" half of the contract) — `forceReloadBand-
+          // LeafBlocks`/`forceReloadFlatBlocks` (soft-refresh reload) skip
+          // this check entirely and re-fetch every band block regardless of
+          // `nextRetryAt`, so a persistently failing block is still
+          // re-hammered once per soft refresh. Extending backoff to those
+          // paths is a separate, deliberately out-of-scope change.
           const failCount = (liveCache.get(blockIdx)?.failCount ?? 0) + 1;
           liveCache.set(blockIdx, {
             rows: preserved,
