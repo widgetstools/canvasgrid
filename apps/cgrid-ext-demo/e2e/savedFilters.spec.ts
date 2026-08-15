@@ -142,21 +142,36 @@ test.describe('Saved filters (Markets parity)', () => {
   });
 
   test('pills persist across reload after layout update', async ({ page }) => {
-    // Markets: v2-filters-toolbar — persistence (canvasgrid: layout-tier + disk)
+    // Markets: v2-filters-toolbar — persistence (canvasgrid: layout-tier + disk).
+    //
+    // There is no autosave — persistence only happens when the user
+    // explicitly clicks the title bar's Save disk (`layoutSaveItem` in
+    // toolbar/layoutsMenu.ts, `[data-item-id="layout-save"] button`,
+    // matching the selector layoutsToolbar.spec.ts already established).
+    // Its click handler calls `grid.updateLayout()` (folds module-tier
+    // state like saved-filters into the active layout snapshot) THEN
+    // `persistGridConfig(grid)` (writes the ConfigSession instance doc to
+    // disk) — calling `updateLayout()` alone, as this test used to, never
+    // reaches disk. The old assertion also polled `velocity-grid:state:
+    // <gridId>`, the kernel-native `persistState` key; that mechanism was
+    // deliberately removed (D-F6 — VelocityGridExt's ConfigSession is the
+    // one writer) in favor of the explicit disk click, and the instance
+    // doc lives under `velocity-grid:instance:<gridId>` instead. Scanning
+    // every key (matching layoutsToolbar.spec.ts's pattern) rather than
+    // hardcoding the key name keeps this test from re-fossilizing around
+    // an implementation detail.
     await setCurrencyFilter(page, 'JPY');
     await addBtn(page).click();
     await expect(pills(page)).toHaveCount(1);
     const label = await pills(page).first().locator('.vgext-sf-label').innerText();
 
-    // Layout-tier modules land in the active layout via updateLayout (disk),
-    // then ride persistState's debounced autosave into localStorage.
-    await page.evaluate(() => {
-      (window as unknown as { __ext: { grid: { updateLayout: () => void } } }).__ext.grid.updateLayout();
-    });
-    await page.waitForFunction(() => {
-      const v = localStorage.getItem('velocity-grid:state:ext-demo') ?? '';
-      return v.includes('saved-filters') && v.includes('JPY');
-    }, null, { timeout: 10_000 });
+    const disk = page.locator('[data-item-id="layout-save"] button');
+    await expect(disk).toBeEnabled();
+    await disk.click();
+    await page.waitForFunction(() =>
+      Object.keys(localStorage).some((k) =>
+        (localStorage.getItem(k) ?? '').includes('saved-filters')
+        && (localStorage.getItem(k) ?? '').includes('JPY')), null, { timeout: 10_000 });
 
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => !!(window as unknown as { __ext?: { grid?: unknown } }).__ext?.grid, null, {
