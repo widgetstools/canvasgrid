@@ -50,6 +50,32 @@ class InMemoryAsyncConfigSession implements ConfigSession {
   clearWorkspaceSync(): void { this.doc = null; }
 }
 
+/** ConfigSession with NO sync surface at all — not `loadWorkspaceSync`, not
+ *  `hasWorkspaceSync`, not `clearWorkspaceSync`. Exercises the MINOR 8
+ *  (fix wave 2) warn-once path for `hasPersistedConfig()` /
+ *  `clearPersistedConfig()`, which previously no-op'd silently instead of
+ *  mirroring `restorePersistedConfig()`'s warn-once pattern. */
+class FullyAsyncConfigSession implements ConfigSession {
+  private doc: WorkspaceConfig | null = null;
+  private activeId = 'default';
+  constructor(readonly gridId: string) {}
+  async loadBundle() { return { docVersion: 1, gridLevelData: {} } as any; }
+  async saveBundle() { /* unused by these tests */ }
+  async loadWorkspace(): Promise<WorkspaceConfig | null> { return this.doc; }
+  async saveWorkspace(config: WorkspaceConfig): Promise<void> { this.doc = config; }
+  async clearWorkspace(): Promise<void> { this.doc = null; }
+  async hasWorkspace(): Promise<boolean> { return this.doc !== null; }
+  async getActiveProfileId(): Promise<string> { return this.activeId; }
+  async setActiveProfileId(id: string): Promise<void> { this.activeId = id; }
+  async list(): Promise<ProfileSnapshot['meta'][]> { return []; }
+  async load(): Promise<ProfileSnapshot | null> { return null; }
+  async save(id: string, snap: ProfileSnapshot): Promise<void> {
+    this.doc = snap.gridState as WorkspaceConfig;
+    this.activeId = id;
+  }
+  async remove(): Promise<void> { this.doc = null; }
+}
+
 describe('VelocityGridExt', () => {
   it('constructs a grid inside the shell and exposes .grid', () => {
     const host = document.createElement('div');
@@ -64,6 +90,29 @@ describe('VelocityGridExt', () => {
     expect(ext.grid).toBeTruthy();
     expect(typeof ext.getState).toBe('function');
     ext.destroy();
+  });
+
+  it('mirrors a string theme class onto the container and removes it on destroy (D-F9)', () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const ext = new VelocityGridExt(host, { ...opts(), theme: 'vg-theme-cursor-dark' });
+    expect(host.classList.contains('vg-theme-cursor-dark')).toBe(true);
+    ext.destroy();
+    expect(host.classList.contains('vg-theme-cursor-dark')).toBe(false);
+  });
+
+  it('does not strip a theme class the host already applied to the container (MINOR 9)', () => {
+    const host = document.createElement('div');
+    // Host pre-applies its own theme class BEFORE handing the container to
+    // VelocityGridExt — a real scenario when the host wires theming itself
+    // and also passes the same class via `theme:`.
+    host.classList.add('vg-theme-cursor-dark');
+    document.body.appendChild(host);
+    const ext = new VelocityGridExt(host, { ...opts(), theme: 'vg-theme-cursor-dark' });
+    expect(host.classList.contains('vg-theme-cursor-dark')).toBe(true);
+    ext.destroy();
+    // Ext didn't add this class, so destroy() must not remove it either.
+    expect(host.classList.contains('vg-theme-cursor-dark')).toBe(true);
   });
 
   it('mounts a consumer-provided settings module and opens it', () => {
@@ -134,10 +183,14 @@ describe('VelocityGridExt', () => {
     ext.destroy();
   });
 
-  it('a shell construction failure destroys the kernel grid so no Worker leaks (D-F1b)', () => {
+  it('a non-DOM container throws during shell construction, before any grid exists', () => {
     // `ShellLayout`'s constructor throws when handed something without a
     // real DOM `classList` — before the kernel grid is ever created, so
-    // there is nothing to leak and the ctor simply rethrows uncaught.
+    // there is nothing to leak and the ctor simply rethrows uncaught. The
+    // D-F1b "no Worker leaks" guarantee itself is covered by the next test
+    // below (a factory throwing AFTER the grid exists, asserting
+    // `destroySpy` fired) — this one only proves construction doesn't
+    // silently swallow a malformed container.
     const badContainer = {} as unknown as HTMLElement;
     expect(() => new VelocityGridExt(badContainer, opts())).toThrow();
   });
@@ -218,6 +271,42 @@ describe('VelocityGridExt', () => {
 
     ext.clearPersistedConfig();
     expect(ext.hasPersistedConfig()).toBe(false);
+
+    ext.destroy();
+  });
+
+  it('hasPersistedConfig()/clearPersistedConfig() warn once (not silently) on a fully async-only ConfigSession (MINOR 8)', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const store = new FullyAsyncConfigSession('g-fully-async');
+    const ext = new VelocityGridExt(host, {
+      ...opts(), gridId: 'g-fully-async', ext: { profiles: { store } },
+    });
+
+    ext.persistConfig();
+    await Promise.resolve();
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // No hasWorkspaceSync — degrades to `false`, but must warn (not
+    // silently lie that nothing is persisted).
+    expect(ext.hasPersistedConfig()).toBe(false);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(ext.hasPersistedConfig()).toBe(false);
+    expect(warn).toHaveBeenCalledTimes(1); // one-time warning — no repeat
+
+    // No clearWorkspaceSync — must warn that nothing was actually cleared,
+    // distinct warning from the has() one above.
+    ext.clearPersistedConfig();
+    expect(warn).toHaveBeenCalledTimes(2);
+    ext.clearPersistedConfig();
+    expect(warn).toHaveBeenCalledTimes(2); // one-time warning per method — no repeat
+    warn.mockRestore();
+
+    // The async path still actually works (async-only just means no sync
+    // shortcut, not "broken").
+    expect(await store.hasWorkspace()).toBe(true);
+    await store.clearWorkspace();
+    expect(await store.hasWorkspace()).toBe(false);
 
     ext.destroy();
   });

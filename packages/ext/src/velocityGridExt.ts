@@ -95,6 +95,12 @@ export class VelocityGridExt<TRow = any> {
   /** `restorePersistedConfig()` warns at most once per instance when the
    *  active ConfigSession has no sync capability (D-F4). */
   private warnedSyncRestoreUnsupported = false;
+  /** Same warn-once pattern for `hasPersistedConfig()` / `clearPersistedConfig()`
+   *  on a ConfigSession without the matching sync capability — a silent
+   *  `false` / no-op is a footgun (a host could believe `clearPersistedConfig()`
+   *  actually cleared something). */
+  private warnedSyncHasUnsupported = false;
+  private warnedSyncClearUnsupported = false;
 
   constructor(container: HTMLElement, options: VelocityGridExtOptions<TRow> = {} as any) {
     const { ext, ...gridOptions } = options;
@@ -106,8 +112,11 @@ export class VelocityGridExt<TRow = any> {
     // the chrome, a sibling of the grid, would fall back to its neutral dark
     // defaults instead of matching the active theme. Removed again in
     // destroy() (D-F9) so a re-mounted/replaced instance doesn't inherit a
-    // stale theme class from a previous one.
-    if (typeof gridOptions.theme === 'string') {
+    // stale theme class from a previous one. Only added — and only
+    // remembered for removal — when the container doesn't already carry the
+    // class: a host that pre-applied `theme:`'s class itself owns it, and
+    // destroy() must not strip a class it never added.
+    if (typeof gridOptions.theme === 'string' && !container.classList.contains(gridOptions.theme)) {
       this.themeClass = gridOptions.theme;
       container.classList.add(gridOptions.theme);
     }
@@ -309,6 +318,14 @@ export class VelocityGridExt<TRow = any> {
       if (typeof this.configSession.hasWorkspaceSync === 'function') {
         return this.configSession.hasWorkspaceSync();
       }
+      if (!this.warnedSyncHasUnsupported) {
+        this.warnedSyncHasUnsupported = true;
+        console.warn(
+          '[velocity-grid-ext] hasPersistedConfig() requires a sync-capable ConfigSession '
+          + '(hasWorkspaceSync) — this session is async-only, so `false` is a conservative '
+          + 'guess, not a real answer. Use `await getConfigSession()?.hasWorkspace()` instead.',
+        );
+      }
       return false;
     }
     return hasConfigInLocalStorage(gid, this.storage);
@@ -324,6 +341,13 @@ export class VelocityGridExt<TRow = any> {
       if (typeof this.configSession.clearWorkspaceSync === 'function') {
         this.configSession.clearWorkspaceSync();
         try { storageRemoveSync(this.storage, `velocity-grid:config:${gid}`); } catch { /* ignore */ }
+      } else if (!this.warnedSyncClearUnsupported) {
+        this.warnedSyncClearUnsupported = true;
+        console.warn(
+          '[velocity-grid-ext] clearPersistedConfig() requires a sync-capable ConfigSession '
+          + '(clearWorkspaceSync) — this session is async-only, so nothing was cleared. Use '
+          + '`await getConfigSession()?.clearWorkspace()` instead.',
+        );
       }
       return;
     }

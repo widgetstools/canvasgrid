@@ -27,12 +27,25 @@ export function createExtEventBus(): ExtEventBus {
 }
 
 /** Every member of `ProfileController` — kept in one place so
- *  `delegateProfiles` can build a complete wrapper without missing a
- *  future addition to the interface silently. */
+ *  `delegateProfiles` can build a complete wrapper. `satisfies` below only
+ *  checks that each *listed* key is real; it does not enforce coverage of
+ *  every interface member. The `_profileKeysExhaustive` compile-time check
+ *  right after this list is what actually guarantees a future addition to
+ *  `ProfileController` can't go missing silently — if a member is ever
+ *  added to the interface without being added here, `MissingProfileKeys`
+ *  stops being `never` and the assignment fails to typecheck. */
 const PROFILE_CONTROLLER_KEYS = [
   'activeId', 'isDirty', 'markDirty', 'onDirtyChange', 'onListChange',
   'save', 'saveAs', 'discard', 'rename', 'remove', 'switchTo', 'bootstrap', 'list',
 ] as const satisfies readonly (keyof ProfileController)[];
+
+/** Compile-time completeness guard for {@link PROFILE_CONTROLLER_KEYS} — see
+ *  the comment above. `MissingProfileKeys` is `never` iff every member of
+ *  `ProfileController` appears in the list; otherwise this assignment fails
+ *  to typecheck, naming the missing key(s) in the error. */
+type MissingProfileKeys = Exclude<keyof ProfileController, (typeof PROFILE_CONTROLLER_KEYS)[number]>;
+const _profileKeysExhaustive: [MissingProfileKeys] extends [never] ? true : MissingProfileKeys = true;
+void _profileKeysExhaustive;
 
 /**
  * Build a `ProfileController` delegate over `target`: every member not
@@ -55,16 +68,21 @@ export function delegateProfiles(
   target: ProfileController,
   overrides: Partial<ProfileController>,
 ): ProfileController {
-  const out = {} as Record<string, unknown>;
+  const out: Partial<ProfileController> = {};
+  const outRecord = out as Record<string, unknown>;
   for (const key of PROFILE_CONTROLLER_KEYS) {
-    if (key in overrides) {
-      out[key] = overrides[key];
+    // An explicit `{ save: undefined }` must fall through to `target`'s own
+    // method, not install `undefined` onto the delegate — `overrides[key]
+    // !== undefined` (not `key in overrides`) is the correct presence check.
+    const override = overrides[key];
+    if (override !== undefined) {
+      outRecord[key] = override;
       continue;
     }
     const member = target[key];
-    out[key] = typeof member === 'function' ? member.bind(target) : member;
+    outRecord[key] = typeof member === 'function' ? member.bind(target) : member;
   }
-  return out as unknown as ProfileController;
+  return out as ProfileController;
 }
 
 /** Build the context every extension receives. The kernel is reached

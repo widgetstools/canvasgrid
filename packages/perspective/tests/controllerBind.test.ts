@@ -134,3 +134,72 @@ describe('PerspectiveDataProviderController.bindConfig — honest Apply (C-M7)',
     expect(lastChange?.status).toBeUndefined();
   });
 });
+
+// IMPORTANT 1 (fix wave 2) — `attach()`'s registered state module `set:`
+// handler used to fire `void this.setActiveProvider(id, { fromState: true })`.
+// `setActiveProvider`'s returned promise is a distinct object from the
+// internal `activateChain` relay; once bindConfig started genuinely
+// rejecting on a dead broker (C-M7 "honest Apply"), that bare `void` became
+// a real unhandled rejection ~`BIND_READY_TIMEOUT_MS` after every profile
+// restore naming a provider whose broker never connects.
+describe('PerspectiveDataProviderController — state-restore rejection handling (fix wave 2, IMPORTANT 1)', () => {
+  it('a `set:` restore naming a failing provider produces no unhandled rejection AND surfaces the error', async () => {
+    readyControl.fail = true;
+    readyControl.message = 'stomp connect failed';
+
+    const backend = new MemoryConfigBackend();
+    await backend.save(CFG);
+
+    const changes: Array<{
+      id: string | null;
+      provider: unknown;
+      status?: { phase: 'error'; message: string };
+    }> = [];
+    const controller = new PerspectiveDataProviderController({
+      catalog: backend,
+      onActiveChange: (id, provider, status) => { changes.push({ id, provider, status }); },
+    });
+
+    let restoreState: ((data: unknown, version: number) => void) | null = null;
+    controller.attach({
+      grid: makeGrid(),
+      registerStateModule: (module) => {
+        if (module.id === 'perspective-data-provider') restoreState = module.set;
+        return () => {};
+      },
+      profiles: { markDirty: () => {}, save: async () => {} },
+    });
+    expect(restoreState).not.toBeNull();
+
+    // Install a real `process.on('unhandledRejection')` spy — awaiting the
+    // call directly would pass regardless of whether the fire-and-forget
+    // path inside `set:` is actually caught, proving nothing.
+    const unhandled: unknown[] = [];
+    const onUnhandledRejection = (reason: unknown): void => { unhandled.push(reason); };
+    process.on('unhandledRejection', onUnhandledRejection);
+
+    try {
+      // This is the exact fire-and-forget path under test — `set:` is a
+      // synchronous callback (registerStateModule's contract), it cannot
+      // be awaited by the caller.
+      restoreState!({ activeProviderId: 'p1' }, 2);
+
+      // Drain the microtask/timer queue so a would-be unhandled rejection
+      // has every chance to surface before we assert it never fired.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await Promise.resolve();
+    } finally {
+      process.off('unhandledRejection', onUnhandledRejection);
+    }
+
+    expect(unhandled).toEqual([]);
+
+    const errorCall = changes.find((c) => c.status != null);
+    expect(errorCall).toBeDefined();
+    expect(errorCall?.id).toBeNull();
+    expect(errorCall?.provider).toBeNull();
+    expect(errorCall?.status?.phase).toBe('error');
+    expect(errorCall?.status?.message).toBe('stomp connect failed');
+  });
+});

@@ -173,7 +173,18 @@ export class PerspectiveDataProviderController {
         const id = slice && typeof slice === 'object' && 'activeProviderId' in slice
           ? (slice.activeProviderId ?? null)
           : null;
-        void this.setActiveProvider(id, { fromState: true });
+        // `setActiveProvider`'s returned promise is a distinct object from
+        // the internal `activateChain` relay (which already swallows
+        // rejections for its own bookkeeping) — a bare `void` here left it
+        // genuinely unhandled once bindConfig started rejecting on a dead
+        // broker (C-M7 "honest Apply"). Surface the failure the same way
+        // the bind path does rather than let it crash as an
+        // unhandledRejection ~`BIND_READY_TIMEOUT_MS` after a profile
+        // restore names a provider that can't connect.
+        this.setActiveProvider(id, { fromState: true }).catch((err) => {
+          const message = err instanceof Error ? err.message : String(err);
+          this.onActiveChange?.(null, null, { phase: 'error', message });
+        });
       },
     });
   }
@@ -296,12 +307,16 @@ export class PerspectiveDataProviderController {
     } catch (err) {
       provider.destroy();
       const message = err instanceof Error ? err.message : String(err);
+      // Both the state reset AND the error emit are epoch-guarded: a
+      // superseded activation (or a `detach()` mid-bind, which bumps
+      // `activateEpoch`) must not clobber newer state or report an error
+      // over it — the newer activation already owns `onActiveChange`.
       if (epoch === this.activateEpoch) {
         this.activeProviderId = null;
         this.desiredProviderId = null;
         this.provider = null;
+        this.onActiveChange?.(null, null, { phase: 'error', message });
       }
-      this.onActiveChange?.(null, null, { phase: 'error', message });
       throw err instanceof Error ? err : new Error(message);
     }
     if (epoch !== this.activateEpoch) {
