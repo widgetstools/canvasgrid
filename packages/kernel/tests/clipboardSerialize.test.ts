@@ -20,6 +20,8 @@ import {
   mapPasteCells,
 } from '../src/worker/passes/clipboardPass';
 import type { SelectionRange } from '../src/types';
+import { WorkerClient } from '../src/worker/client';
+import { createWorkerHost } from '../src/worker/worker';
 
 type Row = Record<string, unknown>;
 const cols = (entries: Array<[string, string]>): Map<string, { field?: string }> =>
@@ -431,5 +433,75 @@ describe('serializeRanges (Cycle 10 / Task 3)', () => {
     }
     // Hard ceiling so a true regression (10× slowdown) still fails.
     expect(elapsed).toBeLessThan(500);
+  });
+});
+
+// Task 2 (production-hardening / A-C1) — the worker `clipboardSerialize`
+// handler resolves `range.rowStart..rowEnd` against `helpers.visibleAsync()`
+// (the FLAT leaf array), even when grouping is active and the main thread's
+// range is expressed in GROUP-VISIBLE indices. A copy over a range spanning
+// a group header therefore serialized the wrong leaf rows.
+class FakeWorker {
+  private listeners: Array<(e: { data: any }) => void> = [];
+  host = createWorkerHost((msg) => {
+    queueMicrotask(() => this.listeners.forEach((cb) => cb({ data: msg })));
+  });
+  postMessage(msg: any) { this.host.handle(msg); }
+  addEventListener(_t: string, cb: (e: { data: any }) => void) { this.listeners.push(cb); }
+  terminate() {}
+}
+
+describe('clipboardSerialize — worker handler, grouped index resolution (A-C1)', () => {
+  // Fixture: 2 desks, APAC (3 rows) collapsed, EMEA (2 rows) expanded.
+  // Group-visible order: [0] header "APAC" (collapsed), [1] header "EMEA",
+  // [2] id4, [3] id5. The flat leaf array is [id1, id2, id3, id4, id5] —
+  // a range of rowStart:2..rowEnd:3 means something different in each
+  // vocabulary: flat picks id3+id4, group-visible (the correct reading of
+  // a main-thread range) picks id4+id5.
+  async function buildGroupedClient() {
+    const w = new FakeWorker();
+    const client = new WorkerClient(w as any, {
+      onModelUpdated: vi.fn(), onAsyncTransactionsFlushed: vi.fn(), onError: vi.fn(),
+    });
+    await client.init({
+      rowIdField: 'id',
+      columns: [
+        { colId: 'id', field: 'id', type: 'text' },
+        { colId: 'desk', field: 'desk', type: 'text' },
+        { colId: 'note', field: 'note', type: 'text' },
+      ],
+    });
+    await client.setRowData([
+      { id: 'id1', desk: 'APAC', note: 'a' },
+      { id: 'id2', desk: 'APAC', note: 'bb' },
+      { id: 'id3', desk: 'APAC', note: 'ccc-should-not-appear' },
+      { id: 'id4', desk: 'EMEA', note: 'cc' },
+      { id: 'id5', desk: 'EMEA', note: 'ddd' },
+    ]);
+    await client.setGroupModel({ rowGroupCols: ['desk'] });
+    await client.setExpandedKeys(['desk:EMEA']); // APAC collapsed, EMEA expanded.
+    return client;
+  }
+
+  it('serializes the group-visible leaf rows for a range, not the flat-array rows at those positions', async () => {
+    const client = await buildGroupedClient();
+    const tsv = await client.clipboardSerialize(
+      [{ rowStart: 2, rowEnd: 3, colIds: ['note'] }],
+      '\t',
+    );
+    // Correct: group-visible slots 2,3 are id4 ("cc"), id5 ("ddd").
+    // The flat-array bug would have read visIds[2..3] = id3, id4 and
+    // produced "ccc-should-not-appear\ncc" instead.
+    expect(tsv).toBe('cc\nddd');
+  });
+
+  it('a range spanning a group-header row renders that row as a blank line, still resolving the leaf rows correctly', async () => {
+    const client = await buildGroupedClient();
+    const tsv = await client.clipboardSerialize(
+      [{ rowStart: 0, rowEnd: 3, colIds: ['note'] }],
+      '\t',
+    );
+    // Rows 0/1 are group headers (blank); rows 2/3 are id4/id5.
+    expect(tsv).toBe('\n\ncc\nddd');
   });
 });

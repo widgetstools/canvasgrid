@@ -9,6 +9,7 @@ import type { HandlerCtx } from '../dispatch';
 import type { WorkerRequest, WorkerColumn, StickyAncestor, AutosizeColumnRequest } from '../protocol';
 import { collectViewportTransferables } from '../protocol';
 import { computeGroupVisibleOrder, sliceGroupedViewport, type VisibleRowEntry } from '../viewportSlicer';
+import { buildVisibleIndexResolver } from '../visibleIndexResolver';
 import { offscreenMeasurer } from '../measureText';
 import {
   measureColumnWidths,
@@ -36,52 +37,40 @@ export async function handleViewport(
   const { state, post, helpers } = ctx;
   switch (req.type) {
     case 'getRowIndexForId': {
-      const ids = await helpers.visibleAsync();
-      const idx = ids.indexOf(req.payload.rowId);
+      // Production hardening (Task 2 / A-C1) — resolve through the
+      // shared grouping-aware resolver so this matches the GROUP-VISIBLE
+      // index the main thread scrolls/focuses against, not the flat
+      // leaf array.
+      const resolver = await buildVisibleIndexResolver(ctx);
+      const idx = resolver.indexOfLeafId(req.payload.rowId);
       post({ id: req.id, type: 'rowIndex', index: idx });
       return;
     }
 
     case 'getRowByIndex': {
-      const ids = await helpers.visibleAsync();
+      const resolver = await buildVisibleIndexResolver(ctx);
       const { rowIndex } = req.payload;
-      if (rowIndex < 0 || rowIndex >= ids.length) {
+      const rowId = resolver.leafIdAt(rowIndex);
+      // Out-of-range AND group-header slots share the same not-found
+      // shape — there is no row data to load either way.
+      if (rowId === null) {
         post({ id: req.id, type: 'row', rowId: null, data: null });
         return;
       }
-      const rowId = ids[rowIndex]!;
       const data = state.store.getById(rowId);
       post({ id: req.id, type: 'row', rowId, data: data ?? null });
       return;
     }
 
     case 'getRowIndicesForIds': {
-      // Build a one-shot lookup table so an N-id batch is
-      // O(visible + N) instead of O(visible * N).
-      const lookup = new Map<string, number>();
-      if (helpers.isGroupingActive() && state.groupOutput && state.groupInputIds) {
-        const groupInputIds = state.groupInputIds;
-        const visibleOrder = computeGroupVisibleOrder(
-          state.groupOutput.flatOrder,
-          helpers.effectiveExpandedKeys(),
-          state.groupHideOpenParents,
-        );
-        for (let i = 0; i < visibleOrder.length; i++) {
-          const entry = visibleOrder[i]!;
-          if (entry.kind === 'row') {
-            const id = groupInputIds[entry.rowIndex];
-            if (id !== undefined) lookup.set(id, i);
-          }
-        }
-      } else {
-        const ids = await helpers.visibleAsync();
-        for (let i = 0; i < ids.length; i++) lookup.set(ids[i]!, i);
-      }
+      // Single source of truth with getRowIndexForId / getRowByIndex —
+      // the resolver builds its id→index lookup once (O(visible)), so
+      // an N-id batch stays O(visible + N).
+      const resolver = await buildVisibleIndexResolver(ctx);
       const requested = req.payload.rowIds;
       const out = new Int32Array(requested.length);
       for (let i = 0; i < requested.length; i++) {
-        const idx = lookup.get(requested[i]!);
-        out[i] = idx === undefined ? -1 : idx;
+        out[i] = resolver.indexOfLeafId(requested[i]!);
       }
       post({ id: req.id, type: 'rowIndices', indices: out }, [out.buffer]);
       return;
@@ -307,8 +296,12 @@ export async function handleViewport(
 
     case 'autosize': {
       // Cycle 6 / Task 4 — measure widest visible text per column.
+      // Production hardening (Task 2 / A-C1) — sample through the
+      // grouping-aware resolver: under grouping, `rowIndex` is a
+      // GROUP-VISIBLE index (group headers occupy a slot; collapsed
+      // leaves are excluded), matching what the renderer actually paints.
       const { columns, skipHeader, maxSampleSize } = req.payload;
-      const ids = await helpers.visibleAsync();
+      const resolver = await buildVisibleIndexResolver(ctx);
       const fieldByColId = new Map<string, string | undefined>();
       for (const c of state.columns) fieldByColId.set(c.colId, c.field);
       const measureFor = (font: string) => {
@@ -345,8 +338,8 @@ export async function handleViewport(
           maxWidth: c.maxWidth,
           textOf: (rowIndex: number) => {
             if (!field) return '';
-            const rowId = ids[rowIndex];
-            if (rowId === undefined) return '';
+            const rowId = resolver.leafIdAt(rowIndex);
+            if (rowId === null) return ''; // group-header slot — no field value.
             const row = state.store.getById(rowId) as Record<string, unknown> | undefined;
             if (!row) return '';
             const raw = row[field];
@@ -373,7 +366,7 @@ export async function handleViewport(
       });
       const widthsMap = measureColumnWidths({
         cols: specs,
-        rowCount: ids.length,
+        rowCount: resolver.length,
         skipHeader,
         measureFor,
         cache: state.measureCache,
