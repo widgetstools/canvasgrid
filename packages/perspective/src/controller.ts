@@ -177,13 +177,15 @@ export class PerspectiveDataProviderController {
         // the internal `activateChain` relay (which already swallows
         // rejections for its own bookkeeping) — a bare `void` here left it
         // genuinely unhandled once bindConfig started rejecting on a dead
-        // broker (C-M7 "honest Apply"). Surface the failure the same way
-        // the bind path does rather than let it crash as an
-        // unhandledRejection ~`BIND_READY_TIMEOUT_MS` after a profile
-        // restore names a provider that can't connect.
+        // broker (C-M7 "honest Apply"). This `.catch` exists ONLY to stop
+        // that unhandled rejection; it must NOT re-emit `onActiveChange`.
+        // `bindConfig`'s own catch already owns that emission and is
+        // epoch-guarded (fix wave 2, Finding 3) — an unguarded duplicate
+        // here would fire even when this activation has been superseded,
+        // clobbering a newer, correct state with a stale error.
         this.setActiveProvider(id, { fromState: true }).catch((err) => {
           const message = err instanceof Error ? err.message : String(err);
-          this.onActiveChange?.(null, null, { phase: 'error', message });
+          console.warn('[perspective] state-restore setActiveProvider failed', message);
         });
       },
     });
