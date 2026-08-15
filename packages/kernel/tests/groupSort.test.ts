@@ -280,3 +280,42 @@ describe('SortPass.applyGrouped — re-sortable under new model', () => {
     expect(Array.from(desc.roots[0]!.childIndices)).toEqual([3, 2, 1, 0]);
   });
 });
+
+// 11 (A-C6) — Grouped within-bucket sort on a FIELDLESS text calc column.
+// The flat `apply` path already reads calc values through the calcSource
+// seam; the grouped `sortLeafIndices` comparator guarded on `r.col.field`
+// and so silently skipped the fieldless calc column, leaving leaf order
+// unsorted. A text calc column's values must reorder the leaf childIndices
+// exactly like a real text field would.
+describe('SortPass.applyGrouped — grouped sort honors a fieldless text calc column (A-C6)', () => {
+  it('sorts leaf childIndices by a text calc column value', () => {
+    // `label` is a fieldless calc column; its per-row value comes from the
+    // calcSource, not `row[field]`.
+    const calcCols: WorkerColumn[] = [...cols, { colId: 'label', type: 'text' }];
+    const labelByRowId: Record<string, string> = {
+      '1': 'delta', '2': 'alpha', '3': 'charlie', '4': 'bravo',
+      '5': 'echo', '6': 'foxtrot',
+    };
+    const calcSource = {
+      isCalcCol: (colId: string) => colId === 'label',
+      valueAt: (rowId: string, colId: string) =>
+        colId === 'label' ? labelByRowId[rowId] : undefined,
+    };
+
+    const group = new GroupPass(fixtureStore(), calcCols);
+    group.setModel({ rowGroupCols: ['desk'] });
+    const out = group.apply(allIds);
+
+    const sort = new SortPass(fixtureStore(), calcCols);
+    sort.setCalcSource(calcSource);
+    sort.setModel([{ colId: 'label', direction: 'asc' }]);
+    const sorted = sort.applyGrouped(out, allIds);
+
+    // APAC bucket = input indices [0,1,2,3] = rowIds 1,2,3,4 with labels
+    // delta/alpha/charlie/bravo. asc → alpha(2)/bravo(4)/charlie(3)/delta(1)
+    // → childIndices [1,3,2,0].
+    expect(Array.from(sorted.roots[0]!.childIndices)).toEqual([1, 3, 2, 0]);
+    // EMEA bucket = indices [4,5] = rowIds 5,6 (echo/foxtrot) — already asc.
+    expect(Array.from(sorted.roots[1]!.childIndices)).toEqual([4, 5]);
+  });
+});

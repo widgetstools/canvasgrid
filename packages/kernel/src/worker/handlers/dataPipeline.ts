@@ -66,6 +66,7 @@ export async function handleDataPipeline(
         state.pivotInputIds = null;
       }
       state.visibleCache = null;
+      state.visibleCachePromise = null;
       const wasPendingSeed = state.pendingDefaultExpandSeed;
       const visibleCount = await helpers.invalidateAndCount();
       const groupKeys = helpers.isGroupingActive() ? helpers.currentGroupKeys() : undefined;
@@ -85,6 +86,10 @@ export async function handleDataPipeline(
       state.ssrmRowCount = 0;
       state.ssrmGroupMetaSeen = false;
       state.ssrmGrandTotals = null;
+      // A-C2 (production hardening) — a full data replace wipes main's row
+      // mirror; drain-and-discard any pending async transaction so a queued
+      // tick can't replay onto (and diverge) the replacement store.
+      state.queue.discardPending();
       state.store.setAll(req.payload.rows as unknown[], req.payload.heightsByRowId);
       // Cycle 21d / Task 11 — full data replace invalidates the calc
       // value cache; next ensureStageA pass does a full recompute.
@@ -103,6 +108,7 @@ export async function handleDataPipeline(
       // against the new one).
       state.pendingTouched.clear();
       state.visibleCache = null;
+      state.visibleCachePromise = null;
       const wasPendingSeed = state.pendingDefaultExpandSeed;
       const visibleCount = await helpers.invalidateAndCount();
       // Cycle 15 / Task 7 — ride the groupKeys snapshot back on the
@@ -127,6 +133,10 @@ export async function handleDataPipeline(
       if (reset || reallocated) {
         state.ssrmOrder = new Array<string>(state.ssrmRowCount).fill('');
         if (reset) {
+          // A-C2 (production hardening) — same drain-and-discard as
+          // setRowData: a reset hydrate wholesale-replaces the store, so any
+          // queued async tick must not replay onto the fresh dataset.
+          state.queue.discardPending();
           state.store.setAll([]);
           state.pendingFlashes.clear();
           state.pendingTouched.clear();
@@ -245,6 +255,7 @@ export async function handleDataPipeline(
           for (const id of remove) state.alwaysPassIds.delete(id);
         }
         state.visibleCache = null;
+        state.visibleCachePromise = null;
         post({ id: req.id, type: 'transactionFlushed', results });
         const wasPendingSeed = state.pendingDefaultExpandSeed;
         const visCount = await helpers.invalidateAndCount();
@@ -264,6 +275,7 @@ export async function handleDataPipeline(
     case 'setSortModel': {
       state.sort.setModel(req.payload);
       state.visibleCache = null;
+      state.visibleCachePromise = null;
       post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: await helpers.invalidateAndCount() });
       return;
     }
@@ -282,6 +294,7 @@ export async function handleDataPipeline(
       state.agg.setColumns(cols);
       state.slicer.setColumns(cols);
       state.visibleCache = null;
+      state.visibleCachePromise = null;
       post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: await helpers.invalidateAndCount() });
       return;
     }
@@ -290,6 +303,7 @@ export async function handleDataPipeline(
       // Cycle 8 / Task 4 — flip the post-sort round-trip on or off.
       state.postSortRowsPresent = req.payload.present === true;
       state.visibleCache = null;
+      state.visibleCachePromise = null;
       post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: await helpers.invalidateAndCount() });
       return;
     }
@@ -383,6 +397,7 @@ export async function handleDataPipeline(
       }
       // Program changes redefine cell values for calc columns — rebuild.
       state.visibleCache = null;
+      state.visibleCachePromise = null;
       post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: await helpers.invalidateAndCount() });
       return;
     }

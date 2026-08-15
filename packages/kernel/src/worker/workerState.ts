@@ -65,6 +65,14 @@ export interface State {
   queue: TransactionQueue;
   columns: WorkerColumn[];
   visibleCache: string[] | null;
+  /** A-C3 (production hardening) — the in-flight `buildVisibleAsync`
+   *  promise for the single-flight pipeline gate. Non-null while a build
+   *  is running (its external-filter / postSortRows round-trip may have
+   *  suspended it across an `await`); concurrent callers await this SAME
+   *  build instead of starting a second one that would interleave writes
+   *  to `groupOutput`/`pivotOut`/`groupInputIds`/`visibleCache`. Nulled at
+   *  every site that nulls `visibleCache` so the next call rebuilds. */
+  visibleCachePromise: Promise<string[]> | null;
   /** SSRM mode — sparse hydrate is active. */
   ssrmActive: boolean;
   /**

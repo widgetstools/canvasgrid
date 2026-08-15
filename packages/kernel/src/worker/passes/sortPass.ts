@@ -373,7 +373,13 @@ export class SortPass<TRow = any> {
           continue;
         }
         const r = resolved[e]!;
-        if (!r.col || !r.col.field) continue;
+        // A-C6 (production hardening) — guard on `!r.col` only, NOT
+        // `!r.col.field`. A fieldless calc column has its values in
+        // `anyCaches` (populated above via the calcSource seam, exactly like
+        // the flat `apply` path at sortPass.ts:131-133); skipping it on the
+        // missing `field` left grouped leaf order unsorted for text calc
+        // columns.
+        if (!r.col) continue;
         const av = anyCaches[e]![a];
         const bv = anyCaches[e]![b];
         const cmp = r.fn ? r.fn(av, bv) : compare(av, bv, r.col.type);

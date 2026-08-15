@@ -89,10 +89,6 @@ export interface ViewportManagerDeps {
      *  (now overscan-widened) fetch window. See `ViewportState.
      *  firstVisibleDataRow`'s doc for the full regression story. */
     stickyBoundaryRow: number;
-    /** Monotonic request id — chunk handler ignores replies whose seq is
-     *  older than `ViewportManager.viewportReqSeq` (Deephaven latest-wins
-     *  `subscription.setViewport` while a prior fetch is in flight). */
-    seq: number;
   }): Promise<void>;
 }
 
@@ -160,11 +156,6 @@ export class ViewportManager {
   private scrollRequestTimer: ReturnType<typeof setTimeout> | null = null;
   private scrollRequestWanted = false;
   private lastScrollDispatchAt = 0;
-  /** Latest-wins sequence — bumped on every dispatched fetch. */
-  private _viewportReqSeq = 0;
-
-  /** Current viewport request sequence (for stale-chunk rejection). */
-  get viewportReqSeq(): number { return this._viewportReqSeq; }
 
   constructor(private deps: ViewportManagerDeps) {
     deps.disposables.addListener(deps.scroller, 'scroll', () => {
@@ -670,7 +661,14 @@ export class ViewportManager {
       return;
     }
     this.requestPending = true;
-    const seq = ++this._viewportReqSeq;
+    // A-C5 (production hardening) — stale replies are rejected by the
+    // chunk-intersection check in `handleViewportChunk` (a coalesced
+    // in-flight fetch that resolves for a window the live viewport has
+    // already scrolled past is dropped). Combined with the `requestPending`
+    // coalescing here (only one fetch is ever in flight), that is the whole
+    // staleness mechanism — the former `viewportReqSeq` latest-wins guard
+    // could never fire (the seq never advanced while a fetch was pending) and
+    // was deleted.
     // Cycle 26 (W3) — fetch a buffered column window, not just the visible
     // columns (see `columnFetchWindow`). Painting still iterates only the
     // visible set; the buffer exists so horizontally-entering columns have
@@ -698,7 +696,7 @@ export class ViewportManager {
     this.lastDispatchedRange = { rowStart, rowEnd };
     const stickyBoundaryRow = this.currentState.firstVisibleDataRow ?? this.currentState.firstRow;
     this.deps.dispatchViewportRequest({
-      rowStart, rowEnd, columns: cols, stickyBoundaryRow, seq,
+      rowStart, rowEnd, columns: cols, stickyBoundaryRow,
     })
       .then(() => {
         this.requestPending = false;
@@ -710,6 +708,13 @@ export class ViewportManager {
       .catch((err) => {
         this.requestPending = false;
         this.requestQueued = false;
+        // A-C5 (production hardening) — the fetch failed, so the window it
+        // claimed to cover is actually still blank. Clear the
+        // last-dispatched coverage so `viewportUncoveredByLastDispatch()`
+        // reports the window as uncovered and the next scroll/model request
+        // re-fetches it instead of treating the failed range as satisfied.
+        this.lastDispatchedRange = null;
+        this.lastDispatchedCols = null;
         if (!this.deps.isDestroyed()) console.error('[velocity-grid] viewport request:', err);
       });
   }

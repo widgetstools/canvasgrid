@@ -29,6 +29,7 @@ export async function handleFilter(
     case 'setFilterModel': {
       state.filter.setModel(req.payload);
       state.visibleCache = null;
+      state.visibleCachePromise = null;
       post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: await helpers.invalidateAndCount() });
       return;
     }
@@ -39,6 +40,7 @@ export async function handleFilter(
       state.quickFilter.setColIds(colIds);
       state.quickFilter.setTerms(terms);
       state.visibleCache = null;
+      state.visibleCachePromise = null;
       post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: await helpers.invalidateAndCount() });
       return;
     }
@@ -47,6 +49,7 @@ export async function handleFilter(
       // Cycle 7 / Task 8 — flip the round-trip on or off and re-evaluate.
       state.externalFilterPresent = req.payload.present === true;
       state.visibleCache = null;
+      state.visibleCachePromise = null;
       post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: await helpers.invalidateAndCount() });
       return;
     }
@@ -55,6 +58,7 @@ export async function handleFilter(
       // Cycle 7 / Task 8 — replace the alwaysPass set wholesale.
       state.alwaysPassIds = new Set(req.payload.rowIds);
       state.visibleCache = null;
+      state.visibleCachePromise = null;
       post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: await helpers.invalidateAndCount() });
       return;
     }
@@ -76,6 +80,7 @@ export async function handleFilter(
       // Cycle 7 / Task 8 — re-run the pipeline against the current
       // model without changing column / quick / sort state.
       state.visibleCache = null;
+      state.visibleCachePromise = null;
       post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: await helpers.invalidateAndCount() });
       return;
     }

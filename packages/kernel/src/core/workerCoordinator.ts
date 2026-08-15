@@ -73,7 +73,7 @@ export interface WorkerCoordinatorDeps {
    *  Synchronous side effects are fine — the wrapper resolves
    *  immediately in that case. */
   onViewportChunk(
-    opts: { rowStart: number; rowEnd: number; columns: string[]; seq?: number },
+    opts: { rowStart: number; rowEnd: number; columns: string[] },
     chunk: ViewportChunk,
     stickyAncestors: StickyAncestor[],
   ): void | Promise<void>;
@@ -136,7 +136,6 @@ export class WorkerCoordinator {
     rowEnd: number;
     columns: string[];
     stickyBoundaryRow: number;
-    seq: number;
   }): Promise<void> {
     const { chunk, stickyAncestors } = await this.client.getViewport({
       rowStart: opts.rowStart, rowEnd: opts.rowEnd, columns: opts.columns,

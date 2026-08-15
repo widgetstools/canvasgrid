@@ -441,3 +441,41 @@ describe('ViewportManager — teardown', () => {
     expect(removeSpy).toHaveBeenCalledWith('scroll', expect.any(Function), undefined);
   });
 });
+
+describe('ViewportManager — fetch-error recovery (A-C5)', () => {
+  it('a rejected fetch clears the dispatched-range claim so a same-window scroll re-dispatches', async () => {
+    let calls = 0;
+    const h = makeHarness({
+      dispatchImpl: () => {
+        calls += 1;
+        // First fetch rejects; any retry resolves.
+        return calls === 1 ? Promise.reject(new Error('fetch failed')) : Promise.resolve();
+      },
+    });
+    // The manager logs the rejected fetch via console.error — silence it so
+    // the expected failure doesn't muddy the test output.
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    // Model-driven dispatch (kind 'data') fetches the current window and
+    // rejects. lastDispatchedRange/lastDispatchedCols were set to the fetched
+    // window right before the rejection.
+    h.manager.request();
+    expect(h.dispatch).toHaveBeenCalledTimes(1);
+    // Let the rejection + the dispatchRequest catch handler run.
+    await new Promise((r) => setTimeout(r, 0));
+
+    // A scroll-path request for the SAME (unchanged) window follows within the
+    // scroll throttle. Without the catch clearing lastDispatchedRange/Cols the
+    // window still reads as "already covered" and the request defers to a
+    // trailing timer — the blank rows the failed fetch left behind persist.
+    // With the fix the stale coverage claim is gone, so the uncovered branch
+    // dispatches synchronously and the window recovers immediately.
+    h.manager.request(null, 'scroll');
+    expect(h.dispatch).toHaveBeenCalledTimes(2);
+    const arg = h.dispatch.mock.calls[1]![0]!;
+    expect(arg.rowStart).toBe(h.manager.state.firstRow);
+    expect(arg.rowEnd).toBe(h.manager.state.lastRow + 1);
+
+    errSpy.mockRestore();
+  });
+});

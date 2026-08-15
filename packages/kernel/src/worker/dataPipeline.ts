@@ -397,6 +397,22 @@ export class TransactionQueue<TRow = any> {
     }
     this.flushFn();
   }
+
+  /** A-C2 (production hardening) — drop every queued (not-yet-flushed) async
+   *  transaction and cancel the pending flush timer WITHOUT applying them.
+   *  Called when the dataset is wholesale replaced (`setRowData` /
+   *  reset-hydrate): the main thread wiped its row mirror, so replaying a
+   *  queued tick onto the replacement store would permanently diverge the
+   *  worker store from the (now-empty) mirror. Discard is the correct
+   *  semantics — a queued update targeting an old-dataset row is meaningless
+   *  against the new one. */
+  discardPending(): void {
+    this.pending = [];
+    if (this.timer !== null) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+  }
 }
 
 /**

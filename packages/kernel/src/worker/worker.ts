@@ -319,10 +319,35 @@ export function createWorkerHost(post: PostFn): WorkerHost {
 
   async function visibleAsync(): Promise<string[]> {
     if (!state) return [];
-    if (!state.visibleCache) {
-      state.visibleCache = await buildVisibleAsync();
-    }
-    return state.visibleCache;
+    if (state.visibleCache) return state.visibleCache;
+    // A-C3 (production hardening) — single-flight pipeline. When a build is
+    // already running (its external-filter / postSortRows round-trip has
+    // suspended `buildVisibleAsync` across an `await` at worker.ts:180-198 /
+    // :302-305), a concurrent caller must await the SAME build. The old
+    // check-then-set of `visibleCache` let a second `buildVisibleAsync`
+    // start and interleave writes to
+    // groupOutput/pivotOut/groupInputIds/visibleCache. Invalidation nulls
+    // `visibleCachePromise` (everywhere `visibleCache` is nulled) so the
+    // next call rebuilds.
+    if (state.visibleCachePromise) return state.visibleCachePromise;
+    const p: Promise<string[]> = buildVisibleAsync().then(
+      (result) => {
+        // Publish only if this build is still the in-flight one — an
+        // invalidation during the build nulls/replaces the promise, and a
+        // stale build's output must not overwrite the fresh cache.
+        if (state && state.visibleCachePromise === p) {
+          state.visibleCache = result;
+          state.visibleCachePromise = null;
+        }
+        return result;
+      },
+      (err) => {
+        if (state && state.visibleCachePromise === p) state.visibleCachePromise = null;
+        throw err;
+      },
+    );
+    state.visibleCachePromise = p;
+    return p;
   }
 
   /** Cycle 15 / Task 4 — true when the most recent `buildVisibleAsync`
@@ -502,14 +527,23 @@ export function createWorkerHost(post: PostFn): WorkerHost {
 
   async function invalidateAndCount(): Promise<number> {
     if (!state) return 0;
-    state.visibleCache = await buildVisibleAsync();
+    // A-C3 (production hardening) — this helper's contract is "invalidate
+    // AND count": it ALWAYS forces a fresh pipeline build (the pre-hardening
+    // body called `buildVisibleAsync()` unconditionally, and some callers —
+    // e.g. the pivot handler — rely on that without nulling `visibleCache`
+    // themselves). Null both tokens so `visibleAsync` starts THE fresh
+    // single-flight build that any concurrent getViewport then joins;
+    // `state.groupOutput` is a side effect of that same build.
+    state.visibleCache = null;
+    state.visibleCachePromise = null;
+    const visible = await visibleAsync();
     if (isGroupingActive()) {
       return computeGroupVisibleRowCount(
         state.groupOutput!.flatOrder, effectiveExpandedKeys(),
         state.groupHideOpenParents, isPivotActive(),
       );
     }
-    return state.visibleCache.length;
+    return visible.length;
   }
 
   /** Cycle 4 / Task 11 (cell-flash patch) — diff each update row
@@ -593,6 +627,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
         }
       }
       state!.visibleCache = null;
+      state!.visibleCachePromise = null;
       // Async transaction flush: the modelUpdated push lands one
       // microtask later once `buildVisibleAsync` resolves. Cycle 7 / Task 8
       // — when an external filter is active the await also covers the
@@ -679,6 +714,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       queue,
       columns: payload.columns,
       visibleCache: null,
+      visibleCachePromise: null,
       ssrmActive: false,
       ssrmClientPipeline: false,
       ssrmOrder: [],

@@ -36,6 +36,7 @@ export async function handleGroup(
       // explicit set off the freshly-built tree when configured.
       state.expandedKeys = null;
       state.visibleCache = null;
+      state.visibleCachePromise = null;
       // Build the visible cache (populates `groupOutput`) before we ask
       // GroupPass to compute the default expansion.
       const visibleCount0 = await helpers.invalidateAndCount();

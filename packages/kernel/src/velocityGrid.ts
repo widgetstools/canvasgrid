@@ -3341,21 +3341,24 @@ export class VelocityGrid<TRow = any> {
       // `onFilterChanged('externalFilter')` once the app toggles state.
       const initialPresent = this.options.isExternalFilterPresent?.() === true;
       if (initialPresent) {
-        await this.workerCoord.setExternalFilterPresent(true).catch(() => {});
+        await this.workerCoord.setExternalFilterPresent(true)
+          .catch((e) => console.error('[VelocityGrid] init model push failed:', e));
       }
       // Cycle 8 / Task 2 — push the construction-time sort model to the
       // worker BEFORE the first setRowData so the very first paint is
       // already sorted. When the model is empty (no `initialSort` on any
       // column) the round-trip is skipped entirely.
       if (this.sortModel.length > 0) {
-        await this.workerCoord.setSortModel(this.sortModel).catch(() => {});
+        await this.workerCoord.setSortModel(this.sortModel)
+          .catch((e) => console.error('[VelocityGrid] init model push failed:', e));
       }
       // Cycle 8 / Task 4 — when `postSortRows` is configured, register
       // the round-trip BEFORE the first setRowData so the very first
       // visible-build runs the hook. Skipped when the option is absent;
       // the worker's pipeline then runs end-to-end with zero overhead.
       if (typeof this.options.postSortRows === 'function') {
-        await this.workerCoord.setPostSortRowsPresent(true).catch(() => {});
+        await this.workerCoord.setPostSortRowsPresent(true)
+          .catch((e) => console.error('[VelocityGrid] init model push failed:', e));
       }
       // Cycle 14 / Task 3 — push the construction-time aggFuncs map to
       // the worker BEFORE the first setRowData so the very first
@@ -11344,20 +11347,17 @@ export class VelocityGrid<TRow = any> {
    *  `dispatchViewportRequest`, so ViewportManager's coalescing flag
    *  releases after the mutation lands. */
   private async handleViewportChunk(
-    opts: { rowStart: number; rowEnd: number; columns: string[]; seq?: number },
+    opts: { rowStart: number; rowEnd: number; columns: string[] },
     chunk: ViewportChunk,
     stickyAncestors: StickyAncestor[],
   ): Promise<void> {
     const { rowStart, rowEnd, columns: cols } = opts;
-    // Latest-wins (Deephaven subscription.setViewport): drop superseded
-    // replies, and also drop replies that miss the live fetch window
-    // entirely (coalesced in-flight can still resolve for an old range).
-    if (
-      opts.seq !== undefined
-      && opts.seq < this.viewportManager.viewportReqSeq
-    ) {
-      return;
-    }
+    // A-C5 (production hardening) — drop replies that miss the live fetch
+    // window entirely (a coalesced in-flight fetch can still resolve for a
+    // range the viewport has already scrolled past). This intersection check
+    // (paired with ViewportManager's single-in-flight coalescing) is the
+    // staleness mechanism; the former `viewportReqSeq` latest-wins guard was
+    // unreachable and has been deleted.
     const liveVs = this.viewportManager.state;
     if (
       liveVs.lastRow >= 0
