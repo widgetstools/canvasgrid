@@ -40,8 +40,54 @@ interface AggCol {
   agg: string | string[];
 }
 
+/** A-P1 — the inputs a memoized aggregation result was computed from.
+ *  Every one of them is either an object identity the producer replaces
+ *  wholesale on change, or a monotonic revision its owner bumps on every
+ *  mutation, so an equal key provably implies an equal result. */
+interface AggCacheKey {
+  /** Row-data revision (`RowStore.revision()`). */
+  storeRev: number;
+  /** Registered-aggFunc revision (`AggFuncRegistry.revision()`). */
+  registryRev: number;
+  /** `AggPass.setColumns` revision — the resolved `aggCols` list. */
+  colsRev: number;
+}
+
 export class AggPass<TRow = any> {
   private aggCols: AggCol[] = [];
+  /** A-P1 — bumped by `setColumns` (see `AggCacheKey`). */
+  private colsRev = 0;
+  /**
+   * A-P1 (production hardening) — memo for the grand-total pass.
+   *
+   * `getViewport` called `apply(visIds)` unconditionally on EVERY viewport
+   * fetch, so a pure scroll over an idle 1M-row grid re-read every visible
+   * row per column per frame. The result is a pure function of
+   * (`inputIds` contents, store row data, resolved agg columns, registry),
+   * so a key over the input array's identity plus the three revision
+   * counters is exact.
+   *
+   * Why identity is sound for `inputIds`: the pipeline REPLACES
+   * `state.visibleCache` / `state.groupInputIds` with a fresh array on
+   * every rebuild. The one array the worker mutates in place is
+   * `state.ssrmOrder` (sparse SSRM hydrate / evict) — and every in-place
+   * slot write there is accompanied by a `store.setAll` / `store.apply`
+   * (or, when it is not, only rewrites slots whose ids the store does not
+   * hold, which contribute nothing to the aggregate either way), so
+   * `storeRev` covers it.
+   */
+  private grandCache: { inputIds: readonly string[]; key: AggCacheKey; result: { totals: Record<string, unknown> } } | null = null;
+  /** A-P1 — memo for the per-group pass. Same key discipline as
+   *  `grandCache`, plus the `GroupPassOutput` identity (the pipeline
+   *  replaces it wholesale on every build — `worker.ts` `buildVisibleAsync`
+   *  assigns `state.groupOutput` from `GroupPass.apply` /
+   *  `SortPass.applyGrouped` and never mutates it in place). */
+  private groupCache: {
+    inputIds: readonly string[];
+    groupOutput: GroupPassOutput;
+    key: AggCacheKey;
+    result: { groupTotals: Record<string, Record<string, unknown>> };
+  } | null = null;
 
   constructor(
     private store: RowStore<TRow>,
@@ -52,6 +98,7 @@ export class AggPass<TRow = any> {
   }
 
   setColumns(columns: WorkerColumn[]): void {
+    this.colsRev++;
     this.aggCols = [];
     for (const col of columns) {
       if (col.aggFunc && col.field) {
@@ -60,11 +107,32 @@ export class AggPass<TRow = any> {
     }
   }
 
+  /** A-P1 — snapshot the revision triple the memos key on. */
+  private cacheKey(): AggCacheKey {
+    return {
+      storeRev: this.store.revision(),
+      registryRev: this.registry.revision(),
+      colsRev: this.colsRev,
+    };
+  }
+
+  private static keyEq(a: AggCacheKey, b: AggCacheKey): boolean {
+    return a.storeRev === b.storeRev
+      && a.registryRev === b.registryRev
+      && a.colsRev === b.colsRev;
+  }
+
   /** Apply each column's aggFunc to its filtered values and return the
    *  per-column totals. Columns whose aggFunc fails to resolve (unknown
    *  name, all entries unregistered) emit no entry — the totals row
    *  paints the cell empty for that column. */
   apply(inputIds: readonly string[]): { totals: Record<string, unknown> } {
+    // A-P1 — serve the memo when nothing this pass reads has changed.
+    const key = this.cacheKey();
+    const cached = this.grandCache;
+    if (cached !== null && cached.inputIds === inputIds && AggPass.keyEq(cached.key, key)) {
+      return cached.result;
+    }
     const totals: Record<string, unknown> = {};
     for (const { colId, field, agg } of this.aggCols) {
       const fn = this.registry.resolve(agg);
@@ -90,7 +158,9 @@ export class AggPass<TRow = any> {
       // round-trip safe.
       totals[colId] = result === undefined ? null : result;
     }
-    return { totals };
+    const out = { totals };
+    this.grandCache = { inputIds, key, result: out };
+    return out;
   }
 
   /** Cycle 15 / Task 12 — compute per-group totals over a `GroupPass`
@@ -127,6 +197,19 @@ export class AggPass<TRow = any> {
     inputIds: readonly string[],
     groupOutput: GroupPassOutput,
   ): { groupTotals: Record<string, Record<string, unknown>> } {
+    // A-P1 — serve the memo when nothing this pass reads has changed. The
+    // three trivial early-outs below stay uncached: they allocate one empty
+    // record and do no per-row work, so memoizing them would buy nothing.
+    const key = this.cacheKey();
+    const cachedGroups = this.groupCache;
+    if (
+      cachedGroups !== null
+      && cachedGroups.inputIds === inputIds
+      && cachedGroups.groupOutput === groupOutput
+      && AggPass.keyEq(cachedGroups.key, key)
+    ) {
+      return cachedGroups.result;
+    }
     const groupTotals: Record<string, Record<string, unknown>> = {};
     if (groupOutput.bypassed) return { groupTotals };
     if (this.aggCols.length === 0) return { groupTotals };
@@ -202,6 +285,8 @@ export class AggPass<TRow = any> {
       computeFor(root.key, rootIds);
     }
 
-    return { groupTotals };
+    const out = { groupTotals };
+    this.groupCache = { inputIds, groupOutput, key, result: out };
+    return out;
   }
 }

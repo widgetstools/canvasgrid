@@ -45,10 +45,31 @@ export class RowStore<TRow = any> {
    *  floors every contribution at this value so a short autoHeight row never
    *  paints below the grid baseline. Cycle 5 / Task 8. */
   private gridRowHeight = 0;
+  /**
+   * A-P1 (production hardening) — monotonic row-data revision. Bumped by
+   * EVERY row-data mutation (`setAll` / `apply`), so a consumer that
+   * memoizes a derived value over the store (see `AggPass`'s per-generation
+   * totals cache) can key on it and cannot silently serve a stale result.
+   *
+   * Bumped BEFORE the mutation runs: `setAll` / `apply` call `getRowId`
+   * in plain loops with no per-row try/catch, so a null-id throw can abort
+   * the batch part-way. Bumping first means a partially-applied batch still
+   * reads as "changed" (conservative — a false invalidation only costs a
+   * recompute, a missed one is a stale-totals bug).
+   *
+   * Deliberately NOT bumped by the height APIs (`setRowHeights`,
+   * `setAutoHeightContribution`, `setGridRowHeight`): aggregation reads
+   * `row[field]` only, never a height.
+   */
+  private rev = 0;
 
   constructor(private rowIdField: string) {}
 
+  /** A-P1 — current row-data revision (see `rev`). */
+  revision(): number { return this.rev; }
+
   setAll(rows: TRow[], heightsByRowId?: Map<string, number>): void {
+    this.rev++;
     this.byId.clear();
     this.order.length = 0;
     // A full-replace wipes prior heights so a fresh dataset can't inherit
@@ -91,6 +112,7 @@ export class RowStore<TRow = any> {
     remove?: string[];
     heightsByRowId?: Map<string, number>;
   }): TransactionResult {
+    this.rev++;
     const result: TransactionResult = { add: [], update: [], remove: [] };
     if (tx.add) {
       for (const row of tx.add) {

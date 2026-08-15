@@ -20,6 +20,7 @@ import type { WorkerColumn } from './protocol';
 import type { MeasureCache } from './measureText';
 import type { ComparatorRegistry } from './comparatorRegistry';
 import type { AggFuncRegistry } from './aggFuncRegistry';
+import type { GroupViewCaches } from './groupViewCache';
 
 export interface State {
   store: RowStore;
@@ -141,4 +142,11 @@ export interface State {
    *  constructed (no-program = inert); CalcPass stages gate on
    *  `calc.hasProgram()` so absent programs cost nothing. */
   calc: CalcProgramStore;
+  /** A-P2 (production hardening) — per-generation memo for the grouped
+   *  visible order, the group-meta lookup and the effective expanded-key
+   *  set. Keyed on the identities the pipeline replaces wholesale
+   *  (`groupOutput` / `expandedKeys` / `columns`); see
+   *  `worker/groupViewCache.ts` for the soundness argument. Always
+   *  constructed; empty slots cost nothing. */
+  groupViewCache: GroupViewCaches;
 }

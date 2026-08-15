@@ -27,11 +27,35 @@ export class RowHeightIndex {
   /** Largest power of two ≤ `n`. Cached so `rowAt`'s descent can start from
    *  the right bit without a log call per query. */
   private pow2: number;
+  /**
+   * A-P4 (production hardening) — the single height every row currently
+   * carries, or `null` when the rows are (or may be) mixed.
+   *
+   * Tracked so a caller can answer "is this index already bit-identical to
+   * `new RowHeightIndex(n, () => h)`?" in O(1) and skip an O(n)
+   * reallocation of both `Float32Array`s. Exact in the `true` direction:
+   * set only when the constructor observed one distinct height across all
+   * rows, and cleared by any `update` that writes a different one. It may
+   * be conservatively `null` when the rows happen to be uniform again
+   * (`update` never re-derives uniformity, and `insert`/`remove` drop it
+   * outright) — a false negative only costs the rebuild that would have
+   * happened anyway.
+   */
+  private uniform: number | null = null;
 
   constructor(length: number, heightAt: (i: number) => number) {
     this.n = length;
     this.heights = new Float32Array(length);
-    for (let i = 0; i < length; i++) this.heights[i] = heightAt(i);
+    let allSame = true;
+    for (let i = 0; i < length; i++) {
+      const h = heightAt(i);
+      this.heights[i] = h;
+      // Compare against the STORED value: Float32Array narrows the double,
+      // so `heightAt` returning 30.0000001 twice must still read as
+      // uniform against what a rebuild would store.
+      if (i > 0 && this.heights[i]! !== this.heights[0]!) allSame = false;
+    }
+    this.uniform = length === 0 ? null : (allSame ? this.heights[0]! : null);
     this.tree = new Float32Array(length + 1);
     this.buildTree();
     this.pow2 = this.computePow2(length);
@@ -39,6 +63,16 @@ export class RowHeightIndex {
 
   /** Total row count currently indexed. */
   length(): number { return this.n; }
+
+  /** A-P4 — true when this index is already exactly what
+   *  `new RowHeightIndex(this.length(), () => height)` would produce, so
+   *  the caller can skip the reallocation. An empty index (`n === 0`)
+   *  trivially matches any height. Never returns `true` unless every row
+   *  really does carry `height`. */
+  isUniformAt(height: number): boolean {
+    if (this.n === 0) return true;
+    return this.uniform !== null && this.uniform === height;
+  }
 
   /** Stored height of row `i`. Returns 0 for out-of-range indices. */
   heightAt(i: number): number {
@@ -101,6 +135,9 @@ export class RowHeightIndex {
     const delta = newHeight - this.heights[i]!;
     if (delta === 0) return;
     this.heights[i] = newHeight;
+    // A-P4 — a height that differs from the shared one ends uniformity.
+    // Read back the STORED value so the f32 narrowing is accounted for.
+    if (this.uniform !== null && this.heights[i]! !== this.uniform) this.uniform = null;
     let k = i + 1;
     while (k <= this.n) {
       this.tree[k] = this.tree[k]! + delta;
@@ -143,6 +180,11 @@ export class RowHeightIndex {
   }
 
   private adopt(nextHeights: Float32Array): void {
+    // A-P4 — `insert` / `remove` rewrite the whole height buffer; drop the
+    // uniformity claim rather than re-deriving it (both are O(n) rebuild
+    // paths with no in-repo caller, so a conservative `null` costs
+    // nothing).
+    this.uniform = null;
     this.heights = nextHeights;
     this.n = nextHeights.length;
     this.tree = new Float32Array(this.n + 1);

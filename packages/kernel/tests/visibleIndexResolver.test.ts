@@ -15,6 +15,7 @@
 import { describe, it, expect } from 'vitest';
 import { GroupPass, RowStore } from '../src/worker/dataPipeline';
 import { buildVisibleIndexResolver } from '../src/worker/visibleIndexResolver';
+import { createGroupViewCaches } from '../src/worker/groupViewCache';
 import type { HandlerCtx } from '../src/worker/dispatch';
 import type { WorkerColumn } from '../src/worker/protocol';
 
@@ -57,6 +58,12 @@ function fakeGroupedCtx(expandedKeys: Set<string>): HandlerCtx {
     groupOutput,
     groupInputIds: allIds,
     groupHideOpenParents: false,
+    // Task 13 (A-P2) — the resolver now materialises the grouped visible
+    // order through the per-generation memo, which lives on `State`. Each
+    // fixture gets its OWN cache object, so a memo can never leak across
+    // cases here. `expandedKeys` is part of the memo key.
+    expandedKeys,
+    groupViewCache: createGroupViewCaches(),
   };
   const helpers = {
     isGroupingActive: () => true,
@@ -67,7 +74,10 @@ function fakeGroupedCtx(expandedKeys: Set<string>): HandlerCtx {
 }
 
 function fakeFlatCtx(ids: string[]): HandlerCtx {
-  const state = { groupOutput: null, groupInputIds: null, groupHideOpenParents: false };
+  const state = {
+    groupOutput: null, groupInputIds: null, groupHideOpenParents: false,
+    expandedKeys: null, groupViewCache: createGroupViewCaches(),
+  };
   const helpers = {
     isGroupingActive: () => false,
     effectiveExpandedKeys: () => new Set<string>(),

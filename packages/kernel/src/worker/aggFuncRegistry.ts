@@ -105,19 +105,29 @@ function builtinAggFuncs(): Record<string, IAggFunc> {
 export class AggFuncRegistry {
   private builtin: Record<string, IAggFunc>;
   private custom = new Map<string, IAggFunc>();
+  /** A-P1 (production hardening) — monotonic revision bumped by every
+   *  mutation of the custom layer. `AggPass`'s per-generation totals cache
+   *  keys on it so a runtime `setAggFuncs` flip invalidates the memo
+   *  instead of re-serving totals computed with the previous functions. */
+  private rev = 0;
 
   constructor() {
     this.builtin = builtinAggFuncs();
   }
 
+  /** A-P1 — current registry revision (see `rev`). */
+  revision(): number { return this.rev; }
+
   /** Add or replace a custom aggFunc. Custom entries take precedence
    *  over a built-in of the same name. */
   register(name: string, fn: IAggFunc): void {
+    this.rev++;
     this.custom.set(name, fn);
   }
 
   /** Drop a custom entry. The built-in (if any) becomes visible again. */
   unregister(name: string): void {
+    this.rev++;
     this.custom.delete(name);
   }
 
@@ -126,6 +136,7 @@ export class AggFuncRegistry {
    *  `setGridOption('aggFuncs', { ... })` matches the "replaces previous
    *  map" semantics documented in `VelocityGridOptions.aggFuncs`. */
   replaceCustom(funcs: Record<string, IAggFunc>): void {
+    this.rev++;
     this.custom = new Map(Object.entries(funcs));
   }
 

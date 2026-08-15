@@ -40,7 +40,6 @@ import {
   resolveDragTargetRole as resolveDragTargetRoleHelper,
   type PillPanelRole, type PanelMoveApi,
 } from './core/panelDragMove';
-import { ChunkLRU, estimateChunkBytes } from './core/memoryBudget';
 import { ColumnGroupState, resolveVisibleLeaves } from './core/columnGroupState';
 import {
   applyReorder, resolveLegalDropIndex, reorderLeavesByList,
@@ -599,6 +598,13 @@ function rangesEqual(a: SelectionRange[], b: SelectionRange[]): boolean {
  *  keep the strip-store wipe semantics of the full path). */
 const WINDOW_DIFF_MAX_RUNS = 12;
 
+/** A-P6 (production hardening) — trailing-throttle window for the
+ *  transaction-driven `alwaysPassFilter` refresh. Transactions arriving
+ *  inside the window coalesce into one re-evaluation instead of one per
+ *  tick. `setRowData` / `onFilterChanged` bypass it entirely (immediate,
+ *  exhaustive) — see `recomputeAlwaysPass`. */
+const ALWAYS_PASS_RECOMPUTE_MS = 50;
+
 /** Count contiguous runs in a sorted ascending index array. */
 function countRuns(sorted: number[]): number {
   if (sorted.length === 0) return 0;
@@ -1122,11 +1128,6 @@ export class VelocityGrid<TRow = any> {
    *  tail of `requestViewport` lives on VelocityGrid as `handleViewportChunk`
    *  until cycle 19 / task 3 lands `WorkerCoordinator`. */
   private viewportManager!: ViewportManager;
-  /** Cycle 25 / Task 10 — LRU of recently-fetched chunks keyed by
-   *  `${rowStart}:${rowEnd}:${cols}`. Holds entries via WeakRef so
-   *  GC can reclaim before our eviction runs. `null` when the
-   *  `memoryBudgetMB` option is unset / 0 (caching disabled). */
-  private chunkLRU: ChunkLRU<ViewportChunk> | null = null;
   private rowCount = 0;
   /** SSRM controller — present only when `rowModelType === 'serverSide'`.
    *  Always the v2 controller since the v1 flat-block model was
@@ -1145,6 +1146,20 @@ export class VelocityGrid<TRow = any> {
   /** Optional Perspective ExprTK host (StompPerspectiveProvider) for SSRM calc. */
   private ssrmExpressionHost: SsrmExpressionHost | null = null;
   private ssrmColumnRefillTimer: ReturnType<typeof setTimeout> | null = null;
+  /** A-P6 — trailing-throttle handle for the transaction-driven
+   *  `alwaysPassFilter` refresh. Armed by the first request of a burst and
+   *  NOT re-armed by later ones, so a continuous feed can't starve it. */
+  private alwaysPassTimer: ReturnType<typeof setTimeout> | null = null;
+  /** A-P6 — rowIds the pending throttle window must re-evaluate. */
+  private alwaysPassPendingTouched = new Set<string>();
+  /** A-P6 — the pending throttle window must rescan EVERY mirrored row
+   *  (there was no prior shipped set to fold the touched rows into). */
+  private alwaysPassPendingFull = false;
+  /** A-P6 — mirror of the alwaysPass set the worker currently holds, used
+   *  to skip a re-ship (and the pipeline rebuild + viewport fetch it
+   *  triggers) when nothing changed. `null` = unknown, always ship. See
+   *  `shipAlwaysPassIfChanged` for the invalidation contract. */
+  private lastShippedAlwaysPass: Set<string> | null = null;
   /** Coalesce column-window refill while the user is still scrolling. */
   private pendingSsrmColumnRefill = false;
   /** Last columnKeys signature that actually triggered a band refill. */
@@ -1570,13 +1585,13 @@ export class VelocityGrid<TRow = any> {
       options.rowHeight = clampRowHeight(options.rowHeight);
     }
 
-    // Cycle 25 / Task 10 — memory-pressure release. Holds recent
-    // chunks via WeakRef so V8/JSC can collect them ahead of our
-    // explicit eviction. `memoryBudgetMB` 0/undefined disables the
-    // cache entirely.
-    if (options.memoryBudgetMB && options.memoryBudgetMB > 0) {
-      this.chunkLRU = new ChunkLRU<ViewportChunk>(options.memoryBudgetMB * 1024 * 1024);
-    }
+    // A-P7 (production hardening) — the Cycle 25 / Task 10 chunk LRU used
+    // to be constructed here from `memoryBudgetMB`. It was write-only:
+    // every arriving chunk was sized (`estimateChunkBytes`, a full walk of
+    // the chunk's typed arrays + a `JSON.stringify` of `totals`) and
+    // stored, and nothing ever read an entry back. Removed — the class
+    // itself stays in `core/memoryBudget.ts` (with its unit tests) for a
+    // future cycle that actually wires the lookup.
 
     // 1. DOM scaffold — scroller (with sized sizer child) provides native scrollbars;
     // the canvas (created later by VelocityGridCanvas) overlays the scroller's content area
@@ -3234,8 +3249,29 @@ export class VelocityGrid<TRow = any> {
           // with the fallback keeps the scrollable extent intact; the
           // next chunk arrival overlays the real per-row heights via
           // `refreshRowHeightIndex`.
+          //
+          // A-P4 (production hardening) — this fired on EVERY modelUpdated
+          // (i.e. every transaction flush on a live blotter) and always
+          // allocated two fresh `Float32Array(rowCount)` buffers plus an
+          // O(n) BIT build, even for a uniform-height grid where the
+          // "rebuilt" index is bit-identical to the one it replaced.
+          // `isUniformAt` answers "already exactly that" in O(1), so the
+          // uniform case now skips the realloc entirely. This is NOT the
+          // spec's "skip the index altogether" fast path: the no-index
+          // path is NOT equivalent at the consuming call sites (pivot's
+          // `getRowHeight(0) === 0` sentinel would skip the data subgrid,
+          // `onHeightsChanged` early-returns without an index, and
+          // `computeViewport`'s pre-window fallback walk is O(firstDataRow)
+          // per frame) — see the task report for the full audit.
           const fallbackH = this.options.rowHeight ?? this.theme.rowHeight;
-          this.rowHeightIndex = new RowHeightIndex(this.rowCount, () => fallbackH);
+          const existingIdx = this.rowHeightIndex;
+          if (
+            existingIdx === null
+            || existingIdx.length() !== this.rowCount
+            || !existingIdx.isUniformAt(fallbackH)
+          ) {
+            this.rowHeightIndex = new RowHeightIndex(this.rowCount, () => fallbackH);
+          }
           this.recomputeViewport();
           // Re-resolve persistent selection ids against the freshly-sorted /
           // filtered visible order. Without this, indices set by
@@ -4345,6 +4381,11 @@ export class VelocityGrid<TRow = any> {
     // filter + alwaysPass predicates evaluate against current data.
     // setRowData is a full replace, so wipe the cache first.
     this.rowDataById.clear();
+    // A-P6 — the worker CLEARS `state.alwaysPassIds` on `setRowData`, so
+    // whatever we last shipped is gone from its side. Forget the mirror so
+    // the post-load `recomputeAlwaysPass` always ships, even if the fresh
+    // dataset happens to resolve to the very same id set.
+    this.invalidateAlwaysPassMirror();
     for (const row of stamped) {
       try { this.rowDataById.set(this.options.getRowId(row), row); } catch { /* skip bad rowId */ }
     }
@@ -4390,13 +4431,16 @@ export class VelocityGrid<TRow = any> {
     const update = this.stampSyntheticRowIds(t.update, false);
     const heightsByRowId = this.resolveHeightsForRows([...(add ?? []), ...(update ?? [])]);
     this.updateRowDataCache(t, 'transaction');
+    // A-P6 — capture the touched rowIds BEFORE the round-trip so the
+    // throttled refresh only re-evaluates those rows.
+    const touched = this.collectTouchedRowIds(t);
     this.workerCoord.applyTransaction({
       add,
       update,
       remove: t.remove?.map((r) => this.options.getRowId(r)),
       async: false,
       heightsByRowId,
-    }).then(() => this.recomputeAlwaysPass())
+    }).then(() => this.scheduleAlwaysPassRecompute(touched))
       .catch((err) => { if (!this.destroyed) console.error('[velocity-grid] applyTransaction:', err); });
     return { add: [], update: [], remove: [] };
   }
@@ -4436,14 +4480,31 @@ export class VelocityGrid<TRow = any> {
     const update = this.stampSyntheticRowIds(t.update, false);
     const heightsByRowId = this.resolveHeightsForRows([...(add ?? []), ...(update ?? [])]);
     this.updateRowDataCache(t, 'transactionAsync');
+    // A-P6 — see `applyTransaction`.
+    const touched = this.collectTouchedRowIds(t);
     this.workerCoord.applyTransaction({
       add,
       update,
       remove: t.remove?.map((r) => this.options.getRowId(r)),
       async: true,
       heightsByRowId,
-    }).then(() => this.recomputeAlwaysPass())
+    }).then(() => this.scheduleAlwaysPassRecompute(touched))
       .catch((err) => { if (!this.destroyed) console.error('[velocity-grid] applyTransaction:', err); });
+  }
+
+  /** A-P6 — the rowIds a transaction adds / updates / removes, in the same
+   *  "a throwing `getRowId` drops the row" spirit as `updateRowDataCache`.
+   *  Removed ids are included: the throttled pass re-evaluates them and,
+   *  finding no mirrored row, drops them from the set. */
+  private collectTouchedRowIds(t: Tx<TRow>): string[] {
+    const out: string[] = [];
+    for (const group of [t.add, t.update, t.remove]) {
+      if (!group) continue;
+      for (const row of group) {
+        try { out.push(this.options.getRowId(row)); } catch { /* skip */ }
+      }
+    }
+    return out;
   }
 
   /** Merge deferred async txs (last-write-wins per row id) and dispatch. */
@@ -4578,17 +4639,143 @@ export class VelocityGrid<TRow = any> {
    *  row set and ship the resolved rowId list to the worker. No-op when
    *  the predicate isn't configured; the worker treats an empty set as
    *  "no alwaysPass rows" so the round-trip is essentially free in the
-   *  common case. */
+   *  common case.
+   *
+   *  A-P6 (production hardening) — runs the FULL rescan (every row in the
+   *  mirror). Kept immediate + exhaustive because `onFilterChanged` and
+   *  `setRowData` both depend on it: `onFilterChanged`'s own doc says the
+   *  predicate may close over the same state the external filter does, so
+   *  it must (a) re-evaluate every row, not just recently-touched ones,
+   *  and (b) land BEFORE the `setExternalFilterPresent` refilter it
+   *  precedes. The per-transaction call sites go through
+   *  `scheduleAlwaysPassRecompute` instead. */
   private recomputeAlwaysPass(): void {
     if (this.destroyed) return;
-    const predicate = this.options.alwaysPassFilter;
-    if (typeof predicate !== 'function') return;
+    if (typeof this.options.alwaysPassFilter !== 'function') return;
+    // A full rescan supersedes anything the throttle is holding.
+    this.cancelAlwaysPassTimer();
+    this.alwaysPassPendingTouched.clear();
+    this.alwaysPassPendingFull = false;
     const ids: string[] = [];
-    for (const [rowId, data] of this.rowDataById) {
-      try {
-        if (predicate({ data, rowId })) ids.push(rowId);
-      } catch { /* predicate threw — drop the row from alwaysPass */ }
+    for (const rowId of this.rowDataById.keys()) {
+      if (this.evaluateAlwaysPass(rowId)) ids.push(rowId);
     }
+    this.shipAlwaysPassIfChanged(ids);
+  }
+
+  /** A-P6 — evaluate `alwaysPassFilter` for one mirrored row. Returns
+   *  `false` for an unknown row or a throwing predicate (same "drop the
+   *  row from alwaysPass" rule the full scan always applied). */
+  private evaluateAlwaysPass(rowId: string): boolean {
+    const predicate = this.options.alwaysPassFilter;
+    if (typeof predicate !== 'function') return false;
+    const data = this.rowDataById.get(rowId);
+    if (data === undefined) return false;
+    try {
+      return predicate({ data, rowId }) === true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * A-P6 (production hardening) — transaction-driven alwaysPass refresh.
+   *
+   * Every `applyTransaction` / `applyTransactionAsync` used to trigger a
+   * full `recomputeAlwaysPass`: an O(dataset) predicate scan, a full
+   * rowId-array ship to the worker, a whole pipeline rebuild and a
+   * viewport fetch — per tick, on every grid configured with the
+   * predicate. Two changes here:
+   *
+   *  1. **Throttle.** Requests inside a 50 ms window coalesce into one
+   *     trailing run. A plain "reset the timer on every call" debounce
+   *     would starve under a continuous feed, so the timer is armed by
+   *     the FIRST request of a burst and not re-armed by later ones —
+   *     guaranteeing it fires.
+   *  2. **Narrowing.** A transaction reports which rowIds it touched, and
+   *     `alwaysPassFilter` is documented as a per-row predicate over
+   *     `{ data, rowId }` — an untouched row's verdict cannot change. So
+   *     only the touched rows are re-evaluated and folded into the
+   *     previous set. `setRowData` and `onFilterChanged` still force the
+   *     exhaustive rescan (see `recomputeAlwaysPass`), which is what an
+   *     app with a predicate that closes over external state uses.
+   */
+  private scheduleAlwaysPassRecompute(touched: readonly string[]): void {
+    if (this.destroyed) return;
+    if (typeof this.options.alwaysPassFilter !== 'function') return;
+    // No previously-shipped set to fold into ⇒ the pending run must be a
+    // full rescan, otherwise rows that were never evaluated would be
+    // missing from the shipped set.
+    if (this.lastShippedAlwaysPass === null) this.alwaysPassPendingFull = true;
+    else for (const id of touched) this.alwaysPassPendingTouched.add(id);
+    if (this.alwaysPassTimer !== null) return;
+    this.alwaysPassTimer = setTimeout(() => {
+      this.alwaysPassTimer = null;
+      const full = this.alwaysPassPendingFull;
+      const scope = this.alwaysPassPendingTouched;
+      this.alwaysPassPendingFull = false;
+      this.alwaysPassPendingTouched = new Set<string>();
+      if (this.destroyed) return;
+      if (typeof this.options.alwaysPassFilter !== 'function') return;
+      const previous = this.lastShippedAlwaysPass;
+      if (full || previous === null) {
+        const ids: string[] = [];
+        for (const rowId of this.rowDataById.keys()) {
+          if (this.evaluateAlwaysPass(rowId)) ids.push(rowId);
+        }
+        this.shipAlwaysPassIfChanged(ids);
+        return;
+      }
+      const next = new Set(previous);
+      for (const rowId of scope) {
+        if (this.evaluateAlwaysPass(rowId)) next.add(rowId);
+        else next.delete(rowId);
+      }
+      this.shipAlwaysPassIfChanged(Array.from(next));
+    }, ALWAYS_PASS_RECOMPUTE_MS);
+  }
+
+  private cancelAlwaysPassTimer(): void {
+    if (this.alwaysPassTimer !== null) {
+      clearTimeout(this.alwaysPassTimer);
+      this.alwaysPassTimer = null;
+    }
+  }
+
+  /**
+   * A-P6 — ship the resolved set to the worker only when it differs from
+   * the last one this grid shipped.
+   *
+   * The worker replaces `state.alwaysPassIds` wholesale on receipt and
+   * then rebuilds the pipeline + refetches the viewport, so re-shipping an
+   * identical set is pure waste — and on a ticking blotter the set is
+   * identical on almost every tick.
+   *
+   * `lastShippedAlwaysPass` is a mirror of the WORKER's set, so it must be
+   * invalidated wherever the worker mutates that set on its own:
+   *   • `setRowData` — the worker clears `alwaysPassIds` outright
+   *     (`handlers/dataPipeline.ts`), so main resets the mirror to `null`
+   *     at the same site (`invalidateAlwaysPassMirror`) and the next
+   *     compute is forced to ship.
+   *   • transaction `remove` — the worker deletes the removed ids
+   *     (`worker.ts` async flush / `handlers/dataPipeline.ts` sync). Main
+   *     deletes the same ids from `rowDataById` first, so the recomputed
+   *     set drops them too: either the id was in the set (⇒ the sets
+   *     differ ⇒ we ship) or it was not (⇒ the worker deleted nothing).
+   *     No divergence either way.
+   *   • `ssrmEvict` — same shape: `velocityGrid` deletes the evicted ids
+   *     from `rowDataById` before posting the message.
+   */
+  private shipAlwaysPassIfChanged(ids: string[]): void {
+    const previous = this.lastShippedAlwaysPass;
+    if (previous !== null && previous.size === ids.length) {
+      let same = true;
+      for (const id of ids) {
+        if (!previous.has(id)) { same = false; break; }
+      }
+      if (same) return;
+    }
+    this.lastShippedAlwaysPass = new Set(ids);
     this.workerCoord.setAlwaysPassRowIds(ids).then(({ visibleCount }) => {
       if (this.destroyed) return;
       this.rowCount = visibleCount;
@@ -4596,7 +4783,19 @@ export class VelocityGrid<TRow = any> {
       // Cycle 14 / Task 6 — alwaysPass evaluation is part of the filter
       // pipeline; tagging as `filterChanged` so listeners can correlate.
       this.requestViewport('filterChanged');
-    }).catch((err) => { if (!this.destroyed) console.error('[velocity-grid] alwaysPass:', err); });
+    }).catch((err) => {
+      // The worker never received this set (or errored applying it) — drop
+      // the mirror so the next compute is forced to ship rather than
+      // deciding "unchanged" against a set the worker doesn't have.
+      this.lastShippedAlwaysPass = null;
+      if (!this.destroyed) console.error('[velocity-grid] alwaysPass:', err);
+    });
+  }
+
+  /** A-P6 — the worker cleared its `alwaysPassIds`; forget what we last
+   *  shipped so the next compute always ships. */
+  private invalidateAlwaysPassMirror(): void {
+    this.lastShippedAlwaysPass = null;
   }
 
   /** Cycle 7 / Task 8 — main-side reply to the worker's
@@ -9784,6 +9983,13 @@ export class VelocityGrid<TRow = any> {
       clearTimeout(this.ssrmColumnRefillTimer);
       this.ssrmColumnRefillTimer = null;
     }
+    // A-P6 — same rule for the alwaysPass throttle: a destroy mid-window
+    // would otherwise fire the trailing recompute against a torn-down
+    // worker coordinator.
+    this.cancelAlwaysPassTimer();
+    this.alwaysPassPendingTouched.clear();
+    this.alwaysPassPendingFull = false;
+    this.lastShippedAlwaysPass = null;
     this.ssrmResortFirstAt = null;
     this.ssrm?.destroy();
     this.ssrm = null;
@@ -9805,7 +10011,6 @@ export class VelocityGrid<TRow = any> {
     this.disposables.dispose();
     this.selectionUnsubscribe();
     this.calcProviderUnsub?.();
-    if (this.chunkLRU) this.chunkLRU.clear();
     // Closeout I-2 fix — the retained paint-cache layer's backing store
     // (`canvasWidth × (bodyHeight + 2*overscanPx)` device px — tens of MB at
     // HiDPI) is otherwise never freed for a destroyed-but-still-referenced
@@ -11622,16 +11827,12 @@ export class VelocityGrid<TRow = any> {
     this.chunk = chunk;
     this.stickyAncestors = stickyAncestors;
     this.decodedTextCols.clear();
-    // Cycle 25 / Task 10 — park the chunk in the LRU. WeakRef retention means
-    // GC can reclaim if real memory pressure builds; the LRU's own eviction
-    // kicks in when our running sum exceeds `memoryBudgetMB`. Cache lookup on
-    // subsequent requests is intentionally NOT wired here — keying on model
-    // versions (sort/filter/group/pivot) needs more surface than this cycle
-    // delivers. Foundation only.
-    if (this.chunkLRU) {
-      const key = `${rowStart}:${rowEnd}:${cols.join(',')}`;
-      this.chunkLRU.set(key, chunk, estimateChunkBytes(chunk));
-    }
+    // A-P7 (production hardening) — the Cycle 25 / Task 10 "park the chunk
+    // in the LRU" write lived here. Nothing ever read an entry back
+    // (lookup was explicitly never wired), so every viewport chunk paid
+    // `estimateChunkBytes` — a walk of every typed array plus a
+    // `JSON.stringify(chunk.totals)` — purely to grow a map that was only
+    // ever cleared. Removed.
     // Cycle 18 / Task 3 — (re)synthesize or drop the pivot result columns
     // from the freshly-arrived pivot tree before the layout + paint below
     // run off the new column order.

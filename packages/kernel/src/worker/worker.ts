@@ -20,6 +20,7 @@ import type { WorkerColumn } from './protocol';
 import {
   MeasureCache, measureKey, offscreenMeasurer, workerCanMeasure, wrapTextToHeight,
 } from './measureText';
+import { cachedEffectiveExpandedKeys, createGroupViewCaches } from './groupViewCache';
 import type { State } from './workerState';
 import type { HandlerCtx, PostFn, WorkerHelpers } from './dispatch';
 import { dispatchTable } from './dispatch';
@@ -374,15 +375,19 @@ export function createWorkerHost(post: PostFn): WorkerHost {
    *  is in the "default = every group expanded" mode (Task 4 mount,
    *  Task 7 `expandAll`); derive the all-keys set from the current
    *  `flatOrder` so the slicer + meta lookup paint with chevrons in
-   *  the down/expanded state for every group. */
+   *  the down/expanded state for every group.
+   *
+   *  A-P2 (production hardening) — the derived (sentinel) branch is a
+   *  full `flatOrder` walk plus a Set the size of the group count, and it
+   *  ran on EVERY getViewport / resolver build. It is memoized on
+   *  `state.groupViewCache` keyed on the `groupOutput` + `expandedKeys`
+   *  identities. The returned Set is now SHARED across calls — every
+   *  in-repo consumer only reads it (see `groupViewCache.ts`). */
   function effectiveExpandedKeys(): Set<string> {
-    if (state?.expandedKeys) return state.expandedKeys;
-    const out = new Set<string>();
-    if (!state?.groupOutput) return out;
-    for (const e of state.groupOutput.flatOrder) {
-      if (e.kind === 'group') out.add(e.key);
-    }
-    return out;
+    if (!state) return new Set<string>();
+    return cachedEffectiveExpandedKeys(
+      state.groupViewCache, state.groupOutput, state.expandedKeys,
+    );
   }
 
   /** Cycle 15 / Task 7 — list of EVERY composite group key in the
@@ -743,6 +748,8 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       // `groupValue[i]` slots populate when the option is on.
       showOpenedGroup: payload.showOpenedGroup === true,
       groupHideOpenParents: payload.groupHideOpenParents === true,
+      // A-P2 — per-generation grouped-walk memo; see groupViewCache.ts.
+      groupViewCache: createGroupViewCaches(),
     };
     // Cycle 21d / Task 11 — seam wiring: every pass reads calc-column
     // values through the same CalcProgramStore instance held on state.

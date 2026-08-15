@@ -17,7 +17,7 @@
 // (so ungrouped grids pay no extra cost or behavior change).
 
 import type { HandlerCtx } from './dispatch';
-import { computeGroupVisibleOrder } from './viewportSlicer';
+import { cachedGroupVisibleOrder } from './groupViewCache';
 
 export interface VisibleIndexResolver {
   /** Number of slots in the current visible order (group headers +
@@ -44,10 +44,19 @@ export async function buildVisibleIndexResolver(ctx: HandlerCtx): Promise<Visibl
     // Exactly the translation `getRowIndicesForIds` already performed
     // (worker/handlers/viewport.ts) — generalised into the shared
     // resolver every index-facing endpoint now consumes.
-    const visibleOrder = computeGroupVisibleOrder(
-      state.groupOutput.flatOrder,
+    // A-P2 (production hardening) — memoized per pipeline generation.
+    // The memo ALSO keys on `suppressLeafRows`, so this call (which keeps
+    // the pre-existing default `false` — deliberately unchanged here;
+    // `getViewport` passes `isPivotActive()`) can never be served the
+    // getViewport path's entry, and vice versa. Identical inputs ⇒
+    // identical output as the direct call.
+    const visibleOrder = cachedGroupVisibleOrder(
+      state.groupViewCache,
+      state.groupOutput,
+      state.expandedKeys,
       helpers.effectiveExpandedKeys(),
       state.groupHideOpenParents,
+      false,
     );
     const idAt = new Array<string | null>(visibleOrder.length);
     const idToIndex = new Map<string, number>();

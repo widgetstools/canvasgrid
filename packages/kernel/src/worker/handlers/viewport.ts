@@ -8,8 +8,9 @@
 import type { HandlerCtx } from '../dispatch';
 import type { WorkerRequest, WorkerColumn, StickyAncestor, AutosizeColumnRequest } from '../protocol';
 import { collectViewportTransferables } from '../protocol';
-import { computeGroupVisibleOrder, sliceGroupedViewport, type VisibleRowEntry } from '../viewportSlicer';
+import { sliceGroupedViewport, type VisibleRowEntry } from '../viewportSlicer';
 import { buildVisibleIndexResolver } from '../visibleIndexResolver';
+import { cachedGroupMetaLookup, cachedGroupVisibleOrder } from '../groupViewCache';
 import { offscreenMeasurer } from '../measureText';
 import {
   measureColumnWidths,
@@ -95,13 +96,23 @@ export async function handleViewport(
         const expandedKeys = helpers.effectiveExpandedKeys();
         // Cycle 18 / Task 3 follow-up — under pivot mode, drop leaf
         // data rows entirely (AG-Grid parity).
-        const visibleOrder: VisibleRowEntry[] = computeGroupVisibleOrder(
-          groupOutput.flatOrder, expandedKeys, state.groupHideOpenParents,
-          helpers.isPivotActive(),
+        //
+        // A-P2 (production hardening) — both walks are memoized per
+        // pipeline generation (`state.groupViewCache`). Identical inputs
+        // ⇒ identical output, so this is byte-for-byte what the direct
+        // `computeGroupVisibleOrder` / `buildGroupMetaLookup` calls
+        // produced; the memo only skips re-doing the O(N) work on a
+        // scroll fetch that changed nothing.
+        const visibleOrder: readonly VisibleRowEntry[] = cachedGroupVisibleOrder(
+          state.groupViewCache, groupOutput, state.expandedKeys, expandedKeys,
+          state.groupHideOpenParents, helpers.isPivotActive(),
         );
         const colIndex = new Map<string, WorkerColumn>();
         for (const c of state.columns) colIndex.set(c.colId, c);
-        const metaLookup = helpers.buildGroupMetaLookup(groupOutput.roots, state.columns, expandedKeys);
+        const metaLookup = cachedGroupMetaLookup(
+          state.groupViewCache, groupOutput, state.columns, state.expandedKeys,
+          expandedKeys, helpers.buildGroupMetaLookup,
+        );
         chunk = sliceGroupedViewport(
           state.store, colIndex, visIds, visibleOrder, req.payload, pending,
           (key) => metaLookup.get(key),
@@ -319,10 +330,16 @@ export async function handleViewport(
       let groupNodes: readonly AutosizeGroupNode[] | null = null;
       const wantsGroupContext = columns.some((c) => c.groupContext !== undefined);
       if (wantsGroupContext && helpers.isGroupingActive() && state.groupOutput) {
-        const meta = helpers.buildGroupMetaLookup(
-          state.groupOutput.roots,
+        // A-P2 — same memo the getViewport path uses (identical key ⇒
+        // identical lookup); autosize now shares the entry instead of
+        // re-walking the whole group tree.
+        const meta = cachedGroupMetaLookup(
+          state.groupViewCache,
+          state.groupOutput,
           state.columns,
+          state.expandedKeys,
           helpers.effectiveExpandedKeys(),
+          helpers.buildGroupMetaLookup,
         );
         groupNodes = flattenGroupNodes(state.groupOutput.roots, meta);
       }

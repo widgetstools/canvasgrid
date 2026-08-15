@@ -157,3 +157,95 @@ describe('RowHeightIndex — perf gate at n = 1,000,000', () => {
     expect(rowAcc).toBeGreaterThanOrEqual(0);
   });
 });
+
+// ─── A-P4 (production hardening) — uniform-height fast path ────────────────
+//
+// `VelocityGrid`'s `modelUpdated` handler rebuilt the whole Fenwick index
+// (two fresh Float32Arrays + an O(n) BIT build) on EVERY transaction
+// flush, even when the index it replaced was already all-fallback and the
+// "rebuild" was therefore bit-identical. `isUniformAt(h)` answers "already
+// exactly `new RowHeightIndex(length(), () => h)`" in O(1) so that case
+// skips the realloc.
+//
+// These tests pin the guarantee that actually matters: `isUniformAt` is
+// NEVER true unless every row really carries that height — a false
+// positive would freeze stale per-row heights into scroll/paint math.
+
+describe('RowHeightIndex.isUniformAt — A-P4 skip guard', () => {
+  it('a constant-height index reports uniform at that height only', () => {
+    const idx = new RowHeightIndex(100, () => 30);
+    expect(idx.isUniformAt(30)).toBe(true);
+    expect(idx.isUniformAt(31)).toBe(false);
+    expect(idx.isUniformAt(0)).toBe(false);
+  });
+
+  it('an index built from mixed heights is never uniform', () => {
+    const heights = [30, 30, 45, 30];
+    const idx = new RowHeightIndex(heights.length, (i) => heights[i]!);
+    expect(idx.isUniformAt(30)).toBe(false);
+    expect(idx.isUniformAt(45)).toBe(false);
+  });
+
+  it('a single differing update ends uniformity', () => {
+    const idx = new RowHeightIndex(50, () => 30);
+    expect(idx.isUniformAt(30)).toBe(true);
+    idx.update(17, 64);
+    expect(idx.isUniformAt(30)).toBe(false);
+    expect(idx.isUniformAt(64)).toBe(false);
+    // …and the geometry the paint path reads is still exact.
+    expect(idx.heightAt(17)).toBe(64);
+    expect(idx.topOf(18)).toBe(17 * 30 + 64);
+  });
+
+  it('an update to the SAME height preserves uniformity', () => {
+    const idx = new RowHeightIndex(10, () => 30);
+    idx.update(3, 30);
+    expect(idx.isUniformAt(30)).toBe(true);
+  });
+
+  it('a zero-length index trivially matches any height (rebuild is a no-op)', () => {
+    const idx = new RowHeightIndex(0, () => 30);
+    expect(idx.isUniformAt(30)).toBe(true);
+    expect(idx.isUniformAt(99)).toBe(true);
+  });
+
+  it('never claims uniformity after a mixed build even if a later update equalises', () => {
+    // Conservative direction: a false NEGATIVE only costs a rebuild.
+    const heights = [30, 40];
+    const idx = new RowHeightIndex(2, (i) => heights[i]!);
+    idx.update(1, 30);
+    expect(idx.isUniformAt(30)).toBe(false);
+    // Geometry stays exact regardless.
+    expect(idx.totalHeight()).toBe(60);
+  });
+
+  it('insert / remove drop the uniformity claim', () => {
+    const a = new RowHeightIndex(4, () => 30);
+    a.insert(2, 30);
+    expect(a.isUniformAt(30)).toBe(false);
+    expect(a.length()).toBe(5);
+    expect(a.totalHeight()).toBe(150);
+
+    const b = new RowHeightIndex(4, () => 30);
+    b.remove(1);
+    expect(b.isUniformAt(30)).toBe(false);
+    expect(b.length()).toBe(3);
+    expect(b.totalHeight()).toBe(90);
+  });
+
+  it('the skipped rebuild is observationally identical to an actual rebuild', () => {
+    // The exact substitution VelocityGrid makes: when `isUniformAt` is
+    // true, keeping the existing index must equal constructing a new one.
+    const kept = new RowHeightIndex(1000, () => 24);
+    const rebuilt = new RowHeightIndex(1000, () => 24);
+    expect(kept.isUniformAt(24)).toBe(true);
+    expect(kept.length()).toBe(rebuilt.length());
+    expect(kept.totalHeight()).toBe(rebuilt.totalHeight());
+    for (const i of [0, 1, 7, 63, 64, 511, 512, 999, 1000]) {
+      expect(kept.topOf(i)).toBe(rebuilt.topOf(i));
+    }
+    for (const y of [0, 1, 23, 24, 25, 5000, 23999, 24000, 99999]) {
+      expect(kept.rowAt(y)).toBe(rebuilt.rowAt(y));
+    }
+  });
+});

@@ -422,12 +422,15 @@ export interface VelocityGridOptions<TRow = any> {
    *  (ledger) + `PaintStats.rasterCachePooledBytes` (pools). */
   rasterCacheBudgetMB?: number;
   /** Cycle 25 / Task 10 — soft cap on the cumulative byte size of
-   *  cached viewport chunks the grid holds across requests. When
-   *  exceeded, older chunks are evicted from the LRU (which itself
-   *  holds them via `WeakRef`, so V8/JSC can collect them ahead of
-   *  our eviction under real memory pressure). Undefined / `0`
-   *  disables the cap (caching disabled — every viewport request
-   *  goes to the worker). Typical: 32. */
+   *  cached viewport chunks the grid holds across requests.
+   *
+   *  **Currently inert.** A-P7 (production hardening) removed the chunk
+   *  LRU this option fed: the cache was write-only — a lookup was never
+   *  wired, so every viewport chunk was measured and stored and no
+   *  request was ever served from it. Every viewport request goes to the
+   *  worker, exactly as it did with the option unset. The option is kept
+   *  (rather than removed) so existing configurations keep type-checking;
+   *  it becomes meaningful again if a future cycle wires chunk reuse. */
   memoryBudgetMB?: number;
   /** Opaque application data forwarded to callbacks (matches ag-grid).
    *  Storage-only in Cycle 4. */
@@ -560,8 +563,20 @@ export interface VelocityGridOptions<TRow = any> {
    *  when their data would otherwise be filtered out. Useful for pinned
    *  summary rows or locked reference rows that must always be visible
    *  regardless of filter state. Main runs the predicate against its
-   *  row-data cache on every `setRowData` / `applyTransaction` and ships
-   *  the resolved rowId set to the worker. */
+   *  row-data cache and ships the resolved rowId set to the worker.
+   *
+   *  **When it re-evaluates** (A-P6, production hardening). `setRowData`
+   *  and `onFilterChanged()` re-run the predicate over EVERY cached row,
+   *  immediately. `applyTransaction` / `applyTransactionAsync` re-run it
+   *  only for the rows that transaction touched, on a 50 ms trailing
+   *  throttle, and fold the verdicts into the previous set — so a live
+   *  feed costs O(touched) per window instead of O(dataset) per tick, and
+   *  the worker round-trip is skipped entirely when the resolved set is
+   *  unchanged. The predicate is therefore expected to be a pure function
+   *  of `{ data, rowId }`; if it closes over external state (a toolbar
+   *  toggle, say), call `onFilterChanged()` after mutating that state —
+   *  which is what that API already documents for the companion
+   *  `doesExternalFilterPass`. */
   alwaysPassFilter?: (params: { data: TRow; rowId: string }) => boolean;
   /** Cycle 8 / Task 4 — post-sort re-order hook. Runs on the main thread
    *  after the worker's `SortPass.apply` and before `ViewportSlicer.slice`.
