@@ -31,12 +31,37 @@ export class ExtensionRegistry {
   applySpecs(specs: ExtensionSpec[] | undefined): void {
     for (const s of specs ?? []) {
       if ('remove' in s) this.remove(s.remove);
-      else if ('factory' in s) this.register(s.factory());
-      else this.register(s);
+      else if ('factory' in s) {
+        const instance = s.factory();
+        // The spec's own `id` is purely a lookup convenience — registration
+        // always keys off the built instance's `id`. A mismatch is almost
+        // always a copy/paste bug (wrong id in the spec, or the factory
+        // returning the wrong extension), so warn instead of registering
+        // something the caller didn't expect under a silently different id.
+        if (instance.id !== s.id) {
+          console.warn(
+            `[velocity-grid-ext] extension spec id "${s.id}" does not match its `
+            + `built instance id "${instance.id}" — registering under "${instance.id}"`,
+          );
+        }
+        this.register(instance);
+      } else this.register(s);
     }
   }
 
-  initAll(ctx: VelocityGridExtContext): void { for (const e of this.all()) e.init(ctx); }
+  /** Isolated so one extension's `init()` throwing can never prevent the
+   *  others from initializing (mirrors `disposeAll`'s isolation below —
+   *  same reasoning: a single broken extension must not take the whole
+   *  shell down with it). */
+  initAll(ctx: VelocityGridExtContext): void {
+    for (const e of this.all()) {
+      try {
+        e.init(ctx);
+      } catch (err) {
+        console.warn(`[velocity-grid-ext] extension "${e.id}" threw during init()`, err);
+      }
+    }
+  }
   /** Tears down every registered extension. Each `dispose()` is isolated in
    *  its own try/catch — a throwing extension is logged and skipped so it
    *  can never abort teardown for the rest of the registry (and, upstream,

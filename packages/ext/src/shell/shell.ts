@@ -8,6 +8,7 @@ import type {
   ModuleCategory,
 } from '../extension/types';
 import { lucideBundle } from '@wellsfargo-starui/velocity-grid/icons/lucide.generated';
+import { delegateProfiles } from '../extension/context';
 
 /** Lucide name aliases for module.icon values that aren't 1:1 catalog keys. */
 const MODULE_ICON_ALIAS: Record<string, string> = {
@@ -331,15 +332,22 @@ export class ShellLayout {
     footer.append(hint, shortcuts, discard, done);
     this.sheet.append(footer);
 
+    // `{ ...ctx.profiles }` would copy only own-enumerable properties —
+    // ProfileController's real methods live on ProfilesController's
+    // prototype, so a plain spread silently drops `isDirty`/`activeId`/
+    // `saveAs`/`switchTo`/etc. and any module calling them would throw.
+    // `delegateProfiles` keeps every member reachable (correctly bound to
+    // the real controller — see its doc comment for why a naive
+    // `Object.create` wrapper is unsafe here) and only overrides
+    // `markDirty` to also stage the drawer session.
     const moduleCtx: VelocityGridExtContext = {
       ...ctx,
-      profiles: {
-        ...ctx.profiles,
-        markDirty() {
+      profiles: delegateProfiles(ctx.profiles, {
+        markDirty: () => {
           ctx.profiles.markDirty();
           ctx.session.stage(id);
         },
-      },
+      }),
     };
     this.live = entry.module.mount(body, moduleCtx);
   }

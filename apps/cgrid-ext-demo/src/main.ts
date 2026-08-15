@@ -231,7 +231,11 @@ const PLACEHOLDER_COLS: CColDef<FlatRow>[] = [
 
 const ext = new VelocityGridExt<FlatRow>(app, {
   gridId: 'ext-demo',
-  persistState: true,
+  // Do NOT also set kernel `persistState: true` here — VelocityGridExt's
+  // default ConfigSession already owns persistence for this gridId, and
+  // running both writers double-writes the same document (D-F6; see
+  // docs/velocity-grid-architecture.md §4.4). VelocityGridExt's ctor warns
+  // loudly if this is ever re-enabled alongside a ConfigSession.
   getRowId: (r) => String(r.positionId),
   columnDefs: PAINT_HARNESS ? (columnDefs as CColDef<FlatRow>[]) : PLACEHOLDER_COLS,
   theme: 'vg-theme-cursor-dark',
@@ -336,9 +340,9 @@ void ext.reapplyActiveProfile();
 
 // cgrid's side-panel rail (Columns / Filters) must always be visible on
 // load. Options + Column Groups live in the ext settings sheet (⋯).
-// persistState can restore the side bar hidden from a
-// prior session, and that restore runs async after construction — so force it
-// visible now and again after the restore settles.
+// The Ext ConfigSession's profiles.bootstrap() can restore the side bar
+// hidden from a prior session, and that restore runs async after
+// construction — so force it visible now and again after the restore settles.
 const showSidebar = () => { try { ext.grid.setSideBarVisible(true); } catch { /* ignore */ } };
 showSidebar();
 requestAnimationFrame(showSidebar);

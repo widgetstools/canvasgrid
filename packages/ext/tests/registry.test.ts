@@ -57,4 +57,41 @@ describe('ExtensionRegistry', () => {
     expect(otherDisposed).toHaveBeenCalledOnce();
     expect(r.all()).toEqual([]);
   });
+
+  it('initAll isolates a throwing init() — logs, continues, and still inits the rest (D-F1)', () => {
+    const r = new ExtensionRegistry();
+    const throwing = mod('throws');
+    throwing.init = vi.fn(() => { throw new Error('boom'); });
+    const other = mod('other');
+    r.register(throwing);
+    r.register(other);
+    const ctx = {} as VelocityGridExtContext;
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(() => r.initAll(ctx)).not.toThrow();
+    expect(warn).toHaveBeenCalled();
+    expect(other.init).toHaveBeenCalledWith(ctx);
+    warn.mockRestore();
+  });
+
+  it('applySpecs warns when a {id,factory} spec\'s id does not match its built instance (D-F10)', () => {
+    const r = new ExtensionRegistry();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    r.applySpecs([{ id: 'expected-id', factory: () => mod('actual-id') }]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('expected-id'));
+    warn.mockRestore();
+
+    expect(r.get('actual-id')).toBeTruthy();
+    expect(r.get('expected-id')).toBeUndefined();
+  });
+
+  it('applySpecs does not warn when the {id,factory} spec id matches', () => {
+    const r = new ExtensionRegistry();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    r.applySpecs([{ id: 'same-id', factory: () => mod('same-id') }]);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+
+    expect(r.get('same-id')).toBeTruthy();
+  });
 });

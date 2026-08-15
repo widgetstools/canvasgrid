@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { installGridTestEnv } from './setup';
 import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
 import { LocalStorageProfileStore } from '../src/profiles/localStorageStore';
@@ -163,5 +163,49 @@ describe('createExtContext + ProfilesController', () => {
     await profiles2.bootstrap();
     expect(grid2.getActiveLayoutId()).toBe(saved.id);
     grid2.destroy();
+  });
+
+  it('event bus emit isolates a throwing listener from the rest (D-F11)', () => {
+    const grid = makeGrid();
+    const store = new LocalStorageProfileStore('t');
+    const profiles = new ProfilesController(grid, store, { initialId: 'default' });
+    const ctx = createExtContext(grid, profiles);
+
+    const calls: string[] = [];
+    ctx.events.on('ping', () => { throw new Error('boom'); });
+    ctx.events.on('ping', () => calls.push('second'));
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(() => ctx.events.emit({ type: 'ping' })).not.toThrow();
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+
+    expect(calls).toEqual(['second']);
+    grid.destroy();
+  });
+
+  it('ctx.profiles delegates every ProfileController member, correctly bound to the shared controller (D-F3/D-F14)', () => {
+    const grid = makeGrid();
+    const store = new LocalStorageProfileStore('t');
+    const profiles = new ProfilesController(grid, store, { initialId: 'default' });
+    const ctx = createExtContext(grid, profiles);
+
+    for (const m of ['isDirty', 'activeId', 'saveAs', 'switchTo', 'rename', 'remove', 'list'] as const) {
+      expect(typeof ctx.profiles[m]).toBe('function');
+    }
+    // The wrapper shadows save/discard on a NEW object — it must not
+    // monkey-patch (reassign) the shared controller's own methods.
+    expect(profiles.save).not.toBe(ctx.profiles.save);
+    expect(profiles.save).toBe(ProfilesController.prototype.save);
+
+    // The real regression this guards against: a naive `Object.create(profiles,
+    // {...})` wrapper looks like it delegates everything, but any
+    // NON-overridden method called through it runs with `this` bound to the
+    // *wrapper* (JS receiver rule), not `profiles` — so `markDirty()` would
+    // silently write `dirty` onto the wrapper instead of the shared
+    // controller, and `profiles.isDirty()` would never see the change.
+    ctx.profiles.markDirty();
+    expect(profiles.isDirty()).toBe(true);
+    grid.destroy();
   });
 });

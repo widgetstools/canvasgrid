@@ -16,6 +16,13 @@ export class ProfilesController implements ProfileController {
   /** Coalesces concurrent / repeat `bootstrap()` calls (ctor fire-and-forget
    *  + host `reapplyActiveProfile` after late-wired state modules). */
   private bootPromise: Promise<void> | null = null;
+  /** Set by `dispose()`. Every continuation after an `await` in
+   *  `runBootstrap`/`switchTo`/`save`/`saveAs` checks this and bails before
+   *  touching the grid — the ctor's fire-and-forget `bootstrap()` (and any
+   *  in-flight `switchTo`/`save`) must not resolve onto an already-destroyed
+   *  grid, and a rejected/unresolved continuation must never surface as an
+   *  unhandled rejection. */
+  private disposed = false;
 
   constructor(
     private grid: VelocityGrid,
@@ -23,6 +30,13 @@ export class ProfilesController implements ProfileController {
     private opts: ProfilesOptions = {},
   ) {
     this.id = opts.initialId ?? 'default';
+  }
+
+  /** Cancels any in-flight `bootstrap`/`switchTo`/`save`/`saveAs` continuation
+   *  before it can touch the grid. Called from `VelocityGridExt.destroy()`
+   *  before the kernel grid is torn down. Idempotent. */
+  dispose(): void {
+    this.disposed = true;
   }
 
   activeId(): string { return this.id; }
@@ -71,15 +85,20 @@ export class ProfilesController implements ProfileController {
         ...(layouts ? { layouts: layouts as GridLayoutsBundle } : {}),
       };
       await this.store.saveWorkspace(config);
+      if (this.disposed) return;
       await this.syncActivePointer();
+      if (this.disposed) return;
       this.setDirty(false);
       this.notifyList();
       return;
     }
     const existing = await this.store.load(this.id);
+    if (this.disposed) return;
     const name = existing?.meta.name ?? this.id;
     await this.store.save(this.id, this.snapshot(this.id, name));
+    if (this.disposed) return;
     await this.syncActivePointer();
+    if (this.disposed) return;
     this.setDirty(false);
     this.notifyList();
   }
@@ -94,12 +113,15 @@ export class ProfilesController implements ProfileController {
     if (!trimmed) throw new Error('Profile name is required');
     const id = slugId(trimmed);
     const list = await this.store.list();
+    if (this.disposed) return id;
     if (list.some((m) => m.id === id)) {
       throw new Error(`Profile '${trimmed}' already exists`);
     }
     await this.store.save(id, this.snapshot(id, trimmed));
+    if (this.disposed) return id;
     this.id = id;
     await this.syncActivePointer();
+    if (this.disposed) return id;
     this.setDirty(false);
     this.notifyList();
     return id;
@@ -128,21 +150,30 @@ export class ProfilesController implements ProfileController {
     // state are all left untouched.
     if (isConfigSession(this.store)) {
       const snap = await this.store.load(id);
+      if (this.disposed) return;
       if (!snap) return;
       const ws = await this.store.loadWorkspace();
+      if (this.disposed) return;
       if (!ws) return;
       this.id = id;
       this.applyWorkspace(ws);
       await this.syncActivePointer();
+      if (this.disposed) return;
       this.setDirty(false);
       this.notifyList();
       return;
     }
     const snap = await this.store.load(id);
+    if (this.disposed) return;
     if (!snap) return;
     this.id = id;
-    this.grid.setState(snap.gridState);
+    // Exhaustive — matches the ConfigSession path (`applyWorkspace`) and the
+    // kernel persist restore: a switch is a full replace, so slices the
+    // saved snapshot omits must clear rather than linger from the profile
+    // being left (D-F15).
+    this.grid.setState(snap.gridState, { exhaustive: true });
     await this.syncActivePointer();
+    if (this.disposed) return;
     this.setDirty(false);
     this.notifyList();
   }
@@ -180,30 +211,51 @@ export class ProfilesController implements ProfileController {
   private async runBootstrap(): Promise<void> {
     if (isConfigSession(this.store)) {
       const ws = await this.store.loadWorkspace();
+      if (this.disposed) return;
       if (ws) {
+        // D-F5: adopt the persisted active id BEFORE syncActivePointer()
+        // below — otherwise that call overwrites the stored `meta.id` with
+        // the ctor's `initialId`, so a later `discard()` (== `switchTo(this.id)`)
+        // targets an id the single-slot facade never recognizes and silently
+        // no-ops. `getActiveProfileId()` already falls back to the loaded
+        // doc's own `meta.id` (else 'default'), so no extra fallback needed here.
+        const storedId = await this.store.getActiveProfileId();
+        if (this.disposed) return;
+        this.id = storedId || this.id;
         this.applyWorkspace(ws);
         await this.syncActivePointer();
+        if (this.disposed) return;
         this.setDirty(false);
         this.notifyList();
         return;
       }
       // Seed the flat workspace (view + layouts/activeLayoutId), not a profile slot.
       await this.save();
+      if (this.disposed) return;
       await this.syncActivePointer();
+      if (this.disposed) return;
       this.setDirty(false);
       this.notifyList();
       return;
     }
     const existing = await this.store.load(this.id);
+    if (this.disposed) return;
     if (existing) {
-      this.grid.setState(existing.gridState);
+      // Exhaustive — a bootstrap restore is a full replace (D-F15), matching
+      // the ConfigSession path (`applyWorkspace`) and the kernel persist
+      // restore; omitted slices must clear rather than keep whatever the
+      // grid's construction-time defaults happened to seed.
+      this.grid.setState(existing.gridState, { exhaustive: true });
       await this.syncActivePointer();
+      if (this.disposed) return;
       this.setDirty(false);
       this.notifyList();
       return;
     }
     await this.store.save(this.id, this.snapshot(this.id, this.id === 'default' ? 'Default' : this.id));
+    if (this.disposed) return;
     await this.syncActivePointer();
+    if (this.disposed) return;
     this.setDirty(false);
     this.notifyList();
   }

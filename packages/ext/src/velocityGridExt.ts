@@ -57,6 +57,22 @@ export type VelocityGridExtConfig = GridState & {
   layouts?: GridLayoutsBundle;
 };
 
+/**
+ * Some ConfigSessions (the built-in `LocalStorageConfigSession`, or any
+ * custom implementation backed by something already in memory) can also
+ * answer restore/has/clear synchronously. That surface is NOT part of the
+ * `ConfigSession` interface — checked structurally (`typeof x.foo ===
+ * 'function'`) rather than `instanceof LocalStorageConfigSession`, so any
+ * conforming session gets the sync fast path, not only that one built-in
+ * class (D-F4). All three members are optional, so every `ConfigSession`
+ * value already satisfies this type with no cast.
+ */
+type MaybeSyncConfigSession = ConfigSession & {
+  loadWorkspaceSync?(): VelocityGridExtConfig | null;
+  hasWorkspaceSync?(): boolean;
+  clearWorkspaceSync?(): void;
+};
+
 /** Batteries-included wrapper: owns a VelocityGrid + an ExtensionRegistry, wires
  *  every extension to the kernel through a shared context, and lays the
  *  grid + tooling out via ShellLayout. */
@@ -67,50 +83,93 @@ export class VelocityGridExt<TRow = any> {
   private profiles: ProfilesController;
   private ctx: VelocityGridExtContext;
   /** Set when the profile store is a ConfigSession (default adapter). */
-  private configSession: ConfigSession | null = null;
+  private configSession: MaybeSyncConfigSession | null = null;
   /** Shared transport for default ConfigSession / clear helpers. */
   private readonly storage: IStorage;
+  /** The chrome root the theme class was mirrored onto — kept so `destroy()`
+   *  can remove it again (D-F9). */
+  private readonly container: HTMLElement;
+  /** Theme class mirrored from `options.theme` onto `container`; `null` when
+   *  no string theme was passed. */
+  private themeClass: string | null = null;
+  /** `restorePersistedConfig()` warns at most once per instance when the
+   *  active ConfigSession has no sync capability (D-F4). */
+  private warnedSyncRestoreUnsupported = false;
 
   constructor(container: HTMLElement, options: VelocityGridExtOptions<TRow> = {} as any) {
     const { ext, ...gridOptions } = options;
+    this.container = container;
     this.shell = new ShellLayout(container);
     // Mirror a string theme class onto the shell root so the kernel's
     // `--vg-*` theme tokens (defined on the grid's own `.vg-theme-*` element)
     // cascade to VelocityGridExt's chrome (title bar, settings drawer) — otherwise
     // the chrome, a sibling of the grid, would fall back to its neutral dark
-    // defaults instead of matching the active theme.
+    // defaults instead of matching the active theme. Removed again in
+    // destroy() (D-F9) so a re-mounted/replaced instance doesn't inherit a
+    // stale theme class from a previous one.
     if (typeof gridOptions.theme === 'string') {
+      this.themeClass = gridOptions.theme;
       container.classList.add(gridOptions.theme);
     }
     this._grid = new VelocityGrid<TRow>(this.shell.gridMount, gridOptions as VelocityGridOptions<TRow>);
 
-    const gridId = typeof gridOptions.gridId === 'string' && gridOptions.gridId
-      ? gridOptions.gridId
-      : 'default';
-    this.storage = ext?.storage ?? new LocalStore();
-    const store = ext?.profiles?.store
-      ?? new LocalStorageConfigSession(gridId, { storage: this.storage });
-    this.configSession = isConfigSession(store) ? store : null;
-    this.profiles = new ProfilesController(this._grid, store, {
-      initialId: ext?.profiles?.initialId ?? 'default',
-    });
-    this.ctx = createExtContext(this._grid, this.profiles);
+    // Everything below reaches for `this._grid` (directly or via
+    // ProfilesController/context/extensions). If any of it throws — a
+    // consumer extension's `factory()`, a malformed profiles store, etc. —
+    // the kernel Worker the grid above just spun up would otherwise leak
+    // (D-F1): the constructor never finishes, so the caller has no `.grid`
+    // to call `destroy()` on. Guarantee the grid is released and rethrow.
+    try {
+      const gridId = typeof gridOptions.gridId === 'string' && gridOptions.gridId
+        ? gridOptions.gridId
+        : 'default';
+      this.storage = ext?.storage ?? new LocalStore();
+      const store = ext?.profiles?.store
+        ?? new LocalStorageConfigSession(gridId, { storage: this.storage });
+      this.configSession = isConfigSession(store) ? store : null;
+      if (gridOptions.persistState && this.configSession) {
+        // D-F6: the kernel's own `persistState` autosave and the Ext
+        // ConfigSession both write a document for this gridId — see
+        // docs/velocity-grid-architecture.md §4.4 ("do not enable both
+        // writers for the same grid"). Whichever settles last wins,
+        // silently discarding the other's write.
+        console.warn(
+          `[velocity-grid-ext] gridId "${gridId}" has both kernel \`persistState\` and an Ext `
+          + 'ConfigSession active — this double-writes the grid\'s persisted state. Drop '
+          + '`persistState` from VelocityGridOptions and let the ConfigSession own persistence.',
+        );
+      }
+      this.profiles = new ProfilesController(this._grid, store, {
+        initialId: ext?.profiles?.initialId ?? 'default',
+      });
+      this.ctx = createExtContext(this._grid, this.profiles);
 
-    // Default bundle is registered by subclass hook / Task 9 wiring first,
-    // then consumer specs layer on top (add / remove / replace).
-    this.registerDefaults();
-    this.registry.applySpecs(ext?.extensions);
+      // Default bundle is registered by subclass hook / Task 9 wiring first,
+      // then consumer specs layer on top (add / remove / replace).
+      this.registerDefaults();
+      this.registry.applySpecs(ext?.extensions);
 
-    this.registry.initAll(this.ctx);
-    for (const e of this.registry.all()) {
-      if (isSettingsModule(e)) this.shell.mountSettingsModule(e, this.ctx);
-      else if (isToolbarItem(e)) this.shell.mountToolbarItem(e, this.ctx);
+      this.registry.initAll(this.ctx);
+      for (const e of this.registry.all()) {
+        // Isolated per extension (mirrors ExtensionRegistry.initAll/disposeAll)
+        // — one broken settings module or toolbar item must not stop the
+        // rest from mounting, nor leave the shell half-built.
+        try {
+          if (isSettingsModule(e)) this.shell.mountSettingsModule(e, this.ctx);
+          else if (isToolbarItem(e)) this.shell.mountToolbarItem(e, this.ctx);
+        } catch (err) {
+          console.warn(`[velocity-grid-ext] extension "${e.id}" threw while mounting into the shell`, err);
+        }
+      }
+
+      // Seed / restore the active profile so the switcher is never empty and
+      // `initialId` actually loads. Fire-and-forget — chrome re-syncs via
+      // onListChange when the store settles.
+      void this.profiles.bootstrap();
+    } catch (e) {
+      try { this._grid.destroy(); } catch { /* best-effort — already broken */ }
+      throw e;
     }
-
-    // Seed / restore the active profile so the switcher is never empty and
-    // `initialId` actually loads. Fire-and-forget — chrome re-syncs via
-    // onListChange when the store settles.
-    void this.profiles.bootstrap();
   }
 
   /** Registers the built-in bundle (settings launcher, save, grid options)
@@ -187,18 +246,33 @@ export class VelocityGridExt<TRow = any> {
   }
 
   /** Restore a blob previously written by {@link persistConfig} / the
-   *  title-bar save disk. Returns `true` when a config was applied. */
+   *  title-bar save disk. Returns `true` when a config was applied.
+   *
+   *  Only works synchronously for a sync-capable ConfigSession (the default
+   *  `LocalStorageConfigSession`, or any custom session exposing the same
+   *  `loadWorkspaceSync`). A ConfigSession without that capability (REST /
+   *  IndexedDB-backed, etc.) can't answer synchronously — this degrades to
+   *  `false` (logging once) rather than silently reading an unrelated
+   *  localStorage key the session never wrote (D-F4). Use
+   *  {@link restorePersistedConfigAsync} for those sessions. */
   restorePersistedConfig(): boolean {
     const gid = this._grid.getGridOption('gridId');
     if (typeof gid !== 'string' || !gid) return false;
     if (this.configSession) {
-      // sync path for LocalStorageConfigSession
-      if (this.configSession instanceof LocalStorageConfigSession) {
+      if (typeof this.configSession.loadWorkspaceSync === 'function') {
         const raw = this.configSession.loadWorkspaceSync();
         if (!raw || typeof raw !== 'object') return false;
         this.loadConfig(raw as VelocityGridExtConfig);
         return true;
       }
+      if (!this.warnedSyncRestoreUnsupported) {
+        this.warnedSyncRestoreUnsupported = true;
+        console.warn(
+          '[velocity-grid-ext] restorePersistedConfig() requires a sync-capable ConfigSession '
+          + '(loadWorkspaceSync) — this session is async-only. Use restorePersistedConfigAsync() instead.',
+        );
+      }
+      return false;
     }
     const raw = loadConfigFromLocalStorage(gid, this.storage);
     if (!raw || typeof raw !== 'object') return false;
@@ -206,23 +280,51 @@ export class VelocityGridExt<TRow = any> {
     return true;
   }
 
-  /** Whether a saved instance / workspace exists for this grid's `gridId`. */
+  /** Async counterpart of {@link restorePersistedConfig} — works for every
+   *  ConfigSession regardless of sync capability by awaiting
+   *  `session.loadWorkspace()`. Falls back to
+   *  {@link restorePersistedConfig}'s (sync) localStorage path when no
+   *  ConfigSession is active. */
+  async restorePersistedConfigAsync(): Promise<boolean> {
+    const gid = this._grid.getGridOption('gridId');
+    if (typeof gid !== 'string' || !gid) return false;
+    if (this.configSession) {
+      const raw = await this.configSession.loadWorkspace();
+      if (!raw || typeof raw !== 'object') return false;
+      this.loadConfig(raw as VelocityGridExtConfig);
+      return true;
+    }
+    return this.restorePersistedConfig();
+  }
+
+  /** Whether a saved instance / workspace exists for this grid's `gridId`.
+   *  Capability-checked against the active session (D-F4) rather than
+   *  falling through to the unrelated raw-localStorage helper whenever a
+   *  non-default ConfigSession is active. An async-only ConfigSession has
+   *  no sync answer available and conservatively reports `false`. */
   hasPersistedConfig(): boolean {
     const gid = this._grid.getGridOption('gridId');
     if (typeof gid !== 'string' || !gid) return false;
-    if (this.configSession instanceof LocalStorageConfigSession) {
-      return this.configSession.hasWorkspaceSync();
+    if (this.configSession) {
+      if (typeof this.configSession.hasWorkspaceSync === 'function') {
+        return this.configSession.hasWorkspaceSync();
+      }
+      return false;
     }
     return hasConfigInLocalStorage(gid, this.storage);
   }
 
-  /** Delete the persisted instance bundle for this grid's `gridId`. */
+  /** Delete the persisted instance bundle for this grid's `gridId`.
+   *  Capability-checked against the active session (D-F4) — see
+   *  {@link hasPersistedConfig}. */
   clearPersistedConfig(): void {
     const gid = this._grid.getGridOption('gridId');
     if (typeof gid !== 'string' || !gid) return;
-    if (this.configSession instanceof LocalStorageConfigSession) {
-      this.configSession.clearWorkspaceSync();
-      try { storageRemoveSync(this.storage, `velocity-grid:config:${gid}`); } catch { /* ignore */ }
+    if (this.configSession) {
+      if (typeof this.configSession.clearWorkspaceSync === 'function') {
+        this.configSession.clearWorkspaceSync();
+        try { storageRemoveSync(this.storage, `velocity-grid:config:${gid}`); } catch { /* ignore */ }
+      }
       return;
     }
     clearConfigFromLocalStorage(gid, this.storage);
@@ -252,10 +354,18 @@ export class VelocityGridExt<TRow = any> {
     await this.profiles.switchTo(this.profiles.activeId());
   }
 
-  /** Registry → shell → grid, in that order — but the kernel Worker MUST be
-   *  released even if registry or shell teardown throws, so grid.destroy()
-   *  runs in an outer `finally` (and shell.destroy() in an inner one). */
+  /** Profiles first (D-F2) → registry → shell → grid, in that order — but
+   *  the kernel Worker MUST be released even if registry or shell teardown
+   *  throws, so grid.destroy() runs in an outer `finally` (and
+   *  shell.destroy() in an inner one). Cancelling the profiles controller
+   *  first ensures a bootstrap/switchTo/save continuation still in flight
+   *  bails out before it can reach the grid being torn down below. */
   destroy(): void {
+    this.profiles.dispose();
+    // Theme class mirrored onto `container` in the ctor (D-F9) — remove it
+    // so a container reused for a fresh instance doesn't inherit a stale
+    // theme alongside the new one.
+    if (this.themeClass) this.container.classList.remove(this.themeClass);
     try {
       this.registry.disposeAll();
     } finally {

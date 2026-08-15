@@ -1,11 +1,18 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { installGridTestEnv } from './setup';
+import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
 import { ShellLayout, groupModulesForNav, tabForModule } from '../src/shell/shell';
+import { createExtContext } from '../src/extension/context';
+import { ProfilesController } from '../src/profiles/controller';
+import { LocalStorageProfileStore } from '../src/profiles/localStorageStore';
 import type {
   VelocityGridExtContext,
   SettingsModule,
   ToolbarItem,
   ModuleCategory,
 } from '../src/extension/types';
+
+beforeAll(() => installGridTestEnv());
 
 const ctx = {
   session: {
@@ -185,6 +192,52 @@ describe('ShellLayout', () => {
     await new Promise((r) => setTimeout(r, 200));
     expect(sessionSubs).toBe(0);
     expect(dirtySubs).toBe(0);
+  });
+
+  it('moduleCtx.profiles delegates every ProfileController member, correctly bound through two wrapper layers (D-F3)', () => {
+    // Real ProfilesController + createExtContext, not a hand-rolled fixture —
+    // `ctx.profiles` from createExtContext is ALREADY a delegating wrapper,
+    // so this exercises shell.ts's wrapper-of-a-wrapper for real: the
+    // pre-fix `{ ...ctx.profiles }` spread dropped every prototype method
+    // past markDirty/save/discard/isDirty, and a naive second
+    // `Object.create` layer would silently shadow-write controller state
+    // onto the wrapper instead of the shared instance (see context.test.ts).
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = new VelocityGrid(host, {
+      getRowId: (r: any) => r.a,
+      columnDefs: [{ colId: 'a', field: 'a' }],
+      rowData: [],
+    } as any);
+    const store = new LocalStorageProfileStore('shell-df3');
+    const profiles = new ProfilesController(grid, store, { initialId: 'default' });
+    const realCtx = createExtContext(grid, profiles);
+
+    const root = document.createElement('div');
+    const shell = new ShellLayout(root);
+    let seenCtx: VelocityGridExtContext | null = null;
+    const probe: SettingsModule = {
+      id: 'probe', kind: 'settings-module', title: 'Probe', icon: 'i', category: 'layout',
+      init: vi.fn(),
+      mount: (host2, moduleCtx) => { seenCtx = moduleCtx; return { destroy() {} }; },
+    };
+    shell.mountSettingsModule(probe, realCtx);
+    shell.openSettings('probe');
+
+    expect(seenCtx).toBeTruthy();
+    const seen = seenCtx as unknown as VelocityGridExtContext;
+    for (const m of ['isDirty', 'activeId', 'saveAs', 'switchTo', 'rename', 'remove', 'list'] as const) {
+      expect(typeof seen.profiles[m]).toBe('function');
+    }
+
+    // markDirty is overridden at the shell layer (stages the drawer
+    // session) but must still reach the REAL controller through the
+    // ctx.profiles layer beneath it.
+    expect(profiles.isDirty()).toBe(false);
+    seen.profiles.markDirty();
+    expect(profiles.isDirty()).toBe(true);
+
+    grid.destroy();
   });
 
   it('destroys mounted toolbar-item instances on teardown', () => {
