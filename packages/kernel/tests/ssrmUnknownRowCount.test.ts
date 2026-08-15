@@ -322,4 +322,39 @@ describe('SSRM v2 flat — serverSideMaxCachedLeafBlocks', () => {
       warnSpy.mockRestore();
     }
   });
+
+  // Fix wave 6 — the B-L2 plan assumed evicted rows are always outside the
+  // loaded band "by construction"; that does not hold. A single
+  // `ensureRange` call that itself spans more leaf blocks than the cap
+  // forces `evictIfNeeded` (called after each block's load) to evict a
+  // block still inside THAT SAME band — rows that were about to paint go
+  // blank until the next viewport request. Pre-fix this was untested and
+  // silent; `warnInBandEviction` makes it observable, once per controller.
+  it('warns once when a single ensureRange call spans more leaf blocks than the cap', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { ctrl } = makeHarness({
+        total: 200,
+        declareRowCount: true,
+        maxCachedLeafBlocks: 8,
+      });
+
+      // Exactly at the cap — not exceeding it — must not warn.
+      await ctrl.ensureRange(0, BLOCK * 8);
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      // One call spanning 10 blocks against an 8-block cap: in-band
+      // eviction is possible within this very request.
+      await ctrl.ensureRange(0, BLOCK * 10);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(String(warnSpy.mock.calls[0]?.[0])).toContain('serverSideMaxCachedLeafBlocks');
+      expect(String(warnSpy.mock.calls[0]?.[0])).toContain('10');
+
+      // Once per controller lifetime, not once per offending call.
+      await ctrl.ensureRange(0, BLOCK * 15);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
 });

@@ -3868,11 +3868,28 @@ export class VelocityGrid<TRow = any> {
       // their `ssrmOrder` slots still point at them). Without this,
       // `maxCachedLeafBlocks` bounded only the controller's own cache while
       // the other two grew to whole-book residency.
+      //
+      // Fix wave 6 — `rowVersionByRowId.delete(id)` alone is an UNPAIRED
+      // clear: every other clear site in this file wipes the Tier-2 strip
+      // store together with the version map (see the block comment at the
+      // `resolveWindowDamage === 'full'` branch — "wipe the store and the
+      // version map together … a stale strip is a bug" — and
+      // `resetRasterCache`). `RowStripCache.get` is an exact
+      // `(rowId, version, layoutEpoch)` match keyed ONLY by rowId, so a
+      // retained strip captured before eviction survives this delete. If
+      // the row later scrolls back into view, refetches, and the bump
+      // sequence (hydrate + repaintRows) replays to the SAME version
+      // number — the common case, since both are unconditional per-event
+      // increments — `strips.get` hits the pre-eviction strip and paints
+      // stale pixels for a row whose data has since ticked.
+      // `invalidateRow` (`stripCache.ts`) exists for exactly this: "row
+      // data changed shape / row removed."
       evictRows: (rowIds) => {
         if (this.destroyed || rowIds.length === 0) return;
         for (const id of rowIds) {
           this.rowDataById.delete(id);
           this.rowVersionByRowId.delete(id);
+          this.rasterStrips?.invalidateRow(id);
         }
         void this.workerCoord.ssrmEvict(rowIds).catch(() => { /* worker torn down */ });
       },
@@ -5284,29 +5301,38 @@ export class VelocityGrid<TRow = any> {
    *  (`getExportRows` returns the VISIBLE, post-filter set only; there is no
    *  worker `getRowById` at all — only `getRowByIndex`):
    *
-   *    :12187 `cellAt` — full-row fallback for a horizontally-entering
-   *           column whose chunk hasn't landed. Runs during paint for EVERY
-   *           field-backed column in EVERY grid. Gating it off silently
-   *           regresses paint quality everywhere.
-   *    :2020  renderer `getRowDataById` dep + :7981 strip-patch `ruleRow`
-   *           + :14236 painted-background probe — per-frame rule folds. The
-   *           rule engine registers through a MODULE-LEVEL DI slot
-   *           (`registerRuleEngine`) that apps call AFTER construction, so
-   *           "is a rules engine present" is not knowable at construction
-   *           time and a late registration could not be backfilled.
-   *    :5691  `getTotalRowCount()` and :5699 `forEachRow()` — public
+   *  Line numbers below drift with every edit above this comment — they
+   *  were last verified (by grep, not arithmetic) against fix wave 6.
+   *  The symbol names are the durable anchor; re-grep them if in doubt.
+   *
+   *    :12236 `cellAt`'s entering-column fallback — full-row fallback for
+   *           a horizontally-entering column whose chunk hasn't landed.
+   *           Runs during paint for EVERY field-backed column in EVERY
+   *           grid. Gating it off silently regresses paint quality
+   *           everywhere.
+   *    :2020  renderer `getRowDataById` dep + :8046 strip-patch `ruleRow`
+   *           + :14295 painted-background-probe `ruleRow` — per-frame rule
+   *           folds. The rule engine registers through a MODULE-LEVEL DI
+   *           slot (`registerRuleEngine`) that apps call AFTER
+   *           construction, so "is a rules engine present" is not knowable
+   *           at construction time and a late registration could not be
+   *           backfilled.
+   *    :5754  `getTotalRowCount()` and :5763 `forEachRow()` — public
    *           `VelocityGridApi` surface (ext's savedFiltersToolbar calls
    *           `forEachRow`; the status-bar counts panel calls
    *           `getTotalRowCount`). Both synchronous, neither feature-gated.
-   *    :5512  `distinctValuesFromMirror` — sync set-filter fallback.
-   *    :4045  `ssrmColumnKeysNeedFetch` and :4188
+   *           A third first-party `forEachRow` consumer:
+   *           `packages/edit/src/bridge.ts:253` seeds its own edit-bridge
+   *           row mirror from it on wire-up.
+   *    :5573  `distinctValuesFromMirror` — sync set-filter fallback.
+   *    :4059  `ssrmColumnKeysNeedFetch` and :4197
    *           `ssrmUpdateTouchesActiveSort` — SSRM-internal correctness
    *           heuristics; an empty mirror makes the first silently answer
    *           "no refill needed" (blank columns on H-scroll).
    *
-   *  Feature-gateable consumers exist too (:4570 `alwaysPassFilter`, :4601
-   *  `doesExternalFilterPass`, :4630 `postSortRows`, the `rowsChanged`
-   *  emitters at :4499-:4551) — but gating only those leaves the mirror
+   *  Feature-gateable consumers exist too (:4577 `alwaysPassFilter`, :4602
+   *  `doesExternalFilterPass`, :4629 `postSortRows`, the `rowsChanged`
+   *  emitters at :4491-:4573) — but gating only those leaves the mirror
    *  populated for the list above, so there is no memory win. The mirror
    *  therefore stays ON in every configuration.
    *

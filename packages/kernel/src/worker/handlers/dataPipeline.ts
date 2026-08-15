@@ -258,6 +258,14 @@ export async function handleDataPipeline(
           for (const id of present) {
             state.alwaysPassIds.delete(id);
             state.pendingFlashes.delete(id);
+            // Fix wave 6 — `setRowData`'s reset path clears
+            // `pendingTouched` alongside `pendingFlashes` (same
+            // rationale: row identities that no longer exist can't stay
+            // staged as damage). A touched id with no row already yields
+            // no damage (`viewportSlicer`'s hit-test is keyed off the
+            // CURRENT window's row ids), so leaving it was harmless — but
+            // unbounded, and inconsistent with the neighbouring cleanup.
+            state.pendingTouched.delete(id);
           }
         }
       }

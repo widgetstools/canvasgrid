@@ -169,6 +169,10 @@ export class ServerSideRowModelV2Controller<TRow = any> {
   private dataGen = 0;
   private inflight = 0;
   private chain: Promise<void> = Promise.resolve();
+  /** Fix wave 6 — fires once per controller lifetime (not once per
+   *  ensureRange call) so a persistently too-narrow cap warns exactly
+   *  once instead of spamming the console on every scroll tick. */
+  private inBandEvictionWarned = false;
 
   private readonly blockSize: number;
   private readonly maxConcurrent: number;
@@ -810,6 +814,11 @@ export class ServerSideRowModelV2Controller<TRow = any> {
         ));
       }
     }
+    // Fix wave 6 — `seen` is every distinct leaf block this band touches;
+    // if that already exceeds the cap, the LRU trim below (via
+    // `evictIfNeeded`, called from each block's load success) WILL evict
+    // blocks still inside this same band. See `warnInBandEviction`.
+    if (seen.size > this.maxCachedLeafBlocks) this.warnInBandEviction(seen.size);
     if (missing.length > 0 || waiting.length > 0) {
       await Promise.all([
         ...missing.map((m) => this.loadLeafBlock(m.node, m.blockIdx, gen)),
@@ -1041,6 +1050,27 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     if (evictedRowIds.length > 0) this.host.evictRows?.(evictedRowIds);
   }
 
+  /** Fix wave 6 — the plan assumed evicted rows are always outside the
+   *  loaded band "by construction"; that does not hold (see
+   *  `evictIfNeeded`'s block comment above and B-L2 in the commit this
+   *  warns about). When a single `ensureRange` call spans more distinct
+   *  leaf blocks than `maxCachedLeafBlocks`, the LRU trim that follows
+   *  each block's load can evict a block still inside THIS SAME band —
+   *  rows that were painting go blank until the next viewport request,
+   *  and a viewport that never shrinks below the cap can thrash
+   *  (fetch → evict → blank → refetch) every scroll. Same shape/prefix as
+   *  the sub-8-floor warning in the constructor above. */
+  private warnInBandEviction(blockCount: number): void {
+    if (this.inBandEvictionWarned) return;
+    this.inBandEvictionWarned = true;
+    console.warn(
+      `[velocity-grid] the requested row range spans ${blockCount} leaf blocks, more than `
+      + `serverSideMaxCachedLeafBlocks (${this.maxCachedLeafBlocks}); rows inside the visible `
+      + 'band can be evicted and go blank until the next viewport request. Raise '
+      + 'serverSideMaxCachedLeafBlocks to cover the widest viewport band.',
+    );
+  }
+
   private dropBandLeafBlocks(rowStart: number, rowEnd: number): void {
     const index = this.index;
     if (!index) return;
@@ -1125,6 +1155,11 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     const first = Math.floor(start / this.blockSize);
     const last = Math.floor(Math.max(start, end - 1) / this.blockSize);
     const cache = this.flatCache();
+
+    // Fix wave 6 — flat-path counterpart of the grouped-path check in
+    // `ensureRangeInner`; see `warnInBandEviction`.
+    const bandBlocks = last - first + 1;
+    if (bandBlocks > this.maxCachedLeafBlocks) this.warnInBandEviction(bandBlocks);
 
     const loads: Array<Promise<void>> = [];
     for (let b = first; b <= last; b++) {
