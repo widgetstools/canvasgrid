@@ -2,6 +2,7 @@ import type {
   ColumnDefinition,
   DataProviderConfig,
   IDataProvider,
+  ProviderDelta,
   ProviderStatus,
   Unsubscribe,
 } from '../types';
@@ -35,12 +36,19 @@ export class ProviderClientAdapter<T extends Record<string, unknown> = Record<st
   private readonly hub: HubConnection;
   private readonly subId: string;
   private status: ProviderStatus = 'idle';
-  private cache: T[] = [];
+  /**
+   * A-P8 — the row cache is a persistent insertion-ordered Map (keyed by the
+   * composed row id). Live ticks mutate it in place; nothing rebuilds a full
+   * Map per tick batch. Keyless configs fall back to synthetic append ids.
+   */
+  private cache = new Map<string, T>();
+  private syntheticSeq = 0;
   private columnDefs: ColumnDefinition[];
   private started = false;
 
   private snapHandlers = new Set<(rows: readonly T[]) => void>();
   private tickHandlers = new Set<(rows: readonly T[]) => void>();
+  private deltaHandlers = new Set<(d: ProviderDelta<T>) => void>();
   private statusHandlers = new Set<(s: ProviderStatus, e?: string) => void>();
   private errorHandlers = new Set<(e: Error) => void>();
   private rowsHandlers = new Set<(n: number) => void>();
@@ -69,30 +77,103 @@ export class ProviderClientAdapter<T extends Record<string, unknown> = Record<st
       }
       if (msg.type === 'push') {
         const rows = normalizePushRows(msg.rows) as T[];
-        if (msg.replace) this.cache = rows.slice();
-        else this.mergeTicks(rows);
-        if (msg.replace) {
-          for (const h of this.snapHandlers) h(this.cache);
+        const seq = msg.seq;
+        if (msg.replace && (seq === undefined || seq === 0)) {
+          // Replace-sequence head — full cache reset + snapshot emit.
+          this.cacheReplace(rows);
+          const snapshot = this.getData();
+          for (const h of this.snapHandlers) h(snapshot);
+        } else if (msg.replace) {
+          // Replace continuation chunk (seq > 0) — APPEND to the replace in
+          // progress and paint as adds (C-C3: these used to arrive as ticks
+          // of unknown ids and be dropped → remote tabs truncated).
+          this.cacheAppend(rows);
+          this.emitDelta({ adds: rows, updates: [], removes: [] });
         } else {
-          for (const h of this.tickHandlers) h(rows);
+          // Live tick — classify against current cache membership.
+          this.emitDelta(this.diffTick(rows, msg.removes ?? []));
         }
       }
     });
   }
 
-  private mergeTicks(rows: T[]): void {
+  /** Composed row id for the configured key column, or null when keyless. */
+  private keyOf(r: T): string | null {
     const key = this.config.config.keyColumn;
-    if (key == null) {
-      this.cache = this.cache.concat(rows);
+    if (key == null) return null;
+    if (typeof key === 'string') {
+      const v = (r as Record<string, unknown>)[key];
+      return v == null ? null : String(v);
+    }
+    if (key.length === 0) return null;
+    return key.map((k) => String((r as Record<string, unknown>)[k] ?? '')).join('-');
+  }
+
+  /** Full replace — clear the persistent Map and re-seed in arrival order. */
+  private cacheReplace(rows: T[]): void {
+    this.cache.clear();
+    this.syntheticSeq = 0;
+    for (const r of rows) {
+      const id = this.keyOf(r) ?? `~syn#${this.syntheticSeq++}`;
+      this.cache.set(id, r);
+    }
+  }
+
+  /** Append/upsert rows into the persistent Map (keyless → synthetic add). */
+  private cacheAppend(rows: T[]): void {
+    for (const r of rows) {
+      const k = this.keyOf(r);
+      if (k == null) {
+        this.cache.set(`~syn#${this.syntheticSeq++}`, r);
+        continue;
+      }
+      const prev = this.cache.get(k);
+      this.cache.set(k, prev ? { ...prev, ...r } : r);
+    }
+  }
+
+  /**
+   * Classify a live tick against the persistent Map: unseen ids → adds,
+   * known ids → merged updates, `removeIds` → removes. Mutates the Map in
+   * place (A-P8 — no per-batch rebuild).
+   */
+  private diffTick(rows: T[], removeIds: string[]): ProviderDelta<T> {
+    const adds: T[] = [];
+    const updates: T[] = [];
+    const removes: string[] = [];
+    for (const r of rows) {
+      const k = this.keyOf(r);
+      if (k == null) {
+        this.cache.set(`~syn#${this.syntheticSeq++}`, r);
+        adds.push(r);
+        continue;
+      }
+      const prev = this.cache.get(k);
+      if (prev !== undefined) {
+        const next = { ...prev, ...r };
+        this.cache.set(k, next);
+        updates.push(next);
+      } else {
+        this.cache.set(k, r);
+        adds.push(r);
+      }
+    }
+    for (const id of removeIds) {
+      if (this.cache.delete(id)) removes.push(id);
+    }
+    return { adds, updates, removes };
+  }
+
+  /** Fire onDelta subscribers; keep legacy onTick (updates ∪ adds) alive. */
+  private emitDelta(delta: ProviderDelta<T>): void {
+    if (delta.adds.length === 0 && delta.updates.length === 0 && delta.removes.length === 0) {
       return;
     }
-    const keyOf = (r: T): string => {
-      if (typeof key === 'string') return String(r[key] ?? '');
-      return key.map((k) => String(r[k] ?? '')).join('-');
-    };
-    const map = new Map(this.cache.map((r) => [keyOf(r), r]));
-    for (const r of rows) map.set(keyOf(r), { ...(map.get(keyOf(r)) ?? {} as T), ...r });
-    this.cache = [...map.values()];
+    for (const h of this.deltaHandlers) h(delta);
+    if (this.tickHandlers.size > 0) {
+      const merged = delta.updates.concat(delta.adds);
+      if (merged.length) for (const h of this.tickHandlers) h(merged);
+    }
   }
 
   async start(): Promise<void> {
@@ -110,9 +191,10 @@ export class ProviderClientAdapter<T extends Record<string, unknown> = Record<st
   async refresh(): Promise<void> {
     const res = await this.hub.post({ v: 1, id: '', type: 'getSnapshot', providerId: this.providerId });
     if (res.type === 'snapshot') {
-      this.cache = res.rows as T[];
+      this.cacheReplace(res.rows as T[]);
       this.status = res.status;
-      for (const h of this.snapHandlers) h(this.cache);
+      const snapshot = this.getData();
+      for (const h of this.snapHandlers) h(snapshot);
     }
   }
 
@@ -121,7 +203,7 @@ export class ProviderClientAdapter<T extends Record<string, unknown> = Record<st
   }
 
   getData(): readonly T[] {
-    return this.cache;
+    return [...this.cache.values()];
   }
 
   getConfig(): DataProviderConfig {
@@ -149,6 +231,12 @@ export class ProviderClientAdapter<T extends Record<string, unknown> = Record<st
   onTick(handler: (rows: readonly T[]) => void): Unsubscribe {
     this.tickHandlers.add(handler);
     return () => { this.tickHandlers.delete(handler); };
+  }
+
+  /** Classified add/update/remove delta subscription (preferred over onTick). */
+  onDelta(handler: (delta: ProviderDelta<T>) => void): Unsubscribe {
+    this.deltaHandlers.add(handler);
+    return () => { this.deltaHandlers.delete(handler); };
   }
 
   onError(handler: (error: Error) => void): Unsubscribe {
@@ -181,6 +269,7 @@ export class ProviderClientAdapter<T extends Record<string, unknown> = Record<st
     this.hub.close();
     this.snapHandlers.clear();
     this.tickHandlers.clear();
+    this.deltaHandlers.clear();
     this.statusHandlers.clear();
     this.errorHandlers.clear();
     this.rowsHandlers.clear();

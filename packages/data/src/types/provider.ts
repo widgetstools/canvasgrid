@@ -4,10 +4,22 @@ import type { DataProviderConfig, ProviderStatus, TransportConfig } from './tran
 export type Unsubscribe = () => void;
 
 export type ProviderEmitEvent =
-  | { rows: readonly unknown[]; replace?: boolean }
+  | { rows: readonly unknown[]; replace?: boolean; removes?: readonly string[] }
   | { status: ProviderStatus; error?: string }
   | { rowsReceived: number; byteSize?: number }
   | { inferred?: true };
+
+/**
+ * Classified live delta emitted by an adapter that speaks the add/update/
+ * remove push protocol. `adds` are ids the client had not seen (paint as
+ * transaction adds), `updates` mutate existing rows, `removes` are ids to
+ * drop. Preferred over the legacy `onTick` (updates ∪ adds) callback.
+ */
+export interface ProviderDelta<T = Record<string, unknown>> {
+  adds: T[];
+  updates: T[];
+  removes: string[];
+}
 
 export type ProviderEmit = (event: ProviderEmitEvent) => void;
 
@@ -58,6 +70,12 @@ export interface IDataProvider<T = Record<string, unknown>> {
   onRowsReceived(handler: (count: number) => void): Unsubscribe;
   onSnapshotData(handler: (rows: readonly T[]) => void): Unsubscribe;
   onTick(handler: (rows: readonly T[]) => void): Unsubscribe;
+  /**
+   * Optional classified-delta subscription (adds/updates/removes). Consumers
+   * that implement it get correct add/remove semantics; `onTick` stays for
+   * backward compatibility (fires updates ∪ adds).
+   */
+  onDelta?(handler: (delta: ProviderDelta<T>) => void): Unsubscribe;
   onError(handler: (error: Error) => void): Unsubscribe;
   onStatus(handler: (status: ProviderStatus, error?: string) => void): Unsubscribe;
   destroy(): void;

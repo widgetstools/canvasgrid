@@ -45,6 +45,18 @@ export type HubPush =
       /** Row objects, or a columnar batch when wireFormat='columnar'. */
       rows: unknown[] | { format: 'columnar'; fields: string[]; columns: unknown[][]; length: number };
       replace?: boolean;
+      /**
+       * NEW (v1 additive): replace-sequence chunk ordinal. A snapshot larger
+       * than `snapshotChunkSize` fans out as multiple `replace: true` pushes —
+       * `seq === 0` (or undefined) is the sequence head (client resets its
+       * cache), `seq > 0` is a continuation chunk (client APPENDS it to the
+       * replace in progress instead of treating it as a live tick).
+       */
+      seq?: number;
+      /** NEW (v1 additive): true on the final chunk of a replace sequence. */
+      final?: boolean;
+      /** NEW (v1 additive): row ids removed upstream (transport-reported). */
+      removes?: string[];
     }
   | { v: 1; type: 'status'; providerId: string; status: ProviderStatus; error?: string }
   | { v: 1; type: 'rowsReceived'; providerId: string; count: number };

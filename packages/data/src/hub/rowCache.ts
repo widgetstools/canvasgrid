@@ -54,6 +54,19 @@ export class RowCache {
     return touched;
   }
 
+  /** Drop rows by id; returns the ids that were actually present. */
+  remove(ids: readonly string[]): string[] {
+    const removed: string[] = [];
+    for (const id of ids) {
+      if (this.byId.delete(id)) removed.push(id);
+    }
+    if (removed.length) {
+      const drop = new Set(removed);
+      this.order = this.order.filter((id) => !drop.has(id));
+    }
+    return removed;
+  }
+
   get(id: string): Record<string, unknown> | undefined {
     return this.byId.get(id);
   }

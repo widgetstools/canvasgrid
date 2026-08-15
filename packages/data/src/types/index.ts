@@ -21,6 +21,7 @@ export type {
 export type {
   Unsubscribe,
   ProviderEmitEvent,
+  ProviderDelta,
   ProviderEmit,
   TransportHandle,
   TransportContext,

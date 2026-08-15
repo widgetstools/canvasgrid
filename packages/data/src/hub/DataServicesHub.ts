@@ -306,6 +306,13 @@ export class DataServicesHub {
         return;
       }
       slot.pipeline?.push(rows);
+      // C-m3 — a transport that can report deletions sets `removes`; drop them
+      // from the shared cache and fan the ids out (transports that can't
+      // report removes never set the field, so this stays inert for them).
+      if ('removes' in event && event.removes && event.removes.length) {
+        const dropped = slot.cache.remove(event.removes as string[]);
+        if (dropped.length) this.fanOutLive(slot, [], dropped);
+      }
     }
   }
 
@@ -334,20 +341,17 @@ export class DataServicesHub {
     });
   }
 
+  /**
+   * Fan out a full snapshot as a chunked REPLACE sequence. C-C3 fix: every
+   * chunk carries `replace: true` plus a `seq` ordinal and a `final` flag, so
+   * the client treats chunk 0 as a cache reset and chunks 1..N as APPENDS to
+   * the same replace (previously chunks 2..N shipped as `replace: false` ticks
+   * of unknown ids and were dropped by the kernel → remote tabs truncated to
+   * one chunk).
+   */
   private fanOutReplace(slot: ProviderSlot): void {
     const rows = slot.cache.getAll();
     const chunk = slot.config.config.snapshotChunkSize ?? 500;
-    for (let i = 0; i < rows.length; i += chunk) {
-      const slice = rows.slice(i, i + chunk);
-      notePublish(slot.stats);
-      this.broadcast(slot, {
-        v: 1,
-        type: 'push',
-        providerId: slot.config.providerId,
-        rows: slice,
-        replace: i === 0,
-      });
-    }
     if (rows.length === 0) {
       notePublish(slot.stats);
       this.broadcast(slot, {
@@ -356,11 +360,33 @@ export class DataServicesHub {
         providerId: slot.config.providerId,
         rows: [],
         replace: true,
+        seq: 0,
+        final: true,
       });
+      return;
+    }
+    let seq = 0;
+    for (let i = 0; i < rows.length; i += chunk) {
+      const slice = rows.slice(i, i + chunk);
+      notePublish(slot.stats);
+      this.broadcast(slot, {
+        v: 1,
+        type: 'push',
+        providerId: slot.config.providerId,
+        rows: slice,
+        replace: true,
+        seq,
+        final: i + chunk >= rows.length,
+      });
+      seq++;
     }
   }
 
-  private fanOutLive(slot: ProviderSlot, rows: Record<string, unknown>[]): void {
+  private fanOutLive(
+    slot: ProviderSlot,
+    rows: Record<string, unknown>[],
+    removes?: string[],
+  ): void {
     notePublish(slot.stats);
     this.broadcast(slot, {
       v: 1,
@@ -368,6 +394,7 @@ export class DataServicesHub {
       providerId: slot.config.providerId,
       rows: slot.config.config.wireFormat === 'columnar' ? rowsToColumnar(rows) : rows,
       replace: false,
+      ...(removes && removes.length ? { removes } : {}),
     });
   }
 

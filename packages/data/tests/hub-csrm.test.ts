@@ -55,6 +55,31 @@ describe('hub CSRM + mock transport', () => {
     provider.destroy();
   });
 
+  it('classifies live ticks through onDelta (updates for known ids)', async () => {
+    reset();
+    const cfg = mockCfg('mock-delta');
+    cfg.config.tickMs = 5;
+    cfg.config.updatesPerTick = 3;
+    const provider = new ProviderClientAdapter(cfg, { inProcess: true });
+
+    const deltas: { adds: number; updates: number; removes: number }[] = [];
+    provider.onDelta((d) => {
+      deltas.push({ adds: d.adds.length, updates: d.updates.length, removes: d.removes.length });
+    });
+
+    await provider.start();
+    await new Promise((r) => setTimeout(r, 60));
+
+    expect(provider.getData().length).toBe(50);
+    // At least one live tick classified as pure updates (ids already known),
+    // never adds — a mock tick only mutates existing rows.
+    expect(deltas.length).toBeGreaterThan(0);
+    expect(deltas.some((d) => d.updates > 0)).toBe(true);
+    expect(deltas.every((d) => d.adds === 0)).toBe(true);
+
+    provider.destroy();
+  });
+
   it('shares one hub slot across two clients', async () => {
     reset();
     const cfg = mockCfg('shared-book');

@@ -4,7 +4,13 @@ import type { IDataProvider } from '../types';
 export interface CsrmBindableGrid<T = Record<string, unknown>> {
   setRowData(rows: T[]): void;
   applyTransaction?(tx: { update?: T[]; add?: T[]; remove?: T[] }): void;
-  applyTransactionAsync?(tx: { update?: T[] }): void | Promise<void>;
+  /**
+   * Async transaction. `remove` carries row IDS (matching the delta protocol);
+   * the kernel VelocityGrid maps `Tx.remove` row objects → ids via getRowId, so
+   * a real-grid binding that forwards ids must translate (see
+   * dataProviderController). `add`/`update` are row objects.
+   */
+  applyTransactionAsync?(tx: { add?: T[]; update?: T[]; remove?: string[] }): void | Promise<void>;
   setColumnDefs?(defs: unknown[]): void;
 }
 
@@ -44,12 +50,29 @@ export function bindProviderToGrid<T extends Record<string, unknown>>(
     grid.setRowData(rows as T[]);
   }));
 
-  stops.push(provider.onTick((rows) => {
-    const tx = { update: rows as T[] };
-    if (grid.applyTransactionAsync) void grid.applyTransactionAsync(tx);
-    else if (grid.applyTransaction) grid.applyTransaction(tx);
-    else grid.setRowData(provider.getData() as T[]);
-  }));
+  // Prefer the classified add/update/remove delta when the provider supports
+  // it (correct add + remove semantics); fall back to the legacy update-only
+  // onTick otherwise.
+  if (typeof provider.onDelta === 'function') {
+    stops.push(provider.onDelta((d) => {
+      const adds = d.adds as T[];
+      const updates = d.updates as T[];
+      if (grid.applyTransactionAsync) {
+        void grid.applyTransactionAsync({ add: adds, update: updates, remove: d.removes });
+      } else if (grid.applyTransaction) {
+        grid.applyTransaction({ add: adds, update: updates });
+      } else {
+        grid.setRowData(provider.getData() as T[]);
+      }
+    }));
+  } else {
+    stops.push(provider.onTick((rows) => {
+      const tx = { update: rows as T[] };
+      if (grid.applyTransactionAsync) void grid.applyTransactionAsync(tx);
+      else if (grid.applyTransaction) grid.applyTransaction(tx);
+      else grid.setRowData(provider.getData() as T[]);
+    }));
+  }
 
   // If the provider already has a book (attach replay / prior refresh), paint now.
   const existing = provider.getData();
