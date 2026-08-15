@@ -4672,7 +4672,10 @@ export class VelocityGrid<TRow = any> {
     const data = this.rowDataById.get(rowId);
     if (data === undefined) return false;
     try {
-      return predicate({ data, rowId }) === true;
+      // Truthy test, matching the pre-existing `if (predicate({...}))`
+      // semantics (6ec98f5:4589) — a JS consumer returning a truthy
+      // non-boolean must still get always-pass status.
+      return !!predicate({ data, rowId });
     } catch {
       return false;
     }

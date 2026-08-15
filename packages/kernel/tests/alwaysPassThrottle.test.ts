@@ -22,7 +22,7 @@
  * Assertions are call COUNTS (predicate invocations, `setAlwaysPassRowIds`
  * ships), never timings.
  */
-import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
 
@@ -45,6 +45,17 @@ beforeAll(() => {
   })() as any;
 });
 
+// The throttle under test is a real `setTimeout(..., ALWAYS_PASS_RECOMPUTE_MS)`
+// (velocityGrid.ts). Faking only setTimeout/clearTimeout — NOT
+// queueMicrotask or requestAnimationFrame — keeps the mocked Worker's
+// message round-trip (dispatched via a real `queueMicrotask`, see
+// `mountGrid` below) resolving on real microtasks while making the 50 ms
+// window itself deterministic under `vi.advanceTimersByTimeAsync`, rather
+// than raced against the real clock.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+});
+
 interface Row { id: string; flagged: boolean; px: number }
 
 function rows(n: number): Row[] {
@@ -56,6 +67,9 @@ function rows(n: number): Row[] {
 const teardown: Array<() => void> = [];
 afterEach(() => {
   while (teardown.length > 0) teardown.pop()!();
+});
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 function mountGrid(data: Row[], alwaysPassFilter: (p: { data: Row; rowId: string }) => boolean) {
@@ -91,7 +105,11 @@ function mountGrid(data: Row[], alwaysPassFilter: (p: { data: Row; rowId: string
   return { grid, ship };
 }
 
-const settle = (ms = 0) => new Promise((r) => setTimeout(r, ms));
+// Deterministic under fake timers: advances the faked clock (which fires
+// the throttle's `setTimeout`) and, between ticks, lets real microtasks
+// (the mocked Worker's `queueMicrotask` round-trip) drain — no real-clock
+// race against the 50 ms `ALWAYS_PASS_RECOMPUTE_MS` window.
+const settle = (ms = 0) => vi.advanceTimersByTimeAsync(ms);
 
 describe('A-P6 — alwaysPassFilter transaction throttle', () => {
   it('a burst of transactions coalesces into ONE re-evaluation window', async () => {
@@ -107,9 +125,13 @@ describe('A-P6 — alwaysPassFilter transaction throttle', () => {
     await settle(120);
 
     // Pre-A-P6 this was 20 × 50 = 1000 predicate calls and 20 ships.
-    // Now: one window, and only the touched rows are re-evaluated.
+    // Now: one window, and only the touched rows are re-evaluated. r0..r19
+    // all flip from unmatched-or-matched to unmatched, so the resolved set
+    // changes from {r0} to {} — exactly one ship, not merely "at most one"
+    // (a bound that would also pass if the throttle shipped nothing at all).
     expect(predicate.mock.calls.length).toBeLessThanOrEqual(20);
-    expect(ship.mock.calls.length).toBeLessThanOrEqual(1);
+    expect(ship.mock.calls.length).toBe(1);
+    expect(ship.mock.calls[0]![0]).toEqual([]);
   });
 
   it('an unchanged resolved set skips the worker round-trip entirely', async () => {

@@ -122,6 +122,73 @@ describe('A-P1 — AggPass.apply memoizes per pipeline generation', () => {
   });
 });
 
+// ─── A-P1 — the deviation's own justification: identity-stable but mutated ─
+
+describe('A-P1 — sparse-SSRM in-place hydrate (stable array identity) still recomputes', () => {
+  /**
+   * This is the scenario the whole A-P1 deviation rests on, and until now
+   * it existed only as prose (see `AggPass.apply`'s TSDoc and the fix-wave
+   * report): `handlers/dataPipeline.ts`'s `ssrmHydrate` case aliases
+   * `state.visibleCache` to `state.ssrmOrder` (:214) and, on a soft-refresh
+   * hydrate (`reset` false, row count unchanged — NOT `reallocated`, :133),
+   * writes new row ids into EXISTING slots of that SAME array (:168
+   * `state.ssrmOrder[idx] = id`) rather than allocating a fresh one — a
+   * fresh array is allocated only `if (reset || reallocated)` (:134-135).
+   *
+   * A memo keyed on `inputIds === cached.inputIds` ALONE would read that
+   * as "nothing changed" and serve the totals computed before the hydrate.
+   * `AggPass.apply` survives this only because its key also folds in
+   * `RowStore.revision()` — and the hydrate handler always pairs an
+   * in-place slot write with a `store.apply` for the corresponding row
+   * (:197), which bumps that revision. This test pins exactly that: same
+   * array object in, changed row data in, must NOT get the stale result.
+   */
+  it('same ssrmOrder array object, row data updated via store.apply — totals recompute, not memoized', () => {
+    const store = new RowStore<Row>('id');
+    store.setAll([
+      { id: 'a', desk: 'EQ', notional: 10 },
+      { id: 'b', desk: 'EQ', notional: 20 },
+    ]);
+    const registry = new AggFuncRegistry();
+    const sum = vi.fn(({ values }: { values: unknown[] }) =>
+      values.reduce<number>((acc, v) => acc + (typeof v === 'number' ? v : 0), 0));
+    registry.register('countingSum', sum as never);
+    const agg = new AggPass<Row>(store, COLUMNS, registry);
+
+    // Stand-in for `state.ssrmOrder` — a sparse-SSRM slot array with one
+    // never-hydrated slot ('' — the same sentinel `ssrmHydrate` pre-fills
+    // reallocated slots with). `state.visibleCache = state.ssrmOrder`
+    // (dataPipeline.ts:214) hands THIS array to `AggPass.apply` as
+    // `inputIds`.
+    const ssrmOrder: string[] = ['a', 'b', ''];
+    const first = agg.apply(ssrmOrder);
+    expect(sum).toHaveBeenCalledTimes(1);
+    expect(first.totals['notional']).toBe(30);
+
+    // A soft-refresh hydrate: NOT reset, row count unchanged (3 === 3) ⇒
+    // NOT reallocated ⇒ the real handler mutates `ssrmOrder` IN PLACE
+    // (dataPipeline.ts:168) and, per its own doc, always pairs that write
+    // with a `store.apply` for the newly-hydrated row (dataPipeline.ts:197)
+    // — same two effects, reproduced here directly against `RowStore` +
+    // `AggPass` (the layer this file already unit-tests).
+    const sameArrayRef = ssrmOrder;
+    ssrmOrder[2] = 'c';
+    store.apply({ add: [{ id: 'c', desk: 'FI', notional: 1000 }] });
+
+    // The premise this test exists to pin: the array `AggPass.apply` sees
+    // on the second call is LITERALLY the same object as the first call —
+    // exactly the condition under which a plain `inputIds === cached.
+    // inputIds` key (the plan's original A-P1 mechanism) would have wrongly
+    // served the stale (30) memo instead of recomputing.
+    expect(ssrmOrder).toBe(sameArrayRef);
+
+    const second = agg.apply(ssrmOrder);
+    expect(sum).toHaveBeenCalledTimes(2);
+    expect(second).not.toBe(first);
+    expect(second.totals['notional']).toBe(1030);
+  });
+});
+
 // ─── A-P1 — applyGroups per-generation memo ────────────────────────────────
 
 /** Minimal single-level GroupPassOutput: two groups over the 4 fixture
