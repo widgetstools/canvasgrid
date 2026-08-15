@@ -21,7 +21,7 @@ import { ServerSideRowModelController } from './core/serverSideRowModel';
 import { ServerSideRowModelV2Controller, type SsrmHostV2 } from './core/serverSideRowModelV2';
 import { isServerSideDatasourceV2 } from './types/ssrm';
 import { buildSsrmColumnKeys } from './core/ssrmColumnKeys';
-import { parseCompositeGroupKey, readSsrmRowMeta as readSsrmMeta } from './core/ssrmRowMeta';
+import { parseCompositeGroupKey, readSsrmRowMeta as readSsrmMeta, splitGroupKey } from './core/ssrmRowMeta';
 import type {
   AnyServerSideDatasource,
   IServerSideDatasource,
@@ -5968,7 +5968,9 @@ export class VelocityGrid<TRow = any> {
     if (typeof d === 'number' && d > 0) {
       const set = new Set<string>();
       for (const key of this.knownGroupKeys) {
-        const depth = key.split('::').length - 1;
+        // Task 4 (A-C7) — segments are escaped, so `splitGroupKey` (never
+        // a raw `key.split('::')`) is the only safe way to count levels.
+        const depth = splitGroupKey(key).length - 1;
         if (depth < d) set.add(key);
       }
       return set;

@@ -116,29 +116,58 @@ export function materializeSsrmGroupTotals(
   return groupTotals;
 }
 
-/** `${colId}:${value}` segments joined by `::` — same vocabulary as
- *  GroupPass / the CSRM expansion mirror. Kernel-internal for the v2
- *  skeleton path (the wire speaks raw `path: string[]`). Known caveat:
- *  values containing `::` corrupt segmentation — acceptable while the
- *  encoding stays internal; escape before ever exposing it. */
+/** Task 4 (A-C7) — escape a single key SEGMENT (a colId or a value) so it
+ *  can never introduce a spurious `:` (colId/value separator) or `::`
+ *  (level separator) into a composite group key. `%` is escaped FIRST so
+ *  its own escape sequence is never re-escaped by the `:` pass. This is
+ *  THE shared kernel helper — GroupPass's inline hot-path builder and
+ *  CalcPass's `oldGroupKeyFor` mirror both import it so every kernel
+ *  producer of this key vocabulary stays byte-for-byte consistent.
+ *  Perspective keeps an independent local copy (no new cross-package
+ *  dependency) that must stay in lockstep with this implementation. */
+export function escapeGroupKeySegment(s: string): string {
+  return s.replace(/%/g, '%25').replace(/:/g, '%3A');
+}
+
+function unescapeGroupKeySegment(s: string): string {
+  return s.replace(/%3A/g, ':').replace(/%25/g, '%');
+}
+
+/** Split a composite group key into its per-level segment strings. Now
+ *  that every segment is escaped, a literal `::` can only ever appear as
+ *  a level boundary — this is the ONLY safe way to break a key into
+ *  levels (never `key.split('::')` directly outside this helper; depth
+ *  computation must route through this too). */
+export function splitGroupKey(key: string): string[] {
+  return key === '' ? [] : key.split('::');
+}
+
+/** `${colId}:${value}` segments (each escaped via `escapeGroupKeySegment`)
+ *  joined by `::` — same vocabulary as GroupPass / the CSRM expansion
+ *  mirror. Kernel-internal for the v2 skeleton path (the wire speaks raw
+ *  `path: string[]`). A value containing `:` or `::` no longer corrupts
+ *  segmentation — see Task 4 (A-C7). */
 export function buildCompositeGroupKey(
   rowGroupCols: readonly string[],
   path: readonly string[],
 ): string {
   const parts: string[] = [];
   for (let i = 0; i < path.length && i < rowGroupCols.length; i++) {
-    parts.push(`${rowGroupCols[i]!}:${path[i] ?? ''}`);
+    parts.push(`${escapeGroupKeySegment(rowGroupCols[i]!)}:${escapeGroupKeySegment(path[i] ?? '')}`);
   }
   return parts.join('::');
 }
 
-/** Parse composite group key segments — same vocabulary as GroupPass / demo. */
+/** Parse composite group key segments — same vocabulary as GroupPass / demo.
+ *  Unescapes each colId/value back to its original raw form. */
 export function parseCompositeGroupKey(key: string): Array<{ colId: string; value: string }> {
-  if (!key) return [];
-  return key.split('::').map((seg) => {
+  return splitGroupKey(key).map((seg) => {
     const i = seg.indexOf(':');
-    if (i < 0) return { colId: seg, value: '' };
-    return { colId: seg.slice(0, i), value: seg.slice(i + 1) };
+    if (i < 0) return { colId: unescapeGroupKeySegment(seg), value: '' };
+    return {
+      colId: unescapeGroupKeySegment(seg.slice(0, i)),
+      value: unescapeGroupKeySegment(seg.slice(i + 1)),
+    };
   });
 }
 

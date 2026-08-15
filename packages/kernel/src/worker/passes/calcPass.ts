@@ -37,6 +37,7 @@
 import type { RowStore } from '../dataPipeline';
 import type { WorkerCalcProgram } from '../protocol';
 import type { GroupNode, GroupPassOutput } from './groupPass';
+import { escapeGroupKeySegment } from '../../core/ssrmRowMeta';
 
 /** Cycle 21d / Task 11 — the seam FilterPass / SortPass / GroupPass /
  *  both slicers consult for fieldless calc columns. `CalcProgramStore`
@@ -847,8 +848,13 @@ export class CalcProgramStore implements CalcValueSource {
     };
 
     /** Mirror GroupPass's bucket-key construction (`src/worker/passes/
-     *  groupPass.ts:383-390`): `${colId}:${keyPart}` per level, joined
-     *  `'::'`, over the OLD (pre-apply) row snapshot's field values. */
+     *  groupPass.ts`): `${colId}:${keyPart}` per level, joined `'::'`,
+     *  over the OLD (pre-apply) row snapshot's field values. Task 4
+     *  (A-C7) — MUST escape segments identically to the real GroupPass
+     *  keys (`rowScopeKey`/`parentOfGroup` below are populated from
+     *  those real, now-escaped keys); a divergence here would silently
+     *  misdirect — or drop — the old-scope `removeRow` on a cross-group
+     *  move whenever a group value contains `:` or `::`. */
     const oldGroupKeyFor = (oldRow: unknown): string | undefined => {
       if (!grouped || groupColIds.length === 0) return undefined;
       let key = '';
@@ -856,7 +862,8 @@ export class CalcProgramStore implements CalcValueSource {
         const field = fieldOf(colId);
         const rawValue = field !== undefined ? (oldRow as Record<string, unknown>)[field] : undefined;
         const keyPart = rawValue == null ? '' : '' + rawValue;
-        key = key === '' ? `${colId}:${keyPart}` : `${key}::${colId}:${keyPart}`;
+        const seg = `${escapeGroupKeySegment(colId)}:${escapeGroupKeySegment(keyPart)}`;
+        key = key === '' ? seg : `${key}::${seg}`;
       }
       return key;
     };

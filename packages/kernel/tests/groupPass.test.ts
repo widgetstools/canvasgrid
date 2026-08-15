@@ -12,6 +12,7 @@ import type { FlatOrderEntry, GroupNode } from '../src/worker/passes/groupPass';
 import type { WorkerColumn } from '../src/worker/protocol';
 import { createWorkerHost } from '../src/worker/worker';
 import type { WorkerRequest, WorkerResponse, WorkerPush } from '../src/worker/protocol';
+import { parseCompositeGroupKey, splitGroupKey } from '../src/core/ssrmRowMeta';
 
 const cols: WorkerColumn[] = [
   { colId: 'desk',   field: 'desk',   type: 'text' },
@@ -483,6 +484,84 @@ describe('GroupPass — worker round-trip', () => {
     if (reply.type === 'error') {
       expect(reply.error).toMatch(/unknown column id/);
     }
+  });
+});
+
+// Task 4 — group values containing the key's own separator characters
+// (`:` and `::`) must not corrupt the composite key's segmentation.
+// Two rows whose values only differ by where a `::`/`:` sits must land
+// in DISTINCT buckets with keys that round-trip via `splitGroupKey` /
+// `parseCompositeGroupKey` back to the exact original value.
+describe('GroupPass — composite key separator escaping', () => {
+  it('a value containing "::" gets its own bucket with a round-trippable key', () => {
+    const s = new RowStore('id');
+    s.setAll([
+      { id: '1', desk: 'AB::CD' },
+      { id: '2', desk: 'AB' },
+    ]);
+    const p = new GroupPass(s, [{ colId: 'desk', field: 'desk', type: 'text' }]);
+    p.setModel({ rowGroupCols: ['desk'] });
+    const out = p.apply(['1', '2']);
+    expect(out.roots.length).toBe(2); // two DISTINCT groups, not merged/corrupted
+    const weird = out.roots.find((r) => r.value === 'AB::CD')!;
+    expect(weird).toBeDefined();
+    expect(splitGroupKey(weird.key).length).toBe(1); // one level, not split into two
+    expect(parseCompositeGroupKey(weird.key)).toEqual([{ colId: 'desk', value: 'AB::CD' }]);
+  });
+
+  it('a value containing a single ":" round-trips through parseCompositeGroupKey', () => {
+    const s = new RowStore('id');
+    s.setAll([{ id: '1', desk: 'X:Y' }]);
+    const p = new GroupPass(s, [{ colId: 'desk', field: 'desk', type: 'text' }]);
+    p.setModel({ rowGroupCols: ['desk'] });
+    const out = p.apply(['1']);
+    expect(out.roots.length).toBe(1);
+    const node = out.roots[0]!;
+    expect(parseCompositeGroupKey(node.key)).toEqual([{ colId: 'desk', value: 'X:Y' }]);
+  });
+
+  it('depth stays correct (2 levels) for a two-level tree whose leaf value contains "::"', () => {
+    const s = new RowStore('id');
+    s.setAll([
+      { id: '1', desk: 'APAC', region: 'AB::CD' },
+    ]);
+    const p = new GroupPass(s, [
+      { colId: 'desk', field: 'desk', type: 'text' },
+      { colId: 'region', field: 'region', type: 'text' },
+    ]);
+    p.setModel({ rowGroupCols: ['desk', 'region'] });
+    const out = p.apply(['1']);
+    const apac = out.roots[0]!;
+    expect(splitGroupKey(apac.key).length).toBe(1);
+    const child = apac.childGroups[0]!;
+    expect(splitGroupKey(child.key).length).toBe(2); // NOT 3 — the leaf's "::" is escaped
+    expect(parseCompositeGroupKey(child.key)).toEqual([
+      { colId: 'desk', value: 'APAC' },
+      { colId: 'region', value: 'AB::CD' },
+    ]);
+  });
+
+  it('expansion toggling targets the exact escaped-key group, not a decoy sibling', () => {
+    // Two rows whose desk values would collide under the OLD unescaped
+    // scheme: 'AB::CD' vs building a fake two-level path 'AB' + 'CD'.
+    // Verify the flatOrder group entry for the "::" value round-trips
+    // and is addressable independently of any other key.
+    const s = new RowStore('id');
+    s.setAll([
+      { id: '1', desk: 'AB::CD' },
+      { id: '2', desk: 'EF' },
+    ]);
+    const p = new GroupPass(s, [{ colId: 'desk', field: 'desk', type: 'text' }]);
+    p.setModel({ rowGroupCols: ['desk'] });
+    const out = p.apply(['1', '2']);
+    const groupEntries = out.flatOrder.filter(
+      (e): e is Extract<FlatOrderEntry, { kind: 'group' }> => e.kind === 'group',
+    );
+    const groupEntry = groupEntries.find((e) => parseCompositeGroupKey(e.key)[0]?.value === 'AB::CD');
+    expect(groupEntry).toBeDefined();
+    const otherEntry = groupEntries.find((e) => parseCompositeGroupKey(e.key)[0]?.value === 'EF');
+    expect(otherEntry).toBeDefined();
+    expect(groupEntry!.key).not.toBe(otherEntry!.key);
   });
 });
 

@@ -9,21 +9,48 @@ import type { PositionRow } from './bootstrap';
 export const GROUP_ROW_ID_PREFIX = '__grp__';
 export const FOOTER_ROW_ID_PREFIX = '__footer__';
 
-/** `${colId}:${value}` segments joined by `::` — matches worker GroupPass. */
+/** Task 4 (A-C7) — escape a single key SEGMENT (a colId or a value) so it
+ *  can never introduce a spurious `:` (colId/value separator) or `::`
+ *  (level separator) into a composite group key. `%` is escaped FIRST so
+ *  its own escape sequence is never re-escaped by the `:` pass. Local
+ *  copy of the kernel's `escapeGroupKeySegment` (no new cross-package
+ *  dependency) — must stay byte-for-byte identical to
+ *  `@wellsfargo-starui/velocity-grid`'s `core/ssrmRowMeta.ts` so keys
+ *  built here match the same vocabulary as worker GroupPass. */
+export function escapeGroupKeySegment(s: string): string {
+  return s.replace(/%/g, '%25').replace(/:/g, '%3A');
+}
+
+function unescapeGroupKeySegment(s: string): string {
+  return s.replace(/%3A/g, ':').replace(/%25/g, '%');
+}
+
+/** Split a composite group key into its per-level segment strings — the
+ *  ONLY safe way to break a key into levels now that segments are
+ *  escaped (never `key.split('::')` directly outside this helper). */
+export function splitGroupKey(key: string): string[] {
+  return key === '' ? [] : key.split('::');
+}
+
+/** `${colId}:${value}` segments (each escaped via `escapeGroupKeySegment`)
+ *  joined by `::` — matches worker GroupPass. A value containing `:` or
+ *  `::` no longer corrupts segmentation — see Task 4 (A-C7). */
 export function buildCompositeGroupKey(rowGroupCols: string[], path: string[]): string {
   const parts: string[] = [];
   for (let i = 0; i < path.length && i < rowGroupCols.length; i++) {
-    parts.push(`${rowGroupCols[i]!}:${path[i] ?? ''}`);
+    parts.push(`${escapeGroupKeySegment(rowGroupCols[i]!)}:${escapeGroupKeySegment(path[i] ?? '')}`);
   }
   return parts.join('::');
 }
 
 export function parseCompositeGroupKey(key: string): Array<{ colId: string; value: string }> {
-  if (!key) return [];
-  return key.split('::').map((seg) => {
+  return splitGroupKey(key).map((seg) => {
     const i = seg.indexOf(':');
-    if (i < 0) return { colId: seg, value: '' };
-    return { colId: seg.slice(0, i), value: seg.slice(i + 1) };
+    if (i < 0) return { colId: unescapeGroupKeySegment(seg), value: '' };
+    return {
+      colId: unescapeGroupKeySegment(seg.slice(0, i)),
+      value: unescapeGroupKeySegment(seg.slice(i + 1)),
+    };
   });
 }
 

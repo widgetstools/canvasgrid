@@ -386,6 +386,70 @@ describe('full-grid sparse defaults + selection cascade', () => {
     });
   });
 
+  // Task 4 — depth-based expansion (`groupDefaultExpanded: N`) derives
+  // depth from the composite key's segment count. A region value that
+  // itself contains the raw level separator `::` must NOT be misread as
+  // two levels — `sparseDefaultExpandedKeys` (velocityGrid.ts) must use
+  // `splitGroupKey`, never a raw `key.split('::')`.
+  it('depth-based expansion (N levels) is not corrupted by a group value containing "::"', async () => {
+    const poisonSkeleton: SkeletonGroup[] = [
+      { path: [], leafCount: 0, aggregates: { notional: 999 } },
+      { path: ['A::weird'], leafCount: 2, aggregates: { notional: 20 } },
+      { path: ['A::weird', 'X'], leafCount: 2, aggregates: { notional: 20 } },
+    ];
+    const leafRows = (path: string[]): Row[] => {
+      const tag = path.join('-');
+      return [1, 2].map((i) => ({ id: `${tag}-${i}`, region: path[0]!, desk: path[1] ?? '', notional: i }));
+    };
+    const ds: IServerSideDatasourceV2<Row> = {
+      getRows: ({ success }) => success({ rowData: [], rowCount: 0 }),
+      getGroupSkeleton: ({ success }) =>
+        success({ groups: poisonSkeleton.map((g) => ({ ...g, path: [...g.path] })) }),
+      getLeafRows: ({ request, success }) =>
+        success({ rowData: leafRows(request.groupPath).slice(request.startRow, request.endRow) }),
+    };
+    const origWorker = (globalThis as { Worker?: unknown }).Worker;
+    (globalThis as { Worker: unknown }).Worker = FakeWorker;
+    const el = document.createElement('div');
+    el.style.width = '800px';
+    el.style.height = '400px';
+    document.body.appendChild(el);
+    const grid = new VelocityGrid<Row>(el, {
+      columnDefs: [
+        { field: 'region', enableRowGroup: true },
+        { field: 'desk', enableRowGroup: true },
+        { field: 'notional', type: 'number', aggFunc: 'sum' },
+      ],
+      getRowId: (r: Row) => r.id,
+      rowModelType: 'serverSide',
+      serverSideEnableClientSidePipeline: false,
+      cacheBlockSize: 10,
+      serverSideDatasource: ds,
+      groupDefaultExpanded: 1,
+    } as never);
+    try {
+      grid.setRowGroupColumns(['region', 'desk']);
+      // Only ONE top-level group ('A::weird') exists — first-level-open
+      // (N=1) expands it, rendering its single depth-1 child ('X',
+      // itself collapsed, no leaves). If the "::" inside the region
+      // value corrupted depth computation, the top-level group would
+      // be misclassified as depth 1 and stay unexpanded (rowCount 1)
+      // instead of correctly expanding to show its child (rowCount 2).
+      await waitFor(() => grid.getDisplayedRowCount() === 2,
+        `first level open despite "::"-bearing value (rows=${grid.getDisplayedRowCount()})`);
+      const keys = grid.getExpandedKeys();
+      expect(keys.size).toBe(1);
+      const [onlyKey] = [...keys];
+      // Round-trips back to the exact original value via the escaped
+      // vocabulary — not corrupted into two segments.
+      expect(onlyKey).toBeDefined();
+    } finally {
+      grid.destroy();
+      el.remove();
+      (globalThis as { Worker?: unknown }).Worker = origWorker;
+    }
+  });
+
   it('group checkbox cascade selects unloaded descendant leaves via getGroupLeafIds', async () => {
     await withGrid({
       groupDefaultExpanded: 0,

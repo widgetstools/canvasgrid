@@ -1,9 +1,68 @@
 import { describe, it, expect } from 'vitest';
 import {
   attachSsrmRowMeta,
+  buildCompositeGroupKey,
   computeSsrmStickyAncestors,
+  escapeGroupKeySegment,
   materializeSsrmGroupTotals,
+  parseCompositeGroupKey,
+  splitGroupKey,
 } from '../src/core/ssrmRowMeta';
+
+// Task 4 — escaped composite-key round-trip. A value containing the
+// segment separator (`:`) or the level separator (`::`) must not corrupt
+// depth/parenting: build → split → parse must always recover the exact
+// original colId/value strings, and the escaped key must never contain a
+// raw `::` inside what was a single segment.
+describe('composite group key — separator escaping', () => {
+  it('round-trips a value containing "::" through build → split → parse', () => {
+    const key = buildCompositeGroupKey(['desk'], ['AB::CD']);
+    // The escaped value must not introduce a spurious level boundary.
+    expect(splitGroupKey(key).length).toBe(1);
+    const segs = parseCompositeGroupKey(key);
+    expect(segs).toEqual([{ colId: 'desk', value: 'AB::CD' }]);
+  });
+
+  it('round-trips a value containing a single ":" through build → split → parse', () => {
+    const key = buildCompositeGroupKey(['desk'], ['X:Y']);
+    expect(splitGroupKey(key).length).toBe(1);
+    const segs = parseCompositeGroupKey(key);
+    expect(segs).toEqual([{ colId: 'desk', value: 'X:Y' }]);
+  });
+
+  it('two-level key with a separator-bearing value round-trips depth + values correctly', () => {
+    const key = buildCompositeGroupKey(['desk', 'region'], ['AB::CD', 'X:Y']);
+    expect(splitGroupKey(key).length).toBe(2); // depth stays 2 levels, not corrupted into more
+    expect(parseCompositeGroupKey(key)).toEqual([
+      { colId: 'desk', value: 'AB::CD' },
+      { colId: 'region', value: 'X:Y' },
+    ]);
+  });
+
+  it('escapeGroupKeySegment escapes "%" before ":" so escape sequences never collide', () => {
+    // A literal '%3A' in the raw value must round-trip as the literal
+    // string '%3A', not be misread as an escaped colon.
+    expect(escapeGroupKeySegment('%3A')).toBe('%253A');
+    const key = buildCompositeGroupKey(['desk'], ['%3A']);
+    expect(parseCompositeGroupKey(key)).toEqual([{ colId: 'desk', value: '%3A' }]);
+  });
+
+  it('two distinct values that collide under the OLD unescaped scheme now build distinct, correctly-parsed keys', () => {
+    // Under the old scheme, desk="AB", region="CD" and desk="AB::region",
+    // value="CD" would both stringify to the same raw text. The escaped
+    // scheme must keep them distinct.
+    const twoLevel = buildCompositeGroupKey(['desk', 'region'], ['AB', 'CD']);
+    const collidingValue = buildCompositeGroupKey(['desk'], ['AB::region:CD']);
+    expect(twoLevel).not.toBe(collidingValue);
+    expect(splitGroupKey(twoLevel).length).toBe(2);
+    expect(splitGroupKey(collidingValue).length).toBe(1);
+  });
+
+  it('splitGroupKey on an empty key returns an empty array (parity with the old split behaviour)', () => {
+    expect(splitGroupKey('')).toEqual([]);
+    expect(parseCompositeGroupKey('')).toEqual([]);
+  });
+});
 
 describe('ssrmRowMeta sticky parity', () => {
   const columns = [
@@ -117,6 +176,36 @@ describe('ssrmRowMeta sticky parity', () => {
     );
     expect(ancestors.map((a) => ({ depth: a.depth, key: a.key }))).toEqual([
       { depth: 0, key: 'desk:Rates' },
+    ]);
+  });
+
+  // Task 4 — a group value containing the key's own separator must not
+  // corrupt sticky-ancestor depth/colId resolution (which walks
+  // `parseCompositeGroupKey(meta.key)`).
+  it('computeSsrmStickyAncestors resolves colId/value correctly when the group value contains "::"', () => {
+    const weirdKey = buildCompositeGroupKey(['desk'], ['AB::CD']);
+    const localStore = new Map<string, unknown>([
+      ['g-weird', attachSsrmRowMeta(
+        { notional: 500, desk: 'AB::CD' },
+        { kind: 'group', key: weirdKey, depth: 0, label: 'AB::CD', childCount: 1, expanded: true },
+      )],
+    ]);
+    const order = ['g-weird', 'leaf-x'];
+    const ancestors = computeSsrmStickyAncestors(
+      (id) => localStore.get(id),
+      order,
+      1,
+      ['desk'],
+    );
+    expect(ancestors).toEqual([
+      {
+        depth: 0,
+        key: weirdKey,
+        colId: 'desk',
+        value: 'AB::CD',
+        childCount: 1,
+        isExpanded: true,
+      },
     ]);
   });
 });

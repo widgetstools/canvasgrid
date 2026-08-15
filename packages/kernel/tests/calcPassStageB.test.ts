@@ -384,6 +384,58 @@ describe('CalcPass Stage B — row moves between groups (case 7)', () => {
   });
 });
 
+// Task 4 — `oldGroupKeyFor` (calcPass.ts) independently mirrors GroupPass's
+// bucket-key construction to resolve the OLD scope of a moved/updated row.
+// It MUST escape segments identically to the real GroupPass keys stored in
+// `rowScopeKey`/`parentOfGroup` — a value containing the key's own `::`
+// separator must not desync the two, or the old-scope `removeRow` silently
+// targets the wrong (or a nonexistent) scope, leaking stale state into the
+// group the row left.
+describe("CalcPass Stage B — row moves between groups with a separator-bearing value (Task 4 regression)", () => {
+  it("desk value containing '::' round-trips through oldGroupKeyFor so the OLD group's scalar updates correctly on a cross-group move", () => {
+    const store = new RowStore<Row>('id');
+    store.setAll([
+      { id: '1', pnl: 10, desk: 'A::weird' },
+      { id: '2', pnl: 20, desk: 'A::weird' },
+      { id: '3', pnl: 100, desk: 'B' },
+      { id: '4', pnl: 200, desk: 'B' },
+    ]);
+    const cols: WorkerColumn[] = [
+      { colId: 'pnl', field: 'pnl', type: 'number' },
+      { colId: 'desk', field: 'desk', type: 'text' },
+    ];
+    const group = new GroupPass<Row>(store, cols);
+    group.setModel({ rowGroupCols: ['desk'] });
+    const ids = ['1', '2', '3', '4'];
+    let out = group.apply(ids);
+
+    const calc = new CalcProgramStore();
+    calc.install(pctProgram('group'));
+    calc.ensureStageB(store, out, ids, fieldOf);
+
+    expect(calc.valueAt('1', 'pctOfGroup')).toBeCloseTo((10 / 30) * 100);
+    expect(calc.valueAt('3', 'pctOfGroup')).toBeCloseTo((100 / 300) * 100);
+
+    // Move row '1' OUT of the "::"-bearing group into desk B.
+    const movedRow1 = { id: '1', pnl: 10, desk: 'B' };
+    calc.capturePrevForUpdates(store, [movedRow1]);
+    const results = store.apply({ update: [movedRow1] });
+    calc.onTransaction(results);
+    out = group.apply(ids);
+    calc.ensureStageB(store, out, ids, fieldOf);
+
+    // Desk "A::weird" now just row 2 → sum 20 → row2 = 100%. If
+    // `oldGroupKeyFor` mis-escaped (or failed to escape) the old key, the
+    // removeRow against the old group scope silently no-ops (key mismatch)
+    // and row2 would still read the stale 20/30 = 66.6%.
+    expect(calc.valueAt('2', 'pctOfGroup')).toBeCloseTo(100);
+    // Desk B now rows 1,3,4 → sum 10+100+200=310.
+    expect(calc.valueAt('1', 'pctOfGroup')).toBeCloseTo((10 / 310) * 100);
+    expect(calc.valueAt('3', 'pctOfGroup')).toBeCloseTo((100 / 310) * 100);
+    expect(calc.valueAt('4', 'pctOfGroup')).toBeCloseTo((200 / 310) * 100);
+  });
+});
+
 describe('CalcPass Stage B — cache hit across untouched scopes (case 8)', () => {
   it('an unrelated delta leaves an untouched group scope`s instance identity unchanged (instance-id probe)', () => {
     const store = fixtureStore();

@@ -30,6 +30,13 @@
  * nullish values to `''`; the canonical "(Blanks)" handling is a
  * follow-up cycle (ag-grid's `groupAllowUnbalanced`).
  *
+ * **Separator escaping (Task 4 / A-C7).** `colId` and the stringified
+ * value are each run through `escapeGroupKeySegment` (`core/ssrmRowMeta`)
+ * before concatenation, so a value containing `:` or `::` can never be
+ * misread as the colId/value separator or a level boundary — see that
+ * module for the exact scheme. Only called when a NEW bucket is created
+ * (never per-row), preserving the hot-path perf characteristic below.
+ *
  * **Validation.** `setModel` rejects unknown colIds and duplicate
  * colIds (the closest analogue to ag-grid's "circular groupOrder")
  * with a clear Error so the worker fails loudly instead of silently
@@ -43,12 +50,15 @@
 
 import type { RowStore } from '../dataPipeline';
 import type { WorkerColumn } from '../protocol';
+import { escapeGroupKeySegment } from '../../core/ssrmRowMeta';
 import type { GroupModel } from '../../types';
 import type { CalcValueSource } from './calcPass';
 
 export interface GroupNode {
-  /** Stable composite key — `${colId}:${value}` per level, joined by
-   *  `::` for nested levels. The vocabulary `expandedKeys` looks up. */
+  /** Stable composite key — `${colId}:${value}` per level (each segment
+   *  escaped via `escapeGroupKeySegment`), joined by `::` for nested
+   *  levels. The vocabulary `expandedKeys` looks up; use `splitGroupKey`
+   *  / `parseCompositeGroupKey` to decompose, never a raw `.split`. */
   key: string;
   /** The raw value of the grouping cell (pre-stringify). Null/undefined
    *  round-trip as-is so a renderer can decide how to format them. */
@@ -451,9 +461,12 @@ export class GroupPass<TRow = any> {
         let bucket = parentMap.get(keyPart);
         if (bucket === undefined) {
           const parentKey = parent.node.key;
+          // Task 4 (A-C7) — escape only on bucket CREATION (not per-row),
+          // preserving the hot-path perf note above.
+          const escapedSeg = escapeGroupKeySegment(colId) + ':' + escapeGroupKeySegment(keyPart);
           const myKey = parentKey === ''
-            ? colId + ':' + keyPart
-            : parentKey + '::' + colId + ':' + keyPart;
+            ? escapedSeg
+            : parentKey + '::' + escapedSeg;
           const isLeafLevel = d === deepest;
           const node: GroupNode = {
             key: myKey,
