@@ -185,6 +185,23 @@ function schemaKey(schema: Record<string, string>): string {
 }
 
 /**
+ * Provider/connection identity (C-M6) folded into the physical Perspective
+ * table name + feed-lock name (`bootstrap.ts` `tableNameForSchema`, via
+ * `PerspectiveBookOptions.identity`) — catalog `providerId`, else
+ * `websocketUrl` + `listenerTopic`/`clientId`. Two providers with
+ * identical `columnDefinitions` but different brokers must never resolve
+ * to the same table (previously: schema shape alone decided the name, so
+ * provider B could render provider A's rows). Undefined when nothing
+ * distinguishing is configured — preserves the historical fixed
+ * `positions-shared` table name for the no-catalog seed/demo case.
+ */
+export function bookIdentityFor(config: StompPerspectiveProviderConfig): string | undefined {
+  const parts = [config.providerId, config.wsUrl, config.snapshotTopic ?? config.clientId]
+    .filter((v): v is string => !!v);
+  return parts.length > 0 ? parts.join('|') : undefined;
+}
+
+/**
  * Resolve / create the shared book for this DataProvider.
  * Same catalog `providerId` (+ schema) → one Table; each caller still
  * registers its own View via {@link StompPerspectiveProvider}.
@@ -233,6 +250,7 @@ function entryFor(config: StompPerspectiveProviderConfig): { key: string; entry:
         snapshotEndToken: config.snapshotEndToken,
         keyColumn: config.keyColumn,
         schema,
+        identity: bookIdentityFor(config),
         onViewTick: (tick) => created.tickHandlers.get(tick.viewId)?.(tick),
         onPhase: (phase) => { for (const h of created.phaseHandlers.values()) h(phase); },
         onTelemetry: (t) => { for (const h of created.telemetryHandlers.values()) h(t); },
@@ -288,6 +306,9 @@ export class StompPerspectiveProvider implements IServerSideDatasourceV2<Positio
     entry.refs++;
     this.viewId = `provider-${entry.nextViewSeq++}`;
     if (resolved.onTelemetry) entry.telemetryHandlers.set(this.viewId, resolved.onTelemetry);
+    // C-m10 — the book's 4Hz telemetry recompute runs only while a
+    // consumer is actually listening.
+    entry.book.setTelemetryActive(entry.telemetryHandlers.size > 0);
     this.inner = createPerspectiveSsrmDatasource(entry.book, this.viewId);
     this.readyPromise = entry.book
       .registerView({
@@ -300,6 +321,13 @@ export class StompPerspectiveProvider implements IServerSideDatasourceV2<Positio
         // (or, on the shared engine, joins/leads via Web Locks).
         this.entry.book.connect();
       });
+    // C-M7 — a rejected view registration must not become an unhandled
+    // promise rejection when no caller ever awaits `ready()` / calls
+    // `getRows()` before `destroy()` (e.g. a superseded Apply). Real
+    // awaiters still observe the rejection through `ready()` / `getRows()`
+    // etc. below — this is a second, independent handler on the same
+    // promise, not a replacement for it.
+    this.readyPromise.catch(() => { /* observed; see ready() for real handling */ });
   }
 
   /** Resolves once this provider's view exists and the feed is starting. */
@@ -539,6 +567,10 @@ export class StompPerspectiveProvider implements IServerSideDatasourceV2<Positio
       this.entry.unregFeedControl = null;
       this.entry.unregFeedBroadcast = null;
       this.entry.book.destroy();
+    } else {
+      // C-m10 — stop the 4Hz recompute once the last telemetry consumer
+      // on this (still-shared) book detaches.
+      this.entry.book.setTelemetryActive(this.entry.telemetryHandlers.size > 0);
     }
   }
 }

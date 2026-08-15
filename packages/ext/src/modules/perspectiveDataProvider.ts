@@ -227,9 +227,16 @@ export function perspectiveDataProviderModule(
           backend: catalog,
           providerId,
           themeSource,
-          onSaved: () => {
+          hubOpts: controller.getHubOpts(),
+          onSaved: (cfg) => {
             void rebuildSelect();
             ctx.profiles.markDirty();
+            // C-m13 — the catalog write doesn't rebind the live View; Apply
+            // must be re-run to pick up the edited config.
+            if (cfg.providerId === controller.getActiveProviderId()) {
+              hint.textContent =
+                `Saved “${cfg.providerId}” · re-Apply to rebind the active provider with the new config.`;
+            }
           },
           onClose: () => { void rebuildSelect(); },
         });

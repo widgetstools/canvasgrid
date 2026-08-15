@@ -175,6 +175,14 @@ export interface PerspectiveBookOptions {
    * (`columnDefinitions`). Defaults to {@link POSITION_SCHEMA}.
    */
   schema?: PerspectiveTableSchema;
+  /**
+   * Provider/connection identity (C-M6) — folded into the physical table
+   * name + feed-lock name so two providers with an identical `schema` but
+   * different brokers never share a table. See `tableNameForSchema` in
+   * `bootstrap.ts`. Undefined preserves the fixed `positions-shared` name
+   * for the no-catalog seed/demo case.
+   */
+  identity?: string;
   onTelemetry?: (t: BookTelemetry) => void;
   onPhase?: (phase: BookPhase) => void;
   onViewTick?: (tick: ViewTick) => void;
@@ -556,7 +564,7 @@ export class PerspectiveBook {
   > &
     Pick<
       PerspectiveBookOptions,
-      'onTelemetry' | 'onPhase' | 'onViewTick' | 'snapshotTopic' | 'triggerTopic'
+      'onTelemetry' | 'onPhase' | 'onViewTick' | 'snapshotTopic' | 'triggerTopic' | 'identity'
     >;
 
   /** DataProvider-owned schema columns (Perspective table + view projection). */
@@ -626,6 +634,7 @@ export class PerspectiveBook {
       snapshotEndToken: options.snapshotEndToken ?? SNAPSHOT_END_TOKEN,
       keyColumn: options.keyColumn ?? 'positionId',
       schema,
+      identity: options.identity,
       onTelemetry: options.onTelemetry,
       onPhase: options.onPhase,
       onViewTick: options.onViewTick,
@@ -633,7 +642,29 @@ export class PerspectiveBook {
     this.dataColumns = Object.keys(schema);
     this.valueAggregates = aggregatesFromSchema(schema);
     this.measureColumns = measureColumnsFromSchema(schema);
-    this.telemetryTimer = window.setInterval(() => this.emitTelemetry(), 250);
+    // C-m10 — only start the 4Hz recompute when constructed with a handler
+    // (preserves direct-construction callers, e.g. cgrid-ssrm-demo, which
+    // pass `onTelemetry` once and expect it to just run). `provider.ts`'s
+    // shared-book path always passes a fan-out `onTelemetry` regardless of
+    // real demand, so it immediately follows up with `setTelemetryActive`
+    // reflecting the true `entry.telemetryHandlers` count — synchronously,
+    // before this timer's first tick, so no wasted work ever runs.
+    if (options.onTelemetry) {
+      this.telemetryTimer = window.setInterval(() => this.emitTelemetry(), 250);
+    }
+  }
+
+  /** Runs (or stops) the 4Hz telemetry recompute — active only while at
+   *  least one consumer wants it (C-m10). Idempotent. */
+  setTelemetryActive(active: boolean): void {
+    if (active) {
+      if (this.telemetryTimer === null && !this.destroyed) {
+        this.telemetryTimer = window.setInterval(() => this.emitTelemetry(), 250);
+      }
+    } else if (this.telemetryTimer !== null) {
+      clearInterval(this.telemetryTimer);
+      this.telemetryTimer = null;
+    }
   }
 
   getPhase(): BookPhase {
@@ -689,6 +720,7 @@ export class PerspectiveBook {
     const { table, attached } = await openOrCreatePositionsTable(
       SHARED_TABLE_NAME,
       this.opts.schema,
+      this.opts.identity,
     );
     if (getPerspectiveWorkerMode() === 'shared') {
       this.table = table;
@@ -706,9 +738,10 @@ export class PerspectiveBook {
 
   // ─── Phase 5: feed leadership (Web Locks; one feeder per table) ─────
 
-  /** One leader per physical Perspective table (schema-scoped name). */
+  /** One leader per physical Perspective table (schema + identity scoped
+   *  name — C-M6: distinct providers never share a leader lock). */
   private feedLockName(): string {
-    return `cgrid-ssrm:feed:${tableNameForSchema(this.opts.schema)}`;
+    return `cgrid-ssrm:feed:${tableNameForSchema(this.opts.schema, this.opts.identity)}`;
   }
 
   private hasWebLocks(): boolean {
@@ -1779,6 +1812,10 @@ export class PerspectiveBook {
     // view while the engine is mid-op is a wasm-bindgen "null pointer /
     // borrowed" panic.
     this.views.delete(viewId);
+    // C-m9 — the per-view serialization chain otherwise never frees; a
+    // grid that Applies/detaches providers repeatedly leaks one Promise
+    // chain entry per prior viewId for the life of the book.
+    this.getRowsChains.delete(viewId);
     await this.withTableLock(async () => {
       if (v.view && v.dataUpdateCb !== null) {
         try { await v.view.remove_update(v.dataUpdateCb); } catch { /* swallow */ }

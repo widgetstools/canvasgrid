@@ -10,6 +10,7 @@
 import type {
   ConfigBackend,
   DataProviderConfig,
+  ProviderClientOptions,
 } from '@wellsfargo-starui/velocity-grid-data';
 import {
   createDefaultConfigBackend,
@@ -20,6 +21,7 @@ import {
   type StompPerspectiveProviderConfig,
 } from './provider';
 import type { BookTelemetry } from './book';
+import { withTimeout } from './bootstrap';
 import {
   dataProviderConfigToPerspective,
   gridColumnDefsFromDataProvider,
@@ -28,6 +30,10 @@ import {
   mergeExpressionColumnDefs,
   type ExpressionColumnMeta,
 } from './expressionColumns';
+
+/** `bindConfig` (C-M7) bounds `provider.ready()` so a hung/failed connect
+ *  can never make Apply hang or silently "succeed". */
+const BIND_READY_TIMEOUT_MS = 20_000;
 
 export type PerspectiveDataProviderStateSlice = {
   activeProviderId: string | null;
@@ -57,8 +63,15 @@ export type PerspectiveDataProviderControllerOptions = {
   onActiveChange?: (
     providerId: string | null,
     provider: StompPerspectiveProvider | null,
+    /** Present only when the bind failed (C-M7) — `providerId`/`provider`
+     *  are `null` in that call. */
+    status?: { phase: 'error'; message: string },
   ) => void;
   onTelemetry?: (t: BookTelemetry) => void;
+  /** Hub options so the editor popout's Diagnostics session hits the same
+   *  in-process / worker hub as the rest of the app (C-m12). Perspective
+   *  itself never uses the hub — this is a pure passthrough. */
+  hubOpts?: ProviderClientOptions;
 };
 
 export class PerspectiveDataProviderController {
@@ -67,6 +80,7 @@ export class PerspectiveDataProviderController {
   private readonly catalog: ConfigBackend;
   private readonly onActiveChange?: PerspectiveDataProviderControllerOptions['onActiveChange'];
   private readonly onTelemetry?: (t: BookTelemetry) => void;
+  private readonly hubOpts?: ProviderClientOptions;
   private activeProviderId: string | null = null;
   private desiredProviderId: string | null = null;
   private provider: StompPerspectiveProvider | null = null;
@@ -83,6 +97,12 @@ export class PerspectiveDataProviderController {
     this.catalog = opts?.catalog ?? createDefaultConfigBackend();
     this.onActiveChange = opts?.onActiveChange;
     this.onTelemetry = opts?.onTelemetry;
+    this.hubOpts = opts?.hubOpts;
+  }
+
+  /** Hub options for the editor popout's Diagnostics session (C-m12). */
+  getHubOpts(): ProviderClientOptions | undefined {
+    return this.hubOpts ? { ...this.hubOpts } : undefined;
   }
 
   /** Resolve the controller bound to a grid (from Ext calculated-columns etc.). */
@@ -258,6 +278,32 @@ export class PerspectiveDataProviderController {
       onTelemetry: this.onTelemetry,
     };
     const provider = new StompPerspectiveProvider(cfg);
+    if (epoch !== this.activateEpoch) {
+      provider.destroy();
+      return;
+    }
+
+    // C-M7 — Apply must not report success (or hang) on a connection that
+    // never comes up. Bound the wait, and on failure release the provider
+    // and surface an error phase instead of silently wiring a dead
+    // datasource onto the grid.
+    try {
+      await withTimeout(
+        provider.ready(),
+        BIND_READY_TIMEOUT_MS,
+        `[perspective] provider "${entry.providerId}" connect`,
+      );
+    } catch (err) {
+      provider.destroy();
+      const message = err instanceof Error ? err.message : String(err);
+      if (epoch === this.activateEpoch) {
+        this.activeProviderId = null;
+        this.desiredProviderId = null;
+        this.provider = null;
+      }
+      this.onActiveChange?.(null, null, { phase: 'error', message });
+      throw err instanceof Error ? err : new Error(message);
+    }
     if (epoch !== this.activateEpoch) {
       provider.destroy();
       return;

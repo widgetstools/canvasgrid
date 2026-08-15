@@ -63,8 +63,9 @@ function wantSharedWorker(): boolean {
 }
 
 /** A hung SharedWorker (script 404, engine crash mid-init) never rejects —
- *  the init handshake just stalls. Race it so boot degrades to dedicated. */
-function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+ *  the init handshake just stalls. Race it so boot degrades to dedicated.
+ *  Exported: also used to bound `provider.ready()` in `controller.ts`. */
+export function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const t = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
     p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
@@ -107,22 +108,36 @@ export async function getPerspectiveClient(): Promise<Client> {
 export type PerspectiveColumnType = 'string' | 'float' | 'boolean' | 'date' | 'integer';
 export type PerspectiveTableSchema = Record<string, PerspectiveColumnType | string>;
 
-/** Stable table name so different DataProvider schemas don't collide. */
+/**
+ * Stable table name so different DataProvider schemas don't collide.
+ *
+ * `identity` (C-M6) folds provider/connection identity — catalog
+ * `providerId`, or `websocketUrl` + `listenerTopic`/`clientId` — into the
+ * name so two providers with identical `columnDefinitions` but different
+ * brokers never resolve to the same physical Perspective table (cross-tab
+ * or same-tab). Omitted only for the no-catalog seed/demo case, which keeps
+ * the historical fixed `positions-shared` name when the schema also
+ * matches the curated default shape.
+ */
 export function tableNameForSchema(
   schema: PerspectiveTableSchema,
+  identity?: string,
   base = SHARED_TABLE_NAME,
 ): string {
   const keys = Object.keys(schema).sort();
   const defaultKeys = Object.keys(POSITION_SCHEMA).sort();
   const sameShape = keys.length === defaultKeys.length
     && keys.every((k, i) => k === defaultKeys[i] && schema[k] === POSITION_SCHEMA[k as keyof typeof POSITION_SCHEMA]);
-  if (sameShape) return base;
+  if (sameShape && !identity) return base;
   let h = 2166136261;
+  const fold = (s: string): void => {
+    for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  };
   for (const k of keys) {
-    for (let i = 0; i < k.length; i++) h = Math.imul(h ^ k.charCodeAt(i), 16777619);
-    const t = String(schema[k] ?? '');
-    for (let i = 0; i < t.length; i++) h = Math.imul(h ^ t.charCodeAt(i), 16777619);
+    fold(k);
+    fold(String(schema[k] ?? ''));
   }
+  if (identity) fold(identity);
   return `${base}-${(h >>> 0).toString(16)}`;
 }
 
@@ -141,9 +156,10 @@ export async function createPositionsTable(
 export async function openOrCreatePositionsTable(
   name = SHARED_TABLE_NAME,
   schema: PerspectiveTableSchema = POSITION_SCHEMA,
+  identity?: string,
 ): Promise<{ table: Table; attached: boolean }> {
   const c = await getPerspectiveClient();
-  const tableName = name === SHARED_TABLE_NAME ? tableNameForSchema(schema, name) : name;
+  const tableName = name === SHARED_TABLE_NAME ? tableNameForSchema(schema, identity, name) : name;
   try {
     const names = await c.get_hosted_table_names();
     if (names.includes(tableName)) {
