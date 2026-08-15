@@ -51,7 +51,7 @@ interface Harness {
     measure: Array<[number, MeasureTextItem[]]>;
     externalFilter: Array<[string[], number]>;
     postSort: Array<[string[], number]>;
-    errors: string[];
+    errors: Array<{ message: string; context: string }>;
     chunks: Array<{
       opts: { rowStart: number; rowEnd: number; columns: string[] };
       chunk: ViewportChunk;
@@ -80,7 +80,7 @@ function makeHarness(): Harness {
     onMeasureTextRequest: (b, i) => { events.measure.push([b, i]); },
     onExternalFilterCandidates: (ids, cid) => { events.externalFilter.push([ids, cid]); },
     onPostSortRowsCandidates: (ids, cid) => { events.postSort.push([ids, cid]); },
-    onError: (m) => { events.errors.push(m); },
+    onError: (err, context) => { events.errors.push({ message: err.message, context }); },
     onViewportChunk: (opts, chunk, sticky) => { events.chunks.push({ opts, chunk, sticky }); },
     isDestroyed: () => false,
   };

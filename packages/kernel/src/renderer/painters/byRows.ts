@@ -611,7 +611,11 @@ export function paintCellThroughCache(
   config: CellPaintConfig,
   liveOnly: boolean,
 ): void {
-  if (!rc) {
+  // Production hardening — a context that can't `drawImage` can't serve a
+  // cached bitmap (the whole point of this tier is the blit). Degrading to
+  // live painting here is byte-identical to `rc` being absent; real
+  // browsers always implement `drawImage`, so this is a pure no-op there.
+  if (!rc || !gc.supportsDrawImage) {
     painter.paint(gc, config);
     return;
   }

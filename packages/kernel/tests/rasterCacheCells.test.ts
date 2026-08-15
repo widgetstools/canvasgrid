@@ -57,6 +57,10 @@ function fakeGc(): { gc: CachedContext2D; calls: RecordedCall[] } {
     measureText: () => ({ width: 50 }),
     fillStyle: '', strokeStyle: '', font: '', textBaseline: '', textAlign: '',
     lineWidth: 1, globalAlpha: 1, lineCap: 'butt', lineJoin: 'miter',
+    // This fake genuinely implements drawImage (above) — mirror that via
+    // the production hardening capability flag `paintCellThroughCache`
+    // gates on, so these tests keep exercising the real hit/miss/blit path.
+    supportsDrawImage: true,
   };
   ctx.cache = new Proxy(ctx, {
     get(target, key) {
@@ -445,6 +449,19 @@ describe('paintCellThroughCache — direct bypass coverage', () => {
       expect(rc.cache.stats().entries).toBe(0);
     });
   }
+
+  it('production hardening — a gc without drawImage support degrades to live paint, byte-identical to rc absent (never throws)', () => {
+    const { rc } = makeCacheCtx();
+    const { painter, boundsSeen } = makePainter();
+    const { gc, calls } = fakeGc();
+    (gc as { supportsDrawImage: boolean }).supportsDrawImage = false;
+    paintCellThroughCache(gc, rc, painter, true, 'text', baseConfig(), false);
+    expect(boundsSeen).toEqual([{ x: 10, y: 20 }]);
+    expect(calls.some((c) => c.m === 'drawImage')).toBe(false);
+    // The whole-tier gate sits alongside `!rc`, not the per-cell bypass
+    // matrix — no stats event, no cache growth, exactly as if rc were null.
+    expect(rc.cache.stats().entries).toBe(0);
+  });
 
   it('liveOnly=true (pending icon at the seam) → live paint even for a cacheable renderer', () => {
     const { rc, stats } = makeCacheCtx();

@@ -15,7 +15,13 @@ export interface WorkerClientHandlers {
    *  ignores it on the cheap path. */
   onModelUpdated: (visibleCount: number, groupKeys?: string[], expandedKeys?: string[] | null) => void;
   onAsyncTransactionsFlushed: (results: TransactionResult[]) => void;
-  onError: (error: string) => void;
+  /** A-L1 (production hardening) — the worker's `error` / `messageerror`
+   *  event, or a watchdog trip on `init()` never getting a `ready` reply.
+   *  Every in-flight `pending` request is rejected with `error` BEFORE
+   *  this fires (except `'init-timeout'`, which does not reject `init()` —
+   *  the worker may still be alive and just slow; it's a loud diagnostic,
+   *  not a teardown). Previously dead wiring — nothing ever invoked this. */
+  onError: (error: Error, context: 'error' | 'messageerror' | 'init-timeout') => void;
   /** Cycle 5 / Task 8 — worker has measured a chunk of autoHeight rows and
    *  is shipping back the updated per-row heights for the Fenwick index.
    *  `rowStart` is the global visible-row index of `heights[0]`. */
@@ -51,6 +57,20 @@ export interface WorkerLike {
    *  may omit it (the listener closure is GC'd with the mock anyway). */
   removeEventListener?(type: 'message', cb: (e: { data: unknown }) => void): void;
   terminate(): void;
+  /** A-L1 (production hardening) — loud-failure hooks, wired as PROPERTY
+   *  assignments (the `AbstractWorker` / `Worker` IDL attributes real Web
+   *  Workers support natively) rather than `addEventListener('error' |
+   *  'messageerror', …)`. Deliberate: dozens of existing kernel/ext test
+   *  doubles implement only `{addEventListener, postMessage, terminate}`
+   *  and route EVERY `addEventListener` registration through one shared
+   *  'message'-shaped dispatch channel (they only ever emulate the
+   *  message channel). Registering the new hooks that way would fire
+   *  WorkerClient's error handler on every ordinary worker reply across
+   *  the whole suite. Property assignment is a no-op for those doubles
+   *  (nothing reads the property) while working correctly on a real
+   *  Worker. Optional so minimal test stubs can omit them entirely. */
+  onerror?: ((e: { message?: string; error?: unknown }) => void) | null;
+  onmessageerror?: ((e: { data?: unknown }) => void) | null;
 }
 
 interface Pending { resolve: (v: unknown) => void; reject: (e: Error) => void; }
@@ -74,6 +94,17 @@ export class WorkerClient {
   private pendingTxnResults: TransactionResult[] = [];
   private destroyed = false;
   private readonly messageHandler: (e: { data: unknown }) => void;
+  private readonly errorHandler: (e: { message?: string; error?: unknown }) => void;
+  private readonly messageErrorHandler: (e: { data?: unknown }) => void;
+
+  /** A-L1 — worker `init()` never got a `ready` reply within this window
+   *  (CSP block, bundler failure, or an unhandled exception before the
+   *  worker's own message loop starts — none of which reliably fire a
+   *  Worker `error` event across browsers) trips a loud diagnostic. Does
+   *  NOT reject `init()`'s promise — the worker may still be alive and
+   *  just slow; this is a floor so the failure is never silent, not a
+   *  teardown. */
+  private static readonly INIT_TIMEOUT_MS = 10_000;
 
   constructor(private worker: WorkerLike, private handlers: WorkerClientHandlers) {
     this.messageHandler = (e) => {
@@ -81,6 +112,34 @@ export class WorkerClient {
       this.onMessage(e.data as WorkerResponse | WorkerPush);
     };
     worker.addEventListener('message', this.messageHandler);
+
+    this.errorHandler = (e) => {
+      if (this.destroyed) return;
+      const detail = typeof e?.message === 'string' && e.message ? e.message : 'unknown error';
+      const err = e?.error instanceof Error ? e.error : new Error(`VelocityGrid worker error: ${detail}`);
+      this.failPending(err);
+      this.handlers.onError(err, 'error');
+    };
+    worker.onerror = this.errorHandler;
+
+    this.messageErrorHandler = () => {
+      if (this.destroyed) return;
+      const err = new Error('VelocityGrid worker sent a message that could not be deserialized (messageerror)');
+      this.failPending(err);
+      this.handlers.onError(err, 'messageerror');
+    };
+    worker.onmessageerror = this.messageErrorHandler;
+  }
+
+  /** Reject every in-flight request with `err` and clear `pending`. Shared
+   *  by the error/messageerror hooks and `destroy()`. The promises
+   *  themselves already carry an internal silent `.catch` attached at
+   *  creation time (see `send`) — rejecting them here never surfaces as a
+   *  Node `unhandledRejection` even if the original caller hasn't (or
+   *  never will) attach its own handler. */
+  private failPending(err: Error): void {
+    this.pending.forEach((p) => p.reject(err));
+    this.pending.clear();
   }
 
   private scheduleFlush(): void {
@@ -151,25 +210,54 @@ export class WorkerClient {
    *  worker. Sends transferables for the heights array to avoid a copy. */
   measureTextResponse(batchId: number, heights: Float32Array): Promise<void> {
     const id = this.nextId++;
-    return new Promise<void>((resolve, reject) => {
+    const p = new Promise<void>((resolve, reject) => {
       this.pending.set(id, { resolve: () => resolve(), reject });
       this.worker.postMessage(
         { id, type: 'measureTextResponse', payload: { batchId, heights } },
         [heights.buffer as ArrayBuffer],
       );
     });
+    // See `send`'s comment — internal-only, prevents an unhandled rejection
+    // when `destroy()` / the error hooks bulk-reject before a caller has
+    // (or ever will have) attached its own handler.
+    p.catch(() => {});
+    return p;
   }
 
   private send<T>(req: Omit<WorkerRequest, 'id'>): Promise<T> {
     const id = this.nextId++;
-    return new Promise<T>((resolve, reject) => {
+    const p = new Promise<T>((resolve, reject) => {
       this.pending.set(id, { resolve: resolve as Pending['resolve'], reject });
       this.worker.postMessage({ ...req, id });
     });
+    // A-L1 — swallow rejections on this internal reference so bulk-fail
+    // paths (destroy(), worker error/messageerror) never register as an
+    // unhandled rejection just because the caller hasn't attached its own
+    // `.then`/`.catch` yet (or a fire-and-forget caller never will). `p` is
+    // the SAME object returned below, so real callers still observe the
+    // rejection normally — this only marks `p` itself as "handled" from
+    // Node's perspective, it never swallows the reason.
+    p.catch(() => {});
+    return p;
   }
 
   init(payload: WorkerInitPayload): Promise<void> {
-    return this.send<{ type: 'ready' }>({ type: 'init', payload }).then(() => {});
+    const p = this.send<{ type: 'ready' }>({ type: 'init', payload }).then(() => {});
+    const timer = setTimeout(() => {
+      if (this.destroyed) return;
+      const err = new Error(
+        'VelocityGrid worker failed to initialize within 10s — likely a worker load failure '
+        + '(CSP / bundler / network) or an unhandled exception during worker startup.',
+      );
+      // eslint-disable-next-line no-console
+      console.error('[velocity-grid]', err.message);
+      this.handlers.onError(err, 'init-timeout');
+    }, WorkerClient.INIT_TIMEOUT_MS);
+    // Node-only: don't hold the process open for the watchdog. No-op (and
+    // absent) in browsers, where it doesn't matter either way.
+    (timer as unknown as { unref?: () => void }).unref?.();
+    p.then(() => clearTimeout(timer), () => clearTimeout(timer));
+    return p;
   }
 
   setRowData(rows: unknown[], heightsByRowId?: Map<string, number>): Promise<{ count: number; visibleCount: number; groupKeys?: string[]; expandedKeys?: string[] | null }> {
@@ -632,9 +720,16 @@ export class WorkerClient {
     //     handlers / VelocityGrid instance) — explicit removal lets GC reclaim the
     //     graph immediately rather than waiting for the Worker itself.
     this.worker.removeEventListener?.('message', this.messageHandler);
+    // A-L1 — same rationale for the loud-failure hooks: drop the
+    // references before terminate() so nothing can fire into a destroyed
+    // client, and GC isn't held up by a Worker→WorkerClient reference cycle.
+    this.worker.onerror = null;
+    this.worker.onmessageerror = null;
     this.worker.terminate();
-    this.pending.forEach((p) => p.reject(new Error('worker terminated')));
-    this.pending.clear();
+    // `failPending` rejects via the pre-attached internal `.catch` (see
+    // `send`) — never an unhandled rejection even if the original caller
+    // hasn't attached its own handler yet.
+    this.failPending(new Error('worker terminated'));
     // Clear the queued-push state so any late-arriving callback that
     // somehow survives can't re-emit stale data.
     this.pendingModelUpdated = null;

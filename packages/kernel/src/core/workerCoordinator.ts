@@ -54,8 +54,12 @@ export interface WorkerCoordinatorDeps {
    *  rowId order for `options.postSortRows` evaluation. Reply via
    *  `postSortRowsResult(callId, reordered)`. */
   onPostSortRowsCandidates(rowIds: string[], callId: number): void;
-  /** Worker-level error surface — logged by VelocityGrid as `[velocity-grid] worker error: …`. */
-  onError(message: string): void;
+  /** A-L1 (production hardening) — worker-level error surface: a genuine
+   *  `error` / `messageerror` event from the underlying Worker, or an
+   *  `init()` watchdog trip. Logged by VelocityGrid as
+   *  `[velocity-grid] worker error: …`. Previously dead wiring — nothing
+   *  ever invoked this. */
+  onError(error: Error, context: 'error' | 'messageerror' | 'init-timeout'): void;
 
   /** Main-side chunk-reply handler — invoked after every successful
    *  `getViewport` round-trip the coordinator dispatched on behalf of
@@ -95,7 +99,7 @@ export class WorkerCoordinator {
       onMeasureTextRequest: (batchId, items) => this.deps.onMeasureTextRequest(batchId, items),
       onExternalFilterCandidates: (rowIds, callId) => this.deps.onExternalFilterCandidates(rowIds, callId),
       onPostSortRowsCandidates: (rowIds, callId) => this.deps.onPostSortRowsCandidates(rowIds, callId),
-      onError: (msg) => this.deps.onError(msg),
+      onError: (err, context) => this.deps.onError(err, context),
     };
     this.client = new WorkerClient(worker, handlers);
   }

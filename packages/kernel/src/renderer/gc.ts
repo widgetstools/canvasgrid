@@ -58,6 +58,16 @@ export interface CachedContext2D extends CanvasRenderingContext2D {
    *  would otherwise persist, silently skipping writes equal to the stale
    *  cached value). Call it OUTSIDE any `cache.save()` frame. */
   resetCache(): void;
+  /** Production hardening — computed once at attach time via
+   *  `typeof raw.drawImage === 'function'`. Always `true` for a real
+   *  `CanvasRenderingContext2D` (drawImage is a required member); `false`
+   *  under a partial canvas mock that only stubs the methods a given test
+   *  actually exercises (e.g. `packages/ext/tests/setup.ts`'s happy-dom
+   *  2d-context stub — fillRect/fillText/etc. but no drawImage). Every
+   *  raster-cache blit call site (Tier-1 cell bitmaps today) gates on this
+   *  so a context that can't blit degrades to live painting instead of
+   *  throwing `TypeError: drawImage is not a function`. */
+  supportsDrawImage: boolean;
 }
 
 // Matches 'transparent' or 'rgba(...)' / 'hsla(...)'. Group 4 = alpha number.
@@ -141,6 +151,7 @@ export function attachGcCache(
       gc.fillRect(x, y, w, h);
     }
   };
+  cached.supportsDrawImage = typeof (gc as unknown as { drawImage?: unknown }).drawImage === 'function';
   return cached;
 }
 

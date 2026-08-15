@@ -253,9 +253,24 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     if (this.grouped() && this.skeleton !== null && !this.host.isDestroyed()) {
       this.rebuildIndex();
       const band = this.refreshBand();
-      void this.hydrateRange(band.rowStart, band.rowEnd).then(() => {
-        if (!this.host.isDestroyed()) this.host.requestViewport();
-      });
+      // A-L1 / baseline-hardening — this dispatch is intentionally
+      // fire-and-forget (the chevron paints immediately; this fills
+      // leaves after). Nothing else awaits or observes it, so a rejected
+      // `hydrateRange` (most commonly: the grid was destroyed mid-flight,
+      // which rejects every in-flight worker round-trip) must be handled
+      // HERE or it surfaces as a Node unhandledRejection. Destroy-mid-flight
+      // is expected and silent; any other failure still gets a loud
+      // console.error — this is the only place this call can be observed.
+      void this.hydrateRange(band.rowStart, band.rowEnd).then(
+        () => {
+          if (!this.host.isDestroyed()) this.host.requestViewport();
+        },
+        (err: unknown) => {
+          if (!this.host.isDestroyed()) {
+            console.error('[velocity-grid] SSRM v2 refreshExpansion hydrate failed:', err);
+          }
+        },
+      );
     }
     return this.enqueue(() => this.refreshExpansionInner());
   }

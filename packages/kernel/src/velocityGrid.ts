@@ -3255,7 +3255,13 @@ export class VelocityGrid<TRow = any> {
         // the cached row data and reply with the (possibly re-ordered)
         // array.
         onPostSortRowsCandidates: (rowIds, callId) => this.runPostSortRowsCandidates(rowIds, callId),
-        onError: (msg) => console.error('[velocity-grid] worker error:', msg),
+        // A-L1 (production hardening) — previously dead wiring; the worker
+        // never had an `error`/`messageerror` listener registered at all,
+        // so a worker load failure (CSP/bundler) or mid-session crash was
+        // completely silent (empty grid, frozen UI, zero console output).
+        // `context` distinguishes a genuine Worker `error`/`messageerror`
+        // event from the `init()` 10s watchdog.
+        onError: (err, context) => console.error(`[velocity-grid] worker error (${context}):`, err),
         onViewportChunk: (opts, chunk, stickyAncestors) =>
           this.handleViewportChunk(opts, chunk, stickyAncestors),
         isDestroyed: () => this.destroyed,

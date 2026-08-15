@@ -46,6 +46,28 @@ describe('parseAlpha', () => {
   });
 });
 
+describe('attachGcCache — supportsDrawImage (production hardening)', () => {
+  it('is true when the underlying 2d context implements drawImage', () => {
+    const ctx: any = {
+      fillStyle: '', save() {}, restore() {}, clearRect() {}, fillRect() {},
+      drawImage() {},
+    };
+    const canvas: any = { getContext: () => ctx };
+    const gc = attachGcCache(canvas as any);
+    expect(gc.supportsDrawImage).toBe(true);
+  });
+
+  it('is false when the underlying 2d context does not implement drawImage — the raster-cache blit paths gate on this instead of throwing', () => {
+    const ctx: any = {
+      fillStyle: '', save() {}, restore() {}, clearRect() {}, fillRect() {},
+      // No drawImage — mirrors packages/ext/tests/setup.ts's partial happy-dom stub.
+    };
+    const canvas: any = { getContext: () => ctx };
+    const gc = attachGcCache(canvas as any);
+    expect(gc.supportsDrawImage).toBe(false);
+  });
+});
+
 describe('attachGcCache', () => {
   it('coalesces same-value writes — write through to ctx only on change', () => {
     const { canvas, writeLog } = makeCanvasWithSpyCtx();
