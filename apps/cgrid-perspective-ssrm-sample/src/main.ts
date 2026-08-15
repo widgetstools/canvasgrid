@@ -145,7 +145,9 @@ void (async () => {
   if (catalogChanged || !dataController.getActiveProviderId()) {
     await dataController.setActiveProvider(PERSPECTIVE_SSRM_PROVIDER_ID, { force: true });
   }
-})();
+})().catch((err) => {
+  console.error('[cgrid-perspective-ssrm-sample] startup sequence failed', err);
+});
 
 (window as unknown as { __pspSample: unknown }).__pspSample = {
   ext,

@@ -396,6 +396,9 @@ export class ServerSideRowModelV2Controller<TRow = any> {
       console.warn('[velocity-grid] SSRM v2: ensureFullyHydrated is unsupported while grouped — the skeleton path serves grouping natively');
       return false;
     }
+    // Starts true: a genuinely empty book (flatRowCount stays 0 after the
+    // probe fetch) is a legitimate, fully-hydrated result, not a failure.
+    let hydrated = true;
     await this.enqueue(async () => {
       // Captured HERE, not re-read at the `postHydrate` call below — a
       // purge (`destroy()` bumps `dataGen` outside the chain) can land in
@@ -414,9 +417,23 @@ export class ServerSideRowModelV2Controller<TRow = any> {
         if (row === undefined) break;
         rows.push(row);
       }
+      // `ensureRangeInner` above can LRU-evict its own earlier blocks under
+      // `maxCachedLeafBlocks` pressure for a book larger than the cache —
+      // the collection loop then breaks at the first hole (often i=0) and
+      // `rows` is short (or empty). Report that honestly: a truncated book
+      // must NOT be treated as a successful hydrate, or the caller enables
+      // the client pipeline over data it doesn't actually have.
+      hydrated = rows.length === this.flatRowCount;
+      if (!hydrated) {
+        console.warn(
+          `[velocity-grid] SSRM v2: ensureFullyHydrated collected ${rows.length}/${this.flatRowCount} rows `
+          + '(LRU eviction dropped earlier blocks under memory pressure — the book is larger than '
+          + 'maxCachedLeafBlocks × blockSize). Declining to enable the client pipeline over a truncated book.',
+        );
+      }
       await this.postHydrate(0, rows, this.flatRowCount, true, gen, index);
     });
-    return true;
+    return hydrated;
   }
 
   /**
@@ -1249,6 +1266,13 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     const run = (): Promise<void> => new Promise<void>((resolve) => {
       if (gen !== this.dataGen || this.host.isDestroyed()) {
         cache.delete(blockIdx);
+        // Same reasoning as the grouped-path twin above: only reachable via
+        // `isDestroyed()`-with-unchanged-gen (a `gen` mismatch already went
+        // through `wakeOnGenChange()` at the bump site) — wake here too so
+        // a waiter coalesced onto this exact block doesn't sit until the
+        // controller's own `destroy()` bumps `dataGen` for an unrelated
+        // reason.
+        this.wakeWaiters();
         resolve();
         return;
       }

@@ -308,18 +308,26 @@ export function normalizeInstanceDoc(raw: unknown): InstanceConfigDoc | null {
 /**
  * Host persistence for one grid instance. Extends ProfileStore so
  * ProfilesController can use it unchanged (single-slot facade).
+ *
+ * Final review (D-F12) — any method here that writes (`saveBundle`,
+ * `saveWorkspace`, `setActiveProfileId`) MAY REJECT when the store refuses
+ * the write — e.g. `LocalStorageConfigSession`'s forward-compat guard
+ * declines to persist over a document a NEWER build already wrote. Callers
+ * must handle the rejection (do not fire-and-forget without a `.catch`).
  */
 export interface ConfigSession extends ProfileStore {
   readonly gridId: string;
   /** @deprecated Prefer loadWorkspace — returns flat InstanceConfigDoc. */
   loadBundle(): Promise<InstanceConfigDoc>;
-  /** @deprecated Prefer saveWorkspace. */
+  /** @deprecated Prefer saveWorkspace. May reject — see interface doc. */
   saveBundle(bundle: InstanceConfigDoc): Promise<void>;
   loadWorkspace(): Promise<WorkspaceConfig | null>;
+  /** May reject — see interface doc. */
   saveWorkspace(config: WorkspaceConfig): Promise<void>;
   clearWorkspace(): Promise<void>;
   hasWorkspace(): Promise<boolean>;
   getActiveProfileId(): Promise<string>;
+  /** May reject — see interface doc. */
   setActiveProfileId(id: string): Promise<void>;
 }
 
@@ -379,10 +387,32 @@ export class LocalStorageConfigSession implements ConfigSession {
     // this build doesn't know about AND stamp docVersion back down to
     // INSTANCE_DOC_VERSION — silently destroying the newer build's document.
     // Refuse the write and say so loudly instead.
+    //
+    // Final review — refusing was already correct; the SIGNAL was not.
+    // Every `saveWorkspace`/`saveBundle`/`setActiveProfileId` funnels
+    // through here and used to just `return`, so the caller's promise
+    // resolved successfully and `ProfilesController.save()` marked the
+    // profile clean while nothing had actually persisted. A caller-facing
+    // `throw` is the loud-but-not-crashing idiom this branch uses
+    // elsewhere (see e.g. `WorkerClient`'s init-timeout) — every call site
+    // either already has, or now has, a `.catch`/`try` that surfaces it
+    // rather than letting it become an unhandled rejection. Logged on
+    // EVERY refusal (not `warnFutureDoc`'s warn-once-per-version, which
+    // exists for the READ path's "runs on every load" noise problem — a
+    // refused SAVE is a much rarer, more consequential event, and
+    // deduping it against an earlier READ warning for the same version
+    // would make every save after the first completely silent).
     const future = this.storedFutureVersion();
     if (future != null) {
-      warnFutureDoc(future, 'this save was DISCARDED rather than downgrading the stored document');
-      return;
+      console.error(
+        `[velocity-grid-ext] stored config is docVersion ${future}, newer than this `
+        + `build understands (${INSTANCE_DOC_VERSION}). This save was DISCARDED rather than `
+        + 'downgrading the stored document. Clear the stored config for this grid to save from this build.',
+      );
+      throw new Error(
+        `[velocity-grid-ext] save refused: stored config is docVersion ${future}, newer than this `
+        + `build (${INSTANCE_DOC_VERSION})`,
+      );
     }
     const {
       docVersion: _dv,

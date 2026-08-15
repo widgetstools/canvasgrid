@@ -36,6 +36,9 @@ export interface ProfileSnapshot {
 export interface ProfileStore {
   list(): Promise<ProfileMeta[]>;
   load(id: string): Promise<ProfileSnapshot | null>;
+  /** May reject when the underlying store refuses the write — e.g.
+   *  `ConfigSession`'s D-F12 forward-compat guard. Do not fire-and-forget
+   *  without a `.catch`. */
   save(id: string, snap: ProfileSnapshot): Promise<void>;
   remove(id: string): Promise<void>;
 }
@@ -48,15 +51,23 @@ export interface ProfileController {
   onDirtyChange(fn: (dirty: boolean) => void): Unsub;
   /** Fires when the saved profile list / active id changes. */
   onListChange(fn: () => void): Unsub;
+  /** May reject when the backing store refuses the write — e.g.
+   *  `ConfigSession`'s D-F12 forward-compat guard. Do not fire-and-forget
+   *  without a `.catch`. */
   save(): Promise<void>;
-  /** Save current view under a new name; becomes the active profile. */
+  /** Save current view under a new name; becomes the active profile. May
+   *  reject — see interface doc. */
   saveAs(name: string): Promise<string>;
   /** Reload the active saved snapshot, discarding unsaved grid edits. */
   discard(): Promise<void>;
   rename(id: string, name: string): Promise<void>;
   remove(id: string): Promise<void>;
+  /** May reject — see interface doc. */
   switchTo(id: string): Promise<void>;
-  /** Load initial profile or seed a default snapshot. */
+  /** Load initial profile or seed a default snapshot. When the seeded
+   *  workspace itself can't be persisted (e.g. `ConfigSession`'s D-F12
+   *  forward-compat guard), this rejects — callers (including a
+   *  fire-and-forget ctor call) must handle it. */
   bootstrap(): Promise<void>;
   list(): Promise<ProfileMeta[]>;
 }

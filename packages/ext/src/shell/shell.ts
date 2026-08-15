@@ -362,7 +362,12 @@ export class ShellLayout {
     const ctx = this.profilesCtx();
     try {
       if (ctx?.profiles.isDirty() || ctx?.session.isDirty()) await ctx.profiles.save();
-    } catch { /* store miss — still close */ }
+    } catch (err) {
+      // Still close (store miss / a refused save from configSession's
+      // D-F12 guard must not trap the user in the drawer) — but a swallowed
+      // catch here previously left a refused save completely invisible.
+      console.error('[velocity-grid-ext] profile save failed while closing the drawer', err);
+    }
     ctx?.session.clear();
     this.closeSettings();
   }

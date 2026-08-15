@@ -125,6 +125,7 @@ describe('forward-compat: future docVersion (D-F12)', () => {
 
   it('a future-version doc survives a full load/save cycle byte-for-byte', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const key = instanceStorageKey('gf');
     const onDisk = JSON.stringify(FUTURE);
     localStorage.setItem(key, onDisk);
@@ -136,15 +137,42 @@ describe('forward-compat: future docVersion (D-F12)', () => {
     expect(loaded).toBeTruthy();
     expect(localStorage.getItem(key)).toBe(onDisk);
 
-    // Save: refused rather than downgraded.
-    await s.saveWorkspace({ version: 4, columnState: [{ colId: 'b', width: 999 }] } as any);
+    // Save: refused rather than downgraded — AND the caller is told, not
+    // just left with a resolved promise and nothing on disk (final review).
+    await expect(
+      s.saveWorkspace({ version: 4, columnState: [{ colId: 'b', width: 999 }] } as any),
+    ).rejects.toThrow(/save refused/);
     expect(localStorage.getItem(key)).toBe(onDisk);
 
-    await s.setActiveProfileId('other');
+    await expect(s.setActiveProfileId('other')).rejects.toThrow(/save refused/);
     expect(localStorage.getItem(key)).toBe(onDisk);
 
     expect(warn).toHaveBeenCalled();
+    expect(error).toHaveBeenCalled();
     warn.mockRestore();
+    error.mockRestore();
+  });
+
+  it('every refused save is logged, not just the first (unlike the read-path warn-once)', async () => {
+    // `warnFutureDoc`'s warn-once-per-version dedup exists for the READ
+    // path (`loadWorkspace` runs on every load — must not become console
+    // spam). A refused SAVE is a much rarer, user-triggered event; deduping
+    // it against the read-path warning for the same version would make
+    // every save after the first completely silent.
+    const key = instanceStorageKey('gs');
+    localStorage.setItem(key, JSON.stringify(FUTURE));
+    const s = new LocalStorageConfigSession('gs');
+
+    // Exhaust the read-path's warn-once for this version first.
+    await s.loadWorkspace();
+
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(s.saveWorkspace({ version: 4 } as any)).rejects.toThrow();
+    await expect(s.saveWorkspace({ version: 4 } as any)).rejects.toThrow();
+    await expect(s.saveWorkspace({ version: 4 } as any)).rejects.toThrow();
+
+    expect(error).toHaveBeenCalledTimes(3);
+    error.mockRestore();
   });
 
   it('a CURRENT-version doc is still rewritten/migrated as before', async () => {

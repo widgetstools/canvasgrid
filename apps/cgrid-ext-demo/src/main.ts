@@ -333,7 +333,9 @@ wireRules(ext.grid);
 
 // Engines register state modules after VelocityGridExt's ctor bootstrap — re-apply
 // so editSettings / calc / rules slices from the saved profile actually land.
-void ext.reapplyActiveProfile();
+ext.reapplyActiveProfile().catch((err) => {
+  console.error('[cgrid-ext-demo] failed to reapply the active profile', err);
+});
 
 // Expose for console poking + the hermetic E2E suite.
 (window as unknown as { __ext: unknown }).__ext = ext;

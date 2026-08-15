@@ -237,6 +237,123 @@ describe('VelocityGridExt', () => {
     expect(setStateSpy).not.toHaveBeenCalled();
   });
 
+  it('a store whose write-path rejects (D-F12 forward-compat refusal) does not produce an unhandled rejection, and the view state still applies (final review)', async () => {
+    // Reproduces the scenario a real LocalStorageConfigSession hits when
+    // the stored doc was written by a newer build: `loadWorkspace` returns
+    // real content (a future doc still normalizes to a readable doc), but
+    // the bookkeeping write `setActiveProfileId` — reached from
+    // `runBootstrap`'s `syncActivePointer()` — rejects. Before the final
+    // review fix, `ctor → void this.profiles.bootstrap()` had no `.catch`,
+    // so this was a genuine unhandled rejection on ordinary startup
+    // whenever a future-versioned doc was on disk — not a rare event.
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const restoredState = { version: 4, columnState: [{ colId: 'a', width: 123 }] } as WorkspaceConfig;
+    const store: ConfigSession = {
+      gridId: 'g-future-doc',
+      async loadBundle() { return { docVersion: 1, gridLevelData: {} } as any; },
+      async saveBundle() {},
+      async loadWorkspace() { return restoredState; },
+      async saveWorkspace() { throw new Error('save refused: stored config is a newer docVersion'); },
+      async clearWorkspace() {},
+      async hasWorkspace() { return true; },
+      async getActiveProfileId() { return 'default'; },
+      async setActiveProfileId() { throw new Error('save refused: stored config is a newer docVersion'); },
+      async list() { return []; },
+      async load() { return null; },
+      async save() {},
+      async remove() {},
+    };
+
+    const unhandled: unknown[] = [];
+    const onUnhandled = (err: unknown) => unhandled.push(err);
+    process.on('unhandledRejection', onUnhandled);
+
+    const ext = new VelocityGridExt(host, { ...opts(), ext: { profiles: { store, initialId: 'default' } } });
+    const setStateSpy = vi.spyOn(ext.grid, 'setState');
+
+    // `profiles`/`ctx` are private on VelocityGridExt — internals access
+    // matching this test suite's established pattern elsewhere.
+    interface Internals {
+      profiles: { onListChange: (fn: () => void) => () => void; isDirty: () => boolean };
+    }
+    const internals = ext as unknown as Internals;
+    let notified = 0;
+    internals.profiles.onListChange(() => { notified++; });
+
+    // Drain every microtask/macrotask the ctor's fire-and-forget bootstrap
+    // chain touches (loadWorkspace → applyWorkspace/setState →
+    // syncActivePointer's rejected write → catch-and-log → setDirty/notify).
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    process.off('unhandledRejection', onUnhandled);
+    expect(unhandled).toEqual([]);
+
+    // The REAL view state still applied — a refused bookkeeping write must
+    // not roll back or skip the data that already landed successfully.
+    expect(setStateSpy).toHaveBeenCalled();
+    // …and the list/dirty sync that used to be skipped by the propagated
+    // throw now still runs.
+    expect(notified).toBeGreaterThan(0);
+    expect(internals.profiles.isDirty()).toBe(false);
+
+    ext.destroy();
+  });
+
+  it('a store with NO existing workspace whose seed save rejects reaches the OUTER ctor catch, not just syncActivePointer (final review round 2)', async () => {
+    // Companion to the previous test — that scenario never actually
+    // exercises `velocityGridExt.ts`'s own `bootstrap().catch(...)`,
+    // because `syncActivePointer()`'s own try/catch absorbs the rejection
+    // before it can propagate. This scenario is the one that genuinely
+    // needs the outer catch: `loadWorkspace()` returning null (e.g. a real
+    // LocalStorageConfigSession reading a future-version doc whose shape
+    // this build recognizes NO root workspace keys in — normalizes to
+    // `hasWorkspaceContent() === false`) takes `runBootstrap`'s SEED
+    // branch (`await this.save()`), whose `saveWorkspace` call rejects and
+    // propagates all the way out of `bootstrap()` uncaught by
+    // `syncActivePointer` (never reached on this branch).
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const store: ConfigSession = {
+      gridId: 'g-future-doc-no-content',
+      async loadBundle() { return { docVersion: 1, gridLevelData: {} } as any; },
+      async saveBundle() {},
+      async loadWorkspace() { return null; },
+      async saveWorkspace() { throw new Error('save refused: stored config is a newer docVersion'); },
+      async clearWorkspace() {},
+      async hasWorkspace() { return false; },
+      async getActiveProfileId() { return 'default'; },
+      async setActiveProfileId() { throw new Error('save refused: stored config is a newer docVersion'); },
+      async list() { return []; },
+      async load() { return null; },
+      async save() {},
+      async remove() {},
+    };
+
+    const unhandled: unknown[] = [];
+    const onUnhandled = (err: unknown) => unhandled.push(err);
+    process.on('unhandledRejection', onUnhandled);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const ext = new VelocityGridExt(host, { ...opts(), ext: { profiles: { store, initialId: 'default' } } });
+
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    process.off('unhandledRejection', onUnhandled);
+    expect(unhandled).toEqual([]);
+    // The ctor's own bootstrap().catch(...) is what logged this, not
+    // syncActivePointer's internal one (that path is never reached here).
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining('profile bootstrap failed'),
+      expect.any(Error),
+    );
+
+    error.mockRestore();
+    ext.destroy();
+  });
+
   it('warns when both kernel persistState and an Ext ConfigSession are active (D-F6)', () => {
     const host = document.createElement('div');
     document.body.appendChild(host);

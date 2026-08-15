@@ -268,6 +268,18 @@ export async function handleDataPipeline(
             state.pendingTouched.delete(id);
           }
         }
+        // Final review — under the sparse path `visibleCache` IS
+        // `state.ssrmOrder` (same array, mutated in place above), so
+        // nulling it here would be a wasted rebuild. Under
+        // `ssrmClientPipeline` it is a separately-computed CSRM-derived
+        // array this handler does NOT touch — left alone, it keeps
+        // referencing ids the store no longer holds (blank rows once
+        // repainted, and `AggPass` totals silently excluding the evicted
+        // rows while `rowCount` still counts them).
+        if (state.ssrmClientPipeline) {
+          state.visibleCache = null;
+          state.visibleCachePromise = null;
+        }
       }
       post({
         id: req.id,

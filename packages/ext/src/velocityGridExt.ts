@@ -174,7 +174,17 @@ export class VelocityGridExt<TRow = any> {
       // Seed / restore the active profile so the switcher is never empty and
       // `initialId` actually loads. Fire-and-forget — chrome re-syncs via
       // onListChange when the store settles.
-      void this.profiles.bootstrap();
+      //
+      // Final review — `bootstrap()` can now reject (configSession's D-F12
+      // forward-compat guard refuses to persist over a newer build's
+      // document, and `syncActivePointer()`'s write is part of the same
+      // bootstrap flow). That guard fires on ordinary startup whenever the
+      // stored config was written by a newer build — not a rare event —
+      // so this fire-and-forget needs its own catch rather than relying on
+      // an unhandled-rejection floor.
+      this.profiles.bootstrap().catch((err) => {
+        console.error('[velocity-grid-ext] profile bootstrap failed', err);
+      });
     } catch (e) {
       try { this._grid.destroy(); } catch { /* best-effort — already broken */ }
       throw e;
@@ -248,7 +258,14 @@ export class VelocityGridExt<TRow = any> {
     }
     const cfg = this.getConfig();
     if (this.configSession) {
-      void this.configSession.saveWorkspace(cfg);
+      // `persistConfig()` is synchronous (`void`-returning) by design, so a
+      // rejected save can only be surfaced here, not propagated to the
+      // caller. configSession's D-F12 forward-compat guard refuses to
+      // persist over a newer build's document and (final review) now
+      // rejects rather than silently no-opping.
+      this.configSession.saveWorkspace(cfg).catch((err) => {
+        console.error('[velocity-grid-ext] persistConfig failed', err);
+      });
       return;
     }
     saveConfigToLocalStorage(gid, cfg, this.storage);

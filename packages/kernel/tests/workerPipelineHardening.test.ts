@@ -11,6 +11,14 @@
  *       an `await`, a concurrent request must JOIN the in-flight build rather
  *       than start a second one that interleaves writes to
  *       groupOutput/pivotOut/groupInputIds/visibleCache.
+ *
+ * Final review — `ssrmEvict` cache invalidation under the client pipeline:
+ *       under sparse SSRM, `visibleCache` IS `state.ssrmOrder` (same array,
+ *       mutated in place by `ssrmEvict`), so no separate invalidation is
+ *       needed. Once `ssrmSetClientPipeline(true)` is on, `visibleCache` is
+ *       a SEPARATELY computed CSRM-derived array that `ssrmEvict` does not
+ *       touch — left uninvalidated, it keeps referencing ids the store no
+ *       longer holds after an eviction.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { WorkerClient } from '../src/worker/client';
@@ -136,5 +144,66 @@ describe('CSRM worker — single-flight visible-build pipeline (A-C3)', () => {
     expect(Array.from(r1.chunk.rowIds)).toEqual(Array.from(r2.chunk.rowIds));
     expect(r1.chunk.rowCount).toBe(r2.chunk.rowCount);
     expect(r1.chunk.rowCount).toBe(4);
+  });
+});
+
+describe('ssrmEvict invalidates the CSRM-derived visibleCache under the client pipeline', () => {
+  it('an evicted row disappears from the NEXT viewport fetch once the client pipeline is on', async () => {
+    const w = new FakeWorker();
+    const client = new WorkerClient(w as never, {
+      onModelUpdated: vi.fn(),
+      onAsyncTransactionsFlushed: vi.fn(),
+      onError: vi.fn(),
+    } as never);
+    await client.init({ rowIdField: 'id', columns: COLUMNS });
+
+    // Seed a sparse-SSRM book directly (bypassing the controller — this is
+    // a worker-protocol-level test) and turn on the client pipeline, so
+    // `visibleCache` becomes the separately-computed CSRM-derived array
+    // this fix targets rather than the aliased `ssrmOrder`.
+    await client.ssrmHydrate({ rowCount: ROWS.length, startRow: 0, rows: ROWS, reset: true });
+    await client.ssrmSetClientPipeline(true);
+
+    // Populate visibleCache with all 4 rows (`getRowIndexForId` resolves
+    // through the same `visibleAsync()` cache `getViewport` does —
+    // `chunk.rowIds` is a `Uint32Array` of hashed numeric ids, not the
+    // original string ids, so this is the string-id-facing way to probe
+    // cache membership).
+    await client.getViewport({ rowStart: 0, rowEnd: 4, columns: ['name', 'price'] });
+    expect(await client.getRowIndexForId('b')).toBe(1);
+
+    // Evict a row the LRU dropped — under the client pipeline this must
+    // invalidate visibleCache, not just the store.
+    await client.ssrmEvict(['b']);
+
+    // The evicted id must be gone from the NEXT resolve. Pre-fix, the
+    // stale cached array (still containing 'b') short-circuits the
+    // rebuild and 'b' keeps resolving to an index with no backing row
+    // data — a blank row on the next repaint, and AggPass totals silently
+    // excluding it while rowCount still counted it.
+    expect(await client.getRowIndexForId('b')).toBe(-1);
+    const after = await client.getViewport({ rowStart: 0, rowEnd: 3, columns: ['name', 'price'] });
+    expect(after.chunk.rowCount).toBe(3);
+  });
+
+  it('under the SPARSE path (client pipeline off), ssrmEvict needs no separate invalidation — ssrmOrder IS visibleCache', async () => {
+    const w = new FakeWorker();
+    const client = new WorkerClient(w as never, {
+      onModelUpdated: vi.fn(),
+      onAsyncTransactionsFlushed: vi.fn(),
+      onError: vi.fn(),
+    } as never);
+    await client.init({ rowIdField: 'id', columns: COLUMNS });
+    await client.ssrmHydrate({ rowCount: ROWS.length, startRow: 0, rows: ROWS, reset: true });
+
+    await client.getViewport({ rowStart: 0, rowEnd: 4, columns: ['name', 'price'] });
+    expect(await client.getRowIndexForId('b')).toBe(1);
+
+    await client.ssrmEvict(['b']);
+
+    // ssrmEvict resets the evicted slot to '' in ssrmOrder directly (the
+    // same array visibleCache aliases) — the next resolve reflects it
+    // without needing an explicit cache null.
+    expect(await client.getRowIndexForId('b')).toBe(-1);
   });
 });

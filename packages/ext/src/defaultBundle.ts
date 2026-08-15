@@ -42,7 +42,11 @@ function saveButton(): ToolbarItem {
       };
       sync(ctx.profiles.isDirty());
       const off = ctx.profiles.onDirtyChange(sync);
-      b.addEventListener('click', () => { void ctx.profiles.save(); });
+      b.addEventListener('click', () => {
+        ctx.profiles.save().catch((err) => {
+          console.error('[velocity-grid-ext] profile save failed', err);
+        });
+      });
       host.appendChild(b);
       return { destroy() { off(); host.replaceChildren(); } };
     },

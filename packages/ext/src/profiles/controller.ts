@@ -262,10 +262,22 @@ export class ProfilesController implements ProfileController {
 
   list(): Promise<ProfileMeta[]> { return this.store.list(); }
 
-  /** Keep ConfigSession facade meta.id aligned with the controller pointer. */
+  /** Keep ConfigSession facade meta.id aligned with the controller pointer.
+   *
+   *  Final review — this write is derived bookkeeping (which slot is
+   *  active), not the user's data. `applyWorkspace`/`setState` already
+   *  landed the real grid state before every call site of this method
+   *  runs, so a refused write here (configSession's D-F12 forward-compat
+   *  guard rejects when a newer build's document is on disk) must not
+   *  cascade into skipping `setDirty(false)`/`notifyList()` for state that
+   *  DID apply successfully — swallow-and-log rather than propagate. */
   private async syncActivePointer(): Promise<void> {
     if (isConfigSession(this.store)) {
-      await this.store.setActiveProfileId(this.id);
+      try {
+        await this.store.setActiveProfileId(this.id);
+      } catch (err) {
+        console.error('[velocity-grid-ext] failed to persist the active profile pointer', err);
+      }
     }
   }
 }
