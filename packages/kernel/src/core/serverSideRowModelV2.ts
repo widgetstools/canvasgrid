@@ -67,6 +67,17 @@ export interface SsrmHost<TRow> {
 
 /** V2 host — base seam plus exact-group-key replacement (expandAll etc.). */
 export interface SsrmHostV2<TRow> extends SsrmHost<TRow> {
+  /**
+   * B-L2 (production hardening) — the leaf-block LRU dropped these rows.
+   * Before this seam existed, eviction trimmed only the controller's own
+   * `leafCaches`: the worker store and the main-thread `rowDataById` mirror
+   * both kept every row ever hydrated, so a long-lived blotter carried the
+   * whole book twice regardless of `maxCachedLeafBlocks`.
+   *
+   * Optional so hosts that predate it (and the controller's own unit-test
+   * doubles) keep working unchanged — the controller no-ops when it's absent.
+   */
+  evictRows?(rowIds: string[]): void;
   /** Replace (not merge) the known composite group keys from the skeleton. */
   setGroupKeys?(keys: string[]): void;
   /** Install host-computed grand totals (skeleton root aggregates, keyed
@@ -994,6 +1005,10 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     for (const cache of this.leafCaches.values()) {
       for (const block of cache.values()) if (holdsRows(block)) count++;
     }
+    // B-L2 — ids of every row this pass drops, forwarded to the host so the
+    // worker store + main mirror shed them too. Collected across the whole
+    // while-loop so a multi-block trim costs one host round trip.
+    const evictedRowIds: string[] = [];
     while (count > this.maxCachedLeafBlocks) {
       let lruKey = '';
       let lruIdx = -1;
@@ -1007,8 +1022,15 @@ export class ServerSideRowModelV2Controller<TRow = any> {
           }
         }
       }
-      if (lruIdx < 0) return;
+      if (lruIdx < 0) break;
       const cache = this.leafCaches.get(lruKey);
+      const victim = cache?.get(lruIdx);
+      if (victim) {
+        for (const row of victim.rows) {
+          if (row == null) continue;
+          try { evictedRowIds.push(this.host.getRowId(row)); } catch { /* unkeyable row — nothing downstream to drop */ }
+        }
+      }
       cache?.delete(lruIdx);
       // Emptied per-group maps go too — they leaked before (only
       // dropGroupCache removed them).
@@ -1016,6 +1038,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
       count--;
       this.cacheEpoch++;
     }
+    if (evictedRowIds.length > 0) this.host.evictRows?.(evictedRowIds);
   }
 
   private dropBandLeafBlocks(rowStart: number, rowEnd: number): void {

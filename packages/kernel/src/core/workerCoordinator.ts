@@ -175,6 +175,11 @@ export class WorkerCoordinator {
     return this.client.ssrmHydrate(payload);
   }
 
+  /** B-L2 — propagate an SSRM v2 LRU eviction into the worker store. */
+  ssrmEvict(rowIds: string[]): Promise<{ count: number; visibleCount: number }> {
+    return this.client.ssrmEvict(rowIds);
+  }
+
   ssrmSetClientPipeline(enabled: boolean): Promise<{ count: number; visibleCount: number; groupKeys?: string[]; expandedKeys?: string[] | null }> {
     return this.client.ssrmSetClientPipeline(enabled);
   }

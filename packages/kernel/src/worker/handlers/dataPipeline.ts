@@ -24,6 +24,7 @@ export type DataPipelineRequest = Extract<WorkerRequest, {
   type:
     | 'setRowData'
     | 'ssrmHydrate'
+    | 'ssrmEvict'
     | 'ssrmSetClientPipeline'
     | 'ssrmSetGrandTotals'
     | 'applyTransaction'
@@ -211,6 +212,55 @@ export async function handleDataPipeline(
         if (orphans.length > 0) state.store.apply({ remove: orphans });
       }
       state.visibleCache = state.ssrmOrder;
+      post({
+        id: req.id,
+        type: 'rowCount',
+        count: state.store.size(),
+        visibleCount: state.ssrmRowCount,
+      });
+      return;
+    }
+
+    case 'ssrmEvict': {
+      // B-L2 (production hardening) — the v2 controller's LRU dropped these
+      // leaf blocks. Before this message the worker store kept the rows
+      // forever: the orphan sweep in `ssrmHydrate` only collects rows NO
+      // `ssrmOrder` slot references, and an evicted block's slots still
+      // pointed at their ids. Net effect on a long-lived blotter was
+      // whole-book residency in the worker regardless of
+      // `maxCachedLeafBlocks`.
+      //
+      // Reset every slot still pointing at an evicted id to '' — the same
+      // sentinel a never-hydrated slot carries, so the band reads as "not
+      // loaded" (blank, and refetched by the next `ensureRange`) rather than
+      // as a slot pointing at a row the store no longer has. Deliberately
+      // NOT relying on the "evicted rows are outside the loaded band by
+      // construction" assumption: that holds for sane configurations but is
+      // not guaranteed (a viewport spanning more than `maxCachedLeafBlocks`
+      // blocks can evict in-band), and this shape is correct either way.
+      const ids = req.payload.rowIds;
+      if (ids.length > 0) {
+        const evicted = new Set(ids);
+        const order = state.ssrmOrder;
+        for (let i = 0; i < order.length; i++) {
+          const slot = order[i];
+          if (slot !== undefined && slot !== '' && evicted.has(slot)) order[i] = '';
+        }
+        // Only remove rows the store actually holds; `apply` reports the
+        // real removals and keeps the calc / flash bookkeeping in step.
+        const present: string[] = [];
+        for (const id of ids) if (state.store.getById(id) !== undefined) present.push(id);
+        if (present.length > 0) {
+          const results = state.store.apply({ remove: present });
+          state.calc.onTransaction(results);
+          state.quickFilter.invalidateRows(evicted);
+          state.distinct.invalidateRows(evicted);
+          for (const id of present) {
+            state.alwaysPassIds.delete(id);
+            state.pendingFlashes.delete(id);
+          }
+        }
+      }
       post({
         id: req.id,
         type: 'rowCount',

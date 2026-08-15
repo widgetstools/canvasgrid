@@ -3861,6 +3861,21 @@ export class VelocityGrid<TRow = any> {
         }
         if (hydratedIds > 0) this.cgridCanvas?.requestRepaint();
       },
+      // B-L2 (production hardening) — the controller's leaf-block LRU
+      // evicted these rows. Shed them from BOTH downstream caches: the
+      // main-thread mirror (which previously only ever cleared on a reset
+      // hydrate) and the worker store (whose orphan sweep can't see them —
+      // their `ssrmOrder` slots still point at them). Without this,
+      // `maxCachedLeafBlocks` bounded only the controller's own cache while
+      // the other two grew to whole-book residency.
+      evictRows: (rowIds) => {
+        if (this.destroyed || rowIds.length === 0) return;
+        for (const id of rowIds) {
+          this.rowDataById.delete(id);
+          this.rowVersionByRowId.delete(id);
+        }
+        void this.workerCoord.ssrmEvict(rowIds).catch(() => { /* worker torn down */ });
+      },
       applyTransaction: (tx) => {
         this.applyTransaction(tx as Tx<TRow>);
       },
@@ -5259,7 +5274,46 @@ export class VelocityGrid<TRow = any> {
    *  worker would have to ship every candidate row's data up alongside
    *  its rowId, doubling the protocol traffic for an external filter
    *  pass. The cache lives as long as the grid; entries drop on
-   *  `applyTransaction.remove` and are wiped on every `setRowData`. */
+   *  `applyTransaction.remove` and are wiped on every `setRowData`.
+   *
+   *  A-P5 (production hardening) — "gate the mirror on the features that
+   *  need it" was AUDITED AND REJECTED. Every consumer was traced; the
+   *  blocking ones are SYNCHRONOUS and UNCONDITIONAL (not reachable behind
+   *  any feature flag), and the kernel has no bulk row-fetch message that
+   *  could serve them asynchronously or backfill the mirror after the fact
+   *  (`getExportRows` returns the VISIBLE, post-filter set only; there is no
+   *  worker `getRowById` at all — only `getRowByIndex`):
+   *
+   *    :12187 `cellAt` — full-row fallback for a horizontally-entering
+   *           column whose chunk hasn't landed. Runs during paint for EVERY
+   *           field-backed column in EVERY grid. Gating it off silently
+   *           regresses paint quality everywhere.
+   *    :2020  renderer `getRowDataById` dep + :7981 strip-patch `ruleRow`
+   *           + :14236 painted-background probe — per-frame rule folds. The
+   *           rule engine registers through a MODULE-LEVEL DI slot
+   *           (`registerRuleEngine`) that apps call AFTER construction, so
+   *           "is a rules engine present" is not knowable at construction
+   *           time and a late registration could not be backfilled.
+   *    :5691  `getTotalRowCount()` and :5699 `forEachRow()` — public
+   *           `VelocityGridApi` surface (ext's savedFiltersToolbar calls
+   *           `forEachRow`; the status-bar counts panel calls
+   *           `getTotalRowCount`). Both synchronous, neither feature-gated.
+   *    :5512  `distinctValuesFromMirror` — sync set-filter fallback.
+   *    :4045  `ssrmColumnKeysNeedFetch` and :4188
+   *           `ssrmUpdateTouchesActiveSort` — SSRM-internal correctness
+   *           heuristics; an empty mirror makes the first silently answer
+   *           "no refill needed" (blank columns on H-scroll).
+   *
+   *  Feature-gateable consumers exist too (:4570 `alwaysPassFilter`, :4601
+   *  `doesExternalFilterPass`, :4630 `postSortRows`, the `rowsChanged`
+   *  emitters at :4499-:4551) — but gating only those leaves the mirror
+   *  populated for the list above, so there is no memory win. The mirror
+   *  therefore stays ON in every configuration.
+   *
+   *  What DID bound it: B-L2 — the SSRM v2 leaf-block LRU now evicts from
+   *  this map (see the `evictRows` host hook), so a long-lived server-side
+   *  blotter no longer accumulates the whole book here; and A-L4 —
+   *  `destroy()` releases it. */
   private rowDataById: Map<string, TRow> = new Map();
   /** Cycle 7 / Task 8 — monotonic request id for in-flight `refilter`
    *  round-trips. Bumped at the head of every `onFilterChanged` /
@@ -9820,6 +9874,17 @@ export class VelocityGrid<TRow = any> {
     themeParamsClear(this.root);
     this.root.parentElement?.removeChild(this.root);
     this.events.destroy();
+    // A-L4 (production hardening) — release the main-thread dataset mirror
+    // and its grouping companions LAST (after `events.destroy()`, so nothing
+    // reading them can still fire). `rowDataById` holds the whole book for a
+    // CSRM grid and every hydrated row for an SSRM one; a destroyed-but-
+    // still-referenced grid (app caches, event closures, devtools retainers)
+    // pinned all of it forever. Same rationale as the paint-cache /
+    // raster-tier disposes above.
+    this.rowDataById.clear();
+    this.rowVersionByRowId.clear();
+    this.knownGroupKeys = [];
+    this.groupDescendantsByKey.clear();
   }
 
   // --- Internals ------------------------------------------------------------

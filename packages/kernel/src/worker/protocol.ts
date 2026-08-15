@@ -425,6 +425,20 @@ export type WorkerRequest =
         reset?: boolean;
       };
     }
+  /** B-L2 (production hardening) — the SSRM v2 controller evicted leaf
+   *  blocks from its LRU; drop the same rows from the worker store so the
+   *  eviction actually bounds memory instead of only trimming the
+   *  controller's own cache. Any `ssrmOrder` slot still pointing at an
+   *  evicted id is reset to the empty ("not hydrated") sentinel, which is
+   *  exactly the state the slot was in before that block first loaded —
+   *  the next `ensureRange` over that band refetches and re-hydrates it.
+   *  Append-only: pre-existing clients never send this message and the
+   *  worker's behaviour is unchanged without it. */
+  | {
+      id: ReqId;
+      type: 'ssrmEvict';
+      payload: { rowIds: string[] };
+    }
   /** Toggle CSRM pipeline over a fully hydrated SSRM store. */
   | {
       id: ReqId;

@@ -161,6 +161,7 @@ export const dispatchTable: DispatchTable = {
   // ── Data pipeline domain ──────────────────────────────────────────────────
   setRowData: handleDataPipeline as Handler,
   ssrmHydrate: handleDataPipeline as Handler,
+  ssrmEvict: handleDataPipeline as Handler,
   ssrmSetClientPipeline: handleDataPipeline as Handler,
   ssrmSetGrandTotals: handleDataPipeline as Handler,
   applyTransaction: handleDataPipeline as Handler,

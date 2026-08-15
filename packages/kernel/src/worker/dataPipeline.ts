@@ -55,16 +55,31 @@ export class RowStore<TRow = any> {
     // height entries for rowIds that no longer exist.
     this.heightsByRowId.clear();
     this.autoHeightContributions.clear();
+    // A-L3 (production hardening) — the numeric id maps used to survive
+    // every full replace, so a rotating dataset (fresh ids on each load)
+    // grew them without bound for the life of the session. Rebuild them
+    // from the incoming rows instead, PRESERVING the numeric assignment of
+    // any id that survives the replace: numeric ids ride every
+    // `ViewportChunk.rowIds` and the flash registry keys on them, so a row
+    // that stays must keep its number.
+    //
+    // Built into locals and swapped in at the end so a mid-loop `getRowId`
+    // throw (null id — the loop deliberately has no per-row try/catch)
+    // leaves the maps exactly as it does today, rather than half-rebuilt.
+    const nextStringToNumeric = new Map<string, number>();
+    const nextNumericToString = new Map<number, string>();
     for (const row of rows) {
       const id = this.getRowId(row);
       this.byId.set(id, row);
       this.order.push(id);
-      if (!this.stringToNumeric.has(id)) {
-        const n = this.nextNumeric++;
-        this.stringToNumeric.set(id, n);
-        this.numericToString.set(n, id);
+      if (!nextStringToNumeric.has(id)) {
+        const n = this.stringToNumeric.get(id) ?? this.nextNumeric++;
+        nextStringToNumeric.set(id, n);
+        nextNumericToString.set(n, id);
       }
     }
+    this.stringToNumeric = nextStringToNumeric;
+    this.numericToString = nextNumericToString;
     if (heightsByRowId) {
       for (const [id, h] of heightsByRowId) this.heightsByRowId.set(id, h);
     }
@@ -102,16 +117,32 @@ export class RowStore<TRow = any> {
       }
     }
     if (tx.remove) {
+      // A-L5 (production hardening) — `order.indexOf` + `splice` per removed
+      // id is O(k·n) (and each splice re-shifts the tail). Collect the ids
+      // that actually existed, then compact `order` in ONE pass. Relative
+      // order of the survivors is preserved exactly as the splice loop did.
+      const removedIds = new Set<string>();
       for (const id of tx.remove) {
         if (this.byId.delete(id)) {
-          const i = this.order.indexOf(id);
-          if (i !== -1) this.order.splice(i, 1);
           // Drop the per-row height too so a re-added row doesn't inherit
           // the previous row's height ghost.
           this.heightsByRowId.delete(id);
           this.autoHeightContributions.delete(id);
+          // A-L3 — and the numeric id mapping, which previously kept an
+          // entry for every row the store had EVER seen.
+          const n = this.stringToNumeric.get(id);
+          if (n !== undefined) {
+            this.stringToNumeric.delete(id);
+            this.numericToString.delete(n);
+          }
+          removedIds.add(id);
           result.remove.push({ rowId: id });
         }
+      }
+      if (removedIds.size > 0) {
+        const compacted: string[] = [];
+        for (const id of this.order) if (!removedIds.has(id)) compacted.push(id);
+        this.order = compacted;
       }
     }
     if (tx.heightsByRowId) {

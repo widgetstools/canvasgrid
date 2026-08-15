@@ -89,6 +89,10 @@ export class WorkerClient {
   // postSortRowsRequest) bypass the queue — the worker is awaiting a
   // synchronous reply on their callId/batchId.
   private flushScheduled = false;
+  /** A-L2 — handles for the rAF/timer race in `scheduleFlush`. Whichever
+   *  fires first flushes; `flushPushQueue` cancels the loser. */
+  private flushRaf: number | null = null;
+  private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingModelUpdated: { visibleCount: number; groupKeys?: string[]; expandedKeys?: string[] | null } | null = null;
   private pendingHeights: Array<{ rowStart: number; heights: Float32Array }> = [];
   private pendingTxnResults: TransactionResult[] = [];
@@ -105,6 +109,12 @@ export class WorkerClient {
    *  just slow; this is a floor so the failure is never silent, not a
    *  teardown. */
   private static readonly INIT_TIMEOUT_MS = 10_000;
+
+  /** A-L2 — ceiling on how long a coalesced push batch may sit unflushed
+   *  when the frame callback never arrives (hidden / background tab).
+   *  Deliberately well above one frame so a foreground grid always
+   *  dispatches on the rAF, exactly as before. */
+  private static readonly PUSH_FLUSH_FALLBACK_MS = 50;
 
   constructor(private worker: WorkerLike, private handlers: WorkerClientHandlers) {
     this.messageHandler = (e) => {
@@ -145,14 +155,56 @@ export class WorkerClient {
   private scheduleFlush(): void {
     if (this.flushScheduled) return;
     this.flushScheduled = true;
-    const raf = typeof requestAnimationFrame === 'function'
-      ? requestAnimationFrame
-      : (cb: () => void) => queueMicrotask(cb);
-    raf(() => this.flushPushQueue());
+    // A-L2 (production hardening) — `requestAnimationFrame` is SUSPENDED
+    // while a tab is hidden/backgrounded. Scheduling the flush on the frame
+    // alone meant `pendingTxnResults` / `pendingHeights` grew unbounded for
+    // as long as the tab stayed in the background (hours, on a live
+    // blotter) and then dispatched as one giant stale batch on refocus.
+    //
+    // Fix: race the frame against a wall-clock timer; first one wins and
+    // `flushPushQueue` cancels the loser. When the document is ALREADY
+    // hidden, skip rAF entirely — registering it there just parks a
+    // callback that may never run.
+    //
+    // The no-rAF environment keeps its original `queueMicrotask` path
+    // untouched (worker/node/test hosts flush immediately there; there is
+    // no suspension to defend against, and a 50ms timer would be a
+    // behaviour change for every such caller).
+    if (typeof requestAnimationFrame !== 'function') {
+      queueMicrotask(() => this.flushPushQueue());
+      return;
+    }
+    const hidden = typeof document !== 'undefined'
+      && (document as { visibilityState?: string }).visibilityState === 'hidden';
+    if (!hidden) {
+      this.flushRaf = requestAnimationFrame(() => {
+        this.flushRaf = null;
+        this.flushPushQueue();
+      });
+    }
+    this.flushTimer = setTimeout(() => {
+      this.flushTimer = null;
+      this.flushPushQueue();
+    }, WorkerClient.PUSH_FLUSH_FALLBACK_MS);
+    // Node-only: don't hold the process open for the fallback timer.
+    (this.flushTimer as unknown as { unref?: () => void }).unref?.();
+  }
+
+  /** A-L2 — drop whichever of the rAF / timer pair did not fire. */
+  private cancelFlushSchedule(): void {
+    if (this.flushRaf !== null) {
+      if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(this.flushRaf);
+      this.flushRaf = null;
+    }
+    if (this.flushTimer !== null) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
   }
 
   private flushPushQueue(): void {
     this.flushScheduled = false;
+    this.cancelFlushSchedule();
     // Late-arriving RAF after destroy() — pending queues were already
     // cleared, but bail explicitly so we don't dispatch into stale handlers.
     if (this.destroyed) return;
@@ -275,6 +327,15 @@ export class WorkerClient {
     return this.send<{ count: number; visibleCount: number }>({
       type: 'ssrmHydrate',
       payload,
+    });
+  }
+
+  /** B-L2 — drop LRU-evicted SSRM rows from the worker store. See the
+   *  protocol's `ssrmEvict` doc for the slot-reset semantics. */
+  ssrmEvict(rowIds: string[]): Promise<{ count: number; visibleCount: number }> {
+    return this.send<{ count: number; visibleCount: number }>({
+      type: 'ssrmEvict',
+      payload: { rowIds },
     });
   }
 
@@ -732,6 +793,9 @@ export class WorkerClient {
     this.failPending(new Error('worker terminated'));
     // Clear the queued-push state so any late-arriving callback that
     // somehow survives can't re-emit stale data.
+    // A-L2 — and cancel the pending frame / fallback timer outright.
+    this.cancelFlushSchedule();
+    this.flushScheduled = false;
     this.pendingModelUpdated = null;
     this.pendingHeights = [];
     this.pendingTxnResults = [];
