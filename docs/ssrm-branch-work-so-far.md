@@ -118,12 +118,16 @@ seed / STOMP → Perspective Table + Views
                     ↓ windowed getRows (+ __ssrm on group rows)
               IServerSideDatasource
                     ↓
-              ServerSideRowModelController (blocks)
+              ServerSideRowModelV2Controller (blocks)
                     ↓ ssrmHydrate
               worker store / viewport chunk
                     ↓
               canvas paint (cellAt, totalsCellLookup, sticky band)
 ```
+
+(v1's `ServerSideRowModelController` — named here when this journal entry
+was written — was fully decommissioned; the diagram now names the surviving
+`ServerSideRowModelV2Controller`, see `core/serverSideRowModelV2.ts`.)
 
 ---
 

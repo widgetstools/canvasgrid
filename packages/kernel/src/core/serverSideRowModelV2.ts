@@ -44,14 +44,12 @@ export interface SsrmHost<TRow> {
   getSortModel(): SortModel;
   getFilterModel(): FilterModel;
   getRowGroupCols(): string[];
-  getGroupKeys(): string[];
   getExpandedGroupKeys(): string[];
   /**
    * Optional column projection for getRows / getLeafRows. When omitted or
    * empty, datasources return full rows (legacy behaviour).
    */
   getColumnKeys?(): string[] | undefined;
-  mergeGroupKeys?(keys: string[]): void;
   setRowCount(count: number, prevCount?: number): void;
   /** Row range to reload on soft refresh — typically the current viewport overscan. */
   getRefreshRange?(): { rowStart: number; rowEnd: number };
@@ -124,6 +122,18 @@ export class ServerSideRowModelV2Controller<TRow = any> {
    *  datasource, one block past the loaded edge). Set once a reply declares
    *  a `rowCount` or a short window pins the end of the book. */
   private flatRowCountExact = false;
+  /**
+   * Provenance behind `flatRowCountExact` — the two ways it can become true
+   * carry different one-way-ness guarantees. A `'declared'` count (the reply
+   * carried `rowCount`) is authoritative and stays one-way: only a fresher
+   * declared count ever overwrites it. An `'inferred'` count (a short window
+   * with no declared total — end-of-book guessed from the loaded edge) is a
+   * clamp, not a fact: a transient short reply (server still settling) or a
+   * book that later grows must be able to re-inflate it on the next full
+   * window, exactly like the estimate path does. Folding both into one
+   * boolean made a transient short reply permanently truncate the book.
+   */
+  private flatRowCountSource: 'unknown' | 'declared' | 'inferred' = 'unknown';
   private reportedRowCount = 0;
 
   /** Bumped on purge (sort/filter/groupBy/datasource change) — leaf and
@@ -166,6 +176,12 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     this.blockSize = Math.max(1, opts.cacheBlockSize ?? 100);
     this.maxConcurrent = Math.max(1, opts.maxConcurrentDatasourceRequests ?? 2);
     this.maxCachedLeafBlocks = Math.max(8, opts.maxCachedLeafBlocks ?? 500);
+    if (opts.maxCachedLeafBlocks !== undefined && opts.maxCachedLeafBlocks < 8) {
+      console.warn(
+        `[velocity-grid] serverSideMaxCachedLeafBlocks (${opts.maxCachedLeafBlocks}) is below `
+        + 'the floor of 8 and was clamped to 8.',
+      );
+    }
     this.groupTotalRow = opts.groupTotalRow ?? null;
     this.grandTotalRow = opts.grandTotalRow ?? null;
     this.maintainOrder = opts.maintainOrder === true;
@@ -481,6 +497,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
       this.cacheEpoch++;
       this.flatRowCount = 0;
       this.flatRowCountExact = false;
+      this.flatRowCountSource = 'unknown';
       this.host.setGrandTotals?.(null);
       await this.host.hydrateWindow(0, [], Math.max(this.reportedRowCount, 0), true);
       if (this.host.isDestroyed()) return;
@@ -1050,29 +1067,75 @@ export class ServerSideRowModelV2Controller<TRow = any> {
           if (typeof result.rowCount === 'number' && Number.isFinite(result.rowCount)) {
             this.flatRowCount = Math.max(0, result.rowCount);
             this.flatRowCountExact = true;
+            this.flatRowCountSource = 'declared';
           } else if (result.rowData.length < requested) {
-            // Short window and no declared total = end of book. Clamp the
-            // count EXACTLY and stop over-allocating, so no further block is
-            // requested past this edge.
+            // Short window and no declared total = end of book, AS FAR AS
+            // THIS REPLY SHOWS. Clamp the count EXACTLY and stop
+            // over-allocating, so no further block is requested past this
+            // edge — but record the clamp as INFERRED, not declared: unlike
+            // a declared total, it must still be able to re-inflate below if
+            // a later full-window reply proves it wrong (the short reply was
+            // transient — server still settling — or the book genuinely
+            // grew since). Folding both provenances into one boolean used to
+            // make this one-way, so a transient short reply permanently
+            // truncated the book.
             this.flatRowCount = startRow + result.rowData.length;
             this.flatRowCountExact = true;
-          } else if (!this.flatRowCountExact) {
-            // Full window, total still unknown — over-allocate ONE block past
-            // the loaded edge so the viewport can scroll into it and trigger
-            // the next fetch. Without this the reported count equals the
-            // loaded edge exactly and infinite scroll dead-ends at the first
-            // block (B-C3). Never over-allocate once the total is known.
+            this.flatRowCountSource = 'inferred';
+          } else if (
+            this.flatRowCountSource === 'unknown'
+            || (
+              // A prior INFERRED clamp only gets to be re-opened by a reply
+              // that actually reaches (or passes) the edge it pinned — one
+              // for the SAME block coming back fuller, or a later block
+              // proving the book grew past it. A full-window reply for some
+              // OTHER, already-covered block (e.g. an unrelated soft-refresh
+              // band) proves nothing about that edge and must not demote an
+              // otherwise-still-accurate inferred count back to "estimated".
+              this.flatRowCountSource === 'inferred'
+              && startRow + result.rowData.length >= this.flatRowCount
+            )
+          ) {
+            // Full window, and the count is not a DECLARED fact — over-
+            // allocate ONE block past the loaded edge so the viewport can
+            // scroll into it and trigger the next fetch. Without this the
+            // reported count equals the loaded edge exactly and infinite
+            // scroll dead-ends at the first block (B-C3). Re-inflating also
+            // demotes the count back to an estimate — a declared total is
+            // the only provenance that stays one-way.
             this.flatRowCount = Math.max(
               this.flatRowCount,
               startRow + result.rowData.length + this.blockSize,
             );
+            this.flatRowCountExact = false;
+            this.flatRowCountSource = 'unknown';
           }
           // v1-parity safety net (migrated from the decommissioned
-          // controller): a DECLARED total that differs from a previously
-          // declared one means the server book shifted under the cache —
-          // blocks loaded against the old total would rehydrate stale rows at
-          // moved offsets. Drop them so scroll refetches. Estimate growth is
-          // not a declared total, so unknown-count discovery never thrashes.
+          // controller): an EXACT total that differs from a previously exact
+          // one means the server book shifted under the cache — blocks
+          // loaded against the old total would rehydrate stale rows at moved
+          // offsets. Drop them so scroll refetches. Estimate growth (the
+          // `flatRowCountExact = false` branch above) is not exact-to-exact,
+          // so unknown-count discovery never thrashes this.
+          //
+          // Scope (Q1, fix-wave-4): `loadFlatBlock` serves ANY datasource
+          // with no active group model — not only `getRows`-only ones. A
+          // skeleton-capable datasource (`getGroupSkeleton` present) that is
+          // currently ungrouped also lands here, e.g. Perspective's flat
+          // fallback (`createPerspectiveSsrmDatasource`), which declares
+          // `rowCount` on every reply and whose book resizes on live
+          // add/remove. So on an ungrouped ticking grid, every soft refresh
+          // whose band reload reports a changed total drops ALL other loaded
+          // flat blocks too — not just for plain getRows-only datasources.
+          // This is intentional, not an oversight: without knowing WHERE in
+          // the book the shift happened, dropping everything off-band is the
+          // only safe choice (the alternative — stale rows painted at
+          // shifted offsets — is the defect this net exists to prevent). The
+          // cost is real: the off-band cache degrades to the viewport band
+          // on every such tick, and scrolling back re-fetches it. Left
+          // ungated deliberately rather than narrowed to non-skeleton
+          // datasources, so ungrouped skeleton datasources keep the same
+          // protection non-skeleton ones get.
           if (
             prevExact
             && this.flatRowCountExact

@@ -54,7 +54,13 @@ export interface LoadSuccessParams<TRow = any> {
   rowData: TRow[];
   /** Exact total row count when known. Omitted keeps the previous total. */
   rowCount?: number;
-  /** Composite group keys materialized by the server (sparse SSRM grouping). */
+  /**
+   * @deprecated The v1 server-side tree-materialization protocol was removed
+   * with the v1 row-model controller. The kernel never reads this field —
+   * server-side grouping goes through `getGroupSkeleton` / `getLeafRows`
+   * (see {@link IServerSideDatasourceV2}). Kept so existing datasource
+   * implementations still typecheck.
+   */
   groupKeys?: string[];
   /** Grand-total aggregates keyed by FIELD (v2 flat mode) — feeds the
    *  pinned totals subgrid / grand-total row when no skeleton exists. */

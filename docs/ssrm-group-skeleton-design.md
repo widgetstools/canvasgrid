@@ -119,12 +119,14 @@ today a group value containing `::` corrupts the tree). The wire uses
   then `ssrmHydrate` of the already-known band (group rows from skeleton,
   cached leaves from the block cache) — blanks only where leaf blocks are
   genuinely missing.
-- **`ServerSideRowModelController`** keeps its role but blocks become
-  per-`(groupKey, leafBlock)`. Expansion changes stop invalidating
-  anything — leaf caches are index-stable within their group (this
-  dissolves `refreshExpansion`; the 2026-07-20 rowCount-change safety net
-  stays for live server drift). Add LRU eviction (`maxBlocksInCache`
-  equivalent) while touching this layer.
+- **`ServerSideRowModelV2Controller`** (new class — v1's
+  `ServerSideRowModelController` was decommissioned outright, not extended;
+  see `core/serverSideRowModelV2.ts`) owns blocks per-`(groupKey,
+  leafBlock)`. Expansion changes stop invalidating anything — leaf caches
+  are index-stable within their group (this dissolves `refreshExpansion`;
+  the 2026-07-20 rowCount-change safety net stays for live server drift).
+  Add LRU eviction (`maxBlocksInCache` equivalent) while touching this
+  layer.
 - **Worker**: unchanged. `ssrmHydrate` + `__ssrm` meta + flat slicer +
   `ssrmGroupMetaSeen` sticky gate all keep working — the main thread just
   becomes a much better hydrator. Sticky ancestors can later read the

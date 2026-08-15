@@ -165,7 +165,6 @@ describe('v2 controller — footers, grand totals, maintainOrder, leaf ids', () 
       getSortModel: () => [] as unknown as SortModel,
       getFilterModel: () => ({}) as FilterModel,
       getRowGroupCols: () => COLS,
-      getGroupKeys: () => [],
       getExpandedGroupKeys: () => Array.from(expandedKeys),
       setGroupKeys: () => {},
       setGrandTotals: (totals) => events.push(['grandTotals', totals]),

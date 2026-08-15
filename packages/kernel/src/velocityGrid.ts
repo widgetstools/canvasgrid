@@ -3723,11 +3723,11 @@ export class VelocityGrid<TRow = any> {
       this.ssrmV2 = isServerSideDatasourceV2(ds);
       this.assertSsrmGroupingSupported(this.grouping.getRowGroupColumns().length);
     }
-    this.ssrm?.setDatasource(
-      // A getRows-only datasource is structurally a v2 datasource minus the
-      // skeleton methods; the controller's flat path never calls them.
-      ds as IServerSideDatasourceV2<TRow> | null,
-    );
+    // AnyServerSideDatasource (getRows-only OR full v2) is structurally
+    // assignable to SsrmDatasource — both union members satisfy it — so no
+    // cast is needed; the controller's flat path never calls the skeleton
+    // methods a getRows-only datasource lacks.
+    this.ssrm?.setDatasource(ds);
   }
 
   /**
@@ -3759,17 +3759,10 @@ export class VelocityGrid<TRow = any> {
       getSortModel: () => this.sortModel,
       getFilterModel: () => this.getFilterModel(),
       getRowGroupCols: () => this.grouping.getRowGroupColumns(),
-      getGroupKeys: () => [],
       getExpandedGroupKeys: () => Array.from(this.getExpandedKeys()),
       getColumnKeys: () => this.isSsrmColumnWindowingActive()
         ? this.buildSsrmFetchColumnKeys()
         : undefined,
-      mergeGroupKeys: (keys) => {
-        if (keys.length === 0) return;
-        const merged = new Set(this.knownGroupKeys);
-        for (const k of keys) merged.add(k);
-        this.knownGroupKeys = [...merged];
-      },
       // v2 skeleton — exact replacement (expandAll / collapseAll read this).
       setGroupKeys: (keys) => {
         this.knownGroupKeys = keys.slice();
@@ -3820,7 +3813,8 @@ export class VelocityGrid<TRow = any> {
         // Arbitrary `getRowId` (B-A4) — materialize the id into the synthetic
         // field before the mirror AND the worker see the rows, so both key on
         // the same value the worker's flat `row[rowIdField]` lookup will find.
-        rows = this.stampSyntheticRowIds(rows) ?? rows;
+        // Positional: this is a sparse hydrate window, not an unordered list.
+        rows = this.stampSyntheticRowIds(rows, true) ?? rows;
         // Keep main-side id mirror in sync for selection / external APIs.
         // Skeleton chrome (group/footer/grand-total rows) stays out of the
         // mirror — it is paint state, not data, and forEachNode/getRowNode
@@ -4225,35 +4219,85 @@ export class VelocityGrid<TRow = any> {
     if (this.syntheticRowIdMemo === null) {
       this.syntheticRowIdMemo =
         inferRowIdField(this.options.getRowId) === SYNTHETIC_ROW_ID_FIELD;
+      if (this.syntheticRowIdMemo) {
+        // Anything perturbing `getRowId.toString()` into more than one
+        // `.foo` match (coverage instrumentation, a wrapper accessor,
+        // minifier output, or a genuinely composite/computed id) lands
+        // here. It is correct, but every row heading into the worker now
+        // gets a per-row `{...row}` clone to carry the materialized id —
+        // a real perf cost on large datasets. Once per grid, not per row.
+        console.warn(
+          '[velocity-grid] getRowId is not a simple `row => row.<field>` accessor — '
+          + 'every row now gets a per-row {...row} clone before it enters the worker '
+          + '(materializing a synthetic id field). This is a real cost on large '
+          + 'datasets; prefer a direct single-field accessor when possible.',
+        );
+      }
     }
     return this.syntheticRowIdMemo;
   }
+
+  /** Surfaced once (not per row) the first time `getRowId` throws while
+   *  stamping synthetic ids — see {@link stampSyntheticRowIds}. */
+  private warnedGetRowIdThrew = false;
 
   /**
    * Materialize `getRowId(row)` into the synthetic id field on rows heading
    * into the worker. Returns the SAME array for the common inferred-field
    * case, so this costs one boolean on every hot path that doesn't need it.
+   *
+   * `positional` distinguishes the two shapes of caller, because a row whose
+   * `getRowId` throws must never be stamped with a shared id (every failing
+   * row would then collide on the same RowStore key and silently overwrite
+   * each other) — but how a failing row is dropped differs by shape:
+   *  - `positional: false` (setRowData / applyTransaction) — rows are an
+   *    unordered list fed straight to the worker's `RowStore.setAll` /
+   *    `apply`, which resolve `getRowId` per row with NO try/catch of their
+   *    own and throw synchronously on a missing id field — uncaught, that
+   *    would abort the WHOLE batch, not just the bad row. The row is
+   *    therefore filtered out of the returned array before it ever reaches
+   *    the worker.
+   *  - `positional: true` (SSRM `hydrateWindow`) — rows are a POSITIONAL
+   *    window covering `[startRow, startRow + rows.length)`; filtering an
+   *    element would shift every following row to the wrong index. The
+   *    worker's sparse hydrate path already resolves each row's id inside
+   *    its own try/catch and just skips that slot on failure, so the row is
+   *    left in the array unstamped (no id field) instead of being removed.
    */
-  private stampSyntheticRowIds(rows: TRow[] | undefined): TRow[] | undefined {
+  private stampSyntheticRowIds(rows: TRow[] | undefined, positional: boolean): TRow[] | undefined {
     if (rows === undefined || rows.length === 0) return rows;
     if (!this.usesSyntheticRowId()) return rows;
-    const out: TRow[] = new Array(rows.length);
+    const out: TRow[] = [];
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       if (row === null || row === undefined || typeof row !== 'object') {
-        out[i] = row as TRow;
+        out.push(row as TRow);
         continue;
       }
       const existing = (row as Record<string, unknown>)[SYNTHETIC_ROW_ID_FIELD];
       // SSRM skeleton chrome (group / footer / grand-total rows) is stamped by
       // the controller; `getRowId` would not resolve against it.
       if (typeof existing === 'string' && existing.length > 0) {
-        out[i] = row;
+        out.push(row);
         continue;
       }
-      let id = '';
-      try { id = this.options.getRowId(row); } catch { id = ''; }
-      out[i] = { ...(row as object), [SYNTHETIC_ROW_ID_FIELD]: id } as TRow;
+      let id: string;
+      try {
+        id = this.options.getRowId(row);
+      } catch (err) {
+        if (!this.warnedGetRowIdThrew) {
+          this.warnedGetRowIdThrew = true;
+          console.error(
+            '[velocity-grid] getRowId threw for a row heading into the worker — the row '
+            + 'is dropped rather than merged with other rows that also fail (they would '
+            + 'otherwise collide onto the same id and silently overwrite each other).',
+            err,
+          );
+        }
+        if (positional) out.push(row);
+        continue;
+      }
+      out.push({ ...(row as object), [SYNTHETIC_ROW_ID_FIELD]: id } as TRow);
     }
     return out;
   }
@@ -4263,7 +4307,7 @@ export class VelocityGrid<TRow = any> {
       console.warn('[velocity-grid] setRowData is ignored in serverSide row model — use the datasource');
       return;
     }
-    const stamped = this.stampSyntheticRowIds(rows) ?? rows;
+    const stamped = this.stampSyntheticRowIds(rows, false) ?? rows;
     const heightsByRowId = this.resolveHeightsForRows(stamped);
     // Cycle 7 / Task 8 — refresh the main-side row cache so the external
     // filter + alwaysPass predicates evaluate against current data.
@@ -4310,8 +4354,8 @@ export class VelocityGrid<TRow = any> {
 
   applyTransaction(t: Tx<TRow>): TransactionResult {
     // Foundation: async only. For sync semantics, callers use the worker's sync path via separate cycle.
-    const add = this.stampSyntheticRowIds(t.add);
-    const update = this.stampSyntheticRowIds(t.update);
+    const add = this.stampSyntheticRowIds(t.add, false);
+    const update = this.stampSyntheticRowIds(t.update, false);
     const heightsByRowId = this.resolveHeightsForRows([...(add ?? []), ...(update ?? [])]);
     this.updateRowDataCache(t, 'transaction');
     this.workerCoord.applyTransaction({
@@ -4356,8 +4400,8 @@ export class VelocityGrid<TRow = any> {
 
   /** Apply an async transaction immediately (bypasses scroll deferral). */
   private dispatchAsyncTransaction(t: Tx<TRow>): void {
-    const add = this.stampSyntheticRowIds(t.add);
-    const update = this.stampSyntheticRowIds(t.update);
+    const add = this.stampSyntheticRowIds(t.add, false);
+    const update = this.stampSyntheticRowIds(t.update, false);
     const heightsByRowId = this.resolveHeightsForRows([...(add ?? []), ...(update ?? [])]);
     this.updateRowDataCache(t, 'transactionAsync');
     this.workerCoord.applyTransaction({

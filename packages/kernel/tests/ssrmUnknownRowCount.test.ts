@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   ServerSideRowModelV2Controller,
   type SsrmDatasource,
@@ -44,7 +44,6 @@ function makeHarness(opts: {
     getSortModel: () => [] as unknown as SortModel,
     getFilterModel: () => ({}) as FilterModel,
     getRowGroupCols: () => [],
-    getGroupKeys: () => [],
     getExpandedGroupKeys: () => [],
     setRowCount: (count) => { counts.push(count); },
     getRefreshRange: () => ({ rowStart: 0, rowEnd: BLOCK }),
@@ -138,6 +137,127 @@ describe('SSRM v2 flat — unknown rowCount', () => {
     expect(ctrl.getRowCount()).toBe(25);
     expect(requests).toEqual([0, 10]);
   });
+
+  /**
+   * fix-wave-4 Q2 — `flatRowCountExact` used to be one boolean for two
+   * provenances (a declared total vs. an inferred short-window clamp). Once
+   * true it was permanently one-way, so a transient short reply (server
+   * still settling) silently truncated the book forever. Only a DECLARED
+   * count may stay one-way; an INFERRED one must re-inflate on the next
+   * full-window reply.
+   */
+  it('a transient short reply recovers on the next full-window fetch (not permanently truncated)', async () => {
+    const requests: number[] = [];
+    const book: Row[] = Array.from({ length: 35 }, (_, i) => ({ id: `r${i}` }));
+    // Explicit one-shot trigger rather than a call counter — `setDatasource`
+    // itself fires an internal (fire-and-forget) purge refresh over the same
+    // band, and a counter would race it non-deterministically.
+    let scriptShortReply = false;
+
+    const host: SsrmHostV2<Row> = {
+      getRowId: (r) => r.id,
+      getSortModel: () => [] as unknown as SortModel,
+      getFilterModel: () => ({}) as FilterModel,
+      getRowGroupCols: () => [],
+      getExpandedGroupKeys: () => [],
+      setRowCount: () => {},
+      getRefreshRange: () => ({ rowStart: 0, rowEnd: BLOCK }),
+      hydrateWindow: async () => {},
+      applyTransaction: () => {},
+      requestViewport: () => {},
+      isDestroyed: () => false,
+    };
+    const ds: SsrmDatasource<Row> = {
+      getRows: ({ request, success }) => {
+        requests.push(request.startRow);
+        if (request.startRow === 0 && scriptShortReply) {
+          // Transient: the server is still settling and replies short even
+          // though the book actually holds far more rows at this offset.
+          // No declared `rowCount` — an unknown-count datasource.
+          scriptShortReply = false;
+          success({ rowData: book.slice(0, 4) });
+          return;
+        }
+        success({ rowData: book.slice(request.startRow, request.endRow) });
+      },
+    };
+    const ctrl = new ServerSideRowModelV2Controller<Row>(host, {
+      rowIdField: 'id',
+      cacheBlockSize: BLOCK,
+    });
+    ctrl.setDatasource(ds);
+
+    // Let the datasource-mount purge refresh (fire-and-forget, internal to
+    // `setDatasource`) settle with an ordinary full reply first, so it
+    // cannot race the scripted short reply below.
+    await ctrl.ensureRange(0, BLOCK);
+    expect(ctrl.getRowCount()).toBeGreaterThan(0);
+
+    // Force a fresh fetch of block 0 that comes back short this time.
+    scriptShortReply = true;
+    await ctrl.refresh({ purge: false });
+    // The short reply pins an INFERRED (not declared) end-of-book guess.
+    expect(ctrl.getRowCount()).toBe(4);
+    expect(ctrl.isRowCountEstimated()).toBe(false);
+
+    // Soft refresh again; this time the block settles and comes back full.
+    await ctrl.refresh({ purge: false });
+
+    // The inferred clamp re-inflates — it was never a declared fact.
+    expect(ctrl.getRowCount()).toBeGreaterThan(4);
+    expect(ctrl.isRowCountEstimated()).toBe(true);
+  });
+
+  it('a genuinely growing book re-inflates a previously-inferred count', async () => {
+    const requests: number[] = [];
+    let book: Row[] = Array.from({ length: 24 }, (_, i) => ({ id: `r${i}` }));
+
+    const host: SsrmHostV2<Row> = {
+      getRowId: (r) => r.id,
+      getSortModel: () => [] as unknown as SortModel,
+      getFilterModel: () => ({}) as FilterModel,
+      getRowGroupCols: () => [],
+      getExpandedGroupKeys: () => [],
+      setRowCount: () => {},
+      // Targets the block that pins the (about to be stale) inferred edge.
+      getRefreshRange: () => ({ rowStart: 20, rowEnd: 30 }),
+      hydrateWindow: async () => {},
+      applyTransaction: () => {},
+      requestViewport: () => {},
+      isDestroyed: () => false,
+    };
+    const ds: SsrmDatasource<Row> = {
+      getRows: ({ request, success }) => {
+        requests.push(request.startRow);
+        success({ rowData: book.slice(request.startRow, request.endRow) });
+      },
+    };
+    const ctrl = new ServerSideRowModelV2Controller<Row>(host, {
+      rowIdField: 'id',
+      cacheBlockSize: BLOCK,
+    });
+    ctrl.setDatasource(ds);
+
+    // Drive it the way a viewport would, same as the "short final block"
+    // scenario above — settles once block 2 (20-30) comes back short.
+    let guard = 0;
+    let prev = -1;
+    while (ctrl.getRowCount() !== prev && guard++ < 20) {
+      prev = ctrl.getRowCount();
+      await ctrl.ensureRange(Math.max(0, prev - BLOCK), prev);
+    }
+    expect(ctrl.getRowCount()).toBe(24);
+    expect(ctrl.isRowCountEstimated()).toBe(false);
+
+    // The book genuinely grows server-side — 20 more rows appended.
+    book = [...book, ...Array.from({ length: 20 }, (_, i) => ({ id: `r${24 + i}` }))];
+
+    // A soft refresh re-fetches the previously-short block; it is now full.
+    await ctrl.refresh({ purge: false });
+
+    expect(ctrl.getRowCount()).toBe(40);
+    expect(ctrl.isRowCountEstimated()).toBe(true);
+  });
 });
 
 describe('SSRM v2 flat — serverSideMaxCachedLeafBlocks', () => {
@@ -170,5 +290,36 @@ describe('SSRM v2 flat — serverSideMaxCachedLeafBlocks', () => {
     requests.length = 0;
     await ctrl.ensureRange(0, BLOCK);
     expect(requests).toEqual([]);
+  });
+
+  // fix-wave-4 Q8 — a configured cap below the floor is silently clamped to
+  // 8 (JSDoc-disclosed, not a defect); a console.warn on construction is
+  // strictly better than silence and cheap.
+  it('warns once and still clamps to the floor (8) when configured below it', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { ctrl, requests } = makeHarness({
+        total: 120,
+        declareRowCount: true,
+        maxCachedLeafBlocks: 2,
+      });
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(String(warnSpy.mock.calls[0]?.[0])).toContain('serverSideMaxCachedLeafBlocks');
+
+      for (let b = 0; b < 12; b++) {
+        await ctrl.ensureRange(b * BLOCK, (b + 1) * BLOCK);
+      }
+      requests.length = 0;
+      // Block 7 is inside the 8 most-recently-touched blocks — if the raw
+      // configured value (2) had been used instead of the floor, only
+      // blocks 10-11 would still be cached and this would refetch too.
+      await ctrl.ensureRange(70, 80);
+      expect(requests).toEqual([]);
+      // Block 0 is outside the floor-8 window — evicted either way.
+      await ctrl.ensureRange(0, BLOCK);
+      expect(requests).toEqual([0]);
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });

@@ -64,7 +64,6 @@ describe('sparse SSRM block invalidation (v2 flat path)', () => {
       getFilterModel: () => ({}) as FilterModel,
       // Flat path — a getRows-only datasource never owns grouping.
       getRowGroupCols: () => [],
-      getGroupKeys: () => [],
       getExpandedGroupKeys: () => {
         const keys: string[] = [];
         if (expandedA) keys.push('g:A');
