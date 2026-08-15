@@ -45,6 +45,8 @@ export class ProviderClientAdapter<T extends Record<string, unknown> = Record<st
   private syntheticSeq = 0;
   private columnDefs: ColumnDefinition[];
   private started = false;
+  /** C-M1: track attachment separately from started so destroy always detaches. */
+  private attached = false;
 
   private snapHandlers = new Set<(rows: readonly T[]) => void>();
   private tickHandlers = new Set<(rows: readonly T[]) => void>();
@@ -179,6 +181,7 @@ export class ProviderClientAdapter<T extends Record<string, unknown> = Record<st
   async start(): Promise<void> {
     await this.hub.post({ v: 1, id: '', type: 'ensure', config: this.config });
     await this.hub.post({ v: 1, id: '', type: 'attach', providerId: this.providerId, subId: this.subId });
+    this.attached = true;
     await this.hub.post({ v: 1, id: '', type: 'start', providerId: this.providerId });
     this.started = true;
   }
@@ -186,6 +189,7 @@ export class ProviderClientAdapter<T extends Record<string, unknown> = Record<st
   async stop(): Promise<void> {
     await this.hub.post({ v: 1, id: '', type: 'stop', providerId: this.providerId });
     this.started = false;
+    // C-M1: do NOT unset attached here; destroy will send the detach
   }
 
   async refresh(): Promise<void> {
@@ -262,7 +266,8 @@ export class ProviderClientAdapter<T extends Record<string, unknown> = Record<st
   }
 
   destroy(): void {
-    if (this.started) {
+    // C-M1: always send detach if attached, regardless of started state
+    if (this.attached) {
       void this.hub.post({ v: 1, id: '', type: 'detach', providerId: this.providerId, subId: this.subId });
     }
     this.offPush();

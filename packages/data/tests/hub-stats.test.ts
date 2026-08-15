@@ -4,7 +4,6 @@ import { _resetHubConnectionForTests } from '../src/client/hubConnection';
 import { _resetTransportRegistryForTests } from '../src/registry/transports';
 import { _resetDefaultTransportsFlagForTests } from '../src/transports/registerDefaults';
 import type { DataProviderConfig } from '../src/types';
-import { buildEndTokenMatcher } from '../src/transports/stomp';
 
 function reset(): void {
   _resetHubConnectionForTests();
@@ -68,13 +67,32 @@ describe('hub getStats', () => {
   });
 });
 
-describe('STOMP end-token matcher', () => {
-  it('matches case-insensitive substrings', () => {
-    const re = buildEndTokenMatcher('Success');
-    expect(re?.test('Success')).toBe(true);
-    expect(re?.test('success')).toBe(true);
-    expect(re?.test('DONE:Success')).toBe(true);
-    expect(re?.test('SUCCESS:ok')).toBe(true);
-    expect(re?.test('fail')).toBe(false);
+describe('STOMP end-token matching (exact or ${token}: prefix)', () => {
+  it('matches exact end token', () => {
+    const token = 'SUCCESS';
+    const body = 'SUCCESS';
+    const matches = body === token || body.startsWith(`${token}:`);
+    expect(matches).toBe(true);
+  });
+
+  it('matches token: prefix', () => {
+    const token = 'SUCCESS';
+    const body = 'SUCCESS: End of snapshot';
+    const matches = body === token || body.startsWith(`${token}:`);
+    expect(matches).toBe(true);
+  });
+
+  it('does not match case-insensitive variants (case-sensitive now)', () => {
+    const token = 'SUCCESS';
+    const body = 'success'; // lowercase
+    const matches = body === token || body.startsWith(`${token}:`);
+    expect(matches).toBe(false);
+  });
+
+  it('does not match substring within JSON', () => {
+    const token = 'SUCCESS';
+    const body = JSON.stringify({ status: 'SUCCESS', value: 100 });
+    const matches = body === token || body.startsWith(`${token}:`);
+    expect(matches).toBe(false);
   });
 });

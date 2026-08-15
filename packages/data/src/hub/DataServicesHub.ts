@@ -167,6 +167,15 @@ export class DataServicesHub {
   private ensureSlot(config: DataProviderConfig): ProviderSlot {
     let slot = this.slots.get(config.providerId);
     if (slot) {
+      // C-m4: if transport is running and config differs, keep the running config
+      // and log the divergence. Config changes require explicit restart.
+      if (slot.handle && JSON.stringify(slot.config.config) !== JSON.stringify(config.config)) {
+        console.warn(
+          `[DataServicesHub] config changed for running provider ${config.providerId}; keeping current config. ` +
+          'Restart the provider to apply new configuration.',
+        );
+        return slot;
+      }
       slot.config = config;
       slot.cache.setKeyColumn(config.config.keyColumn);
       return slot;
@@ -409,17 +418,35 @@ export class DataServicesHub {
   }
 
   private broadcast(slot: ProviderSlot, msg: HubPush): void {
+    const deadPorts = new Set<MessagePort>();
     for (const sub of slot.subscribers) {
       try {
         sub.port.postMessage(msg);
-      } catch { /* closed port */ }
+      } catch {
+        // C-C1: mark dead port for removal
+        deadPorts.add(sub.port);
+      }
+    }
+    // C-C1: reap dead ports from all slots
+    for (const port of deadPorts) {
+      this.removePort(port);
     }
   }
 
   private push(slot: ProviderSlot, msg: HubPush): void {
+    const deadPorts = new Set<MessagePort>();
     for (const sub of slot.subscribers) {
       if (msg.type === 'push' && msg.subId && msg.subId !== sub.subId) continue;
-      try { sub.port.postMessage(msg); } catch { /* ignore */ }
+      try {
+        sub.port.postMessage(msg);
+      } catch {
+        // C-C1: mark dead port for removal
+        deadPorts.add(sub.port);
+      }
+    }
+    // C-C1: reap dead ports from all slots
+    for (const port of deadPorts) {
+      this.removePort(port);
     }
   }
 }

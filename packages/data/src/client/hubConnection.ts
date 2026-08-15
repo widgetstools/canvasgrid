@@ -14,7 +14,7 @@ let sharedWorkerState: PortState | null = null;
 
 type PortState = {
   port: MessagePort;
-  pending: Map<string, { resolve: (r: HubResponse) => void; reject: (e: Error) => void }>;
+  pending: Map<string, { resolve: (r: HubResponse) => void; reject: (e: Error) => void; timer?: ReturnType<typeof setTimeout> }>;
   pushHandlers: Set<(msg: HubPush) => void>;
   reqSeq: number;
 };
@@ -37,6 +37,8 @@ function attachPort(port: MessagePort): PortState {
       const p = state.pending.get(data.id);
       if (p) {
         state.pending.delete(data.id);
+        // C-m1: clear the timeout when the response arrives
+        if (p.timer !== undefined) clearTimeout(p.timer);
         if (data.type === 'error') p.reject(new Error(data.error));
         else p.resolve(data as HubResponse);
       }
@@ -58,14 +60,15 @@ function createConnection(state: PortState): HubConnection {
       const id = msg.id || `r${++state.reqSeq}`;
       const full = { ...msg, id, v: 1 as const };
       return new Promise((resolve, reject) => {
-        state.pending.set(id, { resolve, reject });
-        state.port.postMessage(full);
-        setTimeout(() => {
+        // C-m1: store the timer handle so it can be cleared on response or timeout
+        const timer = setTimeout(() => {
           if (state.pending.has(id)) {
             state.pending.delete(id);
             reject(new Error(`Hub request timeout: ${msg.type}`));
           }
         }, 60_000);
+        state.pending.set(id, { resolve, reject, timer });
+        state.port.postMessage(full);
       });
     },
     onPush(handler) {

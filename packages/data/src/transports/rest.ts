@@ -18,14 +18,25 @@ function dig(obj: unknown, path: string | undefined): unknown {
 export function createRestTransport(
   cfg: RestTransportConfig,
   emit: ProviderEmit,
-  _ctx: TransportContext,
+  ctx: TransportContext,
 ): TransportHandle {
   let timer: ReturnType<typeof setInterval> | null = null;
   let stopped = false;
+  let generation = 0;
+  let abortController: AbortController | null = null;
   const poll = cfg.pollInterval ?? 0;
 
   const fetchOnce = async (): Promise<void> => {
     if (stopped) return;
+
+    const currentGeneration = generation;
+    abortController = new AbortController();
+
+    // Populate TransportContext.signal for external cancellation
+    if (ctx && typeof ctx === 'object') {
+      (ctx as any).signal = abortController.signal;
+    }
+
     emit({ status: 'connecting' });
     try {
       const url = new URL(cfg.endpoint, cfg.baseUrl);
@@ -36,8 +47,15 @@ export function createRestTransport(
         method: cfg.method ?? 'GET',
         headers: cfg.headers,
         body: cfg.method === 'POST' ? cfg.body : undefined,
-        signal: AbortSignal.timeout(cfg.timeout ?? 30_000),
+        signal: AbortSignal.any([
+          abortController.signal,
+          AbortSignal.timeout(cfg.timeout ?? 30_000),
+        ]),
       });
+
+      // Ignore response if generation has changed (newer fetch completed)
+      if (currentGeneration !== generation) return;
+
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json: unknown = await res.json();
       const raw = dig(json, cfg.rowsPath);
@@ -47,7 +65,12 @@ export function createRestTransport(
       emit({ rowsReceived: rows.length });
       emit({ status: 'ready' });
     } catch (err) {
-      emit({ status: 'error', error: err instanceof Error ? err.message : String(err) });
+      // Only emit error if not aborted or generation changed
+      if (currentGeneration === generation && !(err instanceof Error && err.name === 'AbortError')) {
+        emit({ status: 'error', error: err instanceof Error ? err.message : String(err) });
+      }
+    } finally {
+      abortController = null;
     }
   };
 
@@ -59,13 +82,22 @@ export function createRestTransport(
   return {
     stop() {
       stopped = true;
+      generation++;
+      if (abortController) {
+        abortController.abort();
+        abortController = null;
+      }
       if (timer != null) clearInterval(timer);
       timer = null;
       emit({ status: 'disconnected' });
     },
     restart() {
       stopped = false;
+      generation++;
       void fetchOnce();
+      if (poll > 0 && timer == null) {
+        timer = setInterval(() => { void fetchOnce(); }, poll);
+      }
     },
   };
 }

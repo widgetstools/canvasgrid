@@ -10,7 +10,14 @@ export function composeRowId(
     return v == null ? null : String(v);
   }
   if (keyColumn.length === 0) return null;
-  return keyColumn.map((k) => String(row[k] ?? '')).join('-');
+  // Composite key: return null if any part is nullish; join with space separator for unambiguous distinction
+  const parts: string[] = [];
+  for (const k of keyColumn) {
+    const v = row[k];
+    if (v == null) return null;
+    parts.push(String(v));
+  }
+  return parts.join(' ');
 }
 
 export class RowCache {
@@ -105,7 +112,7 @@ export class LivePipeline {
       const row = raw as Record<string, unknown>;
       if (conflateOn && conflateKey) {
         const id = String(row[conflateKey] ?? '');
-        if (id) this.pending.set(id, row);
+        if (id) this.pending.set(id, { ...this.pending.get(id), ...row });
         else this.pendingList.push(row);
       } else {
         this.pendingList.push(row);

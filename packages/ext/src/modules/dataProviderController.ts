@@ -233,9 +233,11 @@ export class DataProviderController {
     }
     return new Promise<void>((resolve) => {
       let settled = false;
+      let pollTimer: ReturnType<typeof setTimeout> | null = null;
       const finish = (): void => {
         if (settled) return;
         settled = true;
+        if (pollTimer !== null) clearTimeout(pollTimer);
         resolve();
       };
       const unsub = grid.addEventListener('gridReady', () => {
@@ -251,7 +253,8 @@ export class DataProviderController {
           finish();
           return;
         }
-        setTimeout(poll, 16);
+        // C-m5: store timer handle so detach() can cancel the poll
+        pollTimer = setTimeout(poll, 16);
       };
       poll();
     });
@@ -341,7 +344,9 @@ export class DataProviderController {
     this.detachBind?.();
     this.detachBind = null;
     if (this.provider) {
-      try { await this.provider.stop(); } catch { /* */ }
+      // C-C2, C-M1: on switch, only destroy (which sends detach via the always-detach path).
+      // Explicit stop() would kill the shared transport for all other tabs. Controller
+      // switches never call stop() — that's reserved for explicit Diagnostics Stop.
       this.provider.destroy();
       this.provider = null;
     }

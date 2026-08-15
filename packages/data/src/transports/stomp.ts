@@ -22,13 +22,23 @@ export function createStompTransport(
   let client: Client | null = null;
   let snapshotComplete = false;
   let received = 0;
-  const endTokenRe = buildEndTokenMatcher(cfg.snapshotEndToken ?? 'Success');
+  let snapshotTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  let reconnectAttempts = 0;
+  const endToken = cfg.snapshotEndToken ?? 'Success';
   const reconnectDelay = cfg.reconnect?.initialDelayMs ?? 2000;
+  const maxReconnectAttempts = cfg.reconnect?.maxAttempts ?? Infinity;
+  const maxReconnectDelayMs = cfg.reconnect?.maxDelayMs ?? 60000;
+
+  const clearSnapshotTimeout = (): void => {
+    if (snapshotTimeoutHandle != null) {
+      clearTimeout(snapshotTimeoutHandle);
+      snapshotTimeoutHandle = null;
+    }
+  };
 
   const activate = (): void => {
     if (client) return;
-    snapshotComplete = false;
-    received = 0;
+    reconnectAttempts = 0;
     emit({ status: 'connecting' });
     const c = new Client({
       brokerURL: cfg.websocketUrl,
@@ -36,6 +46,21 @@ export function createStompTransport(
       heartbeatIncoming: cfg.heartbeat?.incoming ?? 4000,
       heartbeatOutgoing: cfg.heartbeat?.outgoing ?? 4000,
       onConnect: () => {
+        // Reset snapshot state on every connect (new connection or reconnect)
+        snapshotComplete = false;
+        received = 0;
+        clearSnapshotTimeout();
+
+        // Set up snapshot timeout if configured
+        if (cfg.snapshotTimeoutMs != null && cfg.snapshotTimeoutMs > 0) {
+          snapshotTimeoutHandle = setTimeout(() => {
+            if (!snapshotComplete) {
+              emit({ status: 'error', error: `Snapshot timeout after ${cfg.snapshotTimeoutMs}ms` });
+              clearSnapshotTimeout();
+            }
+          }, cfg.snapshotTimeoutMs);
+        }
+
         emit({ status: 'snapshot' });
         c.subscribe(cfg.listenerTopic, (msg: IMessage) => onMessage(msg));
         const dest = cfg.requestMessage ?? cfg.listenerTopic;
@@ -47,9 +72,24 @@ export function createStompTransport(
             : {},
         });
       },
-      onStompError: (f) => emit({ status: 'error', error: f.headers['message'] ?? 'STOMP error' }),
-      onWebSocketError: () => emit({ status: 'error', error: 'WebSocket error' }),
-      onWebSocketClose: () => emit({ status: 'disconnected' }),
+      onStompError: (f) => {
+        clearSnapshotTimeout();
+        emit({ status: 'error', error: f.headers['message'] ?? 'STOMP error' });
+      },
+      onWebSocketError: () => {
+        clearSnapshotTimeout();
+        emit({ status: 'error', error: 'WebSocket error' });
+      },
+      onWebSocketClose: () => {
+        clearSnapshotTimeout();
+        reconnectAttempts++;
+        if (reconnectAttempts > maxReconnectAttempts) {
+          client = null;
+          emit({ status: 'error', error: `Max reconnect attempts (${maxReconnectAttempts}) exceeded` });
+        } else {
+          emit({ status: 'disconnected' });
+        }
+      },
     });
     client = c;
     c.activate();
@@ -58,19 +98,23 @@ export function createStompTransport(
   const onMessage = (msg: IMessage): void => {
     const body = msg.body?.trim() ?? '';
     if (!body) return;
-    // Markets: case-insensitive substring match on the end token.
-    if (endTokenRe?.test(body)) {
+
+    // Exact match or ${token}: prefix (from book.ts pattern)
+    if (body === endToken || body.startsWith(`${endToken}:`)) {
       if (snapshotComplete) return;
+      clearSnapshotTimeout();
       snapshotComplete = true;
       emit({ rowsReceived: received });
       emit({ status: 'ready' });
       return;
     }
+
     try {
       const rows = extractRows(JSON.parse(body));
       if (!rows.length) return;
       received += rows.length;
       if (!snapshotComplete) {
+        // First batch after reconnect should have replace: true
         emit({ rows, replace: received === rows.length });
         emit({ rowsReceived: received, byteSize: body.length });
       } else {
@@ -87,6 +131,7 @@ export function createStompTransport(
     stop() {
       const c = client;
       client = null;
+      clearSnapshotTimeout();
       if (c) {
         try { void c.deactivate(); } catch { /* swallow */ }
       }
@@ -95,6 +140,7 @@ export function createStompTransport(
     restart(overlay) {
       const c = client;
       client = null;
+      clearSnapshotTimeout();
       if (c) {
         try { void c.deactivate(); } catch { /* swallow */ }
       }
@@ -104,10 +150,4 @@ export function createStompTransport(
       activate();
     },
   };
-}
-
-/** Case-insensitive substring matcher (Markets `buildEndTokenMatcher`). */
-export function buildEndTokenMatcher(token: string | undefined): RegExp | null {
-  if (!token) return null;
-  return new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 }
