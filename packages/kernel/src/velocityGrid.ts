@@ -10431,6 +10431,15 @@ export class VelocityGrid<TRow = any> {
       isPointInColumnHeaderBand: (x, y) => this.isPointInColumnHeaderBand(x, y),
       setColumnHeaderDragHover: (colId, x, y) => this.setColumnHeaderDragHover(colId, x, y),
       commitColumnHeaderDrop: (colId, x) => this.commitColumnHeaderDrop(colId, x),
+      // This closing `as VelocityGridApi<TRow>` makes interface coverage
+      // UNCHECKED by the compiler: a method declared on `VelocityGridApi`
+      // but never wired into the object literal above still compiles clean
+      // here and is simply `undefined` at runtime. Adding a method to the
+      // interface is not enough on its own — wire it above, and back it with
+      // a runtime reachability assertion (see
+      // tests/columnDefsSnapshotApi.integration.test.ts, "is reachable
+      // through the public VelocityGridApi surface", for the pattern used
+      // for `getColumnDefsSnapshot` / `upsertColumnDefs`).
     } as VelocityGridApi<TRow>;
   }
 

@@ -170,7 +170,7 @@ describe('columnSettingsModule — calc engine missing (D-F8)', () => {
     const { ctx, overrides } = makeCtx(undefined, { wireCalc: false });
     const host = document.createElement('div');
     const mod = columnSettingsModule();
-    mod.init();
+    mod.init(ctx);
     const inst = mod.mount(host, ctx);
 
     // Nothing is claimed before the user tries.
@@ -201,10 +201,10 @@ describe('columnSettingsModule — calc engine missing (D-F8)', () => {
     const { ctx, edits } = makeCtx(undefined, { wireCalc: false });
     const host = document.createElement('div');
     const mod = columnSettingsModule();
-    mod.init();
+    mod.init(ctx);
     const inst = mod.mount(host, ctx);
 
-    const switches = [...host.querySelectorAll<HTMLInputElement>('.vg-checkbox')];
+    const switches = Array.from(host.querySelectorAll<HTMLInputElement>('.vg-checkbox'));
     const sortable = switches.find((s) => s.closest('.ckp-row')?.textContent?.includes('Sortable'))!;
     sortable.click();
     inst.commit?.();
@@ -219,7 +219,7 @@ describe('columnSettingsModule — calc engine missing (D-F8)', () => {
     const { ctx, overrides } = makeCtx(undefined, { wireCalc: false });
     const host = document.createElement('div');
     const mod = columnSettingsModule();
-    mod.init();
+    mod.init(ctx);
     const inst = mod.mount(host, ctx);
 
     // The host wires calc only now — the normal order for

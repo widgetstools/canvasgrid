@@ -78,6 +78,16 @@ export interface RuleEngineShape {
   setRules?(rules: ConditionalRuleShape[]): void;
 }
 
+// KNOWN BUG (multi-grid): this is a module-global singleton, not per-grid
+// state. With two VelocityGrid instances alive on one page, the last
+// `registerRuleEngine` / `wireIntoKernel` call wins for BOTH grids' paint-time
+// rule lookup — the first grid silently starts evaluating the second grid's
+// rules. `_resetRuleEngine_forTests` is process-wide for the same reason.
+// Fixing this (threading the engine per-grid instead of through one module
+// slot) is its own task; not attempted here. ext is unaffected because it
+// never reads this slot — it reads grid-instance own-properties
+// (`__editBridgeWired` / `__calcBridgeWired` / `__rulesBridgeWired`, see
+// packages/ext/src/extension/engines.ts) which ARE correctly per-grid.
 let injectedEngine: RuleEngineShape | null = null;
 
 export function registerRuleEngine(engine: RuleEngineShape): void {
