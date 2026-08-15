@@ -20,6 +20,7 @@ import {
   takePaneScroll,
   restorePaneScroll,
   emptyState,
+  engineMissingNotice,
 } from '../ui/cockpit';
 import { clone, editHandle } from './editHandle';
 
@@ -77,7 +78,7 @@ export function shortcutsModule(): SettingsModule {
       host.appendChild(root);
 
       const loadDefs = (): void => {
-        const h = editHandle(ctx.grid);
+        const h = editHandle(ctx);
         if (!h) {
           settingsCommitted = null;
           settingsDraft = null;
@@ -117,7 +118,7 @@ export function shortcutsModule(): SettingsModule {
       };
 
       const save = (): void => {
-        const h = editHandle(ctx.grid);
+        const h = editHandle(ctx);
         if (!h || !settingsDraft) return;
         if (settingsDirty()) {
           h.updateSettings({ shortcuts: clone(settingsDraft) });
@@ -182,7 +183,7 @@ export function shortcutsModule(): SettingsModule {
           del.innerHTML = lucideSvg('trash-2', 12) || '×';
           del.addEventListener('click', (ev) => {
             ev.stopPropagation();
-            const h = editHandle(ctx.grid);
+            const h = editHandle(ctx);
             if (!h) return;
             const list = h.getShortcuts().filter((x) => x.id !== s.id);
             h.setShortcuts(list);
@@ -206,10 +207,8 @@ export function shortcutsModule(): SettingsModule {
         const scrollTop = takePaneScroll(pane);
         pane.replaceChildren();
         if (!settingsDraft) {
-          pane.appendChild(emptyState({
-            title: 'Edit engine not wired',
-            description: 'Shortcuts requires wireEditIntoKernel(grid).',
-            icon: 'keyboard',
+          pane.appendChild(engineMissingNotice('edit', {
+            feature: 'Shortcuts', icon: 'keyboard',
           }));
           return;
         }

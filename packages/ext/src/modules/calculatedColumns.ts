@@ -16,7 +16,7 @@ import {
   type CalculatedColumnDef,
   type CellDataType,
 } from '@wellsfargo-starui/velocity-grid-calc';
-import type { SsrmExpressionHost } from '@wellsfargo-starui/velocity-grid';
+import type { SsrmExpressionHost, CColDef } from '@wellsfargo-starui/velocity-grid';
 import { PerspectiveDataProviderController } from '@wellsfargo-starui/velocity-grid-perspective';
 import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import {
@@ -93,48 +93,44 @@ function ensureExprColumnDef(
   grid: VelocityGridExtContext['grid'],
   def: CalculatedColumnDef,
 ): void {
-  const api = grid as unknown as {
-    columnDefsMap?: Map<string, { colId: string; field?: string }>;
-    updateGridOptions?: (partial: { columnDefs: unknown[] }) => void;
-  };
-  const existing: unknown[] = [];
-  if (api.columnDefsMap) {
-    for (const d of api.columnDefsMap.values()) existing.push({ ...d });
-  }
   const alias = def.colId;
-  const without = existing.filter((d) => {
-    const row = d as { colId?: string; field?: string };
-    return row.colId !== alias && row.field !== alias;
-  });
-  without.push({
+  // D-F7 — was: cast the grid, read the PRIVATE `columnDefsMap`, shallow-copy
+  // its values, filter by colId/field, append, `updateGridOptions`. That is
+  // exactly `upsertColumnDefs`' contract (identity `colId ?? field`, matches
+  // dropped, incoming appended), so the whole hand-rolled path collapses into
+  // the kernel's public API with identical resulting def order.
+  grid.upsertColumnDefs([{
     colId: alias,
     field: alias,
     headerName: def.headerName || alias,
-    cellDataType: def.cellDataType ?? 'number',
+    // Calc's `CellDataType` union ('currency' | 'percent' | 'date' |
+    // 'datetime' | 'string' | 'boolean' | 'number') is WIDER than the
+    // kernel's declared `CColDef['cellDataType']` ('text' | 'number'). The
+    // kernel only ever COMPARES this field (`resolveColDef`:
+    // `cellDataType === 'number'` → right-align, otherwise it rides through
+    // untouched), so calc's wider vocabulary has always been shipped on this
+    // def — the old `unknown[]` cast just hid it. Narrowing it here would
+    // change the stored def, so keep the author's exact value and record the
+    // widening in this one spot.
+    cellDataType: (def.cellDataType ?? 'number') as CColDef['cellDataType'],
     ...(def.initialWidth != null ? { width: def.initialWidth } : { width: 120 }),
     ...(def.format ? { format: def.format } : {}),
     ...(def.cellDataType === 'number' || def.cellDataType == null
       ? { aggFunc: 'sum', enableValue: true }
       : {}),
-  });
-  api.updateGridOptions?.({ columnDefs: without });
+  }]);
 }
 
 function removeExprColumnDef(
   grid: VelocityGridExtContext['grid'],
   colId: string,
 ): void {
-  const api = grid as unknown as {
-    columnDefsMap?: Map<string, { colId: string; field?: string }>;
-    updateGridOptions?: (partial: { columnDefs: unknown[] }) => void;
-  };
-  if (!api.columnDefsMap || !api.updateGridOptions) return;
-  const next: unknown[] = [];
-  for (const d of api.columnDefsMap.values()) {
-    if (d.colId === colId || d.field === colId) continue;
-    next.push({ ...d });
-  }
-  api.updateGridOptions({ columnDefs: next });
+  // D-F7 — same story as `ensureExprColumnDef`, minus an append. There is no
+  // `removeColumnDefs`; the public snapshot + `updateGridOptions` pair (the
+  // only entry point that rebuilds the column tree) covers it directly.
+  const next = grid.getColumnDefsSnapshot()
+    .filter((d) => d.colId !== colId && d.field !== colId);
+  grid.updateGridOptions({ columnDefs: next });
 }
 
 export function calculatedColumnsModule(): SettingsModule {
@@ -150,7 +146,16 @@ export function calculatedColumnsModule(): SettingsModule {
     },
 
     mount(host: HTMLElement, ctx: VelocityGridExtContext): ModuleInstance {
-      const { calc } = wireCalc(ctx.grid);
+      // D-F8 — this module is the LAZY WIRER for calc: it wires on mount (the
+      // bridge is idempotent and returns the same `{ calc }` for an already
+      // wired grid) and records the engine into the context slots, so every
+      // other module — Column Settings' caption path especially — sees the
+      // same engine instead of re-deriving it from the grid expando.
+      const calc = ctx.engines.get('calc') ?? (() => {
+        const engine = wireCalc(ctx.grid).calc;
+        ctx.engines.register('calc', engine);
+        return engine;
+      })();
       const exprHost = (): SsrmExpressionHost | null => {
         const g = ctx.grid as unknown as {
           getSsrmExpressionHost?: () => SsrmExpressionHost | null;

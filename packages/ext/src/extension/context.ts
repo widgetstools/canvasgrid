@@ -3,6 +3,7 @@ import type {
   VelocityGridExtContext, ExtEventBus, ExtEvent, ProfileController, ExtModalHost, Unsub,
 } from './types';
 import { DrawerSession } from '../profiles/drawerSession';
+import { createEngineSlots } from './engines';
 
 export function createExtEventBus(): ExtEventBus {
   const map = new Map<string, Set<(e: ExtEvent) => void>>();
@@ -121,5 +122,11 @@ export function createExtContext(grid: VelocityGrid, profiles: ProfileController
     events,
     profiles: wrappedProfiles,
     session,
+    // D-F8. Bound to THIS grid and resolved on every `get()` — engines are
+    // wired after the constructor returns (hosts call
+    // `wireEditIntoKernel(ext.grid)`; ext lazily wires calc/rules from a
+    // module's `mount()`), so a creation-time snapshot would be `null`
+    // forever. See extension/engines.ts.
+    engines: createEngineSlots(grid),
   };
 }

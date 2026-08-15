@@ -931,6 +931,47 @@ function pickThemeMode(probeHost: Element, theme: CgTheme): ThemeMode {
   return 'light';
 }
 
+/**
+ * D-F7 — detaching copy for `getColumnDefsSnapshot()`.
+ *
+ * Plain objects and arrays are rebuilt recursively so a caller can mutate
+ * any level of the returned structure without writing through into the
+ * grid's live resolved colDefs. EVERYTHING ELSE is passed through by
+ * reference on purpose:
+ *   - functions (`valueGetter`, `valueFormatter`, `cellRenderer`,
+ *     `comparator`, `cellIcon`, …) are behaviour, not state; cloning them
+ *     is impossible and re-wrapping them would change identity-based
+ *     comparisons in the resolve path.
+ *   - class instances / compiled artifacts (`_compositeProgram`,
+ *     `_formatProgram`, RegExp, Date, Map, Set) are opaque to the kernel's
+ *     own colDef vocabulary; a structural copy would either break their
+ *     prototype or silently deep-copy engine-owned state.
+ * `structuredClone` is NOT usable here — it throws `DataCloneError` on the
+ * function-valued slots every resolved colDef can carry.
+ */
+function copyColDefDeepish<T>(value: T, seen = new WeakMap<object, unknown>()): T {
+  if (value === null || typeof value !== 'object') return value;
+  const asObject = value as unknown as object;
+  const memo = seen.get(asObject);
+  if (memo !== undefined) return memo as T;
+  if (Array.isArray(value)) {
+    const arr: unknown[] = [];
+    seen.set(asObject, arr);
+    for (const item of value) arr.push(copyColDefDeepish(item, seen));
+    return arr as unknown as T;
+  }
+  // Plain objects only — anything with a non-Object prototype (Date, Map,
+  // RegExp, an engine's compiled program instance) rides through by ref.
+  const proto: unknown = Object.getPrototypeOf(asObject);
+  if (proto !== Object.prototype && proto !== null) return value;
+  const out: Record<string, unknown> = {};
+  seen.set(asObject, out);
+  for (const [k, v] of Object.entries(asObject as Record<string, unknown>)) {
+    out[k] = copyColDefDeepish(v, seen);
+  }
+  return out as unknown as T;
+}
+
 export class VelocityGrid<TRow = any> {
   private events = new TypedEventEmitter<VelocityGridEvent<TRow>>();
   /** Cycle 21i Phase 2 / T2 — named, versioned engine-state slices that
@@ -6670,6 +6711,66 @@ export class VelocityGrid<TRow = any> {
     return this.columnDefsMap.get(colId)?.headerName;
   }
 
+  /**
+   * D-F7 — the supported replacement for reaching into the private
+   * `columnDefsMap`. Flat snapshot of every RESOLVED leaf colDef (hidden
+   * leaves included), in `columnDefsMap` insertion order.
+   *
+   * DETACHED: entries are structural copies (see `copyColDefDeepish`), so a
+   * caller may freely mutate what it gets back without writing through to
+   * the grid's live column model. Functions, class instances and other
+   * non-plain values are shared by reference — they are behaviour, not
+   * state, and cloning them is neither possible nor meaningful.
+   *
+   * RESOLVED, NOT AUTHORED: every entry has `defaultColDef` / `columnTypes`
+   * folded in and carries the runtime column state (width / hide / pinned)
+   * that the mutators write onto the resolved copy. Pair it with
+   * {@link upsertColumnDefs} — or with `updateGridOptions({ columnDefs })`
+   * — to add/replace/remove a column while carrying that runtime state
+   * across the rebuild. Use `getColumnGroupDefs()` instead when you need
+   * the AUTHORED tree with its group structure intact.
+   */
+  getColumnDefsSnapshot(): CColDef<TRow>[] {
+    const out: CColDef<TRow>[] = [];
+    for (const def of this.columnDefsMap.values()) {
+      out.push(copyColDefDeepish(def) as CColDef<TRow>);
+    }
+    return out;
+  }
+
+  /**
+   * D-F7 — add or replace leaf column defs on top of
+   * {@link getColumnDefsSnapshot}, then rebuild through the one entry point
+   * that rebuilds the column tree (`updateGridOptions({ columnDefs })`).
+   *
+   * Identity is `colId ?? field`; every snapshot entry whose `colId` OR
+   * `field` matches an incoming def's identity is dropped, and the incoming
+   * defs are APPENDED in argument order. An upserted column therefore lands
+   * at the END of the flat def order — that is deliberate, it is the exact
+   * behaviour the calculated-columns editor had while it was mutating
+   * `columnDefsMap` copies by hand, and column ORDER for the user is
+   * governed by column state, not by def position.
+   *
+   * Because the basis is the flat leaf snapshot, this FLATTENS an authored
+   * column-group tree. Grids with groups should edit `getColumnGroupDefs()`
+   * and go through `updateGridOptions` / `moveColumnToGroup` instead.
+   */
+  upsertColumnDefs(defs: readonly CColDef<TRow>[]): void {
+    if (defs.length === 0) return;
+    const identities = new Set<string>();
+    for (const d of defs) {
+      const id = d.colId ?? d.field;
+      if (id) identities.add(id);
+    }
+    const next = this.getColumnDefsSnapshot().filter((d) => {
+      if (d.colId != null && identities.has(d.colId)) return false;
+      if (d.field != null && identities.has(d.field)) return false;
+      return true;
+    });
+    for (const d of defs) next.push(d);
+    this.updateGridOptions({ columnDefs: next });
+  }
+
   /** Cycle 15.5 / Task 2 — class-level mirror of the public-API getter.
    *  Lives here too (not just on `makeApi()`) so the default main-menu
    *  registry — which receives `this` as its `DefaultMainMenuGrid`
@@ -10200,6 +10301,8 @@ export class VelocityGrid<TRow = any> {
       setColumnGroupState: (s) => { this.columnGroupState.apply(s); },
       resetColumnGroupState: () => this.columnGroupState.reset(),
       getColumnGroupDefs: () => this.getColumnGroupDefs(),
+      getColumnDefsSnapshot: () => this.getColumnDefsSnapshot(),
+      upsertColumnDefs: (defs) => this.upsertColumnDefs(defs),
       refreshToolPanel: (id) => this.refreshToolPanel(id),
       getToolPanelInstance: (id) => this.getToolPanelInstance(id),
       isSideBarVisible: () => this.isSideBarVisible(),

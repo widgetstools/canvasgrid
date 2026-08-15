@@ -20,6 +20,7 @@ import {
   takePaneScroll,
   restorePaneScroll,
   emptyState,
+  engineMissingNotice,
 } from '../ui/cockpit';
 import { clone, editHandle } from './editHandle';
 
@@ -67,7 +68,7 @@ export function plusMinusModule(): SettingsModule {
       host.appendChild(root);
 
       const load = (): void => {
-        const h = editHandle(ctx.grid);
+        const h = editHandle(ctx);
         if (!h) {
           settingsCommitted = null;
           settingsDraft = null;
@@ -109,7 +110,7 @@ export function plusMinusModule(): SettingsModule {
       };
 
       const save = (): void => {
-        const h = editHandle(ctx.grid);
+        const h = editHandle(ctx);
         if (!h || !settingsDraft) return;
         if (settingsDirty()) {
           h.updateSettings({ plusMinus: clone(settingsDraft) });
@@ -174,7 +175,7 @@ export function plusMinusModule(): SettingsModule {
           del.innerHTML = lucideSvg('trash-2', 12) || '×';
           del.addEventListener('click', (ev) => {
             ev.stopPropagation();
-            const h = editHandle(ctx.grid);
+            const h = editHandle(ctx);
             if (!h) return;
             const list = h.getNudges().filter((x) => x.id !== n.id);
             h.setNudges(list);
@@ -200,10 +201,8 @@ export function plusMinusModule(): SettingsModule {
         editor = null;
         pane.replaceChildren();
         if (!settingsDraft) {
-          pane.appendChild(emptyState({
-            title: 'Edit engine not wired',
-            description: 'Plus / Minus requires wireEditIntoKernel(grid).',
-            icon: 'plus',
+          pane.appendChild(engineMissingNotice('edit', {
+            feature: 'Plus / Minus', icon: 'plus',
           }));
           return;
         }

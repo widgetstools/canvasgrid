@@ -14,6 +14,7 @@ import {
   vguiTileCss,
   type VguiTokens,
 } from '@wellsfargo-starui/velocity-grid/ui/primitives';
+import { ENGINE_WIRE_HINT, type ExtEngineName } from '../extension/engines';
 
 /** Cockpit's `--ckp-*` aliases → shared primitive generators. Passing the kit's
  *  own tokens reproduces the exact prior rendering (invariance-preserving). */
@@ -162,6 +163,45 @@ export function emptyState(opts: {
   root.appendChild(el('h3', 'ckp-empty-title', opts.title));
   if (opts.description) root.appendChild(el('p', 'ckp-empty-body', opts.description));
   if (opts.action) root.appendChild(opts.action);
+  return root;
+}
+
+/**
+ * D-F8 — THE shared "this module's engine isn't wired" surface. Every module
+ * that reads `ctx.engines.get(...)` renders this when the answer is `null`,
+ * so a missing engine is always VISIBLE and always says the same thing
+ * (before this, three modules had three strategies and one of them was to
+ * silently succeed).
+ *
+ * `variant: 'empty'` (default) replaces a pane/section with a full empty
+ * state — for a module that can do nothing at all without its engine.
+ * `variant: 'banner'` returns a compact inline strip — for a module that
+ * still works, but where ONE action just failed because the engine is
+ * absent (e.g. Column Settings saving a caption).
+ *
+ * Returns the node; the caller decides where it goes.
+ */
+export function engineMissingNotice(
+  engine: ExtEngineName,
+  opts: { feature: string; icon?: string; variant?: 'empty' | 'banner'; detail?: string },
+): HTMLElement {
+  const hint = ENGINE_WIRE_HINT[engine];
+  const title = `${hint.label} engine not wired`;
+  const description = opts.detail ?? `${opts.feature} requires ${hint.wire}.`;
+  if (opts.variant === 'banner') {
+    const root = el('div', 'ckp-notice');
+    root.setAttribute('role', 'status');
+    root.dataset.engine = engine;
+    const icon = el('span', 'ckp-notice-icon');
+    icon.innerHTML = lucideSvg('triangle-alert', 13);
+    const text = el('div', 'ckp-notice-text');
+    text.appendChild(el('strong', 'ckp-notice-title', title));
+    text.appendChild(el('span', 'ckp-notice-body', description));
+    root.append(icon, text);
+    return root;
+  }
+  const root = emptyState({ title, description, icon: opts.icon ?? 'unplug' });
+  root.dataset.engine = engine;
   return root;
 }
 
@@ -532,6 +572,21 @@ ${vguiInputInteractionCss(['.ckp-input'], CKP_TOKENS)}
   color: var(--vg-fg-color, #e5e9f0);
 }
 .ckp-empty-body { margin: 0; max-width: 22rem; font-size: 12.5px; line-height: 1.45; }
+/* D-F8 — inline "engine not wired" strip (engineMissingNotice variant
+   'banner'): the module still renders, but one action just failed. Same
+   warning token as .ckp-warn, same tinted-surface grammar as .ckp-error. */
+.ckp-notice {
+  display: flex; align-items: flex-start; gap: 8px;
+  margin: 0 0 12px; padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--vg-warning-color, #f0b429) 40%, transparent);
+  border-radius: var(--vg-radius, 2px);
+  background: color-mix(in srgb, var(--vg-warning-color, #f0b429) 9%, transparent);
+  line-height: 1.45;
+}
+.ckp-notice-icon { flex: 0 0 auto; margin-top: 1px; color: var(--vg-warning-color, #f0b429); line-height: 1; }
+.ckp-notice-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ckp-notice-title { font-size: 12px; font-weight: 600; color: var(--vg-warning-color, #f0b429); }
+.ckp-notice-body { font-size: 11.5px; color: var(--ckp-muted); }
 /* style chrome (ribbon Font/Borders cluster) embedded in the rules pane */
 .ckp-stylechrome .vgext-rb-stepper { display: none; }
 .ckp-stylechrome .vgext-rb-grp:has([data-vg-field='halign']) { display: none; }

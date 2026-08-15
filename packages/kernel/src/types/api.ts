@@ -907,6 +907,23 @@ export interface VelocityGridApi<TRow = any> {
    *  the internal `columnDefsMap`. Hidden leaves still resolve — the
    *  Columns panel lists hidden columns with their headerName intact. */
   getColumnHeaderName(colId: string): string | undefined;
+  /** D-F7 — flat, DETACHED snapshot of every RESOLVED leaf colDef (hidden
+   *  leaves included), in internal leaf order. The supported replacement
+   *  for cracking open the internal `columnDefsMap`. Plain objects/arrays
+   *  in each entry are copied, so mutating the result cannot write through
+   *  into the grid; functions and compiled artifacts are shared by
+   *  reference. Entries are RESOLVED (defaultColDef / columnTypes folded
+   *  in, runtime width/hide/pinned carried) — use `getColumnGroupDefs()`
+   *  when you want the AUTHORED tree with group structure intact. */
+  getColumnDefsSnapshot(): CColDef<TRow>[];
+  /** D-F7 — add/replace leaf defs on top of `getColumnDefsSnapshot()` and
+   *  rebuild via `updateGridOptions({ columnDefs })`. Identity is
+   *  `colId ?? field`; matching snapshot entries are dropped and the
+   *  incoming defs APPENDED, so an upserted column lands at the end of the
+   *  flat def order. Operates on the flat leaf snapshot and therefore
+   *  FLATTENS an authored column-group tree — grouped grids should edit
+   *  `getColumnGroupDefs()` and call `updateGridOptions` instead. */
+  upsertColumnDefs(defs: readonly CColDef<TRow>[]): void;
   /** Cycle 15.5 / Task 2 — `true` when the column's resolved colDef
    *  carries `enableRowGroup: true`. Used by the columns tool panel's
    *  Row Groups drop zone (decides which column-list rows offer a

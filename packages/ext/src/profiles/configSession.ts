@@ -36,7 +36,14 @@ export type WorkspaceConfig = GridState & { layouts?: GridLayoutsBundle };
  * (avoids clashing with GridState.version).
  */
 export type InstanceConfigDoc = {
-  docVersion: 1;
+  /**
+   * Normally {@link INSTANCE_DOC_VERSION}. Widened from the literal `1` for
+   * the D-F12 forward-compat guard: a document written by a NEWER build keeps
+   * its own (higher) `docVersion` all the way through
+   * {@link normalizeInstanceDoc}, so nothing downstream can mistake it for a
+   * current-version doc and rewrite it.
+   */
+  docVersion: number;
   gridLevelData: InstanceGridLevelData;
   /** Single-slot ProfileStore facade meta (not a profiles array). */
   meta?: ProfileMeta;
@@ -176,13 +183,61 @@ function hasWorkspaceContent(doc: InstanceConfigDoc): boolean {
   return keys.length > 0;
 }
 
+/** `docVersion` when it is a real, FUTURE version number; `null` otherwise
+ *  (current, legacy, absent, or non-numeric). D-F12. */
+export function futureDocVersion(raw: unknown): number | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const v = (raw as Record<string, unknown>).docVersion;
+  return typeof v === 'number' && Number.isFinite(v) && v > INSTANCE_DOC_VERSION ? v : null;
+}
+
+/** Warn at most once per observed future version, per process — `readRaw()`
+ *  runs on every load and this must not become console spam. */
+const warnedFutureVersions = new Set<number>();
+function warnFutureDoc(version: number, action: string): void {
+  if (warnedFutureVersions.has(version)) return;
+  warnedFutureVersions.add(version);
+  console.warn(
+    `[velocity-grid-ext] stored config is docVersion ${version}, newer than this `
+    + `build understands (${INSTANCE_DOC_VERSION}). Treating it as READ-ONLY: ${action}. `
+    + 'Clear the stored config for this grid to save from this build.',
+  );
+}
+
+/** Test-only reset for the warn-once bookkeeping above. */
+export function _resetFutureDocWarnings_forTests(): void {
+  warnedFutureVersions.clear();
+}
+
 /**
  * Normalize raw localStorage JSON to a flat InstanceConfigDoc.
  * Migrates legacy `profiles[]` / `activeProfileId` documents on read.
+ *
+ * D-F12 — a doc whose `docVersion` is GREATER than
+ * {@link INSTANCE_DOC_VERSION} was written by a newer build. It is passed
+ * through with its own `docVersion` intact instead of being restamped as a
+ * current-version doc: the flat-doc branch below matches on shape as well as
+ * version, so an unrecognised future doc used to be silently downgraded to
+ * `docVersion: 1` — and `needsRewrite` then saw `2 !== 1` and PERSISTED the
+ * downgrade, destroying whatever the newer build had stored. Keeping the
+ * version is what lets `writeRaw` refuse to clobber it.
  */
 export function normalizeInstanceDoc(raw: unknown): InstanceConfigDoc | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
+
+  const future = futureDocVersion(o);
+  if (future != null) {
+    warnFutureDoc(future, 'fields this build recognises are still applied, nothing is written back');
+    const { gridLevelData, ...rest } = o as Partial<InstanceConfigDoc> & Record<string, unknown>;
+    return {
+      ...rest,
+      docVersion: future,
+      gridLevelData: (gridLevelData && typeof gridLevelData === 'object')
+        ? (gridLevelData as InstanceGridLevelData)
+        : {},
+    } as InstanceConfigDoc;
+  }
 
   // Legacy Markets profile-set shape
   if (Array.isArray(o.profiles)) {
@@ -306,7 +361,29 @@ export class LocalStorageConfigSession implements ConfigSession {
     }
   }
 
+  /** D-F12 — the future `docVersion` currently on disk for this grid, or
+   *  `null`. Every write consults it: a doc written by a NEWER build must
+   *  survive this build's session untouched. */
+  private storedFutureVersion(): number | null {
+    try {
+      const raw = storageGetSync(this.storage, this.key);
+      if (!raw) return null;
+      return futureDocVersion(JSON.parse(raw));
+    } catch {
+      return null;
+    }
+  }
+
   private writeRaw(doc: InstanceConfigDoc): void {
+    // D-F12 forward-compat guard. Serialising here would drop every field
+    // this build doesn't know about AND stamp docVersion back down to
+    // INSTANCE_DOC_VERSION — silently destroying the newer build's document.
+    // Refuse the write and say so loudly instead.
+    const future = this.storedFutureVersion();
+    if (future != null) {
+      warnFutureDoc(future, 'this save was DISCARDED rather than downgrading the stored document');
+      return;
+    }
     const {
       docVersion: _dv,
       gridLevelData,
@@ -322,11 +399,15 @@ export class LocalStorageConfigSession implements ConfigSession {
     storageSetSync(this.storage, this.key, JSON.stringify(payload));
   }
 
-  /** True when the on-disk JSON still uses the legacy profiles[] shape. */
+  /** True when the on-disk JSON still uses the legacy profiles[] shape (or
+   *  any other pre-current docVersion) and should be migrated in place.
+   *  D-F12 — a FUTURE docVersion is never "needing a rewrite"; rewriting it
+   *  is precisely the downgrade this guard exists to prevent. */
   private needsRewrite(raw: string | null): boolean {
     if (!raw) return false;
     try {
       const parsed = JSON.parse(raw) as Record<string, unknown>;
+      if (futureDocVersion(parsed) != null) return false;
       return Array.isArray(parsed.profiles) || parsed.docVersion !== INSTANCE_DOC_VERSION;
     } catch {
       return false;

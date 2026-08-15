@@ -5,7 +5,7 @@
 import type { SmartEditOp, SmartEditSettings } from '@wellsfargo-starui/velocity-grid-edit';
 import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import {
-  band, el, injectCockpitStyles, lucideSvg, numberInput, row, checkbox, emptyState,
+  band, el, injectCockpitStyles, lucideSvg, numberInput, row, checkbox, engineMissingNotice,
 } from '../ui/cockpit';
 import { clone, editHandle } from './editHandle';
 
@@ -34,7 +34,7 @@ export function smartEditModule(): SettingsModule {
       host.appendChild(root);
 
       const load = (): void => {
-        const h = editHandle(ctx.grid);
+        const h = editHandle(ctx);
         if (!h) { committed = null; draft = null; return; }
         committed = clone(h.getSettings().smartEdit);
         draft = clone(committed);
@@ -44,7 +44,7 @@ export function smartEditModule(): SettingsModule {
         !!draft && !!committed && JSON.stringify(draft) !== JSON.stringify(committed);
 
       const save = (): void => {
-        const h = editHandle(ctx.grid);
+        const h = editHandle(ctx);
         if (!h || !draft) return;
         h.updateSettings({ smartEdit: clone(draft) });
         // Keep Edit History recordSources in sync with feature-level flag.
@@ -63,10 +63,8 @@ export function smartEditModule(): SettingsModule {
       const render = (): void => {
         root.replaceChildren();
         if (!draft) {
-          root.appendChild(emptyState({
-            title: 'Edit engine not wired',
-            description: 'Smart Edit requires wireEditIntoKernel(grid).',
-            icon: 'pencil',
+          root.appendChild(engineMissingNotice('edit', {
+            feature: 'Smart Edit', icon: 'pencil',
           }));
           return;
         }

@@ -7,6 +7,7 @@
  * (the previous lit cgc-switch path never re-painted, so toggles looked
  * dead after the first click).
  */
+import type { ColumnOverride } from '@wellsfargo-starui/velocity-grid-calc';
 import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import {
   aggFuncChoices,
@@ -29,6 +30,7 @@ import {
   takePaneScroll,
   restorePaneScroll,
   emptyState,
+  engineMissingNotice,
 } from '../ui/cockpit';
 
 interface ColItem {
@@ -52,14 +54,13 @@ interface ColumnDraft {
   hide: boolean;
 }
 
-/** Calc bridge marker — caption lives on the override assignment, not editColumn. */
-interface CalcCaptionHost {
-  __calcBridgeWired?: {
-    calc: {
-      getOverrides(): Array<{ colId: string; headerName?: string; templateIds?: string[]; [k: string]: unknown }>;
-      applyOverrides(overrides: Array<Record<string, unknown>>): unknown;
-    };
-  };
+/** The slice of the calc engine the caption path needs — caption lives on the
+ *  per-column override assignment, not on `editColumn` (which strips
+ *  headerName). D-F8: resolved through `ctx.engines`, never off a grid
+ *  expando. */
+interface CalcCaptionEngine {
+  getOverrides(): ColumnOverride[];
+  applyOverrides(overrides: ColumnOverride[]): unknown;
 }
 
 function leafColumns(grid: VelocityGridExtContext['grid']): ColItem[] {
@@ -87,19 +88,30 @@ function asGrid(grid: VelocityGridExtContext['grid']): ColumnConfigGrid {
 }
 
 /** Caption is column-unique — CalcEngine.editColumn strips headerName from
- *  templates. Write it on the per-column override assignment instead. */
-function applyCaption(grid: ColumnConfigGrid, colId: string, headerName: string): void {
-  const calc = (grid as unknown as CalcCaptionHost).__calcBridgeWired?.calc;
-  if (!calc) return;
+ *  templates. Write it on the per-column override assignment instead.
+ *
+ *  D-F8 — returns whether the write actually happened. It used to return
+ *  `undefined` either way, so with no calc engine wired the Save button
+ *  reported success, marked the profile dirty and re-rendered the editor with
+ *  the new caption while the grid header never changed. `save()` now surfaces
+ *  a visible notice on `false`. */
+function applyCaption(calc: CalcCaptionEngine | null, colId: string, headerName: string): boolean {
+  if (!calc) return false;
   const existing = calc.getOverrides().find((o) => o.colId === colId) ?? { colId };
-  const next: Record<string, unknown> = { ...existing, colId };
+  const next: ColumnOverride = { ...existing, colId };
   const trimmed = headerName.trim();
   if (trimmed) next.headerName = trimmed;
   else delete next.headerName;
   calc.applyOverrides([next]);
+  return true;
 }
 
-function readDraft(grid: ColumnConfigGrid, colId: string, label: string): ColumnDraft {
+function readDraft(
+  grid: ColumnConfigGrid,
+  calc: CalcCaptionEngine | null,
+  colId: string,
+  label: string,
+): ColumnDraft {
   const flag = (key: FlagKey) => !!effectiveFlag(grid, colId, key);
   const rawFilter = effectiveFlag(grid, colId, 'filter');
   const filter = rawFilter == null || rawFilter === undefined || rawFilter === true
@@ -115,9 +127,7 @@ function readDraft(grid: ColumnConfigGrid, colId: string, label: string): Column
     if (live) headerName = live;
   } catch { /* */ }
   try {
-    const ov = (grid as unknown as CalcCaptionHost).__calcBridgeWired?.calc
-      .getOverrides()
-      .find((o) => o.colId === colId);
+    const ov = calc?.getOverrides().find((o) => o.colId === colId);
     if (ov?.headerName) headerName = ov.headerName;
   } catch { /* */ }
   return {
@@ -137,7 +147,14 @@ function readDraft(grid: ColumnConfigGrid, colId: string, label: string): Column
   };
 }
 
-function applyDraft(grid: ColumnConfigGrid, draft: ColumnDraft): void {
+/** Returns whether the CAPTION half of the draft landed — the flags/agg/pin
+ *  half rides kernel APIs and always applies, but the caption needs the calc
+ *  engine's override layer (D-F8). */
+function applyDraft(
+  grid: ColumnConfigGrid,
+  calc: CalcCaptionEngine | null,
+  draft: ColumnDraft,
+): boolean {
   const id = draft.colId;
   const patch = (key: string, value: unknown): void => {
     grid.editColumn(id, { [key]: value });
@@ -164,8 +181,9 @@ function applyDraft(grid: ColumnConfigGrid, draft: ColumnDraft): void {
 
   // Caption before pin — applyOverrides / editColumn rebuild column defs and
   // drop runtime pin state; pin must be the last write.
-  applyCaption(grid, id, draft.headerName);
+  const captionApplied = applyCaption(calc, id, draft.headerName);
   grid.setColumnsPinned([id], draft.pinned === '' ? null : draft.pinned);
+  return captionApplied;
 }
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
@@ -184,12 +202,21 @@ export function columnSettingsModule(): SettingsModule {
 
     mount(host: HTMLElement, ctx: VelocityGridExtContext): ModuleInstance {
       const grid = asGrid(ctx.grid);
+      // D-F8 — resolved on EVERY call, never hoisted: this pane is typically
+      // mounted before the host (or the Calculated Columns module) has wired
+      // calc, and a mount-time snapshot would pin `null` for the pane's whole
+      // life.
+      const calcEngine = (): CalcCaptionEngine | null => ctx.engines.get('calc');
 
       let columns: ColItem[] = [];
       let selectedId: string | null = null;
       let committed: ColumnDraft | null = null;
       let draft: ColumnDraft | null = null;
       let filterQuery = '';
+      /** Set when the last Save could not write the caption because no calc
+       *  engine is wired. Rendered as a banner above the pane body; cleared
+       *  on the next Save or column switch. */
+      let captionBlocked = false;
 
       const root = el('div', 'ckp');
       const rail = el('div', 'ckp-rail');
@@ -212,12 +239,13 @@ export function columnSettingsModule(): SettingsModule {
           if (!ok) return;
         }
         selectedId = id;
+        captionBlocked = false;
         if (!id) {
           committed = null;
           draft = null;
         } else {
           const label = columns.find((c) => c.id === id)?.label ?? id;
-          committed = readDraft(grid, id, label);
+          committed = readDraft(grid, calcEngine(), id, label);
           draft = clone(committed);
         }
         renderAll();
@@ -227,16 +255,25 @@ export function columnSettingsModule(): SettingsModule {
         if (!draft) return;
         try {
           const savedCaption = draft.headerName.trim() || draft.colId;
-          applyDraft(grid, draft);
+          const captionChanged = savedCaption !== (committed?.headerName ?? '');
+          const captionApplied = applyDraft(grid, calcEngine(), draft);
+          // D-F8 — the flags/agg/pin half always lands (kernel APIs); only the
+          // caption needs calc. Claim success for the caption ONLY when it
+          // actually got written, otherwise raise the shared notice and leave
+          // the pane dirty so the unsaved caption stays visible.
+          captionBlocked = captionChanged && !captionApplied;
           ctx.profiles.markDirty();
           loadColumns();
           // Prefer the caption we just wrote — getColumnHeaderName can lag a
           // frame behind the override fold, and must not wipe the editor.
           const col = columns.find((c) => c.id === draft!.colId);
-          if (col) col.label = savedCaption;
-          committed = readDraft(grid, draft.colId, savedCaption);
-          committed.headerName = savedCaption;
-          draft = clone(committed);
+          if (col && !captionBlocked) col.label = savedCaption;
+          const nextCommitted = readDraft(grid, calcEngine(), draft.colId, savedCaption);
+          if (!captionBlocked) nextCommitted.headerName = savedCaption;
+          committed = nextCommitted;
+          draft = captionBlocked
+            ? { ...clone(nextCommitted), headerName: draft.headerName }
+            : clone(nextCommitted);
           renderAll();
         } catch {
           /* engine absent */
@@ -344,6 +381,17 @@ export function columnSettingsModule(): SettingsModule {
         nameIn.setAttribute('aria-label', 'Column caption');
         head.append(nameIn, resetBtn);
         const body = appendPaneChrome(pane, head);
+
+        // D-F8 — the caption Save that just failed, made visible. Above the
+        // chips so it is the first thing in the pane body.
+        if (captionBlocked) {
+          body.appendChild(engineMissingNotice('calc', {
+            feature: 'Editing a column caption',
+            variant: 'banner',
+            detail: 'The caption was NOT saved — column captions ride the calc '
+              + 'engine’s override layer. Every other setting on this pane was applied.',
+          }));
+        }
 
         const chips = el('div', 'ckp-chips-strip');
         chips.append(

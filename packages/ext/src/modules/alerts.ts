@@ -35,6 +35,7 @@ import {
   takePaneScroll,
   restorePaneScroll,
   emptyState,
+  engineMissingNotice,
 } from '../ui/cockpit';
 
 interface AlertsGrid {
@@ -102,9 +103,30 @@ export function alertsModule(): SettingsModule {
     },
 
     mount(host: HTMLElement, ctx: VelocityGridExtContext): ModuleInstance {
-      // Ensure the rules/alerts engines are wired (idempotent).
-      try { wireRules(ctx.grid); } catch { /* host may wire later */ }
       const grid = ctx.grid as AlertsGrid;
+      /**
+       * D-F8 — was `try { wireRules(ctx.grid); } catch { }`: a failed wire was
+       * swallowed, and the pane then rendered a fully functional-looking
+       * editor on top of `grid.getAlertRules?.()` → `undefined` → `[]`. Every
+       * Save silently did nothing.
+       *
+       * Now: wire lazily (the bridge is idempotent), RECORD both engines into
+       * the context slots so the rest of ext shares them, log the failure, and
+       * let `renderAll` surface the shared missing-engine state.
+       */
+      const ensureRulesWired = (): boolean => {
+        if (ctx.engines.get('alerts')) return true;
+        try {
+          const wired = wireRules(ctx.grid);
+          ctx.engines.register('rules', wired.rules);
+          ctx.engines.register('alerts', wired.alerts);
+          return true;
+        } catch (err) {
+          console.warn('[velocity-grid-ext] Alerts: wiring @wellsfargo-starui/velocity-grid-rules failed', err);
+          return false;
+        }
+      };
+      ensureRulesWired();
 
       let rules: AlertRule[] = [];
       let selectedId: string | null = null;
@@ -461,6 +483,16 @@ export function alertsModule(): SettingsModule {
       };
 
       const renderAll = (): void => {
+        // D-F8 — no alerts engine means every mutation below is a no-op; say
+        // so instead of rendering a live-looking editor.
+        if (!ensureRulesWired()) {
+          editor?.destroy();
+          editor = null;
+          root.replaceChildren();
+          root.appendChild(engineMissingNotice('alerts', { feature: 'Alerts', icon: 'bell' }));
+          return;
+        }
+        if (!root.contains(rail)) root.append(rail, pane);
         loadRules();
         renderRail();
         renderPane();

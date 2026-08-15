@@ -4,7 +4,7 @@
 import type { BulkUpdateSettings } from '@wellsfargo-starui/velocity-grid-edit';
 import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import {
-  band, el, injectCockpitStyles, lucideSvg, numberInput, row, checkbox, emptyState,
+  band, el, injectCockpitStyles, lucideSvg, numberInput, row, checkbox, engineMissingNotice,
 } from '../ui/cockpit';
 import { clone, editHandle } from './editHandle';
 
@@ -25,7 +25,7 @@ export function bulkUpdateModule(): SettingsModule {
       host.appendChild(root);
 
       const load = (): void => {
-        const h = editHandle(ctx.grid);
+        const h = editHandle(ctx);
         if (!h) { committed = null; draft = null; return; }
         committed = clone(h.getSettings().bulkUpdate);
         draft = clone(committed);
@@ -35,7 +35,7 @@ export function bulkUpdateModule(): SettingsModule {
         !!draft && !!committed && JSON.stringify(draft) !== JSON.stringify(committed);
 
       const save = (): void => {
-        const h = editHandle(ctx.grid);
+        const h = editHandle(ctx);
         if (!h || !draft) return;
         h.updateSettings({ bulkUpdate: clone(draft) });
         h.updateSettings({ history: { recordSources: { bulkUpdate: draft.recordHistory } } });
@@ -53,10 +53,8 @@ export function bulkUpdateModule(): SettingsModule {
       const render = (): void => {
         root.replaceChildren();
         if (!draft) {
-          root.appendChild(emptyState({
-            title: 'Edit engine not wired',
-            description: 'Bulk Update requires wireEditIntoKernel(grid).',
-            icon: 'replace',
+          root.appendChild(engineMissingNotice('edit', {
+            feature: 'Bulk Update', icon: 'replace',
           }));
           return;
         }

@@ -1,4 +1,7 @@
 import type { VelocityGrid, StateModule, GridState } from '@wellsfargo-starui/velocity-grid';
+import type { ExtEngineSlots } from './engines';
+
+export type { ExtEngineSlots, ExtEngineName, ExtEngineMap } from './engines';
 
 export type Unsub = () => void;
 
@@ -79,6 +82,16 @@ export interface VelocityGridExtContext {
   events: ExtEventBus;
   profiles: ProfileController;
   session: DrawerSession;
+  /**
+   * D-F8 — engine DI slots for THIS grid. Modules ask
+   * `ctx.engines.get('edit' | 'calc' | 'rules' | 'alerts')` instead of
+   * casting the grid and reading a `__*BridgeWired` expando, and surface
+   * `engineMissingNotice(...)` when the answer is `null` rather than
+   * silently no-opping. Resolution happens at CALL time (engines are wired
+   * after the context exists — see `extension/engines.ts`), so never hoist
+   * the result into a mount-time constant.
+   */
+  engines: ExtEngineSlots;
 }
 
 export type ExtensionKind = 'settings-module' | 'toolbar-item' | 'service';

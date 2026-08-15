@@ -12,6 +12,7 @@
 import {
   validateRule,
   wireIntoKernel as wireRules,
+  type RuleEngine,
   type ConditionalStyleRule,
   type RuleBorderSpec,
   type RuleIndicatorPlacement,
@@ -118,11 +119,32 @@ export function conditionalStylingModule(): SettingsModule {
         return JSON.stringify(rules.find((r) => r.id === draft!.id)) !== JSON.stringify(draft);
       };
 
+      /**
+       * D-F8 — lazy wirer for `rules`: wires on demand (the bridge is
+       * idempotent) and RECORDS both engines in the context slots so no other
+       * module has to re-derive them from a grid expando. `null` when the
+       * bridge is unavailable; callers must surface that, not hide it.
+       */
+      const rulesEngine = (): RuleEngine | null => {
+        const already = ctx.engines.get('rules');
+        if (already) return already;
+        try {
+          const wired = wireRules(ctx.grid);
+          ctx.engines.register('rules', wired.rules);
+          ctx.engines.register('alerts', wired.alerts);
+          return wired.rules;
+        } catch (err) {
+          console.warn('[velocity-grid-ext] Styling Rules: wiring @wellsfargo-starui/velocity-grid-rules failed', err);
+          return null;
+        }
+      };
+
       /** APPLIED n ROWS — evaluate the committed rule over the row cache
        *  via the wired engine; '—' when unavailable. */
       const appliedCount = (rule: ConditionalStyleRule): string => {
         try {
-          const { rules: engine } = wireRules(ctx.grid);
+          const engine = rulesEngine();
+          if (!engine) return '—';
           if (!grid.forEachNode) return '—';
           const colId = rule.scope.kind === 'cell' ? rule.scope.columnIds[0] ?? '' : '';
           let n = 0;

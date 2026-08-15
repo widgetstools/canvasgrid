@@ -1,11 +1,15 @@
 import { describe, it, expect, vi } from 'vitest';
 import { columnSettingsModule } from '../src/modules/columnSettings';
 import type { VelocityGridExtContext } from '../src/extension/types';
+import { createEngineSlots } from '../src/extension/engines';
 
+/** `wireCalc: false` mounts the pane with NO calc engine wired — the D-F8
+ *  case where the caption half of Save cannot land. */
 function makeCtx(colDefs: Array<Record<string, unknown>> = [
   { colId: 'a', headerName: 'Alpha', sortable: true },
   { colId: 'b', headerName: 'Beta', sortable: false },
-]) {
+], opts: { wireCalc?: boolean } = {}) {
+  const wireCalc = opts.wireCalc !== false;
   const state = colDefs.map((d) => ({
     colId: String(d.colId),
     pinned: null as 'left' | 'right' | null,
@@ -51,7 +55,10 @@ function makeCtx(colDefs: Array<Record<string, unknown>> = [
       const v = valueCols.find((x) => x.colId === colId);
       if (v) v.aggFunc = aggFunc;
     },
-    __calcBridgeWired: {
+    // The real marker the calc bridge attaches. `createEngineSlots` probes it
+    // at CALL time, so the pane resolves the engine through `ctx.engines`
+    // exactly the way it does against a live grid.
+    __calcBridgeWired: !wireCalc ? undefined : {
       calc: {
         getOverrides: () => overrides.map((o) => ({ ...o })),
         applyOverrides: (next: Array<Record<string, unknown>>) => {
@@ -71,6 +78,7 @@ function makeCtx(colDefs: Array<Record<string, unknown>> = [
   const ctx = {
     grid,
     profiles: { markDirty, isDirty: () => false, onDirtyChange: () => () => {} },
+    engines: createEngineSlots(grid),
   } as unknown as VelocityGridExtContext;
 
   return { ctx, edits, markDirty, state, overrides };
@@ -148,5 +156,89 @@ describe('columnSettingsModule', () => {
     expect(host.querySelector('.ckp-rail-row.active')!.textContent).toContain('Alpha Renamed');
     expect((host.querySelector('.ckp-title') as HTMLInputElement).value).toBe('Alpha Renamed');
     expect(host.querySelector<HTMLInputElement>('input[aria-label="Caption"]')!.value).toBe('Alpha Renamed');
+  });
+});
+
+/**
+ * D-F8 — with NO calc engine wired, a caption Save used to LOOK like it
+ * worked: `applyCaption` returned early, but Save still marked the profile
+ * dirty, rewrote `committed.headerName` to the typed value and re-rendered
+ * the editor showing it. The grid header never changed and nothing said so.
+ */
+describe('columnSettingsModule — calc engine missing (D-F8)', () => {
+  it('surfaces a visible notice instead of silently succeeding on a caption Save', () => {
+    const { ctx, overrides } = makeCtx(undefined, { wireCalc: false });
+    const host = document.createElement('div');
+    const mod = columnSettingsModule();
+    mod.init();
+    const inst = mod.mount(host, ctx);
+
+    // Nothing is claimed before the user tries.
+    expect(host.querySelector('.ckp-notice')).toBeNull();
+
+    const caption = host.querySelector<HTMLInputElement>('input[aria-label="Caption"]')!;
+    caption.value = 'Alpha Renamed';
+    caption.dispatchEvent(new Event('input', { bubbles: true }));
+    inst.commit?.();
+
+    // The caption genuinely did not land...
+    expect(overrides).toHaveLength(0);
+    // ...and the pane says so, through the shared engine-missing surface.
+    const notice = host.querySelector('.ckp-notice');
+    expect(notice).toBeTruthy();
+    expect(notice!.getAttribute('data-engine')).toBe('calc');
+    expect(notice!.textContent).toContain('Calc engine not wired');
+
+    // The editor still shows the caption the user typed (it is unsaved, not
+    // discarded) rather than pretending it was committed.
+    expect(host.querySelector<HTMLInputElement>('input[aria-label="Caption"]')!.value)
+      .toBe('Alpha Renamed');
+    expect(host.querySelector('.ckp-rail-row.active')!.textContent).not.toContain('Alpha Renamed');
+    inst.destroy();
+  });
+
+  it('still applies the flags half of the draft — only the caption needs calc', () => {
+    const { ctx, edits } = makeCtx(undefined, { wireCalc: false });
+    const host = document.createElement('div');
+    const mod = columnSettingsModule();
+    mod.init();
+    const inst = mod.mount(host, ctx);
+
+    const switches = [...host.querySelectorAll<HTMLInputElement>('.vg-checkbox')];
+    const sortable = switches.find((s) => s.closest('.ckp-row')?.textContent?.includes('Sortable'))!;
+    sortable.click();
+    inst.commit?.();
+
+    expect(edits.some((e) => e.colId === 'a' && 'sortable' in e.patch)).toBe(true);
+    // No caption change was attempted, so no notice.
+    expect(host.querySelector('.ckp-notice')).toBeNull();
+    inst.destroy();
+  });
+
+  it('picks up a calc engine wired AFTER mount (late registration)', () => {
+    const { ctx, overrides } = makeCtx(undefined, { wireCalc: false });
+    const host = document.createElement('div');
+    const mod = columnSettingsModule();
+    mod.init();
+    const inst = mod.mount(host, ctx);
+
+    // The host wires calc only now — the normal order for
+    // `wireEditIntoKernel(ext.grid)`-style wiring. A context that snapshotted
+    // its engines at creation would never see this.
+    ctx.engines.register('calc', {
+      getOverrides: () => overrides.map((o) => ({ ...o })),
+      applyOverrides: (next: Array<Record<string, unknown>>) => {
+        for (const o of next) overrides.push({ ...o });
+      },
+    } as never);
+
+    const caption = host.querySelector<HTMLInputElement>('input[aria-label="Caption"]')!;
+    caption.value = 'Alpha Renamed';
+    caption.dispatchEvent(new Event('input', { bubbles: true }));
+    inst.commit?.();
+
+    expect(overrides.some((o) => o.colId === 'a' && o.headerName === 'Alpha Renamed')).toBe(true);
+    expect(host.querySelector('.ckp-notice')).toBeNull();
+    inst.destroy();
   });
 });

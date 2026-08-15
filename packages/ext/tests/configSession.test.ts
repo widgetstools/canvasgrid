@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   LocalStorageConfigSession,
   extractGridLevelData,
@@ -8,6 +8,8 @@ import {
   LEGACY_CONFIG_PREFIX,
   LEGACY_PROFILES_KEY,
   INSTANCE_DOC_VERSION,
+  futureDocVersion,
+  _resetFutureDocWarnings_forTests,
 } from '../src/profiles/configSession';
 import type { ProfileSnapshot } from '../src/extension/types';
 import type { GridState } from '@wellsfargo-starui/velocity-grid';
@@ -77,6 +79,86 @@ describe('normalizeInstanceDoc', () => {
     expect(flat!.gridLevelData.activeProviderId).toBe('from-profile');
     expect((flat as any).filterModel).toBeTruthy();
     expect(flat!.meta?.id).toBe('default');
+  });
+});
+
+/**
+ * D-F12 — a document written by a NEWER build must survive this build
+ * untouched. Before the guard: the flat-doc branch matched it on shape,
+ * restamped `docVersion` down to 1, `needsRewrite` saw `2 !== 1` and
+ * PERSISTED that downgrade on the very first read — silently destroying
+ * whatever the newer build had stored.
+ */
+describe('forward-compat: future docVersion (D-F12)', () => {
+  const FUTURE = {
+    docVersion: INSTANCE_DOC_VERSION + 1,
+    version: 4,
+    gridLevelData: { activeProviderId: 'prov-future' },
+    columnState: [{ colId: 'a', width: 100 }],
+    somethingThisBuildHasNeverHeardOf: { deep: ['payload'] },
+  };
+
+  beforeEach(() => {
+    _resetFutureDocWarnings_forTests();
+  });
+
+  it('normalizeInstanceDoc preserves the future version instead of downgrading it', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const doc = normalizeInstanceDoc(FUTURE);
+    expect(doc).toBeTruthy();
+    expect(doc!.docVersion).toBe(INSTANCE_DOC_VERSION + 1);
+    expect(doc!.gridLevelData.activeProviderId).toBe('prov-future');
+    // Unknown fields ride through — this build must not strip what it can't read.
+    expect((doc as any).somethingThisBuildHasNeverHeardOf).toEqual({ deep: ['payload'] });
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('futureDocVersion only fires for versions ABOVE the current one', () => {
+    expect(futureDocVersion({ docVersion: INSTANCE_DOC_VERSION })).toBeNull();
+    expect(futureDocVersion({ docVersion: INSTANCE_DOC_VERSION - 1 })).toBeNull();
+    expect(futureDocVersion({ docVersion: INSTANCE_DOC_VERSION + 1 })).toBe(INSTANCE_DOC_VERSION + 1);
+    expect(futureDocVersion({})).toBeNull();
+    expect(futureDocVersion({ docVersion: 'nope' })).toBeNull();
+    expect(futureDocVersion(null)).toBeNull();
+  });
+
+  it('a future-version doc survives a full load/save cycle byte-for-byte', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const key = instanceStorageKey('gf');
+    const onDisk = JSON.stringify(FUTURE);
+    localStorage.setItem(key, onDisk);
+
+    const s = new LocalStorageConfigSession('gf');
+    // Load: readable, and reading alone must not rewrite (the old
+    // `needsRewrite` path wrote on the very first read).
+    const loaded = await s.loadWorkspace();
+    expect(loaded).toBeTruthy();
+    expect(localStorage.getItem(key)).toBe(onDisk);
+
+    // Save: refused rather than downgraded.
+    await s.saveWorkspace({ version: 4, columnState: [{ colId: 'b', width: 999 }] } as any);
+    expect(localStorage.getItem(key)).toBe(onDisk);
+
+    await s.setActiveProfileId('other');
+    expect(localStorage.getItem(key)).toBe(onDisk);
+
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('a CURRENT-version doc is still rewritten/migrated as before', async () => {
+    const key = instanceStorageKey('gc');
+    // Legacy shape (no docVersion) — must still migrate in place on read.
+    localStorage.setItem(key, JSON.stringify({ version: 4, columnState: [{ colId: 'a' }] }));
+    const s = new LocalStorageConfigSession('gc');
+    await s.loadWorkspace();
+    expect(JSON.parse(localStorage.getItem(key)!).docVersion).toBe(INSTANCE_DOC_VERSION);
+
+    await s.saveWorkspace({ version: 4, columnState: [{ colId: 'b', width: 999 }] } as any);
+    const after = JSON.parse(localStorage.getItem(key)!);
+    expect(after.docVersion).toBe(INSTANCE_DOC_VERSION);
+    expect(after.columnState).toEqual([{ colId: 'b', width: 999 }]);
   });
 });
 

@@ -9,7 +9,7 @@
 import type { DataChangeHistorySettings, EditJournalEntry, EditSource } from '@wellsfargo-starui/velocity-grid-edit';
 import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import {
-  band, chip, el, injectCockpitStyles, lucideSvg, numberInput, row, checkbox, emptyState,
+  band, chip, el, injectCockpitStyles, lucideSvg, numberInput, row, checkbox, emptyState, engineMissingNotice,
 } from '../ui/cockpit';
 import { clone, editHandle } from './editHandle';
 
@@ -75,7 +75,7 @@ export function dataChangeHistoryModule(): SettingsModule {
       host.appendChild(root);
 
       const load = (): void => {
-        const handle = editHandle(ctx.grid);
+        const handle = editHandle(ctx);
         if (!handle) {
           committed = null;
           draft = null;
@@ -91,7 +91,7 @@ export function dataChangeHistoryModule(): SettingsModule {
       };
 
       const save = (): void => {
-        const handle = editHandle(ctx.grid);
+        const handle = editHandle(ctx);
         if (!handle || !draft) return;
         handle.updateSettings({ history: clone(draft) });
         ctx.profiles.markDirty();
@@ -107,7 +107,7 @@ export function dataChangeHistoryModule(): SettingsModule {
 
       /** Suspend applies immediately (Markets: pause recording NOW). */
       const setSuspendedLive = (suspended: boolean): void => {
-        const handle = editHandle(ctx.grid);
+        const handle = editHandle(ctx);
         if (!handle || !draft) return;
         draft.suspended = suspended;
         handle.updateSettings({ history: { suspended } });
@@ -118,12 +118,12 @@ export function dataChangeHistoryModule(): SettingsModule {
 
       const renderMonitor = (body: HTMLElement): void => {
         body.replaceChildren();
-        const handle = editHandle(ctx.grid);
+        const handle = editHandle(ctx);
         if (!handle) {
-          body.appendChild(emptyState({
-            title: 'Edit engine not wired',
-            description: 'Wire the edit engine to record a journal.',
+          body.appendChild(engineMissingNotice('edit', {
+            feature: 'The edit journal',
             icon: 'history',
+            detail: 'Wire the edit engine to record a journal.',
           }));
           return;
         }
@@ -161,12 +161,10 @@ export function dataChangeHistoryModule(): SettingsModule {
 
       const renderAll = (): void => {
         root.replaceChildren();
-        const handle = editHandle(ctx.grid);
+        const handle = editHandle(ctx);
         if (!handle || !draft) {
-          root.appendChild(emptyState({
-            title: 'Edit engine not wired',
-            description: 'Edit History requires wireEditIntoKernel(grid).',
-            icon: 'history',
+          root.appendChild(engineMissingNotice('edit', {
+            feature: 'Edit History', icon: 'history',
           }));
           return;
         }

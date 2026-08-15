@@ -9,6 +9,7 @@ import {
 import { DataProviderController } from '../src/modules/dataProviderController';
 import { dataProviderModule } from '../src/modules/dataProvider';
 import type { VelocityGridExtContext } from '../src/extension/types';
+import { createEngineSlots } from '../src/extension/engines';
 
 function reset(): void {
   _resetHubConnectionForTests();
@@ -30,6 +31,10 @@ function mockCtx(grid: Record<string, unknown>): VelocityGridExtContext {
     },
     modal: { open() {}, close() {}, isOpen: () => false },
     events: { on: () => () => {}, emit() {} },
+    // D-F8 — real slots over the mock grid: `createEngineSlots` probes the
+    // grid's `__*BridgeWired` markers at call time, so a mock with no
+    // markers correctly answers `null` for every engine.
+    engines: createEngineSlots(grid),
     session: {
       stage() {},
       unstage() {},
