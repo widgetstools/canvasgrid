@@ -24,7 +24,7 @@ import {
   lucideSvg,
   row,
   select,
-  checkbox,
+  switchToggle,
   textInput,
   appendPaneChrome,
   takePaneScroll,
@@ -428,7 +428,7 @@ export function columnSettingsModule(): SettingsModule {
 
         const filterBand = band('Filter');
         filterBand.body.append(
-          row('Floating filter', checkbox(d.floatingFilter, (v) => { d.floatingFilter = v; sync(); })),
+          row('Floating filter', switchToggle(d.floatingFilter, (v) => { d.floatingFilter = v; sync(); })),
           row('Filter type', select(
             [
               ['auto', 'Auto'],
@@ -445,8 +445,8 @@ export function columnSettingsModule(): SettingsModule {
 
         const groupBand = band('Grouping');
         groupBand.body.append(
-          row('Groupable', checkbox(d.enableRowGroup, (v) => { d.enableRowGroup = v; sync(); })),
-          row('Pivotable', checkbox(d.enablePivot, (v) => { d.enablePivot = v; sync(); })),
+          row('Groupable', switchToggle(d.enableRowGroup, (v) => { d.enableRowGroup = v; sync(); })),
+          row('Pivotable', switchToggle(d.enablePivot, (v) => { d.enablePivot = v; sync(); })),
         );
         body.appendChild(groupBand.root);
 
@@ -459,7 +459,7 @@ export function columnSettingsModule(): SettingsModule {
           row('Function', select(aggChoices, d.aggFunc, (v) => { d.aggFunc = v; sync(); })),
           row(
             'Show in header',
-            checkbox(d.showAggInHeader, (v) => { d.showAggInHeader = v; sync(); }),
+            switchToggle(d.showAggInHeader, (v) => { d.showAggInHeader = v; sync(); }),
             d.aggFunc === 'none' ? 'Requires an aggregation function' : undefined,
           ),
         );
@@ -467,9 +467,9 @@ export function columnSettingsModule(): SettingsModule {
 
         const behBand = band('Behavior');
         behBand.body.append(
-          row('Sortable', checkbox(d.sortable, (v) => { d.sortable = v; sync(); })),
-          row('Resizable', checkbox(d.resizable, (v) => { d.resizable = v; sync(); })),
-          row('Editable', checkbox(d.editable, (v) => { d.editable = v; sync(); })),
+          row('Sortable', switchToggle(d.sortable, (v) => { d.sortable = v; sync(); })),
+          row('Resizable', switchToggle(d.resizable, (v) => { d.resizable = v; sync(); })),
+          row('Editable', switchToggle(d.editable, (v) => { d.editable = v; sync(); })),
           row('Pinned', select(
             [
               ['', 'None'],
@@ -479,7 +479,7 @@ export function columnSettingsModule(): SettingsModule {
             d.pinned,
             (v) => { d.pinned = v as ColumnDraft['pinned']; sync(); },
           )),
-          row('Hidden', checkbox(d.hide, (v) => { d.hide = v; sync(); }), 'Hide the column on the grid'),
+          row('Hidden', switchToggle(d.hide, (v) => { d.hide = v; sync(); }), 'Hide the column on the grid'),
         );
         body.appendChild(behBand.root);
 

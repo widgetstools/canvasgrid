@@ -24,7 +24,7 @@ import { ExpressionEditor } from '../ui/expressionEditor';
 import { editorColumns, leafColumns, schemaFromGrid } from '../ui/gridSchema';
 import {
   appendPaneChrome, band, caps, chip, colorField, el, iconTile, injectCockpitStyles, lucideSvg,
-  numberInput, pillGroup, restorePaneScroll, row, select, checkbox, takePaneScroll, textInput,
+  numberInput, pillGroup, restorePaneScroll, row, select, switchToggle, takePaneScroll, textInput,
   emptyState,
 } from '../ui/cockpit';
 import { formatPickerMenu, formatPickerFitContainer, previewFormat } from '../toolbar/formatPicker';
@@ -266,7 +266,7 @@ export function conditionalStylingModule(): SettingsModule {
         const head = el('div', 'ckp-pane-head');
         const nameIn = textInput(d.name, (v) => { d.name = v; syncDirty(); }, { className: 'ckp-title' });
         const appliedChip = chip('Applied', draftIsNew ? '—' : appliedCount(d), 'neutral');
-        const statusBox = checkbox(d.enabled, (v) => {
+        const statusBox = switchToggle(d.enabled, (v) => {
           d.enabled = v;
           syncDirty();
         });
@@ -436,7 +436,7 @@ export function conditionalStylingModule(): SettingsModule {
         // 07 FLASH ON MATCH + STYLE WINDOW.
         const flash = band('Flash on match');
         const f = d.flash ?? { enabled: false, target: 'cell' as const, mode: 'fade' as const, color: '#f0b90b', durationMs: 700 };
-        flash.body.appendChild(row('Flash', checkbox(f.enabled, (v) => {
+        flash.body.appendChild(row('Flash', switchToggle(f.enabled, (v) => {
           d.flash = { ...f, enabled: v };
           renderPane();
           syncDirty();
