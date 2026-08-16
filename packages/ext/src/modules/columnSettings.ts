@@ -362,6 +362,11 @@ export function columnSettingsModule(): SettingsModule {
 
         const head = el('div', 'ckp-pane-head');
         const dirtyChip = chip('Dirty', isDirty() ? 'YES' : '—', isDirty() ? 'warning' : 'neutral');
+        const saveBtn = el('button', 'ckp-actbtn');
+        saveBtn.type = 'button';
+        saveBtn.innerHTML = `${lucideSvg('save', 12)}<span>Save</span>`;
+        saveBtn.disabled = !isDirty();
+        saveBtn.addEventListener('click', save);
         const resetBtn = el('button', 'ckp-actbtn ckp-btn-secondary');
         resetBtn.type = 'button';
         resetBtn.innerHTML = `${lucideSvg('rotate-ccw', 12)}<span>Reset</span>`;
@@ -369,6 +374,7 @@ export function columnSettingsModule(): SettingsModule {
         resetBtn.addEventListener('click', reset);
         const syncDirty = (): void => {
           const dirty = isDirty();
+          saveBtn.disabled = !dirty;
           resetBtn.disabled = !dirty;
           dirtyChip.set(dirty ? 'YES' : '—', dirty ? 'warning' : 'neutral');
         };
@@ -379,7 +385,7 @@ export function columnSettingsModule(): SettingsModule {
           syncDirty();
         }, { className: 'ckp-title', placeholder: 'Caption' });
         nameIn.setAttribute('aria-label', 'Column caption');
-        head.append(nameIn, resetBtn);
+        head.append(nameIn, saveBtn, resetBtn);
         const body = appendPaneChrome(pane, head);
 
         // D-F8 — the caption Save that just failed, made visible. Above the

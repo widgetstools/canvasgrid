@@ -281,13 +281,17 @@ export function conditionalStylingModule(): SettingsModule {
           syncDirty();
         });
         prioIn.title = 'Priority';
+        const saveBtn = el('button', 'ckp-actbtn');
+        saveBtn.type = 'button';
+        saveBtn.innerHTML = `${lucideSvg('save', 12)}<span>Save</span>`;
+        saveBtn.addEventListener('click', save);
         const resetBtn = el('button', 'ckp-actbtn ckp-btn-secondary');
         resetBtn.type = 'button';
         resetBtn.innerHTML = `${lucideSvg('rotate-ccw', 12)}<span>Reset</span>`;
         resetBtn.addEventListener('click', () => {
           selectRule(draftIsNew ? (rules[0]?.id ?? null) : d.id, false, undefined, true);
         });
-        head.append(nameIn, statusBox, scopeSel, prioIn, resetBtn);
+        head.append(nameIn, statusBox, scopeSel, prioIn, saveBtn, resetBtn);
         const body = appendPaneChrome(pane, head);
 
         // Applied is display-only (no twin control). Status / Scope / Priority
@@ -298,6 +302,7 @@ export function conditionalStylingModule(): SettingsModule {
 
         const syncDirty = (): void => {
           const dirty = isDirty();
+          saveBtn.disabled = !dirty && !draftIsNew;
           resetBtn.disabled = !dirty && !draftIsNew;
         };
         syncDirty();

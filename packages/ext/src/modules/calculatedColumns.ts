@@ -426,13 +426,17 @@ export function calculatedColumnsModule(): SettingsModule {
 
         const head = el('div', 'ckp-pane-head');
         const nameIn = textInput(d.headerName, (v) => { d.headerName = v; syncDirty(); }, { className: 'ckp-title', placeholder: 'Header name' });
+        const saveBtn = el('button', 'ckp-actbtn');
+        saveBtn.type = 'button';
+        saveBtn.innerHTML = `${lucideSvg('save', 12)}<span>Save</span>`;
+        saveBtn.addEventListener('click', save);
         const resetBtn = el('button', 'ckp-actbtn ckp-btn-secondary');
         resetBtn.type = 'button';
         resetBtn.innerHTML = `${lucideSvg('rotate-ccw', 12)}<span>Reset</span>`;
         resetBtn.addEventListener('click', () => {
           selectColumn(draftIsNew ? (columns[0]?.colId ?? null) : selectedId, false, undefined, true);
         });
-        head.append(nameIn, resetBtn);
+        head.append(nameIn, saveBtn, resetBtn);
         const body = appendPaneChrome(pane, head);
 
         const chipsStrip = el('div', 'ckp-chips-strip');
@@ -446,6 +450,7 @@ export function calculatedColumnsModule(): SettingsModule {
 
         const syncDirty = (): void => {
           const dirty = isDirty();
+          saveBtn.disabled = !dirty && !draftIsNew;
           resetBtn.disabled = !dirty && !draftIsNew;
           const n = psp ? countPerspectiveColumnRefs(d.expression) : countRefs(d.expression);
           refsChip.set(`${n} COLS`, 'info');
