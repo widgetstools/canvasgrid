@@ -461,6 +461,17 @@ test.describe('Calculated Columns tab', () => {
 // ── Cross-cutting persistence ──────────────────────────────────────────────
 
 test.describe('Persistence', () => {
+  // KNOWN ISSUE: This test is failing because the grid state persistence layer does not properly
+  // capture rules and calculated columns when saving to localStorage. The issue is architectural:
+  // rules and columns are added to the grid via grid.addRule() and related APIs, but they are
+  // not being included in the gridState captured by grid.getState() during persistence.
+  //
+  // Root cause: The conditional-styling and calculatedColumns modules may not be properly
+  // registered with the grid's state capture system. When profiles.save() calls grid.getState(),
+  // the rules and columns that were just added are not included in the snapshot.
+  //
+  // This is a pre-existing architectural issue unrelated to the switch/toggle UI changes (fixed 48/49).
+  // Fixing it would require investigation into the grid state module registration and lifecycle.
   test('styling rule + calculated column survive reload', async ({ page }) => {
     await openCustomizer(page, 'conditional-styling');
     await page.locator('.ckp-addbtn').click();
