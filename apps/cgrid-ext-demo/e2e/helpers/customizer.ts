@@ -30,7 +30,7 @@ export async function closeViaDone(page: Page): Promise<void> {
 }
 
 export async function switchTab(page: Page, title: string): Promise<void> {
-  const tab = page.locator('.vgext-sheet-nav-item', { hasText: title });
+  const tab = page.locator('.vgext-sheet-nav-tab, .vgext-sheet-subnav-tab', { hasText: title });
   await expect(tab).toBeVisible();
   await tab.click();
   await expect(page.locator('.vgext-sheet-title')).toHaveText(title);
