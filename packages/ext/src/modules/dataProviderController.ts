@@ -248,7 +248,7 @@ export class DataProviderController {
         }
         resolve();
       };
-      const unsub = grid.addEventListener('gridReady', () => {
+      const unsub = grid.addEventListener!('gridReady', () => {
         unsub?.();
         finish();
       });

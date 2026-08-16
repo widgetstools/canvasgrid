@@ -217,6 +217,14 @@ const columnDefs: (CColDef<Position> | CColGroupDef<Position>)[] = [
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
+// Catch unhandled rejections and errors during boot for diagnostics
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('[cgrid-ext-demo] unhandled rejection:', event.reason);
+});
+window.addEventListener('error', (event) => {
+  console.error('[cgrid-ext-demo] error event:', event.error || event.message);
+});
+
 // The edit engine is wired just after construction (below); the ribbon's
 // Editing toolbar reads it lazily so undo/redo + smart/bulk bind to the real
 // handle once it exists.
@@ -229,90 +237,96 @@ const PLACEHOLDER_COLS: CColDef<FlatRow>[] = [
   { colId: 'positionId', field: 'positionId', headerName: 'Position', pinned: 'left', width: 140 },
 ];
 
-const ext = new VelocityGridExt<FlatRow>(app, {
-  gridId: 'ext-demo',
-  // Do NOT also set kernel `persistState: true` here — VelocityGridExt's
-  // default ConfigSession already owns persistence for this gridId, and
-  // running both writers double-writes the same document (D-F6; see
-  // docs/velocity-grid-architecture.md §4.4). VelocityGridExt's ctor warns
-  // loudly if this is ever re-enabled alongside a ConfigSession.
-  getRowId: (r) => String(r.positionId),
-  columnDefs: PAINT_HARNESS ? (columnDefs as CColDef<FlatRow>[]) : PLACEHOLDER_COLS,
-  theme: 'vg-theme-cursor-dark',
-  floatingFilterHeight: 34,
-  floatingFilterInsetY: 8,
-  // Wide blotters (hundreds of cols): FIXED widths + column virtualisation.
-  // `flex: 1` on every leaf forces minWidth on all N columns (e.g. 500×80
-  // = 40k CSS px) and makes every layout pass touch the full set. Paint
-  // itself only draws `visibleColumns` (~viewport × rows ≈ hundreds of
-  // cells); do not pay flex distribution across the whole model.
-  defaultColDef: PAINT_HARNESS
-    ? { resizable: true, sortable: true, editable: true, flex: 1, minWidth: 80 }
-    : { resizable: true, sortable: true, editable: true, width: 110, minWidth: 72 },
-  // Keep column virtualisation ON (default). Only paint/fetch columns in
-  // the horizontal viewport — required for ~500-column blotters.
-  suppressColumnVirtualisation: false,
-  suppressRowVirtualisation: false,
-  // Deephaven: fetch visible rows "plus a buffer for snappier scrolling".
-  // Default engine overscan is 3 — too tight at 20k + live ticks, so the
-  // lean full-redraw path paints blank bands while the worker chunk lags.
-  // 32 ≈ one extra viewport of rows above + below on a typical host.
-  ...(!PAINT_HARNESS ? { rowBuffer: 32 } : {}),
-  rowGroupPanelShow: 'always',
-  // Busy overlay until the first STOMP snapshot lands (paint harness seeds
-  // sync data, so leave loading off there).
-  ...(!PAINT_HARNESS ? { loading: true, loadingMessage: 'Loading snapshot…' } : {}),
-  sideBar: { toolPanels: ['columns', 'filters'] },
-  // `&noFlash` (closeout fix wave, I5/C3) boots with flash OFF — the real
-  // default for a plain grid, and the exact configuration C3's bug needed
-  // (the base harness always ran with flash on, which happened to mask it).
-  enableCellChangeFlash: !NO_FLASH,
-  cellSelection: {},
-  // `&suppressPartial` (only meaningful alongside `?paintHarness`) forces
-  // every repaint to the full-surface path — the invariance spec's control
-  // arm for damage-region rendering.
-  ...(SUPPRESS_PARTIAL ? { suppressPartialRepaint: true } : {}),
-  // `&noCache` (only meaningful alongside `?paintHarness`) disables the
-  // retained paint-cache layer — the invariance spec's second control arm,
-  // orthogonal to `suppressPartial`.
-  ...(NO_CACHE ? { paintCache: false } : {}),
-  // Quality profile:
-  //   • `?quality=performance` — lean path (paintCache off), for thin-client
-  //     / no-GPU profiling.
-  //   • otherwise `'auto'` — keep the retained layer on hardware GL (smooth
-  //     Deephaven-style present/scroll), disable it only on known software
-  //     rasterizers. Forcing performance on GPU made every scroll a full
-  //     canvas redraw → blank/janky even for a single click-scroll.
-  ...(QUALITY_PERF ? { qualityMode: 'performance' as const } : { qualityMode: 'auto' as const }),
-  // `&noRaster` (only meaningful alongside `?paintHarness`) disables both
-  // raster-cache tiers (cell bitmaps + row strips) — the invariance spec's
-  // third control arm, orthogonal to `suppressPartial` and `noCache`.
-  ...(NO_RASTER ? { rasterCache: false } : {}),
-  // `&grouped` (closeout fix wave, I5/C4) — every desk group expanded with
-  // footer totals on, so a live tick on an aggregated column changes a
-  // group's total while scrolling can pin that group's ancestor in the
-  // sticky band above the fetch window.
-  ...(GROUPED ? { groupIncludeFooter: true, groupDefaultExpanded: 'all' as const } : {}),
-  ext: {
-    // Replace the spine's bare Settings/Save with the full MarketsGrid-style
-    // title bar (brand, search, notifications, layouts + layout-save, date,
-    // settings, overflow). Column Settings lives in the settings sheet.
-    // sheet via defaultBundle.
-    extensions: [
-      { remove: 'settings-launcher' },
-      { remove: 'save' },
-      ...titleBarExtensions({
-        name: 'MarketsGrid',
-        date: new Date().toISOString().slice(0, 10),
-        onDateChange: (iso) => {
-          // Demo hook — host apps wire this to as-of / historical providers.
-          console.info('[cgrid-ext-demo] as-of date →', iso);
-        },
-      }),
-      ...ribbonExtensions({ edit: () => editHandle }),
-    ],
-  },
-});
+let ext: VelocityGridExt<FlatRow>;
+try {
+  ext = new VelocityGridExt<FlatRow>(app, {
+    gridId: 'ext-demo',
+    // Do NOT also set kernel `persistState: true` here — VelocityGridExt's
+    // default ConfigSession already owns persistence for this gridId, and
+    // running both writers double-writes the same document (D-F6; see
+    // docs/velocity-grid-architecture.md §4.4). VelocityGridExt's ctor warns
+    // loudly if this is ever re-enabled alongside a ConfigSession.
+    getRowId: (r) => String(r.positionId),
+    columnDefs: PAINT_HARNESS ? (columnDefs as CColDef<FlatRow>[]) : PLACEHOLDER_COLS,
+    theme: 'vg-theme-cursor-dark',
+    floatingFilterHeight: 34,
+    floatingFilterInsetY: 8,
+    // Wide blotters (hundreds of cols): FIXED widths + column virtualisation.
+    // `flex: 1` on every leaf forces minWidth on all N columns (e.g. 500×80
+    // = 40k CSS px) and makes every layout pass touch the full set. Paint
+    // itself only draws `visibleColumns` (~viewport × rows ≈ hundreds of
+    // cells); do not pay flex distribution across the whole model.
+    defaultColDef: PAINT_HARNESS
+      ? { resizable: true, sortable: true, editable: true, flex: 1, minWidth: 80 }
+      : { resizable: true, sortable: true, editable: true, width: 110, minWidth: 72 },
+    // Keep column virtualisation ON (default). Only paint/fetch columns in
+    // the horizontal viewport — required for ~500-column blotters.
+    suppressColumnVirtualisation: false,
+    suppressRowVirtualisation: false,
+    // Deephaven: fetch visible rows "plus a buffer for snappier scrolling".
+    // Default engine overscan is 3 — too tight at 20k + live ticks, so the
+    // lean full-redraw path paints blank bands while the worker chunk lags.
+    // 32 ≈ one extra viewport of rows above + below on a typical host.
+    ...(!PAINT_HARNESS ? { rowBuffer: 32 } : {}),
+    rowGroupPanelShow: 'always',
+    // Busy overlay until the first STOMP snapshot lands (paint harness seeds
+    // sync data, so leave loading off there).
+    ...(!PAINT_HARNESS ? { loading: true, loadingMessage: 'Loading snapshot…' } : {}),
+    sideBar: { toolPanels: ['columns', 'filters'] },
+    // `&noFlash` (closeout fix wave, I5/C3) boots with flash OFF — the real
+    // default for a plain grid, and the exact configuration C3's bug needed
+    // (the base harness always ran with flash on, which happened to mask it).
+    enableCellChangeFlash: !NO_FLASH,
+    cellSelection: {},
+    // `&suppressPartial` (only meaningful alongside `?paintHarness`) forces
+    // every repaint to the full-surface path — the invariance spec's control
+    // arm for damage-region rendering.
+    ...(SUPPRESS_PARTIAL ? { suppressPartialRepaint: true } : {}),
+    // `&noCache` (only meaningful alongside `?paintHarness`) disables the
+    // retained paint-cache layer — the invariance spec's second control arm,
+    // orthogonal to `suppressPartial`.
+    ...(NO_CACHE ? { paintCache: false } : {}),
+    // Quality profile:
+    //   • `?quality=performance` — lean path (paintCache off), for thin-client
+    //     / no-GPU profiling.
+    //   • otherwise `'auto'` — keep the retained layer on hardware GL (smooth
+    //     Deephaven-style present/scroll), disable it only on known software
+    //     rasterizers. Forcing performance on GPU made every scroll a full
+    //     canvas redraw → blank/janky even for a single click-scroll.
+    ...(QUALITY_PERF ? { qualityMode: 'performance' as const } : { qualityMode: 'auto' as const }),
+    // `&noRaster` (only meaningful alongside `?paintHarness`) disables both
+    // raster-cache tiers (cell bitmaps + row strips) — the invariance spec's
+    // third control arm, orthogonal to `suppressPartial` and `noCache`.
+    ...(NO_RASTER ? { rasterCache: false } : {}),
+    // `&grouped` (closeout fix wave, I5/C4) — every desk group expanded with
+    // footer totals on, so a live tick on an aggregated column changes a
+    // group's total while scrolling can pin that group's ancestor in the
+    // sticky band above the fetch window.
+    ...(GROUPED ? { groupIncludeFooter: true, groupDefaultExpanded: 'all' as const } : {}),
+    ext: {
+      // Replace the spine's bare Settings/Save with the full MarketsGrid-style
+      // title bar (brand, search, notifications, layouts + layout-save, date,
+      // settings, overflow). Column Settings lives in the settings sheet.
+      // sheet via defaultBundle.
+      extensions: [
+        { remove: 'settings-launcher' },
+        { remove: 'save' },
+        ...titleBarExtensions({
+          name: 'MarketsGrid',
+          date: new Date().toISOString().slice(0, 10),
+          onDateChange: (iso) => {
+            // Demo hook — host apps wire this to as-of / historical providers.
+            console.info('[cgrid-ext-demo] as-of date →', iso);
+          },
+        }),
+        ...ribbonExtensions({ edit: () => editHandle }),
+      ],
+    },
+  });
+} catch (err) {
+  console.error('[cgrid-ext-demo] VelocityGridExt construction failed', err);
+  throw err;
+}
 
 // Wire cgrid's engines onto the owned grid: format (compiles the string
 // valueFormatters / DSL above), edit (editors + Smart Edit / Bulk Update),
@@ -339,6 +353,7 @@ ext.reapplyActiveProfile().catch((err) => {
 
 // Expose for console poking + the hermetic E2E suite.
 (window as unknown as { __ext: unknown }).__ext = ext;
+console.log('[cgrid-ext-demo] __ext initialized, grid ready:', !!ext.grid);
 
 // cgrid's side-panel rail (Columns / Filters) must always be visible on
 // load. Options + Column Groups live in the ext settings sheet (⋯).

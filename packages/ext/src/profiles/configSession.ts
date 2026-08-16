@@ -298,7 +298,7 @@ export function normalizeInstanceDoc(raw: unknown): InstanceConfigDoc | null {
       docVersion: INSTANCE_DOC_VERSION,
       gridLevelData: gld,
       ...(meta ? { meta } : {}),
-      ...(rest as WorkspaceConfig),
+      ...(rest as unknown as WorkspaceConfig),
     } as InstanceConfigDoc;
   }
 

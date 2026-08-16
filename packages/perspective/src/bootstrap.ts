@@ -11,7 +11,9 @@ import perspective from '@perspective-dev/client';
 import type { Client, Table, View } from '@perspective-dev/client';
 
 // Vite URL imports — served as static assets with correct MIME.
+// @ts-expect-error - Vite ?url imports are resolved at runtime
 import clientWasmUrl from '@perspective-dev/client/dist/wasm/perspective-js.wasm?url';
+// @ts-expect-error - Vite ?url imports are resolved at runtime
 import serverWasmUrl from '@perspective-dev/server/dist/wasm/perspective-server.wasm?url';
 
 export const POSITION_SCHEMA = {
