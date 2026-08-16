@@ -4,7 +4,7 @@
 import type { BulkUpdateSettings } from '@wellsfargo-starui/velocity-grid-edit';
 import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import {
-  band, el, injectCockpitStyles, lucideSvg, numberInput, row, checkbox, engineMissingNotice,
+  band, el, injectCockpitStyles, lucideSvg, numberInput, row, switchToggle, engineMissingNotice,
 } from '../ui/cockpit';
 import { clone, editHandle } from './editHandle';
 
@@ -78,17 +78,17 @@ export function bulkUpdateModule(): SettingsModule {
 
         const g = band('Global');
         g.body.append(
-          row('Enabled', checkbox(d.enabled, (v) => { d.enabled = v; render(); })),
+          row('Enabled', switchToggle(d.enabled, (v) => { d.enabled = v; render(); })),
           row('Confirm threshold', numberInput(d.confirmThreshold, (v) => {
             if (v === undefined) return;
             d.confirmThreshold = Math.max(0, Math.floor(v));
             render();
           }), '0 = never'),
-          row('Single column', checkbox(d.enforceSingleColumn, (v) => {
+          row('Single column', switchToggle(d.enforceSingleColumn, (v) => {
             d.enforceSingleColumn = v;
             render();
           })),
-          row('Record history', checkbox(d.recordHistory, (v) => {
+          row('Record history', switchToggle(d.recordHistory, (v) => {
             d.recordHistory = v;
             render();
           }), 'Logs operations to the undo/redo journal'),
@@ -97,7 +97,7 @@ export function bulkUpdateModule(): SettingsModule {
 
         const drop = band('Dropdown');
         drop.body.append(
-          row('Distinct values', checkbox(d.showDistinctValues, (v) => {
+          row('Distinct values', switchToggle(d.showDistinctValues, (v) => {
             d.showDistinctValues = v;
             render();
           })),

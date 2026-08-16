@@ -14,7 +14,7 @@ import {
   lucideSvg,
   numberInput,
   row,
-  checkbox,
+  switchToggle,
   textInput,
   appendPaneChrome,
   takePaneScroll,
@@ -224,11 +224,11 @@ export function plusMinusModule(): SettingsModule {
 
         const glob = band('Global');
         glob.body.append(
-          row('Enabled', checkbox(settingsDraft.enabled, (v) => {
+          row('Enabled', switchToggle(settingsDraft.enabled, (v) => {
             settingsDraft!.enabled = v;
             renderAll();
           }), 'When enabled, +/- keys use these nudges'),
-          row('Record history', checkbox(settingsDraft.recordHistory, (v) => {
+          row('Record history', switchToggle(settingsDraft.recordHistory, (v) => {
             settingsDraft!.recordHistory = v;
             renderAll();
           })),
@@ -247,7 +247,7 @@ export function plusMinusModule(): SettingsModule {
         const nb = band('Nudge');
         nb.body.append(
           row('Name', textInput(d.name, (v) => { d.name = v; renderAll(); })),
-          row('Enabled', checkbox(d.enabled, (v) => { d.enabled = v; renderAll(); })),
+          row('Enabled', switchToggle(d.enabled, (v) => { d.enabled = v; renderAll(); })),
           row('Columns', textInput(formatCols(d.scope.columnIds), (v) => {
             d.scope.columnIds = parseCols(v);
           }, { placeholder: 'colIds, comma-separated (empty = all numeric)' })),

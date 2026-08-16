@@ -5,7 +5,7 @@
 import type { SmartEditOp, SmartEditSettings } from '@wellsfargo-starui/velocity-grid-edit';
 import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import {
-  band, el, injectCockpitStyles, lucideSvg, numberInput, row, checkbox, engineMissingNotice,
+  band, el, injectCockpitStyles, lucideSvg, numberInput, row, switchToggle, engineMissingNotice,
 } from '../ui/cockpit';
 import { clone, editHandle } from './editHandle';
 
@@ -88,13 +88,13 @@ export function smartEditModule(): SettingsModule {
 
         const g = band('Global');
         g.body.append(
-          row('Enabled', checkbox(d.enabled, (v) => { d.enabled = v; render(); })),
+          row('Enabled', switchToggle(d.enabled, (v) => { d.enabled = v; render(); })),
           row('Increment step', numberInput(d.incrementStep, (v) => {
             if (v === undefined) return;
             d.incrementStep = v;
             render();
           })),
-          row('K/M/B shortcuts', checkbox(d.magnitudeShortcutsEnabled, (v) => {
+          row('K/M/B shortcuts', switchToggle(d.magnitudeShortcutsEnabled, (v) => {
             d.magnitudeShortcutsEnabled = v;
             render();
           }), 'Parse K/M/B suffixes in numeric cell editors'),
@@ -129,15 +129,15 @@ export function smartEditModule(): SettingsModule {
             d.confirmThreshold = Math.max(0, Math.floor(v));
             render();
           }), '0 = never'),
-          row('Single column', checkbox(d.enforceSingleColumn, (v) => {
+          row('Single column', switchToggle(d.enforceSingleColumn, (v) => {
             d.enforceSingleColumn = v;
             render();
           })),
-          row('Preview before', checkbox(d.previewBeforeApply, (v) => {
+          row('Preview before', switchToggle(d.previewBeforeApply, (v) => {
             d.previewBeforeApply = v;
             render();
           })),
-          row('Record history', checkbox(d.recordHistory, (v) => {
+          row('Record history', switchToggle(d.recordHistory, (v) => {
             d.recordHistory = v;
             render();
           }), 'Logs operations to the undo/redo journal'),

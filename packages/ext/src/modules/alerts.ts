@@ -29,7 +29,7 @@ import {
   pillGroup,
   row,
   select,
-  checkbox,
+  switchToggle,
   textInput,
   appendPaneChrome,
   takePaneScroll,
@@ -213,7 +213,7 @@ export function alertsModule(): SettingsModule {
           body.style.cssText = 'padding:4px 12px 12px;display:flex;flex-direction:column;gap:2px;';
           const s = liveSettings();
           body.append(
-            row('Alerts enabled', checkbox(s.enabled, (v) => patchSettings({ enabled: v }))),
+            row('Alerts enabled', switchToggle(s.enabled, (v) => patchSettings({ enabled: v }))),
             row(
               'Frequency',
               pillGroup(
@@ -239,7 +239,7 @@ export function alertsModule(): SettingsModule {
           ch.appendChild(caps('Channels'));
           for (const c of CHANNELS) {
             const disabled = c === 'openfin' && !openFinAvailable();
-            const sw = checkbox(s.enabledChannels[c], (v) => {
+            const sw = switchToggle(s.enabledChannels[c], (v) => {
               patchSettings({ enabledChannels: { ...s.enabledChannels, [c]: v } });
             });
             if (disabled) {
@@ -353,7 +353,7 @@ export function alertsModule(): SettingsModule {
 
         const ruleBand = band('Rule');
         ruleBand.body.append(
-          row('Enabled', checkbox(d.enabled, (v) => { d.enabled = v; renderAll(); })),
+          row('Enabled', switchToggle(d.enabled, (v) => { d.enabled = v; renderAll(); })),
         );
         body.appendChild(ruleBand.root);
 
@@ -460,7 +460,7 @@ export function alertsModule(): SettingsModule {
         for (const c of CHANNELS) {
           const on = d.channels.includes(c);
           const disabled = c === 'openfin' && !openFinAvailable();
-          const sw = checkbox(on, (v) => {
+          const sw = switchToggle(on, (v) => {
             d.channels = v ? [...new Set([...d.channels, c])] : d.channels.filter((x) => x !== c);
             renderAll();
           });

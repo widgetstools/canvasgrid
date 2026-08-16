@@ -12,6 +12,7 @@ import {
   vguiButtonCss,
   vguiChipCss,
   vguiTileCss,
+  vguiSwitchCss,
   type VguiTokens,
 } from '@wellsfargo-starui/velocity-grid/ui/primitives';
 import { ENGINE_WIRE_HINT, type ExtEngineName } from '../extension/engines';
@@ -87,9 +88,23 @@ export function checkbox(checked: boolean, onChange: (v: boolean) => void): HTML
   return box;
 }
 
-/** @deprecated Use {@link checkbox}. Kept one cycle so existing call sites compile. */
+/** Toggle switch — 36×20 pill with knob. Used in ext cockpit panes. */
 export function switchToggle(checked: boolean, onChange: (v: boolean) => void): HTMLElement {
-  return checkbox(checked, onChange);
+  const root = el('button', `ckp-switch${checked ? ' on' : ''}`) as HTMLButtonElement;
+  root.type = 'button';
+  root.setAttribute('aria-pressed', checked ? 'true' : 'false');
+  root.setAttribute('aria-label', checked ? 'On' : 'Off');
+  const knob = el('span');
+  root.appendChild(knob);
+  root.addEventListener('click', (e) => {
+    e.preventDefault();
+    const newState = !checked;
+    checked = newState;
+    root.classList.toggle('on', newState);
+    root.setAttribute('aria-pressed', newState ? 'true' : 'false');
+    onChange(newState);
+  });
+  return root;
 }
 
 /** Segmented pill group (single select). */
@@ -369,6 +384,7 @@ export function injectCockpitStyles(): void {
 .ckp * { box-sizing: border-box; }
 ${vguiCapsCss('.ckp-caps', CKP_TOKENS)}
 ${vguiCapsCss('.ckp-band-title', CKP_TOKENS)}
+${vguiSwitchCss({ root: 'ckp-switch', knob: '', on: 'on' }, CKP_TOKENS)}
 ${vguiRowCss({ root: 'ckp-row', label: 'ckp-row-label', title: 'ckp-row-title', help: 'ckp-help', control: 'ckp-row-control', modified: 'is-modified' }, CKP_TOKENS, { labelCol: '210px' })}
 ${vguiButtonCss({ primary: 'ckp-btn-primary', secondary: 'ckp-btn-secondary', quiet: 'ckp-btn-quiet', danger: 'ckp-btn-danger' }, CKP_TOKENS)}
 ${vguiChipCss({ root: 'ckp-chip', key: 'ckp-chip-label', value: 'ckp-chip-value', positive: 'positive', warning: 'warning', negative: 'negative', info: 'info' }, CKP_TOKENS)}

@@ -9,7 +9,7 @@
 import type { DataChangeHistorySettings, EditJournalEntry, EditSource } from '@wellsfargo-starui/velocity-grid-edit';
 import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import {
-  band, chip, el, injectCockpitStyles, lucideSvg, numberInput, row, checkbox, emptyState, engineMissingNotice,
+  band, chip, el, injectCockpitStyles, lucideSvg, numberInput, row, switchToggle, emptyState, engineMissingNotice,
 } from '../ui/cockpit';
 import { clone, editHandle } from './editHandle';
 
@@ -193,10 +193,10 @@ export function dataChangeHistoryModule(): SettingsModule {
 
         const global = band('Global');
         global.body.append(
-          row('Enabled', checkbox(draft.enabled, (v) => { draft!.enabled = v; renderAll(); })),
+          row('Enabled', switchToggle(draft.enabled, (v) => { draft!.enabled = v; renderAll(); })),
           row(
             'Suspended',
-            checkbox(draft.suspended, setSuspendedLive),
+            switchToggle(draft.suspended, setSuspendedLive),
             'Pauses recording immediately — does not wait for Done',
           ),
           row(
@@ -209,7 +209,7 @@ export function dataChangeHistoryModule(): SettingsModule {
           ),
           row(
             'Unify Undo',
-            checkbox(draft.unifyUndo, (v) => { draft!.unifyUndo = v; renderAll(); }),
+            switchToggle(draft.unifyUndo, (v) => { draft!.unifyUndo = v; renderAll(); }),
             'Edit journal owns undo; disable native cell undo when available',
           ),
         );
@@ -220,7 +220,7 @@ export function dataChangeHistoryModule(): SettingsModule {
           sources.body.append(
             row(
               src.label,
-              checkbox(draft.recordSources[src.key], (v) => {
+              switchToggle(draft.recordSources[src.key], (v) => {
                 draft!.recordSources[src.key] = v;
                 renderAll();
               }),
