@@ -262,14 +262,14 @@ test.describe('Column Settings tab', () => {
 
     const sortableRow = page.locator('.ckp-row', { hasText: 'Sortable' });
     const sw = sortableRow.locator('.ckp-switch');
-    const before = await sw.getAttribute('aria-checked');
+    const before = await sw.getAttribute('aria-pressed');
     await sw.click();
-    await expect(sw).toHaveAttribute('aria-checked', before === 'true' ? 'false' : 'true');
+    await expect(sw).toHaveAttribute('aria-pressed', before === 'true' ? 'false' : 'true');
     // Not committed yet — Save enabled.
     await expect(page.locator('.ckp-actbtn', { hasText: 'Save' })).toBeEnabled();
     await resetCard(page);
     await expect(page.locator('.ckp-row', { hasText: 'Sortable' }).locator('.ckp-switch'))
-      .toHaveAttribute('aria-checked', before!);
+      .toHaveAttribute('aria-pressed', before!);
     await expect(page.locator('.ckp-actbtn', { hasText: 'Save' })).toBeDisabled();
 
     // Re-toggle and Save — lands in own template.
