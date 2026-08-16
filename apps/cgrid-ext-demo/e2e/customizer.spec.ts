@@ -214,7 +214,9 @@ test.describe('Column Settings tab', () => {
     const row = page.locator('.ckp-rail-row', { hasText: label }).first();
     await row.scrollIntoViewIfNeeded();
     await row.click();
-    await expect(page.locator('.ckp-title')).toHaveValue(new RegExp(label, 'i'));
+    // Wait for pane to fully render with content before returning
+    await expect(page.locator('.ckp-title')).toHaveValue(new RegExp(label, 'i'), { timeout: 5000 });
+    await expect(page.locator('input[aria-label="Caption"]')).toBeVisible({ timeout: 5000 });
   }
 
   test('rail lists columns, filter narrows, selection loads editor', async ({ page }) => {
