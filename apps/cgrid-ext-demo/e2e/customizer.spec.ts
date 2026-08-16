@@ -217,6 +217,8 @@ test.describe('Column Settings tab', () => {
     // Wait for pane to fully render with content before returning
     await expect(page.locator('.ckp-title')).toHaveValue(new RegExp(label, 'i'), { timeout: 5000 });
     await expect(page.locator('input[aria-label="Caption"]')).toBeVisible({ timeout: 5000 });
+    // Wait for all pane sections to render — ensure Behavior band body has Sortable row
+    await expect(page.locator('.ckp-row', { hasText: /Sortable/ })).toBeVisible({ timeout: 5000 });
   }
 
   test('rail lists columns, filter narrows, selection loads editor', async ({ page }) => {
@@ -358,7 +360,10 @@ test.describe('Styling Rules tab', () => {
     await page.locator('.ckp-addbtn').click();
     await page.fill('.ckp .ckp-title', 'CellScope');
     await typeInCm(page, '[pnl] > 100');
-    await page.locator('.ckp-strip-pair', { hasText: 'Scope' }).locator('select').selectOption('cell');
+    // Find Scope select in the pane head (it's a sibling of other controls)
+    const scopeSelect = page.locator('.ckp-pane-head select[title="Scope"]');
+    await expect(scopeSelect).toBeVisible({ timeout: 5000 });
+    await scopeSelect.selectOption('cell');
     await expect(page.locator('.ckp-band-title', { hasText: 'Target columns' })).toBeVisible();
     // Add a target column.
     const picker = page.locator('.ckp-band', { hasText: 'Target columns' }).locator('select').last();

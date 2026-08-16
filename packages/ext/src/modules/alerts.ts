@@ -325,15 +325,21 @@ export function alertsModule(): SettingsModule {
 
         const head = el('div', 'ckp-pane-head');
         const nameIn = textInput(d.name, (v) => { d.name = v; }, { className: 'ckp-title', placeholder: 'Alert name' });
+        const saveBtn = el('button', 'ckp-actbtn') as HTMLButtonElement;
+        saveBtn.type = 'button';
+        saveBtn.innerHTML = `${lucideSvg('save', 12)}<span>Save</span>`;
+        saveBtn.disabled = !isDirty();
+        saveBtn.addEventListener('click', save);
         const resetBtn = el('button', 'ckp-actbtn ckp-btn-secondary') as HTMLButtonElement;
         resetBtn.type = 'button';
         resetBtn.innerHTML = `${lucideSvg('rotate-ccw', 12)}<span>Reset</span>`;
         resetBtn.disabled = !isDirty();
         resetBtn.addEventListener('click', reset);
         nameIn.addEventListener('input', () => {
+          saveBtn.disabled = !isDirty();
           resetBtn.disabled = !isDirty();
         });
-        head.append(nameIn, resetBtn);
+        head.append(nameIn, saveBtn, resetBtn);
         const body = appendPaneChrome(pane, head);
         renderGlobal(body);
 

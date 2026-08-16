@@ -30,10 +30,30 @@ export async function closeViaDone(page: Page): Promise<void> {
 }
 
 export async function switchTab(page: Page, title: string): Promise<void> {
-  const tab = page.locator('.vgext-sheet-nav-tab, .vgext-sheet-subnav-tab', { hasText: title });
-  await expect(tab).toBeVisible();
-  await tab.click();
-  await expect(page.locator('.vgext-sheet-title')).toHaveText(title);
+  // First try to find the tab directly (could be a main nav tab or visible subnav tab)
+  let tab = page.locator('.vgext-sheet-nav-tab, .vgext-sheet-subnav-tab').filter({ hasText: title }).first();
+  let count = await tab.count().catch(() => 0);
+
+  // If not found in direct search, might need to click a parent category tab first
+  if (count === 0) {
+    // Find all main nav tabs and try each one to find the module
+    const navTabs = page.locator('.vgext-sheet-nav-tab');
+    const navTabCount = await navTabs.count();
+    for (let i = 0; i < navTabCount; i++) {
+      const navTab = navTabs.nth(i);
+      await navTab.click();
+      // Wait for the pane to update
+      await page.waitForTimeout(200);
+      // Now try to find the target tab in this category
+      tab = page.locator('.vgext-sheet-nav-tab, .vgext-sheet-subnav-tab').filter({ hasText: title }).first();
+      count = await tab.count().catch(() => 0);
+      if (count > 0) break;
+    }
+  }
+
+  await expect(tab.first()).toBeVisible({ timeout: 5000 });
+  await tab.first().click();
+  await expect(page.locator('.vgext-sheet-title')).toHaveText(new RegExp(title, 'i'));
 }
 
 export function sheet(page: Page): Locator {

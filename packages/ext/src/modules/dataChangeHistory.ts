@@ -175,13 +175,18 @@ export function dataChangeHistoryModule(): SettingsModule {
         title.style.alignItems = 'center';
         title.style.gap = '10px';
         title.appendChild(chip('Stack', String(handle.journal.entries().length), 'info').root);
+        const saveBtn = el('button', 'ckp-actbtn') as HTMLButtonElement;
+        saveBtn.type = 'button';
+        saveBtn.innerHTML = `${lucideSvg('save', 12)}<span>Save</span>`;
+        saveBtn.addEventListener('click', save);
         const resetBtn = el('button', 'ckp-actbtn ckp-btn-secondary') as HTMLButtonElement;
         resetBtn.type = 'button';
         resetBtn.innerHTML = `${lucideSvg('rotate-ccw', 12)}<span>Reset</span>`;
         resetBtn.addEventListener('click', reset);
         const dirty = isDirty();
+        saveBtn.disabled = !dirty;
         resetBtn.disabled = !dirty;
-        head.append(title, resetBtn);
+        head.append(title, saveBtn, resetBtn);
         root.appendChild(head);
 
         const scroll = el('div', 'ckp-flat-body');

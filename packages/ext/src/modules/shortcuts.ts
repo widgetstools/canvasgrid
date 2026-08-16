@@ -215,12 +215,17 @@ export function shortcutsModule(): SettingsModule {
 
         const head = el('div', 'ckp-pane-head');
         const title = el('div', 'ckp-title', draft ? draft.name : 'Shortcuts');
+        const saveBtn = el('button', 'ckp-actbtn') as HTMLButtonElement;
+        saveBtn.type = 'button';
+        saveBtn.innerHTML = `${lucideSvg('save', 12)}<span>Save</span>`;
+        saveBtn.disabled = !isDirty();
+        saveBtn.addEventListener('click', save);
         const resetBtn = el('button', 'ckp-actbtn ckp-btn-secondary') as HTMLButtonElement;
         resetBtn.type = 'button';
         resetBtn.innerHTML = `${lucideSvg('rotate-ccw', 12)}<span>Reset</span>`;
         resetBtn.disabled = !isDirty();
         resetBtn.addEventListener('click', reset);
-        head.append(title, resetBtn);
+        head.append(title, saveBtn, resetBtn);
         const body = appendPaneChrome(pane, head);
 
         const glob = band('Global');
