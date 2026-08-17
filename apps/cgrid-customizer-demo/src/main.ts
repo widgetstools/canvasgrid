@@ -444,7 +444,7 @@ connectStomp({
 // hermetic E2E suite drives (see apps/cgrid-customizer-demo/e2e/). `__cgapi`
 // is the object handed to `gridReady` (has `getColumnGroupDefs()` etc.) —
 // distinct from `__cgrid`, which is the VelocityGrid instance itself.
-(window as unknown as { __velocity-grid: unknown }).__cgrid = grid;
+(window as unknown as { '__cgrid': unknown }).__cgrid = grid;
 // Calc engine test hook (same role as __cgrid/__cgapi) — lets the templates
 // E2E assert override assignments + calc-column non-editability through the
 // engine's read accessors.

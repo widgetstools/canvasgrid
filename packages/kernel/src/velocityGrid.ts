@@ -290,7 +290,7 @@ export type { RendererPalette } from './theming/cssReader';
 // `themeQuartz.withParams(...)`, or starts from `createTheme()`); the rest
 // are types describing the param vocabulary + compiled shape. See
 // `theming/theme/index.ts` for the full internal barrel.
-export { CgTheme, createTheme, themeQuartz, themeStarui, baseTheme } from './theming/theme';
+export { CgTheme, createTheme, themeQuartz, themeStarui, themeCursor, baseTheme } from './theming/theme';
 export type {
   ThemeMode,
   BaseClassPair,

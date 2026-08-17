@@ -6,7 +6,7 @@ import type { ShowcaseRow } from './seedData';
 
 declare global {
   interface Window {
-    __velocity-grid: VelocityGrid<ShowcaseRow> | null;
+    __cgrid: VelocityGrid<ShowcaseRow> | null;
     __cgridReady: boolean;
   }
 }
