@@ -94,7 +94,7 @@ export function switchToggle(checked: boolean, onChange: (v: boolean) => void): 
   root.type = 'button';
   root.setAttribute('aria-pressed', checked ? 'true' : 'false');
   root.setAttribute('aria-label', checked ? 'On' : 'Off');
-  const knob = el('span');
+  const knob = el('span', 'ckp-knob');
   root.appendChild(knob);
   root.addEventListener('click', (e) => {
     e.preventDefault();
@@ -384,7 +384,7 @@ export function injectCockpitStyles(): void {
 .ckp * { box-sizing: border-box; }
 ${vguiCapsCss('.ckp-caps', CKP_TOKENS)}
 ${vguiCapsCss('.ckp-band-title', CKP_TOKENS)}
-${vguiSwitchCss({ root: 'ckp-switch', knob: '', on: 'on' }, CKP_TOKENS)}
+${vguiSwitchCss({ root: 'ckp-switch', knob: 'ckp-knob', on: 'on' }, CKP_TOKENS)}
 ${vguiRowCss({ root: 'ckp-row', label: 'ckp-row-label', title: 'ckp-row-title', help: 'ckp-help', control: 'ckp-row-control', modified: 'is-modified' }, CKP_TOKENS, { labelCol: '210px' })}
 ${vguiButtonCss({ primary: 'ckp-btn-primary', secondary: 'ckp-btn-secondary', quiet: 'ckp-btn-quiet', danger: 'ckp-btn-danger' }, CKP_TOKENS)}
 ${vguiChipCss({ root: 'ckp-chip', key: 'ckp-chip-label', value: 'ckp-chip-value', positive: 'positive', warning: 'warning', negative: 'negative', info: 'info' }, CKP_TOKENS)}
