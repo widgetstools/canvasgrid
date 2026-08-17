@@ -346,6 +346,8 @@ export async function handleDataPipeline(
       state.sort.setModel(req.payload);
       state.visibleCache = null;
       state.visibleCachePromise = null;
+      // Serialized invalidateAndCount prevents concurrent pipeline builds
+      // from corrupting cache state during rapid sort changes.
       post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: await helpers.invalidateAndCount() });
       return;
     }

@@ -55,6 +55,11 @@ export interface WorkerHost {
 
 export function createWorkerHost(post: PostFn): WorkerHost {
   let state: State | null = null;
+  // A-C4 (production hardening) — serialize invalidateAndCount to prevent
+  // concurrent pipeline builds from interfering with cache state when rapid
+  // setSortModel/setFilterModel calls arrive. Each invalidate waits for the
+  // previous one to complete, preventing promise/cache corruption under load.
+  let invalidateLock: Promise<void> = Promise.resolve();
 
   function buildCandidates(aggFilterCols: ReadonlySet<string> | null = null): string[] {
     if (!state) return [];
@@ -638,7 +643,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       // — when an external filter is active the await also covers the
       // candidates ↔ result round-trip with main.
       const wasPendingSeed = state!.pendingDefaultExpandSeed;
-      void invalidateAndCount().then((visibleCount) => {
+      void invalidateAndCountSerialized().then((visibleCount) => {
         // Cycle 15 / Task 7 — when grouping is active, fan the
         // current composite keys back so main's `knownGroupKeys`
         // mirror tracks any group added / removed by this txn.
@@ -912,6 +917,21 @@ export function createWorkerHost(post: PostFn): WorkerHost {
    *  identically); we build it lazily inside `handleAsync` after
    *  `state` is confirmed non-null so the dispatcher can `assert state`
    *  once and hand it down to every handler. */
+  // A-C4 — Serialize invalidateAndCount calls to prevent concurrent
+  // builds from corrupting cache state when rapid model changes arrive.
+  async function invalidateAndCountSerialized(): Promise<number> {
+    const previousLock = invalidateLock;
+    let releaseLock: () => void = () => {};
+    invalidateLock = new Promise(r => { releaseLock = r; });
+
+    try {
+      await previousLock;
+      return await invalidateAndCount();
+    } finally {
+      releaseLock();
+    }
+  }
+
   function buildHelpers(): WorkerHelpers {
     return {
       buildCandidates,
@@ -926,7 +946,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       collectGroupDescendantRowIds,
       buildGroupMetaLookup,
       computeStickyAncestors,
-      invalidateAndCount,
+      invalidateAndCount: invalidateAndCountSerialized,
       stageFlashesForUpdates: (updates) => stageFlashesForUpdates(state!, updates),
       autoHeightCols,
       runAutoHeightPass,
