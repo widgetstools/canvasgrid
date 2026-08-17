@@ -292,11 +292,14 @@ export function createWorkerHost(post: PostFn): WorkerHost {
         maintainOrder: state.groupMaintainOrder,
       }, state.pivotOut ?? undefined);
     } else {
-      console.log('[worker-buildVisible] NOT grouping, calling state.sort.apply with', ids.length, 'ids');
-      const before = ids.slice(0, 5);
+      const modelStr = JSON.stringify(state.sort.getModel());
+      const beforeIds = ids.slice(0, 5);
       ids = state.sort.apply(ids);
-      const after = ids.slice(0, 5);
-      console.log('[worker-buildVisible] after sort.apply, first 5 ids changed from', before, 'to', after);
+      const afterIds = ids.slice(0, 5);
+      const changed = beforeIds.some((id, i) => id !== afterIds[i]);
+      if (!changed && modelStr !== '[]') {
+        console.error('[worker] CRITICAL BUG: sort.apply returned same order despite non-empty model:', modelStr);
+      }
     }
     // Cycle 8 / Task 4 — when `postSortRowsPresent`, ship the sorted ids
     // up for the main-thread hook to re-order. Empty sets skip the
@@ -324,10 +327,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
 
   async function visibleAsync(): Promise<string[]> {
     if (!state) return [];
-    if (state.visibleCache) {
-      console.log('[worker-visible] using visibleCache, length:', state.visibleCache.length);
-      return state.visibleCache;
-    }
+    if (state.visibleCache) return state.visibleCache;
     // A-C3 (production hardening) — single-flight pipeline. When a build is
     // already running (its external-filter / postSortRows round-trip has
     // suspended `buildVisibleAsync` across an `await` at worker.ts:180-198 /
@@ -337,19 +337,13 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     // groupOutput/pivotOut/groupInputIds/visibleCache. Invalidation nulls
     // `visibleCachePromise` (everywhere `visibleCache` is nulled) so the
     // next call rebuilds.
-    if (state.visibleCachePromise) {
-      console.log('[worker-visible] waiting for visibleCachePromise');
-      return state.visibleCachePromise;
-    }
-    console.log('[worker-visible] calling buildVisibleAsync, sort model:', JSON.stringify(state.sort.getModel()));
+    if (state.visibleCachePromise) return state.visibleCachePromise;
     const p: Promise<string[]> = buildVisibleAsync().then(
       (result) => {
-        console.log('[worker-visible] buildVisibleAsync completed, result length:', result.length);
         // Publish only if this build is still the in-flight one — an
         // invalidation during the build nulls/replaces the promise, and a
         // stale build's output must not overwrite the fresh cache.
         if (state && state.visibleCachePromise === p) {
-          console.log('[worker-visible] caching result');
           state.visibleCache = result;
           state.visibleCachePromise = null;
         }

@@ -103,9 +103,7 @@ export class SortPass<TRow = any> {
   setCalcSource(src: CalcValueSource | null): void { this.calcSource = src; }
 
   apply(inputIds: string[]): string[] {
-    console.log('[worker-sort] apply called with model:', JSON.stringify(this.model), 'inputIds count:', inputIds.length);
     if (this.model.length === 0) {
-      console.log('[worker-sort] model is empty, returning unsorted');
       return inputIds;
     }
     const sorted = inputIds.slice();

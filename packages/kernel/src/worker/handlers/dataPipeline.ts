@@ -343,14 +343,10 @@ export async function handleDataPipeline(
     }
 
     case 'setSortModel': {
-      console.log('[worker-setSortModel] received payload:', JSON.stringify(req.payload));
-      console.log('[worker-setSortModel] BEFORE: cache=', state.visibleCache ? 'SET' : 'NULL', 'promise=', state.visibleCachePromise ? 'SET' : 'NULL');
       state.sort.setModel(req.payload);
       state.visibleCache = null;
       state.visibleCachePromise = null;
-      console.log('[worker-setSortModel] AFTER null: cache=', state.visibleCache ? 'SET' : 'NULL', 'promise=', state.visibleCachePromise ? 'SET' : 'NULL');
       const visibleCount = await helpers.invalidateAndCount();
-      console.log('[worker-setSortModel] invalidateAndCount returned:', visibleCount);
       post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount });
       return;
     }
