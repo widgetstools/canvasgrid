@@ -7,6 +7,7 @@ import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../
 import {
   band, el, injectCockpitStyles, lucideSvg, numberInput, row, switchToggle, switchToggleEnhanced,
   actionButtonEnhanced, resetButtonEnhanced, engineMissingNotice, animateSaveButton,
+  createTabGroup,
 } from '../ui/cockpit';
 import { clone, editHandle } from './editHandle';
 
@@ -72,6 +73,8 @@ export function smartEditModule(): SettingsModule {
           return;
         }
         const d = draft;
+
+        // Header (sticky, outside tabs)
         const head = el('div', 'ckp-pane-head');
         const title = el('div', 'ckp-title', 'Smart Edit');
         saveBtn = actionButtonEnhanced('Save', 'save');
@@ -83,8 +86,8 @@ export function smartEditModule(): SettingsModule {
         head.append(title, saveBtn, resetBtn);
         root.appendChild(head);
 
-        const body = el('div', 'ckp-flat-body');
-
+        // Settings Tab Content
+        const settingsPane = el('div');
         const g = band('Global');
         g.body.append(
           row('Enabled', switchToggleEnhanced(d.enabled, (v) => { d.enabled = v; render(); })),
@@ -98,7 +101,7 @@ export function smartEditModule(): SettingsModule {
             render();
           }), 'Parse K/M/B suffixes in numeric cell editors'),
         );
-        body.appendChild(g.root);
+        settingsPane.appendChild(g.root);
 
         const ops = band('Operations');
         const group = el('div', 'ckp-pills');
@@ -119,8 +122,10 @@ export function smartEditModule(): SettingsModule {
           group.appendChild(b);
         }
         ops.body.append(row('Toolbar ops', group));
-        body.appendChild(ops.root);
+        settingsPane.appendChild(ops.root);
 
+        // Advanced Tab Content
+        const advancedPane = el('div');
         const safety = band('Safety');
         safety.body.append(
           row('Confirm above N', numberInput(d.confirmThreshold, (v) => {
@@ -141,8 +146,15 @@ export function smartEditModule(): SettingsModule {
             render();
           }), 'Logs operations to the undo/redo journal'),
         );
-        body.appendChild(safety.root);
-        root.appendChild(body);
+        advancedPane.appendChild(safety.root);
+
+        // Create tab group
+        const tabGroup = createTabGroup([
+          { id: 'settings', label: 'Settings', icon: 'sliders-horizontal', content: settingsPane },
+          { id: 'advanced', label: 'Advanced', icon: 'cog', content: advancedPane },
+        ], 'settings', lucideSvg);
+
+        root.appendChild(tabGroup.root);
       };
 
       load();

@@ -1,9 +1,12 @@
 /**
  * Cockpit UI kit — shared primitives for the customizer settings modules:
  * section bands, summary chips, checkboxes, pill groups, Lucide icon
- * tiles, settings rows. One injected stylesheet.
+ * tiles, settings rows. One injected stylesheet. Tab groups for Phase 4 IA.
  */
 import { ColorPickerControl, parseColor, rgbaToString } from '@wellsfargo-starui/velocity-grid';
+import type { TabDefinition, TabGroup } from './tabGroup';
+export { createTabGroup, createSimpleTabGroup } from './tabGroup';
+export type { TabDefinition, TabGroup };
 import { lucideBundle } from '@wellsfargo-starui/velocity-grid/icons/lucide.generated';
 import {
   vguiCapsCss,
@@ -854,6 +857,97 @@ ${vguiLoadingCss({ spinner: 'ckp-spinner' })}
   100% {
     opacity: 0.3;
     box-shadow: 0 0 0 rgba(59, 130, 246, 0);
+  }
+}
+/* ─── Phase 4: Tab Group System ────────────────────────────────────────── */
+/* Multi-pane interface with animated underline and progressive disclosure */
+.ckp-tab-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+}
+.ckp-tabs-enhanced {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--ckp-border, #32384f);
+  background: var(--ckp-surface-2, transparent);
+  padding: 0 12px;
+  flex: 0 0 auto;
+}
+.ckp-tab {
+  position: relative;
+  padding: 12px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ckp-muted, #8a93a6);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  transition: color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+.ckp-tab:hover {
+  color: var(--vg-fg-color, #e5e9f0);
+  background: rgba(59, 130, 246, 0.08);
+}
+.ckp-tab.active {
+  color: var(--vg-fg-color, #e5e9f0);
+}
+.ckp-tab::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--ckp-accent, #3b82f6);
+  border-radius: 2px 2px 0 0;
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.ckp-tab.active::after {
+  transform: scaleX(1);
+}
+.ckp-tab-panes {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.ckp-tab-pane {
+  display: none;
+  padding: 16px 20px;
+  min-height: 0;
+}
+.ckp-tab-pane.active {
+  display: block;
+  animation: tabPaneIn 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+@keyframes tabPaneIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ckp-tab {
+    transition: none;
+  }
+  .ckp-tab::after {
+    transition: none;
+  }
+  .ckp-tab-pane.active {
+    animation: none;
   }
 }
 /* Enhanced token CSS variables */
