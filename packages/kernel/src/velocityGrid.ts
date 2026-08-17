@@ -4977,6 +4977,7 @@ export class VelocityGrid<TRow = any> {
   }
 
   setSortModel(s: SortModel): void {
+    console.log('[main] setSortModel called with:', JSON.stringify(s));
     // Cycle 8 / Task 3 — reject inline-closure comparators at the
     // setSortModel boundary. Closures can't ride `postMessage` to the
     // worker (functions aren't structured-cloneable), so a column with
@@ -4995,6 +4996,7 @@ export class VelocityGrid<TRow = any> {
       }
     }
     this.sortModel = s;
+    console.log('[main] sortModel updated to:', JSON.stringify(this.sortModel));
     // Cycle 22 / Task 3 — layoutEpoch contract: SORT change. A sort
     // permutes row positions, and zebra parity (dataIdx % 2) is baked
     // into every strip's pixels — belt-and-suspenders over the chunk

@@ -292,7 +292,11 @@ export function createWorkerHost(post: PostFn): WorkerHost {
         maintainOrder: state.groupMaintainOrder,
       }, state.pivotOut ?? undefined);
     } else {
+      console.log('[worker-buildVisible] NOT grouping, calling state.sort.apply with', ids.length, 'ids');
+      const before = ids.slice(0, 5);
       ids = state.sort.apply(ids);
+      const after = ids.slice(0, 5);
+      console.log('[worker-buildVisible] after sort.apply, first 5 ids changed from', before, 'to', after);
     }
     // Cycle 8 / Task 4 — when `postSortRowsPresent`, ship the sorted ids
     // up for the main-thread hook to re-order. Empty sets skip the
