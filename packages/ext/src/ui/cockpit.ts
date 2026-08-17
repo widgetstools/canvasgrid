@@ -26,6 +26,7 @@ import {
   vguiLoadingCss,
   VGUI_ENHANCED_TOKENS,
   VGUI_SPACING,
+  VGUI_TYPOGRAPHY,
   VGUI_TRANSITIONS,
   type VguiTokensEnhanced,
 } from '@wellsfargo-starui/velocity-grid/ui/primitives-enhanced';
@@ -149,6 +150,25 @@ export function switchToggle(checked: boolean, onChange: (v: boolean) => void): 
   return root;
 }
 
+/** Enhanced toggle switch — 44×24px with premium visual design */
+export function switchToggleEnhanced(checked: boolean, onChange: (v: boolean) => void): HTMLElement {
+  const root = el('button', `ckp-switch-enhanced${checked ? ' on' : ''}`) as HTMLButtonElement;
+  root.type = 'button';
+  root.setAttribute('aria-pressed', checked ? 'true' : 'false');
+  root.setAttribute('aria-label', checked ? 'On' : 'Off');
+  const knob = el('span', 'ckp-knob');
+  root.appendChild(knob);
+  root.addEventListener('click', (e) => {
+    e.preventDefault();
+    const newState = !checked;
+    checked = newState;
+    root.classList.toggle('on', newState);
+    root.setAttribute('aria-pressed', newState ? 'true' : 'false');
+    onChange(newState);
+  });
+  return root;
+}
+
 /** Segmented pill group (single select). */
 export function pillGroup(
   options: Array<[value: string, label: string]>,
@@ -187,6 +207,69 @@ export function iconTile(name: string, selected: boolean, onClick: () => void): 
   b.innerHTML = lucideSvg(name);
   b.addEventListener('click', onClick);
   return b;
+}
+
+/** Enhanced action button — primary (Save, Done) */
+export function actionButtonEnhanced(label: string, icon?: string): HTMLButtonElement {
+  const btn = el('button', 'ckp-btn-primary-enhanced') as HTMLButtonElement;
+  btn.type = 'button';
+  if (icon) {
+    btn.innerHTML = `${lucideSvg(icon, 12)}<span>${label}</span>`;
+  } else {
+    btn.textContent = label;
+  }
+  return btn;
+}
+
+/** Enhanced reset button — secondary (Reset, Cancel) */
+export function resetButtonEnhanced(label: string, icon?: string): HTMLButtonElement {
+  const btn = el('button', 'ckp-btn-secondary-enhanced') as HTMLButtonElement;
+  btn.type = 'button';
+  if (icon) {
+    btn.innerHTML = `${lucideSvg(icon, 12)}<span>${label}</span>`;
+  } else {
+    btn.textContent = label;
+  }
+  return btn;
+}
+
+/**
+ * Animate save button through spinner → checkmark → idle cycle.
+ * Shows visual feedback that the operation is in progress and succeeded.
+ */
+export function animateSaveButton(btn: HTMLButtonElement, onComplete?: () => void): void {
+  const originalHTML = btn.innerHTML;
+  btn.classList.add('ckp-btn-saving');
+  btn.disabled = true;
+
+  // Show spinner for 300ms
+  btn.innerHTML = `<span class="ckp-spinner"></span><span>Saving...</span>`;
+
+  setTimeout(() => {
+    // Show checkmark for 400ms
+    btn.innerHTML = `${lucideSvg('check', 12)}<span>Saved</span>`;
+    btn.classList.add('ckp-btn-saved');
+
+    setTimeout(() => {
+      // Return to normal state
+      btn.innerHTML = originalHTML;
+      btn.classList.remove('ckp-btn-saving', 'ckp-btn-saved');
+      btn.disabled = false;
+      onComplete?.();
+    }, 400);
+  }, 300);
+}
+
+/**
+ * Apply visual change indicator to a row/band.
+ * Shows a left-side accent border and optional badge.
+ */
+export function applyChangeIndicator(element: HTMLElement, show: boolean = true): void {
+  if (show) {
+    element.classList.add('ckp-has-changes');
+  } else {
+    element.classList.remove('ckp-has-changes');
+  }
 }
 
 /** `LABEL` caps micro-label. */
@@ -718,6 +801,61 @@ ${vguiBandCssEnhanced({ root: 'ckp-band-enhanced', head: 'ckp-band-head', body: 
 ${vguiTabsCssEnhanced({ root: 'ckp-tabs-enhanced', tab: 'ckp-tab', active: 'active', indicator: 'indicator' }, CKP_TOKENS_ENHANCED)}
 ${vguiChipCssEnhanced({ root: 'ckp-chip-enhanced', label: 'ckp-chip-label', value: 'ckp-chip-value' }, CKP_TOKENS_ENHANCED)}
 ${vguiLoadingCss({ spinner: 'ckp-spinner' })}
+/* ─── Phase 3: Micro-interactions ──────────────────────────────────────── */
+/* Save animation: spinner → checkmark → idle */
+.ckp-btn-primary-enhanced.ckp-btn-saving {
+  background: linear-gradient(135deg, var(--ckp-accent, #3b82f6), var(--ckp-accent, #3b82f6));
+  position: relative;
+}
+.ckp-btn-primary-enhanced.ckp-btn-saved {
+  background: var(--ckp-success, #10b981);
+  border-color: var(--ckp-success, #10b981);
+}
+.ckp-btn-primary-enhanced.ckp-btn-saved svg {
+  animation: checkPulse 400ms cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+/* Change indicator — left border accent + visual prominence */
+.ckp-row.ckp-has-changes,
+.ckp-band-enhanced.ckp-has-changes {
+  border-left: 3px solid var(--ckp-accent, #3b82f6);
+  padding-left: 12px;
+}
+.ckp-has-changes::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--ckp-accent, #3b82f6);
+  border-radius: 0;
+  animation: changeFlash 400ms ease-out;
+}
+/* Checkmark pulse animation */
+@keyframes checkPulse {
+  0% {
+    transform: scale(0.8) rotate(-45deg);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+/* Change indicator flash */
+@keyframes changeFlash {
+  0% {
+    opacity: 1;
+    box-shadow: 0 0 8px rgba(59, 130, 246, 0.6);
+  }
+  100% {
+    opacity: 0.3;
+    box-shadow: 0 0 0 rgba(59, 130, 246, 0);
+  }
+}
 /* Enhanced token CSS variables */
 .ckp-enhanced {
   --ckp-spacing-xs: ${VGUI_SPACING.xs};

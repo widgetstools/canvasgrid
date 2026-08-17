@@ -30,12 +30,15 @@ import {
   row,
   select,
   switchToggle,
+  switchToggleEnhanced,
   textInput,
   appendPaneChrome,
   takePaneScroll,
   restorePaneScroll,
   emptyState,
   engineMissingNotice,
+  actionButtonEnhanced,
+  resetButtonEnhanced,
 } from '../ui/cockpit';
 
 interface AlertsGrid {
@@ -213,7 +216,7 @@ export function alertsModule(): SettingsModule {
           body.style.cssText = 'padding:4px 12px 12px;display:flex;flex-direction:column;gap:2px;';
           const s = liveSettings();
           body.append(
-            row('Alerts enabled', switchToggle(s.enabled, (v) => patchSettings({ enabled: v }))),
+            row('Alerts enabled', switchToggleEnhanced(s.enabled, (v) => patchSettings({ enabled: v }))),
             row(
               'Frequency',
               pillGroup(
@@ -239,7 +242,7 @@ export function alertsModule(): SettingsModule {
           ch.appendChild(caps('Channels'));
           for (const c of CHANNELS) {
             const disabled = c === 'openfin' && !openFinAvailable();
-            const sw = switchToggle(s.enabledChannels[c], (v) => {
+            const sw = switchToggleEnhanced(s.enabledChannels[c], (v) => {
               patchSettings({ enabledChannels: { ...s.enabledChannels, [c]: v } });
             });
             if (disabled) {
@@ -325,14 +328,10 @@ export function alertsModule(): SettingsModule {
 
         const head = el('div', 'ckp-pane-head');
         const nameIn = textInput(d.name, (v) => { d.name = v; }, { className: 'ckp-title', placeholder: 'Alert name' });
-        const saveBtn = el('button', 'ckp-actbtn') as HTMLButtonElement;
-        saveBtn.type = 'button';
-        saveBtn.innerHTML = `${lucideSvg('save', 12)}<span>Save</span>`;
+        const saveBtn = actionButtonEnhanced('Save', 'save');
         saveBtn.disabled = !isDirty();
         saveBtn.addEventListener('click', save);
-        const resetBtn = el('button', 'ckp-actbtn ckp-btn-secondary') as HTMLButtonElement;
-        resetBtn.type = 'button';
-        resetBtn.innerHTML = `${lucideSvg('rotate-ccw', 12)}<span>Reset</span>`;
+        const resetBtn = resetButtonEnhanced('Reset', 'rotate-ccw');
         resetBtn.disabled = !isDirty();
         resetBtn.addEventListener('click', reset);
         nameIn.addEventListener('input', () => {
@@ -353,7 +352,7 @@ export function alertsModule(): SettingsModule {
 
         const ruleBand = band('Rule');
         ruleBand.body.append(
-          row('Enabled', switchToggle(d.enabled, (v) => { d.enabled = v; renderAll(); })),
+          row('Enabled', switchToggleEnhanced(d.enabled, (v) => { d.enabled = v; renderAll(); })),
         );
         body.appendChild(ruleBand.root);
 
@@ -460,7 +459,7 @@ export function alertsModule(): SettingsModule {
         for (const c of CHANNELS) {
           const on = d.channels.includes(c);
           const disabled = c === 'openfin' && !openFinAvailable();
-          const sw = switchToggle(on, (v) => {
+          const sw = switchToggleEnhanced(on, (v) => {
             d.channels = v ? [...new Set([...d.channels, c])] : d.channels.filter((x) => x !== c);
             renderAll();
           });

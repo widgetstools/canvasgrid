@@ -15,12 +15,15 @@ import {
   numberInput,
   row,
   switchToggle,
+  switchToggleEnhanced,
   textInput,
   appendPaneChrome,
   takePaneScroll,
   restorePaneScroll,
   emptyState,
   engineMissingNotice,
+  actionButtonEnhanced,
+  resetButtonEnhanced,
 } from '../ui/cockpit';
 import { clone, editHandle } from './editHandle';
 
@@ -209,14 +212,10 @@ export function plusMinusModule(): SettingsModule {
 
         const head = el('div', 'ckp-pane-head');
         const title = el('div', 'ckp-title', draft ? draft.name : 'Plus / Minus');
-        const saveBtn = el('button', 'ckp-actbtn') as HTMLButtonElement;
-        saveBtn.type = 'button';
-        saveBtn.innerHTML = `${lucideSvg('save', 12)}<span>Save</span>`;
+        const saveBtn = actionButtonEnhanced('Save', 'save');
         saveBtn.disabled = !isDirty();
         saveBtn.addEventListener('click', save);
-        const resetBtn = el('button', 'ckp-actbtn ckp-btn-secondary') as HTMLButtonElement;
-        resetBtn.type = 'button';
-        resetBtn.innerHTML = `${lucideSvg('rotate-ccw', 12)}<span>Reset</span>`;
+        const resetBtn = resetButtonEnhanced('Reset', 'rotate-ccw');
         resetBtn.disabled = !isDirty();
         resetBtn.addEventListener('click', reset);
         head.append(title, saveBtn, resetBtn);
@@ -224,11 +223,11 @@ export function plusMinusModule(): SettingsModule {
 
         const glob = band('Global');
         glob.body.append(
-          row('Enabled', switchToggle(settingsDraft.enabled, (v) => {
+          row('Enabled', switchToggleEnhanced(settingsDraft.enabled, (v) => {
             settingsDraft!.enabled = v;
             renderAll();
           }), 'When enabled, +/- keys use these nudges'),
-          row('Record history', switchToggle(settingsDraft.recordHistory, (v) => {
+          row('Record history', switchToggleEnhanced(settingsDraft.recordHistory, (v) => {
             settingsDraft!.recordHistory = v;
             renderAll();
           })),
@@ -247,7 +246,7 @@ export function plusMinusModule(): SettingsModule {
         const nb = band('Nudge');
         nb.body.append(
           row('Name', textInput(d.name, (v) => { d.name = v; renderAll(); })),
-          row('Enabled', switchToggle(d.enabled, (v) => { d.enabled = v; renderAll(); })),
+          row('Enabled', switchToggleEnhanced(d.enabled, (v) => { d.enabled = v; renderAll(); })),
           row('Columns', textInput(formatCols(d.scope.columnIds), (v) => {
             d.scope.columnIds = parseCols(v);
           }, { placeholder: 'colIds, comma-separated (empty = all numeric)' })),

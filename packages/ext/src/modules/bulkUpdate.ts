@@ -4,7 +4,8 @@
 import type { BulkUpdateSettings } from '@wellsfargo-starui/velocity-grid-edit';
 import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import {
-  band, el, injectCockpitStyles, lucideSvg, numberInput, row, switchToggle, engineMissingNotice,
+  band, el, injectCockpitStyles, lucideSvg, numberInput, row, switchToggle, switchToggleEnhanced,
+  actionButtonEnhanced, resetButtonEnhanced, engineMissingNotice, animateSaveButton,
 } from '../ui/cockpit';
 import { clone, editHandle } from './editHandle';
 
@@ -21,6 +22,7 @@ export function bulkUpdateModule(): SettingsModule {
     mount(host: HTMLElement, ctx: VelocityGridExtContext): ModuleInstance {
       let committed: BulkUpdateSettings | null = null;
       let draft: BulkUpdateSettings | null = null;
+      let saveBtn: HTMLButtonElement | null = null;
       const root = el('div', 'ckp ckp-flat');
       host.appendChild(root);
 
@@ -36,12 +38,12 @@ export function bulkUpdateModule(): SettingsModule {
 
       const save = (): void => {
         const h = editHandle(ctx);
-        if (!h || !draft) return;
+        if (!h || !draft || !saveBtn) return;
         h.updateSettings({ bulkUpdate: clone(draft) });
         h.updateSettings({ history: { recordSources: { bulkUpdate: draft.recordHistory } } });
         ctx.profiles.markDirty();
         committed = clone(draft);
-        render();
+        animateSaveButton(saveBtn, () => render());
       };
 
       const reset = (): void => {
@@ -61,14 +63,10 @@ export function bulkUpdateModule(): SettingsModule {
         const d = draft;
         const head = el('div', 'ckp-pane-head');
         const title = el('div', 'ckp-title', 'Bulk Update');
-        const saveBtn = el('button', 'ckp-actbtn') as HTMLButtonElement;
-        saveBtn.type = 'button';
-        saveBtn.innerHTML = `${lucideSvg('save', 12)}<span>Save</span>`;
+        saveBtn = actionButtonEnhanced('Save', 'save');
         saveBtn.disabled = !isDirty();
         saveBtn.addEventListener('click', save);
-        const resetBtn = el('button', 'ckp-actbtn ckp-btn-secondary') as HTMLButtonElement;
-        resetBtn.type = 'button';
-        resetBtn.innerHTML = `${lucideSvg('rotate-ccw', 12)}<span>Reset</span>`;
+        const resetBtn = resetButtonEnhanced('Reset', 'rotate-ccw');
         resetBtn.disabled = !isDirty();
         resetBtn.addEventListener('click', reset);
         head.append(title, saveBtn, resetBtn);
@@ -78,17 +76,17 @@ export function bulkUpdateModule(): SettingsModule {
 
         const g = band('Global');
         g.body.append(
-          row('Enabled', switchToggle(d.enabled, (v) => { d.enabled = v; render(); })),
+          row('Enabled', switchToggleEnhanced(d.enabled, (v) => { d.enabled = v; render(); })),
           row('Confirm threshold', numberInput(d.confirmThreshold, (v) => {
             if (v === undefined) return;
             d.confirmThreshold = Math.max(0, Math.floor(v));
             render();
           }), '0 = never'),
-          row('Single column', switchToggle(d.enforceSingleColumn, (v) => {
+          row('Single column', switchToggleEnhanced(d.enforceSingleColumn, (v) => {
             d.enforceSingleColumn = v;
             render();
           })),
-          row('Record history', switchToggle(d.recordHistory, (v) => {
+          row('Record history', switchToggleEnhanced(d.recordHistory, (v) => {
             d.recordHistory = v;
             render();
           }), 'Logs operations to the undo/redo journal'),
@@ -97,7 +95,7 @@ export function bulkUpdateModule(): SettingsModule {
 
         const drop = band('Dropdown');
         drop.body.append(
-          row('Distinct values', switchToggle(d.showDistinctValues, (v) => {
+          row('Distinct values', switchToggleEnhanced(d.showDistinctValues, (v) => {
             d.showDistinctValues = v;
             render();
           })),

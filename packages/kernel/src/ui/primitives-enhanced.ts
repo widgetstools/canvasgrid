@@ -116,10 +116,10 @@ export interface VguiTypography {
   '2xl': string;    // 20px
 
   // Font weights
-  normal: string;   // 400
-  medium: string;   // 500
-  semibold: string; // 600
-  bold: string;     // 700
+  weight400: string;   // 400
+  weight500: string;   // 500
+  weight600: string;   // 600
+  weight700: string;   // 700
 
   // Line heights
   tight: string;    // 1.2
@@ -134,10 +134,10 @@ export const VGUI_TYPOGRAPHY: VguiTypography = {
   lg: '14px',
   xl: '16px',
   '2xl': '20px',
-  normal: '400',
-  medium: '500',
-  semibold: '600',
-  bold: '700',
+  weight400: '400',
+  weight500: '500',
+  weight600: '600',
+  weight700: '700',
   tight: '1.2',
   normal: '1.5',
   relaxed: '1.6',

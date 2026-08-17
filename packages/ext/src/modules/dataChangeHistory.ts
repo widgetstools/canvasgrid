@@ -9,7 +9,8 @@
 import type { DataChangeHistorySettings, EditJournalEntry, EditSource } from '@wellsfargo-starui/velocity-grid-edit';
 import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import {
-  band, chip, el, injectCockpitStyles, lucideSvg, numberInput, row, switchToggle, emptyState, engineMissingNotice,
+  band, chip, el, injectCockpitStyles, lucideSvg, numberInput, row, switchToggle, switchToggleEnhanced, emptyState, engineMissingNotice,
+  actionButtonEnhanced, resetButtonEnhanced,
 } from '../ui/cockpit';
 import { clone, editHandle } from './editHandle';
 
@@ -175,13 +176,9 @@ export function dataChangeHistoryModule(): SettingsModule {
         title.style.alignItems = 'center';
         title.style.gap = '10px';
         title.appendChild(chip('Stack', String(handle.journal.entries().length), 'info').root);
-        const saveBtn = el('button', 'ckp-actbtn') as HTMLButtonElement;
-        saveBtn.type = 'button';
-        saveBtn.innerHTML = `${lucideSvg('save', 12)}<span>Save</span>`;
+        const saveBtn = actionButtonEnhanced('Save', 'save');
         saveBtn.addEventListener('click', save);
-        const resetBtn = el('button', 'ckp-actbtn ckp-btn-secondary') as HTMLButtonElement;
-        resetBtn.type = 'button';
-        resetBtn.innerHTML = `${lucideSvg('rotate-ccw', 12)}<span>Reset</span>`;
+        const resetBtn = resetButtonEnhanced('Reset', 'rotate-ccw');
         resetBtn.addEventListener('click', reset);
         const dirty = isDirty();
         saveBtn.disabled = !dirty;
@@ -193,10 +190,10 @@ export function dataChangeHistoryModule(): SettingsModule {
 
         const global = band('Global');
         global.body.append(
-          row('Enabled', switchToggle(draft.enabled, (v) => { draft!.enabled = v; renderAll(); })),
+          row('Enabled', switchToggleEnhanced(draft.enabled, (v) => { draft!.enabled = v; renderAll(); })),
           row(
             'Suspended',
-            switchToggle(draft.suspended, setSuspendedLive),
+            switchToggleEnhanced(draft.suspended, setSuspendedLive),
             'Pauses recording immediately — does not wait for Done',
           ),
           row(
@@ -209,7 +206,7 @@ export function dataChangeHistoryModule(): SettingsModule {
           ),
           row(
             'Unify Undo',
-            switchToggle(draft.unifyUndo, (v) => { draft!.unifyUndo = v; renderAll(); }),
+            switchToggleEnhanced(draft.unifyUndo, (v) => { draft!.unifyUndo = v; renderAll(); }),
             'Edit journal owns undo; disable native cell undo when available',
           ),
         );
@@ -220,7 +217,7 @@ export function dataChangeHistoryModule(): SettingsModule {
           sources.body.append(
             row(
               src.label,
-              switchToggle(draft.recordSources[src.key], (v) => {
+              switchToggleEnhanced(draft.recordSources[src.key], (v) => {
                 draft!.recordSources[src.key] = v;
                 renderAll();
               }),

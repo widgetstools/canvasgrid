@@ -17,6 +17,10 @@
     "./ui/primitives": {
       "types": "./src/ui/primitives.ts",
       "import": "./src/ui/primitives.ts"
+    },
+    "./ui/primitives-enhanced": {
+      "types": "./src/ui/primitives-enhanced.ts",
+      "import": "./src/ui/primitives-enhanced.ts"
     }
   },
   "scripts": {
