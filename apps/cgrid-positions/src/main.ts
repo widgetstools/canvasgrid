@@ -209,7 +209,7 @@ wireFeatureToggle('toggle-open-columns',    'openColumns',   '1',      openColum
 // E2E hooks: expose the grid + a readiness flag so Playwright tests can wait
 // for first-data-rendered and call api helpers (`getCellBoundsAt`,
 // `getCellValue`) instead of guessing pixel coordinates.
-(window as unknown as { __velocity-grid: typeof grid }).__cgrid = grid;
+(window as unknown as { __cgrid: typeof grid }).__cgrid = grid;
 (window as unknown as { __cgridReady: boolean }).__cgridReady = false;
 grid.on('firstDataRendered', () => {
   (window as unknown as { __cgridReady: boolean }).__cgridReady = true;
