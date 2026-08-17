@@ -90,7 +90,11 @@ export class SortPass<TRow = any> {
     this.comparators = comparators ?? new ComparatorRegistry();
   }
 
-  setModel(model: SortModel): void { this.model = model; }
+  setModel(model: SortModel): void {
+    console.log('[SortPass.setModel] BEFORE: model=', JSON.stringify(this.model));
+    this.model = model;
+    console.log('[SortPass.setModel] AFTER: model=', JSON.stringify(this.model));
+  }
 
   getModel(): SortModel { return this.model; }
 
