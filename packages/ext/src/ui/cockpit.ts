@@ -15,6 +15,20 @@ import {
   vguiSwitchCss,
   type VguiTokens,
 } from '@wellsfargo-starui/velocity-grid/ui/primitives';
+import {
+  vguiSwitchCssEnhanced,
+  vguiButtonCssEnhanced,
+  vguiRowCssEnhanced,
+  vguiInputCssEnhanced,
+  vguiBandCssEnhanced,
+  vguiTabsCssEnhanced,
+  vguiChipCssEnhanced,
+  vguiLoadingCss,
+  VGUI_ENHANCED_TOKENS,
+  VGUI_SPACING,
+  VGUI_TRANSITIONS,
+  type VguiTokensEnhanced,
+} from '@wellsfargo-starui/velocity-grid/ui/primitives-enhanced';
 import { ENGINE_WIRE_HINT, type ExtEngineName } from '../extension/engines';
 
 /** Cockpit's `--ckp-*` aliases → shared primitive generators. Passing the kit's
@@ -25,6 +39,34 @@ const CKP_TOKENS: VguiTokens = {
   muted: 'var(--ckp-muted)',
   surface: 'var(--ckp-input-bg)',
   radius: 'var(--vg-radius, 2px)',
+};
+
+/** Enhanced tokens for premium design system */
+const CKP_TOKENS_ENHANCED: VguiTokensEnhanced = {
+  accent: 'var(--ckp-accent, #3b82f6)',
+  accentLight: 'rgba(59, 130, 246, 0.2)',
+  accentDark: '#1e40af',
+  success: 'var(--ckp-success, #10b981)',
+  warning: 'var(--ckp-warning, #f59e0b)',
+  danger: 'var(--ckp-danger, #ef4444)',
+  info: '#06b6d4',
+  bgPrimary: 'var(--ckp-bg-primary, #0f1419)',
+  bgSecondary: 'var(--ckp-bg-secondary, #1a1f2e)',
+  bgTertiary: 'var(--ckp-bg-tertiary, #24293d)',
+  borderStrong: 'var(--ckp-border-strong, #32384f)',
+  borderSubtle: 'rgba(74, 82, 113, 0.6)',
+  borderLight: 'rgba(74, 82, 113, 0.3)',
+  textPrimary: 'var(--ckp-text-primary, #e5e9f0)',
+  textSecondary: 'var(--ckp-text-secondary, #c5cbd7)',
+  textTertiary: 'var(--ckp-text-tertiary, #9aa4b8)',
+  textMuted: 'var(--ckp-text-muted, #7a8599)',
+  shadow: '0 1px 3px rgba(0, 0, 0, 0.12)',
+  shadowMd: '0 4px 12px rgba(0, 0, 0, 0.15)',
+  focusRing: '0 0 0 3px rgba(59, 130, 246, 0.2)',
+  border: CKP_TOKENS.border,
+  muted: CKP_TOKENS.muted,
+  surface: CKP_TOKENS.surface,
+  radius: CKP_TOKENS.radius,
 };
 
 export function el<K extends keyof HTMLElementTagNameMap>(
@@ -322,6 +364,29 @@ export function select(
   s.addEventListener('change', () => onChange(s.value));
   return s;
 }
+
+// ─── exports for enhanced design system ────────────────────────────────────
+
+export {
+  vguiSwitchCssEnhanced,
+  vguiButtonCssEnhanced,
+  vguiRowCssEnhanced,
+  vguiInputCssEnhanced,
+  vguiBandCssEnhanced,
+  vguiTabsCssEnhanced,
+  vguiChipCssEnhanced,
+  vguiLoadingCss,
+  VGUI_ENHANCED_TOKENS,
+  VGUI_SPACING,
+  VGUI_TRANSITIONS,
+  VGUI_TYPOGRAPHY,
+  type VguiTokensEnhanced,
+  type VguiSpacing,
+  type VguiTypography,
+  type VguiTransitions,
+} from '@wellsfargo-starui/velocity-grid/ui/primitives-enhanced';
+
+export { CKP_TOKENS_ENHANCED };
 
 // ─── stylesheet ────────────────────────────────────────────────────────────
 
@@ -642,6 +707,34 @@ ${vguiInputInteractionCss(['.ckp-input'], CKP_TOKENS)}
 .vgext-ip-placeitem.is-active::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--vg-chrome-accent); flex: 0 0 auto; }
 @media (prefers-reduced-motion: reduce) {
   .ckp-rail-row, .ckp-input, .ckp-actbtn, .ckp-pill, .ckp-tile, .ckp-toggle, .ckp-fmtbtn { transition: none; }
+}
+/* ─── Enhanced Design System (Phase 1) ─────────────────────────────────── */
+/* Premium visual design with smooth animations and sophisticated hierarchy */
+${vguiSwitchCssEnhanced({ root: 'ckp-switch-enhanced', knob: 'ckp-knob', on: 'on' }, CKP_TOKENS_ENHANCED)}
+${vguiButtonCssEnhanced({ primary: 'ckp-btn-primary-enhanced', secondary: 'ckp-btn-secondary-enhanced', tertiary: 'ckp-btn-tertiary-enhanced' }, CKP_TOKENS_ENHANCED)}
+${vguiInputCssEnhanced({ root: 'ckp-input-enhanced' }, CKP_TOKENS_ENHANCED)}
+${vguiRowCssEnhanced({ root: 'ckp-row-enhanced', label: 'ckp-row-label', title: 'ckp-row-title', help: 'ckp-help', control: 'ckp-row-control', modified: 'is-modified' }, CKP_TOKENS_ENHANCED, { labelCol: '210px' })}
+${vguiBandCssEnhanced({ root: 'ckp-band-enhanced', head: 'ckp-band-head', body: 'ckp-band-body', title: 'ckp-band-title', chevron: 'ckp-band-chevron', collapsed: 'is-collapsed' }, CKP_TOKENS_ENHANCED)}
+${vguiTabsCssEnhanced({ root: 'ckp-tabs-enhanced', tab: 'ckp-tab', active: 'active', indicator: 'indicator' }, CKP_TOKENS_ENHANCED)}
+${vguiChipCssEnhanced({ root: 'ckp-chip-enhanced', label: 'ckp-chip-label', value: 'ckp-chip-value' }, CKP_TOKENS_ENHANCED)}
+${vguiLoadingCss({ spinner: 'ckp-spinner' })}
+/* Enhanced token CSS variables */
+.ckp-enhanced {
+  --ckp-spacing-xs: ${VGUI_SPACING.xs};
+  --ckp-spacing-sm: ${VGUI_SPACING.sm};
+  --ckp-spacing-md: ${VGUI_SPACING.md};
+  --ckp-spacing-lg: ${VGUI_SPACING.lg};
+  --ckp-spacing-xl: ${VGUI_SPACING.xl};
+  --ckp-spacing-2xl: ${VGUI_SPACING['2xl']};
+  --ckp-font-size-xs: ${VGUI_TYPOGRAPHY.xs};
+  --ckp-font-size-sm: ${VGUI_TYPOGRAPHY.sm};
+  --ckp-font-size-base: ${VGUI_TYPOGRAPHY.base};
+  --ckp-font-size-lg: ${VGUI_TYPOGRAPHY.lg};
+  --ckp-font-size-xl: ${VGUI_TYPOGRAPHY.xl};
+  --ckp-transition-fast: ${VGUI_TRANSITIONS.fast};
+  --ckp-transition-base: ${VGUI_TRANSITIONS.base};
+  --ckp-transition-slow: ${VGUI_TRANSITIONS.slow};
+  --ckp-transition-slower: ${VGUI_TRANSITIONS.slower};
 }
 `;
 }
