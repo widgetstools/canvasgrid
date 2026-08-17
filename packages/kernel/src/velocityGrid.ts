@@ -5008,24 +5008,22 @@ export class VelocityGrid<TRow = any> {
       return;
     }
     this.workerCoord.setSortModel(s).then(({ visibleCount }) => {
-      try {
-        this.rowCount = visibleCount;
-        // Sort reorders rows — invalidate the Fenwick index so stale per-row
-        // heights aren't read at their pre-sort positions (Cycle 5 / Task 7).
-        this.rowHeightIndex = null;
-        this.recomputeViewport();
-        // The worker doesn't push `modelUpdated` for sort changes — it only
-        // replies with the new rowCount — so persistent selections need an
-        // explicit rebuild here. Without this `setSelectedRowIds` /
-        // `setFocusedCell` would silently paint the wrong rows after a sort.
-        this.rebuildSelectionFromPersistentIds();
-        this.events.emit({ type: 'sortChanged', sortModel: s });
-        this.cgridCanvas.requestRepaint();
-        this.requestViewport();
-      } catch (err) {
-        console.error('[velocity-grid] setSortModel callback error:', err);
-        throw err;
-      }
+      this.rowCount = visibleCount;
+      // Sort reorders rows — invalidate the Fenwick index so stale per-row
+      // heights aren't read at their pre-sort positions (Cycle 5 / Task 7).
+      this.rowHeightIndex = null;
+      this.recomputeViewport();
+      // The worker doesn't push `modelUpdated` for sort changes — it only
+      // replies with the new rowCount — so persistent selections need an
+      // explicit rebuild here. Without this `setSelectedRowIds` /
+      // `setFocusedCell` would silently paint the wrong rows after a sort.
+      this.rebuildSelectionFromPersistentIds();
+      this.events.emit({ type: 'sortChanged', sortModel: s });
+      this.cgridCanvas.requestRepaint();
+      // Tag as rowDataChanged so ViewportManager / retained-paint treat
+      // the post-sort fetch as a data identity change (same as filter /
+      // setRowData), not a no-op scroll coalesce.
+      this.requestViewport('rowDataChanged');
     }).catch((err) => { if (!this.destroyed) console.error('[velocity-grid]', err); });
   }
 

@@ -445,6 +445,23 @@ describe('HeaderClick — column-band selection (Cycle 9 / Task 4)', () => {
     expect(grid.cycleSort).toHaveBeenCalledWith('ticker', { append: false });
   });
 
+  it('click on headerResizer hot-zone still cycles sort (sort affordance shares the right edge)', () => {
+    const f = new HeaderClick();
+    const grid = makeFullGrid({ rowCount: 100 });
+    f.handleClick(
+      ctx(
+        { kind: 'headerResizer', colId: 'ticker', edge: 'right' },
+        { x: 196, y: 10 },
+        grid,
+        new MouseEvent('click'),
+      ),
+    );
+    expect(grid.cycleSort).toHaveBeenCalledWith('ticker', { append: false });
+    expect(grid.selection.getRanges()).toEqual([
+      { rowStart: 0, rowEnd: 99, colIds: ['ticker'] },
+    ]);
+  });
+
   it('shift-click on header passes append=true to cycleSort (when multiSortKey === Shift) AND extends column band', () => {
     const f = new HeaderClick();
     const grid = makeFullGrid({ rowCount: 100 });

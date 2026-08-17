@@ -12,6 +12,12 @@
  *       than start a second one that interleaves writes to
  *       groupOutput/pivotOut/groupInputIds/visibleCache.
  *
+ * A-C4: invalidateAndCount coalesces under burst load. A plain serial lock
+ *       chained one full pipeline rebuild per async-txn flush; under a live
+ *       feed that starved setSortModel (main sortModel updated, rows never
+ *       reordered). At most one in-flight rebuild + one trailing coalesced
+ *       rebuild may run for N callers.
+ *
  * Final review — `ssrmEvict` cache invalidation under the client pipeline:
  *       under sparse SSRM, `visibleCache` IS `state.ssrmOrder` (same array,
  *       mutated in place by `ssrmEvict`), so no separate invalidation is
@@ -205,5 +211,40 @@ describe('ssrmEvict invalidates the CSRM-derived visibleCache under the client p
     // same array visibleCache aliases) — the next resolve reflects it
     // without needing an explicit cache null.
     expect(await client.getRowIndexForId('b')).toBe(-1);
+  });
+});
+
+describe('invalidateAndCount coalesces under burst load (A-C4)', () => {
+  it('rapid setSortModel calls resolve without chaining one rebuild per call', async () => {
+    const w = new FakeWorker();
+    const client = new WorkerClient(w as never, {
+      onModelUpdated: vi.fn(),
+      onAsyncTransactionsFlushed: vi.fn(),
+      onError: vi.fn(),
+    } as never);
+    await client.init({ rowIdField: 'id', columns: COLUMNS });
+    await client.setRowData(ROWS);
+
+    // Fire a burst of sort-model swaps the way a live feed + header
+    // clicks do. Pre-coalesce, each call waited for the previous full
+    // pipeline rebuild; under load that starved later sorts. All must
+    // resolve, and the final visible order must match the last model.
+    const burst = [
+      client.setSortModel([{ colId: 'name', direction: 'asc' }]),
+      client.setSortModel([{ colId: 'name', direction: 'desc' }]),
+      client.setSortModel([{ colId: 'price', direction: 'asc' }]),
+      client.setSortModel([{ colId: 'price', direction: 'desc' }]),
+      client.setSortModel([{ colId: 'name', direction: 'asc' }]),
+    ];
+    await Promise.all(burst);
+    await flush();
+
+    // Final model is name asc → apple, banana, cherry, durian.
+    const names: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      const row = await client.getRowByIndex(i);
+      names.push((row.data as Row | null)?.name ?? '');
+    }
+    expect(names).toEqual(['apple', 'banana', 'cherry', 'durian']);
   });
 });

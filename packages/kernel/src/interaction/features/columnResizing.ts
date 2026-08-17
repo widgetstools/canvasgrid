@@ -13,10 +13,19 @@ export class ColumnResizing extends Feature {
   // cursor LEFT grows the column (because its right edge is anchored to
   // the canvas right edge), and dragging RIGHT shrinks it.
   private resizing: { colId: string; lastX: number; edge: 'left' | 'right' } | null = null;
+  /** True once this press applied at least one non-zero resize delta.
+   *  Used to swallow the trailing browser `click` so HeaderClick does
+   *  not also cycle sort after a real resize. Cleared on the next click
+   *  (consumed) or the next mousedown (defensive). */
+  private suppressNextClick = false;
+  /** True while a resizer press is active, whether or not width changed. */
+  private didResize = false;
 
   override handleMouseDown(ctx: VelocityGridEventCtx): void {
+    this.suppressNextClick = false;
     if (ctx.hit.kind === 'headerResizer') {
       this.resizing = { colId: ctx.hit.colId, lastX: ctx.point.x, edge: ctx.hit.edge };
+      this.didResize = false;
       // Consume — do not forward; CellSelection must not steal focus.
       return;
     }
@@ -30,6 +39,7 @@ export class ColumnResizing extends Feature {
       if (dx) {
         ctx.grid.resizeColumn(this.resizing.colId, dx);
         this.resizing.lastX = ctx.point.x;
+        this.didResize = true;
       }
       return;
     }
@@ -39,14 +49,28 @@ export class ColumnResizing extends Feature {
   override handleMouseUp(ctx: VelocityGridEventCtx): void {
     if (this.resizing) {
       const finishedColId = this.resizing.colId;
+      const resized = this.didResize;
       this.resizing = null;
+      this.didResize = false;
       // Fire the trailing finished:true companion to the per-tick
       // finished:false emissions so apps that persist on mouseup only
       // fire once per drag. Cycle 6 / Task 5.
       ctx.grid.finishColumnResize(finishedColId);
+      // Only swallow the trailing click after a real width change. A
+      // plain click on the resizer hot-zone (sort-indicator side of the
+      // header) must still reach HeaderClick.
+      if (resized) this.suppressNextClick = true;
       return;
     }
     super.handleMouseUp(ctx);
+  }
+
+  override handleClick(ctx: VelocityGridEventCtx): void {
+    if (this.suppressNextClick) {
+      this.suppressNextClick = false;
+      return;
+    }
+    super.handleClick(ctx);
   }
 
   override handleDoubleClick(ctx: VelocityGridEventCtx): void {

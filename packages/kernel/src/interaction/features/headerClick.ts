@@ -29,20 +29,26 @@ function isAppendClick(
 
 export class HeaderClick extends Feature {
   override handleClick(ctx: VelocityGridEventCtx): void {
-    if (ctx.hit.kind === 'header') {
+    // `headerResizer` is the right-edge hot-zone used for column resize.
+    // Sort indicators sit on that same edge, so a plain click there must
+    // still cycle sort — otherwise "click the header" feels broken near
+    // every column boundary. Real resize drags are swallowed upstream by
+    // ColumnResizing's suppressNextClick.
+    if (ctx.hit.kind === 'header' || ctx.hit.kind === 'headerResizer') {
+      const colId = ctx.hit.colId;
       // Row-select header checkbox — when the column declares
       // `headerCheckboxSelection: true`, the entire header rect is
       // the click target for the select-all / clear-all toggle. The
       // sort cycle + column-band selection are skipped on these
       // columns so the gesture stays unambiguous (you can't sort a
       // pure checkbox column anyway).
-      if (ctx.grid.isHeaderCheckboxSelectionColumn?.(ctx.hit.colId)) {
-        ctx.grid.toggleHeaderCheckbox?.(ctx.hit.colId);
+      if (ctx.grid.isHeaderCheckboxSelectionColumn?.(colId)) {
+        ctx.grid.toggleHeaderCheckbox?.(colId);
         ctx.grid.canvas.requestRepaint();
         return;
       }
       const append = isAppendClick(ctx.raw, ctx.grid.getMultiSortKey());
-      ctx.grid.cycleSort(ctx.hit.colId, { append });
+      ctx.grid.cycleSort(colId, { append });
       // Cycle 9 / Task 6 — skip the column-band selection when
       // `cellSelection.suppressHeader` is set. Sort cycling above still
       // runs so apps that disable range selection don't lose sort UX.
@@ -50,7 +56,7 @@ export class HeaderClick extends Feature {
       // …)` takes effect on the next click.
       if (ctx.grid.getCellSelectionOptions()?.suppressHeader !== true) {
         const extend = ctx.raw instanceof MouseEvent && ctx.raw.shiftKey;
-        ctx.grid.selectColumn(ctx.hit.colId, { extend });
+        ctx.grid.selectColumn(colId, { extend });
       }
       return;
     }

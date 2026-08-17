@@ -55,6 +55,16 @@ export interface WorkerHost {
 
 export function createWorkerHost(post: PostFn): WorkerHost {
   let state: State | null = null;
+  // A-C4 — coalesce invalidateAndCount so rapid setSortModel / filter /
+  // txn flushes cannot start overlapping pipeline builds (A-C3
+  // single-flight covers the in-build race) AND cannot queue an
+  // unbounded chain of full 20k-row rebuilds under a live async feed.
+  // A plain promise-lock serialized every flush into its own rebuild;
+  // under STOMP that starved setSortModel — main updated sortModel
+  // (console / header state) while the worker never caught up, so rows
+  // never reordered on screen.
+  let invalidateInFlight: Promise<number> | null = null;
+  let invalidateQueued: Promise<number> | null = null;
 
   function buildCandidates(aggFilterCols: ReadonlySet<string> | null = null): string[] {
     if (!state) return [];
@@ -292,14 +302,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
         maintainOrder: state.groupMaintainOrder,
       }, state.pivotOut ?? undefined);
     } else {
-      const modelStr = JSON.stringify(state.sort.getModel());
-      const beforeIds = ids.slice(0, 5);
       ids = state.sort.apply(ids);
-      const afterIds = ids.slice(0, 5);
-      const changed = beforeIds.some((id, i) => id !== afterIds[i]);
-      if (!changed && modelStr !== '[]') {
-        console.error('[worker] CRITICAL BUG: sort.apply returned same order despite non-empty model:', modelStr);
-      }
     }
     // Cycle 8 / Task 4 — when `postSortRowsPresent`, ship the sorted ids
     // up for the main-thread hook to re-order. Empty sets skip the
@@ -645,7 +648,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       // — when an external filter is active the await also covers the
       // candidates ↔ result round-trip with main.
       const wasPendingSeed = state!.pendingDefaultExpandSeed;
-      void invalidateAndCount().then((visibleCount) => {
+      void invalidateAndCountSerialized().then((visibleCount) => {
         // Cycle 15 / Task 7 — when grouping is active, fan the
         // current composite keys back so main's `knownGroupKeys`
         // mirror tracks any group added / removed by this txn.
@@ -919,6 +922,28 @@ export function createWorkerHost(post: PostFn): WorkerHost {
    *  identically); we build it lazily inside `handleAsync` after
    *  `state` is confirmed non-null so the dispatcher can `assert state`
    *  once and hand it down to every handler. */
+  // A-C4 — at most one rebuild in flight + one trailing coalesced
+  // rebuild. N rapid callers share those two promises instead of
+  // chaining N sequential full pipeline passes.
+  function invalidateAndCountSerialized(): Promise<number> {
+    if (invalidateInFlight) {
+      if (!invalidateQueued) {
+        invalidateQueued = invalidateInFlight
+          .catch(() => 0)
+          .then(() => {
+            invalidateQueued = null;
+            return invalidateAndCountSerialized();
+          });
+      }
+      return invalidateQueued;
+    }
+    const p = invalidateAndCount().finally(() => {
+      if (invalidateInFlight === p) invalidateInFlight = null;
+    });
+    invalidateInFlight = p;
+    return p;
+  }
+
   function buildHelpers(): WorkerHelpers {
     return {
       buildCandidates,
@@ -933,7 +958,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       collectGroupDescendantRowIds,
       buildGroupMetaLookup,
       computeStickyAncestors,
-      invalidateAndCount,
+      invalidateAndCount: invalidateAndCountSerialized,
       stageFlashesForUpdates: (updates) => stageFlashesForUpdates(state!, updates),
       autoHeightCols,
       runAutoHeightPass,

@@ -64,4 +64,30 @@ describe('ColumnResizing', () => {
     f.handleMouseUp(ctx(hit, { x: 220, y: 8 }, grid));
     expect(grid.finishColumnResize).toHaveBeenCalledWith('pnl');
   });
+
+  it('swallows the trailing click only after a real resize', () => {
+    const f = new ColumnResizing();
+    const grid = makeGrid();
+    const downstream = vi.fn();
+    f.next = { handleClick: downstream } as never;
+    const hit: Hit = { kind: 'headerResizer', colId: 'a', edge: 'right' };
+    f.handleMouseDown(ctx(hit, { x: 100, y: 8 }, grid));
+    f.handleMouseDrag(ctx(hit, { x: 120, y: 8 }, grid));
+    f.handleMouseUp(ctx(hit, { x: 120, y: 8 }, grid));
+    f.handleClick(ctx(hit, { x: 120, y: 8 }, grid));
+    expect(downstream).not.toHaveBeenCalled();
+  });
+
+  it('forwards the click after a resizer press with no width change', () => {
+    const f = new ColumnResizing();
+    const grid = makeGrid();
+    const downstream = vi.fn();
+    f.next = { handleClick: downstream, handleMouseUp: vi.fn() } as never;
+    const hit: Hit = { kind: 'headerResizer', colId: 'a', edge: 'right' };
+    f.handleMouseDown(ctx(hit, { x: 100, y: 8 }, grid));
+    f.handleMouseUp(ctx(hit, { x: 100, y: 8 }, grid));
+    f.handleClick(ctx(hit, { x: 100, y: 8 }, grid));
+    expect(grid.resizeColumn).not.toHaveBeenCalled();
+    expect(downstream).toHaveBeenCalledTimes(1);
+  });
 });

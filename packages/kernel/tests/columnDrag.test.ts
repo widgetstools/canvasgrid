@@ -123,13 +123,13 @@ describe('ColumnDrag', () => {
     expect(grid.reorderColumn).not.toHaveBeenCalled();
   });
 
-  it('does not commit when movement stays below the 4 px threshold', () => {
+  it('does not commit when movement stays below the 8 px threshold', () => {
     const f = new ColumnDrag();
     const grid = makeGrid();
     const hit: Hit = { kind: 'header', colId: 'a' };
     f.handleMouseDown(ctx(hit, { x: 10, y: 8 }, grid));
-    f.handleMouseDrag(ctx(hit, { x: 12, y: 9 }, grid));
-    f.handleMouseUp(ctx(hit, { x: 12, y: 9 }, grid));
+    f.handleMouseDrag(ctx(hit, { x: 16, y: 9 }, grid));
+    f.handleMouseUp(ctx(hit, { x: 16, y: 9 }, grid));
     expect(grid.reorderColumn).not.toHaveBeenCalled();
   });
 
@@ -139,7 +139,9 @@ describe('ColumnDrag', () => {
     const hit: Hit = { kind: 'header', colId: 'a' };
     f.handleMouseDown(ctx(hit, { x: 10, y: 8 }, grid));
     f.handleMouseDrag(ctx(hit, { x: 220, y: 8 }, grid));
-    f.handleMouseUp(ctx(hit, { x: 220, y: 8 }, grid));
+    // Release hit must reflect the column under the pointer (FeatureChain
+    // rebuilds hit from point on every event).
+    f.handleMouseUp(ctx({ kind: 'header', colId: 'c' }, { x: 220, y: 8 }, grid));
     // 220 px landed past 'c' (left=200, width=100, center=250). 220 > 'b' center
     // (150) so candidate is 2 ('a' moves past 'b').
     expect(grid.reorderColumn).toHaveBeenCalledWith('a', 2, 'uiColumnDragged');
@@ -151,7 +153,7 @@ describe('ColumnDrag', () => {
     const hit: Hit = { kind: 'header', colId: 'c' };
     f.handleMouseDown(ctx(hit, { x: 250, y: 8 }, grid));
     f.handleMouseDrag(ctx(hit, { x: 10, y: 8 }, grid));
-    f.handleMouseUp(ctx(hit, { x: 10, y: 8 }, grid));
+    f.handleMouseUp(ctx({ kind: 'header', colId: 'a' }, { x: 10, y: 8 }, grid));
     expect(grid.reorderColumn).toHaveBeenCalledWith('c', 0, 'uiColumnDragged');
   });
 
@@ -177,7 +179,7 @@ describe('ColumnDrag', () => {
     expect(document.body.querySelector('.vg-col-drag-ghost')).not.toBeNull();
     // Insertion line still mounts in the overlay host.
     expect(host.querySelector('.vg-column-drag-insertion-line')).not.toBeNull();
-    f.handleMouseUp(ctx(hit, { x: 220, y: 8 }, grid));
+    f.handleMouseUp(ctx({ kind: 'header', colId: 'c' }, { x: 220, y: 8 }, grid));
     expect(document.body.querySelector('.vg-col-drag-ghost')).toBeNull();
     expect(host.querySelector('.vg-column-drag-insertion-line')).toBeNull();
   });
@@ -192,8 +194,8 @@ describe('ColumnDrag', () => {
     const hit: Hit = { kind: 'header', colId: 'a' };
     f.handleMouseDown(ctx(hit, { x: 10, y: 8 }, grid));
     f.handleMouseDrag(ctx(hit, { x: 220, y: 8 }, grid));
-    f.handleMouseUp(ctx(hit, { x: 220, y: 8 }, grid));
-    f.handleClick(ctx(hit, { x: 220, y: 8 }, grid));
+    f.handleMouseUp(ctx({ kind: 'header', colId: 'c' }, { x: 220, y: 8 }, grid));
+    f.handleClick(ctx({ kind: 'header', colId: 'c' }, { x: 220, y: 8 }, grid));
     expect(downstream).not.toHaveBeenCalled();
     // The NEXT click (after a fresh gesture or no gesture) is not suppressed.
     f.handleClick(ctx(hit, { x: 220, y: 8 }, grid));
@@ -210,6 +212,44 @@ describe('ColumnDrag', () => {
     f.handleMouseDown(ctx(hit, { x: 10, y: 8 }, grid));
     f.handleMouseUp(ctx(hit, { x: 10, y: 8 }, grid));
     f.handleClick(ctx(hit, { x: 10, y: 8 }, grid));
+    expect(downstream).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not swallow the click after a no-op drag (threshold crossed, same column)', () => {
+    const f = new ColumnDrag();
+    const grid = makeGrid();
+    const downstream = vi.fn();
+    f.next = { handleClick: downstream, handleMouseUp: vi.fn() } as never;
+    const hit: Hit = { kind: 'header', colId: 'a' };
+    // Cross the drag threshold but release still over column `a` so the
+    // drop target index equals the source — must still allow HeaderClick
+    // to cycle sort (trackpad jitter / tiny slip).
+    f.handleMouseDown(ctx(hit, { x: 10, y: 8 }, grid));
+    f.handleMouseDrag(ctx(hit, { x: 30, y: 8 }, grid));
+    f.handleMouseUp(ctx(hit, { x: 30, y: 8 }, grid));
+    expect(grid.reorderColumn).not.toHaveBeenCalled();
+    f.handleClick(ctx(hit, { x: 30, y: 8 }, grid));
+    expect(downstream).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not reorder when release is still over the source column even if nearest-center flipped', () => {
+    // Unequal widths: a=140, b=100. Pointer near a's right edge (x=130) is
+    // still hit-testing as `a`, but nearest-center already prefers `b`.
+    // That slip must NOT silently reorder + swallow sort.
+    const f = new ColumnDrag();
+    const grid = makeGrid({
+      allColIds: () => ['a', 'b', 'c'],
+      columnLeftOf: (id) => ({ a: 0, b: 140, c: 240 }[id] ?? null),
+      columnWidthOf: (id) => ({ a: 140, b: 100, c: 100 }[id] ?? null),
+    });
+    const downstream = vi.fn();
+    f.next = { handleClick: downstream, handleMouseUp: vi.fn() } as never;
+    const hit: Hit = { kind: 'header', colId: 'a' };
+    f.handleMouseDown(ctx(hit, { x: 120, y: 8 }, grid));
+    f.handleMouseDrag(ctx(hit, { x: 133, y: 8 }, grid));
+    f.handleMouseUp(ctx(hit, { x: 133, y: 8 }, grid));
+    expect(grid.reorderColumn).not.toHaveBeenCalled();
+    f.handleClick(ctx(hit, { x: 133, y: 8 }, grid));
     expect(downstream).toHaveBeenCalledTimes(1);
   });
 
@@ -236,7 +276,7 @@ describe('ColumnDrag', () => {
     });
     const hit: Hit = { kind: 'header', colId: 'a' };
     f.handleMouseDown(ctx(hit, { x: 10, y: 8 }, grid));
-    // Past 4 px threshold — promotes to dragging + fires first hover.
+    // Past 8 px threshold — promotes to dragging + fires first hover.
     f.handleMouseDrag(ctx(hit, { x: 80, y: 8 }, grid));
     // Subsequent drag ticks fire more hovers.
     f.handleMouseDrag(ctx(hit, { x: 100, y: 8 }, grid));
@@ -280,7 +320,7 @@ describe('ColumnDrag', () => {
     const hit: Hit = { kind: 'header', colId: 'a' };
     f.handleMouseDown(ctx(hit, { x: 10, y: 8 }, grid));
     f.handleMouseDrag(ctx(hit, { x: 250, y: 8 }, grid));
-    f.handleMouseUp(ctx(hit, { x: 250, y: 8 }, grid));
+    f.handleMouseUp(ctx({ kind: 'header', colId: 'c' }, { x: 250, y: 8 }, grid));
     expect(grid.commitRowGroupPanelDrop).toHaveBeenCalledWith('a');
     expect(grid.reorderColumn).toHaveBeenCalled();
   });
@@ -294,7 +334,7 @@ describe('ColumnDrag', () => {
     const hit: Hit = { kind: 'header', colId: 'a' };
     f.handleMouseDown(ctx(hit, { x: 10, y: 8 }, grid));
     f.handleMouseDrag(ctx(hit, { x: 250, y: 8 }, grid));
-    f.handleMouseUp(ctx(hit, { x: 250, y: 8 }, grid));
+    f.handleMouseUp(ctx({ kind: 'header', colId: 'c' }, { x: 250, y: 8 }, grid));
     expect(grid.commitRowGroupPanelDrop).not.toHaveBeenCalled();
     expect(grid.reorderColumn).toHaveBeenCalled();
   });

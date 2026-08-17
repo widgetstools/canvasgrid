@@ -774,15 +774,36 @@ function wireEditingToolbar(ctx: VelocityGridExtContext, getEdit: EditHandleGett
 
   const refreshCounts = () => {
     const e = getEdit(); if (!e) return;
-    void e.smartEdit.collectTargets().then((t) => {
-      r.smartCount.textContent = `${t.length} ${t.length === 1 ? 'cell' : 'cells'}`;
-      const none = t.length === 0;
-      for (const op of Object.keys(r.ops) as SmartEditOp[]) r.ops[op].disabled = none;
-    });
-    void e.bulkUpdate.collectTargets().then((t) => {
-      r.bulkCount.textContent = `${t.length} selected`;
-      r.bulkApply.disabled = t.length === 0;
-    });
+    // Count from range geometry only — NEVER call collectTargets here.
+    // Header-click column bands are full-height (20k rows); collectTargets
+    // fans out one getRowByIndex per row and floods the worker so
+    // setSortModel / viewport replies starve and the grid looks like
+    // sort "did nothing" even though cycleSort already ran on main.
+    const gridApi = ctx.grid as unknown as {
+      getCellRanges(): Array<{ rowStart: number; rowEnd: number; colIds: string[] }>;
+    };
+    const ranges = gridApi.getCellRanges?.() ?? [];
+    let cellCount = 0;
+    let selectedRows = 0;
+    if (ranges.length === 1) {
+      const range = ranges[0]!;
+      const rows = Math.max(0, range.rowEnd - range.rowStart + 1);
+      selectedRows = rows;
+      cellCount = rows * range.colIds.length;
+    } else if (ranges.length > 1) {
+      const rowIds = new Set<number>();
+      for (const range of ranges) {
+        const rows = Math.max(0, range.rowEnd - range.rowStart + 1);
+        cellCount += rows * range.colIds.length;
+        for (let i = range.rowStart; i <= range.rowEnd; i++) rowIds.add(i);
+      }
+      selectedRows = rowIds.size;
+    }
+    r.smartCount.textContent = `${cellCount} ${cellCount === 1 ? 'cell' : 'cells'}`;
+    const none = cellCount === 0;
+    for (const op of Object.keys(r.ops) as SmartEditOp[]) r.ops[op].disabled = none;
+    r.bulkCount.textContent = `${selectedRows} selected`;
+    r.bulkApply.disabled = selectedRows === 0;
   };
 
   // The edit engine is wired just after the grid is constructed — a tick

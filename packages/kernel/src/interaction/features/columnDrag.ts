@@ -28,7 +28,7 @@
 import { Feature, type VelocityGridEventCtx } from '../feature';
 import { computeGroupDropTarget, type GroupDropTarget, type HeaderLeafSlot } from './groupDropTarget';
 
-const DRAG_THRESHOLD_PX = 4;
+const DRAG_THRESHOLD_PX = 8;
 
 // ---- Shared row-group-panel drag router (exported for tool-panel pills) ----
 //
@@ -338,8 +338,12 @@ export class ColumnDrag extends Feature {
       const slots = buildHeaderSlots(ctx);
       const descendants = new Set(ctx.grid.getGroupDescendantIds(state.groupId));
       const t = computeGroupDropTarget(slots, state.groupId, descendants, ctx.point.x);
-      if (t) ctx.grid.moveColumnGroup(state.groupId, t.targetParentGroupId, t.beforeId);
-      this.suppressNextClick = true;
+      if (t) {
+        ctx.grid.moveColumnGroup(state.groupId, t.targetParentGroupId, t.beforeId);
+        // Real group move — swallow the trailing click so HeaderClick
+        // doesn't also toggle expand/collapse on the same gesture.
+        this.suppressNextClick = true;
+      }
       return;
     }
     state.pillGhost?.remove();
@@ -370,15 +374,36 @@ export class ColumnDrag extends Feature {
         return;
       }
     }
-    const target = computeDropTargetIndex(ctx, state.colId);
-    if (target !== null) {
-      ctx.grid.reorderColumn(state.colId, target, 'uiColumnDragged');
+    // If the pointer is still over the source column at release, treat the
+    // gesture as a click — never reorder. Nearest-center drop targeting can
+    // flip to an adjacent column while the cursor is still inside the
+    // source header (unequal widths / near the right edge), which used to
+    // silently reorder + swallow sort. Real reorders release over a
+    // different column (or past it).
+    const releaseColId =
+      ctx.hit.kind === 'header' || ctx.hit.kind === 'headerResizer'
+        ? ctx.hit.colId
+        : null;
+    if (releaseColId === state.colId) {
+      super.handleMouseUp(ctx);
+      return;
     }
-    // Drag completed — swallow the follow-up click event that the browser
-    // dispatches after mouseup, so HeaderClick doesn't cycle sort on the
-    // just-dragged column. Also do NOT forward mouseup to downstream
-    // features for the same reason.
-    this.suppressNextClick = true;
+    const fromIdx = ctx.grid.allColIds().indexOf(state.colId);
+    const target = computeDropTargetIndex(ctx, state.colId);
+    // Only treat this as a completed reorder when the drop index actually
+    // changed. A press that crossed the drag threshold but released over
+    // the same column (trackpad jitter, tiny slip) must NOT swallow the
+    // trailing click — otherwise HeaderClick never cycles sort and sorting
+    // looks broken.
+    if (target !== null && target !== fromIdx) {
+      ctx.grid.reorderColumn(state.colId, target, 'uiColumnDragged');
+      this.suppressNextClick = true;
+      return;
+    }
+    // No-op drag — forward mouseup so downstream features stay in sync;
+    // leave suppressNextClick false so the browser's click → HeaderClick
+    // sort cycle still runs.
+    super.handleMouseUp(ctx);
   }
 
   /** Feed the row group panel + pivot panel hosts the current drag

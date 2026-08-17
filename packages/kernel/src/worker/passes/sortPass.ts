@@ -90,11 +90,7 @@ export class SortPass<TRow = any> {
     this.comparators = comparators ?? new ComparatorRegistry();
   }
 
-  setModel(model: SortModel): void {
-    console.log('[SortPass.setModel] BEFORE: model=', JSON.stringify(this.model));
-    this.model = model;
-    console.log('[SortPass.setModel] AFTER: model=', JSON.stringify(this.model));
-  }
+  setModel(model: SortModel): void { this.model = model; }
 
   getModel(): SortModel { return this.model; }
 
@@ -107,9 +103,7 @@ export class SortPass<TRow = any> {
   setCalcSource(src: CalcValueSource | null): void { this.calcSource = src; }
 
   apply(inputIds: string[]): string[] {
-    if (this.model.length === 0) {
-      return inputIds;
-    }
+    if (this.model.length === 0) return inputIds;
     const sorted = inputIds.slice();
     // Pre-resolve the comparator function per sort-model entry so we don't
     // re-walk the registry inside the hot N log N comparator. Unknown names
