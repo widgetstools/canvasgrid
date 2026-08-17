@@ -92,6 +92,8 @@ export class SortPass<TRow = any> {
 
   setModel(model: SortModel): void { this.model = model; }
 
+  getModel(): SortModel { return this.model; }
+
   setColumns(columns: WorkerColumn[]): void {
     this.colIndex.clear();
     for (const col of columns) this.colIndex.set(col.colId, col);
@@ -101,7 +103,11 @@ export class SortPass<TRow = any> {
   setCalcSource(src: CalcValueSource | null): void { this.calcSource = src; }
 
   apply(inputIds: string[]): string[] {
-    if (this.model.length === 0) return inputIds;
+    console.log('[worker-sort] apply called with model:', JSON.stringify(this.model), 'inputIds count:', inputIds.length);
+    if (this.model.length === 0) {
+      console.log('[worker-sort] model is empty, returning unsorted');
+      return inputIds;
+    }
     const sorted = inputIds.slice();
     // Pre-resolve the comparator function per sort-model entry so we don't
     // re-walk the registry inside the hot N log N comparator. Unknown names
