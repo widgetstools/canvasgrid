@@ -101,6 +101,9 @@ export function columnDefinitionsToGridDefs(
     if (d.cellDataType === 'number' || d.cellDataType === 'text') {
       def.cellDataType = d.cellDataType;
     }
+    if (typeof d.valueGetter === 'string' && d.valueGetter.trim()) {
+      def.valueGetter = d.valueGetter.trim();
+    }
     if (d.width != null) def.width = d.width;
     if (d.hide != null) def.hide = d.hide;
     if (d.sortable != null) def.sortable = d.sortable;

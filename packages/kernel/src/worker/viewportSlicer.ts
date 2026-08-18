@@ -52,6 +52,7 @@ import type { RowStore } from './dataPipeline';
 import type { ViewportChunk, ViewportRequest, WorkerColumn } from './protocol';
 import { encodeText } from './chunkFormat';
 import type { CalcValueSource } from './passes/calcPass';
+import { readWorkerCellValue } from './readCellValue';
 
 /** Entry in the group-aware visible-row list. Same shape as
  *  `FlatOrderEntry` — re-exported for callers that just want to talk
@@ -298,7 +299,7 @@ export function sliceGroupedViewport<TRow>(
     // Cycle 21d / Task 11 — fieldless calc columns fill their chunk
     // slots from the CalcPass cache; row slots only (group/footer keep
     // their zero/'' defaults, same as data columns above).
-    if (!col.field) {
+    if (!col.field && !col.valueGetter) {
       const src = calcSource;
       if (!src || !src.isCalcCol(colId)) continue;
       if (col.type === 'number') {
@@ -336,7 +337,7 @@ export function sliceGroupedViewport<TRow>(
         const rowId = postFilterIds[entry.rowIndex];
         if (rowId === undefined) continue;
         const row = store.getById(rowId);
-        arr[i] = Number((row as Record<string, unknown> | undefined)?.[field]);
+        arr[i] = Number(readWorkerCellValue(row, col));
       }
       numericCols[colId] = arr;
     } else {
@@ -357,7 +358,7 @@ export function sliceGroupedViewport<TRow>(
           continue;
         }
         const row = store.getById(rowId);
-        const v = (row as Record<string, unknown> | undefined)?.[field];
+        const v = readWorkerCellValue(row, col);
         values[i] = v == null ? '' : String(v);
       }
       textCols[colId] = encodeText(values);

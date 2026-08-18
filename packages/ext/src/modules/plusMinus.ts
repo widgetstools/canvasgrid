@@ -14,7 +14,6 @@ import {
   lucideSvg,
   numberInput,
   row,
-  switchToggle,
   switchToggleEnhanced,
   textInput,
   appendPaneChrome,
@@ -24,6 +23,11 @@ import {
   engineMissingNotice,
   actionButtonEnhanced,
   resetButtonEnhanced,
+  createSettingsAdvancedTabs,
+  markBandComplexity,
+  appendBandsByComplexity,
+  workflowLink,
+  workflowStrip,
 } from '../ui/cockpit';
 import { clone, editHandle } from './editHandle';
 
@@ -221,29 +225,55 @@ export function plusMinusModule(): SettingsModule {
         head.append(title, saveBtn, resetBtn);
         const body = appendPaneChrome(pane, head);
 
+        body.appendChild(workflowStrip([
+          workflowLink({
+            label: 'View audit trail',
+            hint: 'Nudges that record history appear in Edit History',
+            icon: 'history',
+            moduleId: 'data-change-history',
+            events: ctx.events,
+            lucideSvg,
+          }),
+        ]));
+
         const glob = band('Global');
+        markBandComplexity(glob, 'basic');
         glob.body.append(
           row('Enabled', switchToggleEnhanced(settingsDraft.enabled, (v) => {
             settingsDraft!.enabled = v;
             renderAll();
           }), 'When enabled, +/- keys use these nudges'),
+        );
+
+        const hist = band('History');
+        markBandComplexity(hist, 'advanced');
+        hist.body.append(
           row('Record history', switchToggleEnhanced(settingsDraft.recordHistory, (v) => {
             settingsDraft!.recordHistory = v;
             renderAll();
           })),
         );
-        body.appendChild(glob.root);
 
         if (!draft) {
-          body.appendChild(emptyState({
+          const settingsPane = el('div');
+          const advancedPane = el('div');
+          appendBandsByComplexity(settingsPane, advancedPane, [glob, hist]);
+          settingsPane.appendChild(emptyState({
             title: 'No nudge selected',
             description: 'Select a nudge, or add one with +.',
             icon: 'plus',
           }));
+          body.appendChild(createSettingsAdvancedTabs({
+            settings: settingsPane,
+            advanced: advancedPane,
+            lucideSvg,
+          }).root);
+          restorePaneScroll(pane, scrollTop);
           return;
         }
         const d = draft;
         const nb = band('Nudge');
+        markBandComplexity(nb, 'basic');
         nb.body.append(
           row('Name', textInput(d.name, (v) => { d.name = v; renderAll(); })),
           row('Enabled', switchToggleEnhanced(d.enabled, (v) => { d.enabled = v; renderAll(); })),
@@ -260,9 +290,9 @@ export function plusMinusModule(): SettingsModule {
             renderAll();
           }), 'Optional — defaults to increment'),
         );
-        body.appendChild(nb.root);
 
         const expr = band('Expression gate');
+        markBandComplexity(expr, 'advanced');
         const mount = el('div');
         expr.body.appendChild(mount);
         editor = new ExpressionEditor(mount, {
@@ -277,7 +307,15 @@ export function plusMinusModule(): SettingsModule {
           },
         });
         expr.body.appendChild(el('div', 'ckp-hint', 'Falsy / throw skips the nudge for that row'));
-        body.appendChild(expr.root);
+
+        const settingsPane = el('div');
+        const advancedPane = el('div');
+        appendBandsByComplexity(settingsPane, advancedPane, [glob, nb, hist, expr]);
+        body.appendChild(createSettingsAdvancedTabs({
+          settings: settingsPane,
+          advanced: advancedPane,
+          lucideSvg,
+        }).root);
 
         restorePaneScroll(pane, scrollTop);
       };

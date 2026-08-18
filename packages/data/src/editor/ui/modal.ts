@@ -16,14 +16,17 @@ export type ModalOpts = {
   actions: ModalAction[];
   onBackdropClose?: () => void;
   testId?: string;
+  /** Create nodes in this document (DataProvider popout vs opener). */
+  document?: Document;
 };
 
 /** Centered modal overlay + dialog. Caller appends the returned overlay. */
 export function createModal(opts: ModalOpts): HTMLElement {
+  const doc = opts.document ?? document;
   const overlay = el('div', {
     className: 'vg-dp-modal-overlay',
     'data-testid': opts.testId,
-  });
+  }, undefined, doc);
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) opts.onBackdropClose?.();
   });
@@ -32,23 +35,23 @@ export function createModal(opts: ModalOpts): HTMLElement {
     className: 'vg-dp-modal',
     role: 'dialog',
     'aria-modal': 'true',
-  });
+  }, undefined, doc);
 
-  const header = el('div', 'vg-dp-modal__header');
-  header.appendChild(el('h3', null, opts.title));
+  const header = el('div', 'vg-dp-modal__header', undefined, doc);
+  header.appendChild(el('h3', null, opts.title, doc));
   if (opts.description) {
-    header.appendChild(el('p', null, opts.description));
+    header.appendChild(el('p', null, opts.description, doc));
   }
   dialog.appendChild(header);
 
   if (opts.body) {
-    const body = el('div', 'vg-dp-modal__body');
+    const body = el('div', 'vg-dp-modal__body', undefined, doc);
     if (typeof opts.body === 'string') body.textContent = opts.body;
     else body.appendChild(opts.body);
     dialog.appendChild(body);
   }
 
-  const footer = el('div', 'vg-dp-modal__footer');
+  const footer = el('div', 'vg-dp-modal__footer', undefined, doc);
   for (const a of opts.actions) {
     footer.appendChild(createButton({
       label: a.label,
@@ -56,6 +59,7 @@ export function createModal(opts: ModalOpts): HTMLElement {
       variant: a.variant ?? 'secondary',
       disabled: a.disabled,
       testId: a.testId,
+      document: doc,
     }));
   }
   dialog.appendChild(footer);

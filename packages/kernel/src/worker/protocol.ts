@@ -152,6 +152,12 @@ export interface WorkerColumn {
    *  })` instead of the default lexicographic compare. Honored only
    *  when no registered `comparator` is set on the column. */
   accentedSort?: boolean;
+  /**
+   * Expression-form valueGetter source (`[ask] - [bid]`, `IF(...)`, ternary).
+   * Worker compiles via `@wellsfargo-starui/velocity-grid-expression` and uses the
+   * result instead of `row[field]` for sort / filter / paint.
+   */
+  valueGetter?: string;
   /** Cycle 15 / Task 11 — group-level sort override. When `true`, the
    *  group-aware `SortPass.applyGrouped` keeps the composite-key
    *  string compare at this column's level even if a `comparator` or

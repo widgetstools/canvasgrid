@@ -19,13 +19,20 @@ import {
   buildColumnsFromFields,
   type ProviderProbe,
 } from './providerProbe';
-import { exportProviderConfig } from './providerConfigIo';
+import {
+  applyPortableProviderConfig,
+  bindJsonFileInput,
+  exportProviderConfig,
+  parseProviderConfigImport,
+} from './providerConfigIo';
 import { exportColumnDefs, parseColumnDefsImport } from './columnDefsIo';
 import { normalizeKeyColumns, readKeyColumns } from './keyColumn';
 import { mountMultiSelect, type MultiSelectHandle } from './MultiSelect';
 import { ensureEditorStyles } from './styles';
 import { registerDefaultTransports } from '../transports/registerDefaults';
 import { DRAFT_LIST_ID_PREFIX } from './providerSidebarList';
+import { ExpressionEditor } from '@wellsfargo-starui/velocity-grid-expression/editor';
+import { parse } from '@wellsfargo-starui/velocity-grid-expression';
 import {
   createDiagnosticsSession,
   type DiagnosticsSession,
@@ -46,6 +53,7 @@ import {
   createTabs,
   createTextarea,
   createTextInput,
+  createModal,
 } from './ui';
 
 export type ProviderEditorOptions = {
@@ -150,6 +158,8 @@ export class ProviderEditor {
   private diagSession: DiagnosticsSession | null = null;
   private unsubDiag: (() => void) | null = null;
   private diagBoundId: string | null = null;
+  private valueGetterOverlay: HTMLElement | null = null;
+  private valueGetterEditor: ExpressionEditor | null = null;
 
   constructor(opts: ProviderEditorOptions) {
     ensureEditorStyles();
@@ -204,6 +214,17 @@ export class ProviderEditor {
     this.render();
   }
 
+  private async importProviderConfig(file: File): Promise<void> {
+    try {
+      const portable = parseProviderConfigImport(await file.text());
+      this.setConfig(applyPortableProviderConfig(this.cfg, portable));
+      this.emitChange();
+    } catch (err) {
+      this.saveError = err instanceof Error ? err.message : String(err);
+      this.render();
+    }
+  }
+
   setPreview(status: string, sampleRows: unknown[]): void {
     this.statusText = status;
     this.samplePreview = JSON.stringify(sampleRows.slice(0, 5), null, 2);
@@ -223,6 +244,10 @@ export class ProviderEditor {
     this.connectionFields = null;
     this.keyMultiSelect?.destroy();
     this.keyMultiSelect = null;
+    this.valueGetterEditor?.destroy();
+    this.valueGetterEditor = null;
+    this.valueGetterOverlay?.remove();
+    this.valueGetterOverlay = null;
     this.root.remove();
   }
 
@@ -429,9 +454,23 @@ export class ProviderEditor {
     tools.className = 'vg-dp-editor__actions-tools';
     tools.appendChild(createButton({
       label: 'Export',
-      onClick: () => exportProviderConfig(this.cfg),
+      onClick: () => exportProviderConfig(this.cfg, this.root.ownerDocument),
       variant: 'ghost',
-      title: 'Download this provider config (including unsaved edits) as a JSON file',
+      testId: 'export-provider-config',
+      title: 'Download this provider config (including unsaved edits) as JSON',
+    }));
+    const importInput = bindJsonFileInput(
+      this.root.ownerDocument,
+      (file) => { void this.importProviderConfig(file); },
+      'import-provider-config-file',
+    );
+    tools.appendChild(importInput);
+    tools.appendChild(createButton({
+      label: 'Import',
+      onClick: () => importInput.click(),
+      variant: 'ghost',
+      testId: 'import-provider-config',
+      title: 'Load a provider JSON file into this form (Save to persist)',
     }));
     if (this.onClone) {
       tools.appendChild(createButton({
@@ -959,7 +998,16 @@ export class ProviderEditor {
 
       const actionsTd = document.createElement('td');
       actionsTd.className = 'vg-dp-editor__col-actions';
+      const hasGetter = !!(c.valueGetter && c.valueGetter.trim());
+      const fxBtn = createButton({
+        label: 'fx',
+        title: hasGetter ? 'Edit value getter expression' : 'Set value getter expression',
+        className: hasGetter ? 'vg-dp-editor__fx-btn is-set' : 'vg-dp-editor__fx-btn',
+        testId: `column-fx-${c.field}`,
+        onClick: () => this.openValueGetterDialog(i),
+      });
       actionsTd.append(
+        fxBtn,
         createButton({
           label: '↑',
           title: 'Move up',
@@ -1017,6 +1065,116 @@ export class ProviderEditor {
     foot.textContent = `Rows: ${cols.length}`;
     wrap.appendChild(foot);
     return wrap;
+  }
+
+  private openValueGetterDialog(index: number): void {
+    const cols = this.cfg.config.columnDefinitions ?? [];
+    const col = cols[index];
+    if (!col) return;
+    this.valueGetterEditor?.destroy();
+    this.valueGetterEditor = null;
+    this.valueGetterOverlay?.remove();
+
+    const doc = this.root.ownerDocument;
+    const body = doc.createElement('div');
+    body.className = 'vg-dp-editor__fx-dialog';
+    const hint = doc.createElement('p');
+    hint.className = 'vg-dp-field__help';
+    hint.textContent =
+      'Expression for this column’s cell value (AG Grid valueGetter). '
+      + 'Type [ for columns, or a function name. IF(cond, a, b) and cond ? a : b work.';
+    const editorHost = doc.createElement('div');
+    editorHost.className = 'vg-dp-editor__fx-cm';
+    editorHost.setAttribute('data-testid', 'value-getter-input');
+    const examples = doc.createElement('p');
+    examples.className = 'vg-dp-field__help';
+    examples.textContent =
+      'Examples: [ask] - [bid] · IF([qty] > 0, [pnl], 0) · [desk] == "NY" ? [spread] : 0';
+    body.append(hint, editorHost, examples);
+
+    const close = (): void => {
+      this.valueGetterEditor?.destroy();
+      this.valueGetterEditor = null;
+      this.valueGetterOverlay?.remove();
+      this.valueGetterOverlay = null;
+    };
+    const overlay = createModal({
+      title: `Value getter · ${col.field}`,
+      description: 'Compiled on the grid for both CSRM and SSRM.',
+      body,
+      testId: 'value-getter-modal',
+      document: doc,
+      onBackdropClose: close,
+      actions: [
+        {
+          label: 'Clear',
+          variant: 'ghost',
+          testId: 'value-getter-clear',
+          onClick: () => {
+            const next = [...cols];
+            const cur = next[index];
+            if (!cur) return;
+            const { valueGetter: _drop, ...rest } = cur;
+            next[index] = rest;
+            this.patchConfig({ columnDefinitions: next });
+            close();
+            this.render();
+          },
+        },
+        { label: 'Cancel', testId: 'value-getter-cancel', onClick: close },
+        {
+          label: 'Apply',
+          variant: 'primary',
+          testId: 'value-getter-apply',
+          onClick: () => {
+            const expr = (this.valueGetterEditor?.getValue() ?? '').trim();
+            const next = [...cols];
+            const cur = next[index];
+            if (!cur) return;
+            next[index] = expr ? { ...cur, valueGetter: expr } : (() => {
+              const { valueGetter: _drop, ...rest } = cur;
+              return rest;
+            })();
+            this.patchConfig({ columnDefinitions: next });
+            close();
+            this.render();
+          },
+        },
+      ],
+    });
+    const layer = this.root.closest('.vg-dp-shell')
+      ?? this.root.parentElement
+      ?? doc.body;
+    layer.appendChild(overlay);
+    this.valueGetterOverlay = overlay;
+
+    this.valueGetterEditor = new ExpressionEditor(editorHost, {
+      value: col.valueGetter ?? '',
+      placeholder: '[ask] - [bid]',
+      multiline: true,
+      lines: 6,
+      dialect: 'cgrid',
+      root: doc,
+      tooltipParent: overlay,
+      columnsProvider: () =>
+        (this.cfg.config.columnDefinitions ?? []).map((c) => ({
+          colId: c.field,
+          headerName: c.headerName ?? c.field,
+          dataType: c.cellDataType,
+        })),
+      validate: (text) => {
+        const src = text.trim();
+        if (!src) return [];
+        const parsed = parse(src);
+        if (parsed.ok) return [];
+        return [{
+          message: parsed.error.message,
+          from: parsed.error.loc.start,
+          to: parsed.error.loc.end,
+        }];
+      },
+    });
+    queueMicrotask(() => this.valueGetterEditor?.focus());
   }
 
   private async importColumnDefs(file: File): Promise<void> {

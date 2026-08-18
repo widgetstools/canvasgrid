@@ -52,6 +52,7 @@ interface ColumnDraft {
   editable: boolean;
   pinned: 'left' | 'right' | '';
   hide: boolean;
+  valueGetter: string;
 }
 
 /** The slice of the calc engine the caption path needs — caption lives on the
@@ -85,6 +86,65 @@ function leafColumns(grid: VelocityGridExtContext['grid']): ColItem[] {
 
 function asGrid(grid: VelocityGridExtContext['grid']): ColumnConfigGrid {
   return grid as unknown as ColumnConfigGrid;
+}
+
+interface ValueGetterApi {
+  getColumnDefsSnapshot?: () => Array<Record<string, unknown>>;
+  updateGridOptions?: (partial: { columnDefs: unknown[] }) => void;
+  getGridOption(key: string): unknown;
+}
+
+function valueGetterSrcFromDef(def: Record<string, unknown> | undefined): string {
+  if (!def) return '';
+  if (typeof def.valueGetter === 'string') return def.valueGetter.trim();
+  if (typeof def._valueGetterSrc === 'string') return def._valueGetterSrc.trim();
+  return '';
+}
+
+function findAuthoredLeaf(
+  grid: ValueGetterApi,
+  colId: string,
+): Record<string, unknown> | undefined {
+  const walk = (defs: readonly unknown[]): Record<string, unknown> | undefined => {
+    for (const d of defs) {
+      const def = d as { colId?: string; field?: string; children?: unknown[] };
+      if (def.children?.length) {
+        const hit = walk(def.children);
+        if (hit) return hit;
+      } else if (def.colId === colId || def.field === colId) {
+        return def as Record<string, unknown>;
+      }
+    }
+    return undefined;
+  };
+  try { return walk((grid.getGridOption('columnDefs') as unknown[]) ?? []); } catch { return undefined; }
+}
+
+function readValueGetterSrc(grid: ValueGetterApi, colId: string): string {
+  const snap = grid.getColumnDefsSnapshot?.() ?? [];
+  const fromSnap = snap.find((d) => String(d.colId ?? d.field) === colId);
+  const src = valueGetterSrcFromDef(fromSnap);
+  if (src) return src;
+  return valueGetterSrcFromDef(findAuthoredLeaf(grid, colId));
+}
+
+function applyValueGetter(grid: ValueGetterApi, colId: string, expr: string): void {
+  if (typeof grid.getColumnDefsSnapshot !== 'function' || typeof grid.updateGridOptions !== 'function') {
+    return;
+  }
+  const snap = grid.getColumnDefsSnapshot();
+  const i = snap.findIndex((d) => String(d.colId ?? d.field) === colId);
+  if (i < 0) return;
+  const cur = snap[i]!;
+  const nextExpr = expr.trim();
+  const prev = valueGetterSrcFromDef(cur);
+  if (prev === nextExpr) return;
+  const next: Record<string, unknown> = { ...cur };
+  if (nextExpr) next.valueGetter = nextExpr;
+  else delete next.valueGetter;
+  delete next._valueGetterSrc;
+  snap[i] = next;
+  grid.updateGridOptions({ columnDefs: snap });
 }
 
 /** Caption is column-unique — CalcEngine.editColumn strips headerName from
@@ -144,6 +204,7 @@ function readDraft(
     editable: flag('editable'),
     pinned: pinned === 'left' || pinned === 'right' ? pinned : '',
     hide: flag('hide'),
+    valueGetter: readValueGetterSrc(grid as unknown as ValueGetterApi, colId),
   };
 }
 
@@ -183,6 +244,7 @@ function applyDraft(
   // drop runtime pin state; pin must be the last write.
   const captionApplied = applyCaption(calc, id, draft.headerName);
   grid.setColumnsPinned([id], draft.pinned === '' ? null : draft.pinned);
+  applyValueGetter(grid as unknown as ValueGetterApi, id, draft.valueGetter);
   return captionApplied;
 }
 
@@ -405,6 +467,7 @@ export function columnSettingsModule(): SettingsModule {
           dirtyChip.root,
           chip('Pinned', d.pinned ? d.pinned.toUpperCase() : 'OFF', d.pinned ? 'info' : 'neutral').root,
           chip('Hidden', d.hide ? 'YES' : 'NO', d.hide ? 'warning' : 'neutral').root,
+          chip('fx', d.valueGetter ? 'SET' : 'OFF', d.valueGetter ? 'info' : 'neutral').root,
         );
         body.appendChild(chips);
 
@@ -482,6 +545,28 @@ export function columnSettingsModule(): SettingsModule {
           row('Hidden', switchToggle(d.hide, (v) => { d.hide = v; sync(); }), 'Hide the column on the grid'),
         );
         body.appendChild(behBand.root);
+
+        const getterBand = band('Value getter');
+        const ta = el('textarea', 'ckp-input mono');
+        ta.rows = 4;
+        ta.value = d.valueGetter;
+        ta.placeholder = '[ask] - [bid]';
+        ta.setAttribute('aria-label', 'Value getter expression');
+        ta.style.cssText = 'width:100%;min-height:72px;resize:vertical;padding:8px 10px;line-height:1.45';
+        ta.addEventListener('input', () => {
+          d.valueGetter = ta.value;
+          syncDirty();
+        });
+        const getterHelp = el(
+          'p',
+          'ckp-help',
+          'Expression for this column’s cell value (AG Grid valueGetter). '
+            + 'Use [field] references, IF(cond, a, b), or cond ? a : b. '
+            + 'Leave empty to use the raw field. Function-form getters cannot be edited here.',
+        );
+        getterHelp.style.margin = '0 0 8px';
+        getterBand.body.append(getterHelp, ta);
+        body.appendChild(getterBand.root);
 
         restorePaneScroll(pane, scrollTop);
       };

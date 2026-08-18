@@ -112,6 +112,14 @@ describe('VelocityGrid.getColumnDefsSnapshot', () => {
     expect(a.valueGetter).toBe(valueGetter);
     grid.destroy();
   });
+
+  it('restores authored string valueGetter (not the compiled function)', async () => {
+    const grid = await mount([{ field: 'spread', valueGetter: '[ask] - [bid]' }, { field: 'b' }]);
+    const spread = grid.getColumnDefsSnapshot().find((d) => d.colId === 'spread')!;
+    expect(spread.valueGetter).toBe('[ask] - [bid]');
+    expect((spread as { _valueGetterSrc?: string })._valueGetterSrc).toBeUndefined();
+    grid.destroy();
+  });
 });
 
 describe('VelocityGrid.upsertColumnDefs', () => {

@@ -59,6 +59,7 @@ import { ComparatorRegistry, type ComparatorFn } from '../comparatorRegistry';
 import { decodePivotResultColumnId } from '../../core/pivotColumns';
 import { encodePivotValueKey, PIVOT_PATH_SEP, type PivotPassOutput } from './pivotPass';
 import type { CalcValueSource } from './calcPass';
+import { readWorkerCellValue } from '../readCellValue';
 
 interface ResolvedSortEntry {
   entry: SortModelEntry;
@@ -127,9 +128,9 @@ export class SortPass<TRow = any> {
         // CalcPass cache; fieldless non-calc column → pre-21d skip.
         let av: unknown;
         let bv: unknown;
-        if (col.field) {
-          av = (aRow as Record<string, unknown>)[col.field];
-          bv = (bRow as Record<string, unknown>)[col.field];
+        if (col.valueGetter || col.field) {
+          av = readWorkerCellValue(aRow, col);
+          bv = readWorkerCellValue(bRow, col);
         } else if (this.calcSource !== null && this.calcSource.isCalcCol(col.colId)) {
           av = this.calcSource.valueAt(aId, col.colId);
           bv = this.calcSource.valueAt(bId, col.colId);
@@ -332,18 +333,16 @@ export class SortPass<TRow = any> {
     for (let i = 0; i < n; i++) {
       const rowId = postFilterIds[indices[i]!];
       const row = rowId === undefined ? undefined : store.getById(rowId);
-      const rowRec = row as Record<string, unknown> | undefined;
       for (let e = 0; e < resolved.length; e++) {
         const col = resolved[e]!.col;
-        // Cycle 21d / Task 11 — data column → direct field read;
-        // fieldless calc column → CalcPass cache; fieldless non-calc
-        // column → `undefined` (pre-21d skip — the entry contributes no
-        // ordering weight, matching the flat-path `continue`).
-        const v = col && col.field && rowRec
-          ? rowRec[col.field]
-          : (col && rowId !== undefined && this.calcSource?.isCalcCol(col.colId)
-              ? this.calcSource.valueAt(rowId, col.colId)
-              : undefined);
+        // Same three-way as the flat path: string valueGetter → field →
+        // calc-column cache. Fieldless non-calc columns stay `undefined`.
+        const v = col
+          ? readWorkerCellValue(row, col, {
+              rowId,
+              calcSource: this.calcSource,
+            })
+          : undefined;
         if (isNumericFast[e]) {
           // NaN handling matches `compare()`: a non-numeric coerces
           // to NaN which sorts to the end (numerically + via the

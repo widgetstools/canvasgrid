@@ -29,7 +29,6 @@ import {
   pillGroup,
   row,
   select,
-  switchToggle,
   switchToggleEnhanced,
   textInput,
   appendPaneChrome,
@@ -39,6 +38,11 @@ import {
   engineMissingNotice,
   actionButtonEnhanced,
   resetButtonEnhanced,
+  createSettingsAdvancedTabs,
+  markBandComplexity,
+  appendBandsByComplexity,
+  workflowLink,
+  workflowStrip,
 } from '../ui/cockpit';
 
 interface AlertsGrid {
@@ -135,7 +139,6 @@ export function alertsModule(): SettingsModule {
       let selectedId: string | null = null;
       let draft: AlertRule | null = null;
       let draftIsNew = false;
-      let globalOpen = false;
       let editor: ExpressionEditor | null = null;
 
       const root = el('div', 'ckp');
@@ -200,62 +203,58 @@ export function alertsModule(): SettingsModule {
         renderAll();
       };
 
-      const renderGlobal = (parent: HTMLElement): void => {
-        const wrap = el('div', 'ckp-global');
-        wrap.style.cssText = 'margin-bottom:14px;border:1px solid var(--ckp-border);border-radius:4px;';
-        const head = el('button', 'ckp-global-head') as HTMLButtonElement;
-        head.type = 'button';
-        head.style.cssText =
-          'display:flex;width:100%;align-items:center;gap:8px;padding:8px 10px;background:transparent;' +
-          'border:none;color:inherit;font:inherit;cursor:pointer;text-align:left;';
-        head.innerHTML = `${lucideSvg(globalOpen ? 'chevron-down' : 'chevron-right', 14)}<span class="ckp-caps">Global settings</span>`;
-        head.addEventListener('click', () => { globalOpen = !globalOpen; renderAll(); });
-        wrap.appendChild(head);
-        if (globalOpen) {
-          const body = el('div', 'ckp-global-body');
-          body.style.cssText = 'padding:4px 12px 12px;display:flex;flex-direction:column;gap:2px;';
-          const s = liveSettings();
-          body.append(
-            row('Alerts enabled', switchToggleEnhanced(s.enabled, (v) => patchSettings({ enabled: v }))),
-            row(
-              'Frequency',
-              pillGroup(
-                [['realtime', 'Realtime'], ['throttled', 'Throttled'], ['paused', 'Paused']],
-                s.evaluationMode,
-                (v) => patchSettings({ evaluationMode: v as AlertsSettings['evaluationMode'] }),
-              ),
+      const buildGlobalBands = (): {
+        advanced: Array<{ root: HTMLElement }>;
+        history: Array<{ root: HTMLElement }>;
+      } => {
+        const s = liveSettings();
+        const glob = band('Global');
+        markBandComplexity(glob, 'advanced');
+        glob.body.append(
+          row('Alerts enabled', switchToggleEnhanced(s.enabled, (v) => patchSettings({ enabled: v }))),
+          row(
+            'Frequency',
+            pillGroup(
+              [['realtime', 'Realtime'], ['throttled', 'Throttled'], ['paused', 'Paused']],
+              s.evaluationMode,
+              (v) => patchSettings({ evaluationMode: v as AlertsSettings['evaluationMode'] }),
             ),
-            row('Default debounce', numberInput(s.defaultDebounceMs, (v) => {
-              if (v === undefined) return;
-              patchSettings({ defaultDebounceMs: Math.max(0, Math.floor(v)) });
-            }, { suffix: 'ms' })),
-            row('Max / second', numberInput(s.maxNotificationsPerSecond, (v) => {
-              if (v === undefined) return;
-              patchSettings({ maxNotificationsPerSecond: Math.max(1, Math.floor(v)) });
-            })),
-            row('History limit', numberInput(s.historyLimit, (v) => {
-              if (v === undefined) return;
-              patchSettings({ historyLimit: Math.max(1, Math.floor(v)) });
-            })),
-          );
-          const ch = el('div', 'ckp-band-body');
-          ch.appendChild(caps('Channels'));
-          for (const c of CHANNELS) {
-            const disabled = c === 'openfin' && !openFinAvailable();
-            const sw = switchToggleEnhanced(s.enabledChannels[c], (v) => {
-              patchSettings({ enabledChannels: { ...s.enabledChannels, [c]: v } });
-            });
-            if (disabled) {
-              sw.setAttribute('disabled', 'true');
-              (sw as HTMLButtonElement).disabled = true;
-              sw.title = 'OpenFin not available in this host';
-            }
-            ch.appendChild(row(c, sw, disabled ? 'OpenFin not available' : undefined));
+          ),
+          row('Default debounce', numberInput(s.defaultDebounceMs, (v) => {
+            if (v === undefined) return;
+            patchSettings({ defaultDebounceMs: Math.max(0, Math.floor(v)) });
+          }, { suffix: 'ms' })),
+          row('Max / second', numberInput(s.maxNotificationsPerSecond, (v) => {
+            if (v === undefined) return;
+            patchSettings({ maxNotificationsPerSecond: Math.max(1, Math.floor(v)) });
+          })),
+        );
+
+        const ch = band('Default channels');
+        markBandComplexity(ch, 'advanced');
+        for (const c of CHANNELS) {
+          const disabled = c === 'openfin' && !openFinAvailable();
+          const sw = switchToggleEnhanced(s.enabledChannels[c], (v) => {
+            patchSettings({ enabledChannels: { ...s.enabledChannels, [c]: v } });
+          });
+          if (disabled) {
+            sw.setAttribute('disabled', 'true');
+            (sw as HTMLButtonElement).disabled = true;
+            sw.title = 'OpenFin not available in this host';
           }
-          body.appendChild(ch);
-          wrap.appendChild(body);
+          ch.body.appendChild(row(c, sw, disabled ? 'OpenFin not available' : undefined));
         }
-        parent.appendChild(wrap);
+
+        const hist = band('Alert history');
+        hist.body.append(
+          row('History limit', numberInput(s.historyLimit, (v) => {
+            if (v === undefined) return;
+            patchSettings({ historyLimit: Math.max(1, Math.floor(v)) });
+          }), 'Max fired-alert entries kept in the session journal'),
+          el('div', 'ckp-hint', 'Fired alerts are retained up to this limit for the current session.'),
+        );
+
+        return { advanced: [glob, ch], history: [hist] };
       };
 
       const renderRail = (): void => {
@@ -313,15 +312,41 @@ export function alertsModule(): SettingsModule {
         editor?.destroy();
         editor = null;
         pane.replaceChildren();
+
+        const globalBands = buildGlobalBands();
+
         if (!draft) {
-          const emptyBody = el('div', 'ckp-pane-body');
-          pane.appendChild(emptyBody);
-          renderGlobal(emptyBody);
-          emptyBody.appendChild(emptyState({
+          const head = el('div', 'ckp-pane-head');
+          head.appendChild(el('div', 'ckp-title', 'Alerts'));
+          const body = appendPaneChrome(pane, head);
+          body.appendChild(workflowStrip([
+            workflowLink({
+              label: 'Related styling rules',
+              hint: 'Open Conditional Styling',
+              icon: 'palette',
+              moduleId: 'conditional-styling',
+              events: ctx.events,
+              lucideSvg,
+            }),
+          ]));
+          const settingsPane = el('div');
+          settingsPane.appendChild(emptyState({
             title: 'No alert selected',
             description: 'Select an alert, or add one with +.',
             icon: 'bell',
           }));
+          const advancedPane = el('div');
+          for (const b of globalBands.advanced) advancedPane.appendChild(b.root);
+          const historyPane = el('div');
+          for (const b of globalBands.history) historyPane.appendChild(b.root);
+          body.appendChild(createSettingsAdvancedTabs({
+            settings: settingsPane,
+            advanced: advancedPane,
+            history: historyPane,
+            defaultTab: 'advanced',
+            lucideSvg,
+          }).root);
+          restorePaneScroll(pane, scrollTop);
           return;
         }
         const d = draft;
@@ -340,7 +365,17 @@ export function alertsModule(): SettingsModule {
         });
         head.append(nameIn, saveBtn, resetBtn);
         const body = appendPaneChrome(pane, head);
-        renderGlobal(body);
+
+        body.appendChild(workflowStrip([
+          workflowLink({
+            label: 'Related styling rules',
+            hint: 'Open Conditional Styling',
+            icon: 'palette',
+            moduleId: 'conditional-styling',
+            events: ctx.events,
+            lucideSvg,
+          }),
+        ]));
 
         const chips = el('div', 'ckp-chips-strip');
         chips.append(
@@ -350,13 +385,18 @@ export function alertsModule(): SettingsModule {
         );
         body.appendChild(chips);
 
+        const settingsPane = el('div');
+        const advancedPane = el('div');
+        const historyPane = el('div');
+
         const ruleBand = band('Rule');
+        markBandComplexity(ruleBand, 'basic');
         ruleBand.body.append(
           row('Enabled', switchToggleEnhanced(d.enabled, (v) => { d.enabled = v; renderAll(); })),
         );
-        body.appendChild(ruleBand.root);
 
         const sev = band('Severity');
+        markBandComplexity(sev, 'basic');
         sev.body.append(
           pillGroup(
             SEVERITIES.map((s) => [s, s] as [string, string]),
@@ -364,9 +404,9 @@ export function alertsModule(): SettingsModule {
             (v) => { d.severity = v as AlertSeverity; renderAll(); },
           ),
         );
-        body.appendChild(sev.root);
 
         const trig = band('Trigger');
+        markBandComplexity(trig, 'basic');
         trig.body.append(
           pillGroup(
             [['dataChange', 'Expression'], ['relativeChange', 'Δ Delta'], ['rowChange', 'Row']],
@@ -446,16 +486,20 @@ export function alertsModule(): SettingsModule {
             )),
           );
         }
-        body.appendChild(trig.root);
 
         const msg = band('Message');
+        markBandComplexity(msg, 'basic');
         msg.body.append(
           row('Template', textInput(d.message, (v) => { d.message = v; renderAll(); }, { placeholder: '{rule} fired on {rowId}' })),
           el('div', 'ckp-hint lc', 'Placeholders: {rule} {rowId} {column} {value} {prev}'),
         );
-        body.appendChild(msg.root);
+
+        appendBandsByComplexity(settingsPane, advancedPane, [ruleBand, sev, trig, msg]);
+
+        for (const b of globalBands.advanced) advancedPane.appendChild(b.root);
 
         const chBand = band('Channels');
+        markBandComplexity(chBand, 'advanced');
         for (const c of CHANNELS) {
           const on = d.channels.includes(c);
           const disabled = c === 'openfin' && !openFinAvailable();
@@ -469,9 +513,10 @@ export function alertsModule(): SettingsModule {
           }
           chBand.body.append(row(c, sw));
         }
-        body.appendChild(chBand.root);
+        advancedPane.appendChild(chBand.root);
 
         const deb = band('Debounce');
+        markBandComplexity(deb, 'advanced');
         deb.body.append(
           row(
             'Debounce ms',
@@ -482,7 +527,16 @@ export function alertsModule(): SettingsModule {
             '0 = use global default',
           ),
         );
-        body.appendChild(deb.root);
+        advancedPane.appendChild(deb.root);
+
+        for (const b of globalBands.history) historyPane.appendChild(b.root);
+
+        body.appendChild(createSettingsAdvancedTabs({
+          settings: settingsPane,
+          advanced: advancedPane,
+          history: historyPane,
+          lucideSvg,
+        }).root);
 
         restorePaneScroll(pane, scrollTop);
       };

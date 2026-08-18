@@ -384,6 +384,7 @@ export const EDITOR_CSS = `
 }
 
 .vg-dp-editor {
+  position: relative;
   border: 0;
   border-radius: 0;
   display: flex;
@@ -1274,6 +1275,53 @@ ${vguiButtonCss({
 .vg-dp-editor__col-actions {
   display: flex;
   gap: 4px;
+}
+.vg-dp-editor .vg-dp-btn.vg-dp-editor__fx-btn {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-weight: 700;
+  font-style: italic;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+  letter-spacing: 0;
+  text-transform: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.vg-dp-editor__fx-btn.is-set {
+  border-color: var(--vg-accent, #3b82f6);
+  color: var(--vg-accent, #3b82f6);
+}
+.vg-dp-modal:has(.vg-dp-editor__fx-dialog) {
+  width: min(640px, 100%);
+}
+.vg-dp-modal-overlay[data-testid="value-getter-modal"] {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+}
+.vg-dp-editor__fx-cm {
+  width: 100%;
+  min-height: 132px;
+}
+.vg-dp-editor__fx-cm .cm-editor {
+  width: 100%;
+  background: var(--vg-dp-input-bg);
+  border: 1px solid var(--vg-dp-input-border);
+  border-radius: var(--vg-dp-radius);
+  color: var(--vg-dp-fg);
+}
+.vg-dp-editor__fx-cm .cm-editor.cm-focused {
+  border-color: var(--vg-dp-accent);
+}
+.vg-dp-editor__fx-cm .cm-scroller {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+.vg-dp-modal-overlay[data-testid="value-getter-modal"] .cm-tooltip {
+  z-index: 90;
 }
 .vg-dp-editor__rows-footer {
   font-size: 11px;

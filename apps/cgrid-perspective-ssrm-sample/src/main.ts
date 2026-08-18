@@ -23,6 +23,7 @@ import '@wellsfargo-starui/velocity-grid/style.css';
 import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid-format';
 import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid-calc';
 import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid-rules';
+import { wireEditIntoKernel } from '@wellsfargo-starui/velocity-grid-edit';
 import {
   buildPerspectiveSsrmProviderConfig,
   PERSPECTIVE_SSRM_PROVIDER_ID,
@@ -77,7 +78,7 @@ const dataController = new PerspectiveDataProviderController({
 const options = {
   gridId: 'perspective-ssrm-sample',
   theme: 'vg-theme-cursor-dark',
-  defaultColDef: { resizable: true, sortable: true, minWidth: 80, floatingFilter: true, filter: true },
+  defaultColDef: { resizable: true, sortable: true, editable: true, minWidth: 80, floatingFilter: true, filter: true },
   columnDefs: [],
   rowModelType: 'serverSide',
   // Sparse Perspective SSRM — host owns group/expand; do not enable CSRM pipeline.
@@ -102,17 +103,25 @@ const options = {
         name: 'SSRM · Perspective Positions',
         date: new Date().toISOString().slice(0, 10),
       }),
-      ...ribbonExtensions(),
+      ...ribbonExtensions({ edit: () => editHandle }),
       perspectiveDataProviderModule({ controller: dataController }),
     ],
   },
 } as unknown as VelocityGridExtOptions;
+
+/** Wired after construction — ribbon + Customize look this up lazily. */
+let editHandle: ReturnType<typeof wireEditIntoKernel> | undefined;
 
 const ext = new VelocityGridExt(host, options);
 
 wireFormat(ext.grid);
 wireCalc(ext.grid);
 wireRules(ext.grid);
+editHandle = wireEditIntoKernel(ext.grid, {
+  commitUpdates: (rows) => {
+    ext.grid.applyServerSideTransaction({ update: rows });
+  },
+});
 
 void (async () => {
   const seeded = buildPerspectiveSsrmProviderConfig();
@@ -155,6 +164,7 @@ void (async () => {
   catalog,
   storage,
   dataController,
+  edit: editHandle,
   providerId: PERSPECTIVE_SSRM_PROVIDER_ID,
   async applySeeded() {
     await dataController.setActiveProvider(PERSPECTIVE_SSRM_PROVIDER_ID, { force: true });

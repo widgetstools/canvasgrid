@@ -15,7 +15,11 @@ import {
 import { registerDefaultTransports } from '../transports/registerDefaults';
 import { mountProviderEditor, type ProviderEditor } from './ProviderEditor';
 import { cloneProviderConfig } from './cloneProviderConfig';
-import { parseProviderConfigImport } from './providerConfigIo';
+import {
+  exportProviderConfig,
+  parseProviderConfigImport,
+  bindJsonFileInput,
+} from './providerConfigIo';
 import {
   buildProviderSidebarConfigs,
   isDraftListId,
@@ -284,19 +288,16 @@ export class DataProviderEditor {
     const actions = document.createElement('div');
     actions.className = 'vg-dp-shell__sidebar-actions';
 
-    const fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.accept = 'application/json,.json';
-    fileInput.hidden = true;
-    fileInput.addEventListener('change', () => {
-      const file = fileInput.files?.[0];
-      if (file) void this.onImportFile(file);
-      fileInput.value = '';
-    });
+    const fileInput = bindJsonFileInput(
+      this.root.ownerDocument,
+      (file) => { void this.onImportFile(file); },
+      'import-provider-file',
+    );
     const importBtn = createButton({
       label: 'Import',
       variant: 'ghost',
-      title: 'Import a provider from JSON',
+      testId: 'import-provider',
+      title: 'Import a provider config from JSON (adds a new catalog entry)',
       onClick: () => fileInput.click(),
     });
     const newBtn = createButton({
@@ -413,6 +414,14 @@ export class DataProviderEditor {
     const tools = document.createElement('div');
     tools.className = 'vg-dp-shell__row-tools';
     if (!isDraft) {
+      const exp = createButton({
+        label: '⬇',
+        title: 'Export config as JSON',
+        variant: 'ghost',
+        testId: `export-provider-${cfg.providerId}`,
+        onClick: () => exportProviderConfig(cfg, this.root.ownerDocument),
+      });
+      exp.addEventListener('click', (e) => e.stopPropagation());
       const clone = createButton({
         label: '⧉',
         title: 'Duplicate',
@@ -427,7 +436,7 @@ export class DataProviderEditor {
         onClick: () => this.requestDelete(cfg),
       });
       del.addEventListener('click', (e) => e.stopPropagation());
-      tools.append(clone, del);
+      tools.append(exp, clone, del);
     }
 
     li.append(meta, tools);
@@ -542,13 +551,25 @@ export class DataProviderEditor {
     empty.className = 'vg-dp-shell__empty-main';
     empty.innerHTML = `
       <h2>No provider selected</h2>
-      <p>Pick a provider on the left, or create a new one to get started.</p>
+      <p>Pick a provider on the left, import a JSON config, or create a new one.</p>
     `;
-    empty.appendChild(createButton({
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;justify-content:center';
+    row.appendChild(createButton({
+      label: 'Import config',
+      variant: 'secondary',
+      testId: 'empty-import-provider',
+      onClick: () => {
+        const input = this.root.querySelector<HTMLInputElement>('[data-testid="import-provider-file"]');
+        input?.click();
+      },
+    }));
+    row.appendChild(createButton({
       label: '+ New STOMP Provider',
       variant: 'primary',
       onClick: () => this.startCreate('stomp'),
     }));
+    empty.appendChild(row);
     return empty;
   }
 }

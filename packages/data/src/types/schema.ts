@@ -14,6 +14,10 @@ export interface ColumnDefinition {
   filter?: boolean;
   sortable?: boolean;
   resizable?: boolean;
+  /**
+   * Expression-form valueGetter (`[ask] - [bid]`, `IF([qty] > 0, [pnl], 0)`).
+   * Mapped onto VelocityGrid `colDef.valueGetter` for CSRM and SSRM.
+   */
   valueGetter?: string;
   width?: number;
   hide?: boolean;

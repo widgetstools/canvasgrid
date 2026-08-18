@@ -4,9 +4,17 @@
  * tiles, settings rows. One injected stylesheet. Tab groups for Phase 4 IA.
  */
 import { ColorPickerControl, parseColor, rgbaToString } from '@wellsfargo-starui/velocity-grid';
-import type { TabDefinition, TabGroup } from './tabGroup';
-export { createTabGroup, createSimpleTabGroup } from './tabGroup';
-export type { TabDefinition, TabGroup };
+import type { BandComplexity, TabDefinition, TabGroup } from './tabGroup';
+export {
+  appendBandsByComplexity,
+  createSettingsAdvancedTabs,
+  createSimpleTabGroup,
+  createTabGroup,
+  markBandComplexity,
+} from './tabGroup';
+export type { BandComplexity, TabDefinition, TabGroup };
+export { workflowLink, workflowStrip } from './workflowLink';
+export type { WorkflowLinkOpts } from './workflowLink';
 import { lucideBundle } from '@wellsfargo-starui/velocity-grid/icons/lucide.generated';
 import {
   vguiCapsCss,
@@ -93,6 +101,7 @@ export function band(title: string): { root: HTMLElement; body: HTMLElement } {
   head.setAttribute('aria-expanded', 'true');
   const chev = el('span', 'ckp-band-chevron');
   chev.setAttribute('aria-hidden', 'true');
+  chev.innerHTML = lucideSvg('chevron-down', 14);
   head.appendChild(chev);
   head.appendChild(el('span', 'ckp-band-title', title));
   head.addEventListener('click', () => {
@@ -630,18 +639,30 @@ ${vguiTileCss({ root: 'ckp-tile', on: 'on' }, CKP_TOKENS)}
   border-bottom: 1px solid var(--ckp-border);
   color: inherit; font: inherit; text-align: left;
   cursor: pointer;
+  overflow: visible;
   transition: background 120ms ease;
 }
 .ckp-band-head:hover { background: var(--ckp-surface-2); }
 .ckp-band-head:hover .ckp-band-chevron { color: var(--vg-fg-color, #e5e9f0); }
 .ckp-band-head:focus-visible { outline: 2px solid var(--ckp-accent); outline-offset: -2px; }
 .ckp-band-chevron {
-  width: 0; height: 0; flex: 0 0 auto;
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-  border-top: 5px solid currentColor;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  border: none;
   color: var(--ckp-muted);
+  line-height: 0;
+  overflow: visible;
   transition: transform 140ms ease;
+}
+.ckp-band-chevron svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+  stroke-width: 2.75;
 }
 .ckp-band.is-collapsed .ckp-band-chevron {
   transform: rotate(-90deg);
@@ -792,7 +813,7 @@ ${vguiInputInteractionCss(['.ckp-input'], CKP_TOKENS)}
 .vgext-ip-placeitem.is-active { color: var(--vg-chrome-accent); background: color-mix(in srgb, var(--vg-chrome-accent) 12%, transparent); }
 .vgext-ip-placeitem.is-active::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--vg-chrome-accent); flex: 0 0 auto; }
 @media (prefers-reduced-motion: reduce) {
-  .ckp-rail-row, .ckp-input, .ckp-actbtn, .ckp-pill, .ckp-tile, .ckp-toggle, .ckp-fmtbtn { transition: none; }
+  .ckp-rail-row, .ckp-input, .ckp-actbtn, .ckp-pill, .ckp-tile, .ckp-toggle, .ckp-fmtbtn, .ckp-band-chevron { transition: none; }
 }
 /* ─── Enhanced Design System (Phase 1) ─────────────────────────────────── */
 /* Premium visual design with smooth animations and sophisticated hierarchy */
@@ -800,7 +821,7 @@ ${vguiSwitchCssEnhanced({ root: 'ckp-switch-enhanced', knob: 'ckp-knob', on: 'on
 ${vguiButtonCssEnhanced({ primary: 'ckp-btn-primary-enhanced', secondary: 'ckp-btn-secondary-enhanced', tertiary: 'ckp-btn-tertiary-enhanced' }, CKP_TOKENS_ENHANCED)}
 ${vguiInputCssEnhanced({ root: 'ckp-input-enhanced' }, CKP_TOKENS_ENHANCED)}
 ${vguiRowCssEnhanced({ root: 'ckp-row-enhanced', label: 'ckp-row-label', title: 'ckp-row-title', help: 'ckp-help', control: 'ckp-row-control', modified: 'is-modified' }, CKP_TOKENS_ENHANCED, { labelCol: '210px' })}
-${vguiBandCssEnhanced({ root: 'ckp-band-enhanced', head: 'ckp-band-head', body: 'ckp-band-body', title: 'ckp-band-title', chevron: 'ckp-band-chevron', collapsed: 'is-collapsed' }, CKP_TOKENS_ENHANCED)}
+${vguiBandCssEnhanced({ root: 'ckp-band-enhanced', head: 'ckp-band-head-enhanced', body: 'ckp-band-body-enhanced', title: 'ckp-band-title-enhanced', chevron: 'ckp-band-chevron-enhanced', collapsed: 'is-collapsed' }, CKP_TOKENS_ENHANCED)}
 ${vguiTabsCssEnhanced({ root: 'ckp-tabs-enhanced', tab: 'ckp-tab', active: 'active', indicator: 'indicator' }, CKP_TOKENS_ENHANCED)}
 ${vguiChipCssEnhanced({ root: 'ckp-chip-enhanced', label: 'ckp-chip-label', value: 'ckp-chip-value' }, CKP_TOKENS_ENHANCED)}
 ${vguiLoadingCss({ spinner: 'ckp-spinner' })}
@@ -866,6 +887,8 @@ ${vguiLoadingCss({ spinner: 'ckp-spinner' })}
   flex-direction: column;
   gap: 0;
   width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .ckp-tabs-enhanced {
   display: flex;
@@ -949,6 +972,68 @@ ${vguiLoadingCss({ spinner: 'ckp-spinner' })}
   .ckp-tab-pane.active {
     animation: none;
   }
+}
+/* Phase 4d — cross-module workflow badges */
+.ckp-workflow-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 20px 12px;
+  flex: 0 0 auto;
+}
+.ckp-flat > .ckp-workflow-strip,
+.ckp-pane-body > .ckp-workflow-strip {
+  padding-left: 0;
+  padding-right: 0;
+}
+.ckp-tab-pane > .ckp-workflow-strip {
+  padding: 0 0 12px;
+}
+.ckp-workflow-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  margin: 0;
+  border: 1px solid var(--ckp-border, #32384f);
+  border-radius: 6px;
+  background: var(--ckp-surface-2, rgba(59, 130, 246, 0.04));
+  color: var(--vg-fg-color, #e5e9f0);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+    background 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.ckp-workflow-link:hover {
+  border-color: var(--ckp-accent, #3b82f6);
+  background: rgba(59, 130, 246, 0.1);
+}
+.ckp-workflow-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--ckp-accent, #3b82f6);
+}
+.ckp-workflow-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ckp-workflow-label {
+  font-size: 13px;
+  font-weight: 500;
+}
+.ckp-workflow-hint {
+  font-size: 11px;
+  color: var(--ckp-muted, #8a93a6);
+}
+.ckp-workflow-chevron {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--ckp-muted, #8a93a6);
 }
 /* Enhanced token CSS variables */
 .ckp-enhanced {

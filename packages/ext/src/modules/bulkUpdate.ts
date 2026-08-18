@@ -1,11 +1,14 @@
 /**
  * Bulk Update — Customize sheet flat settings (starui customizer-ui #10).
+ * Phase 4: Settings / Advanced tabs + workflow link to Edit History.
  */
 import type { BulkUpdateSettings } from '@wellsfargo-starui/velocity-grid-edit';
 import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import {
-  band, el, injectCockpitStyles, lucideSvg, numberInput, row, switchToggle, switchToggleEnhanced,
+  band, el, injectCockpitStyles, lucideSvg, numberInput, row, switchToggleEnhanced,
   actionButtonEnhanced, resetButtonEnhanced, engineMissingNotice, animateSaveButton,
+  createSettingsAdvancedTabs, markBandComplexity, appendBandsByComplexity,
+  workflowLink, workflowStrip,
 } from '../ui/cockpit';
 import { clone, editHandle } from './editHandle';
 
@@ -72,9 +75,19 @@ export function bulkUpdateModule(): SettingsModule {
         head.append(title, saveBtn, resetBtn);
         root.appendChild(head);
 
-        const body = el('div', 'ckp-flat-body');
+        root.appendChild(workflowStrip([
+          workflowLink({
+            label: 'View audit trail',
+            hint: 'See bulk updates in Edit History',
+            icon: 'history',
+            moduleId: 'data-change-history',
+            events: ctx.events,
+            lucideSvg,
+          }),
+        ]));
 
         const g = band('Global');
+        markBandComplexity(g, 'basic');
         g.body.append(
           row('Enabled', switchToggleEnhanced(d.enabled, (v) => { d.enabled = v; render(); })),
           row('Confirm threshold', numberInput(d.confirmThreshold, (v) => {
@@ -86,14 +99,19 @@ export function bulkUpdateModule(): SettingsModule {
             d.enforceSingleColumn = v;
             render();
           })),
+        );
+
+        const history = band('History');
+        markBandComplexity(history, 'advanced');
+        history.body.append(
           row('Record history', switchToggleEnhanced(d.recordHistory, (v) => {
             d.recordHistory = v;
             render();
           }), 'Logs operations to the undo/redo journal'),
         );
-        body.appendChild(g.root);
 
         const drop = band('Dropdown');
+        markBandComplexity(drop, 'advanced');
         drop.body.append(
           row('Distinct values', switchToggleEnhanced(d.showDistinctValues, (v) => {
             d.showDistinctValues = v;
@@ -105,8 +123,16 @@ export function bulkUpdateModule(): SettingsModule {
             render();
           })),
         );
-        body.appendChild(drop.root);
-        root.appendChild(body);
+
+        const settingsPane = el('div');
+        const advancedPane = el('div');
+        appendBandsByComplexity(settingsPane, advancedPane, [g, history, drop]);
+
+        root.appendChild(createSettingsAdvancedTabs({
+          settings: settingsPane,
+          advanced: advancedPane,
+          lucideSvg,
+        }).root);
       };
 
       load();

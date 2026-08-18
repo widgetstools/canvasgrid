@@ -1,8 +1,8 @@
 # Phase 4: Information Architecture Reorganization
 
-**Status**: Planning  
+**Status**: Complete (4a–4d shipped)  
 **Date**: August 17, 2026  
-**Scope**: Tab grouping + module reorganization + progressive disclosure  
+**Scope**: Tab grouping + progressive disclosure + cross-module workflows  
 **Goal**: Make customizer more intuitive by grouping related settings
 
 ---

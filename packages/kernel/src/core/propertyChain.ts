@@ -10,6 +10,7 @@ import type { ResolvedTheme } from '../theming/cssReader';
 import { getFormatCompiler, type CompositeColDefShape } from './formatCompilerSlot';
 import { getRuleEngine } from './ruleEngineSlot';
 import { evalFormatProgram } from './formatEvalMemo';
+import { compileValueGetterSrc, valueGetterFnFromSrc } from './valueGetterExpr';
 
 export type { ColCellOverrides };
 
@@ -38,6 +39,8 @@ export interface ResolvedColDef<TRow = any> {
    */
   cellDataType: 'text' | 'number';
   valueGetter?: (params: CValueGetterParams<TRow>) => unknown;
+  /** Original expression when `valueGetter` was authored as a string. */
+  _valueGetterSrc?: string;
   /** Narrowed to function form only — string is compiled by compileFormatSlots. */
   valueFormatter?: (params: CValueFormatterParams<TRow, unknown>) => string;
   /** Icon resolver derived from the format string by compileFormatSlots. */
@@ -1071,6 +1074,26 @@ function warnOnce(msg: string): void {
   console.warn(msg);
 }
 
+function compileValueGetterSlots<TRow>(
+  merged: CColDef<TRow>,
+  resolvedColId: string,
+): { valueGetter?: ResolvedColDef<TRow>['valueGetter']; src?: string } {
+  const vg = merged.valueGetter;
+  if (typeof vg === 'string') {
+    const src = vg.trim();
+    if (!src) return {};
+    if (!compileValueGetterSrc(src)) {
+      warnOnce(`[cgrid] valueGetter for ${resolvedColId} failed to compile`);
+      return { src };
+    }
+    return { valueGetter: valueGetterFnFromSrc<TRow>(src), src };
+  }
+  if (typeof vg === 'function') {
+    return { valueGetter: vg as ResolvedColDef<TRow>['valueGetter'] };
+  }
+  return {};
+}
+
 /** Convert a resolveStyle result object into a `ColCellOverrides`-shaped
  *  Record for cellStyle. Keys map onto the kernel's canonical override
  *  vocabulary (`fg` / `bg` / `fontWeight` / `fontStyle`) so
@@ -1235,6 +1258,7 @@ export function resolveColDef<TRow>(
   // update valueFormatter (string → function), cellStyle (user fn merged with
   // format-derived fn), cellIcon (derived fn), and _compositeProgram.
   const compiledMerged = compileFormatSlots(merged, colId);
+  const getter = compileValueGetterSlots(merged, colId);
 
   return {
     colId,
@@ -1246,7 +1270,8 @@ export function resolveColDef<TRow>(
     maxWidth: merged.maxWidth ?? Number.POSITIVE_INFINITY,
     pinned: resolvedPinned,
     cellDataType,
-    valueGetter: merged.valueGetter as ResolvedColDef<TRow>['valueGetter'],
+    valueGetter: getter.valueGetter,
+    _valueGetterSrc: getter.src,
     // Use compiledMerged.valueFormatter — may have been compiled from a DSL string.
     valueFormatter: compiledMerged.valueFormatter as ResolvedColDef<TRow>['valueFormatter'],
     // Icon slot — derived by compileFormatSlots when format string has {icon:...},

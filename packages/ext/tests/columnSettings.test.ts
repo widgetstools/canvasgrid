@@ -55,6 +55,11 @@ function makeCtx(colDefs: Array<Record<string, unknown>> = [
       const v = valueCols.find((x) => x.colId === colId);
       if (v) v.aggFunc = aggFunc;
     },
+    getColumnDefsSnapshot: () => colDefs.map((d) => ({ ...d })),
+    updateGridOptions: (partial: { columnDefs?: unknown[] }) => {
+      if (!partial.columnDefs) return;
+      colDefs.splice(0, colDefs.length, ...partial.columnDefs as Array<Record<string, unknown>>);
+    },
     // The real marker the calc bridge attaches. `createEngineSlots` probes it
     // at CALL time, so the pane resolves the engine through `ctx.engines`
     // exactly the way it does against a live grid.
@@ -85,19 +90,18 @@ function makeCtx(colDefs: Array<Record<string, unknown>> = [
 }
 
 describe('columnSettingsModule', () => {
-  it('edits stay in draft until commit, Reset restores; no per-pane Save', () => {
+  it('edits stay in draft until commit; Reset restores', () => {
     const { ctx, edits, markDirty } = makeCtx();
     const host = document.createElement('div');
     const mod = columnSettingsModule();
-    mod.init();
+    mod.init(ctx);
     const inst = mod.mount(host, ctx);
 
     expect(host.querySelector('.ckp')).toBeTruthy();
     expect((host.querySelector('.ckp-title') as HTMLInputElement).value).toBe('Alpha');
-    expect([...host.querySelectorAll('.ckp-actbtn')].some((b) => b.textContent?.includes('Save'))).toBe(false);
 
     // Toggle sortable — draft only.
-    const switches = [...host.querySelectorAll<HTMLInputElement>('.vg-checkbox')];
+    const switches = Array.from(host.querySelectorAll<HTMLButtonElement>('.ckp-switch'));
     const sortable = switches.find((s) => s.closest('.ckp-row')?.textContent?.includes('Sortable'));
     expect(sortable).toBeTruthy();
     const before = edits.length;
@@ -110,10 +114,10 @@ describe('columnSettingsModule', () => {
     expect(markDirty).toHaveBeenCalled();
 
     // Dirty again then Reset.
-    const sortable2 = [...host.querySelectorAll<HTMLInputElement>('.vg-checkbox')]
+    const sortable2 = Array.from(host.querySelectorAll<HTMLButtonElement>('.ckp-switch'))
       .find((s) => s.closest('.ckp-row')?.textContent?.includes('Sortable'))!;
     sortable2.click();
-    const reset = [...host.querySelectorAll<HTMLButtonElement>('.ckp-actbtn')]
+    const reset = Array.from(host.querySelectorAll<HTMLButtonElement>('.ckp-actbtn'))
       .find((b) => b.textContent?.includes('Reset'))!;
     reset.click();
     const afterReset = edits.length;
@@ -127,9 +131,9 @@ describe('columnSettingsModule', () => {
     const { ctx } = makeCtx();
     const host = document.createElement('div');
     const mod = columnSettingsModule();
-    mod.init();
+    mod.init(ctx);
     mod.mount(host, ctx);
-    const rows = [...host.querySelectorAll('.ckp-rail-row')];
+    const rows = Array.from(host.querySelectorAll('.ckp-rail-row'));
     expect(rows.map((r) => r.textContent)).toEqual(expect.arrayContaining(['Alpha', 'Beta']));
     rows[1]!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect((host.querySelector('.ckp-title') as HTMLInputElement).value).toBe('Beta');
@@ -139,7 +143,7 @@ describe('columnSettingsModule', () => {
     const { ctx, markDirty, overrides } = makeCtx();
     const host = document.createElement('div');
     const mod = columnSettingsModule();
-    mod.init();
+    mod.init(ctx);
     const inst = mod.mount(host, ctx);
 
     const caption = host.querySelector<HTMLInputElement>('input[aria-label="Caption"]')!;
@@ -156,6 +160,26 @@ describe('columnSettingsModule', () => {
     expect(host.querySelector('.ckp-rail-row.active')!.textContent).toContain('Alpha Renamed');
     expect((host.querySelector('.ckp-title') as HTMLInputElement).value).toBe('Alpha Renamed');
     expect(host.querySelector<HTMLInputElement>('input[aria-label="Caption"]')!.value).toBe('Alpha Renamed');
+  });
+
+  it('persists a valueGetter expression through getColumnDefsSnapshot / updateGridOptions', () => {
+    const colDefs: Array<Record<string, unknown>> = [
+      { colId: 'spread', headerName: 'Spread', field: 'spread' },
+    ];
+    const { ctx } = makeCtx(colDefs);
+    const host = document.createElement('div');
+    const mod = columnSettingsModule();
+    mod.init(ctx);
+    const inst = mod.mount(host, ctx);
+
+    const ta = host.querySelector<HTMLTextAreaElement>('textarea[aria-label="Value getter expression"]')!;
+    expect(ta).toBeTruthy();
+    ta.value = '[ask] - [bid]';
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    inst.commit?.();
+
+    expect(colDefs[0]!.valueGetter).toBe('[ask] - [bid]');
+    inst.destroy();
   });
 });
 
@@ -204,7 +228,7 @@ describe('columnSettingsModule — calc engine missing (D-F8)', () => {
     mod.init(ctx);
     const inst = mod.mount(host, ctx);
 
-    const switches = Array.from(host.querySelectorAll<HTMLInputElement>('.vg-checkbox'));
+    const switches = Array.from(host.querySelectorAll<HTMLButtonElement>('.ckp-switch'));
     const sortable = switches.find((s) => s.closest('.ckp-row')?.textContent?.includes('Sortable'))!;
     sortable.click();
     inst.commit?.();

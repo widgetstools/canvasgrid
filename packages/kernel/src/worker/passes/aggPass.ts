@@ -30,10 +30,12 @@ import type { RowStore } from '../dataPipeline';
 import type { WorkerColumn } from '../protocol';
 import type { AggFuncRegistry } from '../aggFuncRegistry';
 import type { GroupNode, GroupPassOutput } from './groupPass';
+import { readWorkerCellValue } from '../readCellValue';
 
 interface AggCol {
   colId: string;
   field: string;
+  col: WorkerColumn;
   /** Carried verbatim from the WorkerColumn — single name or fallback
    *  list. Resolved against the registry on every `apply` so a runtime
    *  `setAggFuncs` flip lights up without a column-metadata reship. */
@@ -101,8 +103,8 @@ export class AggPass<TRow = any> {
     this.colsRev++;
     this.aggCols = [];
     for (const col of columns) {
-      if (col.aggFunc && col.field) {
-        this.aggCols.push({ colId: col.colId, field: col.field, agg: col.aggFunc });
+      if (col.aggFunc && (col.field || col.valueGetter)) {
+        this.aggCols.push({ colId: col.colId, field: col.field ?? col.colId, agg: col.aggFunc, col });
       }
     }
   }
@@ -134,14 +136,14 @@ export class AggPass<TRow = any> {
       return cached.result;
     }
     const totals: Record<string, unknown> = {};
-    for (const { colId, field, agg } of this.aggCols) {
+    for (const { colId, col, agg } of this.aggCols) {
       const fn = this.registry.resolve(agg);
       if (!fn) continue;
       const values: unknown[] = [];
       for (const id of inputIds) {
         const row = this.store.getById(id);
         if (!row) continue;
-        values.push((row as Record<string, unknown>)[field]);
+        values.push(readWorkerCellValue(row, col));
       }
       let result: unknown;
       try {
@@ -219,22 +221,22 @@ export class AggPass<TRow = any> {
     // record (matches the grand-total `apply()` behaviour). Caching
     // outside the per-group loop keeps the registry untouched in the
     // hot path.
-    const resolved: Array<{ colId: string; field: string; fn: (params: { values: unknown[]; colId: string; rowNode?: { data?: unknown; key?: string } }) => unknown }> = [];
+    const resolved: Array<{ colId: string; col: WorkerColumn; fn: (params: { values: unknown[]; colId: string; rowNode?: { data?: unknown; key?: string } }) => unknown }> = [];
     for (const ac of this.aggCols) {
       const fn = this.registry.resolve(ac.agg);
       if (!fn) continue;
-      resolved.push({ colId: ac.colId, field: ac.field, fn });
+      resolved.push({ colId: ac.colId, col: ac.col, fn });
     }
     if (resolved.length === 0) return { groupTotals };
 
     const computeFor = (groupKey: string, descendantIds: readonly string[]): void => {
       const totals: Record<string, unknown> = {};
-      for (const { colId, field, fn } of resolved) {
+      for (const { colId, col, fn } of resolved) {
         const values: unknown[] = [];
         for (const id of descendantIds) {
           const row = this.store.getById(id);
           if (!row) continue;
-          values.push((row as Record<string, unknown>)[field]);
+          values.push(readWorkerCellValue(row, col));
         }
         let result: unknown;
         try {

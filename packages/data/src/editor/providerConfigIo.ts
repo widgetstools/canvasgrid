@@ -33,23 +33,77 @@ export function toPortableProviderConfig(
   return portable;
 }
 
-export function exportProviderConfig(provider: DataProviderConfig): void {
+/** Fold an imported portable config onto an existing provider (keeps id/owner). */
+export function applyPortableProviderConfig(
+  current: DataProviderConfig,
+  portable: PortableProviderConfig,
+): DataProviderConfig {
+  return {
+    ...current,
+    ...structuredClone(portable),
+    providerId: current.providerId,
+    userId: current.userId,
+    isDefault: current.isDefault,
+  };
+}
+
+export function serializeProviderConfig(provider: DataProviderConfig): string {
   const payload: ProviderConfigExport = {
     kind: EXPORT_KIND,
     version: EXPORT_VERSION,
     exportedAt: new Date().toISOString(),
     provider: toPortableProviderConfig(provider),
   };
-  const json = JSON.stringify(payload, null, 2);
-  const blob = new Blob([json], { type: 'application/json' });
+  return JSON.stringify(payload, null, 2);
+}
+
+/** Trigger a JSON download. `ownerDoc` must be the popout document when the
+ *  editor lives in a `window.open` surface — opener `document.body` would
+ *  attach the `<a>` to the parent page. */
+export function downloadJson(
+  filename: string,
+  contents: string,
+  ownerDoc: Document = document,
+): void {
+  const blob = new Blob([contents], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
+  const a = ownerDoc.createElement('a');
   a.href = url;
-  a.download = `starui-data-provider-${toFileStem(provider.name)}.json`;
-  document.body.appendChild(a);
+  a.download = filename;
+  a.rel = 'noopener';
+  ownerDoc.body.appendChild(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export function exportProviderConfig(
+  provider: DataProviderConfig,
+  ownerDoc: Document = document,
+): void {
+  downloadJson(
+    `starui-data-provider-${toFileStem(provider.name)}.json`,
+    serializeProviderConfig(provider),
+    ownerDoc,
+  );
+}
+
+export function bindJsonFileInput(
+  ownerDoc: Document,
+  onFile: (file: File) => void,
+  testId?: string,
+): HTMLInputElement {
+  const input = ownerDoc.createElement('input');
+  input.type = 'file';
+  input.accept = 'application/json,.json';
+  input.hidden = true;
+  if (testId) input.setAttribute('data-testid', testId);
+  input.addEventListener('change', () => {
+    const file = input.files?.[0];
+    input.value = '';
+    if (file) onFile(file);
+  });
+  return input;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {

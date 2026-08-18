@@ -6736,7 +6736,15 @@ export class VelocityGrid<TRow = any> {
   getColumnDefsSnapshot(): CColDef<TRow>[] {
     const out: CColDef<TRow>[] = [];
     for (const def of this.columnDefsMap.values()) {
-      out.push(copyColDefDeepish(def) as CColDef<TRow>);
+      const copy = copyColDefDeepish(def) as CColDef<TRow> & { _valueGetterSrc?: string };
+      // Authored string getters compile to a function on the resolved def.
+      // Hand the source back so upsert / Column Settings / DataProvider
+      // round-trips still ship the expression to the worker.
+      if (typeof def._valueGetterSrc === 'string' && def._valueGetterSrc) {
+        copy.valueGetter = def._valueGetterSrc;
+      }
+      delete copy._valueGetterSrc;
+      out.push(copy);
     }
     return out;
   }
@@ -11222,6 +11230,7 @@ export class VelocityGrid<TRow = any> {
         aggFunc: c.aggFunc,
         filter: c.filter,
       };
+      if (c._valueGetterSrc) base.valueGetter = c._valueGetterSrc;
       // AG parity 2026-07-21 — keyCreator crosses to the worker as source
       // (same serialization contract as comparators / custom aggFuncs).
       const keyCreator = (c as unknown as { keyCreator?: unknown }).keyCreator;
@@ -12558,18 +12567,20 @@ export class VelocityGrid<TRow = any> {
     // lives in the main-thread `rowDataById` mirror — serve the value from
     // there, through the same memoized formatters, so entering columns
     // paint real content immediately instead of a blank that fills in a
-    // throttle period + worker round-trip later. Gated to field-backed
-    // columns without a `valueGetter` (worker-computed values — calc /
-    // pivot-result / getter columns — keep today's blank-until-chunk; a
-    // wrong value is worse than a briefly missing one).
+    // throttle period + worker round-trip later. String-form valueGetters compile on main and can be
+    // evaluated against the mirror; function getters likewise. Calc /
+    // pivot-result columns without a getter or field stay blank until
+    // the worker chunk lands.
     if ((this.chunk.rowKinds[localIndex] ?? 0) === 0) {
       const sid = this.chunk.stringRowIds?.[localIndex];
       if (sid) {
         const def = this.columnDefsMap.get(colId);
         const field = def?.field;
-        if (field !== undefined && def?.valueGetter === undefined) {
+        if (field !== undefined || def?.valueGetter) {
           const row = this.rowDataById.get(sid) as Record<string, unknown> | undefined;
-          const raw = row?.[field];
+          const raw = def?.valueGetter
+            ? def.valueGetter({ data: row as TRow, colId })
+            : row?.[field!];
           if (raw !== undefined && raw !== null) {
             if (typeof raw === 'number') {
               return { value: raw, valueFormatted: this.formatNumber(colId, raw), flashAlpha: flash, flashColor };

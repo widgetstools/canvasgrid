@@ -1,13 +1,15 @@
 /**
  * Smart Edit — Customize sheet flat settings (starui customizer-ui #09).
  * GLOBAL / OPERATIONS / SAFETY bands; Done commits via edit handle.
+ * Phase 4: Settings / Advanced tabs, band complexity, workflow to Edit History.
  */
 import type { SmartEditOp, SmartEditSettings } from '@wellsfargo-starui/velocity-grid-edit';
 import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import {
-  band, el, injectCockpitStyles, lucideSvg, numberInput, row, switchToggle, switchToggleEnhanced,
+  band, el, injectCockpitStyles, lucideSvg, numberInput, row, switchToggleEnhanced,
   actionButtonEnhanced, resetButtonEnhanced, engineMissingNotice, animateSaveButton,
-  createTabGroup,
+  createSettingsAdvancedTabs, markBandComplexity, appendBandsByComplexity,
+  workflowLink, workflowStrip,
 } from '../ui/cockpit';
 import { clone, editHandle } from './editHandle';
 
@@ -86,9 +88,19 @@ export function smartEditModule(): SettingsModule {
         head.append(title, saveBtn, resetBtn);
         root.appendChild(head);
 
-        // Settings Tab Content
-        const settingsPane = el('div');
+        root.appendChild(workflowStrip([
+          workflowLink({
+            label: 'View audit trail',
+            hint: 'Edit → see results in Edit History',
+            icon: 'history',
+            moduleId: 'data-change-history',
+            events: ctx.events,
+            lucideSvg,
+          }),
+        ]));
+
         const g = band('Global');
+        markBandComplexity(g, 'basic');
         g.body.append(
           row('Enabled', switchToggleEnhanced(d.enabled, (v) => { d.enabled = v; render(); })),
           row('Increment step', numberInput(d.incrementStep, (v) => {
@@ -101,9 +113,9 @@ export function smartEditModule(): SettingsModule {
             render();
           }), 'Parse K/M/B suffixes in numeric cell editors'),
         );
-        settingsPane.appendChild(g.root);
 
         const ops = band('Operations');
+        markBandComplexity(ops, 'basic');
         const group = el('div', 'ckp-pills');
         for (const { op, label } of OPS) {
           const on = d.enabledOps.includes(op);
@@ -122,11 +134,9 @@ export function smartEditModule(): SettingsModule {
           group.appendChild(b);
         }
         ops.body.append(row('Toolbar ops', group));
-        settingsPane.appendChild(ops.root);
 
-        // Advanced Tab Content
-        const advancedPane = el('div');
         const safety = band('Safety');
+        markBandComplexity(safety, 'advanced');
         safety.body.append(
           row('Confirm above N', numberInput(d.confirmThreshold, (v) => {
             if (v === undefined) return;
@@ -146,15 +156,16 @@ export function smartEditModule(): SettingsModule {
             render();
           }), 'Logs operations to the undo/redo journal'),
         );
-        advancedPane.appendChild(safety.root);
 
-        // Create tab group
-        const tabGroup = createTabGroup([
-          { id: 'settings', label: 'Settings', icon: 'sliders-horizontal', content: settingsPane },
-          { id: 'advanced', label: 'Advanced', icon: 'cog', content: advancedPane },
-        ], 'settings', lucideSvg);
+        const settingsPane = el('div');
+        const advancedPane = el('div');
+        appendBandsByComplexity(settingsPane, advancedPane, [g, ops, safety]);
 
-        root.appendChild(tabGroup.root);
+        root.appendChild(createSettingsAdvancedTabs({
+          settings: settingsPane,
+          advanced: advancedPane,
+          lucideSvg,
+        }).root);
       };
 
       load();

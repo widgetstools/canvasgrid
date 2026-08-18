@@ -6,8 +6,9 @@ export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   attrs?: Attrs | string | null,
   children?: Array<Node | string | null | undefined> | string,
+  ownerDoc?: Document,
 ): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
+  const node = (ownerDoc ?? document).createElement(tag);
   if (typeof attrs === 'string') {
     node.className = attrs;
   } else if (attrs) {

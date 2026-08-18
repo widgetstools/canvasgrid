@@ -43,6 +43,8 @@ import {
   takePaneScroll,
   restorePaneScroll,
   emptyState,
+  workflowLink,
+  workflowStrip,
 } from '../ui/cockpit';
 import { formatPickerMenu, formatPickerFitContainer, previewFormat } from '../toolbar/formatPicker';
 import type { FormatDataType } from '../toolbar/formatPresets';
@@ -438,6 +440,17 @@ export function calculatedColumnsModule(): SettingsModule {
         });
         head.append(nameIn, saveBtn, resetBtn);
         const body = appendPaneChrome(pane, head);
+
+        body.appendChild(workflowStrip([
+          workflowLink({
+            label: 'Column format settings',
+            hint: 'Width, filter, and display options',
+            icon: 'columns-3',
+            moduleId: 'column-settings',
+            events: ctx.events,
+            lucideSvg,
+          }),
+        ]));
 
         const chipsStrip = el('div', 'ckp-chips-strip');
         const idChip = chip('Column id', d.colId, 'warning');

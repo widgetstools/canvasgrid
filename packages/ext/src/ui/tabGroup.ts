@@ -38,6 +38,56 @@ export interface TabGroup {
   getActive: () => string;
 }
 
+/** Progressive disclosure — bands tagged `basic` land on Settings; `advanced` on Advanced. */
+export type BandComplexity = 'basic' | 'advanced';
+
+/**
+ * Tag a band root for progressive disclosure. Unmarked bands default to `basic`.
+ */
+export function markBandComplexity(
+  band: { root: HTMLElement } | HTMLElement,
+  complexity: BandComplexity,
+): void {
+  const root = 'root' in band ? band.root : band;
+  root.dataset.complexity = complexity;
+}
+
+/**
+ * Route marked band roots into Settings / Advanced panes.
+ * Bands without `data-complexity` go to Settings.
+ */
+export function appendBandsByComplexity(
+  settingsPane: HTMLElement,
+  advancedPane: HTMLElement,
+  bands: Array<{ root: HTMLElement } | HTMLElement>,
+): void {
+  for (const b of bands) {
+    const root = 'root' in b ? b.root : b;
+    const complexity = root.dataset.complexity === 'advanced' ? 'advanced' : 'basic';
+    (complexity === 'advanced' ? advancedPane : settingsPane).appendChild(root);
+  }
+}
+
+/**
+ * Standard Settings / Advanced (/ optional History) tab shell used by customize modules.
+ */
+export function createSettingsAdvancedTabs(opts: {
+  settings: HTMLElement;
+  advanced: HTMLElement;
+  history?: HTMLElement;
+  defaultTab?: string;
+  lucideSvg?: (name: string, size?: number) => string;
+}): TabGroup {
+  const tabs: TabDefinition[] = [
+    { id: 'settings', label: 'Settings', icon: 'sliders-horizontal', content: opts.settings },
+    { id: 'advanced', label: 'Advanced', icon: 'cog', content: opts.advanced },
+  ];
+  if (opts.history) {
+    tabs.push({ id: 'history', label: 'History', icon: 'history', content: opts.history });
+  }
+  return createTabGroup(tabs, opts.defaultTab ?? 'settings', opts.lucideSvg);
+}
+
 /**
  * Create a tabbed interface with animated underline indicators.
  * Uses vguiTabsCssEnhanced styling with smooth transitions.
@@ -76,6 +126,7 @@ export function createTabGroup(
     btn.className = `ckp-tab${tab.id === activeId ? ' active' : ''}`;
     btn.type = 'button';
     btn.setAttribute('data-tab-id', tab.id);
+    btn.setAttribute('aria-selected', tab.id === activeId ? 'true' : 'false');
 
     if (tab.icon && lucideSvg) {
       btn.innerHTML = `${lucideSvg(tab.icon, 12)}<span>${tab.label}</span>`;
@@ -109,16 +160,16 @@ export function createTabGroup(
     }
 
     // Update button states
-    for (const btn of Object.values(tabButtons)) {
-      btn.classList.remove('active');
+    for (const [tid, btn] of Object.entries(tabButtons)) {
+      const on = tid === id;
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
     }
-    tabButtons[id]!.classList.add('active');
 
     // Update pane visibility
-    for (const pane of Object.values(panes)) {
-      pane.classList.remove('active');
+    for (const [tid, pane] of Object.entries(panes)) {
+      pane.classList.toggle('active', tid === id);
     }
-    panes[id]!.classList.add('active');
 
     currentActive = id;
   };

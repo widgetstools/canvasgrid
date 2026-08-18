@@ -17,6 +17,7 @@ import { readSsrmRowMeta } from '../core/ssrmRowMeta';
 type WorkerFilterModelEntry = FilterModelEntryLegacy;
 import type { WorkerColumn, ViewportRequest, ViewportChunk } from './protocol';
 import { encodeText } from './chunkFormat';
+import { readWorkerCellValue } from './readCellValue';
 
 /** Source-of-truth row storage in the worker. Keyed by rowIdField on each row. */
 export class RowStore<TRow = any> {
@@ -688,18 +689,18 @@ export class DistinctValuesPass<TRow = any> {
     const cached = this.cache.get(colId);
     if (cached !== undefined) return cached;
     const col = this.colIndex.get(colId);
-    const isCalcCol = col && !col.field && this.calcSource !== null && this.calcSource.isCalcCol(colId);
-    if (!col || (!col.field && !isCalcCol)) {
+    const isCalcCol = col && !col.field && !col.valueGetter && this.calcSource !== null && this.calcSource.isCalcCol(colId);
+    if (!col || (!col.field && !col.valueGetter && !isCalcCol)) {
       this.cache.set(colId, []);
       return [];
     }
-    const field = col.field;
     const seen = new Set<string>();
     const out: string[] = [];
     for (const row of this.store.rows()) {
-      const v = field !== undefined
-        ? (row as Record<string, unknown>)[field]
-        : this.calcSource!.valueAt(this.store.getRowId(row), colId);
+      const v = readWorkerCellValue(row, col, {
+        rowId: this.store.getRowId(row),
+        calcSource: this.calcSource,
+      });
       if (v == null) continue;
       const s = String(v);
       if (seen.has(s)) continue;
@@ -836,8 +837,8 @@ export class FilterPass<TRow = any> {
         // direct field read. Fieldless non-calc columns keep the
         // pre-21d skip (entry contributes no constraint).
         let value: unknown;
-        if (col.field) {
-          value = (row as Record<string, unknown>)[col.field];
+        if (col.valueGetter || col.field) {
+          value = readWorkerCellValue(row, col);
         } else if (this.calcSource !== null && this.calcSource.isCalcCol(colId)) {
           value = this.calcSource.valueAt(this.store.getRowId(row), colId);
         } else {
@@ -1193,7 +1194,7 @@ export class ViewportSlicer<TRow = any> {
       // Cycle 21d / Task 11 — calc columns ship like ordinary columns:
       // numericCols for type 'number', textCols otherwise, values read
       // from the CalcPass cache instead of a row field.
-      if (!col.field) {
+      if (!col.field && !col.valueGetter) {
         const src = this.calcSource;
         if (!src || !src.isCalcCol(colId)) continue;
         if (col.type === 'number') {
@@ -1216,14 +1217,14 @@ export class ViewportSlicer<TRow = any> {
         const arr = new Float64Array(count);
         for (let i = 0; i < count; i++) {
           const row = this.store.getById(visibleIds[rowStart + i]!);
-          arr[i] = Number((row as Record<string, unknown> | undefined)?.[col.field!]);
+          arr[i] = Number(readWorkerCellValue(row, col));
         }
         numericCols[colId] = arr;
       } else {
         const values: string[] = new Array(count);
         for (let i = 0; i < count; i++) {
           const row = this.store.getById(visibleIds[rowStart + i]!);
-          const v = (row as Record<string, unknown> | undefined)?.[col.field!];
+          const v = readWorkerCellValue(row, col);
           values[i] = v == null ? '' : String(v);
         }
         textCols[colId] = encodeText(values);

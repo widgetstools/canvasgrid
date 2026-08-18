@@ -10,6 +10,7 @@ export type ButtonOpts = {
   title?: string;
   testId?: string;
   className?: string;
+  document?: Document;
 };
 
 /** Shared action button used by footer, toolbar, sidebar, modals. */
@@ -31,7 +32,7 @@ export function createButton(opts: ButtonOpts): HTMLButtonElement {
     className,
     title: opts.title,
     disabled: opts.disabled || undefined,
-  }, opts.label);
+  }, opts.label, opts.document);
   setTestId(btn, opts.testId);
   if (opts.disabled) btn.disabled = true;
   btn.addEventListener('click', () => {

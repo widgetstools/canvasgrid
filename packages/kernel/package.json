@@ -36,6 +36,9 @@
     "dist",
     "src"
   ],
+  "dependencies": {
+    "@wellsfargo-starui/velocity-grid-expression": "*"
+  },
   "devDependencies": {
     "@wellsfargo-starui/velocity-grid-calc": "*",
     "@wellsfargo-starui/velocity-grid-format": "*",

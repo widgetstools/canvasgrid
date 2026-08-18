@@ -23,6 +23,8 @@ export {
   exportProviderConfig,
   parseProviderConfigImport,
   toPortableProviderConfig,
+  applyPortableProviderConfig,
+  serializeProviderConfig,
 } from './providerConfigIo';
 export type { PortableProviderConfig } from './providerConfigIo';
 export {

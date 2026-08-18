@@ -19,6 +19,7 @@ import {
 } from '../autosize';
 import type { GroupNode } from '../passes/groupPass';
 import { materializeSsrmGroupTotals, computeSsrmStickyAncestors } from '../../core/ssrmRowMeta';
+import { readWorkerCellValue } from '../readCellValue';
 
 export type ViewportRequest = Extract<WorkerRequest, {
   type:
@@ -409,15 +410,14 @@ export async function handleViewport(
       const half = Math.max(0, Math.floor(cap / 2));
       const sampleHead = Math.min(ids.length, half);
       const sampleTailStart = Math.max(sampleHead, ids.length - half);
-      const fieldOf = new Map<string, string | undefined>();
-      for (const c of state.columns) fieldOf.set(c.colId, c.field);
+      const colById = new Map(state.columns.map((c) => [c.colId, c]));
       const values: Record<string, unknown[]> = {};
-      const wanted: Array<{ colId: string; field: string; out: unknown[] }> = [];
+      const wanted: Array<{ col: WorkerColumn; out: unknown[] }> = [];
       for (const colId of colIds) {
         const out: unknown[] = [];
         values[colId] = out;
-        const field = fieldOf.get(colId);
-        if (field) wanted.push({ colId, field, out });
+        const col = colById.get(colId);
+        if (col && (col.field || col.valueGetter)) wanted.push({ col, out });
       }
       if (wanted.length > 0) {
         const collect = (rowIndex: number): void => {
@@ -426,7 +426,7 @@ export async function handleViewport(
           const row = state.store.getById(rowId) as Record<string, unknown> | undefined;
           if (!row) return;
           for (const w of wanted) {
-            const raw = row[w.field];
+            const raw = readWorkerCellValue(row, w.col);
             if (raw != null) w.out.push(raw);
           }
         };

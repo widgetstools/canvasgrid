@@ -9,8 +9,8 @@
 import type { DataChangeHistorySettings, EditJournalEntry, EditSource } from '@wellsfargo-starui/velocity-grid-edit';
 import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import {
-  band, chip, el, injectCockpitStyles, lucideSvg, numberInput, row, switchToggle, switchToggleEnhanced, emptyState, engineMissingNotice,
-  actionButtonEnhanced, resetButtonEnhanced,
+  band, chip, el, injectCockpitStyles, lucideSvg, numberInput, row, switchToggleEnhanced, emptyState, engineMissingNotice,
+  actionButtonEnhanced, resetButtonEnhanced, workflowLink, workflowStrip,
 } from '../ui/cockpit';
 import { clone, editHandle } from './editHandle';
 
@@ -185,6 +185,25 @@ export function dataChangeHistoryModule(): SettingsModule {
         resetBtn.disabled = !dirty;
         head.append(title, saveBtn, resetBtn);
         root.appendChild(head);
+
+        root.appendChild(workflowStrip([
+          workflowLink({
+            label: 'Go to Smart Edit',
+            hint: 'Paired editing controls',
+            icon: 'sparkles',
+            moduleId: 'smart-edit',
+            events: ctx.events,
+            lucideSvg,
+          }),
+          workflowLink({
+            label: 'Go to Bulk Update',
+            hint: 'Replace values across a selection',
+            icon: 'replace',
+            moduleId: 'bulk-update',
+            events: ctx.events,
+            lucideSvg,
+          }),
+        ]));
 
         const scroll = el('div', 'ckp-flat-body');
 

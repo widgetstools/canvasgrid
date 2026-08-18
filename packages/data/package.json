@@ -27,6 +27,7 @@
   "dependencies": {
     "@wellsfargo-starui/velocity-grid-appdata": "*",
     "@wellsfargo-starui/velocity-grid-storage": "*",
+    "@wellsfargo-starui/velocity-grid-expression": "*",
     "@stomp/stompjs": "^7.3.0"
   },
   "peerDependencies": {
@@ -36,6 +37,7 @@
     "typescript": "~5.9.3",
     "vitest": "^2.1.0",
     "happy-dom": "^20.0.10",
-    "@wellsfargo-starui/velocity-grid": "*"
+    "@wellsfargo-starui/velocity-grid": "*",
+    "@codemirror/view": "^6.43.6"
   }
 }

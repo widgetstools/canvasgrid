@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DataProviderConfig } from '../src/types';
 import {
+  applyPortableProviderConfig,
   exportProviderConfig,
   parseProviderConfigImport,
+  serializeProviderConfig,
   toPortableProviderConfig,
 } from '../src/editor/providerConfigIo';
 
@@ -99,5 +101,31 @@ describe('exportProviderConfig', () => {
     exportProviderConfig(base);
     expect(createObjectURL).toHaveBeenCalled();
     expect(click).toHaveBeenCalled();
+  });
+});
+
+describe('applyPortableProviderConfig', () => {
+  it('overlays imported fields but keeps identity', () => {
+    const portable = toPortableProviderConfig({
+      ...base,
+      name: 'Imported name',
+      config: { ...base.config, websocketUrl: 'ws://other' },
+    });
+    const next = applyPortableProviderConfig(base, portable);
+    expect(next.providerId).toBe('p-1');
+    expect(next.userId).toBe('dev1');
+    expect(next.isDefault).toBe(true);
+    expect(next.name).toBe('Imported name');
+    expect(next.config.websocketUrl).toBe('ws://other');
+  });
+});
+
+describe('serializeProviderConfig', () => {
+  it('wraps a portable envelope', () => {
+    const parsed = JSON.parse(serializeProviderConfig(base));
+    expect(parsed.kind).toBe('starui.dataProvider');
+    expect(parsed.version).toBe(1);
+    expect(parsed.provider.name).toBe('STOMP Positions');
+    expect(parsed.provider).not.toHaveProperty('providerId');
   });
 });

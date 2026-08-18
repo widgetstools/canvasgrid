@@ -25,7 +25,8 @@ import { editorColumns, leafColumns, schemaFromGrid } from '../ui/gridSchema';
 import {
   appendPaneChrome, band, caps, chip, colorField, el, iconTile, injectCockpitStyles, lucideSvg,
   numberInput, pillGroup, restorePaneScroll, row, select, switchToggle, takePaneScroll, textInput,
-  emptyState,
+  emptyState, createSettingsAdvancedTabs, markBandComplexity,
+  workflowLink, workflowStrip,
 } from '../ui/cockpit';
 import { formatPickerMenu, formatPickerFitContainer, previewFormat } from '../toolbar/formatPicker';
 import type { FormatDataType } from '../toolbar/formatPresets';
@@ -294,6 +295,17 @@ export function conditionalStylingModule(): SettingsModule {
         head.append(nameIn, statusBox, scopeSel, prioIn, saveBtn, resetBtn);
         const body = appendPaneChrome(pane, head);
 
+        body.appendChild(workflowStrip([
+          workflowLink({
+            label: 'Related alerts',
+            hint: 'Notify when conditions fire',
+            icon: 'bell',
+            moduleId: 'alerts',
+            events: ctx.events,
+            lucideSvg,
+          }),
+        ]));
+
         // Applied is display-only (no twin control). Status / Scope / Priority
         // live once in the header — chips must not duplicate those controls.
         const chipsStrip = el('div', 'ckp-chips-strip');
@@ -307,8 +319,12 @@ export function conditionalStylingModule(): SettingsModule {
         };
         syncDirty();
 
+        const settingsPane = el('div');
+        const advancedPane = el('div');
+
         // 01 EXPRESSION.
         const expr = band('Expression');
+        markBandComplexity(expr, 'basic');
         const editorHost = el('div', 'ckp-editor');
         const errBox = el('div', 'ckp-error');
         errBox.style.display = 'none';
@@ -335,12 +351,13 @@ export function conditionalStylingModule(): SettingsModule {
           onCommit: () => { if (isDirty()) save(); },
         });
         expr.body.append(editorHost, errBox, el('div', 'ckp-hint', 'Type [ for columns · ⌘↵ to save · [col.old] / [col.new] compare against the previous tick'));
-        body.appendChild(expr.root);
+        settingsPane.appendChild(expr.root);
 
         // 02 TARGET COLUMNS (cell scope).
         if (d.scope.kind === 'cell') {
           const scope = d.scope;
           const tgt = band('Target columns');
+          markBandComplexity(tgt, 'basic');
           const chips = el('div', 'ckp-colchips');
           const renderChips = (): void => {
             chips.replaceChildren();
@@ -387,7 +404,7 @@ export function conditionalStylingModule(): SettingsModule {
             syncDirty();
           });
           tgt.body.append(chips, picker);
-          body.appendChild(tgt.root);
+          settingsPane.appendChild(tgt.root);
         }
 
         // 03 STYLE — the formatter toolbar's Font/Borders chrome (same
@@ -397,6 +414,7 @@ export function conditionalStylingModule(): SettingsModule {
         // rather than left as dead buttons.
         const slice = (d.style.base ??= {});
         const styleBand = band('Style');
+        markBandComplexity(styleBand, 'basic');
         const chromeHost = el('div', 'ckp-stylechrome');
         styleChromeDispose = mountFormatterStyleChrome(chromeHost, {
           getStyle: () => ({
@@ -431,10 +449,11 @@ export function conditionalStylingModule(): SettingsModule {
         });
         styleBand.body.appendChild(chromeHost);
         styleBand.body.appendChild(el('div', 'ckp-hint', 'Bold / italic / underline / strike · text + fill colour · per-side borders (pick a side, then width / style / colour · eraser clears the side)'));
-        body.appendChild(styleBand.root);
+        settingsPane.appendChild(styleBand.root);
 
         // 07 FLASH ON MATCH + STYLE WINDOW.
         const flash = band('Flash on match');
+        markBandComplexity(flash, 'advanced');
         const f = d.flash ?? { enabled: false, target: 'cell' as const, mode: 'fade' as const, color: '#f0b90b', durationMs: 700 };
         flash.body.appendChild(row('Flash', switchToggle(f.enabled, (v) => {
           d.flash = { ...f, enabled: v };
@@ -452,10 +471,11 @@ export function conditionalStylingModule(): SettingsModule {
           numberInput(d.activeDurationMs, (v) => { d.activeDurationMs = v; syncDirty(); }, { placeholder: 'persistent', suffix: 'MS' }),
           'Optional — match styling auto-reverts after this interval. Leave blank for persistent.',
         ));
-        body.appendChild(flash.root);
+        advancedPane.appendChild(flash.root);
 
         // 08 INDICATOR.
         const ind = band('Indicator');
+        markBandComplexity(ind, 'advanced');
         const current = el('div', 'ckp-typebar');
         const renderCurrent = (): void => {
           current.replaceChildren();
@@ -533,10 +553,11 @@ export function conditionalStylingModule(): SettingsModule {
           ind.body.appendChild(gridEl);
         }
         ind.body.appendChild(el('div', 'ckp-hint', 'Inline Prefix/Suffix flow with the value; positional slots overlay the cell corners and middles.'));
-        body.appendChild(ind.root);
+        advancedPane.appendChild(ind.root);
 
         // 09 VALUE FORMATTER.
         const fmt = band('Value formatter');
+        markBandComplexity(fmt, 'advanced');
         const fmtBtn = el('button', 'ckp-fmtbtn');
         fmtBtn.type = 'button';
         const syncFmtBtn = (): void => {
@@ -568,7 +589,13 @@ export function conditionalStylingModule(): SettingsModule {
         });
         fmtBtn.addEventListener('click', () => fmtMenu?.toggle());
         fmt.body.append(fmtBtn, el('div', 'ckp-hint', "Applied to cells where this rule matches — overrides the column's own formatter."));
-        body.appendChild(fmt.root);
+        advancedPane.appendChild(fmt.root);
+
+        body.appendChild(createSettingsAdvancedTabs({
+          settings: settingsPane,
+          advanced: advancedPane,
+          lucideSvg,
+        }).root);
 
         restorePaneScroll(pane, scrollTop);
       };

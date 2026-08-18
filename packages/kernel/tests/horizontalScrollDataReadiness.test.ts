@@ -288,11 +288,11 @@ describe('cellAt — mirror fallback for columns missing from the chunk', () => 
     restore();
   });
 
-  it('valueGetter columns stay blank (worker-computed — never guessed from the mirror)', async () => {
+  it('valueGetter columns paint from the main-thread mirror when the chunk is missing', async () => {
     const { grid, g, restore } = buildWiredGrid();
     await tick();
     dropColFromChunk(g, 'g');
-    expect(g.cellAt(2, 'g')?.value).toBe('');
+    expect(g.cellAt(2, 'g')?.value).toBe('computed');
     grid.destroy();
     restore();
   });
