@@ -6,6 +6,7 @@ import {
   titleBarExtensions,
   ribbonExtensions,
   perspectiveDataProviderModule,
+  type VelocityGridExtConfig,
   type VelocityGridExtOptions,
 } from '@wellsfargo-starui/velocity-grid-ext';
 import {
@@ -40,11 +41,31 @@ export type AngularSsrmHost = {
   storage: LocalStore;
   appData: PersistedAppDataStore;
   dataController: PerspectiveDataProviderController;
-  exportCsv: () => Promise<void>;
-  copyCsv: () => Promise<string>;
+  getConfig: () => VelocityGridExtConfig;
+  exportConfigJson: () => string;
+  downloadConfig: () => void;
+  importConfig: (config: VelocityGridExtConfig) => void;
+  persistConfig: () => void;
   rebindFromAppData: (snapshotRows: number) => Promise<void>;
   onStatus: (fn: (text: string) => void) => () => void;
 };
+
+function downloadJson(filename: string, json: string): void {
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/** Full workspace blob from Ext `getConfig` (view + layouts + module slices). */
+function isGridConfig(value: unknown): value is VelocityGridExtConfig {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
 
 export async function mountSsrmGrid(host: HTMLElement): Promise<AngularSsrmHost> {
   registerDefaultTransports();
@@ -167,14 +188,23 @@ export async function mountSsrmGrid(host: HTMLElement): Promise<AngularSsrmHost>
     storage,
     appData,
     dataController,
-    async exportCsv() {
-      await ext.grid.exportDataAsCsv({ fileName: 'ssrm-positions.csv' });
-      emitStatus('Downloaded ssrm-positions.csv');
+    getConfig: () => ext.getConfig(),
+    exportConfigJson: () => JSON.stringify(ext.getConfig(), null, 2),
+    downloadConfig: () => {
+      downloadJson('angular-ssrm-config.json', JSON.stringify(ext.getConfig(), null, 2));
+      emitStatus('Downloaded angular-ssrm-config.json');
     },
-    async copyCsv() {
-      const csv = (await ext.grid.getDataAsCsv()) ?? '';
-      emitStatus(`CSV ${csv.split('\n').length - 1} rows`);
-      return csv;
+    importConfig: (config) => {
+      if (!isGridConfig(config)) {
+        throw new Error('Import failed: expected a grid config object');
+      }
+      ext.loadConfig(config);
+      ext.persistConfig();
+      emitStatus('Imported grid config (view + layouts + modules)');
+    },
+    persistConfig: () => {
+      ext.persistConfig();
+      emitStatus('Persisted grid config to LocalStore / ConfigSession');
     },
     async rebindFromAppData(snapshotRows: number) {
       appData.set('runtime', 'snapshotRows', snapshotRows);

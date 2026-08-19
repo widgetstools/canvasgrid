@@ -118,7 +118,8 @@ body {
   min-width: 160px;
 }
 
-.csv-preview {
+.csv-preview,
+.config-preview {
   flex: 0 0 72px;
   margin: 0;
   padding: 6px 12px;

@@ -1,5 +1,5 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
-import { csvToSsrmUpdates } from './csv-io';
+import type { VelocityGridExtConfig } from '@wellsfargo-starui/velocity-grid-ext';
 import type { AngularSsrmHost } from './ssrm-host';
 
 @Component({
@@ -20,27 +20,28 @@ import type { AngularSsrmHost } from './ssrm-host';
         <button type="button" (click)="rebindFromAppData()">Re-resolve &amp; rebind</button>
       </div>
       <div class="toolbar-group">
-        <button type="button" (click)="exportCsv()">Export CSV</button>
-        <button type="button" (click)="copyCsv()">Copy CSV</button>
+        <button type="button" (click)="exportConfig()">Export config</button>
+        <button type="button" (click)="copyConfig()">Copy config</button>
+        <button type="button" (click)="persistConfig()">Save to store</button>
         <label class="file-btn">
-          Import CSV
-          <input type="file" accept=".csv,text/csv" (change)="importCsv($event)" hidden />
+          Import config
+          <input type="file" accept=".json,application/json" (change)="importConfig($event)" hidden />
         </label>
       </div>
       <div class="status">{{ statusText }}</div>
     </div>
     <textarea
-      class="csv-preview"
+      class="config-preview"
       readonly
-      [value]="csvPreview"
-      placeholder="CSV preview appears after Copy CSV…"
+      [value]="configPreview"
+      placeholder="Config JSON preview appears after Export / Copy…"
     ></textarea>
   `,
 })
 export class VelocitySsrmGrid implements OnInit, OnDestroy {
   snapshotRows = 3_000;
   statusText = 'Grid loading…';
-  csvPreview = '';
+  configPreview = '';
 
   private api: AngularSsrmHost | null = null;
   private offStatus: (() => void) | null = null;
@@ -68,30 +69,37 @@ export class VelocitySsrmGrid implements OnInit, OnDestroy {
     await this.api?.rebindFromAppData(this.snapshotRows);
   }
 
-  async exportCsv(): Promise<void> {
-    await this.api?.exportCsv();
+  exportConfig(): void {
+    this.api?.downloadConfig();
+    this.configPreview = this.api?.exportConfigJson() ?? '';
   }
 
-  async copyCsv(): Promise<void> {
-    const csv = (await this.api?.copyCsv()) ?? '';
-    this.csvPreview = csv;
-    if (csv && navigator.clipboard?.writeText) await navigator.clipboard.writeText(csv);
+  async copyConfig(): Promise<void> {
+    const json = this.api?.exportConfigJson() ?? '';
+    this.configPreview = json;
+    if (json && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(json);
+      this.statusText = 'Copied grid config JSON to clipboard';
+    }
   }
 
-  async importCsv(ev: Event): Promise<void> {
+  persistConfig(): void {
+    this.api?.persistConfig();
+  }
+
+  async importConfig(ev: Event): Promise<void> {
     const input = ev.target as HTMLInputElement;
     const file = input.files?.[0];
     input.value = '';
     if (!file || !this.api) return;
 
-    const text = await file.text();
-    const updates = csvToSsrmUpdates(text);
-    if (!updates.length) {
-      this.statusText = 'Import: no rows with positionId found';
-      return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text) as VelocityGridExtConfig;
+      this.api.importConfig(parsed);
+      this.configPreview = JSON.stringify(parsed, null, 2).slice(0, 8000);
+    } catch (err) {
+      this.statusText = err instanceof Error ? err.message : String(err);
     }
-    this.api.grid.applyServerSideTransaction({ update: updates });
-    this.statusText = `Imported ${updates.length} row update(s)`;
-    this.csvPreview = text.slice(0, 4000);
   }
 }

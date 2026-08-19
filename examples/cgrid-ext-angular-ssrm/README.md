@@ -5,7 +5,7 @@ Standalone Angular **16.1** host demonstrating:
 - **Perspective SSRM** (`rowModelType: 'serverSide'`) via `VelocityGridExt`
 - **Programmatic DataProvider** — build catalog config in code, resolve AppData tokens, persist with `LocalStorageConfigBackend`
 - **Shared config store** — one `LocalStore` backs provider catalog, AppData (`PersistedAppDataStore`), and Ext `ConfigSession`
-- **Grid export/import** — `exportDataAsCsv` / `getDataAsCsv` and CSV → `applyServerSideTransaction({ update })`
+- **Grid config export/import** — `VelocityGridExt.getConfig()` / `loadConfig()` / `persistConfig()`
 
 Uses seed feed (no STOMP broker required).
 
@@ -40,8 +40,7 @@ Optional query: `?worker=dedicated` skips SharedWorker (useful in some CI/browse
 |------|------|
 | `src/app/provider-catalog.ts` | `buildSsrmProviderTemplate()` with `{{runtime.*}}` AppData tokens |
 | `src/app/ssrm-host.ts` | Grid + catalog + AppData bootstrap (runs **before** Zone.js) |
-| `src/app/velocity-ssrm-grid.ts` | Angular toolbar wired to `window.__angularSsrm` |
-| `src/app/csv-io.ts` | CSV parse helper for import |
+| `src/app/velocity-ssrm-grid.ts` | Angular toolbar: config export/import + persist |
 | `src/main.ts` | Pre-zone grid mount, then Angular bootstrap |
 | `vite.config.ts` | WASM/worker-friendly aliases to monorepo packages |
 
@@ -62,13 +61,24 @@ await dataController.setActiveProvider('angular-ssrm-seed-positions', { force: t
 
 See `src/app/ssrm-host.ts` for the full Ext + SSRM wiring.
 
-## Export / import (grid API)
+## Export / import grid config (Ext API)
 
-- **Export CSV** — `grid.exportDataAsCsv({ fileName: 'ssrm-positions.csv' })`
-- **Copy CSV** — `grid.getDataAsCsv()` (visible/filtered rows)
-- **Import CSV** — parse client-side, then `grid.applyServerSideTransaction({ update: rows })`
+Grid **workspace config** (not row data) — current view state, named layouts, and module slices (including active SSRM provider id):
 
-There is no separate `importData` API; SSRM hosts apply imported rows as server-side transactions.
+- **Export config** — `ext.getConfig()` → download `angular-ssrm-config.json`
+- **Copy config** — same blob as formatted JSON
+- **Save to store** — `ext.persistConfig()` → shared `LocalStore` / ConfigSession (`velocity-grid:instance:<gridId>`)
+- **Import config** — parse JSON file → `ext.loadConfig(config)` → `ext.persistConfig()`
+
+```ts
+const config = ext.getConfig();   // GridState + layouts bundle
+ext.loadConfig(config);           // restore view + layouts + modules
+ext.persistConfig();              // write to ConfigSession / LocalStore
+```
+
+This is **not** `grid.getConfig()` (kernel runtime options). Use Ext `getConfig` / `loadConfig` for JSON persistence.
+
+Layouts menu in Ext chrome uses the same shape — exported files are interchangeable.
 
 ## Angular + Zone.js note
 
@@ -85,4 +95,4 @@ to `packages/*/src` (and kernel `dist`).
 
 ## Console helpers
 
-After load, `window.__angularSsrm` exposes `grid`, `catalog`, `appData`, `dataController`, and `exportCsv()` / `copyCsv()` / `rebindFromAppData()`.
+After load, `window.__angularSsrm` exposes `ext`, `grid`, `getConfig()`, `downloadConfig()`, `importConfig()`, and `persistConfig()`.
