@@ -178,7 +178,7 @@ function normalizeSchema(
   schema: Record<string, string> | undefined,
   keyColumn: string | string[] | undefined,
 ): Record<string, string> {
-  const s = { ...(schema ?? POSITION_SCHEMA) };
+  const s: Record<string, string> = { ...(schema ?? POSITION_SCHEMA) };
   const indexField = resolveTableIndexField(keyColumn ?? 'positionId');
   if (!s[indexField]) s[indexField] = 'string';
   return s;

@@ -38,8 +38,8 @@ const grid = new VelocityGrid(document.getElementById('grid')!, {
   sideBar: { toolPanels: ['columns', 'filters'] },
   statusBar: {
     statusPanels: [
-      { statusPanel: 'agTotalAndFilteredRowCountComponent' },
-      { statusPanel: 'agSelectedRowCountComponent' },
+      { key: 'total', statusPanel: 'agTotalAndFilteredRowCountComponent' },
+      { key: 'selected', statusPanel: 'agSelectedRowCountComponent' },
     ],
   },
   ...provider.gridOptions(),
@@ -180,7 +180,7 @@ const api: SimpleApi = {
     const prev: Record<string, unknown> = { ...(mirror ?? {}) };
     const next: Record<string, unknown> = { ...prev, ...patch, positionId: rowId };
     // Kernel SSRM txs emit `rowsChanged` → rules/alerts bridge (flash + alerts).
-    grid.applyServerSideTransaction({ update: [next] });
+    grid.applyServerSideTransaction({ update: [next as never] });
     return { rowId, flashed: -1 };
   },
   probeBodyPaint() {

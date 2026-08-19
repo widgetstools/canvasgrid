@@ -32,10 +32,10 @@ type StompBag = {
   columnDefinitions?: ColumnDefinition[];
 };
 
-function keyColumnOf(c: StompCfg): string | string[] | undefined {
+function keyColumnOf(c: StompBag): string | string[] | undefined {
   if (typeof c.keyColumn === 'string' && c.keyColumn.trim()) return c.keyColumn.trim();
   if (Array.isArray(c.keyColumn) && c.keyColumn.length) {
-    const keys = c.keyColumn.filter((k) => typeof k === 'string' && k.trim());
+    const keys = c.keyColumn.filter((k: string) => typeof k === 'string' && k.trim());
     if (keys.length === 1) return keys[0];
     if (keys.length > 1) return keys;
   }

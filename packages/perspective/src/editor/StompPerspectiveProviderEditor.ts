@@ -66,6 +66,12 @@ const DEFAULT_DRAFT: Draft = {
   filterJson: '',
 };
 
+function keyColumnToDraft(value: string | string[] | undefined): string {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.join(',');
+  return DEFAULT_DRAFT.keyColumn;
+}
+
 function draftFromInitial(partial?: Partial<StompPerspectiveProviderConfig>): Draft {
   return {
     ...DEFAULT_DRAFT,
@@ -75,7 +81,7 @@ function draftFromInitial(partial?: Partial<StompPerspectiveProviderConfig>): Dr
     snapshotTopic: partial?.snapshotTopic ?? '',
     triggerTopic: partial?.triggerTopic ?? '',
     snapshotEndToken: partial?.snapshotEndToken ?? DEFAULT_DRAFT.snapshotEndToken,
-    keyColumn: partial?.keyColumn ?? DEFAULT_DRAFT.keyColumn,
+    keyColumn: keyColumnToDraft(partial?.keyColumn),
     snapshotRows: partial?.snapshotRows ?? DEFAULT_DRAFT.snapshotRows,
     rate: partial?.rate ?? DEFAULT_DRAFT.rate,
     batchSize: partial?.batchSize ?? DEFAULT_DRAFT.batchSize,

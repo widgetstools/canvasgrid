@@ -624,7 +624,7 @@ export class PerspectiveBook {
   private flushTimer: number | null = null;
 
   constructor(options: PerspectiveBookOptions = {}) {
-    const schema = { ...(options.schema ?? POSITION_SCHEMA) };
+    const schema: Record<string, string> = { ...(options.schema ?? POSITION_SCHEMA) };
     const keyColumn = options.keyColumn ?? 'positionId';
     const indexField = resolveTableIndexField(keyColumn);
     if (!schema[indexField]) schema[indexField] = 'string';
