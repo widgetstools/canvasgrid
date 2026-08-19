@@ -23,6 +23,8 @@ export interface FakeRow {
 export interface FakeColDef {
   colId: string;
   field: string;
+  /** Legacy AG-style alias folded into cellDataType by the edit bridge. */
+  type?: string | string[];
   cellDataType?: string;
   /** Bridge-shaped (Task 11) — unused by Task 5/7's plain TargetSurface
    *  factory below, consumed by `createFakeKernelGrid`'s `getGridOption`

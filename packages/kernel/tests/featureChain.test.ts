@@ -92,7 +92,7 @@ function setup(opts: { rowCount?: number; cols?: string[]; initialFocus?: { row:
     commitFill: () => {},
     // Cycle 9 / Task 6 — `cellSelection` bundle. Undefined so the
     // existing chain tests behave with Cycle 9 defaults (drag enabled,
-    // header click selects column band).
+    // header click does not select a column band).
     getCellSelectionOptions: () => undefined,
     // Cycle 9 / Task 7 — features emit `rangeSelectionChanged` via this
     // hook. No-op here so the chain tests don't depend on the event

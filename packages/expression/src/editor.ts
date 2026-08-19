@@ -235,6 +235,22 @@ export interface ExpressionEditorOptions {
   tooltipParent?: HTMLElement;
 }
 
+/** CodeMirror `root` must be a Document or ShadowRoot (`getSelection`).
+ *  A detached host's `getRootNode()` is the element itself — that throws. */
+function resolveEditorRoot(
+  host: HTMLElement,
+  explicit?: Document | ShadowRoot,
+): Document | ShadowRoot {
+  if (explicit) return explicit;
+  if (host.isConnected) {
+    const node = host.getRootNode();
+    if (node instanceof Document || (typeof ShadowRoot !== 'undefined' && node instanceof ShadowRoot)) {
+      return node;
+    }
+  }
+  return host.ownerDocument ?? document;
+}
+
 /** True inside an unclosed `[` (string-aware) — column-only completions. */
 function inColumnRef(text: string): boolean {
   let inStr: false | string = false;
@@ -397,10 +413,7 @@ export class ExpressionEditor {
         : []),
     ]));
 
-    const root = opts.root
-      ?? (host.getRootNode() as Document | ShadowRoot | undefined)
-      ?? host.ownerDocument
-      ?? document;
+    const root = resolveEditorRoot(host, opts.root);
     const crossDocument = root instanceof Document && root !== document;
     const tooltipParent = opts.tooltipParent
       ?? (crossDocument ? root.body : undefined);

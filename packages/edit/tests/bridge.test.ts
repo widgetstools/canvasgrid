@@ -854,6 +854,19 @@ describe('wireEditIntoKernel — editability resolution parity', () => {
     expect(targets.map((t) => t.rowId)).toEqual(['r0', 'r1', 'r2']); // [] before the fold
   });
 
+  it('treats legacy type: "number" like cellDataType: "number" for smart-edit targets', async () => {
+    const fake = createFakeKernelGrid({
+      rows: rows.map((r) => ({ ...r })),
+      colDefs: [{ colId: 'qty', field: 'qty', type: 'number', editable: true }],
+      defaultColDef: { editable: true },
+    });
+    const handle = wireEditIntoKernel(fake.grid);
+    fake.setRanges([{ rowStart: 0, rowEnd: 2, colIds: ['qty'] }]);
+    const targets = await handle.smartEdit.collectTargets();
+    expect(targets.map((t) => t.rowId)).toEqual(['r0', 'r1', 'r2']);
+    expect(targets.every((t) => t.cellDataType === 'number')).toBe(true);
+  });
+
   it('leaf editable:false beats defaultColDef.editable:true (kernel precedence)', async () => {
     const fake = createFakeKernelGrid({
       rows: rows.map((r) => ({ ...r })),

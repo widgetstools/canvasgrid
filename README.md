@@ -28,11 +28,23 @@ npm run dev:showcase    # cgrid feature tour (no external services)
 | `npm run dev:perspective-ssrm-sample` | `cgrid-perspective-ssrm-sample` | 5201 | No* | Perspective SSRM + tabbed provider editor |
 | `npm run dev:positions` | `cgrid-positions` | 5175 | Yes | Live blotter |
 | `npm run dev:ext-demo` | `cgrid-ext-demo` | 5188 | Yes | VelocityGridExt chrome |
+| `npm run dev:ext-react` | `examples/cgrid-ext-react` | 5202 | No | React + VelocityGridExt from tarballs |
+| `npm run dev:ext-angular` | `examples/cgrid-ext-angular` | 5203 | No | Angular + VelocityGridExt from tarballs |
+| `npm run dev:ext-angular-ssrm` | `examples/cgrid-ext-angular-ssrm` | 5204 | No | Angular 16.1 SSRM + AppData + CSV export/import |
 | `npm run dev:customizer` | `cgrid-customizer-demo` | 5187 | Yes | Customizer UI |
 | `npm run dev:colgroups` | `colgroups` | 5176 | No | AG Grid column-groups reference |
 | `npm run dev:ag-showcase` | `showcase` | 5174 | Optional | AG Grid React reference |
 
 \* Default feed is local seed. Pass `?feed=stomp` only when `npm run dev:stomp` is running.
+
+React / Angular **tarball** hosts (not workspace apps):
+
+```bash
+npm run examples:install    # pack dist/tarballs + npm install examples/*
+npm run dev:ext-react       # http://localhost:5202
+npm run dev:ext-angular         # http://localhost:5203
+npm run dev:ext-angular-ssrm    # http://localhost:5204
+```
 
 ### STOMP live feed (optional)
 
@@ -78,6 +90,8 @@ Starts each Vite app briefly, checks HTTP on its port, then stops it. Safe on ma
 | `packages/ext` / `customizer` | Lit UI chrome |
 | `packages/perspective` | Perspective + STOMP SSRM bridge |
 | `apps/cgrid-*` | Product demos |
+| `examples/cgrid-ext-react` | Vite React host installing kernel/ext tarballs |
+| `examples/cgrid-ext-angular` | Angular host installing kernel/ext tarballs |
 | `apps/showcase` / `colgroups` | AG Grid 35.x reference apps |
 | `docs/` | Feature catalog, plans, performance notes |
 
@@ -91,6 +105,8 @@ Starts each Vite app briefly, checks HTTP on its port, then stops it. Safe on ma
 | `npm run test:kernel` | Kernel Vitest suite |
 | `npm run lint` | ESLint (identifier vocabulary + basic hygiene) |
 | `npm run verify:demos` | Cross-platform demo HTTP boot check |
+| `npm run build:tarballs` | `npm pack` kernel, ext, and companions into `dist/tarballs/` |
+| `npm run examples:install` | Rebuild tarballs and `npm install` the React/Angular examples |
 
 ## Trust boundaries
 

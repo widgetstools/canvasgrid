@@ -19,14 +19,16 @@
   "dependencies": {
     "@wellsfargo-starui/velocity-grid-appdata": "*",
     "@wellsfargo-starui/velocity-grid-data": "*",
-    "@perspective-dev/client": "^4.5.2",
-    "@perspective-dev/server": "^4.5.2",
     "@stomp/stompjs": "^7.3.0"
   },
   "peerDependencies": {
-    "@wellsfargo-starui/velocity-grid": "*"
+    "@wellsfargo-starui/velocity-grid": "*",
+    "@perspective-dev/client": "^4.5.2",
+    "@perspective-dev/server": "^4.5.2"
   },
   "devDependencies": {
+    "@perspective-dev/client": "^4.5.2",
+    "@perspective-dev/server": "^4.5.2",
     "typescript": "~5.9.3",
     "vitest": "^2.1.0"
   }

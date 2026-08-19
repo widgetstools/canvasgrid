@@ -315,6 +315,13 @@ describe('cellSelection.suppressDrag — RangeSelection no-ops on cell mousedown
 });
 
 describe('cellSelection.suppressHeader — HeaderClick skips column-band selection (Cycle 9 / Task 6)', () => {
+  it('plain header click does NOT select a column band when suppressHeader is omitted', () => {
+    const f = new HeaderClick();
+    const grid = makeGrid(undefined);
+    f.handleClick(ctx({ kind: 'header', colId: 'ticker' }, grid, new MouseEvent('click')));
+    expect(grid.selection.getRanges()).toEqual([]);
+  });
+
   it('plain header click does NOT select a column band when suppressHeader is true', () => {
     const f = new HeaderClick();
     const grid = makeGrid({ suppressHeader: true });

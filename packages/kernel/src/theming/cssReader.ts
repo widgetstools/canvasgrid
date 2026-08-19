@@ -937,7 +937,7 @@ export class CssReader {
       rowHoverBg: get('--vg-row-hover-bg') || '#eef1f3',
       rowSelectedBg: get('--vg-row-selected-bg') || 'rgba(13,148,136,0.12)',
       focusRingColor: get('--vg-focus-ring-color') || '#0d9488',
-      focusRingWidth: px('--vg-focus-ring-width', 2),
+      focusRingWidth: px('--vg-focus-ring-width', 1),
       flashFromColor: get('--vg-flash-from-color') || '#fef3c7',
       flashToColor: get('--vg-flash-to-color') || 'rgba(254,243,199,0)',
       quickFilterMatchBg: get('--vg-quick-filter-match-bg') || '#fff3b8',

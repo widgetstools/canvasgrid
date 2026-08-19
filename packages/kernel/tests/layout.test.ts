@@ -39,4 +39,22 @@ describe('resolveColumnWidths', () => {
     expect(out[0]).toEqual({ colId: 'p', left: 0, width: 50, pinned: 'left' });
     expect(out[1]).toEqual({ colId: 'b', left: 50, width: 100 });
   });
+
+  it('fixed widths do not stretch the last column to fill the container', () => {
+    const out = resolveColumnWidths(
+      [r({ colId: 'a', width: 120 }), r({ colId: 'b', width: 180 })],
+      1000,
+    );
+    expect(out[0]!.width).toBe(120);
+    expect(out[1]!.width).toBe(180);
+    expect(out[0]!.width + out[1]!.width).toBeLessThan(1000);
+  });
+
+  it('columns without width get the default 100px (still not stretched)', () => {
+    const out = resolveColumnWidths(
+      [r({ colId: 'a' }), r({ colId: 'b' })],
+      800,
+    );
+    expect(out.map((c) => c.width)).toEqual([100, 100]);
+  });
 });

@@ -1,0 +1,37 @@
+{
+  "name": "cgrid-ext-angular",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@angular/common": "^19.2.14",
+    "@angular/compiler": "^19.2.14",
+    "@angular/core": "^19.2.14",
+    "@angular/platform-browser": "^19.2.14",
+    "@wellsfargo-starui/velocity-grid": "file:../../dist/tarballs/wellsfargo-starui-velocity-grid-0.0.0.tgz",
+    "@wellsfargo-starui/velocity-grid-appdata": "file:../../dist/tarballs/wellsfargo-starui-velocity-grid-appdata-0.0.0.tgz",
+    "@wellsfargo-starui/velocity-grid-calc": "file:../../dist/tarballs/wellsfargo-starui-velocity-grid-calc-0.0.0.tgz",
+    "@wellsfargo-starui/velocity-grid-customizer": "file:../../dist/tarballs/wellsfargo-starui-velocity-grid-customizer-0.0.0.tgz",
+    "@wellsfargo-starui/velocity-grid-data": "file:../../dist/tarballs/wellsfargo-starui-velocity-grid-data-0.0.0.tgz",
+    "@wellsfargo-starui/velocity-grid-edit": "file:../../dist/tarballs/wellsfargo-starui-velocity-grid-edit-0.0.0.tgz",
+    "@wellsfargo-starui/velocity-grid-export": "file:../../dist/tarballs/wellsfargo-starui-velocity-grid-export-0.0.0.tgz",
+    "@wellsfargo-starui/velocity-grid-expression": "file:../../dist/tarballs/wellsfargo-starui-velocity-grid-expression-0.0.0.tgz",
+    "@wellsfargo-starui/velocity-grid-ext": "file:../../dist/tarballs/wellsfargo-starui-velocity-grid-ext-0.0.0.tgz",
+    "@wellsfargo-starui/velocity-grid-format": "file:../../dist/tarballs/wellsfargo-starui-velocity-grid-format-0.0.0.tgz",
+    "@wellsfargo-starui/velocity-grid-perspective": "file:../../dist/tarballs/wellsfargo-starui-velocity-grid-perspective-0.0.0.tgz",
+    "@wellsfargo-starui/velocity-grid-renderers": "file:../../dist/tarballs/wellsfargo-starui-velocity-grid-renderers-0.0.0.tgz",
+    "@wellsfargo-starui/velocity-grid-rules": "file:../../dist/tarballs/wellsfargo-starui-velocity-grid-rules-0.0.0.tgz",
+    "@wellsfargo-starui/velocity-grid-storage": "file:../../dist/tarballs/wellsfargo-starui-velocity-grid-storage-0.0.0.tgz",
+    "rxjs": "~7.8.2",
+    "tslib": "^2.8.1"
+  },
+  "devDependencies": {
+    "typescript": "~5.8.3",
+    "vite": "^7.3.2"
+  }
+}

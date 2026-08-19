@@ -67,10 +67,10 @@
   --vg-row-alt-bg: #FFFFFF;
   --vg-header-bg: #F8F8F8;
   --vg-header-fg: #3B3B3B;
-  /* panel.border / editorGroup.border #E5E5E5 — Cursor's uniform pane line,
-   * used for both the section dividers and the cell gridlines. */
+  /* panel.border / editorGroup.border #E5E5E5 — Cursor's uniform pane line.
+   * Cell gridlines are ~5pp more opaque than that gray (~10% → ~15% black). */
   --vg-border-color: #E5E5E5;
-  --vg-grid-line-color: #E5E5E5;
+  --vg-grid-line-color: #D8D8D8;
   /* list.hoverBackground #F2F2F2 / list.activeSelectionBackground #E8E8E8. */
   --vg-row-hover-bg: #F2F2F2;
   --vg-row-selected-bg: #E8E8E8;
@@ -79,7 +79,7 @@
    * textLink.foreground #0064B0 (links stay on the same blue family). */
   --vg-chrome-accent: #2778C1;
   --vg-focus-ring-color: #2778C1;
-  --vg-focus-ring-width: 2px;
+  --vg-focus-ring-width: 1px;
   --vg-editor-invalid-color: var(--vg-neg-color);
   --vg-flash-from-color: rgb(192 133 50 / 30%);
   --vg-flash-to-color: rgb(192 133 50 / 0%);
@@ -158,9 +158,9 @@
   --vg-header-bg: #17191E;
   --vg-header-fg: #CCCCCC;
   /* panel.border nudged cool / editorGroup.border #FFFFFF17
-   * (~9% white — Cursor's own inter-pane line) for the cell gridlines. */
+   * (~9% white — Cursor's own inter-pane line). Gridlines +5pp opacity. */
   --vg-border-color: #2A2C32;
-  --vg-grid-line-color: rgb(255 255 255 / 9%);
+  --vg-grid-line-color: rgb(255 255 255 / 14%);
   /* list.hover / list.inactiveSelection — cool-shifted. */
   --vg-row-hover-bg: #2A2D33;
   --vg-row-selected-bg: #363A43;
@@ -169,7 +169,7 @@
    * textLink.foreground #81A1C1. (Not VS Code Modern #0078D4.) */
   --vg-chrome-accent: #81A1C1;
   --vg-focus-ring-color: #81A1C1;
-  --vg-focus-ring-width: 2px;
+  --vg-focus-ring-width: 1px;
   --vg-editor-invalid-color: var(--vg-neg-color);
   --vg-flash-from-color: rgb(241 180 103 / 28%);
   --vg-flash-to-color: rgb(241 180 103 / 0%);
@@ -531,12 +531,12 @@
   --vg-header-bg: #F8F8F8;
   --vg-header-fg: #3B3B3B;
   --vg-border-color: #E5E5E5;
-  --vg-grid-line-color: #E5E5E5;
+  --vg-grid-line-color: #D8D8D8;
   --vg-row-hover-bg: #F2F2F2;
   --vg-row-selected-bg: #E8E8E8;
   --vg-chrome-accent: #2778C1;
   --vg-focus-ring-color: #2778C1;
-  --vg-focus-ring-width: 2px;
+  --vg-focus-ring-width: 1px;
   --vg-flash-from-color: rgb(192 133 50 / 30%);
   --vg-flash-to-color: rgb(192 133 50 / 0%);
   --vg-resizer-hot-zone: 4px;
@@ -608,7 +608,7 @@
     --vg-header-bg: #17191E;
     --vg-header-fg: #CCCCCC;
     --vg-border-color: #2A2C32;
-    --vg-grid-line-color: rgb(255 255 255 / 9%);
+    --vg-grid-line-color: rgb(255 255 255 / 14%);
     --vg-row-hover-bg: #2A2D33;
     --vg-row-selected-bg: #363A43;
     --vg-chrome-accent: #81A1C1;
@@ -1488,7 +1488,7 @@
   transform: rotate(180deg);
 }
 .vg-columns-panel-row-caret:focus-visible {
-  outline: var(--vg-focus-ring-width, 2px) solid var(--vg-focus-ring-color);
+  outline: var(--vg-focus-ring-width, 1px) solid var(--vg-focus-ring-color);
   outline-offset: 2px;
 }
 /* Unified drag-grip — one glyph shared by the column-list rows, all zone

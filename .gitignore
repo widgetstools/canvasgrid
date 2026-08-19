@@ -11,6 +11,13 @@ tsconfig.tsbuildinfo
 # Vite cache
 .vite/
 
+# Angular CLI cache
+**/.angular/
+
+# Standalone example apps keep their own node_modules; lockfiles churn with
+# rebuilt tarball integrity hashes.
+examples/*/package-lock.json
+
 # Turbo build cache and per-workspace logs (machine-local artifacts)
 /.turbo/
 **/.turbo/

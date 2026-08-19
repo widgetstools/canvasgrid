@@ -83,6 +83,12 @@ export {
   type ViewSpec,
   type ViewTick,
 } from './book';
+export { boundUpdateBuffer, updateBufferCap, type UpdateBufferKeyColumn } from './updateBuffer';
+export {
+  resolveTableIndexField,
+  rowIdentity,
+  type RowKeyColumn,
+} from './rowIdentity';
 export {
   distinctValuesFromRowPaths,
   type GroupedDistinctRow,

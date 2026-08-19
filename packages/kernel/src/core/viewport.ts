@@ -68,6 +68,23 @@ export interface ViewportState {
   floatingFilterRowHeight?: number;
 }
 
+/**
+ * Rightmost painted column edge for chrome that must NOT invent a stretched
+ * last column. When the sum of column widths is narrower than the viewport,
+ * this is strictly less than `bodyRight` — leaving dead space so the last
+ * column keeps a visible trailing edge (and a resize hot-zone).
+ *
+ * Falls back to `bodyRight` when no columns are visible (empty grid).
+ */
+export function contentRightEdge(vs: ViewportState): number {
+  let right = 0;
+  for (let i = 0; i < vs.visibleColumns.length; i++) {
+    const r = vs.visibleColumns[i]!.right;
+    if (r > right) right = r;
+  }
+  return right > 0 ? right : vs.bodyRight;
+}
+
 export interface ViewportInput {
   columnLayout: ColumnLayout[];
   /** Subgrid stack, top→bottom. Header subgrids must come first; a single

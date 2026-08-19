@@ -1,0 +1,138 @@
+@import '@wellsfargo-starui/velocity-grid/style.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+app-root {
+  flex: 0 0 auto;
+  display: block;
+}
+
+body {
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  background: #0f1419;
+  color: #e2e8f0;
+}
+
+.grid-mount {
+  display: block;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+}
+
+.page-header {
+  flex: 0 0 auto;
+  padding: 12px 16px 8px;
+}
+
+.page-header h1 {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.page-header p {
+  margin: 0;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.page-header code {
+  font-size: 11px;
+}
+
+.toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  align-items: center;
+  padding: 8px 16px;
+  border-bottom: 1px solid #1e293b;
+  background: #111827;
+}
+
+.toolbar-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.toolbar label {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.toolbar input[type='number'] {
+  width: 88px;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: inherit;
+}
+
+.toolbar button,
+.file-btn {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid #334155;
+  background: #1e293b;
+  color: #e2e8f0;
+  cursor: pointer;
+}
+
+.toolbar button:hover,
+.file-btn:hover {
+  background: #334155;
+}
+
+.status {
+  flex: 1 1 200px;
+  font-size: 11px;
+  color: #64748b;
+  min-width: 160px;
+}
+
+.csv-preview {
+  flex: 0 0 72px;
+  margin: 0;
+  padding: 6px 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  line-height: 1.35;
+  border: none;
+  border-bottom: 1px solid #1e293b;
+  background: #0b1220;
+  color: #94a3b8;
+  resize: none;
+}
+
+.grid-host,
+app-velocity-ssrm-grid {
+  display: block;
+}

@@ -1,5 +1,6 @@
 import type { PainterCtx } from './types';
 import type { ViewportColumn } from '../../core/viewport';
+import { contentRightEdge } from '../../core/viewport';
 import type { CachedContext2D } from '../gc';
 
 /**
@@ -35,14 +36,10 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx, mode?: 'layer
   const dataOnly = mode === 'layer';
   const chromeOnly = mode === 'chrome';
 
-  // Full right edge of the painted area: rightmost visible column or the body
-  // right (whichever is larger; rightPinned columns extend past bodyRight).
-  // Cycle 25 / Task 5 — manual scan to avoid the .map + spread.
-  let rightEdge = vs.bodyRight;
-  for (let i = 0; i < vs.visibleColumns.length; i++) {
-    const r = vs.visibleColumns[i]!.right;
-    if (r > rightEdge) rightEdge = r;
-  }
+  // Right edge of COLUMN CONTENT only — do not pad out to bodyRight.
+  // When columns are narrower than the viewport, dead space stays empty so
+  // the last column keeps a real trailing edge (gridline + resize handle).
+  const rightEdge = contentRightEdge(vs);
 
   // Locate the LEAF-header row top — the last header subgrid is the leaf
   // header; any rows above it are group-header rows. Collect the group-header
@@ -307,7 +304,7 @@ function paintVerticalsInBand(
   color: string,
   groupHeaderRows: GroupHeaderRowRef[],
 ): void {
-  if (cols.length <= 1) return;
+  if (cols.length === 0) return;
   gc.cache.save();
   gc.beginPath();
   const clipTop = groupHeaderRows.length > 0
@@ -316,13 +313,19 @@ function paintVerticalsInBand(
   gc.rect(bandLeft, clipTop, bandRight - bandLeft, bottom - clipTop);
   gc.clip();
   gc.cache.fillStyle = color;
-  // Skip the last column — its right edge is the band boundary (or the viewport
-  // edge for the rightmost band) and is either drawn as a band-edge line or
-  // doesn't need one at all.
+  // Inter-column separators.
   for (let i = 0; i < cols.length - 1; i++) {
     const top = verticalTopForPair(cols[i]!, cols[i + 1]!, groupHeaderRows, leafHeaderTop);
     const x = Math.round(cols[i]!.right) - 1;
     gc.fillRect(x, top, 1, bottom - top);
+  }
+  // Trailing edge of the last column when it does NOT meet the band/viewport
+  // boundary — otherwise the last column appears to stretch into dead space
+  // and its resize hot-zone has no visible edge.
+  const last = cols[cols.length - 1]!;
+  if (Math.round(last.right) < Math.round(bandRight)) {
+    const x = Math.round(last.right) - 1;
+    gc.fillRect(x, clipTop, 1, bottom - clipTop);
   }
   gc.cache.restore();
 }

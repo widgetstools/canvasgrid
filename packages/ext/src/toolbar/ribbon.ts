@@ -32,6 +32,7 @@ import {
   type RibbonColorSwatch,
 } from './colorSwatch';
 import { wireRibbonOverflow } from './ribbonOverflow';
+import { lucideBundle } from '@wellsfargo-starui/velocity-grid/icons/lucide.generated';
 
 /** Floating-filter type choices — same vocabulary as the Column popover's
  *  Filter type segment (`auto` clears to kernel default via `filter: null`). */
@@ -49,8 +50,8 @@ const FILTER_TYPE_OPTIONS = [
 export type EditHandleGetter = () => EditBridgeHandle | undefined;
 
 const I = {
-  undo: 'M3 7v6h6M3 13a9 9 0 1 0 3-7.7L3 8',
-  redo: 'M21 7v6h-6M21 13a9 9 0 1 1-3-7.7L21 8',
+  undo: lucideBundle['undo-2']!,
+  redo: lucideBundle['redo-2']!,
   cursor: 'M3 3l7.07 17 2.51-7.39L20 10.06z',
   grid: 'M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18',
   rows: 'M3 3h18v18H3zM3 9h18M3 15h18',

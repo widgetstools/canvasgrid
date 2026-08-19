@@ -394,9 +394,21 @@ describe('RangeSelection — ctrl/cmd-click disjoint (Cycle 9 / Task 4)', () => 
 });
 
 describe('HeaderClick — column-band selection (Cycle 9 / Task 4)', () => {
-  it('plain click on a column header selects the WHOLE column (rowStart=0, rowEnd=rowCount-1, colIds=[colId])', () => {
+  const headerBand = { getCellSelectionOptions: () => ({ suppressHeader: false as const }) };
+
+  it('plain header click does NOT select a column band by default (CSRM/SSRM)', () => {
     const f = new HeaderClick();
     const grid = makeFullGrid({ rowCount: 100 });
+    f.handleClick(
+      ctx({ kind: 'header', colId: 'ticker' }, { x: 100, y: 10 }, grid, new MouseEvent('click')),
+    );
+    expect(grid.selection.getRanges()).toEqual([]);
+    expect(grid.cycleSort).toHaveBeenCalledWith('ticker', { append: false });
+  });
+
+  it('plain click on a column header selects the WHOLE column when suppressHeader is false', () => {
+    const f = new HeaderClick();
+    const grid = makeFullGrid({ rowCount: 100, ...headerBand });
     f.handleClick(
       ctx({ kind: 'header', colId: 'ticker' }, { x: 100, y: 10 }, grid, new MouseEvent('click')),
     );
@@ -407,7 +419,7 @@ describe('HeaderClick — column-band selection (Cycle 9 / Task 4)', () => {
 
   it('shift-click on a header EXTENDS the column band to include every column between anchor and clicked (render order)', () => {
     const f = new HeaderClick();
-    const grid = makeFullGrid({ rowCount: 100 });
+    const grid = makeFullGrid({ rowCount: 100, ...headerBand });
     // Anchor on cusip (plain click) → single-column band.
     f.handleClick(
       ctx({ kind: 'header', colId: 'cusip' }, { x: 10, y: 10 }, grid, new MouseEvent('click')),
@@ -424,7 +436,7 @@ describe('HeaderClick — column-band selection (Cycle 9 / Task 4)', () => {
 
   it('shift-click on a header where the LAST range is NOT a full column band falls back to plain single-column select', () => {
     const f = new HeaderClick();
-    const grid = makeFullGrid({ rowCount: 100 });
+    const grid = makeFullGrid({ rowCount: 100, ...headerBand });
     // Seed a partial range (rows 0..2 only — not a full column band).
     grid.selection.setRanges([{ rowStart: 0, rowEnd: 2, colIds: ['cusip'] }]);
     f.handleClick(
@@ -447,7 +459,7 @@ describe('HeaderClick — column-band selection (Cycle 9 / Task 4)', () => {
 
   it('click on headerResizer hot-zone still cycles sort (sort affordance shares the right edge)', () => {
     const f = new HeaderClick();
-    const grid = makeFullGrid({ rowCount: 100 });
+    const grid = makeFullGrid({ rowCount: 100, ...headerBand });
     f.handleClick(
       ctx(
         { kind: 'headerResizer', colId: 'ticker', edge: 'right' },
@@ -464,7 +476,7 @@ describe('HeaderClick — column-band selection (Cycle 9 / Task 4)', () => {
 
   it('shift-click on header passes append=true to cycleSort (when multiSortKey === Shift) AND extends column band', () => {
     const f = new HeaderClick();
-    const grid = makeFullGrid({ rowCount: 100 });
+    const grid = makeFullGrid({ rowCount: 100, ...headerBand });
     f.handleClick(
       ctx({ kind: 'header', colId: 'cusip' }, { x: 10, y: 10 }, grid, new MouseEvent('click')),
     );

@@ -31,6 +31,8 @@ import {
   distinctValuesFromRowPaths,
   type GroupedDistinctRow,
 } from './distinctValues';
+import { boundUpdateBuffer, updateBufferCap } from './updateBuffer';
+import { resolveTableIndexField, rowIdentity } from './rowIdentity';
 
 const SNAPSHOT_END_TOKEN = 'Success';
 
@@ -166,10 +168,11 @@ export interface PerspectiveBookOptions {
   /** Exact frame body marking end-of-snapshot (a `{token}: ...` prefixed
    *  variant is also accepted). Default `'Success'`. */
   snapshotEndToken?: string;
-  /** Name of the unique-key field in the STOMP payload rows. Mapped onto
-   *  the canonical `positionId` key (table index / getRowId / dedupe all
-   *  key on it). Default `'positionId'`. */
-  keyColumn?: string;
+  /** Unique-key field(s) in the STOMP payload rows. Single field or
+   *  composite (`string[]`). Drives LWW coalescing, getRowId, and the
+   *  Perspective table index column (see {@link resolveTableIndexField}).
+   *  Default `'positionId'` for the curated positions schema. */
+  keyColumn?: string | string[];
   /**
    * Perspective table schema — owned by the DataProvider catalog
    * (`columnDefinitions`). Defaults to {@link POSITION_SCHEMA}.
@@ -581,6 +584,9 @@ export class PerspectiveBook {
   private seedConnecting = false;
   private snapshotComplete = false;
   private updateBuffer: PositionRow[] = [];
+  /** Single-flight drain — concurrent STOMP handlers only mark dirty. */
+  private flushInFlight = false;
+  private flushQueued = false;
   private pauseFanout = false;
   /** Explicit Diagnostics Stop — blocks reconnect / Web-Lock takeover until restartFeed. */
   private feedStopped = false;
@@ -619,7 +625,9 @@ export class PerspectiveBook {
 
   constructor(options: PerspectiveBookOptions = {}) {
     const schema = { ...(options.schema ?? POSITION_SCHEMA) };
-    if (!schema.positionId) schema.positionId = 'string';
+    const keyColumn = options.keyColumn ?? 'positionId';
+    const indexField = resolveTableIndexField(keyColumn);
+    if (!schema[indexField]) schema[indexField] = 'string';
     this.opts = {
       feed: options.feed ?? 'seed',
       wsUrl: options.wsUrl ?? 'ws://localhost:8081',
@@ -632,7 +640,7 @@ export class PerspectiveBook {
       snapshotTopic: options.snapshotTopic,
       triggerTopic: options.triggerTopic,
       snapshotEndToken: options.snapshotEndToken ?? SNAPSHOT_END_TOKEN,
-      keyColumn: options.keyColumn ?? 'positionId',
+      keyColumn,
       schema,
       identity: options.identity,
       onTelemetry: options.onTelemetry,
@@ -721,6 +729,7 @@ export class PerspectiveBook {
       SHARED_TABLE_NAME,
       this.opts.schema,
       this.opts.identity,
+      this.tableIndexField(),
     );
     if (getPerspectiveWorkerMode() === 'shared') {
       this.table = table;
@@ -734,6 +743,11 @@ export class PerspectiveBook {
     }
     this.setPhase('idle');
     return this.table;
+  }
+
+  /** Perspective `table({ index })` column derived from keyColumn. */
+  private tableIndexField(): string {
+    return resolveTableIndexField(this.opts.keyColumn);
   }
 
   // ─── Phase 5: feed leadership (Web Locks; one feeder per table) ─────
@@ -1894,6 +1908,7 @@ export class PerspectiveBook {
       this.liveRowsIn = 0;
       this.liveWindow = [];
       this.updateBuffer = [];
+      this.flushQueued = false;
 
       const client = new Client({
         brokerURL: this.opts.wsUrl,
@@ -1943,6 +1958,7 @@ export class PerspectiveBook {
       this.liveRowsIn = 0;
       this.liveWindow = [];
       this.updateBuffer = [];
+      this.flushQueued = false;
       this.setPhase('snapshot');
 
       const n = Math.max(100, this.opts.snapshotRows | 0);
@@ -1998,7 +2014,7 @@ export class PerspectiveBook {
       }
       this.liveRowsIn += rows.length;
       this.liveWindow.push({ t: Date.now(), n: rows.length });
-      this.updateBuffer.push(...rows);
+      this.enqueueUpdates(rows);
       void this.flushUpdates();
     }, intervalMs);
   }
@@ -2127,23 +2143,26 @@ export class PerspectiveBook {
     if (deltas.length === 0) return;
     const messageType = msg.headers['message-type'];
 
-    // Key the payload on the configured column, mapped onto the canonical
-    // `positionId` (table index / getRowId / dedupe all key on it).
+    // Identity from configured keyColumn (single or composite). Also write
+    // the composed id onto the Perspective table index column so indexed
+    // upserts LWW correctly (table is created with `index: <indexField>`).
     const keyColumn = this.opts.keyColumn;
+    const indexField = this.tableIndexField();
     const rows: PositionRow[] = [];
     for (const delta of deltas) {
-      const raw = (delta as Record<string, unknown>)[keyColumn];
-      const id = raw != null ? String(raw) : '';
-      if (!id) continue;
-      const row = { ...delta, positionId: id } as PositionRow;
-      if (keyColumn !== 'positionId') delete (row as Record<string, unknown>)[keyColumn];
-      rows.push(row);
+      const record = delta as Record<string, unknown>;
+      const id = rowIdentity(record, keyColumn);
+      if (id == null) continue;
+      const row = { ...record } as Record<string, unknown>;
+      row[indexField] = id;
+      rows.push(row as PositionRow);
     }
     if (rows.length === 0) return;
 
     if (!this.snapshotComplete || messageType === 'snapshot') {
-      this.updateBuffer.push(...rows);
+      this.enqueueUpdates(rows);
       if (this.updateBuffer.length >= this.opts.batchSize) {
+        // Snapshot: await drain so chunks hit WASM before the next frame.
         await this.flushUpdates();
       } else {
         this.scheduleFlush();
@@ -2153,12 +2172,31 @@ export class PerspectiveBook {
 
     this.liveRowsIn += rows.length;
     this.liveWindow.push({ t: Date.now(), n: rows.length });
-    this.updateBuffer.push(...rows);
+    this.enqueueUpdates(rows);
+    // Live: never await from the STOMP callback — overlapping awaits let
+    // updateBuffer grow without bound while flush is stuck on WASM.
     if (this.updateBuffer.length >= this.opts.batchSize) {
-      await this.flushUpdates();
+      void this.flushUpdates();
     } else {
       this.scheduleFlush();
     }
+  }
+
+  /** Append + hard-cap the pending table.write queue (LWW per keyColumn). */
+  private enqueueUpdates(rows: PositionRow[]): void {
+    if (rows.length === 0) return;
+    this.updateBuffer.push(...rows);
+    const cap = updateBufferCap({
+      snapshotComplete: this.snapshotComplete,
+      batchSize: this.opts.batchSize,
+      snapshotRows: this.opts.snapshotRows,
+    });
+    if (this.updateBuffer.length <= cap) return;
+    this.updateBuffer = boundUpdateBuffer(
+      this.updateBuffer as Array<Record<string, unknown>>,
+      cap,
+      this.opts.keyColumn,
+    ) as PositionRow[];
   }
 
   private scheduleFlush(): void {
@@ -2171,31 +2209,57 @@ export class PerspectiveBook {
 
   private async flushUpdates(force = false): Promise<void> {
     if (this.pauseFanout && !force) return;
-    if (!this.table || this.updateBuffer.length === 0) return;
-    const batch = this.updateBuffer.splice(0);
+    if (this.flushInFlight) {
+      this.flushQueued = true;
+      return;
+    }
+    this.flushInFlight = true;
     try {
-      // Serialized with view ops — see the seed-snapshot sibling comment.
-      await this.withTableLock(() => this.table!.update(batch));
-      if (!this.snapshotComplete) {
-        this.snapshotRowsLoaded = Number(await this.withTableLock(() => this.table!.size()));
-      } else {
-        this.liveBatches++;
-        // Accumulate (last write per id wins) — overwriting dropped any
-        // batch that landed while the 100ms view-tick debounce was armed.
-        if (this.pendingLiveBatch.length === 0) {
-          this.pendingLiveBatch = batch;
-        } else {
-          const byId = new Map<string, PositionRow>();
-          for (const row of this.pendingLiveBatch) byId.set(row.positionId, row);
-          for (const row of batch) byId.set(row.positionId, row);
-          this.pendingLiveBatch = [...byId.values()];
+      for (;;) {
+        this.flushQueued = false;
+        if (this.pauseFanout && !force) break;
+        if (!this.table || this.updateBuffer.length === 0) break;
+        const batch = this.updateBuffer.splice(0);
+        try {
+          // Serialized with view ops — see the seed-snapshot sibling comment.
+          await this.withTableLock(() => this.table!.update(batch));
+          if (!this.snapshotComplete) {
+            this.snapshotRowsLoaded = Number(await this.withTableLock(() => this.table!.size()));
+          } else {
+            this.liveBatches++;
+            // Accumulate (last write per id wins) — overwriting dropped any
+            // batch that landed while the 100ms view-tick debounce was armed.
+            if (this.pendingLiveBatch.length === 0) {
+              this.pendingLiveBatch = batch;
+            } else {
+              const byId = new Map<string, PositionRow>();
+              const keyColumn = this.opts.keyColumn;
+              for (const row of this.pendingLiveBatch) {
+                const id = rowIdentity(row as Record<string, unknown>, keyColumn);
+                if (id != null) byId.set(id, row);
+              }
+              for (const row of batch) {
+                const id = rowIdentity(row as Record<string, unknown>, keyColumn);
+                if (id != null) byId.set(id, row);
+              }
+              this.pendingLiveBatch = [...byId.values()];
+            }
+            for (const id of this.views.keys()) void this.refreshProjected(id);
+          }
+          this.emitTelemetry();
+        } catch (err) {
+          console.error('[PerspectiveBook] table.update', err);
+          this.setPhase('error');
+          break;
         }
-        for (const id of this.views.keys()) void this.refreshProjected(id);
+        if (!this.flushQueued && this.updateBuffer.length === 0) break;
       }
-      this.emitTelemetry();
-    } catch (err) {
-      console.error('[PerspectiveBook] table.update', err);
-      this.setPhase('error');
+    } finally {
+      this.flushInFlight = false;
+      if (this.flushQueued && this.updateBuffer.length > 0 && !(this.pauseFanout && !force)) {
+        this.flushQueued = false;
+        void this.flushUpdates(force);
+      }
     }
   }
 

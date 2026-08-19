@@ -146,9 +146,10 @@ export function tableNameForSchema(
 export async function createPositionsTable(
   name = 'positions',
   schema: PerspectiveTableSchema = POSITION_SCHEMA,
+  index = 'positionId',
 ): Promise<Table> {
   const c = await getPerspectiveClient();
-  return c.table({ ...schema } as typeof POSITION_SCHEMA, { index: 'positionId', name });
+  return c.table({ ...schema } as typeof POSITION_SCHEMA, { index, name });
 }
 
 /** Phase 5 — attach to the shared table if another tab already hosts it,
@@ -159,6 +160,7 @@ export async function openOrCreatePositionsTable(
   name = SHARED_TABLE_NAME,
   schema: PerspectiveTableSchema = POSITION_SCHEMA,
   identity?: string,
+  index = 'positionId',
 ): Promise<{ table: Table; attached: boolean }> {
   const c = await getPerspectiveClient();
   const tableName = name === SHARED_TABLE_NAME ? tableNameForSchema(schema, identity, name) : name;
@@ -171,7 +173,7 @@ export async function openOrCreatePositionsTable(
   return {
     table: await c.table(
       { ...schema } as typeof POSITION_SCHEMA,
-      { index: 'positionId', name: tableName },
+      { index, name: tableName },
     ),
     attached: false,
   };

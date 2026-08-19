@@ -49,6 +49,7 @@ import {
 import { createPerspectiveSsrmDatasource } from './ssrmDatasource';
 import { POSITION_COLUMNS } from './positionColumns';
 import { POSITION_SCHEMA, type PositionRow } from './bootstrap';
+import { resolveTableIndexField, rowIdentity } from './rowIdentity';
 
 export interface StompPerspectiveProviderConfig {
   /** `'stomp'` for the live STOMP feed, `'seed'` (default) for the
@@ -85,9 +86,10 @@ export interface StompPerspectiveProviderConfig {
   /** Exact frame body marking end-of-snapshot (`{token}: ...` prefix
    *  variants also match). Default `'Success'`. */
   snapshotEndToken?: string;
-  /** Unique-key field name in the STOMP payload rows, mapped onto the
-   *  canonical `positionId` key. Default `'positionId'`. */
-  keyColumn?: string;
+  /** Unique-key field(s) in the STOMP payload rows. Single field or
+   *  composite. Drives LWW coalescing, getRowId, and the Perspective
+   *  table index. Default `'positionId'` for the curated positions schema. */
+  keyColumn?: string | string[];
   /**
    * Perspective table schema from DataProvider `columnDefinitions`.
    * When omitted, the curated positions schema is used.
@@ -174,9 +176,11 @@ export function resolveProviderConfig(
 /** Canonical schema for share-key + table create (omit ≡ POSITION_SCHEMA). */
 function normalizeSchema(
   schema: Record<string, string> | undefined,
+  keyColumn: string | string[] | undefined,
 ): Record<string, string> {
   const s = { ...(schema ?? POSITION_SCHEMA) };
-  if (!s.positionId) s.positionId = 'string';
+  const indexField = resolveTableIndexField(keyColumn ?? 'positionId');
+  if (!s[indexField]) s[indexField] = 'string';
   return s;
 }
 
@@ -207,7 +211,7 @@ export function bookIdentityFor(config: StompPerspectiveProviderConfig): string 
  * registers its own View via {@link StompPerspectiveProvider}.
  */
 function entryFor(config: StompPerspectiveProviderConfig): { key: string; entry: BookEntry } {
-  const schema = normalizeSchema(config.schema);
+  const schema = normalizeSchema(config.schema, config.keyColumn);
   // Prefer DataProvider identity so multiple grids share one table/views.
   // Schema is part of the key so column-definition edits get a fresh table
   // once every grid has released the previous book.
@@ -224,7 +228,7 @@ function entryFor(config: StompPerspectiveProviderConfig): { key: string; entry:
       config.snapshotTopic ?? '',
       config.triggerTopic ?? '',
       config.snapshotEndToken ?? '',
-      config.keyColumn ?? '',
+      Array.isArray(config.keyColumn) ? config.keyColumn.join('\u001F') : (config.keyColumn ?? ''),
       schemaKey(schema),
     ].join('|');
   let entry = bookEntries.get(key);
@@ -293,6 +297,7 @@ export class StompPerspectiveProvider implements IServerSideDatasourceV2<Positio
   readonly viewId: string;
   private readonly bookKey: string;
   private readonly entry: BookEntry;
+  private readonly keyColumn: string | string[];
   private readonly inner: IServerSideDatasourceV2<PositionRow>;
   private readonly readyPromise: Promise<void>;
   private destroyed = false;
@@ -303,6 +308,7 @@ export class StompPerspectiveProvider implements IServerSideDatasourceV2<Positio
     const { key, entry } = entryFor(resolved);
     this.bookKey = key;
     this.entry = entry;
+    this.keyColumn = resolved.keyColumn ?? 'positionId';
     entry.refs++;
     this.viewId = `provider-${entry.nextViewSeq++}`;
     if (resolved.onTelemetry) entry.telemetryHandlers.set(this.viewId, resolved.onTelemetry);
@@ -401,7 +407,10 @@ export class StompPerspectiveProvider implements IServerSideDatasourceV2<Positio
    *  (theme/quality are the caller's business). */
   gridOptions(): VelocityGridOptions<PositionRow> {
     return {
-      getRowId: (r: PositionRow) => r.positionId,
+      getRowId: (r: PositionRow) => {
+        const id = rowIdentity(r as Record<string, unknown>, this.keyColumn);
+        return id ?? '';
+      },
       columnDefs: this.columnDefs,
       rowModelType: 'serverSide',
       serverSideDatasource: this,

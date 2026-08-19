@@ -85,7 +85,8 @@ const options = {
   serverSideEnableClientSidePipeline: false,
   groupDefaultExpanded: 0,
   cacheBlockSize: 100,
-  maxBlocksInCache: 20,
+  // Cap SSRM leaf-block memory (the AG-style alias `maxBlocksInCache` is not wired).
+  serverSideMaxCachedLeafBlocks: 20,
   enableCellChangeFlash: true,
   cellSelection: { suppressHeader: true },
   getRowId: (r: { positionId: string }) => String(r.positionId ?? ''),

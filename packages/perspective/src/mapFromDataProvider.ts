@@ -9,6 +9,7 @@ import type {
 import type { CColDef } from '@wellsfargo-starui/velocity-grid';
 import type { StompPerspectiveProviderConfig } from './provider';
 import { POSITION_SCHEMA, type PositionRow } from './bootstrap';
+import { resolveTableIndexField } from './rowIdentity';
 
 /** Perspective table schema types we emit from catalog columns. */
 export type PerspectiveSchema = Record<string, 'string' | 'float' | 'boolean' | 'date'>;
@@ -31,9 +32,13 @@ type StompBag = {
   columnDefinitions?: ColumnDefinition[];
 };
 
-function keyColumnOf(c: StompBag): string | undefined {
-  if (typeof c.keyColumn === 'string' && c.keyColumn) return c.keyColumn;
-  if (Array.isArray(c.keyColumn) && c.keyColumn[0]) return c.keyColumn[0];
+function keyColumnOf(c: StompCfg): string | string[] | undefined {
+  if (typeof c.keyColumn === 'string' && c.keyColumn.trim()) return c.keyColumn.trim();
+  if (Array.isArray(c.keyColumn) && c.keyColumn.length) {
+    const keys = c.keyColumn.filter((k) => typeof k === 'string' && k.trim());
+    if (keys.length === 1) return keys[0];
+    if (keys.length > 1) return keys;
+  }
   return undefined;
 }
 
@@ -63,20 +68,20 @@ function cellTypeToPerspective(
 
 /**
  * Build the Perspective table schema from DataProvider `columnDefinitions`.
- * Always includes `positionId` (canonical index after keyColumn remap).
+ * Ensures the table index field derived from `keyColumn` is present.
  * Falls back to {@link POSITION_SCHEMA} when the catalog has no columns.
  */
 export function columnDefinitionsToPerspectiveSchema(
   cols: readonly ColumnDefinition[] | undefined | null,
-  keyColumn = 'positionId',
+  keyColumn: string | readonly string[] = 'positionId',
 ): PerspectiveSchema {
   if (!cols?.length) return { ...POSITION_SCHEMA };
-  const schema: PerspectiveSchema = { positionId: 'string' };
+  const indexField = resolveTableIndexField(keyColumn);
+  const schema: PerspectiveSchema = { [indexField]: 'string' };
   for (const d of cols) {
     if (!d.field) continue;
-    // Payload key is remapped onto positionId before table.update.
-    if (d.field === keyColumn || d.field === 'positionId') {
-      schema.positionId = 'string';
+    if (d.field === indexField) {
+      schema[indexField] = 'string';
       continue;
     }
     schema[d.field] = cellTypeToPerspective(d.cellDataType);

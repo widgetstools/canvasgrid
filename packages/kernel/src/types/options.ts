@@ -39,8 +39,9 @@ export function clampRowHeight(h: number): number {
  *  defaults to `false` when omitted — the matching gesture creates / updates
  *  ranges as usual. Cycle 9 / Task 6. */
 export interface CCellSelectionOptions {
-  /** When `true`, a click on a column header no longer selects the whole
-   *  column. Sort cycling on the same click is unaffected. */
+  /** When `false`, a click on a column header also selects the whole
+   *  column as a cell range. Default / `true` / omitted: sort cycling
+   *  only — no column highlight. */
   suppressHeader?: boolean;
   /** When `true`, a click on the row-header column (Cycle 14) no longer
    *  selects the whole row range. Plumbed in Cycle 9 / Task 6; consumed
@@ -636,11 +637,11 @@ export interface VelocityGridOptions<TRow = any> {
    *  Cycle 9 / Task 5. */
   fillOperation?: (params: FillOperationParams<TRow>) => unknown | false;
 
-  /** Cell-range selection knobs. When omitted, ranges work with the
-   *  Cycle 9 defaults (drag enabled, shift extend, ctrl disjoint,
-   *  header-click column band). Read at event time, so a runtime
-   *  `setGridOption('cellSelection', …)` takes effect on the next
-   *  pointer event without re-wiring the feature chain.
+  /** Cell-range selection knobs. When omitted, ranges work with drag
+   *  enabled, shift extend, ctrl disjoint, and **no** header-click
+   *  column band (set `suppressHeader: false` to restore that). Read at
+   *  event time, so a runtime `setGridOption('cellSelection', …)` takes
+   *  effect on the next pointer event without re-wiring the feature chain.
    *  Cycle 9 / Task 6. */
   cellSelection?: CCellSelectionOptions;
 

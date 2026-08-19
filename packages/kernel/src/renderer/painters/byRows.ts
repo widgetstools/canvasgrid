@@ -1,6 +1,7 @@
 import type { PainterCtx, RasterCellsCtx } from './types';
 import type { CachedContext2D } from '../gc';
 import type { ViewportColumn, ViewportRow } from '../../core/viewport';
+import { contentRightEdge } from '../../core/viewport';
 import type { CellPaintConfig, CellPainter } from '../cellRenderers/registry';
 import { cellStyleSignature, cellCacheBypass } from '../rasterCache';
 import type { ResolvedColDef } from '../../core/propertyChain';
@@ -232,14 +233,10 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx, mode?: ByRo
   const db = p.damageBounds ?? null;
   const quickFilterActive = quickFilterLowerTerms.length > 0;
 
-  // 1. Compute the right edge of the painted area (mirrors gridLinesPainter).
-  // Cycle 25 / Task 5 — walk once instead of `Math.max(...visibleColumns.map(...))`
-  // which allocates an array and a spread frame per paint.
-  let rightEdge = vs.bodyRight;
-  for (let i = 0; i < vs.visibleColumns.length; i++) {
-    const r = vs.visibleColumns[i]!.right;
-    if (r > rightEdge) rightEdge = r;
-  }
+  // Right edge of COLUMN CONTENT only — never pad out to bodyRight.
+  // Narrower-than-viewport column sets leave dead space so the last
+  // column keeps a real trailing edge (and a resize hot-zone).
+  const rightEdge = contentRightEdge(vs);
 
   // Build sort lookup: colId -> { direction, index }.
   const sortLookup = new Map<string, { direction: 'asc' | 'desc'; index: number }>();

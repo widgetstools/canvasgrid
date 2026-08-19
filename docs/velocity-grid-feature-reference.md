@@ -370,7 +370,7 @@ Auto-injects pinned `__cg_select__` when `checkboxes: true`.
 
 ### 8.3 Cell ranges (`cellSelection`)
 
-`suppressHeader?`, `suppressRow?`, `suppressDrag?`
+`suppressHeader?` (default: no header-click column band; `false` opts in), `suppressRow?`, `suppressDrag?`
 
 ### 8.4 Group selection
 

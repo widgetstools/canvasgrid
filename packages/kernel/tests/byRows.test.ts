@@ -875,13 +875,37 @@ describe('paintGridLines', () => {
     expect(fullHeightVerticals).toBe(3);
   });
 
+  it('paints a trailing vertical on the last column when it does not meet the viewport edge', () => {
+    const c = fakeGc();
+    const vsShort: ViewportState = {
+      ...vsGridLines,
+      bodyRight: 800,
+      bodyWidth: 800,
+      visibleColumns: [
+        { colId: 'a', index: 0, left: 0, right: 100, width: 100 },
+        { colId: 'b', index: 1, left: 100, right: 250, width: 150 },
+      ],
+    };
+    paintGridLines(c, {
+      viewport: vsShort, theme, columnDefs: cols, cellRenderers: makeReg(),
+      cellData, selection: selectionEmpty, sortModel: [],
+    });
+    const calls = (c.fillRect as any).mock.calls as number[][];
+    // Inter-column at a.right-1 = 99, plus trailing at b.right-1 = 249.
+    const verticalXs = calls
+      .filter((call) => call[2] === 1 && call[3] > 1)
+      .map((call) => call[0]);
+    expect(verticalXs).toContain(99);
+    expect(verticalXs).toContain(249);
+  });
+
   it('paints the header→body separator when bodyTop > 0', () => {
     const c = fakeGc();
     // Use vsGridLines which has bodyTop = 32
     paintGridLines(c, { viewport: vsGridLines, theme, columnDefs: cols, cellRenderers: makeReg(), cellData, selection: selectionEmpty, sortModel: [] });
     const calls = (c.fillRect as any).mock.calls as number[][];
-    // Separator: y = Math.round(32) - 1 = 31, height = 1, x = 0, width = rightEdge
-    const rightEdge = Math.max(vsGridLines.bodyRight, ...vsGridLines.visibleColumns.map((c) => c.right));
+    // Separator: y = Math.round(32) - 1 = 31, height = 1, x = 0, width = contentRightEdge
+    const rightEdge = Math.max(0, ...vsGridLines.visibleColumns.map((c) => c.right));
     const separators = calls.filter((call) => call[1] === 31 && call[3] === 1 && call[2] === rightEdge);
     expect(separators.length).toBe(1);
   });

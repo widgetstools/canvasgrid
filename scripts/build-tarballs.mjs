@@ -1,57 +1,36 @@
 #!/usr/bin/env node
 /**
- * Build and package grid distributions as tarballs
+ * Build and package grid distributions as tarballs.
  * Usage: node scripts/build-tarballs.mjs
  *
- * Creates distribution tarballs in dist/tarballs/ for:
- * - @wellsfargo-starui/velocity-grid (kernel)
- * - @wellsfargo-starui/velocity-grid-ext (customizer)
- * - Supporting feature packages
+ * Writes stable names (no date suffix) under dist/tarballs/ so example apps
+ * can depend on `file:../../dist/tarballs/<name>-0.0.0.tgz`.
  */
-
-import { execSync } from 'child_process';
-import { existsSync, mkdirSync, copyFileSync, readFileSync, writeFileSync, statSync } from 'fs';
-import { join, resolve } from 'path';
-import { fileURLToPath } from 'url';
+import { execSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { TARBALL_PACKAGES, npmPackFileName } from './tarball-packages.mjs';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const root = resolve(__dirname, '..');
 const tarballDir = join(root, 'dist', 'tarballs');
 const timestamp = new Date().toISOString().split('T')[0];
 
-// Create output directory
 if (!existsSync(tarballDir)) {
   mkdirSync(tarballDir, { recursive: true });
 }
 
-const packages = [
-  'packages/kernel',           // @wellsfargo-starui/velocity-grid
-  'packages/ext',              // @wellsfargo-starui/velocity-grid-ext
-  'packages/customizer',       // @wellsfargo-starui/velocity-grid-customizer
-  'packages/data',             // @wellsfargo-starui/velocity-grid-data
-  'packages/calc',             // @wellsfargo-starui/velocity-grid-calc
-  'packages/format',           // @wellsfargo-starui/velocity-grid-format
-  'packages/rules',            // @wellsfargo-starui/velocity-grid-rules
-  'packages/edit',             // @wellsfargo-starui/velocity-grid-edit
-  'packages/renderers',        // @wellsfargo-starui/velocity-grid-renderers
-  'packages/expression',       // @wellsfargo-starui/velocity-grid-expression
-  'packages/perspective',      // @wellsfargo-starui/velocity-grid-perspective
-  'packages/storage',          // @wellsfargo-starui/velocity-grid-storage
-];
+console.log(`📦 Building tarballs for ${TARBALL_PACKAGES.length} packages...\n`);
 
-console.log(`📦 Building tarballs for ${packages.length} packages...\n`);
+console.log('🔨 Building kernel dist (other packs are source-direct)...');
+execSync('npm run build --workspace=@wellsfargo-starui/velocity-grid', {
+  cwd: root,
+  stdio: 'inherit',
+});
 
-// First, ensure core packages are built (skip demo apps if they fail)
-console.log('🔨 Building core packages...');
-try {
-  execSync('npm run build', { cwd: root, stdio: 'pipe' });
-} catch (e) {
-  console.log('⚠️  Some packages failed to build (likely demo apps), continuing with available builds...');
-}
-
-// Create tarballs
 const tarballs = [];
-for (const pkg of packages) {
+for (const pkg of TARBALL_PACKAGES) {
   const pkgPath = join(root, pkg);
   const pkgJsonPath = join(pkgPath, 'package.json');
 
@@ -61,138 +40,75 @@ for (const pkg of packages) {
   }
 
   const pkgJson = JSON.parse(readFileSync(pkgJsonPath, 'utf-8'));
-  const name = pkgJson.name.replace('@', '').replace('/', '-');
   const version = pkgJson.version || '0.0.0';
-  const tarballName = `${name}-${version}-${timestamp}.tgz`;
+  const tarballName = npmPackFileName(pkgJson.name, version);
   const tarballPath = join(tarballDir, tarballName);
 
   try {
     console.log(`📦 Packing ${pkgJson.name}...`);
     execSync(`npm pack --pack-destination "${tarballDir}"`, {
       cwd: pkgPath,
-      stdio: 'pipe'
+      stdio: 'pipe',
     });
-
-    // Rename to include timestamp
-    const defaultTarball = join(tarballDir, `${name}-${version}.tgz`);
-    if (existsSync(defaultTarball) && defaultTarball !== tarballPath) {
-      execSync(`mv "${defaultTarball}" "${tarballPath}"`);
+    if (existsSync(tarballPath)) {
+      // npm pack already wrote the stable name — keep it.
     }
-
     tarballs.push({ name: pkgJson.name, tarball: tarballName });
     console.log(`  ✓ ${tarballName}`);
   } catch (e) {
-    console.log(`  ✗ Failed to pack ${pkgJson.name}`);
+    const msg = e instanceof Error ? e.message : String(e);
+    console.log(`  ✗ Failed to pack ${pkgJson.name}: ${msg}`);
   }
 }
 
-// Create manifest
 const manifest = {
   version: '1.0',
   buildDate: timestamp,
   packages: tarballs,
-  installGuide: `
-## Installation from Tarballs
-
-### Option 1: Direct Installation (Recommended)
-
-\`\`\`bash
-# Install directly from tarball
-npm install ./wellsfargo-starui-velocity-grid-0.0.0-${timestamp}.tgz
-npm install ./wellsfargo-starui-velocity-grid-ext-0.0.0-${timestamp}.tgz
-\`\`\`
-
-### Option 2: Add to package.json
-
-\`\`\`json
-{
-  "dependencies": {
-    "@wellsfargo-starui/velocity-grid": "file:./tarballs/wellsfargo-starui-velocity-grid-0.0.0-${timestamp}.tgz",
-    "@wellsfargo-starui/velocity-grid-ext": "file:./tarballs/wellsfargo-starui-velocity-grid-ext-0.0.0-${timestamp}.tgz"
-  }
-}
-\`\`\`
-
-Then run: \`npm install\`
-
-### Option 3: Global Installation (Dev)
-
-\`\`\`bash
-npm install -g ./wellsfargo-starui-velocity-grid-0.0.0-${timestamp}.tgz
-\`\`\`
-
-## Usage
-
-After installation, import the grid:
-
-\`\`\`typescript
-import { CGridApi } from '@wellsfargo-starui/velocity-grid';
-import { VelocityGridExt } from '@wellsfargo-starui/velocity-grid-ext';
-\`\`\`
-
-## Troubleshooting
-
-**"Cannot find module" errors:**
-- Ensure all dependencies are installed: \`npm install\`
-- Check that peer dependencies match (Node 22+, npm 10+)
-
-**"Module not found" in dist/:**
-- Some packages require build artifacts in dist/
-- Run \`npm run build\` after installation
-
-**Web Worker issues:**
-- The grid kernel expects \`velocity-grid.js\` to be co-located with \`worker.js\`
-- If using in a bundler, ensure the kernel dist is not pre-bundled
-  `,
 };
 
-const manifestPath = join(tarballDir, 'manifest.json');
-writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+writeFileSync(join(tarballDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
 
-// Create README
-const readmePath = join(tarballDir, 'README.md');
-const readmeContent = `# VelocityGrid Distribution (${timestamp})
+const sizeRows = tarballs.map((t) => {
+  const p = join(tarballDir, t.tarball);
+  if (!existsSync(p)) return `| ${t.name} | ? |`;
+  const sizeMB = (statSync(p).size / 1024 / 1024).toFixed(2);
+  return `| ${t.name} | ${sizeMB} MB |`;
+});
 
-Built tarballs for offline or air-gapped installation.
+writeFileSync(join(tarballDir, 'README.md'), `# VelocityGrid Distribution (${timestamp})
+
+Built tarballs for offline / example-app installation.
 
 ## Contents
 
-${tarballs.map(t => `- \`${t.tarball}\` — ${t.name}`).join('\n')}
+${tarballs.map((t) => `- \`${t.tarball}\` — ${t.name}`).join('\n')}
 
-${manifest.installGuide}
+## Install into the example apps
 
-## Requirements
+From the repo root:
 
-- Node 22+
-- npm 10+
+\`\`\`bash
+npm run build:tarballs
+npm run examples:install
+npm run dev:ext-react      # http://localhost:5202
+npm run dev:ext-angular    # http://localhost:5203
+\`\`\`
 
-## Bundle Size
+The React and Angular apps live under \`examples/\` (outside the npm workspace)
+and depend on these tarballs via \`file:\` so they behave like third-party
+consumers.
+
+## Bundle size
 
 | Package | Size |
 |---------|------|
-${tarballs.map(t => {
-  const tarballPath = join(tarballDir, t.tarball);
-  if (existsSync(tarballPath)) {
-    const stat = statSync(tarballPath);
-    const sizeMB = (stat.size / 1024 / 1024).toFixed(2);
-    return `| ${t.name} | ${sizeMB} MB |`;
-  }
-  return `| ${t.name} | ? |`;
-}).join('\n')}
-
-## Version Info
-
-- Build Date: ${timestamp}
-- Manifest: \`manifest.json\`
-
----
+${sizeRows.join('\n')}
 
 Created: ${new Date().toISOString()}
-`;
-
-writeFileSync(readmePath, readmeContent);
+`);
 
 console.log(`\n✅ Tarballs created in dist/tarballs/\n`);
-console.log(`📋 Created ${tarballs.length} packages:`);
-tarballs.forEach(t => console.log(`   • ${t.tarball}`));
-console.log(`\n📄 See dist/tarballs/README.md for installation instructions\n`);
+console.log(`📋 Packed ${tarballs.length} packages:`);
+tarballs.forEach((t) => console.log(`   • ${t.tarball}`));
+console.log(`\n📄 See dist/tarballs/README.md\n`);

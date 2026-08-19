@@ -90,6 +90,8 @@ interface EditableCallbackParams {
 interface KernelColDefLike {
   colId?: string;
   field?: string;
+  /** Legacy AG-style alias — kernel folds `'number' | 'text'` into `cellDataType`. */
+  type?: string | string[];
   cellDataType?: string;
   children?: KernelColDefLike[];
   editable?: boolean | ((p: EditableCallbackParams) => boolean);
@@ -268,7 +270,24 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
   function colMeta(colId: string): { field: string; cellDataType?: string } | null {
     const leaf = findLeafColDef(colDefs(), colId);
     if (!leaf?.field) return null;
-    return { field: leaf.field, cellDataType: leaf.cellDataType };
+    // Authored defs may use legacy `type: 'number'` (kernel folds that into
+    // resolved `cellDataType`). Smart-edit reads authored defs, so mirror
+    // the same alias here — otherwise toolbar ops collect 0 targets.
+    return { field: leaf.field, cellDataType: resolveCellDataType(leaf) };
+  }
+
+  function resolveCellDataType(leaf: KernelColDefLike): string | undefined {
+    if (leaf.cellDataType) return leaf.cellDataType;
+    const typeNames = Array.isArray(leaf.type)
+      ? leaf.type
+      : typeof leaf.type === 'string'
+        ? [leaf.type]
+        : [];
+    for (let i = typeNames.length - 1; i >= 0; i--) {
+      const name = typeNames[i];
+      if (name === 'number' || name === 'text') return name;
+    }
+    return undefined;
   }
 
   /** Addon-side `isCellEditable` replication (`EditController.isCellEditable`,

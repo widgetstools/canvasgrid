@@ -6,13 +6,13 @@
 // via `getMultiSortKey()`; we read the matching DOM modifier off
 // the raw MouseEvent.
 //
-// Cycle 9 / Task 4 — every header click ALSO selects the whole column
-// via `grid.selectColumn(colId, { extend })`. Shift selects a column
-// band from the previous anchor through the clicked header (render
-// order); plain click replaces with a single full-column rect. Sort
-// cycling and column selection are additive — both fire on the same
-// click so existing keyboard-paged sort UX keeps working while range
-// users get the column band they expect.
+// Cycle 9 / Task 4 — header click MAY also select the whole column
+// via `grid.selectColumn(colId, { extend })`, but only when the host
+// opts in with `cellSelection.suppressHeader === false`. Default (flag
+// omitted or true) is sort-only: clicking a header must not paint a
+// full-column range highlight. Opt-in: Shift extends a column band
+// from the previous anchor through the clicked header (render order);
+// plain click replaces with a single full-column rect.
 
 import { Feature, type VelocityGridEventCtx } from '../feature';
 
@@ -49,12 +49,12 @@ export class HeaderClick extends Feature {
       }
       const append = isAppendClick(ctx.raw, ctx.grid.getMultiSortKey());
       ctx.grid.cycleSort(colId, { append });
-      // Cycle 9 / Task 6 — skip the column-band selection when
-      // `cellSelection.suppressHeader` is set. Sort cycling above still
-      // runs so apps that disable range selection don't lose sort UX.
+      // Column-band highlight on header click is opt-in
+      // (`cellSelection.suppressHeader === false`). Omitted / true skips
+      // the range so CSRM and SSRM sort without wrapping the column.
       // Read at event time so a runtime `setGridOption('cellSelection',
       // …)` takes effect on the next click.
-      if (ctx.grid.getCellSelectionOptions()?.suppressHeader !== true) {
+      if (ctx.grid.getCellSelectionOptions()?.suppressHeader === false) {
         const extend = ctx.raw instanceof MouseEvent && ctx.raw.shiftKey;
         ctx.grid.selectColumn(colId, { extend });
       }
