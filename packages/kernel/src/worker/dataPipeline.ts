@@ -69,7 +69,13 @@ export class RowStore<TRow = any> {
   /** A-P1 — current row-data revision (see `rev`). */
   revision(): number { return this.rev; }
 
-  setAll(rows: TRow[], heightsByRowId?: Map<string, number>): void {
+  /** Returns per-row warning strings for any row that failed id resolution
+   *  (or a store-mutation step) and was skipped — empty when every row
+   *  applied cleanly. A single malformed row (e.g. a null/undefined
+   *  `rowIdField`) no longer aborts the rest of the batch; callers thread
+   *  this back to main through the worker protocol so a skip is never
+   *  silent. */
+  setAll(rows: TRow[], heightsByRowId?: Map<string, number>): string[] {
     this.rev++;
     this.byId.clear();
     this.order.length = 0;
@@ -85,19 +91,29 @@ export class RowStore<TRow = any> {
     // `ViewportChunk.rowIds` and the flash registry keys on them, so a row
     // that stays must keep its number.
     //
-    // Built into locals and swapped in at the end so a mid-loop `getRowId`
-    // throw (null id — the loop deliberately has no per-row try/catch)
-    // leaves the maps exactly as it does today, rather than half-rebuilt.
+    // Built into locals and swapped in at the end so the maps stay
+    // internally consistent (never half-rebuilt) even though the per-row
+    // try/catch below means the loop itself can no longer abort early.
     const nextStringToNumeric = new Map<string, number>();
     const nextNumericToString = new Map<number, string>();
-    for (const row of rows) {
-      const id = this.getRowId(row);
-      this.byId.set(id, row);
-      this.order.push(id);
-      if (!nextStringToNumeric.has(id)) {
-        const n = this.stringToNumeric.get(id) ?? this.nextNumeric++;
-        nextStringToNumeric.set(id, n);
-        nextNumericToString.set(n, id);
+    const warnings: string[] = [];
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i] as TRow;
+      try {
+        const id = this.getRowId(row);
+        this.byId.set(id, row);
+        this.order.push(id);
+        if (!nextStringToNumeric.has(id)) {
+          const n = this.stringToNumeric.get(id) ?? this.nextNumeric++;
+          nextStringToNumeric.set(id, n);
+          nextNumericToString.set(n, id);
+        }
+      } catch (err) {
+        warnings.push(
+          `[velocity-grid] setRowData: skipped row at index ${i} (unresolved '${this.rowIdField}'): ${
+            String((err as Error).message ?? err)
+          }`,
+        );
       }
     }
     this.stringToNumeric = nextStringToNumeric;
@@ -105,6 +121,7 @@ export class RowStore<TRow = any> {
     if (heightsByRowId) {
       for (const [id, h] of heightsByRowId) this.heightsByRowId.set(id, h);
     }
+    return warnings;
   }
 
   apply(tx: {
@@ -115,27 +132,49 @@ export class RowStore<TRow = any> {
   }): TransactionResult {
     this.rev++;
     const result: TransactionResult = { add: [], update: [], remove: [] };
+    // A null/undefined row id (or any other id-resolution / store-mutation
+    // failure) is caught PER ROW so one malformed row in a large batch
+    // can't abort the rest — mirrors main-thread's updateRowDataCache
+    // (velocityGrid.ts), which already tolerates a throwing getRowId per
+    // row. Warnings collect the skipped rows so the caller can thread them
+    // back to main through the protocol instead of failing silently.
+    let warnings: string[] | undefined;
+    const warn = (kind: 'add' | 'update', i: number, err: unknown): void => {
+      (warnings ??= []).push(
+        `[velocity-grid] applyTransaction: skipped row at ${kind}[${i}] (unresolved '${this.rowIdField}'): ${
+          String((err as Error).message ?? err)
+        }`,
+      );
+    };
     if (tx.add) {
-      for (const row of tx.add) {
-        const id = this.getRowId(row);
-        if (!this.byId.has(id)) {
-          this.byId.set(id, row);
-          this.order.push(id);
-          if (!this.stringToNumeric.has(id)) {
-            const n = this.nextNumeric++;
-            this.stringToNumeric.set(id, n);
-            this.numericToString.set(n, id);
+      for (let i = 0; i < tx.add.length; i++) {
+        try {
+          const id = this.getRowId(tx.add[i] as TRow);
+          if (!this.byId.has(id)) {
+            this.byId.set(id, tx.add[i] as TRow);
+            this.order.push(id);
+            if (!this.stringToNumeric.has(id)) {
+              const n = this.nextNumeric++;
+              this.stringToNumeric.set(id, n);
+              this.numericToString.set(n, id);
+            }
+            result.add.push({ rowId: id });
           }
-          result.add.push({ rowId: id });
+        } catch (err) {
+          warn('add', i, err);
         }
       }
     }
     if (tx.update) {
-      for (const row of tx.update) {
-        const id = this.getRowId(row);
-        if (this.byId.has(id)) {
-          this.byId.set(id, row);
-          result.update.push({ rowId: id });
+      for (let i = 0; i < tx.update.length; i++) {
+        try {
+          const id = this.getRowId(tx.update[i] as TRow);
+          if (this.byId.has(id)) {
+            this.byId.set(id, tx.update[i] as TRow);
+            result.update.push({ rowId: id });
+          }
+        } catch (err) {
+          warn('update', i, err);
         }
       }
     }
@@ -171,6 +210,7 @@ export class RowStore<TRow = any> {
     if (tx.heightsByRowId) {
       for (const [id, h] of tx.heightsByRowId) this.heightsByRowId.set(id, h);
     }
+    if (warnings) result.warnings = warnings;
     return result;
   }
 
@@ -1284,7 +1324,7 @@ export class ViewportSlicer<TRow = any> {
     // entirely outside the current viewport (the common case for a sparse
     // live feed ticking a small fraction of a large row set per batch)
     // forced a full repaint every time — confirmed empirically against the
-    // cgrid-ext-demo's live STOMP feed: 100% full paints regardless of
+    // velocitygrid-ext-demo's live STOMP feed: 100% full paints regardless of
     // scroll position or observation window, because `touchedRows` was
     // never anything but `undefined` whenever this batch's touched ids
     // didn't happen to include a currently-visible row.

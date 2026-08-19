@@ -4,7 +4,7 @@
 // button is down, so handleMouseDrag fires for every drag tick even when the
 // pointer leaves the canvas.
 
-import { Feature, type VelocityGridEventCtx } from '../feature';
+import { Feature, type VelocityGridLike, type VelocityGridEventCtx } from '../feature';
 
 export class ColumnResizing extends Feature {
   // `edge` records whether the drag started on the column's left or right
@@ -63,6 +63,28 @@ export class ColumnResizing extends Feature {
       return;
     }
     super.handleMouseUp(ctx);
+  }
+
+  /** Reset in-flight resize state without touching the grid. Used by
+   *  `FeatureChain.destroy()` mid-resize, when the grid may already be
+   *  torn down and calling back into it (`finishColumnResize`) would be
+   *  unsafe. */
+  resetDragState(): void {
+    this.resizing = null;
+    this.didResize = false;
+  }
+
+  /** External cancel — `pointercancel` / window `blur` / tab hidden while
+   *  a resize is in progress. The DOM `mouseup` used to be the only path
+   *  that reset `columnResizeDragActive` (which gates the fast paint-cache
+   *  path grid-wide); a lost mouseup left the grid stranded on the slow
+   *  paint path forever. Mirrors `handleMouseUp`'s cleanup by calling the
+   *  same `finishColumnResize` grid hook. No-op when not resizing. */
+  cancelResize(grid: VelocityGridLike): void {
+    if (!this.resizing) return;
+    const colId = this.resizing.colId;
+    this.resetDragState();
+    grid.finishColumnResize(colId);
   }
 
   override handleClick(ctx: VelocityGridEventCtx): void {

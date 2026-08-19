@@ -718,17 +718,25 @@ function ribbonItem(opts: RibbonExtensionsOpts = {}): ToolbarItem {
   };
 }
 
-function stepper(value: string): HTMLDivElement {
-  const wrap = h('vgext-rb-stepper');
-  const val = document.createElement('span'); val.textContent = value;
-  const up = document.createElement('button'); up.type = 'button'; up.className = 'vgext-rb-step'; up.innerHTML = svg('M6 15l6-6 6 6', 11);
-  const dn = document.createElement('button'); dn.type = 'button'; dn.className = 'vgext-rb-step'; dn.innerHTML = svg('M6 9l6 6 6-6', 11);
-  const stack = h('vgext-rb-step-stack'); stack.append(up, dn);
-  wrap.append(val, stack);
-  return wrap;
-}
 function dangerIcon(icon: string, title: string): HTMLButtonElement {
   const b = iconBtn(icon, title); b.classList.add('vgext-rb-danger-btn'); return b;
+}
+
+/** Toolbar count is a synchronous range-geometry estimate; `collectTargets()`
+ *  resolves eligibility asynchronously and can come back empty (readonly
+ *  cells, hidden columns, …) even when the toolbar showed a non-zero count.
+ *  Surface that instead of a silent no-op — a small auto-dismissing notice
+ *  anchored under the clicked control. */
+function showNoEligibleCellsNotice(anchor: HTMLElement): void {
+  document.querySelectorAll('.vgext-elig-notice').forEach((n) => n.remove());
+  const rect = anchor.getBoundingClientRect();
+  const notice = document.createElement('div');
+  notice.className = 'vgext-elig-notice';
+  notice.textContent = 'No eligible cells in this selection';
+  notice.style.left = `${rect.left}px`;
+  notice.style.top = `${rect.bottom + 6}px`;
+  document.body.appendChild(notice);
+  setTimeout(() => notice.remove(), 2200);
 }
 
 // ── Editing-toolbar wiring (@wellsfargo-starui/velocity-grid-edit bridge) ──────────────────────────
@@ -762,7 +770,10 @@ function wireEditingToolbar(ctx: VelocityGridExtContext, getEdit: EditHandleGett
     const e = getEdit(); if (!e) return;
     const operand = Number(r.operand.value);
     if (!Number.isFinite(operand)) return;
-    void e.smartEdit.collectTargets().then((t) => { if (t.length) void e.smartEdit.apply(t, op, operand); });
+    void e.smartEdit.collectTargets().then((t) => {
+      if (t.length) void e.smartEdit.apply(t, op, operand);
+      else showNoEligibleCellsNotice(r.ops[op]);
+    });
   };
   (Object.keys(r.ops) as SmartEditOp[]).forEach((op) => r.ops[op].addEventListener('click', () => runSmart(op)));
 
@@ -770,7 +781,10 @@ function wireEditingToolbar(ctx: VelocityGridExtContext, getEdit: EditHandleGett
     const e = getEdit(); if (!e) return;
     const raw = r.bulkValue.value;
     if (!raw.trim()) return;
-    void e.bulkUpdate.collectTargets().then((t) => { if (t.length) void e.bulkUpdate.apply(t, raw); });
+    void e.bulkUpdate.collectTargets().then((t) => {
+      if (t.length) void e.bulkUpdate.apply(t, raw);
+      else showNoEligibleCellsNotice(r.bulkApply);
+    });
   });
 
   const refreshCounts = () => {
@@ -792,13 +806,18 @@ function wireEditingToolbar(ctx: VelocityGridExtContext, getEdit: EditHandleGett
       selectedRows = rows;
       cellCount = rows * range.colIds.length;
     } else if (ranges.length > 1) {
-      const rowIds = new Set<number>();
+      // Dedupe the actual cell union — summing `rows * colIds.length` per
+      // range double-counts any cell covered by more than one range.
+      const covered = new Map<number, Set<string>>();
       for (const range of ranges) {
-        const rows = Math.max(0, range.rowEnd - range.rowStart + 1);
-        cellCount += rows * range.colIds.length;
-        for (let i = range.rowStart; i <= range.rowEnd; i++) rowIds.add(i);
+        for (let i = range.rowStart; i <= range.rowEnd; i++) {
+          let cols = covered.get(i);
+          if (!cols) { cols = new Set<string>(); covered.set(i, cols); }
+          for (const colId of range.colIds) cols.add(colId);
+        }
       }
-      selectedRows = rowIds.size;
+      for (const cols of covered.values()) cellCount += cols.size;
+      selectedRows = covered.size;
     }
     r.smartCount.textContent = `${cellCount} ${cellCount === 1 ? 'cell' : 'cells'}`;
     const none = cellCount === 0;
@@ -2175,5 +2194,31 @@ const RIBBON_CSS = `
 .vgext-edit-strip .vgext-rb-input,
 .vgext-edit-strip .vgext-rb-stepper {
   border-radius: 2px !important;
+}
+.vgext-elig-notice {
+  position: fixed;
+  z-index: 1200;
+  max-width: 240px;
+  padding: 6px 10px;
+  font-family: var(--vg-font-family, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--vg-fg-color, #e5e9f0);
+  background: var(--vg-popup-bg, #161b26);
+  border: 1px solid color-mix(in srgb, var(--vg-warning-color, #f0b429) 45%, var(--vg-border-color, #2a3140));
+  border-radius: var(--vg-radius, 2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  animation: vgext-elig-fade 2200ms ease forwards;
+}
+@keyframes vgext-elig-fade {
+  0% { opacity: 0; transform: translateY(-2px); }
+  8% { opacity: 1; transform: translateY(0); }
+  82% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vgext-elig-notice { animation: none; }
 }
 `;

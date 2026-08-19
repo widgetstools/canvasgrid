@@ -248,3 +248,62 @@ describe('invalidateAndCount coalesces under burst load (A-C4)', () => {
     expect(names).toEqual(['apple', 'banana', 'cherry', 'durian']);
   });
 });
+
+describe('setGroupModel / setSortModel / setFilterModel wait for an in-flight build (critical review remediation)', () => {
+  it('a setGroupModel call arriving mid-flight does not leak into the build that was already suspended', async () => {
+    // Hold only the FIRST external-filter round-trip (the one build A
+    // suspends on); auto-answer every later one immediately (unfiltered)
+    // so the rebuilds setGroupModel triggers afterward — externalFilter
+    // stays on for the rest of the test — don't hang the test itself.
+    let heldCallId: number | null = null;
+    let heldRowIds: string[] = [];
+    let client!: WorkerClient;
+    const w = new FakeWorker();
+    client = new WorkerClient(w as never, {
+      onModelUpdated: vi.fn(),
+      onAsyncTransactionsFlushed: vi.fn(),
+      onError: vi.fn(),
+      onExternalFilterCandidates: (rowIds: string[], callId: number) => {
+        if (heldCallId === null) {
+          heldCallId = callId;
+          heldRowIds = rowIds.slice();
+          return;
+        }
+        client.externalFilterResult(callId, rowIds);
+      },
+    } as never);
+    await client.init({ rowIdField: 'id', columns: COLUMNS });
+    await client.setRowData(ROWS); // 4 rows, ungrouped
+
+    // Build A: turn external filter on. This nulls visibleCache and starts
+    // buildVisibleAsync, which suspends at the (held) external-filter
+    // round-trip BEFORE it ever reads state.group. Do not await yet.
+    const pFilter = client.setExternalFilterPresent(true);
+    await flush();
+    expect(heldCallId).not.toBeNull();
+
+    // While build A is suspended, request grouping by `name` (4 distinct
+    // values). Pre-fix, `setGroupModel` mutated `state.group` immediately
+    // — build A would then resume and read the NEW group model even
+    // though it started (and already fixed its filtered candidate set)
+    // before the group model changed. Do not await yet.
+    const pGroup = client.setGroupModel({ rowGroupCols: ['name'] });
+    await flush();
+
+    // Release build A's held reply — all 4 rows survive the (no-op)
+    // external filter.
+    client.externalFilterResult(heldCallId!, heldRowIds);
+
+    const filterResult = await pFilter;
+    // Build A must reflect state as of when IT started: ungrouped, 4 leaf
+    // rows. Pre-fix this leaked the grouped tree that arrived mid-flight,
+    // reporting a grouped count (8: 4 groups + 4 leaves) instead.
+    expect(filterResult.visibleCount).toBe(4);
+
+    const groupResult = await pGroup;
+    // The group model is NOT lost — it applies cleanly once build A
+    // (which it correctly waited out) has fully settled.
+    expect(groupResult.visibleCount).toBe(8); // 4 groups + 4 leaves, default all-expanded
+    expect(groupResult.groupKeys.length).toBe(4);
+  });
+});

@@ -36,6 +36,60 @@ describe('RowStore', () => {
   });
 });
 
+describe('RowStore — malformed-row resilience (critical review remediation)', () => {
+  it('setAll skips a row with a null/undefined id instead of aborting the rest of the batch', () => {
+    const s = new RowStore('id');
+    const rows = [
+      { id: 'a', v: 1 },
+      { id: null, v: 2 },
+      { id: 'c', v: 3 },
+      { v: 4 }, // id undefined
+      { id: 'e', v: 5 },
+    ];
+    const warnings = s.setAll(rows as unknown[]);
+    // Every well-formed row survives — a malformed row mid-batch used to
+    // throw out of the loop, permanently dropping every row after it.
+    expect(s.size()).toBe(3);
+    expect(s.getById('a')).toEqual({ id: 'a', v: 1 });
+    expect(s.getById('c')).toEqual({ id: 'c', v: 3 });
+    expect(s.getById('e')).toEqual({ id: 'e', v: 5 });
+    // The caller is told which rows were skipped — not a silent drop.
+    expect(warnings.length).toBe(2);
+    expect(warnings[0]).toContain('index 1');
+    expect(warnings[1]).toContain('index 3');
+  });
+
+  it('apply skips malformed rows in add/update without aborting the rest of the batch, and reports them', () => {
+    const s = new RowStore('id');
+    s.setAll([{ id: 'a', v: 1 }]);
+    const r = s.apply({
+      add: [{ id: 'b', v: 2 }, { id: null, v: 99 }, { id: 'd', v: 4 }] as unknown[],
+      update: [{ id: 'a', v: 10 }, { v: 999 }] as unknown[], // second update row has no id
+    });
+    // Valid add/update entries land even though a malformed row sits
+    // between them in the same batch.
+    expect(r.add.map((x) => x.rowId)).toEqual(['b', 'd']);
+    expect(r.update.map((x) => x.rowId)).toEqual(['a']);
+    expect(s.size()).toBe(3);
+    expect(s.getById('b')).toEqual({ id: 'b', v: 2 });
+    expect(s.getById('d')).toEqual({ id: 'd', v: 4 });
+    expect(s.getById('a')).toEqual({ id: 'a', v: 10 });
+    // Skipped rows are surfaced via TransactionResult.warnings, not
+    // dropped silently.
+    expect(r.warnings).toBeDefined();
+    expect(r.warnings!.length).toBe(2);
+    expect(r.warnings!.some((w) => w.includes("add[1]"))).toBe(true);
+    expect(r.warnings!.some((w) => w.includes("update[1]"))).toBe(true);
+  });
+
+  it('apply omits `warnings` entirely when every row is well-formed', () => {
+    const s = new RowStore('id');
+    s.setAll([{ id: 'a' }]);
+    const r = s.apply({ add: [{ id: 'b' }], update: [{ id: 'a', v: 1 }] });
+    expect(r.warnings).toBeUndefined();
+  });
+});
+
 /** Private id-map peek — these are the maps A-L3 is about. */
 function idMaps(s: RowStore<any>): {
   stringToNumeric: Map<string, number>;

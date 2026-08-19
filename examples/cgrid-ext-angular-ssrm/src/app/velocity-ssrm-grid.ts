@@ -1,6 +1,6 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import type { VelocityGridExtConfig } from '@wellsfargo-starui/velocity-grid-ext';
-import type { AngularSsrmHost } from './ssrm-host';
+import { destroySsrmGrid, type AngularSsrmHost } from './ssrm-host';
 
 @Component({
   selector: 'app-velocity-ssrm-grid',
@@ -58,6 +58,9 @@ export class VelocitySsrmGrid implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.offStatus?.();
+    destroySsrmGrid(this.api);
+    this.api = null;
+    delete window.__angularSsrm;
   }
 
   onSnapshotRowsChange(ev: Event): void {

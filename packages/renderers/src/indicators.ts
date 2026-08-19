@@ -57,6 +57,24 @@ export function getStaleFlagTooltip(
   return key ? staleTooltipByCell.get(key) : undefined;
 }
 
+/** Evicts every stale-flag tooltip entry for `rowId` (any colId). Bridge
+ *  `onRowsChanged` calls this per removed rowId, mirroring actions.ts's
+ *  `clearRegionsForRow` — without it a removed row's stale tooltip (set
+ *  while it was flagged stale) stays in this module-global map forever. */
+export function clearStaleTooltipsForRow(rowId: string | undefined): void {
+  if (!rowId) return;
+  const prefix = `${rowId}\0`;
+  for (const key of staleTooltipByCell.keys()) {
+    if (key.startsWith(prefix)) staleTooltipByCell.delete(key);
+  }
+}
+
+/** Evicts every stale-flag tooltip entry. Bridge `destroy()` calls this,
+ *  mirroring `defaultHitRegionRegistry.clearAll()`. */
+export function clearAllStaleTooltips(): void {
+  staleTooltipByCell.clear();
+}
+
 /** @deprecated Use getStaleFlagTooltip(rowId, colId). Kept for bridge migration. */
 export function getLastStaleFlagTooltip(): string | undefined {
   return staleTooltipByCell.values().next().value;

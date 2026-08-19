@@ -2,15 +2,15 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "cgrid-positions",
+      "name": "velocitygrid-positions",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--workspace=cgrid-positions"],
+      "runtimeArgs": ["run", "dev", "--workspace=velocitygrid-positions"],
       "port": 5183
     },
     {
-      "name": "cgrid-showcase",
+      "name": "velocitygrid-showcase",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--workspace=cgrid-showcase"],
+      "runtimeArgs": ["run", "dev", "--workspace=velocitygrid-showcase"],
       "port": 5185
     }
   ]

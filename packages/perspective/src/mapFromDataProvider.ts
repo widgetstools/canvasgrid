@@ -50,7 +50,7 @@ function clientIdFromTopic(topic: string | undefined): string | undefined {
 
 /**
  * Hub `messageRate` is the STOMP `snapshot-rows` request size (same as
- * Perspective `snapshotRows`). Default 10_000 to match cgrid-ssrm-demo.
+ * Perspective `snapshotRows`). Default 10_000 to match velocitygrid-ssrm-demo.
  */
 export function snapshotRowsFromConfig(cfg: DataProviderConfig): number {
   const c = (cfg.config ?? {}) as StompBag;
@@ -77,6 +77,18 @@ export function columnDefinitionsToPerspectiveSchema(
 ): PerspectiveSchema {
   if (!cols?.length) return { ...POSITION_SCHEMA };
   const indexField = resolveTableIndexField(keyColumn);
+  // A composite keyColumn synthesizes indexField by joining its parts
+  // (e.g. ['desk','book'] -> 'desk_book'). If the catalog ALSO declares a
+  // real, distinct column under that exact name, treating it as the index
+  // column below would silently coerce its type and, on every tick,
+  // overwrite its value with the composed row id — fail loud instead.
+  if (Array.isArray(keyColumn) && keyColumn.length > 1 && cols.some((d) => d.field === indexField)) {
+    throw new Error(
+      `[perspective] composite keyColumn ${JSON.stringify(keyColumn)} synthesizes index field `
+      + `"${indexField}", which collides with an existing DataProvider column of the same name. `
+      + 'Rename the column or choose a keyColumn combination that does not collide.',
+    );
+  }
   const schema: PerspectiveSchema = { [indexField]: 'string' };
   for (const d of cols) {
     if (!d.field) continue;

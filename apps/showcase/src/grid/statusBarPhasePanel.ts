@@ -21,10 +21,16 @@ function phaseLabel(feed: StompFeedState): string {
 export class StatusBarPhasePanel implements IStatusPanelComp {
   private eGui = document.createElement('div');
   private context!: PhasePanelContext;
+  private eDot = document.createElement('span');
+  private eLabel = document.createElement('strong');
+  private eRows = document.createElement('span');
+  private eLive = document.createElement('span');
 
   init(params: PhasePanelParams): void {
     this.context = params.context;
     this.eGui.className = 'status-panel';
+    this.eDot.className = 'status-dot';
+    this.eGui.append(this.eDot, this.eLabel, this.eRows, this.eLive);
     this.render();
   }
 
@@ -40,11 +46,9 @@ export class StatusBarPhasePanel implements IStatusPanelComp {
   private render(): void {
     const feed = this.context.getFeed();
     const totalRows = this.context.getTotalRows();
-    this.eGui.innerHTML = `
-      <span class="status-dot" data-phase="${feed.phase}"></span>
-      <strong>${phaseLabel(feed)}</strong>
-      <span>Rows: ${totalRows.toLocaleString()}</span>
-      <span>Live updates: ${feed.liveUpdates.toLocaleString()}</span>
-    `;
+    this.eDot.dataset.phase = feed.phase;
+    this.eLabel.textContent = phaseLabel(feed);
+    this.eRows.textContent = `Rows: ${totalRows.toLocaleString()}`;
+    this.eLive.textContent = `Live updates: ${feed.liveUpdates.toLocaleString()}`;
   }
 }

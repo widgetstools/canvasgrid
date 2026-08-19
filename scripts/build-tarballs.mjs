@@ -7,7 +7,7 @@
  * can depend on `file:../../dist/tarballs/<name>-0.0.0.tgz`.
  */
 import { execSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync, rmSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TARBALL_PACKAGES, npmPackFileName } from './tarball-packages.mjs';
@@ -17,9 +17,12 @@ const root = resolve(__dirname, '..');
 const tarballDir = join(root, 'dist', 'tarballs');
 const timestamp = new Date().toISOString().split('T')[0];
 
-if (!existsSync(tarballDir)) {
-  mkdirSync(tarballDir, { recursive: true });
+// Clear any prior output so a failed pack below can never leave a stale
+// tarball behind to be silently reused by a later install.
+if (existsSync(tarballDir)) {
+  rmSync(tarballDir, { recursive: true, force: true });
 }
+mkdirSync(tarballDir, { recursive: true });
 
 console.log(`📦 Building tarballs for ${TARBALL_PACKAGES.length} packages...\n`);
 
@@ -30,6 +33,7 @@ execSync('npm run build --workspace=@wellsfargo-starui/velocity-grid', {
 });
 
 const tarballs = [];
+const failures = [];
 for (const pkg of TARBALL_PACKAGES) {
   const pkgPath = join(root, pkg);
   const pkgJsonPath = join(pkgPath, 'package.json');
@@ -46,18 +50,38 @@ for (const pkg of TARBALL_PACKAGES) {
 
   try {
     console.log(`📦 Packing ${pkgJson.name}...`);
-    execSync(`npm pack --pack-destination "${tarballDir}"`, {
+    const before = new Set(existsSync(tarballDir) ? readdirSync(tarballDir) : []);
+    const output = execSync(`npm pack --pack-destination "${tarballDir}" --json`, {
       cwd: pkgPath,
       stdio: 'pipe',
-    });
-    if (existsSync(tarballPath)) {
-      // npm pack already wrote the stable name — keep it.
+    }).toString('utf-8');
+    const [packed] = JSON.parse(output);
+    const actualName = packed?.filename;
+
+    if (!actualName) {
+      throw new Error('npm pack --json produced no filename');
     }
+    if (actualName !== tarballName) {
+      throw new Error(
+        `npm pack wrote '${actualName}' but predicted '${tarballName}' — npmPackFileName() is out of sync`,
+      );
+    }
+    if (!existsSync(tarballPath)) {
+      throw new Error(`expected tarball not found at ${tarballPath} after npm pack`);
+    }
+    const after = new Set(readdirSync(tarballDir));
+    const unexpected = [...after].filter((f) => !before.has(f) && f !== tarballName);
+    if (unexpected.length) {
+      throw new Error(`npm pack wrote unexpected extra file(s): ${unexpected.join(', ')}`);
+    }
+
     tarballs.push({ name: pkgJson.name, tarball: tarballName });
     console.log(`  ✓ ${tarballName}`);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.log(`  ✗ Failed to pack ${pkgJson.name}: ${msg}`);
+    failures.push({ name: pkgJson.name, error: msg });
+    process.exitCode = 1;
   }
 }
 
@@ -65,6 +89,7 @@ const manifest = {
   version: '1.0',
   buildDate: timestamp,
   packages: tarballs,
+  failures: failures.length ? failures.map((f) => f.name) : undefined,
 };
 
 writeFileSync(join(tarballDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
@@ -108,7 +133,12 @@ ${sizeRows.join('\n')}
 Created: ${new Date().toISOString()}
 `);
 
-console.log(`\n✅ Tarballs created in dist/tarballs/\n`);
+if (failures.length) {
+  console.log(`\n❌ ${failures.length} package(s) failed to pack — dist/tarballs/ is incomplete\n`);
+  failures.forEach((f) => console.log(`   • ${f.name}: ${f.error}`));
+} else {
+  console.log(`\n✅ Tarballs created in dist/tarballs/\n`);
+}
 console.log(`📋 Packed ${tarballs.length} packages:`);
 tarballs.forEach((t) => console.log(`   • ${t.tarball}`));
 console.log(`\n📄 See dist/tarballs/README.md\n`);

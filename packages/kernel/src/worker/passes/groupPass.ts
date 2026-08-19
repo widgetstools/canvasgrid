@@ -18,10 +18,12 @@
  * stringified group-column value at each level. Bucket maps are kept
  * alongside the public `GroupNode` so the per-row insertion is O(1)
  * per level — no per-row Map.get into a global hash. After the rows
- * are placed we sort each level's children by composite key (so the
- * tree's flat ordering is deterministic regardless of input order)
- * and convert leaf `number[]` buckets to `Uint32Array`s. Total cost
- * is O(N × depth + G log G) where G is the number of group nodes.
+ * are placed we convert leaf `number[]` buckets to `Uint32Array`s and
+ * roll up `childCount`; sibling order is left exactly as data-insertion
+ * order produced it (see `finalise` below) — NOT sorted by composite
+ * key. `SortPass` is what imposes a deterministic order when the user
+ * has (or the app configures) an explicit sort. Total cost is O(N ×
+ * depth) where depth is the row-group column count.
  *
  * **Composite key format.** Per-level: `${colId}:${stringValue}`. Nested
  * keys join levels with `::` — `desk:APAC::region:Rates`. The key is
@@ -53,6 +55,7 @@ import type { WorkerColumn } from '../protocol';
 import { escapeGroupKeySegment } from '../../core/ssrmRowMeta';
 import type { GroupModel } from '../../types';
 import type { CalcValueSource } from './calcPass';
+import { createStaticFunction } from '../staticFunction';
 
 export interface GroupNode {
   /** Stable composite key — `${colId}:${value}` per level (each segment
@@ -211,9 +214,10 @@ export class GroupPass<TRow = any> {
     this.colIndex.clear();
     for (const col of columns) this.colIndex.set(col.colId, col);
     // AG `keyCreator` — rebuild per-column functions from their serialized
-    // source (same `new Function` contract as comparators / aggFuncs).
-    // Compiled once per (colId, source); a bad source logs and disables
-    // the creator for that column instead of poisoning the pipeline.
+    // source through the single authorized chokepoint (see
+    // staticFunction.ts). Compiled once per (colId, source); a bad source
+    // logs and disables the creator for that column instead of poisoning
+    // the pipeline.
     for (const col of columns) {
       const src = col.keyCreatorSource;
       const cached = this.keyCreatorSrc.get(col.colId);
@@ -224,12 +228,8 @@ export class GroupPass<TRow = any> {
         continue;
       }
       try {
-        const fn = new Function(`"use strict"; return (${src});`)();
-        if (typeof fn === 'function') {
-          this.keyCreators.set(col.colId, fn as (p: { value: unknown; data: unknown }) => unknown);
-        } else {
-          this.keyCreators.delete(col.colId);
-        }
+        const fn = createStaticFunction(src, `keyCreator for '${col.colId}'`);
+        this.keyCreators.set(col.colId, fn as unknown as (p: { value: unknown; data: unknown }) => unknown);
       } catch (err) {
         console.error(`[velocity-grid] keyCreator for '${col.colId}' failed to deserialise:`, err);
         this.keyCreators.delete(col.colId);
@@ -580,8 +580,4 @@ export class GroupPass<TRow = any> {
 
     return { roots, flatOrder, bypassed: false };
   }
-}
-
-function byKey(a: GroupNode, b: GroupNode): number {
-  return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
 }

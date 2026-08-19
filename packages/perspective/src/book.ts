@@ -32,7 +32,7 @@ import {
   type GroupedDistinctRow,
 } from './distinctValues';
 import { boundUpdateBuffer, updateBufferCap } from './updateBuffer';
-import { resolveTableIndexField, rowIdentity } from './rowIdentity';
+import { resolveTableIndexField, rowIdentity, type RowKeyColumn } from './rowIdentity';
 
 const SNAPSHOT_END_TOKEN = 'Success';
 
@@ -129,6 +129,10 @@ export interface BookTelemetry {
   liveUpdatesPerSec: number;
   getRowsTotal: number;
   rowsServedTotal: number;
+  /** Rows dropped without ever reaching the table — missing-identity
+   *  composite-key rows at ingest, plus rows evicted by the update-buffer
+   *  over-cap trim. */
+  droppedRowCount: number;
   viewCount: number;
   views: Array<{
     id: string;
@@ -548,6 +552,43 @@ export interface ExpressionValidationResult {
   errors: Record<string, string>;
 }
 
+/**
+ * `Table.view()`'s TS signature is Perspective's ts-rs-generated
+ * `ViewConfigUpdate` (strict literal unions for filter ops / aggregate
+ * names) — narrower than the config objects this file builds dynamically
+ * (`PspFilter[]`, generic `Record<string, string>` aggregates, keys
+ * assembled via conditional spreads). One documented escape hatch for that
+ * single vendor typing gap instead of a bare `as never` at every
+ * `table.view(...)` call site.
+ */
+function toViewConfig(config: Record<string, unknown>): never {
+  return config as never;
+}
+
+/**
+ * Merge a newly-flushed batch into a pending live-tick queue — last write
+ * per row id wins (LWW), matching `table.update`'s own indexed-upsert
+ * semantics. Rows with no resolvable identity are dropped (see
+ * {@link rowIdentity}). Exported for direct unit testing.
+ */
+export function mergeLiveBatch(
+  existing: readonly PositionRow[],
+  incoming: readonly PositionRow[],
+  keyColumn: RowKeyColumn,
+): PositionRow[] {
+  if (existing.length === 0) return [...incoming];
+  const byId = new Map<string, PositionRow>();
+  for (const row of existing) {
+    const id = rowIdentity(row as Record<string, unknown>, keyColumn);
+    if (id != null) byId.set(id, row);
+  }
+  for (const row of incoming) {
+    const id = rowIdentity(row as Record<string, unknown>, keyColumn);
+    if (id != null) byId.set(id, row);
+  }
+  return [...byId.values()];
+}
+
 export class PerspectiveBook {
   private readonly opts: Required<
     Pick<
@@ -575,7 +616,10 @@ export class PerspectiveBook {
   private readonly valueAggregates: Record<string, string>;
   private readonly measureColumns: string[];
 
-  private pendingLiveBatch: PositionRow[] = [];
+  /** Per-view pending live batch — keyed by viewId so one view's remount
+   *  (which must drop ITS OWN stale pre-remount rows) never wipes another
+   *  still-mounted view's queued ticks. */
+  private pendingLiveBatch = new Map<string, PositionRow[]>();
 
   private phase: BookPhase = 'idle';
   private table: Table | null = null;
@@ -587,7 +631,14 @@ export class PerspectiveBook {
   /** Single-flight drain — concurrent STOMP handlers only mark dirty. */
   private flushInFlight = false;
   private flushQueued = false;
+  /** Resolved once the in-flight flush chain (including any round it
+   *  re-arms) actually settles — lets a `force` caller (snapshot-end drain)
+   *  wait for real completion instead of just being queued. */
+  private flushWaiters: Array<() => void> = [];
+  private consecutiveFlushFailures = 0;
+  private nextFlushRetryAt = 0;
   private pauseFanout = false;
+  private droppedRowCount = 0;
   /** Explicit Diagnostics Stop — blocks reconnect / Web-Lock takeover until restartFeed. */
   private feedStopped = false;
 
@@ -627,6 +678,17 @@ export class PerspectiveBook {
     const schema: Record<string, string> = { ...(options.schema ?? POSITION_SCHEMA) };
     const keyColumn = options.keyColumn ?? 'positionId';
     const indexField = resolveTableIndexField(keyColumn);
+    // A composite keyColumn synthesizes indexField by joining its parts
+    // (e.g. ['desk','book'] -> 'desk_book'). If a real schema column
+    // already uses that exact name, writing the composed id into it on
+    // every tick would silently clobber real data — fail loud instead.
+    if (Array.isArray(keyColumn) && keyColumn.length > 1 && schema[indexField] !== undefined) {
+      throw new Error(
+        `[perspective] composite keyColumn ${JSON.stringify(keyColumn)} synthesizes index field `
+        + `"${indexField}", which collides with an existing schema column of the same name. `
+        + 'Rename the column or choose a keyColumn combination that does not collide.',
+      );
+    }
     if (!schema[indexField]) schema[indexField] = 'string';
     this.opts = {
       feed: options.feed ?? 'seed',
@@ -651,7 +713,7 @@ export class PerspectiveBook {
     this.valueAggregates = aggregatesFromSchema(schema);
     this.measureColumns = measureColumnsFromSchema(schema);
     // C-m10 — only start the 4Hz recompute when constructed with a handler
-    // (preserves direct-construction callers, e.g. cgrid-ssrm-demo, which
+    // (preserves direct-construction callers, e.g. velocitygrid-ssrm-demo, which
     // pass `onTelemetry` once and expect it to just run). `provider.ts`'s
     // shared-book path always passes a fan-out `onTelemetry` regardless of
     // real demand, so it immediately follows up with `setTelemetryActive`
@@ -1185,7 +1247,7 @@ export class PerspectiveBook {
       );
       const filter = [...(bound.spec.filter ?? []), ...extraFilter, ...groupFilter];
       return this.withTableLock(async () => {
-        const idView = await this.table!.view({ columns: ['positionId'], filter } as never);
+        const idView = await this.table!.view(toViewConfig({ columns: ['positionId'], filter }));
         try {
           const json = (await idView.to_json()) as Array<{ positionId?: unknown }>;
           return json
@@ -1277,11 +1339,11 @@ export class PerspectiveBook {
     const converted = cgridFilterToPsp(filterModel ?? {});
     const { filters, expressions } = converted;
     return this.withTableLock(async () => {
-      const view = await this.table!.view({
+      const view = await this.table!.view(toViewConfig({
         columns: projectViewColumns(['positionId'], expressions),
         ...(filters.length > 0 ? { filter: filters } : {}),
         ...(Object.keys(expressions).length > 0 ? { expressions } : {}),
-      } as never);
+      }));
       try {
         return Math.max(0, Number(await view.num_rows()) | 0);
       } finally {
@@ -1309,11 +1371,11 @@ export class PerspectiveBook {
       const measureCol = this.dataColumns.includes('positionId')
         ? 'positionId'
         : (this.dataColumns.find((c) => c !== colId) ?? colId);
-      const view = await this.table!.view({
+      const view = await this.table!.view(toViewConfig({
         group_by: [colId],
         columns: [measureCol],
         aggregates: { [measureCol]: 'count' },
-      } as never);
+      }));
       try {
         const cap = limit != null && limit > 0 ? Math.min(limit, 10_000) : 5_000;
         const rows = (await view.to_json({
@@ -1595,7 +1657,7 @@ export class PerspectiveBook {
     // another view's remount) interleaved — the exact "concurrent ops hang
     // Perspective WASM" trap the chains exist to prevent.
     return this.withTableLock(async () => {
-      const leafView = await this.table!.view(config as never);
+      const leafView = await this.table!.view(toViewConfig(config));
       try {
         const count = Number(await leafView.num_rows());
         if (count <= 0) return [];
@@ -1692,7 +1754,7 @@ export class PerspectiveBook {
       config.aggregates = this.resolveAggregates(bound);
     }
 
-    bound.view = await this.table!.view(config as never);
+    bound.view = await this.table!.view(toViewConfig(config));
     // Perspective IGNORES `aggregates` on an ungrouped view — the old
     // group_by-less config made `fetchGrandTotal` read raw row 0 (zeros on
     // an empty/loading table). Any group_by makes to_json emit the root
@@ -1704,7 +1766,7 @@ export class PerspectiveBook {
       ? 'desk'
       : (this.dataColumns.find((c) => c !== 'positionId') ?? 'positionId');
     const aggregates = this.resolveAggregates(bound);
-    bound.totalsView = await this.table!.view({
+    bound.totalsView = await this.table!.view(toViewConfig({
       columns: projectViewColumns(
         totalsCols.length > 0 ? totalsCols : ['positionId'],
         mergedExpressions,
@@ -1715,7 +1777,7 @@ export class PerspectiveBook {
         : {}),
       group_by: [totalsGroupCol],
       aggregates,
-    } as never);
+    }));
     // ONE persistent flat leaf view, sorted by the group columns first
     // (direction matching any user sort on those columns) so each deepest
     // group's leaves form a contiguous range — leaf windows become offset
@@ -1735,7 +1797,7 @@ export class PerspectiveBook {
       if (Object.keys(mergedExpressions).length > 0) {
         leafConfig.expressions = mergedExpressions;
       }
-      bound.leafView = await this.table!.view(leafConfig as never);
+      bound.leafView = await this.table!.view(toViewConfig(leafConfig));
     }
     bound.groupedRawCache = null;
     bound.dataUpdateCb = Number(
@@ -1752,9 +1814,11 @@ export class PerspectiveBook {
     // Push fresh totals after every remount — the pinned grand-total row
     // otherwise only updates on live ticks, so a query change (or the
     // wire-time fetch racing the first remount) left it stale at zeros.
-    // Drop any pending live batch first: the post-remount tick must not
-    // replay pre-remount rows as fresh updates.
-    this.pendingLiveBatch = [];
+    // Drop only THIS view's pending live batch first: the post-remount
+    // tick must not replay pre-remount rows as fresh updates — but other
+    // still-mounted views share nothing else with this remount and must
+    // keep their own queued ticks (pendingLiveBatch is keyed per view).
+    this.pendingLiveBatch.delete(bound.spec.id);
     this.scheduleViewTick(bound.spec.id);
   }
 
@@ -1830,6 +1894,7 @@ export class PerspectiveBook {
     // grid that Applies/detaches providers repeatedly leaks one Promise
     // chain entry per prior viewId for the life of the book.
     this.getRowsChains.delete(viewId);
+    this.pendingLiveBatch.delete(viewId);
     await this.withTableLock(async () => {
       if (v.view && v.dataUpdateCb !== null) {
         try { await v.view.remove_update(v.dataUpdateCb); } catch { /* swallow */ }
@@ -1859,7 +1924,13 @@ export class PerspectiveBook {
    *  takeover. */
   private async connectRouted(): Promise<void> {
     if (this.feedStopped || this.destroyed) return;
-    await this.ensureTable();
+    try {
+      await this.ensureTable();
+    } catch (err) {
+      console.error('[PerspectiveBook] connect', err);
+      this.setPhase('error');
+      return;
+    }
     if (this.feedStopped || this.destroyed) return;
     if (!this.sharedTable) {
       this.feedRole = 'leader';
@@ -1929,6 +2000,9 @@ export class PerspectiveBook {
       this.stomp = client;
       client.activate();
       this.emitTelemetry();
+    }).catch((err: unknown) => {
+      console.error('[PerspectiveBook] stomp', err);
+      this.setPhase('error');
     });
   }
 
@@ -2040,6 +2114,11 @@ export class PerspectiveBook {
       clearTimeout(this.flushTimer);
       this.flushTimer = null;
     }
+    if (this.flushWaiters.length > 0) {
+      const waiters = this.flushWaiters;
+      this.flushWaiters = [];
+      for (const resolve of waiters) resolve();
+    }
     this.disconnect();
     for (const id of [...this.views.keys()]) void this.unregisterView(id);
     if (this.table) {
@@ -2076,6 +2155,7 @@ export class PerspectiveBook {
       liveUpdatesPerSec,
       getRowsTotal: this.getRowsTotal,
       rowsServedTotal: this.rowsServedTotal,
+      droppedRowCount: this.droppedRowCount,
       viewCount: this.views.size,
       views: [...this.views.values()].map((v) => ({
         id: v.spec.id,
@@ -2152,7 +2232,10 @@ export class PerspectiveBook {
     for (const delta of deltas) {
       const record = delta as Record<string, unknown>;
       const id = rowIdentity(record, keyColumn);
-      if (id == null) continue;
+      if (id == null) {
+        this.droppedRowCount++;
+        continue;
+      }
       const row = { ...record } as Record<string, unknown>;
       row[indexField] = id;
       rows.push(row as PositionRow);
@@ -2192,11 +2275,13 @@ export class PerspectiveBook {
       snapshotRows: this.opts.snapshotRows,
     });
     if (this.updateBuffer.length <= cap) return;
+    const before = this.updateBuffer.length;
     this.updateBuffer = boundUpdateBuffer(
       this.updateBuffer as Array<Record<string, unknown>>,
       cap,
       this.opts.keyColumn,
     ) as PositionRow[];
+    this.droppedRowCount += before - this.updateBuffer.length;
   }
 
   private scheduleFlush(): void {
@@ -2207,10 +2292,26 @@ export class PerspectiveBook {
     }, 32);
   }
 
+  /** Max fixed-step backoff between retries after a persistent
+   *  `table.update` failure (a wedged WASM engine must not drive
+   *  continuous retry + console.error spam for the rest of the session). */
+  private static readonly FLUSH_BACKOFF_MAX_MS = 30_000;
+  private static readonly FLUSH_BACKOFF_STEP_MS = 500;
+
   private async flushUpdates(force = false): Promise<void> {
     if (this.pauseFanout && !force) return;
+    // Once wedged, only a `force` caller (or the backoff window elapsing)
+    // gets to retry — every ordinary caller (live tick / scheduled flush)
+    // becomes a cheap no-op until then instead of hammering the engine.
+    if (!force && this.consecutiveFlushFailures > 0 && Date.now() < this.nextFlushRetryAt) return;
     if (this.flushInFlight) {
       this.flushQueued = true;
+      if (!force) return;
+      // `force` (snapshot-end drain) must wait for the update it queued to
+      // actually be applied, not just handed to the in-flight call's own
+      // finally-loop — resolved once that chain (including any round it
+      // re-arms) truly settles.
+      await new Promise<void>((resolve) => { this.flushWaiters.push(resolve); });
       return;
     }
     this.flushInFlight = true;
@@ -2223,26 +2324,21 @@ export class PerspectiveBook {
         try {
           // Serialized with view ops — see the seed-snapshot sibling comment.
           await this.withTableLock(() => this.table!.update(batch));
+          this.consecutiveFlushFailures = 0;
           if (!this.snapshotComplete) {
             this.snapshotRowsLoaded = Number(await this.withTableLock(() => this.table!.size()));
           } else {
             this.liveBatches++;
-            // Accumulate (last write per id wins) — overwriting dropped any
-            // batch that landed while the 100ms view-tick debounce was armed.
-            if (this.pendingLiveBatch.length === 0) {
-              this.pendingLiveBatch = batch;
-            } else {
-              const byId = new Map<string, PositionRow>();
-              const keyColumn = this.opts.keyColumn;
-              for (const row of this.pendingLiveBatch) {
-                const id = rowIdentity(row as Record<string, unknown>, keyColumn);
-                if (id != null) byId.set(id, row);
-              }
-              for (const row of batch) {
-                const id = rowIdentity(row as Record<string, unknown>, keyColumn);
-                if (id != null) byId.set(id, row);
-              }
-              this.pendingLiveBatch = [...byId.values()];
+            // Accumulate per view (last write per id wins) — overwriting
+            // dropped any batch that landed while the 100ms view-tick
+            // debounce was armed. Per-view so one view's remount-time clear
+            // (remountDataView) never drops another view's queued rows.
+            for (const viewId of this.views.keys()) {
+              const existing = this.pendingLiveBatch.get(viewId);
+              this.pendingLiveBatch.set(
+                viewId,
+                mergeLiveBatch(existing ?? [], batch, this.opts.keyColumn),
+              );
             }
             for (const id of this.views.keys()) void this.refreshProjected(id);
           }
@@ -2250,15 +2346,25 @@ export class PerspectiveBook {
         } catch (err) {
           console.error('[PerspectiveBook] table.update', err);
           this.setPhase('error');
+          this.consecutiveFlushFailures++;
+          this.nextFlushRetryAt = Date.now() + Math.min(
+            PerspectiveBook.FLUSH_BACKOFF_MAX_MS,
+            PerspectiveBook.FLUSH_BACKOFF_STEP_MS * 2 ** (this.consecutiveFlushFailures - 1),
+          );
           break;
         }
         if (!this.flushQueued && this.updateBuffer.length === 0) break;
       }
     } finally {
       this.flushInFlight = false;
-      if (this.flushQueued && this.updateBuffer.length > 0 && !(this.pauseFanout && !force)) {
+      const canRearm = force || this.consecutiveFlushFailures === 0 || Date.now() >= this.nextFlushRetryAt;
+      if (this.flushQueued && this.updateBuffer.length > 0 && !(this.pauseFanout && !force) && canRearm) {
         this.flushQueued = false;
         void this.flushUpdates(force);
+      } else {
+        const waiters = this.flushWaiters;
+        this.flushWaiters = [];
+        for (const resolve of waiters) resolve();
       }
     }
   }
@@ -2283,15 +2389,13 @@ export class PerspectiveBook {
       dataColumns: this.dataColumns,
       lastOrContains: v.lastOrContains,
     };
-    const updates = this.pendingLiveBatch.filter(
+    const pending = this.pendingLiveBatch.get(viewId) ?? [];
+    const updates = pending.filter(
       (row) => rowMatchesViewFilter(v.spec, row, filterOpts),
     );
-    // Consumed — clear once the LAST armed tick has fired (earlier ticks in
-    // the same round still need it; a later tick must not replay it as
-    // fresh updates).
-    if (![...this.views.values()].some((x) => x.notifyTimer !== null)) {
-      this.pendingLiveBatch = [];
-    }
+    // Consumed — this view's own queue only (pendingLiveBatch is per-view,
+    // so clearing it here can never drop another view's pending ticks).
+    this.pendingLiveBatch.delete(viewId);
     const hasExpressions = Object.keys(v.expressions).length > 0;
     // Grouped: soft-refresh skeleton aggregates + still emit leaf patches
     // so conditional styles / alerts / cell flash see `rowsChanged`.

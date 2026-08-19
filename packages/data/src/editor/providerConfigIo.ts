@@ -1,7 +1,38 @@
-import type { DataProviderConfig } from '../types';
+import type { DataProviderConfig, RowModelType, TransportConfig } from '../types';
+import { getTransportPlugin } from '../registry/plugins';
+import { registerDefaultTransports } from '../transports/registerDefaults';
 
 const EXPORT_KIND = 'starui.dataProvider';
 const EXPORT_VERSION = 1;
+
+/** Non-optional transport-config fields per builtin `providerType`, read off
+ *  `types/transport.ts`'s `*TransportConfig` interfaces (`websocketUrl` /
+ *  `listenerTopic` for `stomp`, etc). Host-registered plugins beyond the
+ *  builtins are accepted as long as they're registered — no required-field
+ *  list is known for them, so only the known-registered check applies. */
+const REQUIRED_TRANSPORT_FIELDS: Record<string, readonly string[]> = {
+  stomp: ['websocketUrl', 'listenerTopic'],
+  rest: ['baseUrl', 'endpoint'],
+  mock: [],
+  solace: ['url', 'topic'],
+  amps: ['url', 'topic'],
+  socketio: ['url'],
+  websocket: ['url'],
+};
+
+function isNonEmptyString(v: unknown): v is string {
+  return typeof v === 'string' && v.trim().length > 0;
+}
+
+function isValidWebSocketUrl(v: unknown): boolean {
+  if (!isNonEmptyString(v)) return false;
+  try {
+    const parsed = new URL(v);
+    return parsed.protocol === 'ws:' || parsed.protocol === 'wss:';
+  } catch {
+    return false;
+  }
+}
 
 export type PortableProviderConfig = Omit<
   DataProviderConfig,
@@ -130,15 +161,52 @@ export function parseProviderConfigImport(text: string): PortableProviderConfig 
   if (typeof candidate.providerType !== 'string') {
     throw new Error('Missing or invalid "providerType".');
   }
+  registerDefaultTransports();
+  const providerType = candidate.providerType;
+  if (!getTransportPlugin(providerType)) {
+    throw new Error(`Unknown provider type "${providerType}".`);
+  }
   if (!isRecord(candidate.config)) {
     throw new Error('Missing or invalid "config".');
   }
-  return toPortableProviderConfig({
-    ...(candidate as unknown as DataProviderConfig),
-    name: typeof candidate.name === 'string' && candidate.name.trim()
-      ? candidate.name
-      : 'imported provider',
-    providerId: '',
-    userId: '',
-  });
+  const config = candidate.config;
+
+  let rowModel: RowModelType = 'clientSide';
+  if (candidate.rowModel !== undefined) {
+    if (candidate.rowModel !== 'clientSide' && candidate.rowModel !== 'serverSide') {
+      throw new Error('Invalid "rowModel" — must be "clientSide" or "serverSide".');
+    }
+    rowModel = candidate.rowModel;
+  }
+
+  const requiredFields = REQUIRED_TRANSPORT_FIELDS[providerType] ?? [];
+  for (const field of requiredFields) {
+    if (!isNonEmptyString(config[field])) {
+      throw new Error(`Missing required field "${field}" for provider type "${providerType}".`);
+    }
+  }
+  if (providerType === 'stomp' && !isValidWebSocketUrl(config.websocketUrl)) {
+    throw new Error('"websocketUrl" must be a valid ws:// or wss:// URL.');
+  }
+
+  const name = isNonEmptyString(candidate.name) ? candidate.name : 'imported provider';
+  const description = typeof candidate.description === 'string' ? candidate.description : undefined;
+  const blockSize = typeof candidate.blockSize === 'number' ? candidate.blockSize : undefined;
+  const tags = Array.isArray(candidate.tags) && candidate.tags.every((t) => typeof t === 'string')
+    ? (candidate.tags as string[])
+    : undefined;
+  const isPublic = typeof candidate.public === 'boolean' ? candidate.public : undefined;
+  const updatedAt = typeof candidate.updatedAt === 'string' ? candidate.updatedAt : undefined;
+
+  return {
+    name,
+    description,
+    providerType,
+    rowModel,
+    config: structuredClone(config) as TransportConfig,
+    blockSize,
+    tags,
+    public: isPublic,
+    updatedAt,
+  };
 }

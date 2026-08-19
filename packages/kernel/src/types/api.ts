@@ -33,6 +33,11 @@ export interface TransactionResult {
   add: { rowId: string }[];
   update: { rowId: string }[];
   remove: { rowId: string }[];
+  /** Human-readable notices for rows in `add`/`update` that failed id
+   *  resolution (e.g. a null/undefined `rowIdField`) and were skipped
+   *  rather than aborting the rest of the batch. Absent when nothing was
+   *  skipped. */
+  warnings?: string[];
 }
 
 /**

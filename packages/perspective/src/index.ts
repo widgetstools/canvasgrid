@@ -4,7 +4,7 @@
  * High-level entry: `StompPerspectiveProvider` (engine + shared book +
  * feed leadership + datasource + live wiring in one class). The lower
  * layers stay exported for hosts that need custom orchestration (the
- * cgrid-ssrm-demo stress app drives them directly).
+ * velocitygrid-ssrm-demo stress app drives them directly).
  *
  * AppData (`{{name.key}}`) lives in `@wellsfargo-starui/velocity-grid-appdata` and is re-exported
  * here so SSRM hosts can take a single import.
@@ -65,6 +65,7 @@ export {
 export {
   PerspectiveBook,
   resolvePerspectiveViewColumns,
+  mergeLiveBatch,
   cgridFilterToPsp,
   mapAggFuncToPerspective,
   QUICK_FILTER_HAYSTACK_ALIAS,

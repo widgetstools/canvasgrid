@@ -151,8 +151,6 @@ export class ProviderEditor {
   private savedAt: number | null = null;
   private saveError: string | null = null;
   private savedPulseTimer: ReturnType<typeof setTimeout> | null = null;
-  private statusText = 'idle';
-  private samplePreview = '[]';
   private connectionFields: ConnectionFieldsHandle | null = null;
   private keyMultiSelect: MultiSelectHandle | null = null;
   private diagSession: DiagnosticsSession | null = null;
@@ -226,8 +224,7 @@ export class ProviderEditor {
   }
 
   setPreview(status: string, sampleRows: unknown[]): void {
-    this.statusText = status;
-    this.samplePreview = JSON.stringify(sampleRows.slice(0, 5), null, 2);
+    void sampleRows;
     if (this.tab === 'Diagnostics') this.render();
     else {
       const el = this.root.querySelector('.vg-dp-editor__status');
@@ -1349,13 +1346,13 @@ export class ProviderEditor {
     const restartBtn = createButton({
       label: 'Restart',
       title: 'Re-attach + replay',
-      onClick: () => { void session.restart(this.cfg); },
+      onClick: () => { void session.restart(this.cfg).catch(() => undefined); },
     });
     const stopBtn = createButton({
       label: 'Stop',
       title: 'Tear down upstream connection',
       variant: 'danger',
-      onClick: () => { void session.stop(); },
+      onClick: () => { void session.stop().catch(() => undefined); },
     });
     actions.append(restartBtn, stopBtn);
     const left = document.createElement('div');
@@ -1428,7 +1425,6 @@ export class ProviderEditor {
     stopBtn: HTMLButtonElement,
   ): void {
     const { stats, status, error, busy } = state;
-    this.statusText = status;
     const badgeHost = root.querySelector<HTMLElement>('[data-diag="badge"]');
     if (badgeHost) {
       badgeHost.replaceChildren(createBadge(status.toUpperCase()));

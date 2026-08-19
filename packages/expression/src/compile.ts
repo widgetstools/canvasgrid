@@ -1,5 +1,5 @@
 import type {
-  Ast, AstNode, BinaryNode, BinaryOp, CallNode, Compiled,
+  Ast, AstNode, BinaryNode, BinaryOp, CallNode,
   CompileError, CompileOptions, CompileResult, EvalContext, FieldNode, Loc,
   TernaryNode, UnaryNode,
 } from './types';

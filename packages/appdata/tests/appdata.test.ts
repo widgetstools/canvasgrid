@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   resolveTemplate,
   resolveCfg,
@@ -102,6 +102,7 @@ describe('LocalStorageAppDataStore', () => {
     const a = new LocalStorageAppDataStore('test-ns');
     a.set('SessionContext', 'userId', 'jdoe');
     a.set('positions', 'asOfDate', '2026-04-01');
+    await Promise.resolve(); // persist is microtask-debounced — flush it
     expect(localStorage.getItem(appDataStorageKey('test-ns'))).toBeTruthy();
 
     const b = new LocalStorageAppDataStore('test-ns');
@@ -118,9 +119,26 @@ describe('LocalStorageAppDataStore', () => {
     const storage = new MemoryStore();
     const a = new PersistedAppDataStore('mem-ns', { storage });
     a.set('SessionContext', 'userId', 'alice');
+    await Promise.resolve(); // persist is microtask-debounced — flush it
     expect(storage.getItem(appDataStorageKey('mem-ns'))).toContain('alice');
     const b = new PersistedAppDataStore('mem-ns', { storage });
     expect(b.get('SessionContext', 'userId')).toBe('alice');
     expect(localStorage.getItem(appDataStorageKey('mem-ns'))).toBeNull();
+  });
+
+  it('coalesces rapid successive mutations into a single persisted write', async () => {
+    const { PersistedAppDataStore, appDataStorageKey } = await import('../src/localStorageStore');
+    const { MemoryStore } = await import('@wellsfargo-starui/velocity-grid-storage');
+    const storage = new MemoryStore();
+    const setItemSpy = vi.spyOn(storage, 'setItem');
+    const a = new PersistedAppDataStore('debounce-ns', { storage });
+    a.set('SessionContext', 'userId', 'a');
+    a.set('SessionContext', 'userId', 'b');
+    a.delete('SessionContext', 'userId');
+    a.set('SessionContext', 'userId', 'c');
+    expect(setItemSpy).not.toHaveBeenCalled(); // still pending — no write yet
+    await Promise.resolve(); // flush the debounced microtask
+    expect(setItemSpy).toHaveBeenCalledTimes(1);
+    expect(storage.getItem(appDataStorageKey('debounce-ns'))).toContain('c');
   });
 });

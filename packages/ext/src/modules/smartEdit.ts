@@ -34,6 +34,7 @@ export function smartEditModule(): SettingsModule {
     mount(host: HTMLElement, ctx: VelocityGridExtContext): ModuleInstance {
       let committed: SmartEditSettings | null = null;
       let draft: SmartEditSettings | null = null;
+      let activeTab: string | undefined;
       const root = el('div', 'ckp ckp-flat');
       host.appendChild(root);
 
@@ -48,6 +49,7 @@ export function smartEditModule(): SettingsModule {
         !!draft && !!committed && JSON.stringify(draft) !== JSON.stringify(committed);
 
       let saveBtn: HTMLButtonElement | null = null;
+      let cancelSaveAnim: (() => void) | null = null;
 
       const save = (): void => {
         const h = editHandle(ctx);
@@ -57,7 +59,8 @@ export function smartEditModule(): SettingsModule {
         h.updateSettings({ history: { recordSources: { smartEdit: draft.recordHistory } } });
         ctx.profiles.markDirty();
         committed = clone(draft);
-        animateSaveButton(saveBtn, () => render());
+        cancelSaveAnim?.();
+        cancelSaveAnim = animateSaveButton(saveBtn, () => { cancelSaveAnim = null; render(); });
       };
 
       const reset = (): void => {
@@ -164,16 +167,18 @@ export function smartEditModule(): SettingsModule {
         root.appendChild(createSettingsAdvancedTabs({
           settings: settingsPane,
           advanced: advancedPane,
+          defaultTab: activeTab,
           lucideSvg,
+          onTabChange: (id) => { activeTab = id; },
         }).root);
       };
 
       load();
       render();
       return {
-        destroy() { root.replaceChildren(); root.remove(); },
+        destroy() { cancelSaveAnim?.(); cancelSaveAnim = null; root.replaceChildren(); root.remove(); },
         commit() { if (isDirty()) save(); },
-        refresh() { load(); render(); },
+        refresh() { cancelSaveAnim?.(); cancelSaveAnim = null; load(); render(); },
       };
     },
   };

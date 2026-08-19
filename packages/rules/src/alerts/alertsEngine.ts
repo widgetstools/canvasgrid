@@ -166,7 +166,23 @@ export class AlertsEngine {
     }
     valid.sort((a, b) => a.rule.priority - b.rule.priority); // stable — array order breaks ties
     this.compiledRules = valid;
+    this.purgeDebounceForRemovedRules();
     return { ok: errors.length === 0, errors };
+  }
+
+  /** setRules keeps debounceLast entries for rules that are STILL present
+   *  (re-setting rules must not reopen their windows — see the field doc),
+   *  but a rule dropped from the set leaves its (ruleId, rowId) stamps
+   *  behind forever otherwise: nothing else ever deletes them by ruleId.
+   *  Mirrors RuleEngine.setRules's full-reset-on-replace discipline, scoped
+   *  to just the removed ids since debounceLast must partially survive. */
+  private purgeDebounceForRemovedRules(): void {
+    if (this.debounceLast.size === 0) return;
+    const liveIds = new Set(this.compiledRules.map((entry) => entry.rule.id));
+    for (const key of this.debounceLast.keys()) {
+      const ruleId = key.slice(0, key.indexOf(' '));
+      if (!liveIds.has(ruleId)) this.debounceLast.delete(key);
+    }
   }
 
   getRules(): AlertRule[] {
@@ -280,12 +296,28 @@ export class AlertsEngine {
   }
 
   private process(changes: RowChangeSet): void {
-    if (!this.settings.enabled) return; // re-checked for Task 8's flush path
-    for (const entry of this.compiledRules) {
-      if (!entry.rule.enabled) continue;
-      for (const hit of this.evaluateTrigger(entry, changes)) {
-        this.dispatch(entry.rule, hit);
+    if (this.settings.enabled) { // re-checked for Task 8's flush path
+      for (const entry of this.compiledRules) {
+        if (!entry.rule.enabled) continue;
+        for (const hit of this.evaluateTrigger(entry, changes)) {
+          this.dispatch(entry.rule, hit);
+        }
       }
+    }
+    // A removed row can never fire again — evict its debounce stamps
+    // (across every rule) so the map doesn't grow unboundedly with churn.
+    // Runs even when disabled/no dispatch happened, and AFTER dispatch so a
+    // ROW_REMOVED alert's own freshly-stamped entry for this row is also
+    // reclaimed immediately (mirrors RuleEngine.applyChanges's `removed`
+    // handling for its own per-row maps).
+    for (const rec of changes.removed) {
+      this.purgeRowDebounce(rec.rowId);
+    }
+  }
+
+  private purgeRowDebounce(rowId: string): void {
+    for (const entry of this.compiledRules) {
+      this.debounceLast.delete(`${entry.rule.id} ${rowId}`);
     }
   }
 

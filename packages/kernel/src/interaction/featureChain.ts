@@ -59,6 +59,11 @@ export class FeatureChain {
   /** Cycle 21i / Phase 1 — kept for `mouseleave` to clear the row-hover
    *  highlight + fire the trailing mouse-out events. */
   private onHover!: OnHover;
+  /** Kept so the pointercancel/blur/visibilitychange safety net (and
+   *  `destroy()`) can reach each feature's drag-state cleanup directly —
+   *  see `onDragAbort` below. */
+  private columnResizing!: ColumnResizing;
+  private columnDrag!: ColumnDrag;
   private mouseIsDown = false;
   /** Axis the current wheel gesture is locked to. `null` between gestures so
    *  the next event re-detects the dominant axis. */
@@ -79,8 +84,8 @@ export class FeatureChain {
       // claim the gesture as a pure row-toggle BEFORE downstream
       // features try to focus the cell or create a cell range.
       .append(new RowSelectCheckboxClick())
-      .append(new ColumnResizing())
-      .append(new ColumnDrag())
+      .append((this.columnResizing = new ColumnResizing()))
+      .append((this.columnDrag = new ColumnDrag()))
       // Cycle 15 / Task 7 — GroupExpand sits ahead of EditTrigger /
       // FillHandle / RangeSelection / CellSelection. A click on the
       // chevron must not also open an editor, mutate the cell range,
@@ -144,10 +149,18 @@ export class FeatureChain {
     c.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('mousemove', this.onWindowMouseMove);
     window.removeEventListener('mouseup', this.onWindowMouseUp);
+    this.removeDragAbortListeners();
     if (this.wheelIdleTimer !== null) {
       clearTimeout(this.wheelIdleTimer);
       this.wheelIdleTimer = null;
     }
+    // MEDIUM — a destroy mid-drag/resize otherwise leaves the feature's
+    // own local state (and, for ColumnDrag, its ghost DOM nodes — which
+    // fall back to mounting on `document.body`) stranded. Local-only
+    // reset: the grid is already mid-teardown here, so this must not
+    // call back into it (no `finishColumnResize` / panel-hover clears).
+    this.columnResizing.resetDragState();
+    this.columnDrag.resetDragState();
   }
 
   private toLocal(e: MouseEvent): { x: number; y: number } {
@@ -165,6 +178,16 @@ export class FeatureChain {
     this.mouseIsDown = true;
     window.addEventListener('mousemove', this.onWindowMouseMove);
     window.addEventListener('mouseup', this.onWindowMouseUp);
+    // HIGH — safety net for a lost mouseup (pointer capture stolen by a
+    // native drag/resize, alt-tab, devtools grabbing focus, etc.). Without
+    // this, a resize strands the grid on the slow paint path forever
+    // (`columnResizeDragActive` never resets) and a column-header drag
+    // leaves its ghost DOM nodes mounted forever. Registered per-gesture
+    // (paired with the window mousemove/mouseup above) and torn down on
+    // every normal mouseup too, so the listeners themselves never leak.
+    window.addEventListener('pointercancel', this.onDragAbort);
+    window.addEventListener('blur', this.onDragAbort);
+    document.addEventListener('visibilitychange', this.onVisibilityChange);
     this.head.handleMouseDown(this.buildCtx(e));
   };
 
@@ -177,7 +200,37 @@ export class FeatureChain {
     this.mouseIsDown = false;
     window.removeEventListener('mousemove', this.onWindowMouseMove);
     window.removeEventListener('mouseup', this.onWindowMouseUp);
+    this.removeDragAbortListeners();
     this.head.handleMouseUp(this.buildCtx(e));
+  };
+
+  private removeDragAbortListeners(): void {
+    window.removeEventListener('pointercancel', this.onDragAbort);
+    window.removeEventListener('blur', this.onDragAbort);
+    document.removeEventListener('visibilitychange', this.onVisibilityChange);
+  }
+
+  /** Fires on `pointercancel` or window `blur` while the mouse is down —
+   *  the two ways a resize/drag gesture can end without a `mouseup` ever
+   *  reaching the window. Forces the same cleanup a normal mouseup would:
+   *  resets `mouseIsDown` + removes the drag listeners, then invokes each
+   *  feature's own cancel path (no-op for whichever feature wasn't mid-
+   *  gesture). */
+  private onDragAbort = (): void => {
+    if (!this.mouseIsDown) return;
+    this.mouseIsDown = false;
+    window.removeEventListener('mousemove', this.onWindowMouseMove);
+    window.removeEventListener('mouseup', this.onWindowMouseUp);
+    this.removeDragAbortListeners();
+    this.columnResizing.cancelResize(this.grid);
+    this.columnDrag.cancelDrag(this.grid);
+  };
+
+  /** `visibilitychange` fires on tab-hide too (not just blur — e.g. a
+   *  same-window fullscreen video, or macOS Mission Control), so it's
+   *  covered as an independent trigger via the same `onDragAbort` path. */
+  private onVisibilityChange = (): void => {
+    if (typeof document !== 'undefined' && document.hidden) this.onDragAbort();
   };
 
   private onMouseLeave = (e: MouseEvent): void => {

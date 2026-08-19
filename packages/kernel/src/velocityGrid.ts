@@ -5185,7 +5185,7 @@ export class VelocityGrid<TRow = any> {
             const field = def.field as string | undefined;
             const oldValue = field !== undefined ? rowData[field] : undefined;
             def.valueSetter({
-              data: rowData as TRow, newValue, oldValue, colDef: def as any,
+              data: rowData as TRow, newValue, oldValue, colDef: def as CColDef<TRow, unknown>,
             });
           } else if (def.field) {
             rowData[def.field as string] = newValue;
@@ -7241,7 +7241,7 @@ export class VelocityGrid<TRow = any> {
             const field = def.field as string | undefined;
             const oldValue = field !== undefined ? rowData[field] : undefined;
             def.valueSetter({
-              data: rowData as TRow, newValue: null, oldValue, colDef: def as any,
+              data: rowData as TRow, newValue: null, oldValue, colDef: def as CColDef<TRow, unknown>,
             });
           } else if (def.field !== undefined) {
             rowData[def.field as string] = null;
@@ -7291,7 +7291,7 @@ export class VelocityGrid<TRow = any> {
               const field = def.field as string | undefined;
               const oldValue = field !== undefined ? rowData[field] : undefined;
               def.valueSetter({
-                data: rowData as TRow, newValue, oldValue, colDef: def as any,
+                data: rowData as TRow, newValue, oldValue, colDef: def as CColDef<TRow, unknown>,
               });
             } else if (def.field !== undefined) {
               rowData[def.field as string] = newValue;
@@ -7920,7 +7920,7 @@ export class VelocityGrid<TRow = any> {
           const field = def.field as string | undefined;
           const oldValue = field !== undefined ? rowData[field] : undefined;
           def.valueSetter({
-            data: rowData as TRow, newValue, oldValue, colDef: def as any,
+            data: rowData as TRow, newValue, oldValue, colDef: def as CColDef<TRow, unknown>,
           });
         } else if (def.field) {
           rowData[def.field as string] = newValue;
@@ -7993,7 +7993,7 @@ export class VelocityGrid<TRow = any> {
             const field = def.field as string | undefined;
             const oldValue = field !== undefined ? rowData[field] : undefined;
             def.valueSetter({
-              data: rowData as TRow, newValue: '', oldValue, colDef: def as any,
+              data: rowData as TRow, newValue: '', oldValue, colDef: def as CColDef<TRow, unknown>,
             });
           } else if (def.field) {
             rowData[def.field as string] = '';
@@ -9422,22 +9422,23 @@ export class VelocityGrid<TRow = any> {
         (key === 'columnDefs' ? "; use api.updateGridOptions({ columnDefs }) instead" : ''),
       );
     }
-    if (!isRuntimeOption(key as string)) {
+    const runtimeKey = key as string;
+    if (!isRuntimeOption(runtimeKey)) {
       throw new Error(`[velocity-grid] '${String(key)}' is not a recognised runtime option`);
     }
     // Grid Layouts (A3) — remember the pre-change value as this option's
     // baseline the first time it's touched, so a layout switch can reset
     // it (spec §7). Only persistable keys participate in layout overrides.
-    if (!NON_PERSISTABLE_RUNTIME_OPTIONS.has(key as string) && !this.optionBaselines.has(key as string)) {
-      this.optionBaselines.set(key as string, this.options[key]);
+    if (!NON_PERSISTABLE_RUNTIME_OPTIONS.has(runtimeKey) && !this.optionBaselines.has(runtimeKey)) {
+      this.optionBaselines.set(runtimeKey, this.options[key]);
     }
     this.options[key] = value;
-    applyRuntimeOption(this.runtimeTarget(), key as any, value);
+    applyRuntimeOption(this.runtimeTarget(), runtimeKey, value);
     // Cycle 21i / Phase 1 — record the touch for the GridState
     // `gridOptions` slice + dirty the coalesced autosave bus. Data
     // inputs / callbacks / theme (app chrome) never persist.
-    if (!NON_PERSISTABLE_RUNTIME_OPTIONS.has(key as string)) {
-      this.runtimeTouchedOptions.set(key as string, value);
+    if (!NON_PERSISTABLE_RUNTIME_OPTIONS.has(runtimeKey)) {
+      this.runtimeTouchedOptions.set(runtimeKey, value);
       this.stateUpdatedBus?.markChanged('gridOptions');
     }
   }
@@ -12831,7 +12832,8 @@ export class VelocityGrid<TRow = any> {
     // (only refreshed on the coalesced rAF flush) so multiple dx in one
     // frame accumulate instead of each overwriting from the stale layout.
     const base = def.width ?? cur.width;
-    const newW = Math.max(def.minWidth, base + dx);
+    const maxW = def.maxWidth ?? Number.POSITIVE_INFINITY;
+    const newW = Math.max(def.minWidth, Math.min(maxW, base + dx));
     def.width = newW;
     // Enter drag paint mode once: wipe the retained layer and keep paints
     // on the legacy path for the whole gesture (see columnResizeDragActive).

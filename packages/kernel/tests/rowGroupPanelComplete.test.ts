@@ -17,8 +17,8 @@
  *     re-renders the chip strip live.
  *
  * Total: 24 cases covering every assertion called out in the worklog
- * Task 1 entry. Visual cells + E2E (`apps/cgrid-positions/e2e-visual/27-…`
- * + `apps/cgrid-positions/e2e/cycle15.5-pillReorder.spec.ts`) cover
+ * Task 1 entry. Visual cells + E2E (`apps/velocitygrid-positions/e2e-visual/27-…`
+ * + `apps/velocitygrid-positions/e2e/cycle15.5-pillReorder.spec.ts`) cover
  * the cross-component pipeline.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

@@ -39,8 +39,6 @@ function writeAll(entries: PerspectiveProviderEntry[]): void {
 }
 
 export class LocalStoragePerspectiveProviderCatalog implements PerspectiveProviderCatalog {
-  constructor(private readonly storageKey = STORAGE_KEY) {}
-
   async list(): Promise<PerspectiveProviderEntry[]> {
     return readAll().map((e) => ({ ...e }));
   }

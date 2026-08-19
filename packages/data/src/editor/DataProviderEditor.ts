@@ -180,19 +180,19 @@ export class DataProviderEditor {
     this.render();
   }
 
+  /** Loads an imported config into the (unsaved) form draft for review — it
+   *  is NOT written to the backend until the user explicitly hits Save.
+   *  Mirrors `ProviderEditor.importProviderConfig`'s in-form import. */
   private async onImportFile(file: File): Promise<void> {
     try {
       const portable = parseProviderConfigImport(await file.text());
-      const draft: DataProviderConfig = {
+      this.creating = {
         ...portable,
-        providerId: `provider-${Date.now().toString(36)}`,
+        providerId: '',
         isDefault: false,
-        rowModel: portable.rowModel ?? 'clientSide',
       };
-      const saved = await this.backend.save(draft);
-      this.creating = null;
-      this.selectedId = saved.providerId;
-      await this.refreshList();
+      this.selectedId = null;
+      this.draftSeq += 1;
       this.render();
     } catch (err) {
       window.alert(`Could not import provider: ${err instanceof Error ? err.message : String(err)}`);

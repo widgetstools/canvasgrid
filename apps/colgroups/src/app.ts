@@ -4,7 +4,7 @@ import { darkTheme } from './theme';
 import { columnDefs, defaultColDef, GROUP_IDS } from './columnDefs';
 import { makeRows, type PositionRow } from './data';
 
-export function mountColgroupsDemo(root: HTMLElement): void {
+export function mountColgroupsDemo(root: HTMLElement): () => void {
   root.innerHTML = `
     <div class="page">
       <header class="masthead">
@@ -81,6 +81,14 @@ export function mountColgroupsDemo(root: HTMLElement): void {
     }
   };
 
-  root.querySelector('[data-testid="btn-expand-all"]')?.addEventListener('click', () => setAll(true));
-  root.querySelector('[data-testid="btn-collapse-all"]')?.addEventListener('click', () => setAll(false));
+  const onExpandAll = () => setAll(true);
+  const onCollapseAll = () => setAll(false);
+  root.querySelector('[data-testid="btn-expand-all"]')?.addEventListener('click', onExpandAll);
+  root.querySelector('[data-testid="btn-collapse-all"]')?.addEventListener('click', onCollapseAll);
+
+  return () => {
+    root.querySelector('[data-testid="btn-expand-all"]')?.removeEventListener('click', onExpandAll);
+    root.querySelector('[data-testid="btn-collapse-all"]')?.removeEventListener('click', onCollapseAll);
+    api?.destroy();
+  };
 }

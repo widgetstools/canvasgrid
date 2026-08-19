@@ -53,4 +53,4 @@ jobs:
         run: npm run build
 
       - name: Verify demos boot
-        run: npm run verify:demos -- --only cgrid-showcase,cgrid-ssrm-demo,colgroups,showcase
+        run: npm run verify:demos -- --only velocitygrid-showcase,velocitygrid-ssrm-demo,colgroups,showcase

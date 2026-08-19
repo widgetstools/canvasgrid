@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@angular/common": "^16.1.0",
@@ -34,7 +35,7 @@
     "zone.js": "~0.13.1"
   },
   "devDependencies": {
-    "typescript": "~5.1.6",
+    "typescript": "~5.9.3",
     "vite": "^7.3.2"
   }
 }

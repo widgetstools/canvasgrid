@@ -513,7 +513,15 @@ export function calculatedColumnsModule(): SettingsModule {
         const fmtBtn = el('button', 'ckp-fmtbtn');
         fmtBtn.type = 'button';
         const syncFmtBtn = (): void => {
-          fmtBtn.innerHTML = `${lucideSvg('hash', 12)}<span>${d.format ? previewFormat(d.format, 1234.5) : 'Format'}</span><span>⌄</span>`;
+          // D-XSS1 — the preview text runs a user-authored format string
+          // through compileFormat/formatText, which passes quoted-literal
+          // sections through verbatim; it must never reach innerHTML.
+          fmtBtn.innerHTML = lucideSvg('hash', 12);
+          const label = document.createElement('span');
+          label.textContent = d.format ? previewFormat(d.format, 1234.5) : 'Format';
+          const chevron = document.createElement('span');
+          chevron.textContent = '⌄';
+          fmtBtn.append(label, chevron);
           fmtBtn.title = d.format ?? 'No format';
         };
         syncFmtBtn();

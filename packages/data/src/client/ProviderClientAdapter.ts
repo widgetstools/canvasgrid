@@ -44,8 +44,7 @@ export class ProviderClientAdapter<T extends Record<string, unknown> = Record<st
   private cache = new Map<string, T>();
   private syntheticSeq = 0;
   private columnDefs: ColumnDefinition[];
-  private started = false;
-  /** C-M1: track attachment separately from started so destroy always detaches. */
+  /** C-M1: track attachment so destroy always detaches. */
   private attached = false;
 
   private snapHandlers = new Set<(rows: readonly T[]) => void>();
@@ -183,12 +182,10 @@ export class ProviderClientAdapter<T extends Record<string, unknown> = Record<st
     await this.hub.post({ v: 1, id: '', type: 'attach', providerId: this.providerId, subId: this.subId });
     this.attached = true;
     await this.hub.post({ v: 1, id: '', type: 'start', providerId: this.providerId });
-    this.started = true;
   }
 
   async stop(): Promise<void> {
     await this.hub.post({ v: 1, id: '', type: 'stop', providerId: this.providerId });
-    this.started = false;
     // C-M1: do NOT unset attached here; destroy will send the detach
   }
 

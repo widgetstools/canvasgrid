@@ -149,6 +149,6 @@ npm run typecheck          # 21/21 packages
 npm run lint               # root eslint
 npm run build              # 13/13 packages
 cd packages/renderers && npm test
-cd apps/cgrid-showcase && npm run test:e2e   # 147 passed + 17 new (renderer blotter/catalog/charts)
+cd apps/velocitygrid-showcase && npm run test:e2e   # 147 passed + 17 new (renderer blotter/catalog/charts)
 git diff main...HEAD -- packages/kernel packages/{expression,format,rules,calc}  # must be empty
 ```

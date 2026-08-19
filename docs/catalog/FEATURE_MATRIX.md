@@ -896,6 +896,6 @@
 [^visual-regression]: Visual regressions in Areas 17 (side bar) + shared
 overlays (focus ring, range overlay, DOM editor, floating-filter input) are
 gated by `npm run test:visual` since Cycle 12. A 12-snapshot Playwright matrix
-in `apps/cgrid-positions/e2e-visual/` diffs the demo against committed PNG
+in `apps/velocitygrid-positions/e2e-visual/` diffs the demo against committed PNG
 baselines on every PR; drift fails the merge gate. Updating baselines requires
 the `[visual-baseline-update]` PR-title marker.

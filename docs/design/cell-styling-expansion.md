@@ -267,7 +267,7 @@ Same precedence rules; same painter consumption.
 - Updated `propertyChain.ts` composition logic
 - Updated painters honoring all new fields
 - Unit tests covering each new field (snapshot-based for visual output)
-- Showcase feature `apps/cgrid-showcase/src/features/cellStyleExpansion.js` demonstrating each capability
+- Showcase feature `apps/velocitygrid-showcase/src/features/cellStyleExpansion.js` demonstrating each capability
 
 ### Acceptance criteria
 
@@ -535,7 +535,7 @@ Per task:
 1. **Unit tests** (vitest) for type composition, font shorthand parsing, decorator position math, validation rules.
 2. **Visual snapshot tests** using canvas pixel capture — render a 5×5 grid with various style permutations, hash output, compare against committed baselines. Catches accidental regressions in painter output.
 3. **Performance regression tests** — render-frame timing for the 10K × 50 grid with various styling densities. Fail if regression > 10% vs. baseline.
-4. **Showcase demos** under `apps/cgrid-showcase/src/features/` — one per task. Hand-verified.
+4. **Showcase demos** under `apps/velocitygrid-showcase/src/features/` — one per task. Hand-verified.
 
 ---
 

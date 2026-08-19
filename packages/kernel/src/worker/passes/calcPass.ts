@@ -3,9 +3,11 @@
 // Owns the reconstruction of the calculated-column interpreter + delta
 // aggregate factories shipped from @wellsfargo-starui/velocity-grid-calc's bridge as source text
 // (Function.prototype.toString() forms) via the setCalcProgram protocol
-// message. Reconstruction mirrors the setAggFuncs / registerComparator
-// `new Function` idiom in handlers/dataPipeline.ts — same CSP caveat,
-// same "source is static, never user input" trust boundary.
+// message. Reconstruction routes through `staticFunction.ts`'s
+// `createStaticFunction` — the single authorized `new Function` chokepoint
+// also used by setAggFuncs / registerComparator / GroupPass's keyCreator —
+// same CSP caveat, same "source is static, never user input" trust
+// boundary, documented once at that call site.
 //
 // Cycle 21d / Task 11 — CalcPass Stage A. Row-local calc columns
 // (`prePass: []` — no aggregate dependency) are materialised into a
@@ -38,6 +40,7 @@ import type { RowStore } from '../dataPipeline';
 import type { WorkerCalcProgram } from '../protocol';
 import type { GroupNode, GroupPassOutput } from './groupPass';
 import { escapeGroupKeySegment } from '../../core/ssrmRowMeta';
+import { createStaticFunction } from '../staticFunction';
 
 /** Cycle 21d / Task 11 — the seam FilterPass / SortPass / GroupPass /
  *  both slicers consult for fieldless calc columns. `CalcProgramStore`
@@ -247,13 +250,16 @@ export class CalcProgramStore implements CalcValueSource {
       this.resetCaches();
       return;
     }
-    const interp = rebuild('calc interpreter', program.interpreterSource) as CalcInterpreter;
+    const interp = createStaticFunction(program.interpreterSource, 'calc interpreter') as unknown as CalcInterpreter;
     // Smoke eval — CROSS-TASK CONTRACT: evaluateCalcAst(null, {}, [], null)
     // returns null and must not throw (free-variable screen).
     interp(null, {}, [], null);
     const factories = new Map<string, CalcAggregateFactory>();
     for (const entry of program.aggregateSources) {
-      factories.set(entry.name, rebuild(`calc aggregate '${entry.name}'`, entry.source) as CalcAggregateFactory);
+      factories.set(
+        entry.name,
+        createStaticFunction(entry.source, `calc aggregate '${entry.name}'`) as unknown as CalcAggregateFactory,
+      );
     }
     this.program = program;
     this.interp = interp;
@@ -1020,15 +1026,3 @@ function firstLastScan(which: 'first' | 'last', memberIds: readonly string[], re
   return null;
 }
 
-function rebuild(label: string, source: string): unknown {
-  let fn: unknown;
-  try {
-    fn = new Function(`"use strict"; return (${source});`)();
-  } catch (err) {
-    throw new Error(`[velocity-grid] failed to deserialise ${label}: ${String((err as Error).message ?? err)}`);
-  }
-  if (typeof fn !== 'function') {
-    throw new Error(`[velocity-grid] ${label} did not deserialise to a function`);
-  }
-  return fn;
-}

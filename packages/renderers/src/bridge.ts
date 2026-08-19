@@ -16,6 +16,7 @@ import {
 } from './text';
 import {
   statusDot, quoteQualityDot, staleFlag, directionArrow, structureIconStrip, trafficLightCell,
+  clearStaleTooltipsForRow, clearAllStaleTooltips,
 } from './indicators';
 import {
   statusPill, ratingBadge, ratingClusterCell, tagCell, venueChip, sideChip, tifPill,
@@ -309,10 +310,8 @@ export function wireRenderersIntoKernel(
   setActionIconResolver((name, setHint) => (g.resolveIcon?.(name, setHint) as Path2D | null) ?? null);
 
   let ageTimer: ReturnType<typeof setInterval> | null = null;
-  let ageTimerUsers = 0;
 
   const ensureAgeTimer = (): void => {
-    ageTimerUsers += 1;
     if (ageTimer !== null || !g.refresh) return;
     ageTimer = setInterval(() => g.refresh!(), 1000);
   };
@@ -336,6 +335,9 @@ export function wireRenderersIntoKernel(
       // F3 — evict this row's action hit regions too; the module-global
       // defaultHitRegionRegistry otherwise never sheds removed rows.
       clearRegionsForRow(rowId);
+      // Same leak, staleFlag's tooltip map: evict this row's stale-flag
+      // tooltip (if any) so a removed row flagged stale doesn't linger.
+      clearStaleTooltipsForRow(rowId);
     }
   };
   unsubscribers.push(subscribe(g, 'rowsChanged', onRowsChanged));
@@ -402,7 +404,6 @@ export function wireRenderersIntoKernel(
       clearInterval(ageTimer);
       ageTimer = null;
     }
-    ageTimerUsers = 0;
     stats?.destroy();
     history?.destroy();
     rowMirror.clear();
@@ -410,6 +411,7 @@ export function wireRenderersIntoKernel(
     // then, evict everything on destroy so a torn-down grid doesn't leak
     // hit regions the module-global registry would otherwise hold forever.
     defaultHitRegionRegistry.clearAll();
+    clearAllStaleTooltips();
     setActionIconResolver(null);
     delete g.__renderersBridgeWired;
   };

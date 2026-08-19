@@ -25,7 +25,7 @@
 // column-reorder pathway is skipped so the column stays where it was in
 // the header band.
 
-import { Feature, type VelocityGridEventCtx } from '../feature';
+import { Feature, type VelocityGridLike, type VelocityGridEventCtx } from '../feature';
 import { computeGroupDropTarget, type GroupDropTarget, type HeaderLeafSlot } from './groupDropTarget';
 
 const DRAG_THRESHOLD_PX = 8;
@@ -404,6 +404,36 @@ export class ColumnDrag extends Feature {
     // leave suppressNextClick false so the browser's click → HeaderClick
     // sort cycle still runs.
     super.handleMouseUp(ctx);
+  }
+
+  /** Remove any mounted ghost / insertion-line / pill-ghost DOM nodes and
+   *  reset to idle, without notifying the grid. Used by `FeatureChain`'s
+   *  destroy() safety net — `grid.destroy()` may already have torn down
+   *  the row-group / pivot panels a grid call here would try to notify,
+   *  so this only touches this feature's own DOM + local state. */
+  resetDragState(): void {
+    const state = this.state;
+    this.state = null;
+    this.cursor = null;
+    if (state === null || state.kind === 'pressed') return;
+    state.ghost?.remove();
+    state.insertionLine?.remove();
+    if (state.dragKind === 'leaf') state.pillGhost?.remove();
+  }
+
+  /** External cancel — `pointercancel` / window `blur` / tab hidden while
+   *  a column-header drag is in progress. Mirrors `handleMouseUp`'s ghost
+   *  cleanup (never commits a reorder) and additionally clears any
+   *  row-group/pivot panel drag-hover state so a lost mouseup can't leave
+   *  the panel's drop outline stuck. No-op when not dragging. */
+  cancelDrag(grid: VelocityGridLike): void {
+    const state = this.state;
+    const wasLeafDragging = state !== null && state.kind === 'dragging' && state.dragKind === 'leaf';
+    this.resetDragState();
+    if (wasLeafDragging) {
+      clearExternalDragHover(grid);
+      clearPivotPanelDragHover(grid);
+    }
   }
 
   /** Feed the row group panel + pivot panel hosts the current drag

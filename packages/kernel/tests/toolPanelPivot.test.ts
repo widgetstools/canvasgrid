@@ -22,7 +22,7 @@
  * The mock api wraps an in-memory equivalent of PivotState so the panel's
  * mutate-then-resubscribe flow can be exercised without standing up a real
  * VelocityGrid+worker (those round-trips are covered by the integration tests in
- * apps/cgrid-positions/e2e).
+ * apps/velocitygrid-positions/e2e).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ColumnsToolPanel } from '../src/interaction/toolPanels/columnsPanel';

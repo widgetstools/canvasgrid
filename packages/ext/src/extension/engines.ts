@@ -20,7 +20,7 @@
  *
  *   - `VelocityGridExt`'s constructor builds the context (`createExtContext`)
  *     before it returns, so a host's `wireEditIntoKernel(ext.grid)` — the
- *     documented usage, see `apps/cgrid-ext-demo/src/main.ts` — necessarily
+ *     documented usage, see `apps/velocitygrid-ext-demo/src/main.ts` — necessarily
  *     runs AFTER the snapshot would have been taken. `edit` would be
  *     permanently `null` for every host.
  *   - `velocityGrid.ts`'s `registerRuleEngine` deliberately bumps the strip

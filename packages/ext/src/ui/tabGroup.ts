@@ -77,6 +77,9 @@ export function createSettingsAdvancedTabs(opts: {
   history?: HTMLElement;
   defaultTab?: string;
   lucideSvg?: (name: string, size?: number) => string;
+  /** Fired with the newly active tab id — lets a caller remember it across
+   *  a full re-render so the sheet doesn't snap back to the first tab. */
+  onTabChange?: (id: string) => void;
 }): TabGroup {
   const tabs: TabDefinition[] = [
     { id: 'settings', label: 'Settings', icon: 'sliders-horizontal', content: opts.settings },
@@ -85,7 +88,7 @@ export function createSettingsAdvancedTabs(opts: {
   if (opts.history) {
     tabs.push({ id: 'history', label: 'History', icon: 'history', content: opts.history });
   }
-  return createTabGroup(tabs, opts.defaultTab ?? 'settings', opts.lucideSvg);
+  return createTabGroup(tabs, opts.defaultTab ?? 'settings', opts.lucideSvg, opts.onTabChange);
 }
 
 /**
@@ -95,12 +98,14 @@ export function createSettingsAdvancedTabs(opts: {
  * @param tabs — Array of tab definitions
  * @param defaultTabId — Tab ID to show by default (first tab if not specified)
  * @param lucideSvg — Optional function to render Lucide icons (pass from cockpit)
+ * @param onTabChange — Optional callback fired with the new tab id on every switchTo
  * @returns TabGroup with root element and switch function
  */
 export function createTabGroup(
   tabs: TabDefinition[],
   defaultTabId?: string,
   lucideSvg?: (name: string, size?: number) => string,
+  onTabChange?: (id: string) => void,
 ): TabGroup {
   const el = (tag: string, className?: string, text?: string): HTMLElement => {
     const elem = document.createElement(tag);
@@ -129,7 +134,10 @@ export function createTabGroup(
     btn.setAttribute('aria-selected', tab.id === activeId ? 'true' : 'false');
 
     if (tab.icon && lucideSvg) {
-      btn.innerHTML = `${lucideSvg(tab.icon, 12)}<span>${tab.label}</span>`;
+      btn.innerHTML = lucideSvg(tab.icon, 12);
+      const labelEl = document.createElement('span');
+      labelEl.textContent = tab.label;
+      btn.appendChild(labelEl);
     } else {
       btn.textContent = tab.label;
     }
@@ -172,6 +180,7 @@ export function createTabGroup(
     }
 
     currentActive = id;
+    onTabChange?.(id);
   };
 
   // Root container

@@ -21,6 +21,11 @@ export async function handleGroup(
   const { state, post, helpers } = ctx;
   switch (req.type) {
     case 'setGroupModel': {
+      // Race fix (HIGH) — a rebuild already in flight (external-filter /
+      // postSortRows round-trip) reads `state.group` on both sides of an
+      // `await`; mutating it here first would let that resume into a
+      // hybrid stale/fresh pass. See `awaitPipelineIdle`'s doc.
+      await helpers.awaitPipelineIdle();
       // Cycle 15 / Task 1 — replace the group model; reject
       // unknown / duplicate colIds at the set-site so malformed input
       // surfaces as an `error` envelope instead of a silently broken

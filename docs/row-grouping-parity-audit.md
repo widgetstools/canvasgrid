@@ -102,7 +102,7 @@ Landed (tests: `tests/groupParityAg.test.ts` + updated
 
 First wave (2026-07-21, same day — tests: `ssrmV2FirstWave.test.ts`,
 extended `groupParityAg.test.ts`/`groupDefaultExpanded.test.ts`, browser
-e2e `apps/cgrid-positions/e2e/agParityFirstWave.spec.ts`, 8/8 passing):
+e2e `apps/velocitygrid-positions/e2e/agParityFirstWave.spec.ts`, 8/8 passing):
 
 8. ✅ `grandTotalRow: 'pinnedTop' | 'pinnedBottom'` — rides the existing
    `totalsRowPosition` pinned totals subgrid on BOTH paths. Sparse feeds it
@@ -130,7 +130,7 @@ e2e `apps/cgrid-positions/e2e/agParityFirstWave.spec.ts`, 8/8 passing):
 
 Second wave (2026-07-21, same day — tests:
 `tests/groupParitySecondWave.test.ts` (8), browser e2e
-`apps/cgrid-positions/e2e/agParitySecondWave.spec.ts` (3), both green):
+`apps/velocitygrid-positions/e2e/agParitySecondWave.spec.ts` (3), both green):
 
 14. ✅ `totalValueGetter` — via
     `autoGroupColumnDef.cellRendererParams.totalValueGetter` (AG's exact

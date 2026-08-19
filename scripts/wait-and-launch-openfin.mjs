@@ -10,7 +10,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
-const launchScript = join(root, 'apps', 'cgrid-ext-demo', 'openfin', 'launch.mjs');
+const launchScript = join(root, 'apps', 'velocitygrid-ext-demo', 'openfin', 'launch.mjs');
 const url = process.env.EXT_DEMO_URL ?? 'http://127.0.0.1:5188/';
 const timeoutMs = Number(process.env.EXT_DEMO_WAIT_MS ?? 120_000);
 

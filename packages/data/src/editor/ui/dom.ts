@@ -16,7 +16,7 @@ export function el<K extends keyof HTMLElementTagNameMap>(
       if (v == null || v === false) continue;
       if (k === 'className' || k === 'class') node.className = String(v);
       else if (k === 'textContent') node.textContent = String(v);
-      else if (k.startsWith('on') && typeof v === 'string') node.setAttribute(k, v);
+      else if (k.startsWith('on') && typeof v === 'string') continue;
       else if (v === true) node.setAttribute(k, '');
       else node.setAttribute(k, String(v));
     }

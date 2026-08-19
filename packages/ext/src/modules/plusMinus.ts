@@ -67,6 +67,7 @@ export function plusMinusModule(): SettingsModule {
       let draft: PlusMinusNudge | null = null;
       let draftIsNew = false;
       let editor: ExpressionEditor | null = null;
+      let activeTab: string | undefined;
 
       const root = el('div', 'ckp');
       const rail = el('div', 'ckp-rail');
@@ -266,7 +267,9 @@ export function plusMinusModule(): SettingsModule {
           body.appendChild(createSettingsAdvancedTabs({
             settings: settingsPane,
             advanced: advancedPane,
+            defaultTab: activeTab,
             lucideSvg,
+            onTabChange: (id) => { activeTab = id; },
           }).root);
           restorePaneScroll(pane, scrollTop);
           return;
@@ -314,7 +317,9 @@ export function plusMinusModule(): SettingsModule {
         body.appendChild(createSettingsAdvancedTabs({
           settings: settingsPane,
           advanced: advancedPane,
+          defaultTab: activeTab,
           lucideSvg,
+          onTabChange: (id) => { activeTab = id; },
         }).root);
 
         restorePaneScroll(pane, scrollTop);

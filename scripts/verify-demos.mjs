@@ -5,7 +5,7 @@
  *
  * Usage:
  *   node scripts/verify-demos.mjs
- *   node scripts/verify-demos.mjs --only cgrid-showcase,cgrid-ssrm-demo
+ *   node scripts/verify-demos.mjs --only velocitygrid-showcase,velocitygrid-ssrm-demo
  *
  * Requires `npm run build` (or at least kernel dist) beforehand for demos
  * that alias @wellsfargo-starui/velocity-grid to packages/kernel/dist.
@@ -14,13 +14,13 @@ import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 const ALL = [
-  { name: 'cgrid-showcase', workspace: 'cgrid-showcase', port: 5185, needsKernelDist: true },
-  { name: 'cgrid-positions', workspace: 'cgrid-positions', port: 5175, needsKernelDist: true },
-  { name: 'cgrid-customizer-demo', workspace: 'cgrid-customizer-demo', port: 5187, needsKernelDist: true },
-  { name: 'cgrid-ext-demo', workspace: 'cgrid-ext-demo', port: 5188, needsKernelDist: true },
-  { name: 'cgrid-ssrm-demo', workspace: 'cgrid-ssrm-demo', port: 5191, needsKernelDist: true },
-  { name: 'cgrid-perspective-ssrm-sample', workspace: 'cgrid-perspective-ssrm-sample', port: 5201, needsKernelDist: true },
-  { name: 'cgrid-vg-lab', workspace: 'cgrid-vg-lab', port: 5196, needsKernelDist: true },
+  { name: 'velocitygrid-showcase', workspace: 'velocitygrid-showcase', port: 5185, needsKernelDist: true },
+  { name: 'velocitygrid-positions', workspace: 'velocitygrid-positions', port: 5175, needsKernelDist: true },
+  { name: 'velocitygrid-customizer-demo', workspace: 'velocitygrid-customizer-demo', port: 5187, needsKernelDist: true },
+  { name: 'velocitygrid-ext-demo', workspace: 'velocitygrid-ext-demo', port: 5188, needsKernelDist: true },
+  { name: 'velocitygrid-ssrm-demo', workspace: 'velocitygrid-ssrm-demo', port: 5191, needsKernelDist: true },
+  { name: 'velocitygrid-perspective-ssrm-sample', workspace: 'velocitygrid-perspective-ssrm-sample', port: 5201, needsKernelDist: true },
+  { name: 'velocitygrid-vg-lab', workspace: 'velocitygrid-vg-lab', port: 5196, needsKernelDist: true },
   { name: 'colgroups', workspace: 'colgroups', port: 5176, needsKernelDist: false },
   { name: 'showcase', workspace: 'showcase', port: 5174, needsKernelDist: false },
 ];

@@ -129,7 +129,10 @@ function setup(opts: { rowCount?: number; cols?: string[]; initialFocus?: { row:
     isGroupDoubleClickExpandSuppressed: () => false,
   } as unknown as VelocityGridLike;
   const chain = new FeatureChain(grid);
-  return { canvas, sel, chain, emitClicked, emitDoubleClicked, resizeColumn, cycleSort, scrollBy, openEditor, stopEditing };
+  return {
+    canvas, sel, chain, emitClicked, emitDoubleClicked, resizeColumn, finishColumnResize,
+    cycleSort, scrollBy, openEditor, stopEditing,
+  };
 }
 
 describe('FeatureChain — mouse', () => {
@@ -175,6 +178,46 @@ describe('FeatureChain — mouse', () => {
     window.dispatchEvent(new MouseEvent('mousemove', { clientX: 120, clientY: 10, bubbles: true }));
     window.dispatchEvent(new MouseEvent('mouseup', { clientX: 120, clientY: 10, bubbles: true }));
     expect(resizeColumn).toHaveBeenCalledWith('a', 22);
+  });
+
+  // Regression: HIGH (critical-review remediation) — `handleMouseUp` used
+  // to be the ONLY place that called `finishColumnResize` (which resets
+  // `columnResizeDragActive`, the flag gating the fast paint-cache-layer
+  // path grid-wide). A lost mouseup — pointer capture stolen by a native
+  // drag, alt-tab, devtools grabbing focus — left the grid permanently on
+  // the slow paint path. `FeatureChain` now installs a `pointercancel` /
+  // `blur` / `visibilitychange` safety net for the duration of any mouse
+  // gesture that forces the same cleanup a normal mouseup would.
+  it('pointercancel mid-resize calls finishColumnResize (lost-mouseup safety net)', () => {
+    const { canvas, resizeColumn, finishColumnResize } = setup();
+    canvas.dispatchEvent(new MouseEvent('mousedown', { clientX: 98, clientY: 10, bubbles: true, button: 0 }));
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 120, clientY: 10, bubbles: true }));
+    expect(resizeColumn).toHaveBeenCalledWith('a', 22);
+    expect(finishColumnResize).not.toHaveBeenCalled();
+    // Simulate a lost mouseup: the OS/browser cancels the pointer instead
+    // (e.g. a native drag-and-drop interception) — no 'mouseup' ever fires.
+    window.dispatchEvent(new Event('pointercancel'));
+    expect(finishColumnResize).toHaveBeenCalledWith('a');
+  });
+
+  it('window blur mid-resize calls finishColumnResize (lost-mouseup safety net)', () => {
+    const { canvas, finishColumnResize } = setup();
+    canvas.dispatchEvent(new MouseEvent('mousedown', { clientX: 98, clientY: 10, bubbles: true, button: 0 }));
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 120, clientY: 10, bubbles: true }));
+    window.dispatchEvent(new Event('blur'));
+    expect(finishColumnResize).toHaveBeenCalledWith('a');
+  });
+
+  it('a normal mouseup after the abort listeners were armed still works, and does not double-fire', () => {
+    const { canvas, finishColumnResize } = setup();
+    canvas.dispatchEvent(new MouseEvent('mousedown', { clientX: 98, clientY: 10, bubbles: true, button: 0 }));
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 120, clientY: 10, bubbles: true }));
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 120, clientY: 10, bubbles: true }));
+    expect(finishColumnResize).toHaveBeenCalledTimes(1);
+    // The abort listeners are torn down on every normal mouseup too, so a
+    // later blur (with the mouse no longer down) must NOT re-fire cleanup.
+    window.dispatchEvent(new Event('blur'));
+    expect(finishColumnResize).toHaveBeenCalledTimes(1);
   });
 
   it('wheel forwards delta to scrollBy', () => {

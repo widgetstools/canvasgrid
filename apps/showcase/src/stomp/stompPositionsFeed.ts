@@ -60,7 +60,7 @@ export class StompPositionsFeed {
     this.generation += 1;
     const client = this.client;
     this.client = null;
-    if (client) void client.deactivate();
+    if (client) void client.deactivate().catch(() => undefined);
     if (updatePhase) {
       this.setFeed({ ...this.feed, phase: 'disconnected' });
     }

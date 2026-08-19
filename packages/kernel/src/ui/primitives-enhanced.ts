@@ -64,7 +64,7 @@ export const VGUI_ENHANCED_TOKENS: VguiTokensEnhanced = {
   bgTertiary: 'var(--vg-bg-tertiary, #24293d)',
 
   // Borders
-  borderStrong: 'var(--vg-border-color, #32384f)',
+  borderStrong: 'var(--vg-border-color, #2a3140)',
   borderSubtle: 'rgba(74, 82, 113, 0.6)',
   borderLight: 'rgba(74, 82, 113, 0.3)',
 
@@ -191,7 +191,7 @@ export function vguiSwitchCssEnhanced(
 
 .${c.root}:focus {
   outline: none;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2), ${t.focusRing};
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2), ${t.focusRing ?? ''};
 }
 
 .${c.root}:active {
@@ -269,7 +269,7 @@ export function vguiButtonCssEnhanced(
 
 .${c.primary}:focus {
   outline: none;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3), ${t.focusRing};
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3), ${t.focusRing ?? ''};
 }
 
 .${c.primary}:disabled {
@@ -306,7 +306,7 @@ export function vguiButtonCssEnhanced(
 
 .${c.secondary}:focus {
   outline: none;
-  box-shadow: ${t.focusRing};
+  box-shadow: ${t.focusRing ?? ''};
 }
 
 .${c.secondary}:disabled {
@@ -340,7 +340,7 @@ export function vguiButtonCssEnhanced(
 
 .${c.tertiary}:focus {
   outline: none;
-  box-shadow: ${t.focusRing};
+  box-shadow: ${t.focusRing ?? ''};
 }
 
 .${c.tertiary}:disabled {
@@ -381,19 +381,19 @@ export function vguiRowCssEnhanced(
   border: 1px solid ${t.borderSubtle};
   border-radius: 8px;
   transition: all ${VGUI_TRANSITIONS.base};
-  box-shadow: ${t.shadow};
+  box-shadow: ${t.shadow ?? ''};
 }
 
 .${c.root}:hover {
   background: ${t.bgTertiary};
   border-color: ${t.borderStrong};
-  box-shadow: ${t.shadowMd};
+  box-shadow: ${t.shadowMd ?? ''};
   transform: translateY(-1px);
 }
 
 .${c.root}:focus-within {
   border-color: ${t.accent};
-  box-shadow: ${t.shadowMd}, ${t.focusRing};
+  box-shadow: ${t.shadowMd ?? ''}, ${t.focusRing ?? ''};
 }
 
 .${c.root} .${c.label} {
@@ -456,7 +456,7 @@ export function vguiInputCssEnhanced(
   outline: none;
   background: ${t.bgPrimary};
   border-color: ${t.accent};
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.08), ${t.focusRing};
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.08), ${t.focusRing ?? ''};
 }
 
 .${c.root}::placeholder {
@@ -489,7 +489,7 @@ export function vguiBandCssEnhanced(
 
 .${c.root}:hover {
   border-color: ${t.borderStrong};
-  box-shadow: ${t.shadow};
+  box-shadow: ${t.shadow ?? ''};
 }
 
 .${c.head} {
@@ -538,15 +538,15 @@ export function vguiBandCssEnhanced(
 .${c.body} {
   max-height: 1000px;
   overflow: hidden;
-  animation: expandDown ${VGUI_TRANSITIONS.slow};
+  animation: vgui-expandDown ${VGUI_TRANSITIONS.slow};
 }
 
 .${c.root}.${c.collapsed} .${c.body} {
   max-height: 0;
-  animation: collapseUp ${VGUI_TRANSITIONS.slow};
+  animation: vgui-collapseUp ${VGUI_TRANSITIONS.slow};
 }
 
-@keyframes expandDown {
+@keyframes vgui-expandDown {
   from {
     opacity: 0;
     transform: translateY(-8px);
@@ -557,7 +557,7 @@ export function vguiBandCssEnhanced(
   }
 }
 
-@keyframes collapseUp {
+@keyframes vgui-collapseUp {
   from {
     opacity: 1;
     transform: translateY(0);
@@ -573,7 +573,7 @@ export function vguiBandCssEnhanced(
  * Enhanced tab system — prominent underline indicator with animation
  */
 export function vguiTabsCssEnhanced(
-  c: { root: string; tab: string; active: string; indicator: string },
+  c: { root: string; tab: string; active: string },
   t: VguiTokensEnhanced = VGUI_ENHANCED_TOKENS,
 ): string {
   return `
@@ -687,19 +687,22 @@ export function vguiChipCssEnhanced(
 /**
  * Loading spinner animation
  */
-export function vguiLoadingCss(c: { spinner: string }): string {
+export function vguiLoadingCss(
+  c: { spinner: string },
+  t: VguiTokensEnhanced = VGUI_ENHANCED_TOKENS,
+): string {
   return `
 .${c.spinner} {
   display: inline-block;
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(59, 130, 246, 0.2);
-  border-top-color: #3b82f6;
+  border: 2px solid ${t.accentLight};
+  border-top-color: ${t.accent};
   border-radius: 50%;
-  animation: spin 800ms linear infinite;
+  animation: vgui-spin 800ms linear infinite;
 }
 
-@keyframes spin {
+@keyframes vgui-spin {
   to { transform: rotate(360deg); }
 }`;
 }

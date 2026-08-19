@@ -2,7 +2,7 @@
  * Saved filter pills — title-bar strip that captures / toggles / persists
  * named filter models per layout (Markets Grid "quick filter buttons").
  */
-import type { VelocityGridExtContext, ToolbarItem, ToolbarItemInstance } from '../extension/types';
+import type { ToolbarItem, ToolbarItemInstance } from '../extension/types';
 import {
   doesRowMatchFilterModel,
   filterModelsEqual,

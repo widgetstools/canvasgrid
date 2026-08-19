@@ -24,10 +24,11 @@
  *
  * **Group-level sort semantics.**
  *
- *   - The default is `GroupPass`'s composite-key sort — alphabetical
- *     by `colId:value::…` across levels. Cheap, deterministic, and
- *     matches the screenshot reference at `09-grouping-three-level-
- *     expanded.png` when nothing is configured.
+ *   - The default (no sort model entry targets a grouping column) is
+ *     `GroupPass`'s data-insertion order: a group's position is
+ *     determined by the order its first leaf row appeared in the
+ *     post-filter set — NOT the composite-key (`colId:value::…`)
+ *     string order. See `groupPass.ts`'s `finalise` doc.
  *   - When the active sort model targets one of the grouping columns,
  *     the level at that depth respects the direction (asc → composite
  *     key sort; desc → reversed). This mirrors ag-grid's behaviour
@@ -488,13 +489,12 @@ export class SortPass<TRow = any> {
     const { entry, col, fn } = resolved;
     const dir = entry.direction === 'asc' ? 1 : -1;
     // When `sortGroupRowsByKey` is explicitly on, OR when no value-aware
-    // function is available, sort by the composite key string (cheap,
-    // already what GroupPass built — just flip direction).
+    // function is available, sort by the composite key string.
     const byKey = col?.sortGroupRowsByKey === true || (fn === undefined && col?.accentedSort !== true);
     if (byKey) {
-      // GroupPass already produced asc-by-key order. Reverse for desc;
-      // re-sort defensively for asc (the input is the unsorted clone of
-      // GroupPass output, which is asc — re-sort is a no-op but stable).
+      // GroupPass's input to this level is data-insertion order (NOT
+      // pre-sorted by key — see groupPass.ts's `finalise` doc), so both
+      // directions do real work here, not just a direction flip.
       if (dir === 1) {
         nodes.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
       } else {

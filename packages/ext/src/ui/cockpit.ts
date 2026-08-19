@@ -2,6 +2,18 @@
  * Cockpit UI kit — shared primitives for the customizer settings modules:
  * section bands, summary chips, checkboxes, pill groups, Lucide icon
  * tiles, settings rows. One injected stylesheet. Tab groups for Phase 4 IA.
+ *
+ * Two parallel primitive sets live here, undocumented until now:
+ *  - Original (`switchToggle`/`ckp-switch`, `chip`, `row`, …) — the first
+ *    generation of the kit, still driving most modules.
+ *  - Enhanced (`switchToggleEnhanced`/`ckp-switch-enhanced`,
+ *    `actionButtonEnhanced`, `resetButtonEnhanced`, `CKP_TOKENS_ENHANCED`,
+ *    `vgui*CssEnhanced` generators) — the premium visual pass (Phase 1),
+ *    purely additive alongside the original set.
+ * Enhanced is the target design system; new/touched UI should use it.
+ * Adoption is mixed — some files (e.g. `columnSettings.ts`) still render
+ * with the original primitives and haven't been migrated. This is a
+ * documentation note only; migrating existing callers is a separate task.
  */
 import { ColorPickerControl, parseColor, rgbaToString } from '@wellsfargo-starui/velocity-grid';
 import type { BandComplexity, TabDefinition, TabGroup } from './tabGroup';
@@ -35,7 +47,6 @@ import {
   vguiTabsCssEnhanced,
   vguiChipCssEnhanced,
   vguiLoadingCss,
-  VGUI_ENHANCED_TOKENS,
   VGUI_SPACING,
   VGUI_TYPOGRAPHY,
   VGUI_TRANSITIONS,
@@ -248,8 +259,14 @@ export function resetButtonEnhanced(label: string, icon?: string): HTMLButtonEle
 /**
  * Animate save button through spinner → checkmark → idle cycle.
  * Shows visual feedback that the operation is in progress and succeeded.
+ *
+ * Returns a cancel function that clears both pending timeouts without
+ * touching the button or calling `onComplete` — callers whose `destroy()`/
+ * `refresh()` can run mid-animation (the button/its host may already be
+ * gone by then) must call this to avoid a stray `onComplete()` → `render()`
+ * on a torn-down module.
  */
-export function animateSaveButton(btn: HTMLButtonElement, onComplete?: () => void): void {
+export function animateSaveButton(btn: HTMLButtonElement, onComplete?: () => void): () => void {
   const originalHTML = btn.innerHTML;
   btn.classList.add('ckp-btn-saving');
   btn.disabled = true;
@@ -257,12 +274,13 @@ export function animateSaveButton(btn: HTMLButtonElement, onComplete?: () => voi
   // Show spinner for 300ms
   btn.innerHTML = `<span class="ckp-spinner"></span><span>Saving...</span>`;
 
-  setTimeout(() => {
+  let t2: ReturnType<typeof setTimeout> | undefined;
+  const t1 = setTimeout(() => {
     // Show checkmark for 400ms
     btn.innerHTML = `${lucideSvg('check', 12)}<span>Saved</span>`;
     btn.classList.add('ckp-btn-saved');
 
-    setTimeout(() => {
+    t2 = setTimeout(() => {
       // Return to normal state
       btn.innerHTML = originalHTML;
       btn.classList.remove('ckp-btn-saving', 'ckp-btn-saved');
@@ -270,6 +288,11 @@ export function animateSaveButton(btn: HTMLButtonElement, onComplete?: () => voi
       onComplete?.();
     }, 400);
   }, 300);
+
+  return () => {
+    clearTimeout(t1);
+    if (t2 !== undefined) clearTimeout(t2);
+  };
 }
 
 /**
@@ -822,9 +845,9 @@ ${vguiButtonCssEnhanced({ primary: 'ckp-btn-primary-enhanced', secondary: 'ckp-b
 ${vguiInputCssEnhanced({ root: 'ckp-input-enhanced' }, CKP_TOKENS_ENHANCED)}
 ${vguiRowCssEnhanced({ root: 'ckp-row-enhanced', label: 'ckp-row-label', title: 'ckp-row-title', help: 'ckp-help', control: 'ckp-row-control', modified: 'is-modified' }, CKP_TOKENS_ENHANCED, { labelCol: '210px' })}
 ${vguiBandCssEnhanced({ root: 'ckp-band-enhanced', head: 'ckp-band-head-enhanced', body: 'ckp-band-body-enhanced', title: 'ckp-band-title-enhanced', chevron: 'ckp-band-chevron-enhanced', collapsed: 'is-collapsed' }, CKP_TOKENS_ENHANCED)}
-${vguiTabsCssEnhanced({ root: 'ckp-tabs-enhanced', tab: 'ckp-tab', active: 'active', indicator: 'indicator' }, CKP_TOKENS_ENHANCED)}
+${vguiTabsCssEnhanced({ root: 'ckp-tabs-enhanced', tab: 'ckp-tab', active: 'active' }, CKP_TOKENS_ENHANCED)}
 ${vguiChipCssEnhanced({ root: 'ckp-chip-enhanced', label: 'ckp-chip-label', value: 'ckp-chip-value' }, CKP_TOKENS_ENHANCED)}
-${vguiLoadingCss({ spinner: 'ckp-spinner' })}
+${vguiLoadingCss({ spinner: 'ckp-spinner' }, CKP_TOKENS_ENHANCED)}
 /* ─── Phase 3: Micro-interactions ──────────────────────────────────────── */
 /* Save animation: spinner → checkmark → idle */
 .ckp-btn-primary-enhanced.ckp-btn-saving {

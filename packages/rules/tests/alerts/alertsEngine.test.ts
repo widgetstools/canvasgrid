@@ -325,6 +325,67 @@ describe('AlertsEngine — debounce', () => {
   });
 });
 
+// ── pipeline: debounce map eviction (critical-review HIGH finding) ───────
+
+describe('AlertsEngine — debounce map eviction on row removal', () => {
+  // `debounceLast` is private; reaching into it directly is the only way to
+  // prove the map itself shrinks (vs. merely that behavior looks right).
+  const debounceSize = (engine: AlertsEngine): number =>
+    (engine as unknown as { debounceLast: Map<string, number> }).debounceLast.size;
+
+  it('a real rowsChanged-shaped `removed` change evicts that row\'s debounce stamp', () => {
+    const { engine } = makeEngine();
+    engine.setRules([rule({ trigger: { kind: 'dataChange', expression: '[price] > 100' } })]);
+    engine.applyChanges(updated('x', { price: 150 }, [['price', 90, 150]])); // stamps 'r1 x'
+    expect(debounceSize(engine)).toBe(1);
+    engine.applyChanges(removed(['x'])); // the row leaves the grid
+    expect(debounceSize(engine)).toBe(0);
+  });
+
+  it('evicts across every rule, not just the one that fired', () => {
+    const { engine } = makeEngine();
+    engine.setRules([
+      rule({ id: 'r1', priority: 1, trigger: { kind: 'dataChange', expression: '[price] > 100' } }),
+      rule({ id: 'r2', priority: 2, trigger: { kind: 'rowChange', mode: 'ROW_ADDED' } }),
+    ]);
+    engine.applyChanges(added(['x'])); // stamps 'r2 x' (r1 doesn't match an add)
+    expect(debounceSize(engine)).toBe(1);
+    engine.applyChanges(removed(['x']));
+    expect(debounceSize(engine)).toBe(0);
+  });
+
+  it('a ROW_REMOVED alert dispatched BY the removal is itself reclaimed, not left stamped', () => {
+    const { engine, events } = makeEngine();
+    engine.setRules([rule({ trigger: { kind: 'rowChange', mode: 'ROW_REMOVED' } })]);
+    engine.applyChanges(removed(['x']));
+    expect(events).toHaveLength(1); // the alert fired...
+    expect(debounceSize(engine)).toBe(0); // ...but left nothing behind to leak
+  });
+
+  it('throttled mode: a removal that only clears through flushThrottled is still evicted', () => {
+    const { engine } = makeEngine({ evaluationMode: 'throttled' });
+    engine.setRules([rule({ trigger: { kind: 'dataChange', expression: '[price] > 100' } })]);
+    engine.applyChanges(updated('x', { price: 150 }, [['price', 90, 150]]));
+    engine.applyChanges(removed(['x']));
+    expect(debounceSize(engine)).toBe(0); // nothing dispatched yet — still queued
+    engine.flushThrottled();
+    expect(debounceSize(engine)).toBe(0); // stamped then evicted within the same flush
+  });
+
+  it('setRules drops stamps for rules no longer present, but keeps stamps for rules that survive', () => {
+    const { engine, clock } = makeEngine();
+    engine.setRules([
+      rule({ id: 'keep' }),
+      rule({ id: 'drop' }),
+    ]);
+    engine.applyChanges(added(['x'])); // stamps 'keep x' and 'drop x'
+    expect(debounceSize(engine)).toBe(2);
+    clock.advance(1); // re-setRules must not reopen 'keep''s window (field doc)
+    engine.setRules([rule({ id: 'keep' })]); // 'drop' is gone from the new set
+    expect(debounceSize(engine)).toBe(1);
+  });
+});
+
 // ── pipeline: channels ──────────────────────────────────────────────────
 
 describe('AlertsEngine — channel filter', () => {

@@ -14,6 +14,17 @@
 // matching the calc DSL literal (aggTransform.ts folds PERCENTILE([x], 95)
 // into the fn-string 'PERCENTILE(95)').
 //
+// PERFORMANCE (critical-review finding, 2026-08): addRow/removeRow already
+// binary-search for the insertion/removal index (O(log n)) — the O(n) cost
+// is `values.splice`'s element shift, which is inherent to a plain sorted
+// array and NOT something binary search can avoid. There is no incremental
+// win available here short of swapping the backing structure entirely (a
+// balanced tree / skip list / the reserved t-digest), which is out of scope
+// for a targeted fix. Two O(n) splices per changed cell via updateRow is an
+// accepted tradeoff against the 50k-row / 50-100ms-tick performance bar
+// until the t-digest path (spec §1.2) lands; watch this file if that bar
+// gets missed on PERCENTILE/MEDIAN-heavy sheets.
+//
 // STDEV/VAR: Welford's online algorithm with removeRow downdate.
 // PRECISION CAVEAT: the downdate is not exactly associative — FP drift
 // accumulates and M2 can go slightly negative on near-constant data, so

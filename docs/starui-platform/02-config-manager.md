@@ -551,7 +551,7 @@ The host's config manager subscribes to cgrid's overall state changes (via `onSt
 Even though cgrid doesn't ship a real config manager, having a tiny `MemoryStorageAdapter` (~30 LOC) bundled lets:
 
 - Unit tests work without IndexedDB mocks
-- The cgrid-showcase app run without a config backend
+- The velocitygrid-showcase app run without a config backend
 - Documentation examples be self-contained
 
 ```ts

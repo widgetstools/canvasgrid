@@ -58,7 +58,7 @@ describe('DataProviderEditor shell', () => {
     mount.remove();
   });
 
-  it('exports each listed provider and imports a JSON config into the catalog', async () => {
+  it('exports each listed provider and imports a JSON config into the form WITHOUT auto-saving', async () => {
     reset();
     registerDefaultTransports();
     const backend = new MemoryConfigBackend();
@@ -67,7 +67,7 @@ describe('DataProviderEditor shell', () => {
       name: 'Live positions',
       providerType: 'stomp',
       rowModel: 'clientSide',
-      config: { keyColumn: 'positionId', websocketUrl: 'ws://localhost:8080' },
+      config: { keyColumn: 'positionId', websocketUrl: 'ws://localhost:8080', listenerTopic: '/topic/x' },
     });
 
     const mount = document.createElement('div');
@@ -100,6 +100,17 @@ describe('DataProviderEditor shell', () => {
     const input = mount.querySelector<HTMLInputElement>('[data-testid="import-provider-file"]')!;
     Object.defineProperty(input, 'files', { configurable: true, value: [file] });
     input.dispatchEvent(new Event('change'));
+    await new Promise((r) => setTimeout(r, 30));
+
+    // Loaded into the form for review — nothing persisted to the backend yet.
+    expect((await backend.list()).some((c) => c.name === 'Imported feed')).toBe(false);
+    expect(mount.textContent).toContain('Imported feed');
+    expect(mount.textContent).toContain('Create DataProvider');
+    expect(mount.querySelector('.vg-dp-shell__badge')?.textContent).toBe('Unsaved');
+
+    // Explicit Save persists it.
+    const saveBtn = mount.querySelector<HTMLButtonElement>('[data-testid="save-provider"]')!;
+    saveBtn.click();
     await new Promise((r) => setTimeout(r, 30));
 
     const listed = await backend.list();
@@ -285,7 +296,7 @@ describe('ProviderEditor form tabs', () => {
         rowModel: 'clientSide',
         public: true,
         description: 'imported',
-        config: { keyColumn: 'ticker', websocketUrl: 'ws://imported' },
+        config: { keyColumn: 'ticker', websocketUrl: 'ws://imported', listenerTopic: '/topic/x' },
       },
     };
     const file = new File([JSON.stringify(payload)], 'cfg.json', { type: 'application/json' });

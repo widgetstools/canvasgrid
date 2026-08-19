@@ -1,5 +1,5 @@
 export type { IStorage, StorageOpts } from './types';
-export { LocalStore } from './localStore';
+export { LocalStore, type LocalStoreOptions, type LocalStoreErrorOp } from './localStore';
 export { MemoryStore } from './memoryStore';
 export { RestStore, type RestStoreOptions } from './restStore';
 export {

@@ -49,6 +49,20 @@ interface RegistryEntry {
   parameterized: boolean;
 }
 
+/**
+ * MODULE-GLOBAL, NOT per-grid-instance: one flat `Map` shared by every
+ * `@wellsfargo-starui/velocity-grid-calc` consumer in the process (main thread AND every calc
+ * worker that reconstructs from `serializeAggregates()`). Two independently
+ * mounted grids that `registerAggregate()` different custom aggregates
+ * under the SAME name will throw (or silently clobber each other with
+ * `{ force: true }`) — there is no per-grid namespacing. Instance-scoping
+ * this registry would need a namespace/key threaded through
+ * `registerAggregate`/`getAggregate`/`serializeAggregates` AND the kernel
+ * worker call sites that consume them (`packages/kernel/src/worker/
+ * passes/calcPass.ts`, `dataPipeline.ts`) — out of scope for a targeted
+ * fix. Until then: give custom aggregate names a host/grid-specific prefix
+ * to avoid collisions across independently-mounted grids.
+ */
 const entries = new Map<string, RegistryEntry>();
 
 /** Parameterized lookup grammar: NAME(p) — canonical p is String(number). */
@@ -86,7 +100,10 @@ export function registerFactory(
 ): void {
   if (entries.has(name) && opts.force !== true) {
     throw new Error(
-      `registerAggregate: '${name}' is already registered — pass { force: true } to replace`,
+      `registerAggregate: '${name}' is already registered — pass { force: true } to replace. ` +
+      `Note: this registry is process-global, not per-grid — if this collision is between two ` +
+      `independently-mounted grids registering different aggregates under the same name, use a ` +
+      `host/grid-specific name instead of { force: true } (which would clobber the other grid's aggregate).`,
     );
   }
   if (opts.skipSmokeTest !== true) smokeTest(name, source, opts.parameterized === true);
@@ -117,6 +134,13 @@ function synthesizeFactorySource(impl: Aggregate): string {
  * is accepted and IGNORED this cycle (t-digest reserve, spec §1.2 — the
  * exact sorted path runs at every size). Throws on duplicate names
  * unless `opts.force`.
+ *
+ * MULTI-GRID RISK: `name` is a key in the single process-wide registry
+ * (see `entries` above) — if more than one grid is mounted in this
+ * process, a name collision here throws (or clobbers under `force: true`)
+ * for EVERY grid, not just the caller. Prefix custom aggregate names with
+ * something host/grid-specific if multiple grids in this process may
+ * register different customs under what would otherwise be the same name.
  */
 export function registerAggregate(name: string, impl: Aggregate, opts?: AggregateFactoryOpts): void {
   const source = synthesizeFactorySource(impl);

@@ -72,6 +72,13 @@ export interface WorkerHelpers {
   /** Cached `buildVisibleAsync` — returns `state.visibleCache` when
    *  present. */
   visibleAsync(): Promise<string[]>;
+  /** Race fix (HIGH) — resolves once no `buildVisibleAsync` pass is
+   *  currently in flight (`state.visibleCachePromise` is null), looping
+   *  in case a new build starts before this settles. `setGroupModel` /
+   *  `setSortModel` / `setFilterModel` await this BEFORE mutating their
+   *  pass object so a build already mid-read of group/sort/filter state
+   *  never resumes into a hybrid stale/fresh pass. */
+  awaitPipelineIdle(): Promise<void>;
   /** True when the most recent `buildVisibleAsync` produced a group
    *  tree the slicer should walk over. */
   isGroupingActive(): boolean;

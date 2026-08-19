@@ -361,6 +361,28 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     return p;
   }
 
+  /** Race fix (HIGH) — `setGroupModel` / `setSortModel` / `setFilterModel`
+   *  used to mutate `state.group` / `state.sort` / `state.filter`
+   *  synchronously and immediately. A `buildVisibleAsync` pass already
+   *  suspended mid-flight (its external-filter / postSortRows round-trip
+   *  — see the `await`s inside `buildVisibleAsync`) resumes AFTER such a
+   *  mutation and reads the pass objects fresh, producing a hybrid
+   *  stale/fresh result (e.g. filtered under the OLD model but grouped
+   *  under a NEW one landed mid-await). `state.visibleCachePromise` is
+   *  already the single indicator of "a build is currently in flight" —
+   *  set by `visibleAsync()` for EVERY call path (getViewport, export,
+   *  invalidateAndCount), not just the `invalidateAndCountSerialized`
+   *  coalescing engine — so awaiting it here (looped, in case a fresh
+   *  build starts in the same microtask turn the previous one settles)
+   *  guarantees no build is mid-read of group/sort/filter state at the
+   *  moment a handler mutates it. Errors are swallowed — callers only
+   *  care that the prior build finished, not its outcome. */
+  async function awaitPipelineIdle(): Promise<void> {
+    while (state && state.visibleCachePromise) {
+      await state.visibleCachePromise.then(() => undefined, () => undefined);
+    }
+  }
+
   /** Cycle 15 / Task 4 — true when the most recent `buildVisibleAsync`
    *  produced a group tree the slicer should walk over (instead of
    *  emitting the flat post-sort row order). Reads the latest
@@ -951,6 +973,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       buildVisibleAsync,
       runPostSortRows,
       visibleAsync,
+      awaitPipelineIdle,
       isGroupingActive,
       isPivotActive,
       effectiveExpandedKeys,

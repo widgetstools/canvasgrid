@@ -19,6 +19,7 @@ import type { HandlerCtx } from '../dispatch';
 import type { WorkerRequest } from '../protocol';
 import type { IAggFunc } from '../aggFuncRegistry';
 import { readSsrmRowMeta } from '../../core/ssrmRowMeta';
+import { createStaticFunction } from '../staticFunction';
 
 export type DataPipelineRequest = Extract<WorkerRequest, {
   type:
@@ -91,7 +92,7 @@ export async function handleDataPipeline(
       // mirror; drain-and-discard any pending async transaction so a queued
       // tick can't replay onto (and diverge) the replacement store.
       state.queue.discardPending();
-      state.store.setAll(req.payload.rows as unknown[], req.payload.heightsByRowId);
+      const rowDataWarnings = state.store.setAll(req.payload.rows as unknown[], req.payload.heightsByRowId);
       // Cycle 21d / Task 11 — full data replace invalidates the calc
       // value cache; next ensureStageA pass does a full recompute.
       state.calc.onSetRowData();
@@ -121,7 +122,10 @@ export async function handleDataPipeline(
       const expandedKeys = wasPendingSeed && !state.pendingDefaultExpandSeed
         ? (state.expandedKeys === null ? null : Array.from(state.expandedKeys))
         : undefined;
-      post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount, groupKeys, expandedKeys });
+      post({
+        id: req.id, type: 'rowCount', count: state.store.size(), visibleCount, groupKeys, expandedKeys,
+        warnings: rowDataWarnings.length > 0 ? rowDataWarnings : undefined,
+      });
       return;
     }
 
@@ -343,6 +347,10 @@ export async function handleDataPipeline(
     }
 
     case 'setSortModel': {
+      // Race fix (HIGH) — see `awaitPipelineIdle`'s doc (worker.ts):
+      // a build already in flight must not resume into a mutated
+      // `state.sort`.
+      await helpers.awaitPipelineIdle();
       state.sort.setModel(req.payload);
       state.visibleCache = null;
       state.visibleCachePromise = null;
@@ -419,32 +427,16 @@ export async function handleDataPipeline(
     case 'setAggFuncs': {
       // Cycle 14 / Task 3 — replace the custom agg-func layer wholesale.
       // Each entry's `source` is the original function's
-      // `Function.prototype.toString()` form; the worker rebuilds the
-      // callable via `new Function` in strict-mode.
+      // `Function.prototype.toString()` form; reconstructed through the
+      // single authorized chokepoint (see staticFunction.ts).
       const built: Record<string, IAggFunc> = {};
       for (const entry of req.payload.funcs) {
-        let fn: unknown;
         try {
-          fn = new Function(`"use strict"; return (${entry.source});`)();
+          built[entry.name] = createStaticFunction(entry.source, `aggFunc '${entry.name}'`) as unknown as IAggFunc;
         } catch (err) {
-          post({
-            id: req.id,
-            type: 'error',
-            error: `[velocity-grid] failed to deserialise aggFunc '${entry.name}': ${
-              String((err as Error).message ?? err)
-            }`,
-          });
+          post({ id: req.id, type: 'error', error: String((err as Error).message ?? err) });
           return;
         }
-        if (typeof fn !== 'function') {
-          post({
-            id: req.id,
-            type: 'error',
-            error: `[velocity-grid] aggFunc '${entry.name}' did not deserialise to a function`,
-          });
-          return;
-        }
-        built[entry.name] = fn as IAggFunc;
       }
       state.aggFuncs.replaceCustom(built);
       post({
@@ -474,31 +466,17 @@ export async function handleDataPipeline(
     }
 
     case 'registerComparator': {
-      // Cycle 8 / Task 3 — reconstruct the app's comparator via
-      // `new Function` in strict mode.
+      // Cycle 8 / Task 3 — reconstruct the app's comparator through the
+      // single authorized chokepoint (see staticFunction.ts).
       const { name, source } = req.payload;
-      let fn: unknown;
+      let fn: Function;
       try {
-        fn = new Function(`"use strict"; return (${source});`)();
+        fn = createStaticFunction(source, `comparator '${name}'`);
       } catch (err) {
-        post({
-          id: req.id,
-          type: 'error',
-          error: `[velocity-grid] failed to deserialise comparator '${name}': ${
-            String((err as Error).message ?? err)
-          }`,
-        });
+        post({ id: req.id, type: 'error', error: String((err as Error).message ?? err) });
         return;
       }
-      if (typeof fn !== 'function') {
-        post({
-          id: req.id,
-          type: 'error',
-          error: `[velocity-grid] comparator '${name}' did not deserialise to a function`,
-        });
-        return;
-      }
-      state.comparators.register(name, fn as (a: unknown, b: unknown) => number);
+      state.comparators.register(name, fn as unknown as (a: unknown, b: unknown) => number);
       post({
         id: req.id,
         type: 'rowCount',

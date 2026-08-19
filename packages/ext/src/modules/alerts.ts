@@ -140,6 +140,7 @@ export function alertsModule(): SettingsModule {
       let draft: AlertRule | null = null;
       let draftIsNew = false;
       let editor: ExpressionEditor | null = null;
+      let activeTab: string | undefined;
 
       const root = el('div', 'ckp');
       const rail = el('div', 'ckp-rail');
@@ -343,8 +344,9 @@ export function alertsModule(): SettingsModule {
             settings: settingsPane,
             advanced: advancedPane,
             history: historyPane,
-            defaultTab: 'advanced',
+            defaultTab: activeTab ?? 'advanced',
             lucideSvg,
+            onTabChange: (id) => { activeTab = id; },
           }).root);
           restorePaneScroll(pane, scrollTop);
           return;
@@ -535,7 +537,9 @@ export function alertsModule(): SettingsModule {
           settings: settingsPane,
           advanced: advancedPane,
           history: historyPane,
+          defaultTab: activeTab,
           lucideSvg,
+          onTabChange: (id) => { activeTab = id; },
         }).root);
 
         restorePaneScroll(pane, scrollTop);

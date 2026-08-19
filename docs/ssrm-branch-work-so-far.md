@@ -46,7 +46,7 @@ Phases 1–3 of `docs/ssrm-group-skeleton-design.md` implemented:
 | v2 controller (per-group leaf blocks, LRU, local reflow) | `src/core/serverSideRowModelV2.ts` |
 | v2 datasource contract + duck-typed detection | `src/types/ssrm.ts` (`IServerSideDatasourceV2`, `isServerSideDatasourceV2`) |
 | cgrid mount/kind-switch + sparse gates | `src/velocityGrid.ts` (`mountSsrmController`, `isSparseSsrm`) |
-| Demo port (skeleton + leaf + flat queries) | `apps/cgrid-ssrm-demo/src/perspective/book.ts`, `ssrmDatasource.ts` |
+| Demo port (skeleton + leaf + flat queries) | `apps/velocitygrid-ssrm-demo/src/perspective/book.ts`, `ssrmDatasource.ts` |
 
 Expansion toggles now reflow locally (rowCount updates before any datasource
 call; collapse needs zero calls), leaf caches are per-group and survive
@@ -64,7 +64,7 @@ after the group model), full expansion defaults on sparse, sparse
 group/grand-total footers via FlattenIndex, `groupMaintainOrder`
 (CSRM + sparse order pinning), and sparse selection cascade via the new
 optional datasource `getGroupLeafIds`. Browser e2e:
-`apps/cgrid-positions/e2e/agParityFirstWave.spec.ts` (8/8; run with
+`apps/velocitygrid-positions/e2e/agParityFirstWave.spec.ts` (8/8; run with
 `playwright.alt-port.config.ts` when 5175 is occupied).
 
 ### AG-parity second wave (2026-07-21)
@@ -91,7 +91,7 @@ the grouped column's field + filter type). Tests:
 
 ## Apps
 
-### Standalone demo — `apps/cgrid-ssrm-demo/`
+### Standalone demo — `apps/velocitygrid-ssrm-demo/`
 
 Perspective WASM book + windowed grouped `getRows`:
 
@@ -104,7 +104,7 @@ Perspective WASM book + windowed grouped `getRows`:
 **Run:** `npm run build:kernel` then `npm run dev:ssrm-demo` → http://localhost:5191  
 (`?feed=seed` default; `?feed=stomp` optional)
 
-### Showcase — `apps/cgrid-showcase/`
+### Showcase — `apps/velocitygrid-showcase/`
 
 - `src/data/stompSsrmDataProvider.ts` — `StompSsrmDataProvider`
 - `src/features/multiBlotterSsrm.ts` — multi-blotter feature entry

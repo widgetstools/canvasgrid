@@ -733,6 +733,10 @@ export type WorkerResponse =
        *  any data, so the seed ran against an empty tree). Main replaces
        *  its expansion mirror. `null` = the all-expanded sentinel. */
       expandedKeys?: string[] | null;
+      /** Present on `setRowData` replies when `RowStore.setAll` skipped one
+       *  or more malformed rows (unresolved rowIdField) rather than
+       *  aborting the load. Absent when nothing was skipped. */
+      warnings?: string[];
     }
   /** Cycle 15 / Task 7 — reply to `setGroupModel` AND `setExpandedKeys`
    *  that piggybacks on the existing rowCount channel but adds the list

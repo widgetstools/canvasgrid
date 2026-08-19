@@ -79,6 +79,75 @@ describe('parseProviderConfigImport', () => {
   it('throws on invalid JSON', () => {
     expect(() => parseProviderConfigImport('{not json')).toThrow(/valid JSON/);
   });
+
+  it('rejects an unknown/unregistered providerType', () => {
+    expect(() =>
+      parseProviderConfigImport(JSON.stringify({ providerType: 'not-a-real-transport', config: {} })),
+    ).toThrow(/Unknown provider type/);
+  });
+
+  it('rejects a stomp import missing websocketUrl', () => {
+    expect(() =>
+      parseProviderConfigImport(
+        JSON.stringify({ providerType: 'stomp', config: { listenerTopic: '/topic/x' } }),
+      ),
+    ).toThrow(/websocketUrl/);
+  });
+
+  it('rejects a stomp import missing listenerTopic', () => {
+    expect(() =>
+      parseProviderConfigImport(
+        JSON.stringify({ providerType: 'stomp', config: { websocketUrl: 'ws://localhost:8080' } }),
+      ),
+    ).toThrow(/listenerTopic/);
+  });
+
+  it('rejects a stomp import with a non ws/wss websocketUrl', () => {
+    expect(() =>
+      parseProviderConfigImport(
+        JSON.stringify({
+          providerType: 'stomp',
+          config: { websocketUrl: 'http://localhost:8080', listenerTopic: '/topic/x' },
+        }),
+      ),
+    ).toThrow(/ws:\/\/ or wss:\/\//);
+  });
+
+  it('accepts a valid stomp import (websocketUrl + listenerTopic present)', () => {
+    const parsed = parseProviderConfigImport(
+      JSON.stringify({
+        providerType: 'stomp',
+        config: { websocketUrl: 'wss://example.com/hub', listenerTopic: '/topic/x' },
+      }),
+    );
+    expect(parsed.providerType).toBe('stomp');
+    expect(parsed.config.websocketUrl).toBe('wss://example.com/hub');
+  });
+
+  it('rejects an invalid rowModel', () => {
+    expect(() =>
+      parseProviderConfigImport(
+        JSON.stringify({ providerType: 'mock', rowModel: 'notARowModel', config: {} }),
+      ),
+    ).toThrow(/rowModel/);
+  });
+
+  it('accepts a minimal mock import with no required fields', () => {
+    const parsed = parseProviderConfigImport(
+      JSON.stringify({ providerType: 'mock', config: {} }),
+    );
+    expect(parsed.providerType).toBe('mock');
+    expect(parsed.rowModel).toBe('clientSide');
+  });
+
+  it('defaults rowModel to clientSide when absent, accepts explicit serverSide', () => {
+    const withoutRowModel = parseProviderConfigImport(JSON.stringify({ providerType: 'mock', config: {} }));
+    expect(withoutRowModel.rowModel).toBe('clientSide');
+    const withServerSide = parseProviderConfigImport(
+      JSON.stringify({ providerType: 'mock', rowModel: 'serverSide', config: {} }),
+    );
+    expect(withServerSide.rowModel).toBe('serverSide');
+  });
 });
 
 describe('exportProviderConfig', () => {

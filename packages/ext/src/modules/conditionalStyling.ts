@@ -99,6 +99,7 @@ export function conditionalStylingModule(): SettingsModule {
       let editor: ExpressionEditor | null = null;
       let fmtMenu: { toggle(): void; destroy(): void } | null = null;
       let styleChromeDispose: (() => void) | null = null;
+      let activeTab: string | undefined;
 
       const root = el('div', 'ckp');
       const rail = el('div', 'ckp-rail');
@@ -562,7 +563,15 @@ export function conditionalStylingModule(): SettingsModule {
         fmtBtn.type = 'button';
         const syncFmtBtn = (): void => {
           const cur = d.valueFormatter;
-          fmtBtn.innerHTML = `${lucideSvg('hash', 12)}<span>${cur ? previewFormat(cur, 1234.5) : 'Format'}</span><span>⌄</span>`;
+          // D-XSS1 — the preview text runs a user-authored format string
+          // through compileFormat/formatText, which passes quoted-literal
+          // sections through verbatim; it must never reach innerHTML.
+          fmtBtn.innerHTML = lucideSvg('hash', 12);
+          const label = document.createElement('span');
+          label.textContent = cur ? previewFormat(cur, 1234.5) : 'Format';
+          const chevron = document.createElement('span');
+          chevron.textContent = '⌄';
+          fmtBtn.append(label, chevron);
           fmtBtn.title = cur ?? 'No formatter';
         };
         syncFmtBtn();
@@ -594,7 +603,9 @@ export function conditionalStylingModule(): SettingsModule {
         body.appendChild(createSettingsAdvancedTabs({
           settings: settingsPane,
           advanced: advancedPane,
+          defaultTab: activeTab,
           lucideSvg,
+          onTabChange: (id) => { activeTab = id; },
         }).root);
 
         restorePaneScroll(pane, scrollTop);

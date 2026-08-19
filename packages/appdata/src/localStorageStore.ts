@@ -31,6 +31,7 @@ export class PersistedAppDataStore extends AppDataStore {
   private readonly key: string;
   private readonly storage: IStorage;
   private persisting = false;
+  private persistScheduled = false;
 
   constructor(namespace = 'default', opts?: PersistedAppDataStoreOptions | IStorage) {
     super();
@@ -39,7 +40,19 @@ export class PersistedAppDataStore extends AppDataStore {
     this.hydrate();
     // Persist after mutations; skip the hydrate-driven path via `persisting`.
     super.subscribe(() => {
-      if (!this.persisting) this.persist();
+      if (!this.persisting) this.schedulePersist();
+    });
+  }
+
+  /** Coalesces rapid successive mutations (e.g. a bulk `clear()`, which
+   *  emits per-key) into a single JSON.stringify + storage write per
+   *  microtask tick instead of one write per mutation. */
+  private schedulePersist(): void {
+    if (this.persistScheduled) return;
+    this.persistScheduled = true;
+    queueMicrotask(() => {
+      this.persistScheduled = false;
+      this.persist();
     });
   }
 

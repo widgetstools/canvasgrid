@@ -2,7 +2,7 @@
 
 **Status**: Identified and documented (not yet fixed)  
 **Date**: 2026-08-16  
-**Scope**: `apps/cgrid-ext-demo/e2e/customizer.spec.ts` - "Persistence › styling rule + calculated column survive reload"  
+**Scope**: `apps/velocitygrid-ext-demo/e2e/customizer.spec.ts` - "Persistence › styling rule + calculated column survive reload"  
 **Impact**: 1 failing e2e test (48/49 passing - 98%)
 
 ## Problem Summary
@@ -40,7 +40,7 @@ The grid state persistence layer (`packages/ext/src/profiles/configSession.ts`) 
 - **Module implementation**:
   - `packages/ext/src/modules/conditionalStyling.ts:184-192` - `save()` function
   - `packages/ext/src/modules/calculatedColumns.ts` - expression API integration
-- **Test**: `apps/cgrid-ext-demo/e2e/customizer.spec.ts:464-520`
+- **Test**: `apps/velocitygrid-ext-demo/e2e/customizer.spec.ts:464-520`
 
 ## Why Not Fixed
 

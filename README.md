@@ -1,6 +1,6 @@
-# canvasgrid
+# VelocityGrid
 
-Vanilla TypeScript **canvas data grid** (`@wellsfargo-starui/velocity-grid` / **cgrid**) aiming for AG Grid API parity. Data ops (sort / filter / group / pivot / agg) run in a Web Worker; the main thread paints visible cells.
+Vanilla TypeScript **canvas data grid** (`@wellsfargo-starui/velocity-grid`) aiming for AG Grid API parity. Data ops (sort / filter / group / pivot / agg) run in a Web Worker; the main thread paints visible cells. This repository is named `canvasgrid`.
 
 AG Grid React apps under `apps/showcase` and `apps/colgroups` are **comparison references**, not the product library.
 
@@ -16,22 +16,22 @@ All demo scripts below are plain `npm run` / Node — no bash required. They wor
 ```bash
 npm install
 npm run build
-npm run dev:showcase    # cgrid feature tour (no external services)
+npm run dev:showcase    # VelocityGrid feature tour (no external services)
 ```
 
 ## Demos (macOS + Windows)
 
 | Script | App | Port | Needs STOMP? | Notes |
 |--------|-----|------|--------------|-------|
-| `npm run dev:showcase` | `cgrid-showcase` | 5185 | No | CSRM feature tour (seed data) |
-| `npm run dev:ssrm-demo` | `cgrid-ssrm-demo` | 5191 | No* | Perspective SSRM (`StompPerspectiveProvider`) |
-| `npm run dev:perspective-ssrm-sample` | `cgrid-perspective-ssrm-sample` | 5201 | No* | Perspective SSRM + tabbed provider editor |
-| `npm run dev:positions` | `cgrid-positions` | 5175 | Yes | Live blotter |
-| `npm run dev:ext-demo` | `cgrid-ext-demo` | 5188 | Yes | VelocityGridExt chrome |
+| `npm run dev:showcase` | `velocitygrid-showcase` | 5185 | No | CSRM feature tour (seed data) |
+| `npm run dev:ssrm-demo` | `velocitygrid-ssrm-demo` | 5191 | No* | Perspective SSRM (`StompPerspectiveProvider`) |
+| `npm run dev:perspective-ssrm-sample` | `velocitygrid-perspective-ssrm-sample` | 5201 | No* | Perspective SSRM + tabbed provider editor |
+| `npm run dev:positions` | `velocitygrid-positions` | 5175 | Yes | Live blotter |
+| `npm run dev:ext-demo` | `velocitygrid-ext-demo` | 5188 | Yes | VelocityGridExt chrome |
 | `npm run dev:ext-react` | `examples/cgrid-ext-react` | 5202 | No | React + VelocityGridExt from tarballs |
 | `npm run dev:ext-angular` | `examples/cgrid-ext-angular` | 5203 | No | Angular + VelocityGridExt from tarballs |
 | `npm run dev:ext-angular-ssrm` | `examples/cgrid-ext-angular-ssrm` | 5204 | No | Angular 16.1 SSRM + AppData + CSV export/import |
-| `npm run dev:customizer` | `cgrid-customizer-demo` | 5187 | Yes | Customizer UI |
+| `npm run dev:customizer` | `velocitygrid-customizer-demo` | 5187 | Yes | Customizer UI |
 | `npm run dev:colgroups` | `colgroups` | 5176 | No | AG Grid column-groups reference |
 | `npm run dev:ag-showcase` | `showcase` | 5174 | Optional | AG Grid React reference |
 

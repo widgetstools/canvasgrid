@@ -428,7 +428,7 @@ export function wireIntoKernel(
         alerts.setSettings(slice.settings);
         alertsTouched = true;
       }
-      if (Array.isArray(slice?.rules)) {
+      if (slice && Array.isArray(slice.rules)) {
         for (const err of alerts.setRules(slice.rules).errors) {
           console.warn(`[cgrid/rules] restore skipped alert '${err.ruleId}': ${err.message}`);
         }

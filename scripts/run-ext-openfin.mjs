@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Cross-platform OpenFin + Vite + STOMP launcher for cgrid-ext-demo.
+ * Cross-platform OpenFin + Vite + STOMP launcher for velocitygrid-ext-demo.
  *
  * Spawns three child processes and tears them all down on exit — no
  * concurrently / wait-on / shell `&&`, so the same entry works under

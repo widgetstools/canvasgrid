@@ -11,7 +11,7 @@ import type {
 } from './types';
 import { parse as parseExpr, compile as compileExpr, evaluate as evaluateExpr } from '@wellsfargo-starui/velocity-grid-expression';
 import { tokenize, type Token } from './tokenizer';
-import { parseExcel, type ExcelFormatTree } from './excel/parser';
+import { parseExcel } from './excel/parser';
 import { evaluateExcel } from './excel/evaluator';
 import { parseTier1Brackets, type Tier1Node } from './tier1/parser';
 import { resolveStyle, resolveIcon, evaluateIfSelector } from './tier1/resolver';

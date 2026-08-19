@@ -496,6 +496,7 @@ export function mountStompPerspectiveProviderEditor(
       stat('Live rows/s', t.liveUpdatesPerSec.toLocaleString()),
       stat('getRows', t.getRowsTotal.toLocaleString()),
       stat('Rows served', t.rowsServedTotal.toLocaleString()),
+      stat('Dropped rows', t.droppedRowCount.toLocaleString()),
     );
     body.append(card('Live telemetry', grid));
   }

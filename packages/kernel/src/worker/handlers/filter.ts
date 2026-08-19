@@ -27,6 +27,10 @@ export async function handleFilter(
   const { state, post, helpers } = ctx;
   switch (req.type) {
     case 'setFilterModel': {
+      // Race fix (HIGH) — see `awaitPipelineIdle`'s doc (worker.ts):
+      // a build already in flight must not resume into a mutated
+      // `state.filter`.
+      await helpers.awaitPipelineIdle();
       state.filter.setModel(req.payload);
       state.visibleCache = null;
       state.visibleCachePromise = null;

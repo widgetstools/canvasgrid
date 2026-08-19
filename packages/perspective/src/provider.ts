@@ -482,8 +482,33 @@ export class StompPerspectiveProvider implements IServerSideDatasourceV2<Positio
       }
     };
 
+    // Multiple ticks can land while one scroll is active — merge into the
+    // pending tick instead of replacing it, or an earlier tick's row
+    // patches / `refreshSsrm: true` get silently lost under a later tick
+    // that carries fewer updates or `refreshSsrm: false`.
+    const mergePendingTick = (prev: ViewTick, next: ViewTick): ViewTick => {
+      const byId = new Map<string, PositionRow>();
+      for (const row of prev.updates) {
+        const id = rowIdentity(row as Record<string, unknown>, this.keyColumn);
+        if (id != null) byId.set(id, row);
+      }
+      for (const row of next.updates) {
+        const id = rowIdentity(row as Record<string, unknown>, this.keyColumn);
+        if (id != null) byId.set(id, row);
+      }
+      return {
+        viewId: next.viewId,
+        totals: next.totals,
+        refreshSsrm: prev.refreshSsrm || next.refreshSsrm,
+        updates: [...byId.values()],
+      };
+    };
+
     this.entry.tickHandlers.set(this.viewId, (tick) => {
-      if (scrollActive) { pendingTick = tick; return; }
+      if (scrollActive) {
+        pendingTick = pendingTick ? mergePendingTick(pendingTick, tick) : tick;
+        return;
+      }
       applyTick(tick);
     });
     unsubs.push(() => this.entry.tickHandlers.delete(this.viewId));

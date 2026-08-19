@@ -500,6 +500,34 @@
   --vg-venue-edgx-color: #f0b429;
 }
 
+/* Critical-review remediation — `ui/primitives-enhanced.ts`'s
+ * `VGUI_ENHANCED_TOKENS` reads `--vg-bg-secondary` / `--vg-bg-tertiary` /
+ * `--vg-fg-secondary` / `--vg-fg-tertiary` / `--vg-success-color` /
+ * `--vg-danger-color`, none of which existed anywhere in this file — a
+ * consumer using the default bundle un-overridden fell back to the JS-side
+ * literal (a fixed dark-theme hex) regardless of the active theme. Declared
+ * once here as `var()` aliases of tokens each theme already tunes, rather
+ * than duplicated per theme block: the alias re-resolves per-theme (and
+ * per `prefers-color-scheme` for `vg-theme-auto`) exactly like the aliased
+ * token does, since custom-property `var()` refs resolve against the
+ * element's current cascaded value, not the alias's declaration site. */
+.vg-theme-quartz,
+.vg-theme-quartz-dark,
+.vg-theme-starui,
+.vg-theme-starui-dark,
+.vg-theme-cursor,
+.vg-theme-cursor-dark,
+.vg-theme-high-contrast,
+.vg-theme-high-contrast-dark,
+.vg-theme-auto {
+  --vg-bg-secondary: var(--vg-header-bg);
+  --vg-bg-tertiary: var(--vg-row-hover-bg);
+  --vg-fg-secondary: var(--vg-totals-fg-muted);
+  --vg-fg-tertiary: var(--vg-unsort-icon-color);
+  --vg-success-color: var(--vg-pos-color);
+  --vg-danger-color: var(--vg-neg-color);
+}
+
 /* Cycle 24 / Task 7 — `prefers-reduced-motion` overrides. CSS-only:
  * the same tokens that drive animation surfaces resolve to no-op
  * values when the user's OS reports reduced-motion. The flash painter

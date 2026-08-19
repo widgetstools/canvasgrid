@@ -67,6 +67,18 @@ function isGridConfig(value: unknown): value is VelocityGridExtConfig {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
+/** `wireEditIntoKernel`'s `commitUpdates` hands back untyped row clones — narrow
+ *  them to `PositionRow[]` before handing off to `applyServerSideTransaction`,
+ *  which requires a string `positionId` on every row. */
+function assertPositionRows(rows: Record<string, unknown>[]): PositionRow[] {
+  return rows.map((row) => {
+    if (typeof row.positionId !== 'string' || row.positionId.length === 0) {
+      throw new Error('commitUpdates: row is missing a string positionId');
+    }
+    return row as PositionRow;
+  });
+}
+
 export async function mountSsrmGrid(host: HTMLElement): Promise<AngularSsrmHost> {
   registerDefaultTransports();
 
@@ -146,7 +158,7 @@ export async function mountSsrmGrid(host: HTMLElement): Promise<AngularSsrmHost>
   wireRules(ext.grid);
   editHandle = wireEditIntoKernel(ext.grid, {
     commitUpdates: (rows) => {
-      ext.grid.applyServerSideTransaction({ update: rows });
+      ext.grid.applyServerSideTransaction({ update: assertPositionRows(rows) });
     },
   });
 

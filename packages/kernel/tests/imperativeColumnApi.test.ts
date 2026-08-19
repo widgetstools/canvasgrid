@@ -229,6 +229,49 @@ describe('setColumnWidths', () => {
   });
 });
 
+describe('resizeColumn (drag, per-tick) — maxWidth clamp', () => {
+  // Regression: HIGH (critical-review remediation) — the per-tick drag path
+  // only clamped the floor (`Math.max(def.minWidth, base + dx)`), so a fast
+  // drag could push `def.width` arbitrarily far past `maxWidth`. Every
+  // other width-mutation path (`setColumnWidths`, `autoSizeColumns`,
+  // `resolveColumnWidths`) clamps both ends; a subsequent small drag back
+  // toward maxWidth then produced a visible "rubber band" jump because the
+  // accumulator (`def.width`) had diverged from the clamped displayed
+  // layout width.
+  it('clamps a single large drag delta to maxWidth', () => {
+    const { grid } = build<{ id: string; a: number }>(
+      [{ field: 'id' }, { field: 'a', width: 100, maxWidth: 150 }],
+    );
+    (grid as any).resizeColumn('a', 500);
+    expect((grid as any).columnDefsMap.get('a').width).toBe(150);
+    grid.destroy();
+  });
+
+  it('does not let repeated drag ticks accumulate past maxWidth', () => {
+    const { grid } = build<{ id: string; a: number }>(
+      [{ field: 'id' }, { field: 'a', width: 100, maxWidth: 150 }],
+    );
+    // Same per-tick call the resize feature makes on every mousemove.
+    for (let i = 0; i < 10; i++) (grid as any).resizeColumn('a', 20);
+    expect((grid as any).columnDefsMap.get('a').width).toBe(150);
+    // A subsequent small drag back toward maxWidth must not "rubber band" —
+    // the accumulator was already clamped, so shrinking by 5 lands exactly
+    // at 145, not at some inflated value the unclamped accumulator held.
+    (grid as any).resizeColumn('a', -5);
+    expect((grid as any).columnDefsMap.get('a').width).toBe(145);
+    grid.destroy();
+  });
+
+  it('still clamps to minWidth on the floor (unaffected by the maxWidth fix)', () => {
+    const { grid } = build<{ id: string; a: number }>(
+      [{ field: 'id' }, { field: 'a', width: 100, minWidth: 80 }],
+    );
+    (grid as any).resizeColumn('a', -500);
+    expect((grid as any).columnDefsMap.get('a').width).toBe(80);
+    grid.destroy();
+  });
+});
+
 describe('moveColumns', () => {
   it('moves multiple columns to start at toIndex preserving their declared order', () => {
     const { grid } = build<{ id: string; a: number; b: number; c: number; d: number }>(

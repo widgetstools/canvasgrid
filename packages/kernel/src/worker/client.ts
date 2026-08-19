@@ -244,7 +244,10 @@ export class WorkerClient {
       };
       this.scheduleFlush();
     } else if (msg.type === 'asyncTransactionsFlushed') {
-      for (const r of msg.results) this.pendingTxnResults.push(r);
+      for (const r of msg.results) {
+        this.warnIfAny(r.warnings);
+        this.pendingTxnResults.push(r);
+      }
       this.scheduleFlush();
     } else if (msg.type === 'heightsChanged') {
       this.pendingHeights.push({ rowStart: msg.rowStart, heights: msg.heights });
@@ -274,6 +277,17 @@ export class WorkerClient {
     // (or ever will have) attached its own handler.
     p.catch(() => {});
     return p;
+  }
+
+  /** Surfaces per-row skip warnings (RowStore's malformed-row tolerance —
+   *  see `setRowData` / `applyTransaction` / the `asyncTransactionsFlushed`
+   *  push) so a silently-skipped row is never truly silent, even when the
+   *  host app doesn't inspect the response's `warnings` field itself. */
+  private warnIfAny(warnings: string[] | undefined): void {
+    if (warnings && warnings.length > 0) {
+      // eslint-disable-next-line no-console
+      console.warn('[velocity-grid]', warnings.join('\n'));
+    }
   }
 
   private send<T>(req: Omit<WorkerRequest, 'id'>): Promise<T> {
@@ -313,8 +327,11 @@ export class WorkerClient {
   }
 
   setRowData(rows: unknown[], heightsByRowId?: Map<string, number>): Promise<{ count: number; visibleCount: number; groupKeys?: string[]; expandedKeys?: string[] | null }> {
-    return this.send<{ count: number; visibleCount: number; groupKeys?: string[] }>({
+    return this.send<{ count: number; visibleCount: number; groupKeys?: string[]; warnings?: string[] }>({
       type: 'setRowData', payload: { rows, heightsByRowId },
+    }).then((r) => {
+      this.warnIfAny(r.warnings);
+      return r;
     });
   }
 
@@ -358,7 +375,10 @@ export class WorkerClient {
     async: boolean; heightsByRowId?: Map<string, number>;
   }): Promise<TransactionResult> {
     return this.send<{ results: TransactionResult }>({ type: 'applyTransaction', payload })
-      .then((r) => r.results);
+      .then((r) => {
+        this.warnIfAny(r.results.warnings);
+        return r.results;
+      });
   }
 
   setSortModel(s: SortModel): Promise<{ visibleCount: number }> {

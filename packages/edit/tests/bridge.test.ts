@@ -613,6 +613,51 @@ describe('wireEditIntoKernel — round C: commit pipeline + selection restore (s
     expect(handle.journal.entries()).toHaveLength(1);
     expect(handle.journal.entries()[0]!.source).toBe('smart-edit');
   });
+
+  it('rollback on a throwing commit: row mirror is not mutated, selection restore still runs (finally), and the rejection propagates', async () => {
+    const fake = makeGrid();
+    const commitUpdates = vi.fn((_rows: Record<string, unknown>[]) => { throw new Error('commit failed'); });
+    const handle = wireEditIntoKernel(fake.grid, { commitUpdates });
+
+    fake.setRanges([{ rowStart: 0, rowEnd: 0, colIds: ['qty'] }]);
+    fake.setFocusedCell({ rowId: 'r0', colId: 'qty' });
+    fake.setSelectedRowIds(['r0']);
+
+    await expect(
+      handle.smartEdit.apply(
+        [{ rowId: 'r0', colId: 'qty', field: 'qty', value: 10, rowIndex: 0, rowData: {}, cellDataType: 'number' }],
+        'add',
+        1,
+      ),
+    ).rejects.toThrow('commit failed');
+
+    expect(commitUpdates).toHaveBeenCalledTimes(1);
+    // Failed commit — nothing recorded to the journal.
+    expect(handle.journal.entries()).toHaveLength(0);
+    // Selection snapshot/restore still ran despite the throw (finally, not
+    // skipped on the failure path).
+    expect(fake.clearCellRangesSpy).toHaveBeenCalledTimes(1);
+    expect(fake.addCellRangeSpy).toHaveBeenCalledTimes(1);
+    expect(fake.setFocusedCellSpy).toHaveBeenCalledWith('r0', 'qty');
+    expect(fake.setSelectedRowIdsSpy).toHaveBeenCalledWith(['r0']);
+
+    // A second, unrelated (price) patch reveals whether the failed qty edit
+    // leaked into the row mirror: the clone's untouched `qty` field is read
+    // straight off the mirror. Correct (rolled-back) behavior: still 10 —
+    // the failed commit never landed. The pre-fix bug would show 11 here
+    // (optimistically advanced despite the throw).
+    await expect(
+      handle.smartEdit.apply(
+        [{ rowId: 'r0', colId: 'price', field: 'price', value: 1.5, rowIndex: 0, rowData: {}, cellDataType: 'number' }],
+        'add',
+        1,
+      ),
+    ).rejects.toThrow('commit failed');
+    expect(commitUpdates).toHaveBeenCalledTimes(2);
+    const secondRow = (commitUpdates.mock.calls[1]![0] as Array<Record<string, unknown>>)[0]!;
+    expect(secondRow.qty).toBe(10);
+    expect(secondRow.price).toBe(2.5);
+  });
 });
 
 describe('wireEditIntoKernel — round D: journal feeds + facades (spec §3.5, §4.2)', () => {
@@ -713,6 +758,51 @@ describe('wireEditIntoKernel — round D: journal feeds + facades (spec §3.5, �
     const ok = await handle.smartEdit.apply(targets, 'multiply', 2);
     expect(ok.applied).toBe(1);
     expect(ok.entry?.label).toBe('× 2');
+  });
+
+  it('apply() consults the validator as a backstop: "invalid" patches never reach the commit pipeline (smart-edit + bulk-update), "warning" still commits', async () => {
+    const fake = makeGrid();
+    // qty is 'invalid', everything else 'valid' — exercises per-patch
+    // filtering (not an all-or-nothing gate).
+    const validator = vi.fn((patch: { colId: string }) => (patch.colId === 'qty' ? ('invalid' as const) : ('valid' as const)));
+    const handle = wireEditIntoKernel(fake.grid, {
+      validator,
+      settings: { smartEdit: { enforceSingleColumn: false }, bulkUpdate: { enforceSingleColumn: false } },
+    });
+
+    const smartResult = await handle.smartEdit.apply(
+      [
+        { rowId: 'r0', colId: 'qty', field: 'qty', value: 10, rowIndex: 0, rowData: {}, cellDataType: 'number' },
+        { rowId: 'r0', colId: 'price', field: 'price', value: 1.5, rowIndex: 0, rowData: {}, cellDataType: 'number' },
+      ],
+      'add',
+      1,
+    );
+    expect(smartResult.applied).toBe(1); // only price landed
+    expect(fake.applyTransactionSpy).toHaveBeenCalledTimes(1);
+    const smartTx = fake.applyTransactionSpy.mock.calls[0]![0] as { update: Array<Record<string, unknown>> };
+    expect(smartTx.update).toEqual([{ ...rows[0], price: 2.5 }]); // qty untouched — dropped pre-commit
+
+    // Every patch invalid → apply is a full no-op (no Tx, no journal entry).
+    const allInvalid = await handle.smartEdit.apply(
+      [{ rowId: 'r1', colId: 'qty', field: 'qty', value: 20, rowIndex: 1, rowData: {}, cellDataType: 'number' }],
+      'add',
+      1,
+    );
+    expect(allInvalid).toEqual({ applied: 0, entry: null });
+    expect(fake.applyTransactionSpy).toHaveBeenCalledTimes(1); // unchanged — no second Tx
+
+    const bulkResult = await handle.bulkUpdate.apply(
+      [
+        { rowId: 'r0', colId: 'qty', field: 'qty', value: 11, rowIndex: 0, rowData: {}, cellDataType: 'number' },
+        { rowId: 'r1', colId: 'status', field: 'status', value: 'active', rowIndex: 1, rowData: {}, cellDataType: 'text' },
+      ],
+      'inactive',
+    );
+    expect(bulkResult.applied).toBe(1); // only status landed
+    expect(fake.applyTransactionSpy).toHaveBeenCalledTimes(2);
+    const bulkTx = fake.applyTransactionSpy.mock.calls[1]![0] as { update: Array<Record<string, unknown>> };
+    expect(bulkTx.update).toEqual([{ ...rows[1], status: 'inactive' }]);
   });
 
   it('bulkUpdate.distinctValues via makeDistinctValuesFeed; apply source bulk-update, Object.is no-op guard', async () => {

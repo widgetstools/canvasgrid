@@ -28,19 +28,31 @@ export function workflowLink(opts: WorkflowLinkOpts): HTMLButtonElement {
   btn.className = 'ckp-workflow-link';
   btn.setAttribute('data-module-id', opts.moduleId);
 
-  const iconHtml = opts.icon && opts.lucideSvg
-    ? opts.lucideSvg(opts.icon, 14)
-    : '';
-  const hintHtml = opts.hint
-    ? `<span class="ckp-workflow-hint">${opts.hint}</span>`
-    : '';
-  btn.innerHTML =
-    `<span class="ckp-workflow-icon" aria-hidden="true">${iconHtml}</span>` +
-    `<span class="ckp-workflow-copy">` +
-    `<span class="ckp-workflow-label">${opts.label}</span>` +
-    hintHtml +
-    `</span>` +
-    `<span class="ckp-workflow-chevron" aria-hidden="true">${opts.lucideSvg?.('chevron-right', 14) ?? '›'}</span>`;
+  const iconEl = document.createElement('span');
+  iconEl.className = 'ckp-workflow-icon';
+  iconEl.setAttribute('aria-hidden', 'true');
+  if (opts.icon && opts.lucideSvg) iconEl.innerHTML = opts.lucideSvg(opts.icon, 14);
+
+  const copyEl = document.createElement('span');
+  copyEl.className = 'ckp-workflow-copy';
+  const labelEl = document.createElement('span');
+  labelEl.className = 'ckp-workflow-label';
+  labelEl.textContent = opts.label;
+  copyEl.appendChild(labelEl);
+  if (opts.hint) {
+    const hintEl = document.createElement('span');
+    hintEl.className = 'ckp-workflow-hint';
+    hintEl.textContent = opts.hint;
+    copyEl.appendChild(hintEl);
+  }
+
+  const chevronEl = document.createElement('span');
+  chevronEl.className = 'ckp-workflow-chevron';
+  chevronEl.setAttribute('aria-hidden', 'true');
+  if (opts.lucideSvg) chevronEl.innerHTML = opts.lucideSvg('chevron-right', 14);
+  else chevronEl.textContent = '›';
+
+  btn.append(iconEl, copyEl, chevronEl);
 
   btn.addEventListener('click', () => {
     opts.events.emit({ type: 'open-settings', id: opts.moduleId });

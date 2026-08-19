@@ -184,6 +184,60 @@ describe('ColumnDrag', () => {
     expect(host.querySelector('.vg-column-drag-insertion-line')).toBeNull();
   });
 
+  // Regression: MEDIUM/HIGH (critical-review remediation) — a lost mouseup
+  // (pointercancel / window blur / tab hidden) used to leave the ghost +
+  // insertion-line + pill-ghost DOM nodes mounted forever, since
+  // `handleMouseUp` was the ONLY cleanup path. `cancelDrag` is the shared
+  // safety-net entry point `FeatureChain` calls from those fallback
+  // listeners; it must remove every mounted node and NOT commit a reorder.
+  it('cancelDrag mid-drag removes ghost DOM without committing a reorder', () => {
+    const f = new ColumnDrag();
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = makeGrid({ getOverlayHost: () => host });
+    const hit: Hit = { kind: 'header', colId: 'a' };
+    f.handleMouseDown(ctx(hit, { x: 10, y: 8 }, grid));
+    f.handleMouseDrag(ctx(hit, { x: 220, y: 8 }, grid));
+    expect(document.body.querySelector('.vg-col-drag-ghost')).not.toBeNull();
+    expect(host.querySelector('.vg-column-drag-insertion-line')).not.toBeNull();
+    f.cancelDrag(grid as unknown as Parameters<ColumnDrag['cancelDrag']>[0]);
+    expect(document.body.querySelector('.vg-col-drag-ghost')).toBeNull();
+    expect(host.querySelector('.vg-column-drag-insertion-line')).toBeNull();
+    expect(grid.reorderColumn).not.toHaveBeenCalled();
+    expect(grid.setRowGroupPanelDragHover).toHaveBeenCalledWith(null, -1, -1);
+    expect(grid.setPivotPanelDragHover).toHaveBeenCalledWith(null, -1, -1);
+  });
+
+  it('cancelDrag before the drag threshold is a no-op (nothing mounted)', () => {
+    const f = new ColumnDrag();
+    const grid = makeGrid();
+    const hit: Hit = { kind: 'header', colId: 'a' };
+    f.handleMouseDown(ctx(hit, { x: 10, y: 8 }, grid));
+    expect(() => f.cancelDrag(grid as unknown as Parameters<ColumnDrag['cancelDrag']>[0])).not.toThrow();
+    expect(grid.reorderColumn).not.toHaveBeenCalled();
+  });
+
+  it('resetDragState removes ghost DOM without touching the grid (destroy() safety net)', () => {
+    const f = new ColumnDrag();
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = makeGrid({ getOverlayHost: () => host });
+    const hit: Hit = { kind: 'header', colId: 'a' };
+    f.handleMouseDown(ctx(hit, { x: 10, y: 8 }, grid));
+    f.handleMouseDrag(ctx(hit, { x: 220, y: 8 }, grid));
+    expect(document.body.querySelector('.vg-col-drag-ghost')).not.toBeNull();
+    // The drag tick itself already dispatched panel-hover hooks (normal
+    // mid-drag behavior); clear those calls so the assertion below is
+    // specifically about resetDragState, not the preceding drag tick.
+    (grid.setRowGroupPanelDragHover as ReturnType<typeof vi.fn>).mockClear();
+    (grid.setPivotPanelDragHover as ReturnType<typeof vi.fn>).mockClear();
+    f.resetDragState();
+    expect(document.body.querySelector('.vg-col-drag-ghost')).toBeNull();
+    expect(host.querySelector('.vg-column-drag-insertion-line')).toBeNull();
+    expect(grid.setRowGroupPanelDragHover).not.toHaveBeenCalled();
+    expect(grid.setPivotPanelDragHover).not.toHaveBeenCalled();
+  });
+
   it('swallows the click event that follows a drag so HeaderClick does not sort the dragged column', () => {
     const f = new ColumnDrag();
     const grid = makeGrid();

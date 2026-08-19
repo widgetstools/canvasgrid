@@ -78,6 +78,47 @@ describe('ColumnResizing', () => {
     expect(downstream).not.toHaveBeenCalled();
   });
 
+  // Regression: HIGH (critical-review remediation) — a lost mouseup
+  // (pointercancel / window blur / tab hidden) used to leave
+  // `columnResizeDragActive` stuck `true` forever (only `handleMouseUp`
+  // reset it), stranding the grid on the slow paint path. `cancelResize`
+  // is the shared safety-net entry point `FeatureChain` calls from those
+  // fallback listeners; it must call `finishColumnResize` exactly like a
+  // normal mouseup would.
+  it('cancelResize mid-drag calls finishColumnResize like a normal mouseup', () => {
+    const f = new ColumnResizing();
+    const grid = makeGrid();
+    const hit: Hit = { kind: 'headerResizer', colId: 'a', edge: 'right' };
+    f.handleMouseDown(ctx(hit, { x: 100, y: 8 }, grid));
+    f.handleMouseDrag(ctx(hit, { x: 120, y: 8 }, grid));
+    f.cancelResize(grid as unknown as Parameters<ColumnResizing['cancelResize']>[0]);
+    expect(grid.finishColumnResize).toHaveBeenCalledWith('a');
+  });
+
+  it('cancelResize when not resizing is a no-op', () => {
+    const f = new ColumnResizing();
+    const grid = makeGrid();
+    f.cancelResize(grid as unknown as Parameters<ColumnResizing['cancelResize']>[0]);
+    expect(grid.finishColumnResize).not.toHaveBeenCalled();
+  });
+
+  it('resetDragState clears in-flight resize state without touching the grid', () => {
+    const f = new ColumnResizing();
+    const grid = makeGrid();
+    const hit: Hit = { kind: 'headerResizer', colId: 'a', edge: 'right' };
+    f.handleMouseDown(ctx(hit, { x: 100, y: 8 }, grid));
+    f.handleMouseDrag(ctx(hit, { x: 120, y: 8 }, grid));
+    f.resetDragState();
+    expect(grid.finishColumnResize).not.toHaveBeenCalled();
+    // A subsequent mouseup with no active resize forwards to super instead
+    // of re-finishing the already-abandoned gesture.
+    const downstream = vi.fn();
+    f.next = { handleMouseUp: downstream } as never;
+    f.handleMouseUp(ctx(hit, { x: 120, y: 8 }, grid));
+    expect(downstream).toHaveBeenCalledTimes(1);
+    expect(grid.finishColumnResize).not.toHaveBeenCalled();
+  });
+
   it('forwards the click after a resizer press with no width change', () => {
     const f = new ColumnResizing();
     const grid = makeGrid();

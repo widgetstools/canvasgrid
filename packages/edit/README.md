@@ -193,14 +193,14 @@ matches, so nudges and shortcuts silently never intercept a keypress
 against a **real** kernel today; the key always falls through to
 type-to-edit. This is the SAME defect already documented against
 `@wellsfargo-starui/velocity-grid-renderers`' row-menu click routing (`cellClicked`, a sibling
-event) — `apps/cgrid-showcase/e2e/rendererBlotter.spec.ts`'s F5 test.
+event) — `apps/velocitygrid-showcase/e2e/rendererBlotter.spec.ts`'s F5 test.
 `cell-editor` (editController's own worker-fetched rowId) and
 `smart-edit`/`bulk-update` (this cycle's `getRowsByIndex` seam, also
 worker-fetched) are UNAFFECTED — both already carry real rowIds today.
 The engine-level unit tests (`tests/bridge.test.ts`, a fake grid surface)
 prove the bridge's own key-routing logic is correct; three showcase E2E
 tests are authored as `test.fail()` documented-red-kept-CI-green tripwires
-(`apps/cgrid-showcase/e2e/editBlotter.spec.ts`) pending the kernel fix
+(`apps/velocitygrid-showcase/e2e/editBlotter.spec.ts`) pending the kernel fix
 (`rowIdAt()` reading `stringRowIdAt()` when available) — tracked as PR #98.
 
 ## Showcase demo
@@ -227,7 +227,7 @@ cd packages/edit && npm test               # vitest run
 cd packages/kernel && npm test             # baseline + Task 10's getRowsByIndex suite
 npm run typecheck                          # root — turbo run typecheck
 npm run lint                               # root eslint
-cd apps/cgrid-showcase && npx playwright test   # baseline + new editBlotter specs (3 test.fail() tripwires)
+cd apps/velocitygrid-showcase && npx playwright test   # baseline + new editBlotter specs (3 test.fail() tripwires)
 git diff main...HEAD -- packages/kernel                                  # ONLY getRowsByIndex (+ tests)
 git diff main...HEAD -- packages/expression packages/format packages/rules packages/calc  # must be empty
 ```

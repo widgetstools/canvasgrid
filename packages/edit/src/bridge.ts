@@ -414,6 +414,10 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
     }
 
     const updates: Record<string, unknown>[] = [];
+    // Deferred until the commit call below actually succeeds — an
+    // optimistic write here would leave the mirror permanently ahead of
+    // reality if `commitUpdates`/`applyTransaction` throws.
+    const mirrorWrites: Array<[string, Record<string, unknown>]> = [];
     let writtenCount = 0;
     for (const [rowId, rowPatches] of byRowId) {
       const mirrorRow = rowMirror.get(rowId);
@@ -435,12 +439,14 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
         }
       }
       updates.push(clone);
-      rowMirror.set(rowId, clone);
+      mirrorWrites.push([rowId, clone]);
       writtenCount += rowPatches.length;
     }
     if (updates.length === 0) return 0;
 
-    // Selection snapshot/restore (§3.3) around EVERY programmatic apply.
+    // Selection snapshot/restore (§3.3) around EVERY programmatic apply —
+    // runs on both the success AND failure path (finally), while a thrown
+    // commit error still propagates to the caller.
     const snapshotRanges = g.getCellRanges();
     const snapshotFocused = g.getFocusedCell();
     const snapshotSelectedRowIds = g.getSelectedRowIds();
@@ -452,14 +458,15 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
       } else {
         g.applyTransaction({ update: updates });
       }
+      // Commit succeeded — now safe to fold the computed rows into the mirror.
+      for (const [rowId, clone] of mirrorWrites) rowMirror.set(rowId, clone);
     } finally {
       replaying = false;
+      g.clearCellRanges();
+      for (const range of snapshotRanges) g.addCellRange(range);
+      if (snapshotFocused) g.setFocusedCell(snapshotFocused.rowId, snapshotFocused.colId);
+      g.setSelectedRowIds(snapshotSelectedRowIds);
     }
-
-    g.clearCellRanges();
-    for (const range of snapshotRanges) g.addCellRange(range);
-    if (snapshotFocused) g.setFocusedCell(snapshotFocused.rowId, snapshotFocused.colId);
-    g.setSelectedRowIds(snapshotSelectedRowIds);
     return writtenCount;
   }
 
@@ -599,6 +606,16 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
 
   // ─── Facades (§4.2.6) ───────────────────────────────────────────────────
 
+  // Backstop for `apply()`: `preview()` reports the full validator verdict
+  // per patch (valid/warning/invalid) for the caller's confirm UI, but
+  // `apply()` must not let a patch the validator marked 'invalid' reach the
+  // commit pipeline even if the caller applies without previewing first.
+  // 'warning' patches still commit — only 'invalid' is a hard gate.
+  function dropInvalidPatches(patches: CellPatch[]): CellPatch[] {
+    if (!validator) return patches;
+    return patches.filter((patch) => validator(patch) !== 'invalid');
+  }
+
   const smartEdit: EditBridgeHandle['smartEdit'] = {
     collectTargets: () => collectTargetCells(targetSurface),
     preview: (targets, op, operand) => previewPatches(buildSmartEditPatches(targets, op, operand), validator),
@@ -606,7 +623,7 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
       if (settings.smartEdit.enforceSingleColumn && !assertSingleColumnSelection(targets)) {
         return { applied: 0, entry: null };
       }
-      const patches = buildSmartEditPatches(targets, op, operand);
+      const patches = dropInvalidPatches(buildSmartEditPatches(targets, op, operand));
       if (patches.length === 0) return { applied: 0, entry: null };
       const label = `${SMART_EDIT_OP_SYMBOL[op]} ${operand}`;
       return commitAndMaybeRecord(patches, 'smart-edit', label, settings.smartEdit.recordHistory);
@@ -625,7 +642,7 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
       if (settings.bulkUpdate.enforceSingleColumn && !assertSingleColumnSelection(targets)) {
         return { applied: 0, entry: null };
       }
-      const patches = buildBulkUpdatePatches(targets, newValue);
+      const patches = dropInvalidPatches(buildBulkUpdatePatches(targets, newValue));
       if (patches.length === 0) return { applied: 0, entry: null };
       const label = `Set = ${String(newValue)}`;
       return commitAndMaybeRecord(patches, 'bulk-update', label, settings.bulkUpdate.recordHistory);

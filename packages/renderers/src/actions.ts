@@ -80,7 +80,20 @@ export class HitRegionRegistry {
   }
 }
 
-/** Shared registry instance; bridge Task 13 wires cellClicked → resolve(). */
+/**
+ * Shared registry instance; bridge Task 13 wires cellClicked → resolve().
+ *
+ * MODULE-GLOBAL, NOT per-grid: every `wireRenderersIntoKernel()` call
+ * across every mounted grid registers/clears hit regions on this SAME
+ * instance. Safe today because only one grid is ever mounted at a time
+ * (bridge.ts's iconResolver singleton relies on the identical assumption —
+ * see its comment there). Two grids with `icon-action-cluster` /
+ * `row-menu` columns mounted CONCURRENTLY would resolve/clear each other's
+ * hit regions. Before shipping a second concurrently-mounted grid, give
+ * each bridge instance its own `HitRegionRegistry` (constructor already
+ * supports it — `defaultHitRegionRegistry` is just the module-level
+ * convenience default) rather than patching around this one.
+ */
 export const defaultHitRegionRegistry = new HitRegionRegistry();
 
 /** Evicts every hit region registered for `rowId` on the default registry.
@@ -112,6 +125,14 @@ function paintKebab(gc: Gc, cx: number, cy: number, color: string): void {
  * already holds the live grid instance) pushes a resolver function in here.
  * Unset (`null`) in unit tests that exercise the painter directly without a
  * wired bridge — `paintActionIcon` falls back to the letter badge below.
+ *
+ * MODULE-GLOBAL, NOT per-grid: this is ONE variable shared by every
+ * `wireRenderersIntoKernel()` call, so the LAST grid to call
+ * `setActionIconResolver` wins for icon resolution on EVERY mounted grid.
+ * Correct only under the same single-grid assumption as
+ * `defaultHitRegionRegistry` above (bridge.ts:~304-309 documents the same
+ * constraint at its call site). A second concurrently-mounted grid needs
+ * this threaded per-bridge-instance instead of through this singleton.
  */
 type ActionIconResolver = (name: string, setHint?: string) => Path2D | null;
 let iconResolver: ActionIconResolver | null = null;
