@@ -31,8 +31,8 @@ import { mountMultiSelect, type MultiSelectHandle } from './MultiSelect';
 import { ensureEditorStyles } from './styles';
 import { registerDefaultTransports } from '../transports/registerDefaults';
 import { DRAFT_LIST_ID_PREFIX } from './providerSidebarList';
-import { ExpressionEditor } from '@wellsfargo-starui/velocity-grid-expression/editor';
-import { parse } from '@wellsfargo-starui/velocity-grid-expression';
+import { ExpressionEditor } from '@wellsfargo-starui/velocity-grid/expression/editor';
+import { parse } from '@wellsfargo-starui/velocity-grid/expression';
 import {
   createDiagnosticsSession,
   type DiagnosticsSession,

@@ -1,0 +1,12 @@
+{
+  "name": "@wellsfargo-starui/velocity-grid-all",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Meta-package — installs every @wellsfargo-starui/velocity-grid-* package as a single dependency. Ships no code of its own.",
+  "dependencies": {
+    "@wellsfargo-starui/velocity-grid": "0.0.0",
+    "@wellsfargo-starui/velocity-grid-data": "0.0.0",
+    "@wellsfargo-starui/velocity-grid-ext": "0.0.0",
+    "@wellsfargo-starui/velocity-grid-perspective": "0.0.0"
+  }
+}

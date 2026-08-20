@@ -1,11 +1,11 @@
 /**
  * String-form `valueGetter` — AG Grid-style expressions compiled with
- * `@wellsfargo-starui/velocity-grid-expression`.
+ * `@wellsfargo-starui/velocity-grid/expression`.
  *
  * Examples: `[ask] - [bid]`, `IF([qty] > 0, [pnl], 0)`, `[desk] == "NY" ? [spread] : 0`.
  * Shared by ColDef resolve (main) and the worker pipeline.
  */
-import { compile, evaluate, parse, type Compiled } from '@wellsfargo-starui/velocity-grid-expression';
+import { compile, evaluate, parse, type Compiled } from '../expression/index';
 
 const cache = new Map<string, Compiled | null>();
 

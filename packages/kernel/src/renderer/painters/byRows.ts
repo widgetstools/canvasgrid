@@ -1207,7 +1207,7 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
         && def.headerIcon !== undefined
         && config.headerCheckboxState === undefined
       ) {
-        let iconRef: import('@wellsfargo-starui/velocity-grid-format').IconRef | null = null;
+        let iconRef: import('../../format/index').IconRef | null = null;
         try {
           iconRef = def.headerIcon({ colId: col.colId });
         } catch {

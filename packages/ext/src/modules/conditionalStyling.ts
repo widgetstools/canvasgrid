@@ -6,7 +6,7 @@
  * formatter), CodeMirror 6 expression editor with live validation.
  *
  * Mutations ride the kernel rule API (`addRule` / `updateRule` /
- * `deleteRule` / `setRuleEnabled`); the @wellsfargo-starui/velocity-grid-rules bridge persists the
+ * `deleteRule` / `setRuleEnabled`); the @wellsfargo-starui/velocity-grid/rules bridge persists the
  * set in the grid config (layout-tier 'rules' state module) and repaints.
  */
 import {
@@ -17,7 +17,7 @@ import {
   type RuleBorderSpec,
   type RuleIndicatorPlacement,
   type StyleSlice,
-} from '@wellsfargo-starui/velocity-grid-rules';
+} from '@wellsfargo-starui/velocity-grid/rules';
 import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import { mountFormatterStyleChrome } from '../toolbar/styleChrome';
 import { ExpressionEditor } from '../ui/expressionEditor';
@@ -136,7 +136,7 @@ export function conditionalStylingModule(): SettingsModule {
           ctx.engines.register('alerts', wired.alerts);
           return wired.rules;
         } catch (err) {
-          console.warn('[velocity-grid-ext] Styling Rules: wiring @wellsfargo-starui/velocity-grid-rules failed', err);
+          console.warn('[velocity-grid-ext] Styling Rules: wiring @wellsfargo-starui/velocity-grid/rules failed', err);
           return null;
         }
       };

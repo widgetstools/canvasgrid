@@ -14,16 +14,16 @@ import {
   LocalStorageConfigBackend,
   registerDefaultTransports,
 } from '@wellsfargo-starui/velocity-grid-data';
-import { LocalStore } from '@wellsfargo-starui/velocity-grid-storage';
+import { LocalStore } from '@wellsfargo-starui/velocity-grid-data/storage';
 import {
   PerspectiveDataProviderController,
   type BookTelemetry,
 } from '@wellsfargo-starui/velocity-grid-perspective';
 import '@wellsfargo-starui/velocity-grid/style.css';
-import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid-format';
-import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid-calc';
-import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid-rules';
-import { wireEditIntoKernel } from '@wellsfargo-starui/velocity-grid-edit';
+import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid/format';
+import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid/calc';
+import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid/rules';
+import { wireEditIntoKernel } from '@wellsfargo-starui/velocity-grid-ext/edit';
 import {
   buildPerspectiveSsrmProviderConfig,
   PERSPECTIVE_SSRM_PROVIDER_ID,

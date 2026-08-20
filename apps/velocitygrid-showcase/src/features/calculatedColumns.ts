@@ -1,8 +1,8 @@
 import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
 import type { CColDef } from '@wellsfargo-starui/velocity-grid';
-import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid-format';
-import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid-calc';
-import type { CalcEngine, CalculatedColumnDef } from '@wellsfargo-starui/velocity-grid-calc';
+import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid/format';
+import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid/calc';
+import type { CalcEngine, CalculatedColumnDef } from '@wellsfargo-starui/velocity-grid/calc';
 import type { Feature } from './index';
 
 /**
@@ -108,7 +108,7 @@ export const calculatedColumns: Feature = {
   id: 'calculated-columns',
   label: 'Calculated Columns',
   description:
-    'Cycle 21d — @wellsfargo-starui/velocity-grid-calc worker-evaluated calculated columns. ' +
+    'Cycle 21d — @wellsfargo-starui/velocity-grid/calc worker-evaluated calculated columns. ' +
     'Row-local Notional ([qty] * [price]) sorts/filters/groups like a ' +
     "data column; % of Sector ([qty] / SUM([qty], 'group')) re-scopes " +
     'live when grouping by sector toggles; Px Δ ([price] - ' +

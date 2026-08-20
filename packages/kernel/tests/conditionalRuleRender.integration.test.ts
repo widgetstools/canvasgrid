@@ -2,11 +2,11 @@
  * Grid Layouts — Phase C / C2: render-time application of conditional rules.
  *
  * Proves the worklog's C2 gate — "a rule paints the right cells" — END TO END
- * with the REAL @wellsfargo-starui/velocity-grid-rules RuleEngine + the REAL kernel painter fold
+ * with the REAL @wellsfargo-starui/velocity-grid/rules RuleEngine + the REAL kernel painter fold
  * (`applyCellProps`), NOT a fake engine. The Cycle-21e fold test
  * (core/propertyChain-ruleFold.test.ts) already covers the painter mechanics
  * with a stub engine over a cellClass/cellStyleFn base; C2 adds the Grid-Layouts
- * angle that C1's reconciliation onto @wellsfargo-starui/velocity-grid-rules made possible:
+ * angle that C1's reconciliation onto @wellsfargo-starui/velocity-grid/rules made possible:
  *
  *   1. the rule style layers OVER a TEMPLATE-RESOLVED base (spec §3.3:
  *      `templates base → conditional rules overlay`) — the template's static
@@ -29,8 +29,8 @@ import {
   getRuleEngine,
   _resetRuleEngine_forTests,
 } from '../src/core/ruleEngineSlot';
-import { wireIntoKernel } from '@wellsfargo-starui/velocity-grid-rules';
-import type { ConditionalStyleRule } from '@wellsfargo-starui/velocity-grid-rules';
+import { wireIntoKernel } from '../src/rules/index';
+import type { ConditionalStyleRule } from '../src/rules/index';
 import type { CellPaintConfig } from '../src/renderer/cellRenderers/registry';
 import type { ResolvedTheme } from '../src/theming/cssReader';
 
@@ -72,7 +72,7 @@ function paint(
 }
 
 // ─── Fake grid host that forwards the rule engine into the KERNEL slot ───────
-// The @wellsfargo-starui/velocity-grid-rules bridge registers its adapter via grid.registerRuleEngine();
+// The @wellsfargo-starui/velocity-grid/rules bridge registers its adapter via grid.registerRuleEngine();
 // we route that into the real kernel slot so the real painter consults it.
 // Everything else is the minimal surface the bridge touches.
 

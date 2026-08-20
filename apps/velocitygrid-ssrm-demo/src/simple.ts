@@ -11,9 +11,9 @@
 import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
 import '@wellsfargo-starui/velocity-grid/style.css';
 import { StompPerspectiveProvider } from '@wellsfargo-starui/velocity-grid-perspective';
-import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid-format';
-import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid-calc';
-import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid-rules';
+import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid/format';
+import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid/calc';
+import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid/rules';
 
 const qs = new URLSearchParams(location.search);
 const feed = (qs.get('feed') === 'stomp' ? 'stomp' : 'seed') as 'seed' | 'stomp';

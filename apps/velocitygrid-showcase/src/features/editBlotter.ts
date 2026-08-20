@@ -3,13 +3,13 @@ import type { CColDef } from '@wellsfargo-starui/velocity-grid';
 import {
   wireEditIntoKernel,
   applyMagnitudeColDefTransforms,
-} from '@wellsfargo-starui/velocity-grid-edit';
+} from '@wellsfargo-starui/velocity-grid-ext/edit';
 import type {
   EditBridgeHandle,
   PlusMinusNudge,
   ShortcutDefinition,
   SmartEditOp,
-} from '@wellsfargo-starui/velocity-grid-edit';
+} from '@wellsfargo-starui/velocity-grid-ext/edit';
 import type { Feature } from './index';
 
 /**
@@ -55,7 +55,7 @@ const ROWS: EditRow[] = [
 ];
 
 // Real `[field]`-bracket grammar (docs/superpowers/specs §…-cycle-21b) — the
-// showcase uses the bridge's DEFAULT `evaluate` (real `@wellsfargo-starui/velocity-grid-expression`),
+// showcase uses the bridge's DEFAULT `evaluate` (real `@wellsfargo-starui/velocity-grid/expression`),
 // not a test fake, so the gate must parse for real.
 const NUDGES: PlusMinusNudge[] = [
   {
@@ -135,7 +135,7 @@ export const editBlotter: Feature = {
   id: 'edit-blotter',
   label: 'Edit Blotter',
   description:
-    'Cycle 21g — @wellsfargo-starui/velocity-grid-edit journal (undo/redo + live entry count), ' +
+    'Cycle 21g — @wellsfargo-starui/velocity-grid-ext/edit journal (undo/redo + live entry count), ' +
     'smart-edit (×÷+−= over a selected range), bulk-update (free text or ' +
     'a distinct-values pick), an expression-gated plus/minus nudge ' +
     '([status] == "active"), and letter-key shortcuts (q/h) — all wired ' +

@@ -7,13 +7,13 @@ import type {
  * Workstream A (2026-07-06 CSS styling model) — compact renderer-palette
  * bundle resolved once per theme swap and threaded onto every
  * `CellPaintConfig` (`applyCellProps` sets `target.palette =
- * theme.rendererPalette`). `@wellsfargo-starui/velocity-grid-renderers` painters resolve colors as
+ * theme.rendererPalette`). `@wellsfargo-starui/velocity-grid-ext/renderers` painters resolve colors as
  * `overrides ?? p.palette?.<field> ?? SEMANTIC_COLORS.<field>` — the same
  * shape as the pre-existing per-column `overrides` pattern, just with a
  * theme-driven middle tier — and geometry as `p.palette?.<field> ?? <literal>`.
  *
  * Every field's literal fallback below (used when a theme declares none of
- * the backing tokens) matches `@wellsfargo-starui/velocity-grid-renderers/palette.ts`'s
+ * the backing tokens) matches `@wellsfargo-starui/velocity-grid-ext/renderers/palette.ts`'s
  * `SEMANTIC_COLORS` map and the bars/badges painter constants (`BAR_H`,
  * `CHIP_H`, chip corner radius) exactly, so a theme that doesn't opt into
  * any of these tokens renders byte-identical to before this bundle existed.
@@ -49,7 +49,7 @@ export interface RendererPalette {
    * from `--vg-status-<state>-bg` / `-fg` / `-border` (state kebab-cased:
    * `PART_FILL` → `part-fill`). `dashed` is a structural style flag (only
    * `PENDING` is dashed) — it is never sourced from a token, always the
-   * exact `@wellsfargo-starui/velocity-grid-renderers/palette.ts` `STATUS_PILL_MAP` literal.
+   * exact `@wellsfargo-starui/velocity-grid-ext/renderers/palette.ts` `STATUS_PILL_MAP` literal.
    */
   status: Record<StatusPillState, StatusPillPaletteEntry>;
   /**
@@ -64,7 +64,7 @@ export interface RendererPalette {
    * Workstream A, part 2 — VenueChip/NBBOCell's default MIC → color map.
    * Resolves from `--vg-venue-<mic>-color` (mic lowercased, e.g. `XNAS` →
    * `xnas`). Open-ended key set (unlike `status`/`rating`) — mirrors
-   * `@wellsfargo-starui/velocity-grid-renderers/palette.ts`'s `DEFAULT_VENUE_PALETTE`'s
+   * `@wellsfargo-starui/velocity-grid-ext/renderers/palette.ts`'s `DEFAULT_VENUE_PALETTE`'s
    * `Record<string, string>` shape; only the 4 shipped MICs are resolved
    * here (apps that want more venues declare their own `venueColors`
    * param override, which still wins over this palette tier).
@@ -73,12 +73,12 @@ export interface RendererPalette {
 }
 
 /** StatusPill's 6 canonical order/fill states — mirrors
- *  `@wellsfargo-starui/velocity-grid-renderers/palette.ts`'s `STATUS_PILL_MAP` key set exactly. */
+ *  `@wellsfargo-starui/velocity-grid-ext/renderers/palette.ts`'s `STATUS_PILL_MAP` key set exactly. */
 export type StatusPillState = 'WORKING' | 'PART_FILL' | 'FILLED' | 'CANCELLED' | 'REJECTED' | 'PENDING';
 
 /** A single resolved StatusPill visual. Structurally identical to
- *  `@wellsfargo-starui/velocity-grid-renderers/palette.ts`'s `StatusPillStyle` (duplicated here, not
- *  imported, so `@wellsfargo-starui/velocity-grid` never depends on `@wellsfargo-starui/velocity-grid-renderers`). */
+ *  `@wellsfargo-starui/velocity-grid-ext/renderers/palette.ts`'s `StatusPillStyle` (duplicated here, not
+ *  imported, so `@wellsfargo-starui/velocity-grid` never depends on `@wellsfargo-starui/velocity-grid-ext/renderers`). */
 export interface StatusPillPaletteEntry {
   bg: string;
   fg: string;
@@ -87,7 +87,7 @@ export interface StatusPillPaletteEntry {
 }
 
 /** RatingBadge's 24-grade S&P-style ladder — mirrors
- *  `@wellsfargo-starui/velocity-grid-renderers/palette.ts`'s `RATING_SCALE_BANDS` key set exactly. */
+ *  `@wellsfargo-starui/velocity-grid-ext/renderers/palette.ts`'s `RATING_SCALE_BANDS` key set exactly. */
 export type RatingGrade =
   | 'AAA' | 'AA+' | 'AA' | 'AA-' | 'A+' | 'A' | 'A-'
   | 'BBB+' | 'BBB' | 'BBB-' | 'BB+' | 'BB' | 'BB-'
@@ -787,10 +787,10 @@ function scanVariantVariables(): {
 // ─────────────────────────────────────────────────────────────────────────
 // Workstream A, part 2 (2026-07-06 CSS styling model) — status-pill /
 // rating-scale / venue resolution tables. Each literal fallback below is
-// byte-identical to its `@wellsfargo-starui/velocity-grid-renderers/palette.ts` counterpart
+// byte-identical to its `@wellsfargo-starui/velocity-grid-ext/renderers/palette.ts` counterpart
 // (`STATUS_PILL_MAP`, `RATING_SCALE_BANDS`, `DEFAULT_VENUE_PALETTE`), kept
 // as a local duplicate (not imported) so `@wellsfargo-starui/velocity-grid` never depends on
-// `@wellsfargo-starui/velocity-grid-renderers`.
+// `@wellsfargo-starui/velocity-grid-ext/renderers`.
 // ─────────────────────────────────────────────────────────────────────────
 
 const STATUS_STATES: readonly StatusPillState[] = [
@@ -996,7 +996,7 @@ export class CssReader {
       popupBorder: get('--vg-popup-border') || get('--vg-border-color') || '#d5dbe0',
       menuHoverBg: get('--vg-menu-hover-bg') || get('--vg-row-hover-bg') || '#eef1f3',
       // Workstream A (2026-07-06 CSS styling model) — renderer-palette
-      // bundle. Literal fallbacks mirror @wellsfargo-starui/velocity-grid-renderers/palette.ts's
+      // bundle. Literal fallbacks mirror @wellsfargo-starui/velocity-grid-ext/renderers/palette.ts's
       // SEMANTIC_COLORS + the bars/badges painter geometry constants
       // exactly (defensive `get(...) || <literal>` / `px(...)` pattern,
       // same as every other token above).

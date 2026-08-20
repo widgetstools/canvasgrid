@@ -1,10 +1,10 @@
 /**
  * Grid Layouts — Phase C / C3: the conditional-rules API on VelocityGridApi,
- * exercised end-to-end on a real VelocityGrid wired to @wellsfargo-starui/velocity-grid-rules.
+ * exercised end-to-end on a real VelocityGrid wired to @wellsfargo-starui/velocity-grid/rules.
  *
  * Proves the worklog's C3 gate — "Rules API live + round-trip": getRules /
  * addRule / updateRule / deleteRule / setRuleEnabled / reorderRules route to
- * the @wellsfargo-starui/velocity-grid-rules RuleEngine via the rule-engine provider, every mutation
+ * the @wellsfargo-starui/velocity-grid/rules RuleEngine via the rule-engine provider, every mutation
  * fires a `rulesChanged` event, and the rules ride in the layout-tier `rules`
  * state module (C1) so they round-trip through getState. Also proves the
  * graceful degradation path: a grid with NO rules engine wired returns `[]`
@@ -12,8 +12,8 @@
  */
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { VelocityGrid } from '../src/velocityGrid';
-import { wireIntoKernel } from '@wellsfargo-starui/velocity-grid-rules';
-import type { ConditionalStyleRule } from '@wellsfargo-starui/velocity-grid-rules';
+import { wireIntoKernel } from '../src/rules/index';
+import type { ConditionalStyleRule } from '../src/rules/index';
 import { _resetRuleEngine_forTests } from '../src/core/ruleEngineSlot';
 
 // The rule engine lives in a MODULE-GLOBAL slot — reset between tests so the

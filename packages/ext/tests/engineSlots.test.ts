@@ -11,9 +11,9 @@
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { installGridTestEnv } from './setup';
 import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
-import { wireEditIntoKernel } from '@wellsfargo-starui/velocity-grid-edit';
-import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid-rules';
-import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid-calc';
+import { wireEditIntoKernel } from '../src/edit/index';
+import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid/rules';
+import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid/calc';
 import { LocalStorageProfileStore } from '../src/profiles/localStorageStore';
 import { ProfilesController } from '../src/profiles/controller';
 import { createExtContext } from '../src/extension/context';

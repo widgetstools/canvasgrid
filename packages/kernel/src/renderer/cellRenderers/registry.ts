@@ -216,7 +216,7 @@ export interface CellPaintConfig {
   /**
    * Workstream A (2026-07-06 CSS styling model) — compact renderer-palette
    * bundle (semantic colors + bar/chip geometry), threaded straight from
-   * `ResolvedTheme.rendererPalette` by `applyCellProps`. `@wellsfargo-starui/velocity-grid-renderers`
+   * `ResolvedTheme.rendererPalette` by `applyCellProps`. `@wellsfargo-starui/velocity-grid-ext/renderers`
    * painters resolve `overrides ?? p.palette?.<field> ?? <literal>` so
    * data-viz appearance comes from theme tokens instead of hardcoded
    * constants. `undefined` on hand-built `CellPaintConfig` test fixtures

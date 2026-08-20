@@ -44,10 +44,10 @@ export interface ResolvedColDef<TRow = any> {
   /** Narrowed to function form only — string is compiled by compileFormatSlots. */
   valueFormatter?: (params: CValueFormatterParams<TRow, unknown>) => string;
   /** Icon resolver derived from the format string by compileFormatSlots. */
-  cellIcon?: (params: CValueFormatterParams<TRow, unknown>) => import('@wellsfargo-starui/velocity-grid-format').IconRef | null;
+  cellIcon?: (params: CValueFormatterParams<TRow, unknown>) => import('../format/index').IconRef | null;
   /** Cycle 28 — leaf-header prefix/suffix icon. Always a fn after resolve —
    *  static IconRef forms are wrapped by `normalizeHeaderIcon`. */
-  headerIcon?: (params: { colId: string }) => import('@wellsfargo-starui/velocity-grid-format').IconRef | null;
+  headerIcon?: (params: { colId: string }) => import('../format/index').IconRef | null;
   /** @internal — populated by compileFormatSlots for composite ColDefs. */
   _compositeProgram?: import('../types/formatProgramShape').FormatProgramShape;
   /** @internal — populated by compileFormatSlots' string-valueFormatter
@@ -667,7 +667,7 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   target.checkboxCheckedFg = theme.checkboxCheckedFg;
   target.params = ctx.params;
   // Workstream A (2026-07-06 CSS styling model) — thread the resolved
-  // renderer-palette bundle onto every cell so @wellsfargo-starui/velocity-grid-renderers painters
+  // renderer-palette bundle onto every cell so @wellsfargo-starui/velocity-grid-ext/renderers painters
   // can resolve data-viz colors/geometry from theme tokens instead of
   // hardcoded constants. Constant per theme (not per-cell computed).
   target.palette = theme.rendererPalette;
@@ -1174,12 +1174,12 @@ function compileFormatSlots<TRow>(
         },
       ),
       cellIcon: (() => {
-        const staticRef: import('@wellsfargo-starui/velocity-grid-format').IconRef | null =
+        const staticRef: import('../format/index').IconRef | null =
           typeof merged.cellIcon === 'string' ? { name: merged.cellIcon }
           : (merged.cellIcon !== undefined && typeof merged.cellIcon === 'object') ? merged.cellIcon
           : null;
         return (p: CValueFormatterParams<TRow, unknown>) =>
-          (evalFormatProgram(program, p).icon as import('@wellsfargo-starui/velocity-grid-format').IconRef | null) ?? staticRef;
+          (evalFormatProgram(program, p).icon as import('../format/index').IconRef | null) ?? staticRef;
       })(),
     } as CColDef<TRow>;
   }
@@ -1401,8 +1401,8 @@ function normalizeCellIcon<TRow>(
 }
 
 function normalizeHeaderIcon(
-  v: import('@wellsfargo-starui/velocity-grid-format').IconRef | ((params: { colId: string }) => import('@wellsfargo-starui/velocity-grid-format').IconRef | null) | undefined,
-): ((params: { colId: string }) => import('@wellsfargo-starui/velocity-grid-format').IconRef | null) | undefined {
+  v: import('../format/index').IconRef | ((params: { colId: string }) => import('../format/index').IconRef | null) | undefined,
+): ((params: { colId: string }) => import('../format/index').IconRef | null) | undefined {
   if (v === undefined) return undefined;
   if (typeof v === 'function') return v;
   return () => v;

@@ -8,7 +8,7 @@ import {
   LocalStore,
   storageRemoveSync,
   type IStorage,
-} from '@wellsfargo-starui/velocity-grid-storage';
+} from '@wellsfargo-starui/velocity-grid-data/storage';
 import { ExtensionRegistry, type ExtensionSpec } from './extension/registry';
 import { ShellLayout } from './shell/shell';
 import { createExtContext } from './extension/context';

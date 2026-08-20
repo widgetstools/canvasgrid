@@ -1,5 +1,5 @@
 import { VelocityGrid, type CColDef } from '@wellsfargo-starui/velocity-grid';
-import { wireIntoKernel } from '@wellsfargo-starui/velocity-grid-format';
+import { wireIntoKernel } from '@wellsfargo-starui/velocity-grid/format';
 import type { Feature } from './index';
 import { Client, type IFrame, type IMessage } from '@stomp/stompjs';
 
@@ -35,7 +35,7 @@ const COLUMNS: CColDef<Position>[] = [
   { colId: 'notionalAmount', field: 'notionalAmount', headerName: 'Notional', cellDataType: 'number', width: 130, filter: 'number', enableValue: true, aggFunc: 'sum' },
   { colId: 'marketValue',    field: 'marketValue',    headerName: 'Market Value', cellDataType: 'number', width: 140, filter: 'number', enableValue: true, aggFunc: 'sum' },
   { colId: 'pnl',            field: 'pnl',            headerName: 'P&L',          cellDataType: 'number', width: 110, filter: 'number', enableValue: true, aggFunc: 'sum' },
-  // Cycle 21c / Task 18 — two columns upgraded to @wellsfargo-starui/velocity-grid-format DSL
+  // Cycle 21c / Task 18 — two columns upgraded to @wellsfargo-starui/velocity-grid/format DSL
   // strings so the demo proves DSL rendering under live STOMP ticks:
   //   • dailyPnl — Tier 1: per-row color expression by sign.
   //   • currentPrice — Tier 0: plain Excel currency code.
@@ -69,7 +69,7 @@ export const realtimeStomp: Feature = {
       enableCellChangeFlash: true,
     } as never);
 
-    // Cycle 21c / Task 18 — register the @wellsfargo-starui/velocity-grid-format compiler and
+    // Cycle 21c / Task 18 — register the @wellsfargo-starui/velocity-grid/format compiler and
     // re-issue the defs: string valueFormatters compile during column
     // resolution, which already ran once during construction (before
     // the compiler existed). The re-issue recompiles the two DSL

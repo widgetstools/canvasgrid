@@ -1,6 +1,6 @@
 // Cycle 21c / Task 14 — per-column tooltip provider hook.
 //
-// Apps (or @wellsfargo-starui/velocity-grid-format's bridge) register a provider per colId via
+// Apps (or @wellsfargo-starui/velocity-grid/format's bridge) register a provider per colId via
 // `grid.registerTooltipProvider(colId, fn)`. The provider returns
 // `{ plain }` or `{ html }` (or null for "no tooltip on this cell").
 // The TooltipProvider feature debounces hover 500ms, invokes the

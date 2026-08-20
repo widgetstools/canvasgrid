@@ -7,7 +7,7 @@
  * (the previous lit cgc-switch path never re-painted, so toggles looked
  * dead after the first click).
  */
-import type { ColumnOverride } from '@wellsfargo-starui/velocity-grid-calc';
+import type { ColumnOverride } from '@wellsfargo-starui/velocity-grid/calc';
 import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import {
   aggFuncChoices,

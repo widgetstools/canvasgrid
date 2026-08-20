@@ -9,7 +9,7 @@ import {
   type IStatusPanelComp,
   type StatusPanelParams,
 } from '@wellsfargo-starui/velocity-grid';
-import { wireIntoKernel } from '@wellsfargo-starui/velocity-grid-format';
+import { wireIntoKernel } from '@wellsfargo-starui/velocity-grid/format';
 import type { Position } from './stomp';
 
 /**
@@ -170,7 +170,7 @@ const pnlPill: CellPainter = {
  *     `cellClass: 'warning'` (pale-yellow bg on Daily). Off by
  *     default so the default demo isn't visually busy. */
 export interface PositionsGridOptions {
-  /** Cycle 21c / Task 18 — `?formatDsl=1` wires @wellsfargo-starui/velocity-grid-format into the
+  /** Cycle 21c / Task 18 — `?formatDsl=1` wires @wellsfargo-starui/velocity-grid/format into the
    *  kernel and upgrades the Price column to a Tier 1 DSL string
    *  formatter (`[color=<expr>] $#,##0.00` — green/red by dailyPnl
    *  sign), verifying real-time STOMP ticks under DSL rendering. Off

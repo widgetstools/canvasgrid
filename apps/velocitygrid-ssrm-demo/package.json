@@ -18,9 +18,6 @@
     "@perspective-dev/server": "^4.5.2",
     "@wellsfargo-starui/velocity-grid": "*",
     "@wellsfargo-starui/velocity-grid-perspective": "*",
-    "@wellsfargo-starui/velocity-grid-calc": "*",
-    "@wellsfargo-starui/velocity-grid-format": "*",
-    "@wellsfargo-starui/velocity-grid-rules": "*",
     "@stomp/stompjs": "^7.3.0"
   },
   "devDependencies": {

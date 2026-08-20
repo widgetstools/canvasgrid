@@ -47,9 +47,9 @@
  * whatever ext wires lazily (or a host/test injects explicitly) is recorded
  * and wins over the probe.
  */
-import type { EditBridgeHandle } from '@wellsfargo-starui/velocity-grid-edit';
-import type { CalcEngine } from '@wellsfargo-starui/velocity-grid-calc';
-import type { RuleEngine, AlertsEngine } from '@wellsfargo-starui/velocity-grid-rules';
+import type { EditBridgeHandle } from '../edit/index';
+import type { CalcEngine } from '@wellsfargo-starui/velocity-grid/calc';
+import type { RuleEngine, AlertsEngine } from '@wellsfargo-starui/velocity-grid/rules';
 
 /** The engines a module may ask the context for. */
 export interface ExtEngineMap {
@@ -65,9 +65,9 @@ export type ExtEngineName = keyof ExtEngineMap;
  *  `engineMissingNotice` empty state so every module says the same thing. */
 export const ENGINE_WIRE_HINT: Record<ExtEngineName, { label: string; wire: string }> = {
   edit: { label: 'Edit', wire: 'wireEditIntoKernel(grid)' },
-  calc: { label: 'Calc', wire: "wireIntoKernel(grid) from '@wellsfargo-starui/velocity-grid-calc'" },
-  rules: { label: 'Rules', wire: "wireIntoKernel(grid) from '@wellsfargo-starui/velocity-grid-rules'" },
-  alerts: { label: 'Alerts', wire: "wireIntoKernel(grid) from '@wellsfargo-starui/velocity-grid-rules'" },
+  calc: { label: 'Calc', wire: "wireIntoKernel(grid) from '@wellsfargo-starui/velocity-grid/calc'" },
+  rules: { label: 'Rules', wire: "wireIntoKernel(grid) from '@wellsfargo-starui/velocity-grid/rules'" },
+  alerts: { label: 'Alerts', wire: "wireIntoKernel(grid) from '@wellsfargo-starui/velocity-grid/rules'" },
 };
 
 export interface ExtEngineSlots {

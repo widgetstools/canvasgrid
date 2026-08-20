@@ -7,7 +7,7 @@
  */
 import { menu, svg } from './ui';
 import { injectTitleBarStyles } from './titleBar';
-import { compileFormat } from '@wellsfargo-starui/velocity-grid-format';
+import { compileFormat } from '@wellsfargo-starui/velocity-grid/format';
 import {
   CATEGORY_LABELS, CURRENCY_QUICK_INSERT, EXCEL_EXAMPLES,
   applyCurrencySymbol, categoriesForDataType, codeText, defaultSampleValue,

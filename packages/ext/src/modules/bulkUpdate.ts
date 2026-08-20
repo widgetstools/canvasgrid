@@ -2,7 +2,7 @@
  * Bulk Update — Customize sheet flat settings (starui customizer-ui #10).
  * Phase 4: Settings / Advanced tabs + workflow link to Edit History.
  */
-import type { BulkUpdateSettings } from '@wellsfargo-starui/velocity-grid-edit';
+import type { BulkUpdateSettings } from '../edit/index';
 import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import {
   band, el, injectCockpitStyles, lucideSvg, numberInput, row, switchToggleEnhanced,

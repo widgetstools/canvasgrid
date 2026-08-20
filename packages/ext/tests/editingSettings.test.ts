@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { installGridTestEnv } from './setup';
 import { VelocityGridExt } from '../src/velocityGridExt';
-import { wireEditIntoKernel } from '@wellsfargo-starui/velocity-grid-edit';
+import { wireEditIntoKernel } from '../src/edit/index';
 
 beforeAll(() => installGridTestEnv());
 beforeEach(() => localStorage.clear());

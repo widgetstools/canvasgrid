@@ -14,7 +14,7 @@ import {
   LocalStore,
   storageRemoveSync,
   type IStorage,
-} from '@wellsfargo-starui/velocity-grid-storage';
+} from '@wellsfargo-starui/velocity-grid-data/storage';
 import {
   LocalStorageConfigSession,
   LEGACY_CONFIG_PREFIX,

@@ -389,12 +389,12 @@
 .vg-theme-high-contrast-dark .vg-canvas { background-color: var(--vg-bg-color); }
 
 /* Workstream A (2026-07-06 CSS styling model) — renderer-palette tokens.
- * @wellsfargo-starui/velocity-grid-renderers data-viz painters (bars/badges/numeric categories)
+ * @wellsfargo-starui/velocity-grid-ext/renderers data-viz painters (bars/badges/numeric categories)
  * resolve their semantic colors + geometry from these tokens via
  * `cssReader` → `ResolvedTheme.rendererPalette` → `CellPaintConfig.palette`,
  * falling back to the identical literal when a token isn't declared. The
  * five colors are a deliberate invariant across light/dark (see
- * `@wellsfargo-starui/velocity-grid-renderers/palette.ts`'s `SEMANTIC_COLORS` doc comment) — same
+ * `@wellsfargo-starui/velocity-grid-ext/renderers/palette.ts`'s `SEMANTIC_COLORS` doc comment) — same
  * hex regardless of theme — so they're declared ONCE here, shared by every
  * theme class, instead of repeating the same 8 declarations in each theme
  * block above. Apps that want per-theme data-viz colors override these

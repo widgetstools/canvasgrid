@@ -4,7 +4,7 @@ import {
   storageGet,
   storageSet,
   type IStorage,
-} from '@wellsfargo-starui/velocity-grid-storage';
+} from '../storage/index';
 
 export interface ConfigBackend {
   list(userId?: string): Promise<DataProviderConfig[]>;

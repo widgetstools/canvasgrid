@@ -7,7 +7,7 @@ import { wireShowcaseRenderers } from './renderersWire';
  * Cycle 21f / Task 14 — Rich blotter renderer demo.
  *
  * Numeric, text, indicator, badge, and action painters over a ticking
- * positions blotter. Column defs come from @wellsfargo-starui/velocity-grid-renderers colDef
+ * positions blotter. Column defs come from @wellsfargo-starui/velocity-grid-ext/renderers colDef
  * builders; the bridge registers all 51 painters and exposes
  * window.__cgridRenderers for E2E probes.
  */
@@ -97,7 +97,7 @@ export const rendererBlotter: Feature = {
   id: 'renderer-blotter',
   label: 'Renderer Blotter',
   description:
-    'Cycle 21f — @wellsfargo-starui/velocity-grid-renderers numeric/text/indicator/badge/action painters ' +
+    'Cycle 21f — @wellsfargo-starui/velocity-grid-ext/renderers numeric/text/indicator/badge/action painters ' +
     'on a ticking fixed-income blotter. Resolved renderer names are probeable ' +
     'via columnDefsMap; canvas cells paint via the wired bridge.',
 

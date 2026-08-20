@@ -1,6 +1,6 @@
 import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
 import type { CColDef } from '@wellsfargo-starui/velocity-grid';
-import { wireIntoKernel, getFormatterTemplate } from '@wellsfargo-starui/velocity-grid-format';
+import { wireIntoKernel, getFormatterTemplate } from '@wellsfargo-starui/velocity-grid/format';
 import type { Feature } from './index';
 
 /**

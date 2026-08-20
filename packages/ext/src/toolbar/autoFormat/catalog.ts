@@ -1,7 +1,7 @@
 /**
  * FIELD_FORMAT_CATALOG — curated FI/equity blotter field names → format,
  * alignment, and typography. Ported from starui's fieldFormatCatalog and
- * adapted so every format is a plain @wellsfargo-starui/velocity-grid-format
+ * adapted so every format is a plain @wellsfargo-starui/velocity-grid/format
  * DSL string (no preset objects). Trailing-comma K/M magnitude scaling is
  * not used — the format package does not scale on trailing commas.
  */

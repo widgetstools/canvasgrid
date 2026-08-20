@@ -824,7 +824,7 @@ export interface VelocityGridOptions<TRow = any> {
    *  pure: no closures over external scope, no calls to main-thread
    *  globals. **Trust boundary:** treat aggFunc sources as trusted
    *  application code — never feed untrusted / user-authored function
-   *  strings into this map (use `@wellsfargo-starui/velocity-grid-expression` for sandboxed
+   *  strings into this map (use `@wellsfargo-starui/velocity-grid/expression` for sandboxed
    *  formulas). Closure capture is detected at registration time (the
    *  function is rebuilt + invoked against a probe input on the main
    *  thread; a mismatch / throw rejects the registration with an error

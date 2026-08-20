@@ -152,7 +152,7 @@ describe('compileFormatSlots — composite', () => {
 
 // ─── Static cellStyle preservation through the format-compile pass ────────
 // Regression (VelocityGridExt formatting toolbar): a STATIC cellStyle object —
-// authored, or folded in by @wellsfargo-starui/velocity-grid-calc's editColumn/template overrides —
+// authored, or folded in by @wellsfargo-starui/velocity-grid/calc's editColumn/template overrides —
 // was silently dropped whenever the column also had a string valueFormatter
 // (both mergeCellStyle call sites passed `undefined` for non-function
 // styles), so "style this column" never painted on any formatted column.

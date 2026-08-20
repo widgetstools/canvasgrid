@@ -8,11 +8,11 @@ import {
   type VelocityGridExtOptions,
 } from '@wellsfargo-starui/velocity-grid-ext';
 import { MemoryConfigBackend } from '@wellsfargo-starui/velocity-grid-data';
-import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid-format';
-import { wireEditIntoKernel } from '@wellsfargo-starui/velocity-grid-edit';
-import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid-calc';
-import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid-rules';
-import { wireRenderersIntoKernel } from '@wellsfargo-starui/velocity-grid-renderers';
+import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid/format';
+import { wireEditIntoKernel } from '@wellsfargo-starui/velocity-grid-ext/edit';
+import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid/calc';
+import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid/rules';
+import { wireRenderersIntoKernel } from '@wellsfargo-starui/velocity-grid-ext/renderers';
 import { defaultColDef, type LabRow } from './columns';
 import { buildLabBook, startCsrmTicks, type CsrmTickHandle } from './csrmBook';
 import type { LabFeature } from './features';

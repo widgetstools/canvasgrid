@@ -179,7 +179,7 @@ const pivotMaxGeneratedColumns: number | undefined = pivotMaxRaw !== null
   && Number.isFinite(Number(pivotMaxRaw))
     ? Number(pivotMaxRaw)
     : undefined;
-// Cycle 21c / Task 18 — `?formatDsl=1` wires @wellsfargo-starui/velocity-grid-format and upgrades
+// Cycle 21c / Task 18 — `?formatDsl=1` wires @wellsfargo-starui/velocity-grid/format and upgrades
 // the Price column to a Tier 1 DSL string formatter. Opt-in so the
 // existing functional + visual baselines stay byte-stable.
 const formatDsl = search.get('formatDsl') === '1';

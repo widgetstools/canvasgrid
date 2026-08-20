@@ -16,7 +16,7 @@ import {
   storageSetSync,
   storageRemoveSync,
   type IStorage,
-} from '@wellsfargo-starui/velocity-grid-storage';
+} from '@wellsfargo-starui/velocity-grid-data/storage';
 import type { ProfileMeta, ProfileSnapshot, ProfileStore } from '../extension/types';
 
 /** Host-level pointers shared across layouts (not full provider defs). */

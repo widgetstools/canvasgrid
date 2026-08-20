@@ -8,7 +8,7 @@
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { VelocityGrid } from '../src/velocityGrid';
-import { wireIntoKernel } from '@wellsfargo-starui/velocity-grid-calc';
+import { wireIntoKernel } from '../src/calc/index';
 
 beforeAll(() => {
   (globalThis as any).Worker = class {

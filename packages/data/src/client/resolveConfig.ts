@@ -1,4 +1,4 @@
-import { resolveCfg, type AppDataLookup } from '@wellsfargo-starui/velocity-grid-appdata';
+import { resolveCfg, type AppDataLookup } from '../appdata/index';
 import type { DataProviderConfig } from '../types';
 
 /**

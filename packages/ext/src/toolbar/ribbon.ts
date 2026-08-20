@@ -12,7 +12,7 @@
 import type { VelocityGridExtension, VelocityGridExtContext, ToolbarItem, ToolbarItemInstance, Unsub } from '../extension/types';
 import { menu, mirrorThemeClass } from './ui';
 import { injectTitleBarStyles } from './titleBar';
-import type { EditBridgeHandle, SmartEditOp } from '@wellsfargo-starui/velocity-grid-edit';
+import type { EditBridgeHandle, SmartEditOp } from '../edit/index';
 import { createIconPicker, type IconPickerHandle, type IconSelection } from './iconPicker';
 import { formatPickerMenu, type FormatPickerHost } from './formatPicker';
 import { adjustFormatDecimals, findPresetByFormat, type FormatDataType } from './formatPresets';
@@ -25,7 +25,7 @@ import {
   type TemplateManagerHost,
 } from './templateManager';
 import { createFormatHistory, type FormatHistoryGrid } from './formatHistory';
-import { isOwnTemplateId } from '@wellsfargo-starui/velocity-grid-calc';
+import { isOwnTemplateId } from '@wellsfargo-starui/velocity-grid/calc';
 import {
   ribbonColorSwatch,
   syncRibbonColor,
@@ -44,7 +44,7 @@ const FILTER_TYPE_OPTIONS = [
   { v: 'set', text: 'Set', menu: 'Set' },
 ] as const;
 
-/** Lazily supplies the `@wellsfargo-starui/velocity-grid-edit` handle — the demo/consumer wires the
+/** Lazily supplies the `edit` engine handle — the demo/consumer wires the
  *  edit engine after the grid is constructed, so the ribbon reads it on
  *  demand rather than capturing it at build time. */
 export type EditHandleGetter = () => EditBridgeHandle | undefined;
@@ -739,14 +739,14 @@ function showNoEligibleCellsNotice(anchor: HTMLElement): void {
   setTimeout(() => notice.remove(), 2200);
 }
 
-// ── Editing-toolbar wiring (@wellsfargo-starui/velocity-grid-edit bridge) ──────────────────────────
+// ── Editing-toolbar wiring (edit engine bridge) ──────────────────────────
 interface EditingRefs {
   undo: HTMLButtonElement; redo: HTMLButtonElement; histCount: HTMLElement;
   operand: HTMLInputElement; ops: Record<SmartEditOp, HTMLButtonElement>;
   smartCount: HTMLElement; bulkValue: HTMLInputElement; bulkApply: HTMLButtonElement; bulkCount: HTMLElement;
 }
 
-/** Bind the History / Smart / Bulk controls to the live `@wellsfargo-starui/velocity-grid-edit` handle:
+/** Bind the History / Smart / Bulk controls to the live `edit` engine handle:
  *  undo/redo through the journal (with reactive count + enablement), numeric
  *  ops and set-value across the current cell selection, and bulk set-value.
  *  Returns a disposer. */
@@ -848,7 +848,7 @@ function wireEditingToolbar(ctx: VelocityGridExtContext, getEdit: EditHandleGett
   return () => { for (const d of disposers) { try { d(); } catch { /* ignore */ } } };
 }
 
-// ── Formatting-toolbar wiring (column styling via @wellsfargo-starui/velocity-grid-calc editColumn) ──
+// ── Formatting-toolbar wiring (column styling via @wellsfargo-starui/velocity-grid/calc editColumn) ──
 interface FormattingRefs {
   targetToggle: HTMLButtonElement; scopeToggle: HTMLButtonElement; selPill: HTMLButtonElement;
   paintTargetToggle: (isCell: boolean) => void; paintScopeToggle: (isSelected: boolean) => void;

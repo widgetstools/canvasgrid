@@ -30,7 +30,7 @@ import {
   toAppDataLookup,
   type AppDataLookup,
   type AppDataStore,
-} from '@wellsfargo-starui/velocity-grid-appdata';
+} from '@wellsfargo-starui/velocity-grid-data/appdata';
 import { registerDataProviderFeedControl } from '@wellsfargo-starui/velocity-grid-data';
 import {
   PerspectiveBook,

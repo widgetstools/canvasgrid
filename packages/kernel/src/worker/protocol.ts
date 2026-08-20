@@ -154,7 +154,7 @@ export interface WorkerColumn {
   accentedSort?: boolean;
   /**
    * Expression-form valueGetter source (`[ask] - [bid]`, `IF(...)`, ternary).
-   * Worker compiles via `@wellsfargo-starui/velocity-grid-expression` and uses the
+   * Worker compiles via `@wellsfargo-starui/velocity-grid/expression` and uses the
    * result instead of `row[field]` for sort / filter / paint.
    */
   valueGetter?: string;
@@ -398,7 +398,7 @@ export interface AutosizeGroupContextRequest {
   groupColumnDepth?: number;
 }
 
-/** Cycle 21d / Task 10 — serialized calc program shipped by @wellsfargo-starui/velocity-grid-calc's
+/** Cycle 21d / Task 10 — serialized calc program shipped by @wellsfargo-starui/velocity-grid/calc's
  *  bridge (via VelocityGrid.registerCalcProvider → setCalcProgram). `ast` is the
  *  portable expression AST (plain JSON — 21b guarantee); `interpreterSource`
  *  and each `aggregateSources[].source` are `Function.prototype.toString()`

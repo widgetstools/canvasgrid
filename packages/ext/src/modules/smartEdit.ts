@@ -3,7 +3,7 @@
  * GLOBAL / OPERATIONS / SAFETY bands; Done commits via edit handle.
  * Phase 4: Settings / Advanced tabs, band complexity, workflow to Edit History.
  */
-import type { SmartEditOp, SmartEditSettings } from '@wellsfargo-starui/velocity-grid-edit';
+import type { SmartEditOp, SmartEditSettings } from '../edit/index';
 import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import {
   band, el, injectCockpitStyles, lucideSvg, numberInput, row, switchToggleEnhanced,

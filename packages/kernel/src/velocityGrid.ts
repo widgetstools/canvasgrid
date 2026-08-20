@@ -56,7 +56,7 @@ import { LayoutManager, type LayoutManagerHost, type SaveLayoutOptions } from '.
 import type { GridLayout, GridBaselineConfig, GridLayoutsBundle, TemplateSaveInput } from './types/layout';
 import { DEFAULT_GRID_LEVEL_MODULES } from './types/layout';
 import type { LayoutChangeSource, TemplateChangeSource, RuleChangeSource } from './types/event';
-import type { ColumnTemplate } from '@wellsfargo-starui/velocity-grid-calc';
+import type { ColumnTemplate } from './calc/index';
 import { StateUpdatedBus } from './core/stateUpdatedBus';
 import {
   flatten as flattenColumnGroups, project as projectColumnGroups,
@@ -282,7 +282,7 @@ export { buildSsrmColumnKeys, mergeSsrmRowFields } from './core/ssrmColumnKeys';
 export type { SsrmColumnKeysInput } from './core/ssrmColumnKeys';
 export type { CellPainter, CellPaintConfig, RegisterCellRendererOpts } from './renderer/cellRenderers/registry';
 // Workstream A (2026-07-06 CSS styling model) — renderer-palette bundle
-// type, so @wellsfargo-starui/velocity-grid-renderers (and follow-on structured-map work) can name
+// type, so @wellsfargo-starui/velocity-grid-ext/renderers (and follow-on structured-map work) can name
 // the shape of `CellPaintConfig.palette` directly.
 export type { RendererPalette } from './theming/cssReader';
 // Theming Task 6/7 — programmatic `CgTheme` object public surface. `CgTheme`
@@ -5797,7 +5797,7 @@ export class VelocityGrid<TRow = any> {
    *  first-seen row order (worker DistinctValuesPass; nulls dropped).
    *  `limit` truncates the reply; the worker cache keeps the full set so
    *  different limits share one derivation. Public surface for
-   *  @wellsfargo-starui/velocity-grid-calc's typed wrapper + apps.
+   *  @wellsfargo-starui/velocity-grid/calc's typed wrapper + apps.
    *
    *  Sparse SSRM: prefer the expression host (Perspective table) — the
    *  worker store only holds hydrated windows and often answers `[]`. */
@@ -6005,7 +6005,7 @@ export class VelocityGrid<TRow = any> {
   /** Cycle 21e / Task 10 — iterate every row in the main-thread
    *  `rowDataById` mirror (setRowData + all transaction paths keep it in
    *  sync since Cycle 7 / Task 8). Insertion order. Used by
-   *  @wellsfargo-starui/velocity-grid-rules' wireIntoKernel to seed match counts. */
+   *  @wellsfargo-starui/velocity-grid/rules' wireIntoKernel to seed match counts. */
   forEachRow(fn: (rowId: string, row: TRow) => void): void {
     for (const [rowId, row] of this.rowDataById) fn(rowId, row);
   }
@@ -8272,7 +8272,7 @@ export class VelocityGrid<TRow = any> {
    *    refinement that would re-enable patching for value-only programs.
    * Cheap: runs once per damage batch (not per span); the format scan is
    * O(visible columns), and all three slots are empty for grids that
-   * never wire @wellsfargo-starui/velocity-grid-format / @wellsfargo-starui/velocity-grid-calc / @wellsfargo-starui/velocity-grid-rules.
+   * never wire @wellsfargo-starui/velocity-grid/format / @wellsfargo-starui/velocity-grid/calc / @wellsfargo-starui/velocity-grid/rules.
    */
   private stripPatchCrossColumnSafe(): boolean {
     const engine = getRuleEngine();
@@ -9031,16 +9031,16 @@ export class VelocityGrid<TRow = any> {
     for (const root of this.columnTree.roots) visit(root);
   }
 
-  /** Cycle 21c / Task 10 — register the @wellsfargo-starui/velocity-grid-format compiler into the
-   *  kernel DI slot. Invoked by wireIntoKernel(grid) in @wellsfargo-starui/velocity-grid-format;
+  /** Cycle 21c / Task 10 — register the @wellsfargo-starui/velocity-grid/format compiler into the
+   *  kernel DI slot. Invoked by wireIntoKernel(grid) in @wellsfargo-starui/velocity-grid/format;
    *  kernel's compileFormatSlots pass (Task 11) calls getFormatCompiler()
    *  to obtain it. Apps that never call this see no behavior change. */
   registerFormatCompiler(fn: FormatCompiler): void {
     slotRegisterFormatCompiler(fn);
   }
 
-  /** Cycle 21e / Task 10 — register the @wellsfargo-starui/velocity-grid-rules engine adapter into
-   *  the kernel DI slot. Invoked by wireIntoKernel(grid) in @wellsfargo-starui/velocity-grid-rules;
+  /** Cycle 21e / Task 10 — register the @wellsfargo-starui/velocity-grid/rules engine adapter into
+   *  the kernel DI slot. Invoked by wireIntoKernel(grid) in @wellsfargo-starui/velocity-grid/rules;
    *  kernel's applyCellProps fold (Task 11) calls getRuleEngine() to
    *  obtain it. Apps that never call this see no behavior change. */
   registerRuleEngine(engine: RuleEngineShape): void {
@@ -9053,8 +9053,8 @@ export class VelocityGrid<TRow = any> {
     this.cgridCanvas?.requestRepaint();
   }
 
-  /** Cycle 21d / Task 9 — register the @wellsfargo-starui/velocity-grid-calc provider into the
-   *  kernel DI slot. Invoked by wireIntoKernel(grid) in @wellsfargo-starui/velocity-grid-calc.
+  /** Cycle 21d / Task 9 — register the @wellsfargo-starui/velocity-grid/calc provider into the
+   *  kernel DI slot. Invoked by wireIntoKernel(grid) in @wellsfargo-starui/velocity-grid/calc.
    *  Registration folds the provider's synthesized calc ColDefs +
    *  override patches into the column tree (rebuild + worker column
    *  reship) and re-folds on every provider-side column mutation.
@@ -12600,7 +12600,7 @@ export class VelocityGrid<TRow = any> {
    *  (cellClicked, cellDoubleClicked, cellKeyDown/Press, cellMouseOver/Out,
    *  rowMouseOver/Out) fed into its payload. The paint pipeline, meanwhile,
    *  already had the REAL string rowId via `stringRowIdAt` (chunk's
-   *  `stringRowIds` mirror) — @wellsfargo-starui/velocity-grid-renderers keys its hit regions on that
+   *  `stringRowIds` mirror) — @wellsfargo-starui/velocity-grid-ext/renderers keys its hit regions on that
    *  real id. Result: hit regions registered under 'r1' while clicks
    *  resolved 'row-0', so action callbacks (onAction/onOpen) could never
    *  correlate a click back to its row.
@@ -13496,7 +13496,7 @@ export class VelocityGrid<TRow = any> {
 
   // ── Styling templates (Phase B / B3) ────────────────────────────────
   // The shared styling-template library, routed to the calc provider
-  // (registered by @wellsfargo-starui/velocity-grid-calc's wireIntoKernel). No provider (calc not
+  // (registered by @wellsfargo-starui/velocity-grid/calc's wireIntoKernel). No provider (calc not
   // wired) → `getTemplates` returns `[]` and the mutators no-op without an
   // event. The engine is Date-free, so save/rename stamp `Date.now()` here.
   // Mutations that change a column's resolved def (save/apply/remove) trigger
@@ -13554,7 +13554,7 @@ export class VelocityGrid<TRow = any> {
    *  into its OWN template (forking from any shared template). Fires
    *  `templatesChanged` (source `'save'` — it writes the column's own
    *  template). No-op without a calc engine. */
-  editColumn(colId: string, patch: import('@wellsfargo-starui/velocity-grid-calc').ColumnEditPatch): void {
+  editColumn(colId: string, patch: import('./calc/index').ColumnEditPatch): void {
     const provider = getCalcProvider();
     if (!provider?.editColumn) return;
     // Gate the event on the engine's result — a rejected edit (e.g. a
@@ -13565,8 +13565,8 @@ export class VelocityGrid<TRow = any> {
   }
 
   // ── Conditional styling rules (Phase C / C3) ────────────────────────────
-  // The active layout's conditional-rule set, routed to the @wellsfargo-starui/velocity-grid-rules
-  // RuleEngine via the rule-engine provider (registered by @wellsfargo-starui/velocity-grid-rules'
+  // The active layout's conditional-rule set, routed to the @wellsfargo-starui/velocity-grid/rules
+  // RuleEngine via the rule-engine provider (registered by @wellsfargo-starui/velocity-grid/rules'
   // wireIntoKernel). No engine wired → `getRules` returns `[]` and the
   // mutators no-op without an event. The kernel owns the CRUD semantics as
   // pure array transforms over getRules()/setRules() (like LayoutManager owns
@@ -14380,7 +14380,7 @@ export class VelocityGrid<TRow = any> {
    *  static-bool/function dispatch lives in `EditController.isCellEditable`.
    *  PUBLIC (VelocityGridExt toolbars): resolves against the RESOLVED colDef
    *  (defaultColDef/columnTypes folded) and carries the pivot-mode read-only
-   *  gate — engine bridges (`@wellsfargo-starui/velocity-grid-edit`) delegate here instead of
+   *  gate — engine bridges (`@wellsfargo-starui/velocity-grid-ext/edit`) delegate here instead of
    *  replicating the predicate against authored defs. */
   isCellEditable(rowIndex: number, colId: string): boolean {
     return this.editController.isCellEditable(rowIndex, colId);

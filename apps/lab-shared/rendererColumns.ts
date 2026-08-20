@@ -4,7 +4,7 @@
  * `columnOverrides[].cellRenderer` to turn painters on/off per curriculum.
  */
 import type { CColDef } from '@wellsfargo-starui/velocity-grid';
-import { THREADING_PROGRAM } from '@wellsfargo-starui/velocity-grid-renderers';
+import { THREADING_PROGRAM } from '@wellsfargo-starui/velocity-grid-ext/renderers';
 import { pickColumns, type LabRow } from './columns';
 
 /** Sector → status-pill colors (keys uppercased — status-pill uppercases values). */

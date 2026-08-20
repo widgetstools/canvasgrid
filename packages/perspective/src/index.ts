@@ -6,8 +6,8 @@
  * layers stay exported for hosts that need custom orchestration (the
  * velocitygrid-ssrm-demo stress app drives them directly).
  *
- * AppData (`{{name.key}}`) lives in `@wellsfargo-starui/velocity-grid-appdata` and is re-exported
- * here so SSRM hosts can take a single import.
+ * AppData (`{{name.key}}`) lives in `@wellsfargo-starui/velocity-grid-data/appdata` and is
+ * re-exported here so SSRM hosts can take a single import.
  */
 export {
   StompPerspectiveProvider,
@@ -61,7 +61,7 @@ export {
   toAppDataLookup,
   type AppDataLookup,
   type AppDataChange,
-} from '@wellsfargo-starui/velocity-grid-appdata';
+} from '@wellsfargo-starui/velocity-grid-data/appdata';
 export {
   PerspectiveBook,
   resolvePerspectiveViewColumns,

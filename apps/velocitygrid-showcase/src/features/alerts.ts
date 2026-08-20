@@ -1,7 +1,7 @@
 import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
 import type { CColDef } from '@wellsfargo-starui/velocity-grid';
-import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid-rules';
-import type { AlertRule, AlertSeverity, AlertsEngine } from '@wellsfargo-starui/velocity-grid-rules';
+import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid/rules';
+import type { AlertRule, AlertSeverity, AlertsEngine } from '@wellsfargo-starui/velocity-grid/rules';
 import type { Feature } from './index';
 
 /**
@@ -73,7 +73,7 @@ export const alertsFeature: Feature = {
   id: 'alerts',
   label: 'Alerts',
   description:
-    'Cycle 21e — @wellsfargo-starui/velocity-grid-rules alerts core. Three trigger kinds ' +
+    'Cycle 21e — @wellsfargo-starui/velocity-grid/rules alerts core. Three trigger kinds ' +
     '(relativeChange 1% price moves with 1.5s debounce, dataChange ' +
     'deep-loss on [pnl], rowChange on adds), severity chips, message ' +
     'templating, unread badge with mark-all-read, and an evaluation ' +

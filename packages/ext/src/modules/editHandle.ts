@@ -1,5 +1,5 @@
 /**
- * Shared accessor for the `@wellsfargo-starui/velocity-grid-edit` bridge.
+ * Shared accessor for the `edit` engine bridge.
  *
  * D-F8 — this used to cast the grid and read the `__editBridgeWired`
  * expando. It now goes through the context's engine slots, so ALL marker
@@ -10,7 +10,7 @@
  * AFTER the ext constructor returns, and modules mount when the drawer
  * opens — either order must work. Never hoist the result.
  */
-import type { EditBridgeHandle } from '@wellsfargo-starui/velocity-grid-edit';
+import type { EditBridgeHandle } from '../edit/index';
 import type { VelocityGridExtContext } from '../extension/types';
 
 export function editHandle(ctx: VelocityGridExtContext): EditBridgeHandle | null {

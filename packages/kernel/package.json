@@ -21,6 +21,26 @@
     "./ui/primitives-enhanced": {
       "types": "./src/ui/primitives-enhanced.ts",
       "import": "./src/ui/primitives-enhanced.ts"
+    },
+    "./calc": {
+      "types": "./src/calc/index.ts",
+      "import": "./src/calc/index.ts"
+    },
+    "./expression": {
+      "types": "./src/expression/index.ts",
+      "import": "./src/expression/index.ts"
+    },
+    "./expression/editor": {
+      "types": "./src/expression/editor.ts",
+      "import": "./src/expression/editor.ts"
+    },
+    "./format": {
+      "types": "./src/format/index.ts",
+      "import": "./src/format/index.ts"
+    },
+    "./rules": {
+      "types": "./src/rules/index.ts",
+      "import": "./src/rules/index.ts"
     }
   },
   "scripts": {
@@ -37,12 +57,15 @@
     "src"
   ],
   "dependencies": {
-    "@wellsfargo-starui/velocity-grid-expression": "*"
+    "@codemirror/autocomplete": "^6.20.3",
+    "@codemirror/commands": "^6.10.4",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/lint": "^6.9.7",
+    "@codemirror/state": "^6.7.1",
+    "@codemirror/view": "^6.43.6",
+    "@lezer/highlight": "^1.2.3"
   },
   "devDependencies": {
-    "@wellsfargo-starui/velocity-grid-calc": "*",
-    "@wellsfargo-starui/velocity-grid-format": "*",
-    "@wellsfargo-starui/velocity-grid-rules": "*",
     "@types/node": "^20.0.0",
     "@vitest/coverage-v8": "^2.1.0",
     "happy-dom": "^15.0.0",

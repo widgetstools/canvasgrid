@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { ownTemplateId, type ColumnTemplate } from '@wellsfargo-starui/velocity-grid-calc';
+import { ownTemplateId, type ColumnTemplate } from '@wellsfargo-starui/velocity-grid/calc';
 import {
   activeLibraryTemplateId,
   applyLibraryTemplate,

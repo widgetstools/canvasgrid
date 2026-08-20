@@ -5,7 +5,7 @@
  * formatter → placement), CodeMirror 6 editor with live compile
  * validation and the shared Format picker.
  *
- * CSRM mutations ride the idempotent @wellsfargo-starui/velocity-grid-calc
+ * CSRM mutations ride the idempotent @wellsfargo-starui/velocity-grid/calc
  * engine. SSRM + StompPerspectiveProvider uses Perspective ExprTK via
  * `grid.getSsrmExpressionHost()` (ViewConfig.expressions) instead of Stage A.
  */
@@ -15,7 +15,7 @@ import {
   listAggregates,
   type CalculatedColumnDef,
   type CellDataType,
-} from '@wellsfargo-starui/velocity-grid-calc';
+} from '@wellsfargo-starui/velocity-grid/calc';
 import type { SsrmExpressionHost, CColDef } from '@wellsfargo-starui/velocity-grid';
 import { PerspectiveDataProviderController } from '@wellsfargo-starui/velocity-grid-perspective';
 import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';

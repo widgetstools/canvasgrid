@@ -14,17 +14,17 @@ import {
   resolveProviderConfig,
   registerDefaultTransports,
 } from '@wellsfargo-starui/velocity-grid-data';
-import { PersistedAppDataStore } from '@wellsfargo-starui/velocity-grid-appdata';
-import { LocalStore } from '@wellsfargo-starui/velocity-grid-storage';
+import { PersistedAppDataStore } from '@wellsfargo-starui/velocity-grid-data/appdata';
+import { LocalStore } from '@wellsfargo-starui/velocity-grid-data/storage';
 import {
   PerspectiveDataProviderController,
   type BookTelemetry,
 } from '@wellsfargo-starui/velocity-grid-perspective';
 import type { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
-import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid-format';
-import { wireEditIntoKernel } from '@wellsfargo-starui/velocity-grid-edit';
-import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid-calc';
-import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid-rules';
+import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid/format';
+import { wireEditIntoKernel } from '@wellsfargo-starui/velocity-grid-ext/edit';
+import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid/calc';
+import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid/rules';
 import {
   buildSsrmProviderTemplate,
   SSRM_PROVIDER_ID,

@@ -1,9 +1,9 @@
 // Kernel-side rule-engine dependency-injection slot.
 //
-// @wellsfargo-starui/velocity-grid-rules registers its engine adapter via wireIntoKernel(); kernel
+// @wellsfargo-starui/velocity-grid/rules registers its engine adapter via wireIntoKernel(); kernel
 // consults the registered engine in propertyChain.applyCellProps (Cycle 21e
 // Task 11) and threads resolveRuleRef into format-eval contexts (Task 14).
-// Kernel does NOT import @wellsfargo-starui/velocity-grid-rules at runtime — only structural types,
+// Kernel does NOT import @wellsfargo-starui/velocity-grid/rules at runtime — only structural types,
 // exactly like core/formatCompilerSlot.ts.
 
 /** Evaluation context the kernel paint path supplies per data cell.
@@ -16,7 +16,7 @@ export interface RuleEvalCtxShape {
   theme: 'light' | 'dark';
 }
 
-/** Folded per-cell rule result. Structural mirror of @wellsfargo-starui/velocity-grid-rules'
+/** Folded per-cell rule result. Structural mirror of @wellsfargo-starui/velocity-grid/rules'
  *  RuleCellResult (spec §4.2) — formatProgram stays `unknown` because
  *  kernel only forwards it into FormatProgramShape.formatText. */
 export interface RuleCellPatchShape {
@@ -47,14 +47,14 @@ export interface RuleCellPatchShape {
 /** Grid Layouts (Phase C / C3) — a conditional-rule object as the kernel's
  *  VelocityGridApi rule methods manipulate it. The kernel only touches `id`
  *  (identity), `enabled` (toggle), and `priority` (update) for its pure array
- *  transforms; the rest of the @wellsfargo-starui/velocity-grid-rules `StyleRule` payload is carried
+ *  transforms; the rest of the @wellsfargo-starui/velocity-grid/rules `StyleRule` payload is carried
  *  through verbatim (the rule engine owns its full shape + validation).
  *
- *  Deliberately NO index signature: a nominal `@wellsfargo-starui/velocity-grid-rules` rule type (which
+ *  Deliberately NO index signature: a nominal `@wellsfargo-starui/velocity-grid/rules` rule type (which
  *  has no index signature) must stay assignable to this — TS rejects assigning
  *  a no-index-signature source to an index-signature target. The minimal shape
  *  keeps the kernel↔rules boundary structural (the slot never imports
- *  @wellsfargo-starui/velocity-grid-rules) while letting consumers pass their fully-typed rules directly. */
+ *  @wellsfargo-starui/velocity-grid/rules) while letting consumers pass their fully-typed rules directly. */
 export interface ConditionalRuleShape {
   id: string;
   enabled?: boolean;
@@ -73,7 +73,7 @@ export interface RuleEngineShape {
    *  snapshot). Optional so a paint-only engine adapter still satisfies the
    *  slot; the VelocityGridApi rule methods degrade to `[]` / no-op without it. */
   getRules?(): ConditionalRuleShape[];
-  /** Grid Layouts (Phase C / C3) — REPLACE the rule set. The @wellsfargo-starui/velocity-grid-rules
+  /** Grid Layouts (Phase C / C3) — REPLACE the rule set. The @wellsfargo-starui/velocity-grid/rules
    *  bridge re-seeds match counts (setRules zeroes them). */
   setRules?(rules: ConditionalRuleShape[]): void;
 }

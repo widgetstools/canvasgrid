@@ -2,7 +2,7 @@
  * Plus / Minus — Customize module (starui customizer-ui #06).
  * Module settings + nudge list / editor (master-detail).
  */
-import type { PlusMinusNudge, PlusMinusSettings } from '@wellsfargo-starui/velocity-grid-edit';
+import type { PlusMinusNudge, PlusMinusSettings } from '../edit/index';
 import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import { ExpressionEditor } from '../ui/expressionEditor';
 import { editorColumns } from '../ui/gridSchema';

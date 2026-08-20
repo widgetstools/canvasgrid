@@ -6,11 +6,11 @@
  * FRESH grid (empty library) re-materializes those defs AND restores the
  * per-column template assignments (which now ride in the layout-tier
  * `columnOverrides` module). Exercised end-to-end on real VelocityGrids wired to
- * @wellsfargo-starui/velocity-grid-calc.
+ * @wellsfargo-starui/velocity-grid/calc.
  */
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { VelocityGrid } from '../src/velocityGrid';
-import { wireIntoKernel } from '@wellsfargo-starui/velocity-grid-calc';
+import { wireIntoKernel } from '../src/calc/index';
 import { _resetCalcProvider_forTests } from '../src/core/calcSlot';
 
 beforeEach(() => { _resetCalcProvider_forTests(); });

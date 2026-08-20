@@ -10,10 +10,10 @@
  */
 import { VelocityGrid, formatPrice32, DEFAULT_LAYOUT_ID, themeCursor, type CColDef, type CColGroupDef, type GridLayoutsBundle, type CgThemeParams } from '@wellsfargo-starui/velocity-grid';
 import '@wellsfargo-starui/velocity-grid/style.css';
-import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid-format';
-import { wireEditIntoKernel } from '@wellsfargo-starui/velocity-grid-edit';
-import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid-calc';
-import { wireIntoKernel as wireRules, type ConditionalStyleRule } from '@wellsfargo-starui/velocity-grid-rules';
+import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid/format';
+import { wireEditIntoKernel } from '@wellsfargo-starui/velocity-grid-ext/edit';
+import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid/calc';
+import { wireIntoKernel as wireRules, type ConditionalStyleRule } from '@wellsfargo-starui/velocity-grid/rules';
 import { connectStomp, STOMP_PUBLISH_RATE_PER_SEC, type Position } from './stomp';
 
 const DESKS = ['RATES', 'CREDIT', 'FX', 'EQD'];

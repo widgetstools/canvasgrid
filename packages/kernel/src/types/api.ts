@@ -482,7 +482,7 @@ export interface VelocityGridApi<TRow = any> {
    *  against the RESOLVED colDef (defaultColDef/columnTypes folded), with
    *  the pivot-mode read-only gate. Static booleans pass through; callback
    *  forms receive `{data, colId, rowIndex, value}`; unknown column →
-   *  `false`. Engine bridges (`@wellsfargo-starui/velocity-grid-edit` smart-edit / bulk-update
+   *  `false`. Engine bridges (`@wellsfargo-starui/velocity-grid-ext/edit` smart-edit / bulk-update
    *  target collection) delegate here instead of replicating the
    *  predicate against authored defs. */
   isCellEditable(rowIndex: number, colId: string): boolean;
@@ -698,19 +698,19 @@ export interface VelocityGridApi<TRow = any> {
   getModal(): import('../interaction/modalHost').ModalHost;
 
   /** Cycle 21c / Task 10 — register the format compiler (supplied by
-   *  @wellsfargo-starui/velocity-grid-format's wireIntoKernel). Kernel invokes it in the
+   *  @wellsfargo-starui/velocity-grid/format's wireIntoKernel). Kernel invokes it in the
    *  compileFormatSlots pass (Task 11). Apps that never call this see
    *  identical behavior to before. */
   registerFormatCompiler(fn: import('../core/formatCompilerSlot').FormatCompiler): void;
 
   /** Cycle 21e / Task 10 — register the rule engine (supplied by
-   *  @wellsfargo-starui/velocity-grid-rules' wireIntoKernel). Kernel consults it in the
+   *  @wellsfargo-starui/velocity-grid/rules' wireIntoKernel). Kernel consults it in the
    *  applyCellProps fold (Task 11). Apps that never call this see
    *  identical behavior to before. */
   registerRuleEngine(engine: import('../core/ruleEngineSlot').RuleEngineShape): void;
 
   /** Cycle 21d / Task 9 — register the calc provider (supplied by
-   *  @wellsfargo-starui/velocity-grid-calc's wireIntoKernel). Kernel folds its synthesized calc
+   *  @wellsfargo-starui/velocity-grid/calc's wireIntoKernel). Kernel folds its synthesized calc
    *  columns + override patches into column resolution and ships its
    *  worker program (Task 10). Apps that never call this see
    *  identical behavior to before. */
@@ -752,7 +752,7 @@ export interface VelocityGridApi<TRow = any> {
    *  pre-built Path2D instances. Subsequent `resolveIcon` calls look
    *  up icons by name across all registered sets.
    *
-   *  Kernel never auto-registers any icon set; `@wellsfargo-starui/velocity-grid-format`'s
+   *  Kernel never auto-registers any icon set; `@wellsfargo-starui/velocity-grid/format`'s
    *  `wireIntoKernel` registers the Lucide bundle. Apps that supply
    *  additional icon sets (e.g. a custom Phosphor bundle) call this
    *  at init time alongside `wireIntoKernel`. Re-registering under
@@ -1138,13 +1138,13 @@ export interface VelocityGridApi<TRow = any> {
   ): void;
 
   // ── Styling templates (Phase B / B3) ────────────────────────────────
-  // The shared styling-template library, routed to `@wellsfargo-starui/velocity-grid-calc`. When no
+  // The shared styling-template library, routed to `@wellsfargo-starui/velocity-grid/calc`. When no
   // calc engine is wired, `getTemplates` returns `[]` and the mutators are
   // no-ops (no `templatesChanged` event). Every mutation fires
   // `templatesChanged` so switchers / editors re-sync.
   /** The host-authored template library (synthetic type-defaults excluded),
    *  as defensive clones. `[]` when no calc engine is wired. */
-  getTemplates(): import('@wellsfargo-starui/velocity-grid-calc').ColumnTemplate[];
+  getTemplates(): import('../calc/index').ColumnTemplate[];
   /** Create-or-replace a template by id (re-save preserves `createdAt`; the
    *  kernel stamps timestamps). Throws on an empty id / non-compiling format. */
   saveTemplate(spec: import('./layout').TemplateSaveInput): void;
@@ -1168,10 +1168,10 @@ export interface VelocityGridApi<TRow = any> {
    *  be reused, and a consumer edit of a column that has a SHARED template
    *  forks to its own rather than mutating the shared one. `headerName` is not
    *  templatable (caption is column-unique). No-op without a calc engine. */
-  editColumn(colId: string, patch: import('@wellsfargo-starui/velocity-grid-calc').ColumnEditPatch): void;
+  editColumn(colId: string, patch: import('../calc/index').ColumnEditPatch): void;
 
   // ── Conditional styling rules (Phase C / C3) ────────────────────────────
-  // The active layout's conditional-rule set, routed to `@wellsfargo-starui/velocity-grid-rules`. When
+  // The active layout's conditional-rule set, routed to `@wellsfargo-starui/velocity-grid/rules`. When
   // no rules engine is wired, `getRules` returns `[]` and the mutators no-op
   // (no `rulesChanged` event). Rules ride the layout-tier `rules` state
   // module, so they round-trip through getState / persistState / layouts +

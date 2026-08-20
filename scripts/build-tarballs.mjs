@@ -10,12 +10,17 @@ import { execSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync, rmSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { TARBALL_PACKAGES, npmPackFileName } from './tarball-packages.mjs';
+import { TARBALL_PACKAGES, META_PACKAGE, npmPackFileName } from './tarball-packages.mjs';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const root = resolve(__dirname, '..');
 const tarballDir = join(root, 'dist', 'tarballs');
 const timestamp = new Date().toISOString().split('T')[0];
+
+// The meta-package (packages/all) is packed alongside the individually
+// consumed packages so a tarball is ready the moment publishing makes it
+// usable — see packages/all/README.md.
+const packagesToPack = [...TARBALL_PACKAGES, META_PACKAGE];
 
 // Clear any prior output so a failed pack below can never leave a stale
 // tarball behind to be silently reused by a later install.
@@ -24,7 +29,7 @@ if (existsSync(tarballDir)) {
 }
 mkdirSync(tarballDir, { recursive: true });
 
-console.log(`📦 Building tarballs for ${TARBALL_PACKAGES.length} packages...\n`);
+console.log(`📦 Building tarballs for ${packagesToPack.length} packages...\n`);
 
 console.log('🔨 Building kernel dist (other packs are source-direct)...');
 execSync('npm run build --workspace=@wellsfargo-starui/velocity-grid', {
@@ -34,7 +39,7 @@ execSync('npm run build --workspace=@wellsfargo-starui/velocity-grid', {
 
 const tarballs = [];
 const failures = [];
-for (const pkg of TARBALL_PACKAGES) {
+for (const pkg of packagesToPack) {
   const pkgPath = join(root, pkg);
   const pkgJsonPath = join(pkgPath, 'package.json');
 

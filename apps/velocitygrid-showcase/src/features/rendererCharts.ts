@@ -80,7 +80,7 @@ export const rendererCharts: Feature = {
   id: 'renderer-charts',
   label: 'Renderer Charts',
   description:
-    'Cycle 21f — @wellsfargo-starui/velocity-grid-renderers bar/chart/composite painters with ' +
+    'Cycle 21f — @wellsfargo-starui/velocity-grid-ext/renderers bar/chart/composite painters with ' +
     'ColumnStats heat scaling and TickHistory spread bands over ticking data.',
 
   mount(gridHost, controls, theme) {

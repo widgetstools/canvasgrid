@@ -1,6 +1,6 @@
 /**
  * Grid Layouts — Phase B / B3: the Template API on VelocityGridApi, exercised
- * end-to-end on a real VelocityGrid wired to @wellsfargo-starui/velocity-grid-calc.
+ * end-to-end on a real VelocityGrid wired to @wellsfargo-starui/velocity-grid/calc.
  *
  * Proves the worklog's B3 gate — "Template API live": getTemplates /
  * saveTemplate / renameTemplate (unique) / deleteTemplate / applyTemplate /
@@ -10,7 +10,7 @@
  */
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { VelocityGrid } from '../src/velocityGrid';
-import { wireIntoKernel } from '@wellsfargo-starui/velocity-grid-calc';
+import { wireIntoKernel } from '../src/calc/index';
 import { _resetCalcProvider_forTests } from '../src/core/calcSlot';
 
 // The calc provider is a MODULE-GLOBAL slot (core/calcSlot.ts) — a prior

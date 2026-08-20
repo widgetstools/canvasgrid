@@ -1,8 +1,8 @@
 /**
  * Alerts chrome — title-bar badge + lightweight DOM toasts.
- * Subscribes to `grid.onAlert` from the `@wellsfargo-starui/velocity-grid-rules` bridge.
+ * Subscribes to `grid.onAlert` from the `@wellsfargo-starui/velocity-grid/rules` bridge.
  */
-import type { AlertEvent, AlertSeverity } from '@wellsfargo-starui/velocity-grid-rules';
+import type { AlertEvent, AlertSeverity } from '@wellsfargo-starui/velocity-grid/rules';
 import type { ToolbarItem, ToolbarItemInstance } from '../extension/types';
 import { iconButton } from './ui';
 

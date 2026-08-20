@@ -1,8 +1,8 @@
 import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
 import type { CColDef } from '@wellsfargo-starui/velocity-grid';
-import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid-format';
-import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid-rules';
-import type { RuleEngine, StyleRule } from '@wellsfargo-starui/velocity-grid-rules';
+import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid/format';
+import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid/rules';
+import type { RuleEngine, StyleRule } from '@wellsfargo-starui/velocity-grid/rules';
 import type { Feature } from './index';
 
 /**
@@ -17,7 +17,7 @@ import type { Feature } from './index';
  *
  * The composite Summary column proves the Cycle 21c reserve: fragment
  * style color '[rule:neg-pnl]' resolves to the LIVE rule color per row
- * (the bracket shorthand is required — see @wellsfargo-starui/velocity-grid-format's
+ * (the bracket shorthand is required — see @wellsfargo-starui/velocity-grid/format's
  * fragmentResolver.extractDynamic, which only treats a fragment style
  * value as dynamic when it is wrapped in `[...]`). Match counts render
  * as chips in the controls bar (engine.matchCount).
@@ -60,7 +60,7 @@ const RULES: StyleRule[] = [
   },
   // Diff-aware flash-on-change: matches only inside the tick that
   // raised the price; pulse flash + 1.5s auto-expire. Infix boolean
-  // connective is `&&` (no infix AND/OR in @wellsfargo-starui/velocity-grid-expression).
+  // connective is `&&` (no infix AND/OR in @wellsfargo-starui/velocity-grid/expression).
   {
     kind: 'style', id: 'up-tick', name: 'Price up-tick', enabled: true, priority: 30,
     condition: '[price.old] != null && [price] > [price.old]',
@@ -111,7 +111,7 @@ export const conditionalStyling: Feature = {
   id: 'conditional-styling',
   label: 'Conditional Styling',
   description:
-    'Cycle 21e — @wellsfargo-starui/velocity-grid-rules conditional styling. Theme-aware style ' +
+    'Cycle 21e — @wellsfargo-starui/velocity-grid/rules conditional styling. Theme-aware style ' +
     'rules ([pnl] < 0), a row-scope threshold rule ([qty] > 500), a ' +
     'diff-aware flash rule ([price.old] comparison, pulse, 1.5s ' +
     'auto-expire), an indicator badge for stale rows, and a composite ' +

@@ -17,7 +17,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@wellsfargo-starui/velocity-grid-appdata": "*",
     "@wellsfargo-starui/velocity-grid-data": "*",
     "@stomp/stompjs": "^7.3.0"
   },

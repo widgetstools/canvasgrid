@@ -24,7 +24,7 @@ import { resolveIcon } from '../../icons/registry';
 import { buildFormatEvalCtx } from '../../core/formatEvalMemo';
 
 /** Structural mirror of format's `FragmentStyle` — kernel never imports
- *  @wellsfargo-starui/velocity-grid-format at runtime, so the shape is re-declared here. */
+ *  @wellsfargo-starui/velocity-grid/format at runtime, so the shape is re-declared here. */
 interface FragStyle {
   color?: string;
   weight?: 'normal' | 'bold' | number;

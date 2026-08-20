@@ -1,7 +1,7 @@
-import type { ColumnOverride } from '@wellsfargo-starui/velocity-grid-calc';
-import type { StyleRule, AlertRule } from '@wellsfargo-starui/velocity-grid-rules';
-import type { CalculatedColumnDef } from '@wellsfargo-starui/velocity-grid-calc';
-import type { PlusMinusNudge, ShortcutDefinition } from '@wellsfargo-starui/velocity-grid-edit';
+import type { ColumnOverride } from '@wellsfargo-starui/velocity-grid/calc';
+import type { StyleRule, AlertRule } from '@wellsfargo-starui/velocity-grid/rules';
+import type { CalculatedColumnDef } from '@wellsfargo-starui/velocity-grid/calc';
+import type { PlusMinusNudge, ShortcutDefinition } from '@wellsfargo-starui/velocity-grid-ext/edit';
 import type { LabModuleSeed } from './kit';
 
 /** Column paint / format helpers (VelocityGrid columnOverrides module). */

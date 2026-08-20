@@ -38,7 +38,7 @@ import type { GridLayout, LayoutState, GridLayoutsBundle, GridBaselineConfig } f
 import { DEFAULT_LAYOUT_ID, DEFAULT_GRID_LEVEL_MODULES, LAYOUTS_BUNDLE_VERSION } from '../types/layout';
 import { migrateSnapshot, type GridState } from './stateSnapshot';
 import type { ModuleStateEnvelope } from './moduleState';
-import type { ColumnTemplate } from '@wellsfargo-starui/velocity-grid-calc';
+import type { ColumnTemplate } from '../calc/index';
 
 /** The grid coupling the manager needs, injected so the engine stays
  *  pure and testable. A3 supplies the real implementations; A1 tests
@@ -214,7 +214,7 @@ export function extractGridOptionOverride(full: GridState): Record<string, unkno
  * Template ASSIGNMENTS ride in the layout-tier `columnOverrides` module (each
  * override's `templateIds`); this walks those, deduped + order-preserving, so
  * `exportLayout` can bundle the referenced defs for portability. Reads the
- * module data structurally (no `@wellsfargo-starui/velocity-grid-calc` coupling) — an unregistered /
+ * module data structurally (no `@wellsfargo-starui/velocity-grid/calc` coupling) — an unregistered /
  * empty module yields no ids. */
 export function collectReferencedTemplateIds(state: LayoutState): string[] {
   const ids: string[] = [];

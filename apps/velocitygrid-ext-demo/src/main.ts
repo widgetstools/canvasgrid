@@ -16,10 +16,10 @@
 import { VelocityGridExt, titleBarExtensions, ribbonExtensions } from '@wellsfargo-starui/velocity-grid-ext';
 import { formatPrice32, type CColDef, type CColGroupDef } from '@wellsfargo-starui/velocity-grid';
 import '@wellsfargo-starui/velocity-grid/style.css';
-import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid-format';
-import { wireEditIntoKernel } from '@wellsfargo-starui/velocity-grid-edit';
-import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid-calc';
-import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid-rules';
+import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid/format';
+import { wireEditIntoKernel } from '@wellsfargo-starui/velocity-grid-ext/edit';
+import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid/calc';
+import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid/rules';
 import { connectStomp, STOMP_SNAPSHOT_ROWS, type Position, type StompRow } from './stomp';
 import {
   buildColumnDefsFromRows,

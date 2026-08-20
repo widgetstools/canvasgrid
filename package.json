@@ -31,6 +31,7 @@
     "build": "turbo run build",
     "build:kernel": "npm run build --workspace=@wellsfargo-starui/velocity-grid",
     "build:tarballs": "node scripts/build-tarballs.mjs",
+    "tarballs:install-into": "node scripts/install-tarballs-into.mjs",
     "test": "turbo run test",
     "test:kernel": "npm test --workspace=@wellsfargo-starui/velocity-grid",
     "typecheck": "turbo run typecheck",

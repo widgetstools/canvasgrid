@@ -2,11 +2,11 @@
 //
 // Task 1 (this branch) added seven def-flag keys (floatingFilter, filter,
 // enableRowGroup, enablePivot, sortable, resizable, suppressAggFuncInHeader)
-// to @wellsfargo-starui/velocity-grid-calc's editColumn/ColumnEditPatch pipeline and pinned their
+// to @wellsfargo-starui/velocity-grid/calc's editColumn/ColumnEditPatch pipeline and pinned their
 // resolvedPatchFor behavior at the calc-package level
 // (packages/calc/tests/columnConfigFlags.test.ts). This file is the
 // cross-package proof: `grid.editColumn(...)` on a REAL VelocityGrid, wired to the
-// REAL @wellsfargo-starui/velocity-grid-calc engine via wireIntoKernel, must land the patched flags on
+// REAL @wellsfargo-starui/velocity-grid/calc engine via wireIntoKernel, must land the patched flags on
 // the kernel's RESOLVED colDef surface (`columnDefsMap`, fed by
 // core/calcSlot.ts's foldCalcColumnDefs → resolveColumnTree — see
 // velocityGrid.ts:1219-1220 / 6137-6159), and those flags must round-trip through
@@ -15,7 +15,7 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { VelocityGrid } from '../src/velocityGrid';
 import { createWorkerHost } from '../src/worker/worker';
-import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid-calc';
+import { wireIntoKernel as wireCalc } from '../src/calc/index';
 
 // Canvas 2D context stub — happy-dom does not implement it. Copied verbatim
 // from cgrid.integration.test.ts's top-level beforeAll (CACHED_PROPS walk

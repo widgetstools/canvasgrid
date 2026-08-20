@@ -2,7 +2,7 @@
  * Shortcuts — Customize module (starui customizer-ui #07).
  * Module settings + shortcut list / editor (master-detail).
  */
-import type { ShortcutDefinition, ShortcutsSettings } from '@wellsfargo-starui/velocity-grid-edit';
+import type { ShortcutDefinition, ShortcutsSettings } from '../edit/index';
 import type { SettingsModule, VelocityGridExtContext, ModuleInstance } from '../extension/types';
 import { leafColumns } from '../ui/gridSchema';
 import {

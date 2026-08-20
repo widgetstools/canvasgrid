@@ -17,6 +17,14 @@
     "./worker": {
       "types": "./src/worker.ts",
       "import": "./src/worker.ts"
+    },
+    "./storage": {
+      "types": "./src/storage/index.ts",
+      "import": "./src/storage/index.ts"
+    },
+    "./appdata": {
+      "types": "./src/appdata/index.ts",
+      "import": "./src/appdata/index.ts"
     }
   },
   "scripts": {
@@ -25,9 +33,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@wellsfargo-starui/velocity-grid-appdata": "*",
-    "@wellsfargo-starui/velocity-grid-storage": "*",
-    "@wellsfargo-starui/velocity-grid-expression": "*",
     "@stomp/stompjs": "^7.3.0"
   },
   "peerDependencies": {

@@ -10,7 +10,7 @@
  */
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { VelocityGrid } from '../src/velocityGrid';
-import { wireIntoKernel } from '@wellsfargo-starui/velocity-grid-calc';
+import { wireIntoKernel } from '../src/calc/index';
 import { _resetCalcProvider_forTests } from '../src/core/calcSlot';
 
 beforeEach(() => { _resetCalcProvider_forTests(); });

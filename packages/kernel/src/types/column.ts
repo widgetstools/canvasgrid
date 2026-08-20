@@ -4,7 +4,7 @@
 // (filter params), and the external iCellEditor module.
 
 import type { CellEditorCtor } from '../interaction/editors/iCellEditor';
-import type { Fragment, IconRef } from '@wellsfargo-starui/velocity-grid-format';
+import type { Fragment, IconRef } from '../format/index';
 import type {
   CellClass,
   CellClassRules,
@@ -125,11 +125,11 @@ export interface CColDef<TRow = any, TValue = any> {
   /**
    * Derive the cell value from the row. Function form runs on the main
    * thread. String form is an expression (`[ask] - [bid]`, `IF([qty] > 0, [pnl], 0)`)
-   * compiled with `@wellsfargo-starui/velocity-grid-expression` and also evaluated
+   * compiled with `@wellsfargo-starui/velocity-grid/expression` and also evaluated
    * on the worker (sort / filter / paint) for CSRM and SSRM.
    */
   valueGetter?: string | ((params: CValueGetterParams<TRow>) => TValue);
-  /** DSL string OR function. String form compiles via @wellsfargo-starui/velocity-grid-format
+  /** DSL string OR function. String form compiles via @wellsfargo-starui/velocity-grid/format
    *  at ColDef-resolve time. */
   valueFormatter?: string | ((params: CValueFormatterParams<TRow, TValue>) => string);
 

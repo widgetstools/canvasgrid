@@ -4,10 +4,10 @@ import {
   titleBarExtensions,
   ribbonExtensions,
 } from '@wellsfargo-starui/velocity-grid-ext';
-import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid-format';
-import { wireEditIntoKernel } from '@wellsfargo-starui/velocity-grid-edit';
-import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid-calc';
-import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid-rules';
+import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid/format';
+import { wireEditIntoKernel } from '@wellsfargo-starui/velocity-grid-ext/edit';
+import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid/calc';
+import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid/rules';
 import '@wellsfargo-starui/velocity-grid/style.css';
 import { COLUMN_DEFS, seedRows, type PositionRow } from './seed';
 

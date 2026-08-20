@@ -83,7 +83,7 @@ mountDataProviderEditor({
 
 ```ts
 import { resolveProviderConfig } from '@wellsfargo-starui/velocity-grid-data';
-import { AppDataStore } from '@wellsfargo-starui/velocity-grid-appdata';
+import { AppDataStore } from '@wellsfargo-starui/velocity-grid-data/appdata';
 
 const store = new AppDataStore();
 store.set('positions', { asOfDate: '2026-04-01' });

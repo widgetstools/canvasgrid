@@ -13,7 +13,7 @@ import {
 } from '../src/profiles/configSession';
 import type { ProfileSnapshot } from '../src/extension/types';
 import type { GridState } from '@wellsfargo-starui/velocity-grid';
-import { MemoryStore } from '@wellsfargo-starui/velocity-grid-storage';
+import { MemoryStore } from '@wellsfargo-starui/velocity-grid-data/storage';
 import {
   saveConfigToLocalStorage,
   loadConfigFromLocalStorage,

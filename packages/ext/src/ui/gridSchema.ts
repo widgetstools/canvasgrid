@@ -2,7 +2,7 @@
  * Shared grid-introspection helpers for the customizer settings modules —
  * expression Schema + column catalogs sourced from the live grid.
  */
-import type { Schema } from '@wellsfargo-starui/velocity-grid-expression';
+import type { Schema } from '@wellsfargo-starui/velocity-grid/expression';
 import type { VelocityGridExtContext } from '../extension/types';
 import type { ExpressionColumn } from './expressionEditor';
 
@@ -28,7 +28,7 @@ export function leafColumns(grid: VelocityGridExtContext['grid']): RawColDef[] {
   return out;
 }
 
-/** @wellsfargo-starui/velocity-grid-expression Schema from the grid's leaf columns. */
+/** @wellsfargo-starui/velocity-grid/expression Schema from the grid's leaf columns. */
 export function schemaFromGrid(grid: VelocityGridExtContext['grid']): Schema {
   const fields: Schema['fields'] = {};
   for (const def of leafColumns(grid)) {

@@ -11,9 +11,9 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { installGridTestEnv } from './setup';
 import { VelocityGridExt } from '../src/velocityGridExt';
-import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid-rules';
-import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid-calc';
-import { compileFormat } from '@wellsfargo-starui/velocity-grid-format';
+import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid/rules';
+import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid/calc';
+import { compileFormat } from '@wellsfargo-starui/velocity-grid/format';
 import { previewFormat } from '../src/toolbar/formatPicker';
 
 const EXPLOIT_FORMAT = '"<img src=x onerror=alert(1)>"General';

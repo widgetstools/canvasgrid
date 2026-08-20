@@ -5,7 +5,7 @@ import {
   createDefaultConfigBackend,
   PROVIDER_CATALOG_STORAGE_KEY,
 } from '../src/catalog/ConfigBackend';
-import { MemoryStore } from '@wellsfargo-starui/velocity-grid-storage';
+import { MemoryStore } from '../src/storage/index';
 import type { DataProviderConfig } from '../src/types';
 
 function sample(id: string, name: string): DataProviderConfig {

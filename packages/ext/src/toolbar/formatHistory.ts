@@ -1,6 +1,6 @@
 /**
  * Session undo/redo for ribbon formatting (styles, formats, templates,
- * column-override assignments). Distinct from `@wellsfargo-starui/velocity-grid-edit`'s cell-value
+ * column-override assignments). Distinct from `@wellsfargo-starui/velocity-grid-ext/edit`'s cell-value
  * journal — this stack snapshots calc `templates` + `columnOverrides` and
  * restores them via `setState`, matching stern-bak's column-customization
  * HistoryStack. Cleared when a layout is saved / switched.

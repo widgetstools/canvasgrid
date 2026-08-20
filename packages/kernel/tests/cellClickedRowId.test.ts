@@ -7,7 +7,7 @@
  * (cellClicked, cellDoubleClicked, cellKeyDown/Press, cellMouseOver/Out,
  * rowMouseOver/Out) fed that stub into its event payload. Meanwhile the
  * paint pipeline used `stringRowIdAt`, the REAL string rowId from the
- * chunk's `stringRowIds` mirror — and @wellsfargo-starui/velocity-grid-renderers keys its hit
+ * chunk's `stringRowIds` mirror — and @wellsfargo-starui/velocity-grid-ext/renderers keys its hit
  * regions on that real id. So a click on a row with real id 'r1' would
  * resolve to `rowId: 'row-0'` in the `cellClicked` payload — a value no
  * hit region was ever registered under — breaking onAction/onOpen style

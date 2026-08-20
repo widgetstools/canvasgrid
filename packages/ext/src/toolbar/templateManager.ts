@@ -3,12 +3,12 @@
  * TemplateManager / ModuleLibrary: list + apply, save-as, update (re-snapshot),
  * rename, and two-step delete. Plain DOM; styles injected once.
  *
- * Persistence rides `@wellsfargo-starui/velocity-grid-calc` via the kernel (`saveTemplate` /
+ * Persistence rides `@wellsfargo-starui/velocity-grid/calc` via the kernel (`saveTemplate` /
  * `applyTemplate` / `renameTemplate` / `deleteTemplate` / `removeTemplate`).
  * Own-templates (`__cgridOwn:*`) are never listed — they are the per-column
  * edit fork, not the shared library.
  */
-import { isOwnTemplateId, ownTemplateId, type ColumnTemplate } from '@wellsfargo-starui/velocity-grid-calc';
+import { isOwnTemplateId, ownTemplateId, type ColumnTemplate } from '@wellsfargo-starui/velocity-grid/calc';
 import { menu, svg } from './ui';
 
 export interface TemplateManagerGrid {

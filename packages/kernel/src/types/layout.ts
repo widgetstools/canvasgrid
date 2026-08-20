@@ -12,12 +12,12 @@
  * These types build ON the existing state stack — a layout's `state` is a
  * `GridState` restricted to the LAYOUT tier (see `LayoutState`); the tier
  * split itself lands in Unit A2. The shared template library reuses
- * `@wellsfargo-starui/velocity-grid-calc`'s `ColumnTemplate` rather than defining a parallel model.
+ * `@wellsfargo-starui/velocity-grid/calc`'s `ColumnTemplate` rather than defining a parallel model.
  *
  * Authoritative reference: docs/superpowers/specs/2026-07-05-grid-layouts-design.md §5.
  */
 
-import type { ColumnTemplate } from '@wellsfargo-starui/velocity-grid-calc';
+import type { ColumnTemplate } from '../calc/index';
 import type { GridState } from '../core/stateSnapshot';
 import type { ModuleStateEnvelope } from '../core/moduleState';
 

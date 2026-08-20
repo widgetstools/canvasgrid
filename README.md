@@ -110,7 +110,7 @@ Starts each Vite app briefly, checks HTTP on its port, then stops it. Safe on ma
 
 ## Trust boundaries
 
-- **`aggFuncs` / custom comparators** serialize via `new Function` on main + worker. Treat them as **trusted application code** only. Prefer `@wellsfargo-starui/velocity-grid-expression` for user-authored formulas.
+- **`aggFuncs` / custom comparators** serialize via `new Function` on main + worker. Treat them as **trusted application code** only. Prefer `@wellsfargo-starui/velocity-grid/expression` for user-authored formulas.
 - **Tooltip `{ html }`** and context-menu icons are allowlist-sanitized; prefer `{ plain }` / trusted SVG.
 
 ## Docs
