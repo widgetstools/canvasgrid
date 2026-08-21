@@ -83,8 +83,10 @@ const CKP_TOKENS_ENHANCED: VguiTokensEnhanced = {
   textSecondary: 'var(--ckp-text-secondary, #c5cbd7)',
   textTertiary: 'var(--ckp-text-tertiary, #9aa4b8)',
   textMuted: 'var(--ckp-text-muted, #7a8599)',
-  shadow: '0 1px 3px rgba(0, 0, 0, 0.12)',
-  shadowMd: '0 4px 12px rgba(0, 0, 0, 0.15)',
+  // Aliased to the shared kernel elevation scale (tokens.css :root) — see
+  // primitives-enhanced.ts's matching comment.
+  shadow: 'var(--vg-shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.12))',
+  shadowMd: 'var(--vg-shadow-md, 0 4px 12px rgba(0, 0, 0, 0.15))',
   focusRing: '0 0 0 3px rgba(59, 130, 246, 0.2)',
   border: CKP_TOKENS.border,
   muted: CKP_TOKENS.muted,

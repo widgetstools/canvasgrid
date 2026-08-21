@@ -74,9 +74,12 @@ export const VGUI_ENHANCED_TOKENS: VguiTokensEnhanced = {
   textTertiary: 'var(--vg-fg-tertiary, #9aa4b8)',
   textMuted: 'var(--vg-muted-fg-color, #7a8599)',
 
-  // Semantic
-  shadow: '0 1px 3px rgba(0, 0, 0, 0.12)',
-  shadowMd: '0 4px 12px rgba(0, 0, 0, 0.15)',
+  // Semantic — aliased to the shared kernel elevation scale (tokens.css
+  // :root) so ext's cockpit chrome and the core grid's floating surfaces
+  // read as one consistent shadow language; literal is a defensive
+  // fallback matching the sibling color/border/text tokens' idiom.
+  shadow: 'var(--vg-shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.12))',
+  shadowMd: 'var(--vg-shadow-md, 0 4px 12px rgba(0, 0, 0, 0.15))',
   focusRing: '0 0 0 3px rgba(59, 130, 246, 0.2)',
 
   // Legacy

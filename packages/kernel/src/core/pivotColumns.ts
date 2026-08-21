@@ -237,6 +237,10 @@ export function synthesizePivotColumns<TRow = unknown>(input: {
         colId,
         headerName: vc.headerName ?? vc.colId,
         cellDataType: vc.cellDataType ?? 'number',
+        // AG-parity: pivot value headers show their aggregation function
+        // (e.g. "sum(Notional)") via decorateHeader() — carrying aggFunc
+        // onto the synthesized def is the only thing that hook needs.
+        aggFunc: vc.aggFunc,
         // Cycle 18 / Task 8d — synthesized columns ARE sortable; the
         // user-clicked sort lands as a SortModel entry whose colId is
         // the synthesized one, the worker's SortPass decodes
@@ -357,6 +361,8 @@ export function synthesizePivotColumns<TRow = unknown>(input: {
         colId,
         headerName: vc.headerName ?? vc.colId,
         cellDataType: vc.cellDataType ?? 'number',
+        // AG-parity: see the matching aggFunc comment in buildValueLeaves.
+        aggFunc: vc.aggFunc,
         // Row totals are sortable too — the user can sort row groups
         // by the row-total just like by any other pivot result column.
         sortable: true,

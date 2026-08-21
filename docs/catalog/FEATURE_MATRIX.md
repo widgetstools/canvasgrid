@@ -1,6 +1,10 @@
 # AG Grid Feature Matrix
 
-> Last verified: 2026-06-26 against AG Grid 35.3.1
+> Last verified: 2026-06-26 against AG Grid 35.3.1. AG Grid 36 shipped after this
+> baseline was written (36.0.0–36.1.0 as of 2026-08-21) — see `v36-deltas.md` for
+> what's new and the "AG Grid 36 additions" section at the bottom of this file
+> for their VelocityGrid parity status, using the same ✅-prefix convention as
+> the rest of this matrix.
 
 | Area | Feature | Tier | Surface | Showcase-uses? | Canvas-port priority | Notes |
 |------|---------|------|---------|----------------|----------------------|-------|
@@ -890,6 +894,23 @@
 | 26 | Column virtualisation obsolete in canvas | Community | behavior | no | P0 | Canvas grid always virtualises columns; suppressColumnVirtualisation has no canvas analog |
 | 26 | rowBuffer → canvas overscan | Community | behavior | no | P0 | rowBuffer maps to overscan row count in canvas; offscreen tile pre-render on worker |
 | 26 | Dirty-region canvas repaint | Community | behavior | no | P0 | Canvas port can repaint only changed cell regions; finer than refreshCells |
+
+---
+
+<!-- area:v36 AG Grid 36 additions (post-35.3.1 baseline) -->
+## AG Grid 36 additions
+
+New surfaces introduced in AG Grid 36.0.0–36.1.0, not present in the 35.3.1
+baseline this matrix was built against. See `v36-deltas.md` for the full
+comparison methodology and sourcing.
+
+| Area | Feature | Tier | Surface | Showcase-uses? | Canvas-port priority | Notes |
+|------|---------|------|---------|----------------|----------------------|-------|
+| v36 | ✅ Calculated Columns | Enterprise | option | yes | P0 | AG 36's `calculatedExpression` + `[colId]` bracket syntax. VelocityGrid already ships an equivalent — and arguably more capable — engine (`packages/kernel/src/calc`, wired via `packages/ext/src/modules/calculatedColumns.ts`), predating AG 36 by ~6 weeks. Same `[col]` bracket syntax, plus scoped aggregates (`SUM([price], 'group')`) and `PREV([col])` that AG 36 lacks. Works across both CSRM and Perspective SSRM. |
+| v36 | Show Values As | Enterprise, CSRM only | option | no | P1 | Displays aggregates as `percentOfGrandTotal` / `percentOfColumnTotal` / `percentOfRowTotal` / `percentOfParentRowTotal` / `percentOfParentColumnTotal`. No equivalent in VelocityGrid — no percent-of-total transform on aggregated pivot/group values anywhere in the codebase. |
+| v36 | Automatic Column Generation | Community | option | no | P2 | `autoGenerateColumnDefs: true` scans the first non-null row and builds columnDefs automatically (primitives → leaf column, objects → column group, arrays of primitives → leaf column). VelocityGrid has the building block (`packages/data/src/schema/infer.ts`'s `inferFieldsFromRows`/`fieldsToColumnDefinitions`) but it's wired into the data-provider connection editor for schema *discovery*, not exposed as a grid-level option that builds columnDefs with zero authoring. |
+| v36 | Editable Column Header Names | Enterprise (36.1) | option | no | P2 | `headerNameEditable: true` lets end users rename columns via the column menu or Columns Tool Panel; persists in grid state. VelocityGrid only supports renaming column *groups* (`packages/kernel/src/interaction/columnGroups/model.ts`), not regular columns. |
+| v36 | Custom Menu Items in Columns Tool Panel | Enterprise (36.1) | option | no | P2 | `colDef.columnMenuItems` / `getColumnMenuItems()` extends the right-click menu on Columns Tool Panel rows. VelocityGrid has a general context-menu system (`packages/kernel/src/interaction/contextMenu/`) and a full Columns tool panel, but no right-click menu wired into the panel rows themselves. |
 
 ---
 
