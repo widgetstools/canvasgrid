@@ -1,3 +1,31 @@
+/* Elevation scale — shared across every floating surface (context menu,
+ * filter popup, color-picker popover, loading overlay, drag ghosts, modal,
+ * floating panel, tooltips) so they read as one consistent "lifted card"
+ * language instead of each picking its own shadow. sm = small pills/
+ * tooltips, md = menus/popups, lg = panels/dialogs/drag ghosts that need to
+ * read as strongly lifted off the grid.
+ *
+ * Deliberately on `:root`, NOT scoped to `.vg-theme-*`: several of these
+ * surfaces (drag ghosts, color-picker popover, tooltips) are portaled to
+ * `document.body` (see e.g. `rowGroupPanel/host.ts` mountGhost, `colorPicker.ts`,
+ * `tooltipProvider.ts`) and so are NOT descendants of the themed grid root —
+ * a custom property defined only inside a `.vg-theme-*` block would never
+ * resolve for them (this is why `--vg-row-group-chip-ghost-shadow` below was
+ * previously a fallback-only phantom token). Values are theme-independent
+ * (same in light/dark, matching how `--vg-modal-shadow`/
+ * `--vg-floating-panel-shadow` were already authored), so `:root` is the
+ * structurally correct home, not just a workaround. */
+:root {
+  --vg-shadow-sm: 0 2px 8px color-mix(in srgb, #000000 20%, transparent);
+  --vg-shadow-md: 0 4px 16px color-mix(in srgb, #000000 28%, transparent);
+  --vg-shadow-lg: 0 8px 28px color-mix(in srgb, #000000 35%, transparent);
+  /* Row-group / pivot drag-ghost pill — previously `var(--vg-row-group-chip-ghost-shadow, <literal>)`
+   * with the custom property never actually defined anywhere reachable, so
+   * it always fell through to the literal fallback. Now a real, resolvable
+   * token shared by both ghost variants. */
+  --vg-row-group-chip-ghost-shadow: var(--vg-shadow-sm);
+}
+
 /* Background-color on the theme classes prevents any transparent-canvas frame
  * (during DPR changes, scrollbar toggles, or compositor lag on resize) from
  * showing the host page bg through. The canvas itself is also created with
@@ -951,7 +979,7 @@
   color: var(--vg-fg-color);
   border: 1px solid var(--vg-border-color);
   border-radius: var(--vg-radius, 4px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--vg-shadow-md);
   font-family: var(--vg-font-family);
   font-size: var(--vg-font-size);
   padding: 8px;
@@ -1086,7 +1114,7 @@
   color: var(--vg-fg-color);
   border: 1px solid var(--vg-border-color);
   border-radius: var(--vg-radius, 4px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--vg-shadow-md);
   font-family: var(--vg-font-family);
   font-size: var(--vg-font-size);
   padding: 4px 0;
@@ -1699,7 +1727,7 @@
   font-family: var(--vg-font-family, inherit);
   white-space: nowrap;
   /* Elevated: stronger shadow than the zone pills */
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5), 0 1px 4px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--vg-shadow-lg);
   opacity: 0;
   will-change: transform;
   transform: translate(0, 0);
@@ -1752,7 +1780,7 @@
   text-overflow: ellipsis;
   border: 1px solid var(--vg-selected-cell-color, #3b82f6);
   border-radius: var(--vg-radius, 3px);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45), 0 1px 4px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--vg-shadow-lg);
   opacity: 0.85;
   will-change: transform;
 }
@@ -2439,8 +2467,8 @@
   gap: 8px;
   background: var(--vg-bg-color);
   border: 1px solid var(--vg-border-color);
-  border-radius: var(--vg-radius, 8px);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+  border-radius: var(--vg-radius, 6px);
+  box-shadow: var(--vg-shadow-lg);
 }
 .vg-colorpicker-sv {
   --vg-cp-hue: #f00;
@@ -2739,8 +2767,8 @@
   background: var(--vg-popup-bg, var(--vg-bg-color));
   color: var(--vg-fg-color);
   border: 1px solid var(--vg-border-color);
-  border-radius: 2px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  border-radius: var(--vg-radius, 6px);
+  box-shadow: var(--vg-shadow-lg);
   overflow: hidden;
 }
 .vg-colgroups-add-col-panel[hidden] {
@@ -3498,7 +3526,7 @@
   --vg-modal-fg: var(--vg-fg-color);
   --vg-modal-border: var(--vg-border-color);
   --vg-modal-radius: var(--vg-radius, 6px);
-  --vg-modal-shadow: 0 12px 32px color-mix(in srgb, #000000 35%, transparent);
+  --vg-modal-shadow: var(--vg-shadow-lg);
 
   position: absolute;
   inset: 0;
@@ -3589,7 +3617,7 @@
   --vg-floating-panel-border: var(--vg-popup-border);
   --vg-floating-panel-titlebar-bg: var(--vg-header-bg);
   --vg-floating-panel-radius: var(--vg-radius, 6px);
-  --vg-floating-panel-shadow: 0 8px 28px color-mix(in srgb, #000000 30%, transparent);
+  --vg-floating-panel-shadow: var(--vg-shadow-lg);
 
   position: absolute;
   display: flex;
@@ -4122,7 +4150,7 @@
   pointer-events: none;
   z-index: 2147483600;
   background: var(--vg-header-bg);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--vg-row-group-chip-ghost-shadow, 0 4px 8px rgba(0, 0, 0, 0.12));
   opacity: 0.92;
   cursor: grabbing;
   margin: 0;
@@ -4182,7 +4210,7 @@
   border-radius: var(--vg-radius, 4px);
   border: 1px solid color-mix(in srgb, var(--vg-border-color, #2a3140) 90%, transparent);
   background: color-mix(in srgb, var(--vg-header-bg, var(--vg-bg-color, #171c26)) 92%, transparent);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  box-shadow: var(--vg-shadow-lg);
   color: var(--vg-fg-color, #e5e9f0);
 }
 .vg-loading-overlay-label {

@@ -128,8 +128,8 @@ export class TooltipProvider extends Feature {
         'background:var(--vg-tooltip-bg, rgba(17,24,39,0.92))',
         'color:var(--vg-tooltip-fg, #fff)',
         'border:1px solid var(--vg-tooltip-border, transparent)',
-        'border-radius:4px',
-        'box-shadow:0 2px 8px rgba(0,0,0,0.25)',
+        'border-radius:var(--vg-radius, 4px)',
+        'box-shadow:var(--vg-shadow-sm)',
         'white-space:nowrap',
       ].join(';');
       document.body.appendChild(el);

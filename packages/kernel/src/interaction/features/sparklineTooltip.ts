@@ -81,8 +81,8 @@ export class SparklineTooltip extends Feature {
       'font: 12px Inter, system-ui, sans-serif',
       'background:var(--vg-tooltip-bg, rgba(17,24,39,0.92))',
       'color:var(--vg-tooltip-fg, #fff)',
-      'border-radius:4px',
-      'box-shadow:0 2px 8px rgba(0,0,0,0.25)',
+      'border-radius:var(--vg-radius, 4px)',
+      'box-shadow:var(--vg-shadow-sm)',
       'white-space:nowrap',
       'transform:translateX(-50%)',
     ].join(';');
