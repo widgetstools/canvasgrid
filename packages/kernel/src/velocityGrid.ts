@@ -406,14 +406,51 @@ export const SYNTHETIC_ROW_ID_FIELD = '__vgRowId';
  * evaluates `getRowId(row)` into that field as rows enter the worker. Only
  * the single-top-level-property form is inferred directly — that stays a
  * zero-cost passthrough with no per-row work.
+ *
+ * Anchored to the actual parameter name and the actual returned expression —
+ * NOT a "count the dots in the source" heuristic. A prior version counted
+ * every `.word` token anywhere in the function's source text and inferred a
+ * field whenever exactly one showed up; any `getRowId` that referenced an
+ * unrelated property once (`this.keyColumn`, a helper call, a closed-over
+ * config field — not the row parameter at all) could produce exactly one
+ * `.word` match and get misread as a trivial accessor, silently pointing the
+ * worker's flat lookup at a field that doesn't exist on the row. See
+ * StompPerspectiveProvider.gridOptions()'s `getRowId`, which references
+ * `this.keyColumn` while deriving the real id via a function call — that
+ * shape must fall back to {@link SYNTHETIC_ROW_ID_FIELD}, not "this.keyColumn".
  */
 export function inferRowIdField<T>(getRowId: (row: T) => string): string {
-  const src = getRowId.toString();
-  const matches = Array.from(src.matchAll(/\.(\w+)/g));
-  // No property access at all, or a nested / composite expression — the flat
-  // `row[field]` lookup can't express it. Materialize a synthetic field.
-  if (matches.length !== 1) return SYNTHETIC_ROW_ID_FIELD;
-  return matches[0]![1]!;
+  const src = getRowId.toString().trim();
+
+  // Parameter name, from either an arrow function or a function expression.
+  const paramMatch =
+    src.match(/^\(?\s*(\w+)\s*\)?\s*=>/) ?? src.match(/^function\s*\w*\s*\(\s*(\w+)\s*\)/);
+  if (!paramMatch) return SYNTHETIC_ROW_ID_FIELD;
+  const param = paramMatch[1]!;
+
+  // Body: an arrow's implicit-return expression, or the last `return …;` in
+  // a block body / function expression.
+  const afterHead = src.slice(paramMatch[0].length).trim();
+  let expr: string;
+  if (afterHead.startsWith('{')) {
+    const close = afterHead.lastIndexOf('}');
+    if (close < 0) return SYNTHETIC_ROW_ID_FIELD;
+    const body = afterHead.slice(1, close).trim();
+    const returnMatch = body.match(/return\s+([^;]+);?\s*$/);
+    if (!returnMatch) return SYNTHETIC_ROW_ID_FIELD;
+    expr = returnMatch[1]!.trim();
+  } else {
+    expr = afterHead.replace(/;\s*$/, '').trim();
+  }
+
+  // Only a direct, single-level `<param>.<field>` access on the row
+  // parameter itself counts as trivial — nested paths, template literals,
+  // function calls, and references to anything other than `param` (like
+  // `this.x` or a closed-over variable) can't be expressed as a flat
+  // `row[field]` lookup and must materialize a synthetic field instead.
+  const directAccess = expr.match(new RegExp(`^${param}\\.(\\w+)$`));
+  if (!directAccess) return SYNTHETIC_ROW_ID_FIELD;
+  return directAccess[1]!;
 }
 
 /** Cycle 7 / Task 7 — default `quickFilterParser`. Splits on runs of

@@ -41,7 +41,7 @@
     "@openfin/node-adapter": "^43.101.2",
     "concurrently": "^10.0.3",
     "eslint": "^9.39.4",
-    "turbo": "^2.10.5",
+    "turbo": "^2.10.11",
     "typescript-eslint": "^8.62.1",
     "wait-on": "^9.0.10"
   }

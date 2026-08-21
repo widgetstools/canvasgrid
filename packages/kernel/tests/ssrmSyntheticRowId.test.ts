@@ -75,6 +75,29 @@ describe('inferRowIdField', () => {
   it('falls back to the synthetic field when no property access is present', () => {
     expect(inferRowIdField(() => 'literal')).toBe(SYNTHETIC_ROW_ID_FIELD);
   });
+
+  it('falls back to the synthetic field for an accessor that references an unrelated property once (regression: StompPerspectiveProvider)', () => {
+    // Shape of StompPerspectiveProvider.gridOptions()'s real getRowId — it
+    // references `this.keyColumn` (one dot-token, nothing to do with the row
+    // parameter) while deriving the actual id via a function call. A prior
+    // "count the dots in the source" heuristic misread `this.keyColumn`'s
+    // single `.keyColumn` token as a trivial `row.keyColumn` accessor and
+    // pointed the worker's flat lookup at a field no row actually has —
+    // every row got silently dropped as "missing rowIdField 'keyColumn'".
+    const self = { keyColumn: 'positionId' };
+    function composeId(row: Record<string, unknown>, keyColumn: string): string {
+      return String(row[keyColumn]);
+    }
+    const getRowId = (r: Record<string, unknown>) => {
+      const id = composeId(r, self.keyColumn);
+      return id ?? '';
+    };
+    expect(inferRowIdField(getRowId)).toBe(SYNTHETIC_ROW_ID_FIELD);
+  });
+
+  it('still infers a trivial accessor with a block body and explicit return', () => {
+    expect(inferRowIdField((row: { id: string }) => { return row.id; })).toBe('id');
+  });
 });
 
 describe('SSRM with an arbitrary getRowId', () => {
