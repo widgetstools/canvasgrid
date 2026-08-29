@@ -154,6 +154,14 @@ export class FlashRegistry {
      *  owned by style-rule flash — those cells only flash when a
      *  `flashCells` override was staged for this tick. */
     shouldFlash?: (stringRowId: string, colId: string) => boolean;
+    /** 2026-08 look-and-feel — `chunk.flashDir`: one byte per cell in the
+     *  same row-major order as `mask`, 0 = neutral, 1 = rose, 2 = fell.
+     *  When present alongside `upColor`/`downColor`, a directional cell
+     *  flashes in its direction's colour. An explicit `getOverride` colour
+     *  still wins — a caller who asked for a specific colour gets it. */
+    dir?: Uint8Array;
+    upColor?: string;
+    downColor?: string;
   }): void {
     if (this.destroyed) return;
     const { rowIds, colIds, mask } = input;
@@ -161,7 +169,8 @@ export class FlashRegistry {
     const rowCount = rowIds.length;
     const colCount = colIds.length;
     if (rowCount === 0 || colCount === 0) return;
-    const { stringRowIds, getOverride, shouldFlash } = input;
+    const { stringRowIds, getOverride, shouldFlash, dir, upColor, downColor } = input;
+    const directional = dir !== undefined && (upColor !== undefined || downColor !== undefined);
     const needSid = (getOverride != null || shouldFlash != null) && stringRowIds != null;
     for (let r = 0; r < rowCount; r++) {
       const sid = needSid ? stringRowIds![r] ?? '' : '';
@@ -171,7 +180,14 @@ export class FlashRegistry {
         if ((byte & (1 << (bitIdx & 7))) === 0) continue;
         const colId = colIds[c]!;
         if (shouldFlash != null && (sid === '' || !shouldFlash(sid, colId))) continue;
-        const override = getOverride && sid !== '' ? getOverride(sid, colId) : undefined;
+        let override = getOverride && sid !== '' ? getOverride(sid, colId) : undefined;
+        if (directional && override?.color === undefined) {
+          const d = dir![bitIdx];
+          const tone = d === 1 ? upColor : d === 2 ? downColor : undefined;
+          // Spread rather than mutate: the override object is the caller's
+          // (flashOverrides map entries are reused across ticks).
+          if (tone !== undefined) override = { ...override, color: tone };
+        }
         this.flash(rowIds[r]!, colId, now, override);
       }
     }

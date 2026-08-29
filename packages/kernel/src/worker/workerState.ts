@@ -129,6 +129,12 @@ export interface State {
   enableCellChangeFlash: boolean;
   /** Cycle 4 / Task 11 — staged changed-field set per rowId. */
   pendingFlashes: Map<string, Set<string>>;
+  /** 2026-08 look-and-feel — direction of each staged flash, parallel to
+   *  `pendingFlashes`: 1 = the value rose, 2 = it fell. Fields absent here
+   *  (non-numeric changes, programmatic `flashCells`) flash in the theme's
+   *  neutral colour, which is what every flash used to do. Drained with
+   *  `pendingFlashes` on the next viewport slice. */
+  pendingFlashDirs: Map<string, Map<string, 1 | 2>>;
   /** Damage-region rendering (Task 3) — rowIds touched by a transaction
    *  since the last slice that included them, staged for the next
    *  `getViewport`'s `ViewportChunk.touchedRows`. Drained per-rowId in the

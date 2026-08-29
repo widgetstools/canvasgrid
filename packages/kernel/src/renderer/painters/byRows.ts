@@ -140,6 +140,11 @@ function drawCellIcon(gc: CachedContext2D, icon: PendingCellIcon): void {
  *  string flows through the existing header cell renderer's right-
  *  side ellipsification, so a narrow column renders `sum(Noti...)` —
  *  the verb sits on the LEFT and survives natural truncation. */
+/** Width of the accent edge painted at the left of a selected row —
+ *  the same 2px the chrome uses for a selected drawer row, rail item or
+ *  menu entry. */
+const SELECTION_EDGE_WIDTH = 2;
+
 export function decorateHeader(def: ResolvedColDef, gridSuppress: boolean): string {
   const headerName = def.headerName;
   const colSuppress = def.suppressAggFuncInHeader;
@@ -149,7 +154,13 @@ export function decorateHeader(def: ResolvedColDef, gridSuppress: boolean): stri
   if (!aggFunc) return headerName;
   const aggName = Array.isArray(aggFunc) ? aggFunc[0] : aggFunc;
   if (!aggName) return headerName;
-  return `${aggName}(${headerName})`;
+  // 2026-08 look-and-feel — the aggregate now PREFIXES the name instead of
+  // wrapping it. Wrapping meant the name was what got cut when the column
+  // was narrow ("sum(Notional Am"), and the closing bracket was lost with
+  // it, so the header read as broken syntax rather than as a truncated
+  // title. Prefixing puts the fixed-width part first and lets the ellipsis
+  // fall where ellipses belong — at the end of the name.
+  return `${aggName.toUpperCase()} ${headerName}`;
 }
 
 
@@ -364,6 +375,31 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx, mode?: ByRo
     if (db && (bottom < db.minY || top > db.maxY)) continue;
     gc.cache.fillStyle = b.bg;
     gc.fillRect(0, top, rightEdge, bottom - top);
+  }
+
+  // 4b. Selection edge (2026-08 look-and-feel). A selected row inside the
+  // canvas used to be a flat grey; a selected anything else in the product
+  // — drawer row, rail item, segmented control, menu entry — is an accent
+  // wash plus a 2px accent edge. The wash now comes from
+  // `--vg-row-selected-bg`; this paints the edge, so the most common state
+  // in the product reads the same on both sides of the canvas boundary.
+  //
+  // Painted per BUNDLE, not per row: a run of adjacent selected rows was
+  // already merged in step 3, so a block selection costs one extra
+  // fillRect, not one per row. Skipped entirely when nothing is selected
+  // or the theme declares no edge colour (legacy themes / test fixtures).
+  const selectionEdge = theme.rowSelectedEdge;
+  if (selectionEdge !== undefined && selectedRowIndices.size > 0) {
+    gc.cache.fillStyle = selectionEdge;
+    for (const b of bundles) {
+      if (!b.isData || b.bg !== theme.rowSelectedBg) continue;
+      if (mode === 'chrome') continue;
+      const top = Math.max(b.top, vs.bodyTop);
+      const bottom = Math.min(b.bottom, vs.bodyBottom);
+      if (bottom <= top) continue;
+      if (db && (bottom < db.minY || top > db.maxY)) continue;
+      gc.fillRect(0, top, SELECTION_EDGE_WIDTH, bottom - top);
+    }
   }
 
   // 5. Split columns into bands and paint cells.

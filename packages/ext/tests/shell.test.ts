@@ -113,7 +113,7 @@ describe('ShellLayout', () => {
     expect(shell.isSettingsOpen()).toBe(false);
   });
 
-  it('shows underline category tabs, breadcrumb, and switches panels', () => {
+  it('shows underline category tabs and switches panels', () => {
     const root = document.createElement('div');
     const shell = new ShellLayout(root);
     shell.mountSettingsModule(settingsModule('grid-options', 'layout', 'Options'), ctx);
@@ -127,25 +127,31 @@ describe('ShellLayout', () => {
     expect(root.querySelector('[data-testid="vgext-sheet-nav-tab-options"]')).toBeTruthy();
     expect(root.querySelector('[data-testid="vgext-sheet-nav-tab-columns"]')).toBeTruthy();
     expect(root.querySelector('[data-testid="vgext-sheet-nav-tab-editing"]')).toBeTruthy();
-    expect(root.querySelector('.vgext-sheet-eyebrow')!.textContent).toBe('Customize');
-    expect(root.querySelector('[data-testid="vgext-sheet-nav-crumb"]')!.textContent)
-      .toContain('Options');
+    // The category tabs and the subnav ARE the trail. A breadcrumb and a
+    // "CUSTOMIZE" eyebrow above them restated what they already showed, so
+    // two facts were being reported by five elements. Both are gone; these
+    // assertions lock that they stay gone.
+    expect(root.querySelector('.vgext-sheet-eyebrow')).toBeNull();
+    expect(root.querySelector('[data-testid="vgext-sheet-nav-crumb"]')).toBeNull();
+    expect(root.querySelector('.vgext-sheet-title')!.textContent).toBe('Options');
     expect(root.querySelector('.vgext-sheet-body')!.textContent).toBe('panel:grid-options');
 
     // Sibling modules under Columns appear as a subnav when that tab is active.
     root.querySelector<HTMLButtonElement>('[data-testid="vgext-sheet-nav-tab-columns"]')!.click();
     expect(root.querySelector('.vgext-sheet-body')!.textContent).toBe('panel:column-settings');
     expect(root.querySelector('[data-testid="vgext-sheet-subnav"]')).toBeTruthy();
-    expect(root.querySelector('[data-testid="vgext-sheet-nav-crumb"]')!.textContent)
-      .toMatch(/Columns/);
+    // Where you are is still legible: the active category tab and the title.
+    expect(root.querySelector<HTMLElement>('[data-testid="vgext-sheet-nav-tab-columns"]')!
+      .getAttribute('aria-selected')).toBe('true');
+    expect(root.querySelector('.vgext-sheet-title')!.textContent).toBe('Column Settings');
     root.querySelector<HTMLButtonElement>('[data-testid="vgext-sheet-nav-item-column-groups"]')!.click();
     expect(root.querySelector('.vgext-sheet-body')!.textContent).toBe('panel:column-groups');
 
     root.querySelector<HTMLButtonElement>('[data-testid="vgext-sheet-nav-tab-editing"]')!.click();
     expect(root.querySelector('.vgext-sheet-body')!.textContent).toBe('panel:smart-edit');
     expect(root.querySelector('.vgext-sheet-title')!.textContent).toBe('Smart Edit');
-    expect(root.querySelector('[data-testid="vgext-sheet-nav-crumb"]')!.textContent)
-      .toMatch(/Editing/);
+    expect(root.querySelector<HTMLElement>('[data-testid="vgext-sheet-nav-tab-editing"]')!
+      .getAttribute('aria-selected')).toBe('true');
   });
 
   it('unsubscribes drawer footer listeners when remounting and closing', async () => {

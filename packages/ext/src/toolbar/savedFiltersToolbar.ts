@@ -571,54 +571,99 @@ const SAVED_FILTERS_CSS = `
   /* Hide the rail on the pill strip — nav arrows handle scroll. */
   scrollbar-width: none;
 }
-.vgext-sf-pills { display: inline-flex; align-items: center; gap: 6px; padding: 0 2px; }
+.vgext-sf-pills { display: inline-flex; align-items: center; gap: var(--vgext-space-2, 8px); padding: 0 2px; }
 .vgext-sf-nav {
   appearance: none; flex: 0 0 auto;
-  width: 22px; height: 22px; padding: 0; border: none; border-radius: var(--vg-radius, 2px);
+  width: var(--vgext-icon-btn, 28px); height: var(--vgext-icon-btn, 28px); padding: 0; border: none; border-radius: var(--vg-radius, 2px);
   background: transparent; color: var(--vg-muted-fg-color, #9aa4b6); cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
 }
-.vgext-sf-nav:hover:not(:disabled) { color: var(--vg-fg-color, #e5e9f0); background: var(--vg-control-bg, rgba(255,255,255,.06)); }
-.vgext-sf-nav:disabled { opacity: 0.3; cursor: default; }
+.vgext-sf-nav:hover:not(:disabled) { color: var(--vg-fg-color, #e5e9f0); background: var(--vg-row-hover-bg, rgba(255,255,255,.06)); }
+.vgext-sf-nav:disabled { opacity: 0.45; cursor: default; }
+/* 2026-08 look-and-feel — the saved-filter pill.
+ *
+ * It used to be drawn with a FULL ACCENT BORDER when saved-but-unapplied
+ * and an accent FILL when applied. Accent is the product's "on" colour
+ * everywhere else, so a strip of six unapplied filters read as a strip of
+ * six applied ones and the single active pill had to be found by looking
+ * for fill-versus-outline — the weakest distinction available. A saved
+ * pill is now a plain control; accent appears on exactly the pills that
+ * are changing what you see.
+ *
+ * It also sat at 22px on no rung (the chip rung is 20px, the control rung
+ * 28px) with a 999px radius and weight 550, neither of which exists
+ * anywhere else in the chrome. It now joins the control rung it shares a
+ * strip with, and takes the same 2px radius as the group-by chip — the
+ * same kind of object, drawn the same way. */
 .vgext-sf-pill {
-  display: inline-flex; align-items: center; gap: 5px;
-  height: 22px; padding: 0 6px 0 8px;
-  border: 1px solid var(--vg-chrome-accent);
-  border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 6px;
+  height: var(--vgext-control-h, 28px); padding: 0 4px 0 10px;
+  box-sizing: border-box;
+  border: 1px solid var(--vg-line-control, var(--vg-border-color));
+  border-radius: var(--vg-radius, 2px);
   background: transparent;
   color: var(--vg-fg-color, #e5e9f0);
-  font: inherit; font-size: 11.5px; font-weight: 550;
+  font: inherit; font-size: 12px; font-weight: 500;
   cursor: pointer; flex: 0 0 auto; white-space: nowrap;
-  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+  transition: background var(--vgext-t, 120ms ease), color var(--vgext-t, 120ms ease),
+              border-color var(--vgext-t, 120ms ease);
 }
-.vgext-sf-pill:hover { background: color-mix(in srgb, var(--vg-chrome-accent) 12%, transparent); }
+.vgext-sf-pill:hover {
+  border-color: var(--vg-chrome-accent);
+  background: color-mix(in srgb, var(--vg-chrome-accent) 8%, transparent);
+}
+.vgext-sf-pill:focus-visible {
+  outline: 2px solid var(--vg-chrome-accent); outline-offset: 2px;
+}
 .vgext-sf-pill.is-active {
   background: var(--vg-chrome-accent);
   border-color: var(--vg-chrome-accent);
   color: var(--vg-accent-fg, var(--vg-checkbox-checked-fg, #191c22));
+  font-weight: 600;
 }
-.vgext-sf-label { max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+.vgext-sf-pill.is-active:hover {
+  background: color-mix(in srgb, var(--vg-chrome-accent) 88%, #ffffff);
+}
+.vgext-sf-label { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
 .vgext-sf-count {
-  min-width: 16px; height: 14px; padding: 0 4px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 14%, transparent);
-  font-size: 9.5px; font-weight: 650; line-height: 14px; text-align: center;
+  min-width: 18px; height: 16px; padding: 0 5px;
+  border-radius: var(--vg-radius, 2px);
+  background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 10%, transparent);
+  color: var(--vg-muted-fg-color, #9aa4b6);
+  font-family: var(--vg-cell-font-family);
+  font-size: 10px; font-weight: 600; line-height: 16px; text-align: center;
   font-variant-numeric: tabular-nums;
 }
 .vgext-sf-pill.is-active .vgext-sf-count {
-  background: color-mix(in srgb, var(--vg-accent-fg, #191c22) 18%, transparent);
+  background: color-mix(in srgb, var(--vg-accent-fg, #191c22) 20%, transparent);
+  color: var(--vg-accent-fg, var(--vg-checkbox-checked-fg, #191c22));
 }
+/* Rename / delete / edit-JSON were display:none until hover, then
+ * appeared as three 16px targets inside a 22px pill — below the 24px
+ * minimum, invisible to anyone not already hovering, and unreachable by a
+ * keyboard scan. They are now always laid out at 20px, drawn quietly so
+ * they never compete with the label, and lifted to full contrast on hover
+ * or focus-within. */
 .vgext-sf-actions {
-  display: none; align-items: center; gap: 0; margin-left: 1px;
+  display: inline-flex; align-items: center; gap: 0; margin-left: 1px;
 }
-.vgext-sf-pill:hover .vgext-sf-actions,
-.vgext-sf-pill:focus-within .vgext-sf-actions { display: inline-flex; }
 .vgext-sf-act {
-  appearance: none; width: 16px; height: 16px; padding: 0; border: none; border-radius: 2px;
-  background: transparent; color: inherit; opacity: 0.75; cursor: pointer;
+  appearance: none; width: 20px; height: 20px; padding: 0; border: none;
+  border-radius: var(--vg-radius, 2px);
+  background: transparent; color: var(--vg-muted-fg-color, #9aa4b6); cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
+  transition: color var(--vgext-t, 120ms ease), background var(--vgext-t, 120ms ease);
 }
-.vgext-sf-act:hover { opacity: 1; background: color-mix(in srgb, var(--vg-fg-color, #fff) 12%, transparent); }
+.vgext-sf-pill:hover .vgext-sf-act,
+.vgext-sf-pill:focus-within .vgext-sf-act { color: var(--vg-fg-color, #e5e9f0); }
+.vgext-sf-pill.is-active .vgext-sf-act {
+  color: color-mix(in srgb, var(--vg-accent-fg, #191c22) 62%, transparent);
+}
+.vgext-sf-pill.is-active:hover .vgext-sf-act,
+.vgext-sf-pill.is-active:focus-within .vgext-sf-act {
+  color: var(--vg-accent-fg, #191c22);
+}
+.vgext-sf-act:hover { background: color-mix(in srgb, currentColor 18%, transparent); }
 .vgext-sf-iconbtn {
   appearance: none; width: 28px; height: 28px; padding: 0; border: none; border-radius: var(--vg-radius, 2px);
   background: transparent; color: var(--vg-muted-fg-color, #9aa4b6); cursor: pointer;
@@ -628,18 +673,25 @@ const SAVED_FILTERS_CSS = `
 .vgext-sf-iconbtn:disabled { opacity: 0.35; cursor: default; }
 .vgext-sf-clear,
 .vgext-sf-add {
-  width: 32px;
-  height: 32px;
+  width: var(--vgext-icon-btn, 28px);
+  height: var(--vgext-icon-btn, 28px);
 }
 .vgext-sf-clear svg,
 .vgext-sf-add svg {
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
+  width: var(--vgext-glyph, 16px);
+  height: var(--vgext-glyph, 16px);
+  flex: 0 0 var(--vgext-glyph, 16px);
 }
-.vgext-sf-clear { color: color-mix(in srgb, var(--vg-neg-color, #e5646e) 85%, var(--vg-muted-fg-color, #9aa4b6)); }
-.vgext-sf-clear:hover:not(:disabled) { color: var(--vg-neg-color, #e5646e); }
-.vgext-sf-add:not(:disabled) { color: var(--vg-chrome-accent); }
+/* Clearing a filter is reversible and costs nothing, so it is not painted
+ * in the loss colour. On a blotter red has to mean loss and destruction —
+ * spending it on a neutral toolbar action devalues it on the P&L column,
+ * where it is load-bearing. Both funnels are neutral icon buttons; the
+ * accent appears only when there is actually a filter to clear. */
+.vgext-sf-clear,
+.vgext-sf-add { color: var(--vg-muted-fg-color, #9aa4b6); }
+.vgext-sf-clear:hover:not(:disabled),
+.vgext-sf-add:hover:not(:disabled) { color: var(--vg-fg-color, #e5e9f0); }
+.vgext-sf-clear:not(:disabled) { color: var(--vg-fg-color, #e5e9f0); }
 .vgext-sf-pop {
   position: fixed; z-index: 80; width: 280px;
   display: flex; flex-direction: column; gap: 8px;
@@ -652,16 +704,19 @@ const SAVED_FILTERS_CSS = `
 }
 .vgext-sf-pop.vgext-sf-json { width: 320px; }
 .vgext-sf-pop-title {
-  font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  font-size: var(--vgext-eyebrow-size, 11px);
+  font-weight: var(--vgext-eyebrow-weight, 600);
+  letter-spacing: var(--vgext-eyebrow-track, 0.1em);
+  text-transform: uppercase;
   color: var(--vg-muted-fg-color, #9aa4b6);
 }
 .vgext-sf-rename-input {
-  width: 100%; height: 32px; box-sizing: border-box;
-  padding: 0 10px;
+  width: 100%; height: var(--vgext-control-h, 28px); box-sizing: border-box;
+  padding: 0 var(--vgext-field-px, 10px);
   border: 1px solid var(--vg-border-color, #2a3140);
   border-radius: var(--vg-radius, 2px);
   background: var(--vg-input-bg, rgba(0,0,0,.25));
-  color: inherit; font: inherit; font-size: 13px; font-weight: 550;
+  color: inherit; font: inherit; font-size: var(--vgext-label-size, 12.5px); font-weight: 500;
 }
 .vgext-sf-rename-input:focus {
   outline: none;
@@ -681,8 +736,8 @@ const SAVED_FILTERS_CSS = `
 }
 .vgext-sf-pop-foot { display: flex; justify-content: flex-end; gap: 8px; }
 .vgext-sf-pop-cancel, .vgext-sf-pop-save {
-  appearance: none; height: 26px; padding: 0 12px; border-radius: var(--vg-radius, 2px);
-  font: inherit; font-size: 11px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase;
+  appearance: none; height: var(--vgext-control-h, 28px); padding: 0 var(--vgext-control-px, 13px); border-radius: var(--vg-radius, 2px);
+  font-family: inherit; font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none;
   cursor: pointer;
 }
 .vgext-sf-pop-cancel {

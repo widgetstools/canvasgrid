@@ -47,13 +47,20 @@ function col(
 
 describe('decorateHeader — pure decorator', () => {
   // CASE 1 — Default (grid `suppressAggFuncInHeader: false`, column has
-  // `aggFunc: 'sum'`): the decoration renders as `sum(Notional)` per
+  // `aggFunc: 'sum'`): the decoration renders as `SUM Notional` per
   // the design plan (decision 1 — same weight, same color, lowercase
   // verb, parens). This is the canonical canvasgrid default — the
   // trader sees the synthesis cue on every column with an aggFunc.
-  it('case 1 — default off: aggFunc-declared column renders as `sum(Notional)`', () => {
+  // 2026-08 look-and-feel — the aggregate PREFIXES the name rather than
+  // wrapping it. Wrapping meant a narrow column cut the name and lost the
+  // closing bracket with it ("sum(Notional Am"), so the header read as
+  // broken syntax; prefixing puts the fixed-width part first and lets the
+  // ellipsis land at the end of the name where it belongs. The toggle
+  // semantics under test here — grid default, per-column override, both
+  // directions — are unchanged.
+  it('case 1 — default off: aggFunc-declared column renders as `SUM Notional`', () => {
     const def = col('Notional', 'sum');
-    expect(decorateHeader(def, /*gridSuppress*/ false)).toBe('sum(Notional)');
+    expect(decorateHeader(def, /*gridSuppress*/ false)).toBe('SUM Notional');
   });
 
   // CASE 2 — Grid-level `suppressAggFuncInHeader: true`: every leaf
@@ -84,7 +91,7 @@ describe('decorateHeader — pure decorator', () => {
   // of the headers stay clean.
   it('case 4 — per-column override off: decoration shows despite grid on', () => {
     const def = col('Notional', 'sum', /*colSuppress*/ false);
-    expect(decorateHeader(def, /*gridSuppress*/ true)).toBe('sum(Notional)');
+    expect(decorateHeader(def, /*gridSuppress*/ true)).toBe('SUM Notional');
   });
 
   // CASE 5 — Column WITHOUT `aggFunc`: the decoration is a no-op

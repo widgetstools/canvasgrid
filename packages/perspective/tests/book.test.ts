@@ -303,3 +303,53 @@ describe('WASM boot failure surfaces phase=error (book.ts)', () => {
     expect(book.getPhase()).toBe('error');
   });
 });
+
+describe('flat-view ticks carry grand totals that nothing refreshes on their own', () => {
+  /**
+   * Regression: an ungrouped view on the feed leader takes the cheap patch
+   * path — `refreshSsrm: false` — so `getRows` is never re-issued and the
+   * `grandTotals` that ride a getRows reply never arrive again. The tick's
+   * own `totals` are therefore the ONLY live source for the pinned
+   * grand-total row, and the provider must consume them (it now calls
+   * `grid.setServerSideGrandTotals`). Before that, rows ticked while the
+   * grand total painted its first value forever.
+   */
+  it('emits totals with refreshSsrm:false for a flat leader tick', async () => {
+    const ticks: ViewTick[] = [];
+    const book = new PerspectiveBook({
+      schema: { positionId: 'string', desk: 'string' },
+      onViewTick: (t) => ticks.push(t),
+    });
+    // Ungrouped (flat). `totalsView: null` keeps `fetchGrandTotal` on its
+    // no-WASM early return, so this exercises the real branch.
+    (book as any).views.set('F', makeBoundView('F', { groupBy: [] }));
+    (book as any).pendingLiveBatch.set('F', [{ positionId: 'p1', desk: 'X' }]);
+
+    await (book as any).emitViewTick('F');
+
+    const tick = ticks.find((t) => t.viewId === 'F');
+    expect(tick).toBeTruthy();
+    expect(tick!.updates).toHaveLength(1);
+    // The row patch is the whole refresh — nothing re-fetches a window.
+    expect(tick!.refreshSsrm).toBe(false);
+    // …so these totals are the only live figure the grid can use.
+    expect(tick!.totals).toBeTruthy();
+  });
+
+  it('grouped ticks still ask for a soft refresh and carry a placeholder', async () => {
+    const ticks: ViewTick[] = [];
+    const book = new PerspectiveBook({
+      schema: { positionId: 'string', desk: 'string' },
+      onViewTick: (t) => ticks.push(t),
+    });
+    (book as any).views.set('G', makeBoundView('G', { groupBy: ['desk'] }));
+    (book as any).pendingLiveBatch.set('G', [{ positionId: 'p1', desk: 'X' }]);
+
+    await (book as any).emitViewTick('G');
+
+    const tick = ticks.find((t) => t.viewId === 'G');
+    // Grouped totals come from the skeleton root on the soft refresh — the
+    // provider must NOT push this placeholder into the grid.
+    expect(tick!.refreshSsrm).toBe(true);
+  });
+});

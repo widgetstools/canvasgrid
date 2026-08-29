@@ -340,13 +340,23 @@ describe('Cycle 22 / Task 4 — vg-theme-auto class', () => {
   });
 
   it('the dark @media block sets a dark-tone --vg-bg-color (sanity check the dark bundle landed)', () => {
-    // Pluck the dark media block and confirm it sets bg-color to a value
-    // distinct from the light theme's #ffffff.
+    // Pluck the dark media block and confirm it sets bg-color to a dark
+    // value rather than the light theme's #ffffff.
+    //
+    // Was asserting the literal #1e1e1e, which the Cursor-dark retune
+    // replaced with #1E1F24 — so this had been failing (and therefore
+    // guarding nothing) since that change. The point of the check is the
+    // TONE, not a specific hex, so measure the tone: every channel of the
+    // declared colour must sit in the bottom quarter of the range.
     const match = cssSource.match(
-      /@media[^{]*prefers-color-scheme:\s*dark[^{]*\{([\s\S]*?)\}\s*\}/,
+      /@media[^{]*prefers-color-scheme:\s*dark[^{]*\{([\s\S]*?\n {2}\})/,
     );
     expect(match).not.toBeNull();
-    expect(match![1]).toMatch(/--vg-bg-color\s*:\s*#1e1e1e/);
+    const bg = match![1].match(/--vg-bg-color\s*:\s*#([0-9a-f]{6})\b/i);
+    expect(bg).not.toBeNull();
+    const hex = bg![1];
+    const channels = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    for (const ch of channels) expect(ch).toBeLessThan(64);
   });
 });
 

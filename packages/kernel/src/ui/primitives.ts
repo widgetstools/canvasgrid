@@ -131,15 +131,16 @@ export function vguiRowCss(
   grid-template-columns: ${labelCol} minmax(0, 1fr);
   gap: 8px 14px;
   align-items: center;
-  padding: 9px 16px;
+  padding: 7px 16px;
+  min-height: 40px;
   margin: 0;
-  border-bottom: 1px solid color-mix(in srgb, ${t.border} 70%, transparent);
-  transition: background 120ms ease, border-color 120ms ease;
+  box-sizing: border-box;
+  transition: background 120ms ease;
 }
 .${c.root}:hover { background: var(--vg-row-hover-bg, ${t.surface}); }
 .${c.root} .${c.label} {
   display: flex; flex-direction: column; gap: 2px; min-width: 0;
-  padding-left: 10px;
+  padding-left: 0;
 }
 .${c.root} .${c.title} {
   font-size: 12.5px; font-weight: 500; line-height: 1.4; letter-spacing: 0;

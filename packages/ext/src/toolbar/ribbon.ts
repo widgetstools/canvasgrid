@@ -542,8 +542,12 @@ function ribbonItem(opts: RibbonExtensionsOpts = {}): ToolbarItem {
       const formatting = h('vgext-edit-strip');
       formatting.classList.add('vgext-format-strip');
       formatting.dataset.toolbar = 'formatting';
-      // No "Target" label — icon toggles + compact selection chip are enough.
-      const gTarget = seg('', selPill, targetToggle, scopeToggle);
+      // 2026-08 look-and-feel — every segment is named. The label used to
+      // be optional and five of eleven segments used it, so a divider was
+      // asked to mean "different group" with no word attached to say which.
+      // The rule that settles it: a segment is named unless its own controls
+      // already carry the word. None of these six did.
+      const gTarget = seg('Selection', selPill, targetToggle, scopeToggle);
       gTarget.classList.add('vgext-es-seg--target');
       const gFont = seg(
         'Font',
@@ -566,15 +570,15 @@ function ribbonItem(opts: RibbonExtensionsOpts = {}): ToolbarItem {
       );
       bordersBody.append(bordersRowSides, bordersRowStyle);
       const bordersFly = persistentFlyout(bordersOpen, bordersBody, { preferWidth: 280 });
-      const gBorders = seg('', bordersOpen);
+      const gBorders = seg('Borders', bordersOpen);
 
       // Quick format icons + caret (opens the custom format picker).
-      const gFormat = seg('', fmtDollar, fmtPercent, fmtThousands, decDown, decUp, fmtCode);
+      const gFormat = seg('Number', fmtDollar, fmtPercent, fmtThousands, decDown, decUp, fmtCode);
 
       const iconsBody = h('vgext-rb-tool-flyout-body');
       iconsBody.append(picker.button, iconTools);
       const iconsFly = persistentFlyout(iconsOpen, iconsBody, { preferWidth: 320 });
-      const gIcons = seg('', iconsOpen);
+      const gIcons = seg('Icons', iconsOpen);
 
       // Full column settings are in the Column dropdown panel (filter,
       // grouping, aggregation, behavior). Keep strip-side quick toggles
@@ -583,16 +587,23 @@ function ribbonItem(opts: RibbonExtensionsOpts = {}): ToolbarItem {
       const columnQuickPark = h('vgext-rb-flyout-stash');
       columnQuickPark.hidden = true;
       columnQuickPark.append(aggPill, colFF, filterTypePill, colGrp, colAggH);
-      const gColumn = seg('', colOpen);
+      const gColumn = seg('Column', colOpen);
 
       const gTemplates = seg('Templates', tplOpen, tplPill);
-      const gClear = seg('', fmtUndo, fmtRedo, eraser, clearAll);
+      const gClear = seg('History', fmtUndo, fmtRedo, eraser, clearAll);
       const formatBody = h('vgext-es-body');
       // Primary strip order: target → font → number formats → align →
       // flyout triggers → templates/clear last (spill first when tight).
       formatBody.append(
         gTarget, gFont, gFormat, gAlign, gBorders, gIcons, gColumn, gTemplates, gClear,
       );
+
+      // A disabled control has to say why. With no selection every control
+      // on this strip greys out and, before this, nothing explained it —
+      // 42px of permanently dead UI at the top of the screen. The hint sits
+      // after the (collapsed) body so it reads where the eye already is.
+      const fmtHint = h('vgext-es-hint');
+      fmtHint.setAttribute('role', 'status');
 
       const fmtOverflow = iconBtn(I.more, 'More formatting tools');
       fmtOverflow.dataset.tb = 'format-overflow';
@@ -603,7 +614,7 @@ function ribbonItem(opts: RibbonExtensionsOpts = {}): ToolbarItem {
       fmtClose.addEventListener('click', () => {
         if (!formatting.hidden) ctx.events.emit({ type: 'toggle-ribbon', section: 'format' });
       });
-      formatting.append(formatBody, fmtOverflow, fmtClose, columnQuickPark);
+      formatting.append(formatBody, fmtHint, fmtOverflow, fmtClose, columnQuickPark);
       host.append(editStrip, formatting);
 
       const editOverflowHandle = wireRibbonOverflow({
@@ -679,6 +690,7 @@ function ribbonItem(opts: RibbonExtensionsOpts = {}): ToolbarItem {
         : undefined;
 
       const disposeFormatting = wireFormattingToolbar(ctx, {
+        hint: fmtHint,
         targetToggle, scopeToggle, selPill,
         paintTargetToggle: targetT.paint, paintScopeToggle: scopeT.paint,
         bold, italic, underline, strike, alignL, alignC, alignR,
@@ -850,6 +862,8 @@ function wireEditingToolbar(ctx: VelocityGridExtContext, getEdit: EditHandleGett
 
 // ── Formatting-toolbar wiring (column styling via @wellsfargo-starui/velocity-grid/calc editColumn) ──
 interface FormattingRefs {
+  /** Inline reason shown when the strip has nothing to act on. */
+  hint: HTMLElement;
   targetToggle: HTMLButtonElement; scopeToggle: HTMLButtonElement; selPill: HTMLButtonElement;
   paintTargetToggle: (isCell: boolean) => void; paintScopeToggle: (isSelected: boolean) => void;
   bold: HTMLButtonElement; italic: HTMLButtonElement; underline: HTMLButtonElement; strike: HTMLButtonElement;
@@ -1085,6 +1099,12 @@ function wireFormattingToolbar(ctx: VelocityGridExtContext, r: FormattingRefs): 
       r.tplOpen, r.tplPill]) {
       (b as HTMLButtonElement).disabled = none;
     }
+    // Say why the strip is dim rather than leaving a row of dead controls.
+    r.hint.textContent = none
+      ? target === 'header'
+        ? 'Select a column to format its header'
+        : 'Select cells to format'
+      : '';
     const s = currentStyle();
     r.bold.classList.toggle('is-on', s.fontWeight === 'bold');
     r.italic.classList.toggle('is-on', s.fontStyle === 'italic');
@@ -1737,12 +1757,15 @@ const RIBBON_CSS = `
 .vgext-ribbon .vgext-toolbar-item { display: flex; flex-direction: column; align-items: stretch; min-width: 0; }
 
 /* Editing + formatting strips — single-row labelled segments + overflow. */
+/* Context strip: 28px controls in a space-1 gutter give a 36px band.
+ * Side gutter matches the command bar above it and the status bar below,
+ * so the left edge of the chrome is one straight line. */
 .vgext-edit-strip {
   display: flex;
   align-items: center;
-  gap: 2px;
-  min-height: 32px;
-  padding: 4px 8px;
+  gap: var(--vgext-space-1, 4px);
+  min-height: var(--vgext-strip-h, 36px);
+  padding: var(--vgext-space-1, 4px) var(--vgext-space-4, 16px);
   border-bottom: 1px solid color-mix(in srgb, var(--vg-border-color, #2a3140) 70%, transparent);
   min-width: 0;
   box-sizing: border-box;
@@ -1760,16 +1783,38 @@ const RIBBON_CSS = `
   overflow: hidden;
   column-gap: 0;
 }
-.vgext-es-seg { display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto; }
+.vgext-es-seg { display: inline-flex; align-items: center; gap: var(--vgext-space-1, 4px); flex: 0 0 auto; }
 .vgext-es-seg + .vgext-es-seg {
-  margin-left: 10px; padding-left: 10px;
-  border-left: 1px solid color-mix(in srgb, var(--vg-border-color, #2a3140) 85%, transparent);
+  margin-left: var(--vgext-space-3, 12px); padding-left: var(--vgext-space-3, 12px);
+  /* The divider now separates two NAMED things, which is the only job a
+   * divider can actually do — and it is drawn on the line ladder's divider
+   * rung rather than at 85% of a token that measured 1.15:1. */
+  border-left: 1px solid var(--vg-line-divider, var(--vg-border-color, #2a3140));
 }
+/* The one eyebrow spec — this label used to be 10.5px/650/0.06em, one of
+ * five different uppercase micro-label specs across the chrome. */
 .vgext-es-label {
-  font-size: 10.5px; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase;
-  color: var(--vg-muted-fg-color, #7f8ba0); margin-right: 6px; white-space: nowrap;
+  font-size: var(--vgext-eyebrow-size, 11px);
+  font-weight: var(--vgext-eyebrow-weight, 600);
+  letter-spacing: var(--vgext-eyebrow-track, 0.1em);
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--vg-muted-fg-color, #7f8ba0); margin-right: var(--vgext-space-2, 8px); white-space: nowrap;
 }
 .vgext-es-label:empty { display: none; margin: 0; }
+/* Reason line for a disabled strip. Sentence case, muted, collapses to
+ * nothing the moment there is a selection to act on. */
+.vgext-es-hint {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: var(--vgext-space-3, 12px);
+  font-size: var(--vgext-help-size, 11px);
+  color: var(--vg-muted-fg-color, #7f8ba0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vgext-es-hint:empty { display: none; margin: 0; }
 .vgext-es-seg--target { gap: 2px; }
 .vgext-es-seg > .vgext-rb-stat { margin-left: 4px; }
 .vgext-es-close,
@@ -1840,7 +1885,8 @@ const RIBBON_CSS = `
   column-gap: 0;
 }
 .vgext-rb-grp {
-  display: flex; flex-direction: column; padding: 0 6px;
+  display: flex; flex-direction: row; align-items: center; gap: var(--vgext-space-2, 8px);
+  padding: 0 var(--vgext-space-2, 8px);
   border-right: 1px solid color-mix(in srgb, var(--vg-border-color, #2a3140) 70%, transparent);
   flex: 0 0 auto;
   max-width: 100%;
@@ -1851,8 +1897,11 @@ const RIBBON_CSS = `
 .vgext-rb-mini { display: flex; align-items: center; gap: 2px; flex-wrap: nowrap; }
 .vgext-rb-mini > .vgext-rb-pill:first-child:last-child { flex: 1 1 auto; min-width: 0; }
 .vgext-rb-grp-name {
-  padding: 2px 0 0; text-align: center;
-  font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+  flex: 0 0 auto; padding: 0; text-align: left; white-space: nowrap;
+  font-size: var(--vgext-eyebrow-size, 11px);
+  font-weight: var(--vgext-eyebrow-weight, 600);
+  letter-spacing: var(--vgext-eyebrow-track, 0.1em);
+  text-transform: uppercase;
   color: var(--vg-muted-fg-color, #7f8ba0);
   white-space: nowrap;
 }
@@ -1964,28 +2013,31 @@ const RIBBON_CSS = `
 /* AB — header-caption uppercase toggle (text glyph, not an icon path). */
 .vgext-rb-ab {
   width: auto; padding: 0 6px;
-  font-size: 12px; font-weight: 700; letter-spacing: 0.04em;
+  font-size: 12px; font-weight: 600; letter-spacing: 0;
 }
 .vgext-rb-ab:disabled { opacity: 0.45; cursor: default; }
 
 /* Cells↔Header / Selected↔All — icon-only (same footprint as .vgext-rb-btn). */
+/* Was permanently accent-coloured in both of its two states, so the colour
+ * said nothing. Neutral at rest; accent marks the non-default state. */
 .vgext-rb-targettoggle {
   appearance: none; -webkit-appearance: none;
   display: inline-flex; align-items: center; justify-content: center;
-  width: 32px; height: 32px; padding: 0; box-sizing: border-box;
-  border: none; border-radius: 2px;
-  background: transparent; color: var(--vg-chrome-accent);
+  width: var(--vgext-icon-btn, 28px); height: var(--vgext-icon-btn, 28px); padding: 0; box-sizing: border-box;
+  border: none; border-radius: var(--vg-radius, 2px);
+  background: transparent; color: var(--vg-fg-color, #d3dbe7);
   cursor: pointer;
-  transition: background 110ms ease, color 110ms ease;
+  transition: background var(--vgext-t, 120ms ease), color var(--vgext-t, 120ms ease);
 }
 .vgext-rb-targettoggle:hover {
-  background: var(--vg-row-alt-bg, rgba(255,255,255,0.07));
-  color: var(--vg-chrome-accent);
+  background: var(--vg-row-hover-bg, rgba(255,255,255,0.07));
+  color: var(--vg-fg-color, #e5e9f0);
 }
-.vgext-rb-targettoggle:focus-visible { outline: 2px solid var(--vg-chrome-accent); outline-offset: 1px; }
+.vgext-rb-targettoggle:focus-visible { outline: 2px solid var(--vg-chrome-accent); outline-offset: -2px; }
 .vgext-rb-targettoggle.is-header {
-  background: color-mix(in srgb, var(--vg-chrome-accent) 22%, transparent);
-  color: var(--vg-chrome-accent);
+  background: color-mix(in srgb, var(--vg-chrome-accent) 14%, transparent);
+  color: var(--vg-fg-color, #e5e9f0);
+  box-shadow: inset 0 -2px 0 var(--vg-chrome-accent);
 }
 .vgext-rb-selpill {
   max-width: 64px; min-width: 28px; padding: 0 6px;
@@ -2000,13 +2052,16 @@ const RIBBON_CSS = `
 }
 .vgext-rb-btn, .vgext-rb-toggle {
   appearance: none; -webkit-appearance: none;
-  width: 32px; height: 32px;
+  width: var(--vgext-icon-btn, 28px); height: var(--vgext-icon-btn, 28px);
   display: inline-flex; align-items: center; justify-content: center;
-  border: none; border-radius: 2px; background: transparent;
+  border: none; border-radius: var(--vg-radius, 2px); background: transparent;
   color: var(--vg-fg-color, #d3dbe7); cursor: pointer;
-  transition: background 110ms ease, color 110ms ease;
+  transition: background var(--vgext-t, 120ms ease), color var(--vgext-t, 120ms ease);
 }
-.vgext-rb-btn:hover, .vgext-rb-toggle:hover { background: var(--vg-row-alt-bg, rgba(255,255,255,0.07)); color: var(--vg-chrome-accent); }
+/* Hover is a surface change, not a colour change: accent stays reserved for
+ * the on/selected state below so a hovered control is never mistaken for
+ * an active one. */
+.vgext-rb-btn:hover, .vgext-rb-toggle:hover { background: var(--vg-row-hover-bg, rgba(255,255,255,0.07)); color: var(--vg-fg-color, #e5e9f0); }
 .vgext-rb-btn:disabled, .vgext-rb-toggle:disabled { color: var(--vg-muted-fg-color, #9aa4b6); opacity: 0.45; cursor: default; }
 .vgext-rb-btn:disabled:hover, .vgext-rb-toggle:disabled:hover { background: transparent; }
 
@@ -2018,14 +2073,25 @@ const RIBBON_CSS = `
   background: var(--vgext-swatch, currentColor);
   box-shadow: inset 0 0 0 0.5px rgba(255,255,255,0.18);
 }
-.vgext-rb-btn:focus-visible, .vgext-rb-toggle:focus-visible { outline: 2px solid var(--vg-chrome-accent); outline-offset: 1px; }
-.vgext-rb-toggle.is-on { background: color-mix(in srgb, var(--vg-chrome-accent) 22%, transparent); color: var(--vg-chrome-accent); }
+.vgext-rb-btn:focus-visible, .vgext-rb-toggle:focus-visible { outline: 2px solid var(--vg-chrome-accent); outline-offset: -2px; }
+/* Selected: accent wash + a 2px accent edge — the same treatment a selected
+ * row, tab or segment gets, so "on" reads identically across the chrome. */
+.vgext-rb-toggle.is-on {
+  background: color-mix(in srgb, var(--vg-chrome-accent) 14%, transparent);
+  color: var(--vg-fg-color, #e5e9f0);
+  box-shadow: inset 0 -2px 0 var(--vg-chrome-accent);
+}
 
+/* One edge rule: a control that OPENS something (pill, input, stepper)
+ * carries a --vg-line-control border; one that ACTS immediately (icon
+ * button) carries none. Two edge treatments at one height used to make
+ * adjacent 28px controls read as different kinds of thing when both were
+ * just buttons. */
 .vgext-rb-pill {
   appearance: none; -webkit-appearance: none;
-  display: inline-flex; align-items: center; gap: 4px;
-  height: 24px; padding: 0 8px; box-sizing: border-box;
-  border: 1px solid var(--vg-border-color, #2a3140); border-radius: 2px;
+  display: inline-flex; align-items: center; gap: var(--vgext-space-1, 4px);
+  height: var(--vgext-control-h, 28px); padding: 0 var(--vgext-field-px, 10px); box-sizing: border-box;
+  border: 1px solid var(--vg-line-control, var(--vg-border-color, #2a3140)); border-radius: var(--vg-radius, 2px);
   background: var(--vg-control-bg, rgba(255,255,255,0.04));
   color: var(--vg-fg-color, #d6dce8); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap;
 }
@@ -2039,8 +2105,8 @@ const RIBBON_CSS = `
 
 .vgext-rb-input {
   appearance: none; -webkit-appearance: none;
-  height: 24px; padding: 0 8px; box-sizing: border-box;
-  border: 1px solid var(--vg-border-color, #2a3140); border-radius: 2px;
+  height: var(--vgext-control-h, 28px); padding: 0 var(--vgext-field-px, 10px); box-sizing: border-box;
+  border: 1px solid var(--vg-line-control, var(--vg-border-color, #2a3140)); border-radius: var(--vg-radius, 2px);
   background: var(--vg-control-bg, rgba(0,0,0,0.25)); color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: 12px;
 }
 .vgext-rb-input--sm { width: 44px; }
@@ -2050,9 +2116,9 @@ const RIBBON_CSS = `
 .vgext-rb-stat { font-size: 12px; color: var(--vg-muted-fg-color, #7f8ba0); font-variant-numeric: tabular-nums; }
 
 .vgext-rb-stepper {
-  display: inline-flex; align-items: center; gap: 5px;
-  height: 24px; padding: 0 4px 0 8px; box-sizing: border-box;
-  border: 1px solid var(--vg-border-color, #2a3140); border-radius: 2px;
+  display: inline-flex; align-items: center; gap: var(--vgext-space-1, 4px);
+  height: var(--vgext-control-h, 28px); padding: 0 var(--vgext-space-1, 4px) 0 var(--vgext-field-px, 10px); box-sizing: border-box;
+  border: 1px solid var(--vg-line-control, var(--vg-border-color, #2a3140)); border-radius: var(--vg-radius, 2px);
   background: var(--vg-control-bg, rgba(255,255,255,0.04)); font-size: 12px; color: var(--vg-fg-color, #d6dce8);
 }
 .vgext-rb-step-stack { display: flex; flex-direction: column; }
@@ -2073,9 +2139,9 @@ const RIBBON_CSS = `
    the picker is a first-class control now, not an easy-to-miss glyph. */
 .vgext-ip-open {
   appearance: none; -webkit-appearance: none;
-  display: inline-flex; align-items: center; gap: 6px;
-  height: 24px; padding: 0 7px 0 3px; box-sizing: border-box;
-  border: 1px solid var(--vg-border-color, #2a3140); border-radius: 2px;
+  display: inline-flex; align-items: center; gap: var(--vgext-space-1, 4px);
+  height: var(--vgext-control-h, 28px); padding: 0 var(--vgext-field-px, 10px) 0 var(--vgext-space-1, 4px); box-sizing: border-box;
+  border: 1px solid var(--vg-border-color, #2a3140); border-radius: var(--vg-radius, 2px);
   background: transparent; color: var(--vg-fg-color, #d3dbe7);
   font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
   transition: border-color 110ms ease, background 110ms ease;
@@ -2112,7 +2178,7 @@ const RIBBON_CSS = `
   left: var(--vgext-menu-left, 0);
   display: flex; flex-direction: column; overflow: hidden;
   background: var(--vg-popup-bg, #161b26); border: 1px solid var(--vg-border-color, #2a3140);
-  border-radius: var(--vg-radius, 12px); box-shadow: 0 16px 40px rgba(0,0,0,0.5); padding: 10px;
+  border-radius: var(--vg-radius, 2px); box-shadow: 0 16px 40px rgba(0,0,0,0.5); padding: 10px;
 }
 .vgext-ip-panel[hidden] { display: none; }
 
@@ -2137,8 +2203,8 @@ const RIBBON_CSS = `
   scrollbar-width: auto;
 }
 .vgext-ip-cat {
-  font-size: 10px; font-weight: 650; letter-spacing: 0.09em; text-transform: uppercase;
-  color: var(--vg-muted-fg-color, #7f8ba0); margin: 12px 2px 6px;
+  font-size: var(--vgext-eyebrow-size, 11px); font-weight: var(--vgext-eyebrow-weight, 600); letter-spacing: var(--vgext-eyebrow-track, 0.1em); text-transform: uppercase;
+  color: var(--vg-muted-fg-color, #7f8ba0); margin: var(--vgext-space-3, 12px) 2px var(--vgext-space-2, 8px);
   position: sticky; top: 0; z-index: 1;
   background: linear-gradient(var(--vg-popup-bg, #161b26) 78%, transparent); padding: 3px 0 4px;
 }
@@ -2167,8 +2233,8 @@ const RIBBON_CSS = `
   display: flex; flex-direction: column;
 }
 .vgext-ip-placehead {
-  font-size: 9.5px; font-weight: 650; letter-spacing: 0.09em; text-transform: uppercase;
-  color: var(--vg-muted-fg-color, #7f8ba0); padding: 7px 8px 3px;
+  font-size: var(--vgext-eyebrow-size, 11px); font-weight: var(--vgext-eyebrow-weight, 600); letter-spacing: var(--vgext-eyebrow-track, 0.1em); text-transform: uppercase;
+  color: var(--vg-muted-fg-color, #7f8ba0); padding: var(--vgext-space-2, 8px) var(--vgext-space-2, 8px) var(--vgext-space-1, 4px);
 }
 .vgext-ip-placehead:first-child { padding-top: 3px; }
 .vgext-ip-placeitem {

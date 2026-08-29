@@ -229,7 +229,7 @@ function injectProfileStyles(): void {
 }
 .vgext-profiles-row {
   display: flex; align-items: center; gap: 2px;
-  border-radius: var(--vg-radius, 6px);
+  border-radius: var(--vg-radius, 2px);
 }
 .vgext-profiles-row.is-active { background: var(--vg-row-alt-bg, rgba(255,255,255,0.06)); }
 .vgext-profiles-main {

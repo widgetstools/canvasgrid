@@ -530,6 +530,31 @@ function applyTextTransform(s: string, transform: 'none' | 'uppercase' | 'lowerc
  *    in the fallback.
  *
  *  Pure function — no side effects, safe to call per cell. */
+/**
+ * Which of the theme's two cell fonts a column paints with.
+ *
+ * Monospace earns its place where column alignment is the point — ids,
+ * tickers, CUSIPs, figures — and costs roughly 18% of the column's width
+ * everywhere else, which is why prose columns (desk, region, trader) read
+ * better in the chrome family. `fontRole` lets a column say which it is;
+ * `'auto'` (the default) infers it from `cellDataType`.
+ *
+ * Every branch falls back through `cellFont` to `font`, so a theme that
+ * declares no `--vg-cell-text-font-family` — and a hand-built test fixture
+ * that predates these fields — paints exactly what it painted before.
+ * 2026-08 look-and-feel pass.
+ */
+export function cellFontForColumn(
+  colDef: { fontRole?: 'auto' | 'mono' | 'text'; cellDataType?: 'text' | 'number' },
+  theme: ResolvedTheme,
+): string {
+  const mono = theme.cellFont ?? theme.font;
+  const role = colDef.fontRole ?? 'auto';
+  if (role === 'mono') return mono;
+  if (role === 'text') return theme.cellTextFont ?? mono;
+  return colDef.cellDataType === 'number' ? mono : (theme.cellTextFont ?? mono);
+}
+
 export function composeFont(overrides: ColCellOverrides, fallback: string): string {
   if (overrides.font !== undefined) return overrides.font;
   const hasBreakout =
@@ -694,11 +719,18 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
     target.themeKind = undefined;
   }
 
+  // ── cell font role ──────────────────────────────────────────────────
+  // Monospace earns its place where column alignment is the point — ids,
+  // tickers, figures — and costs ~18% width everywhere else. `fontRole`
+  // lets a column say which it is; `'auto'` infers it from cellDataType.
+  // Every fallback chains back to `font`, so a theme (or a hand-built test
+  // fixture) that declares neither cell family paints exactly as before.
+
   // Theme defaults. Headers paint with the chrome font (Inter by
-  // default); body cells paint with the cell font (monospace by
-  // default) so numbers, CUSIPs, tickers stay column-aligned.
+  // default); body cells paint the font their column's role selects —
+  // monospace for figures and ids, the chrome family for prose.
   // Legacy theme fixtures without `cellFont` fall back to `font`.
-  target.font = ctx.isHeader ? theme.font : (theme.cellFont ?? theme.font);
+  target.font = ctx.isHeader ? theme.font : cellFontForColumn(colDef, theme);
   target.fg = ctx.isHeader ? theme.headerFg : theme.fg;
   target.bg = ctx.rowBg;
   target.halign = colDef.cellDataType === 'number' ? 'right' : 'left';

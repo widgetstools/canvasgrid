@@ -601,6 +601,24 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       } else {
         s.pendingFlashes.set(rowId, changed);
       }
+      // 2026-08 look-and-feel — capture the SIGN of each numeric change.
+      // The direction of a tick is the most-read signal on a blotter and
+      // the paint carried one colour for both. Non-numeric changes (and
+      // NaN either side) stage no direction and keep the neutral flash.
+      const oldRec = oldRow as Record<string, unknown>;
+      const newRec = newRow as Record<string, unknown>;
+      let dirs: Map<string, 1 | 2> | undefined;
+      for (const f of changed) {
+        const before = Number(oldRec[f]);
+        const after = Number(newRec[f]);
+        if (!Number.isFinite(before) || !Number.isFinite(after) || before === after) continue;
+        (dirs ??= new Map()).set(f, after > before ? 1 : 2);
+      }
+      if (dirs) {
+        const prior = s.pendingFlashDirs.get(rowId);
+        if (prior) for (const [f, d] of dirs) prior.set(f, d);
+        else s.pendingFlashDirs.set(rowId, dirs);
+      }
     }
   }
 
@@ -773,6 +791,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       nextPostSortRowsCallId: 1,
       enableCellChangeFlash: payload.enableCellChangeFlash === true,
       pendingFlashes: new Map(),
+      pendingFlashDirs: new Map(),
       // Damage-region rendering (Task 3) — see workerState.ts doc comment.
       pendingTouched: new Set(),
       // Cycle 15 / Task 10 — captured at init; threaded into

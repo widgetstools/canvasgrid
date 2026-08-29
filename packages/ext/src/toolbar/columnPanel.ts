@@ -392,7 +392,7 @@ const COL_CSS = `
 }
 .vgext-col-row {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  padding: 5px 4px; border-radius: var(--vg-radius, 6px);
+  padding: 5px 4px; border-radius: var(--vg-radius, 2px);
 }
 .vgext-col-row:hover { background: var(--vg-row-alt-bg, rgba(255,255,255,0.05)); }
 .vgext-col-label { font-size: 12px; color: var(--vg-fg-color, #e5e9f0); }
@@ -417,7 +417,7 @@ const COL_CSS = `
 .vgext-col-switch:focus-visible { outline: 2px solid var(--vg-chrome-accent); outline-offset: 1px; }
 .vgext-col-seg { display: inline-flex; gap: 2px; }
 .vgext-col-seg > button {
-  appearance: none; height: 22px; padding: 0 8px; border-radius: var(--vg-radius, 5px);
+  appearance: none; height: 22px; padding: 0 8px; border-radius: var(--vg-radius, 2px);
   border: 1px solid var(--vg-border-color, #2a3140); background: transparent;
   color: var(--vg-muted-fg-color, #9aa4b6); font: inherit; font-size: 11.5px; cursor: pointer;
 }

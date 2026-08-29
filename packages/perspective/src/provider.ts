@@ -120,6 +120,8 @@ export interface AttachableGrid {
   setSsrmExpressionOutputs?(ids: readonly string[]): void;
   /** Register this provider as the grid's SSRM ExprTK host. */
   setSsrmExpressionHost?(host: unknown | null): void;
+  /** Publish host-computed grand totals (sparse SSRM, keyed by field). */
+  setServerSideGrandTotals?(totals: Record<string, unknown> | null): void;
 }
 
 // ─── page-level book sharing ───────────────────────────────────────────────
@@ -475,6 +477,24 @@ export class StompPerspectiveProvider implements IServerSideDatasourceV2<Positio
       // `rowsChanged` before a soft-refresh hydrate can race the strip cache.
       if (tick.updates.length > 0) {
         try { grid.applyServerSideTransaction({ update: tick.updates }); } catch { /* grid tearing down */ }
+      }
+      // Flat views: publish the grand totals this tick already computed.
+      //
+      // `emitViewTick` awaits `fetchGrandTotal` for every ungrouped view and
+      // ships the result on the tick — but nothing consumed it, so a flat
+      // leader tick (which takes the cheap patch path above, with
+      // `refreshSsrm: false`) never re-issued `getRows` and never refreshed
+      // the totals. Rows ticked; the pinned grand-total row painted its
+      // first value forever.
+      //
+      // Grouped views are skipped deliberately: their tick carries a
+      // placeholder (`emptyGrandTotalRow()`) and the real aggregates come
+      // from the skeleton root on the soft refresh below — pushing the
+      // placeholder here would blank them.
+      if (tick.totals && grid.getRowGroupColumns().length === 0) {
+        try {
+          grid.setServerSideGrandTotals?.(tick.totals as unknown as Record<string, unknown>);
+        } catch { /* grid tearing down */ }
       }
       // Soft-refresh group aggregates / ExprTK outputs when asked.
       if (tick.refreshSsrm) {

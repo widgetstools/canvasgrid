@@ -65,12 +65,28 @@ function ensureBadgeStyles(): void {
   display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
   padding-bottom: 6px; border-bottom: 1px solid var(--vg-border-color, #2a3140);
 }
-.vgext-alert-pop-head strong { flex: 1; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.vgext-alert-pop-head strong { flex: 1; font-size: var(--vgext-eyebrow-size, 11px); font-weight: var(--vgext-eyebrow-weight, 600); letter-spacing: var(--vgext-eyebrow-track, 0.1em); text-transform: uppercase; }
 .vgext-alert-pop-head button {
   background: transparent; border: none; color: var(--vg-muted-fg-color, #8a93a6);
   font: inherit; font-size: 11px; cursor: pointer; padding: 2px 4px;
 }
 .vgext-alert-pop-head button:hover { color: var(--vg-fg-color, #e5e9f0); }
+/* Was inline style attributes — unreachable by any theme or audit. */
+.vgext-alert-pop-empty {
+  padding: var(--vgext-space-3, 12px) var(--vgext-space-1, 4px);
+  text-align: center;
+  color: var(--vg-muted-fg-color, #8b93a7);
+  font-size: var(--vgext-help-size, 11px);
+}
+.vgext-alert-toast-sev {
+  display: block;
+  margin-bottom: 2px;
+  font-size: var(--vgext-eyebrow-size, 11px);
+  font-weight: var(--vgext-eyebrow-weight, 600);
+  letter-spacing: var(--vgext-eyebrow-track, 0.1em);
+  text-transform: uppercase;
+  color: var(--vg-muted-fg-color, #8b93a7);
+}
 .vgext-alert-item {
   display: grid; grid-template-columns: 4px 1fr; gap: 8px;
   padding: 6px 4px; border-radius: 4px;
@@ -98,7 +114,7 @@ function showToast(alert: AlertEvent): void {
   const toast = document.createElement('div');
   toast.className = 'vgext-alert-toast';
   toast.style.borderLeftColor = SEVERITY_TONE[alert.severity];
-  toast.innerHTML = `<strong style="display:block;margin-bottom:2px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;opacity:.7">${alert.severity}</strong>${escapeHtml(alert.message)}`;
+  toast.innerHTML = `<strong class="vgext-alert-toast-sev">${alert.severity}</strong>${escapeHtml(alert.message)}`;
   host.appendChild(toast);
   window.setTimeout(() => {
     toast.style.opacity = '0';
@@ -175,7 +191,7 @@ export function alertsBadgeItem(): ToolbarItem {
         pop.appendChild(head);
         if (history.length === 0) {
           const empty = document.createElement('div');
-          empty.style.cssText = 'opacity:.55;padding:12px 4px;text-align:center;';
+          empty.className = 'vgext-alert-pop-empty';
           empty.textContent = 'No alerts this session.';
           pop.appendChild(empty);
           return;

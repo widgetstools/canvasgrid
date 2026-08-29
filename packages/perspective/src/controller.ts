@@ -89,6 +89,10 @@ export class PerspectiveDataProviderController {
   private unregState: (() => void) | null = null;
   private activateChain: Promise<void> = Promise.resolve();
   private activateEpoch = 0;
+  /** Extra telemetry sinks (UI panels), alongside the constructor callback. */
+  private readonly telemetrySubs = new Set<(t: BookTelemetry) => void>();
+  /** Last frame seen, so a panel mounting mid-feed paints immediately. */
+  private lastTelemetry: BookTelemetry | null = null;
   /** Survives provider destroy/rebind so calculated columns stay attached. */
   private expressionsByProvider = new Map<string, Record<string, string>>();
   private exprMetaByProvider = new Map<string, Record<string, ExpressionColumnMeta>>();
@@ -103,6 +107,29 @@ export class PerspectiveDataProviderController {
   /** Hub options for the editor popout's Diagnostics session (C-m12). */
   getHubOpts(): ProviderClientOptions | undefined {
     return this.hubOpts ? { ...this.hubOpts } : undefined;
+  }
+
+  /**
+   * Subscribe an extra telemetry sink. Additive to the `onTelemetry`
+   * constructor option, which keeps firing exactly as before — this exists so
+   * UI (the Data settings panel) can show feed state without the host app
+   * having to give up its own callback.
+   *
+   * Fires immediately with the last frame if one has already arrived, so a
+   * panel mounted mid-feed paints without waiting for the next tick.
+   * Returns an unsubscribe.
+   */
+  subscribeTelemetry(fn: (t: BookTelemetry) => void): () => void {
+    this.telemetrySubs.add(fn);
+    if (this.lastTelemetry) {
+      try { fn(this.lastTelemetry); } catch { /* ignore */ }
+    }
+    return () => { this.telemetrySubs.delete(fn); };
+  }
+
+  /** Most recent telemetry frame, or null before the first one. */
+  getTelemetry(): BookTelemetry | null {
+    return this.lastTelemetry;
   }
 
   /** Resolve the controller bound to a grid (from Ext calculated-columns etc.). */
@@ -288,7 +315,16 @@ export class PerspectiveDataProviderController {
     const mapped = dataProviderConfigToPerspective(entry);
     const cfg: StompPerspectiveProviderConfig = {
       ...mapped,
-      onTelemetry: this.onTelemetry,
+      // Fan out to the constructor callback AND to anything that registered
+      // via `subscribeTelemetry` (the Data settings panel, for one), so the
+      // app's own telemetry sink stays exactly as it was.
+      onTelemetry: (t) => {
+        this.lastTelemetry = t;
+        try { this.onTelemetry?.(t); } catch { /* app sink must not break the feed */ }
+        for (const fn of this.telemetrySubs) {
+          try { fn(t); } catch { /* one bad subscriber must not starve the rest */ }
+        }
+      },
     };
     const provider = new StompPerspectiveProvider(cfg);
     if (epoch !== this.activateEpoch) {

@@ -85,7 +85,8 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx, mode?: 'layer
   // border pass below overpaints the body-side edge with `pinnedRowBorder`
   // so the transition between the pinned stack and the scrollable body
   // reads as a single deliberate hairline.
-  gc.cache.fillStyle = theme.gridLineColor;
+  gc.cache.fillStyle = (theme.gridLineH ?? theme.gridLineColor);
+  let horizFill = (theme.gridLineH ?? theme.gridLineColor);
   for (const row of vs.visibleRows) {
     // Task 4 — region filter: the layer pass draws data-row gridlines
     // only; the chrome pass draws header/pinned (+totals, skipped below)
@@ -104,6 +105,15 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx, mode?: 'layer
       continue; // totals/footer skip the per-row gridline (totals draws its own border below)
     }
     const y = Math.round(row.bottom) - 1;
+    // A rule inside the header band is a header boundary and is drawn
+    // harder than the body's reading rhythm.
+    const want = row.subgrid.isHeader
+      ? (theme.gridLineHeader ?? theme.gridLineColor)
+      : (theme.gridLineH ?? theme.gridLineColor);
+    if (want !== horizFill) {
+      gc.cache.fillStyle = want;
+      horizFill = want;
+    }
     const sg = row.subgrid as { getGroupIdAt?: (colId: string) => string | null };
     if (row.subgrid.isHeader && typeof sg.getGroupIdAt === 'function') {
       const getGroupIdAt = sg.getGroupIdAt.bind(sg);
@@ -191,43 +201,58 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx, mode?: 'layer
   // down — no group-header divergence applies to data rows, so an empty
   // `groupHeaderRows` list makes `verticalTopForPair` fall through to its
   // `leafHeaderTop` fallback, which is `vs.bodyTop` in this branch).
-  const vertTop = dataOnly ? vs.bodyTop : leafHeaderTop;
-  const vertGroupHeaderRows = dataOnly ? [] : groupHeaderRows;
-  const vertBottom = chromeOnly ? vs.bodyTop : lastRowBottom;
+  const paintVerticals = (
+    color: string,
+    top: number,
+    bottom: number,
+    ghr: GroupHeaderRowRef[],
+  ): void => {
+    if (bottom <= top) return;
+    paintVerticalsInBand(gc, leftPinned, 0, vs.bodyLeft, top, bottom, color, ghr);
+    paintVerticalsInBand(gc, center, vs.bodyLeft, vs.bodyRight, top, bottom, color, ghr);
+    paintVerticalsInBand(gc, rightPinned, vs.bodyRight, rightEdge, top, bottom, color, ghr);
+  };
+  // Header segment — only the chrome pass (or a combined pass) draws it.
+  if (!dataOnly) paintVerticals(theme.gridLineHeader ?? theme.gridLineColor, leafHeaderTop, vs.bodyTop, groupHeaderRows);
+  // Data segment — only the layer pass (or a combined pass) draws it. An
+  // empty groupHeaderRows makes verticalTopForPair fall through to the
+  // leafHeaderTop argument, which is vs.bodyTop here — the same top the
+  // dataOnly branch used before.
+  if (!chromeOnly) paintVerticals(theme.gridLineV ?? theme.gridLineColor, vs.bodyTop, lastRowBottom, []);
 
-  paintVerticalsInBand(gc, leftPinned, 0, vs.bodyLeft, vertTop, vertBottom, theme.gridLineColor, vertGroupHeaderRows);
-  paintVerticalsInBand(gc, center, vs.bodyLeft, vs.bodyRight, vertTop, vertBottom, theme.gridLineColor, vertGroupHeaderRows);
-  paintVerticalsInBand(gc, rightPinned, vs.bodyRight, rightEdge, vertTop, vertBottom, theme.gridLineColor, vertGroupHeaderRows);
-
-  // Pinned-band edges — heavier line via theme.borderColor. Same chrome/
-  // layer split as verticals above, but the edge always starts at
-  // absolute 0 on the chrome side (not `leafHeaderTop` — this line has no
-  // per-pair divergence math, it always ran from the canvas top).
+  // Pinned-band edges — the lattice's strong rung (`gridLineStrong`), which
+  // is the structural weight inside the data plane; it was `borderColor`,
+  // the chrome's panel-edge colour, and the two are no longer the same
+  // value. Same chrome/layer split as verticals above, but the edge always
+  // starts at absolute 0 on the chrome side (not `leafHeaderTop` — this
+  // line has no per-pair divergence math, it always ran from the canvas top).
   const edgeTop = dataOnly ? vs.bodyTop : 0;
+  const vertBottom = chromeOnly ? vs.bodyTop : lastRowBottom;
   if (leftPinned.length > 0) {
-    gc.cache.fillStyle = theme.borderColor;
+    gc.cache.fillStyle = theme.gridLineStrong ?? theme.borderColor;
     gc.fillRect(Math.round(vs.bodyLeft) - 1, edgeTop, 1, vertBottom - edgeTop);
   }
   if (rightPinned.length > 0) {
-    gc.cache.fillStyle = theme.borderColor;
+    gc.cache.fillStyle = theme.gridLineStrong ?? theme.borderColor;
     gc.fillRect(Math.round(vs.bodyRight), edgeTop, 1, vertBottom - edgeTop);
   }
 
   // Subgrid separator — header→body. The leaf-header bottom already paints a
-  // gridLineColor horizontal above; this overlays a slightly heavier borderColor
-  // line at exactly bodyTop - 1 so the transition reads clearly.
+  // gridLineHeader horizontal above; this overlays the same weight at exactly
+  // bodyTop - 1 so the seam where configuration ends and data begins reads as
+  // one deliberate line.
   // Task 4 — chrome-only (sits entirely above bodyTop, the header/body seam).
   if (!dataOnly && vs.bodyTop > 0) {
-    gc.cache.fillStyle = theme.borderColor;
+    gc.cache.fillStyle = theme.gridLineHeader ?? theme.borderColor;
     gc.fillRect(0, Math.round(vs.bodyTop) - 1, rightEdge, 1);
   }
 
   // Header→floating-filter separator. The header row's horizontal gridline
-  // already lands at floatingFilterRowTop - 1 (gridLineColor); overpaint with
-  // borderColor so the transition reads as a deliberate divider, mirroring
-  // the header→body separator at bodyTop above. Task 4 — chrome-only.
+  // already lands at floatingFilterRowTop - 1; overpaint with gridLineHeader
+  // so the transition reads as a deliberate divider, mirroring the
+  // header→body separator at bodyTop above. Task 4 — chrome-only.
   if (!dataOnly && vs.floatingFilterRowTop !== undefined && vs.floatingFilterRowTop > 0) {
-    gc.cache.fillStyle = theme.borderColor;
+    gc.cache.fillStyle = theme.gridLineHeader ?? theme.borderColor;
     gc.fillRect(0, Math.round(vs.floatingFilterRowTop) - 1, rightEdge, 1);
   }
 

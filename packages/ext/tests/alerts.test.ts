@@ -19,7 +19,10 @@ describe('alertsModule', () => {
     ext.openSettings('alerts');
     expect(host.querySelector('.vgext-sheet-title')?.textContent).toBe('Alerts');
     expect(host.textContent).toContain('Alert rules');
-    expect(host.textContent).toContain('Global settings');
+    // Band is titled 'Global' — the bespoke 'Global settings' collapsible it
+    // replaced went away when this module moved onto the shared band()
+    // primitive (f2814b13), and the assertion was left behind.
+    expect(host.textContent).toContain('Global');
     ext.destroy();
     host.remove();
   });

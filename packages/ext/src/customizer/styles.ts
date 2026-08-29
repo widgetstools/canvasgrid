@@ -34,18 +34,26 @@ export const chromeBase = css`
 export const bandStyles = css`
   :host {
     display: block;
-    border-bottom: 1px solid color-mix(in srgb, var(--vg-border-color) 60%, transparent);
+  }
+  :host(:not(:first-child)) {
+    margin-top: 10px;
   }
   .header {
+    /* 2026-08 look-and-feel — 16px gutter and a ground of its own. The
+     * band header sat on a 10px gutter while its rows sat on 16px, so the
+     * section title and the field labels under it started on different
+     * left edges. A section is now visible without reading it. */
     display: flex;
     align-items: center;
     gap: 6px;
     width: 100%;
-    padding: 8px 10px 6px;
+    height: 28px;
+    padding: 0 16px;
+    background: transparent;
     font-family: var(--vg-font-family);
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.1em;
+    font-size: var(--vgext-eyebrow-size, 11px);
+    font-weight: var(--vgext-eyebrow-weight, 600);
+    letter-spacing: var(--vgext-eyebrow-track, 0.1em);
     text-transform: uppercase;
     color: color-mix(in srgb, var(--vg-fg-color) 62%, transparent);
     background: transparent;
@@ -86,10 +94,13 @@ export const rowStyles = css`
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px 14px;
     align-items: center;
-    padding: 9px 16px;
+    /* No per-row divider — see the note on .vg-settings-row, which this
+     * file deliberately clones. Sections are grouped by space. */
+    padding: 7px 16px;
+    min-height: 40px;
     margin: 0;
-    border-bottom: 1px solid color-mix(in srgb, var(--vg-border-color) 70%, transparent);
-    transition: background 120ms ease, border-color 120ms ease;
+    box-sizing: border-box;
+    transition: background 120ms ease;
   }
   :host(:hover) {
     background: var(--vg-row-hover-bg);
@@ -102,7 +113,9 @@ export const rowStyles = css`
     flex-direction: column;
     gap: 2px;
     min-width: 0;
-    padding-left: 10px;
+    /* Was 10px, which put the label 26px in while its band header sat at
+     * 10px and the row edge at 16px — three left edges in one panel. */
+    padding-left: 0;
   }
   .label-text {
     font-size: 12.5px;
@@ -121,7 +134,8 @@ export const rowStyles = css`
     line-height: 1.45;
     letter-spacing: 0;
     text-transform: none;
-    color: color-mix(in srgb, var(--vg-fg-color) 50%, transparent);
+    /* 50% of fg measured under AA for a line that has to be read. */
+    color: color-mix(in srgb, var(--vg-fg-color) 62%, transparent);
   }
   .control {
     min-height: 28px;
@@ -181,27 +195,41 @@ export const switchStyles = css`
 
 /** Text-ish inputs (select / number) — mirrors .vg-settings-input*. */
 export const inputStyles = css`
+  /* 2026-08 look-and-feel — these measured ~22px against a 28px product.
+   * They now stand on the same control rung as every other input in the
+   * chrome, with a border that identifies them as controls:
+   * --vg-line-control clears WCAG 1.4.11's 3:1 for a UI component
+   * boundary, where --vg-border-color measured 1.09:1 against its own
+   * fill — the edge that identifies a control did not identify it. */
   select,
   input {
-    padding: 3px 6px;
-    font-size: var(--vg-font-size-sm);
-    color: var(--vg-fg-color);
-    background: color-mix(in srgb, var(--vg-fg-color) 5%, transparent);
-    border: 1px solid var(--vg-border-color);
-    border-radius: 2px;
+    height: 28px;
+    box-sizing: border-box;
+    padding: 0 10px;
+    font-size: 12px;
+    color: var(--vg-input-fg, var(--vg-fg-color));
+    background: var(--vg-input-bg, color-mix(in srgb, var(--vg-fg-color) 5%, transparent));
+    border: 1px solid var(--vg-line-control, var(--vg-border-color));
+    border-radius: var(--vg-radius, 2px);
     outline: none;
   }
   select:focus,
   input:focus {
     border-color: var(--cgc-accent);
   }
+  select:focus-visible,
+  input:focus-visible {
+    outline: 2px solid var(--cgc-accent);
+    outline-offset: 1px;
+  }
   select {
-    max-width: 130px;
+    min-width: 140px;
+    max-width: 100%;
     font-family: inherit;
     cursor: pointer;
   }
   input[type='number'] {
-    width: 72px;
+    width: 80px;
     font-family: var(--vg-cell-font-family);
     text-align: right;
   }

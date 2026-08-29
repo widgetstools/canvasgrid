@@ -36,12 +36,20 @@ describe('vguiRowCss', () => {
       control: 'ckp-row-control',
     });
     expect(css).toContain('grid-template-columns:');
-    expect(css).toContain('padding-left: 10px');
     expect(css).toContain('min-height: 28px');
     expect(css).toContain('font-size: 12.5px');
     expect(css).toContain('font-weight: 500');
     expect(css).toContain('text-transform: none');
     expect(css).not.toContain(RETIRED_HARDCODED_BLUE);
+    // The label used to be inset 10px inside a row already gutted at 16px,
+    // which put the section title, the field label and the row edge on
+    // three different left edges. Everything shares the row's gutter now.
+    expect(css).toContain('padding-left: 0');
+    // No per-row divider: a rule under every row turned a pane of a dozen
+    // fields into as many horizontal lines — the grammar of a properties
+    // dialog, where the lines group because nothing else does. The control
+    // column is on one vertical edge and the band groups; space carries it.
+    expect(css).not.toContain('border-bottom');
   });
 });
 

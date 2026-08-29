@@ -138,14 +138,9 @@ export function dataChangeHistoryModule(): SettingsModule {
           return;
         }
         const list = el('div', 'ckp-monitor-list');
-        list.style.cssText = 'display:flex;flex-direction:column;gap:6px;max-height:220px;overflow:auto;';
         for (const entry of entries) {
           const rowEl = el('div', 'ckp-monitor-row');
-          rowEl.style.cssText =
-            'display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:4px;' +
-            'background:var(--ckp-surface, transparent);';
           const text = el('div', 'ckp-monitor-text', entrySummary(entry));
-          text.style.cssText = 'flex:1;min-width:0;font-size:12px;line-height:1.35;';
           const undoBtn = el('button', 'ckp-mini', 'Undo') as HTMLButtonElement;
           undoBtn.type = 'button';
           undoBtn.title = 'Undo this entry and everything since';

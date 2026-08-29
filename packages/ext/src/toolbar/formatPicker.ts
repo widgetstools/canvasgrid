@@ -334,9 +334,9 @@ const FMT_CSS = `
   flex: 0 0 auto;
 }
 .vgext-fmt-caps {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
+  font-size: var(--vgext-eyebrow-size, 11px);
+  font-weight: var(--vgext-eyebrow-weight, 600);
+  letter-spacing: var(--vgext-eyebrow-track, 0.1em);
   text-transform: uppercase;
   color: color-mix(in srgb, var(--vg-muted-fg-color, #9aa4b6) 88%, transparent);
 }

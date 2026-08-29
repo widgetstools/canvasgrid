@@ -117,11 +117,23 @@ function mergeViewTicks(prev: ViewTickPayload, next: ViewTickPayload): ViewTickP
 function applyViewTick(payload: ViewTickPayload): void {
   const mount = blotters.get(payload.viewId);
   if (!mount) return;
-  // Grand totals now render kernel-natively (`grandTotalRow: 'pinnedBottom'`
-  // fed by the skeleton root / flat-load grandTotals) — no pinned-row push.
+  // Grand totals render kernel-natively (`grandTotalRow: 'pinnedBottom'`).
+  // Grouped views get them from the skeleton root on the soft refresh below.
+  // Flat views do NOT: this branch patches rows through a transaction and
+  // never re-issues `getRows`, so the `grandTotals` that ride a getRows
+  // reply never arrive again and the pinned row keeps painting its first
+  // value while the rows tick. The tick already carries freshly-computed
+  // totals (`fetchGrandTotal`) — push them.
   if (payload.refreshSsrm) {
     try { mount.grid.refreshServerSide({ purge: false }); } catch { /* swallow */ }
     return;
+  }
+  if (payload.totals && mount.grid.getRowGroupColumns().length === 0) {
+    try {
+      mount.grid.setServerSideGrandTotals(
+        payload.totals as unknown as Record<string, unknown>,
+      );
+    } catch { /* swallow */ }
   }
   if (payload.updates.length === 0) return;
   try {

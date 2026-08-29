@@ -215,6 +215,13 @@ export interface ViewportChunk {
   numericCols: Record<string, Float64Array>;
   textCols: Record<string, { offsets: Uint32Array; bytes: Uint8Array }>;
   flashMask?: Uint8Array;
+  /** 2026-08 look-and-feel — direction of each flashing cell, ONE BYTE per
+   *  cell in `flashMask`'s row-major bit order: 0 = neutral / unknown,
+   *  1 = the value rose, 2 = it fell. Present only when at least one
+   *  flashing cell in the window has a known direction, so a text-only or
+   *  `flashCells`-driven feed ships nothing extra and paints the neutral
+   *  colour it always did. */
+  flashDir?: Uint8Array;
   /** Damage-region rendering — window-relative indices of rows touched by
    *  transactions since the previous slice for this client. Structured-clone
    *  path (like stringRowIds). I3 fix — corrected semantics (commit

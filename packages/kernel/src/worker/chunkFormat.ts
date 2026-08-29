@@ -49,6 +49,10 @@
  *     len             = u32
  *     bytes           = Uint8Array (len)
  *
+ *   flashDir (if flag set — implies FLAG_FLASH_MASK):
+ *     len             = u32
+ *     bytes           = Uint8Array (len)   one byte per cell: 0 / 1 up / 2 down
+ *
  *   totals (if flag set):
  *     jsonLen         = u32
  *     json            = utf-8 bytes (JSON.stringify(totals))
@@ -80,6 +84,7 @@ const FLAG_TOTALS           = 1 << 1;
 const FLAG_GROUP_VALUE      = 1 << 2;
 const FLAG_GROUP_CHILD_CNT  = 1 << 3;
 const FLAG_IS_EXPANDED      = 1 << 4;
+const FLAG_FLASH_DIR        = 1 << 5;
 
 export function encodeText(strings: string[]): { offsets: Uint32Array; bytes: Uint8Array } {
   const encoded = strings.map((s) => encoder.encode(s ?? ''));
@@ -411,6 +416,7 @@ export function serializeChunk(
 
   let flags = 0;
   if (chunk.flashMask) flags |= FLAG_FLASH_MASK;
+  if (chunk.flashMask && chunk.flashDir) flags |= FLAG_FLASH_DIR;
   if (chunk.totals !== undefined) flags |= FLAG_TOTALS;
   if (version >= 2) {
     if (chunk.groupValue) flags |= FLAG_GROUP_VALUE;
@@ -444,6 +450,12 @@ export function serializeChunk(
     const mask = chunk.flashMask!;
     writeU32(w, mask.byteLength);
     writeTypedArray(w, mask);
+  }
+
+  if (flags & FLAG_FLASH_DIR) {
+    const dir = chunk.flashDir!;
+    writeU32(w, dir.byteLength);
+    writeTypedArray(w, dir);
   }
 
   if (flags & FLAG_TOTALS) {
@@ -530,6 +542,12 @@ export function deserializeChunk(bytes: Uint8Array): ViewportChunk {
     flashMask = readBytes(r, len);
   }
 
+  let flashDir: Uint8Array | undefined;
+  if (flags & FLAG_FLASH_DIR) {
+    const len = readU32(r);
+    flashDir = readBytes(r, len);
+  }
+
   let totals: Record<string, unknown> | undefined;
   if (flags & FLAG_TOTALS) {
     const len = readU32(r);
@@ -580,6 +598,7 @@ export function deserializeChunk(bytes: Uint8Array): ViewportChunk {
     isExpanded,
   };
   if (flashMask) out.flashMask = flashMask;
+  if (flashDir) out.flashDir = flashDir;
   if (totals !== undefined) out.totals = totals;
   return out;
 }
@@ -603,6 +622,7 @@ export function estimateChunkSize(
     size += 4 + tc.bytes.byteLength;
   }
   if (chunk.flashMask) size += 4 + chunk.flashMask.byteLength;
+  if (chunk.flashMask && chunk.flashDir) size += 4 + chunk.flashDir.byteLength;
   if (chunk.totals !== undefined) {
     size += 4 + encoder.encode(JSON.stringify(chunk.totals)).byteLength;
   }

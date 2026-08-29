@@ -164,7 +164,7 @@ export function shortcutsModule(): SettingsModule {
           const s = newShortcut();
           selectItem(s.id, true, s);
         });
-        head.append(caps('Shortcuts'), el('span', 'ckp-caps ckp-count', String(defs.length).padStart(2, '0')), add);
+        head.append(caps('Shortcuts'), el('span', 'ckp-caps ckp-count', String(defs.length)), add);
         rail.appendChild(head);
 
         for (const s of defs) {
@@ -173,9 +173,7 @@ export function shortcutsModule(): SettingsModule {
           const meta = el('div', 'ckp-hint lc',
             `${s.enabled ? 'on' : 'off'} · ${s.shortcutKey.toUpperCase()} → ${opGlyph(s.operation)}${s.shortcutValue}`
             + ` · ${s.scope.columnIds.length ? s.scope.columnIds.join(',') : 'all'}`);
-          meta.style.fontSize = '10px';
-          const wrap = el('div');
-          wrap.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;';
+          const wrap = el('div', 'ckp-stack');
           wrap.append(name, meta);
           const del = el('button', 'ckp-mini') as HTMLButtonElement;
           del.type = 'button';

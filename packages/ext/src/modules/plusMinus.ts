@@ -163,7 +163,7 @@ export function plusMinusModule(): SettingsModule {
           const n = newNudge();
           selectNudge(n.id, true, n);
         });
-        head.append(caps('Nudges'), el('span', 'ckp-caps ckp-count', String(nudges.length).padStart(2, '0')), add);
+        head.append(caps('Nudges'), el('span', 'ckp-caps ckp-count', String(nudges.length)), add);
         rail.appendChild(head);
 
         for (const n of nudges) {
@@ -173,9 +173,7 @@ export function plusMinusModule(): SettingsModule {
             `${n.enabled ? 'on' : 'off'} · ±${n.incrementStep}`
             + (n.decrementStep !== undefined && n.decrementStep !== n.incrementStep ? `/-${n.decrementStep}` : '')
             + ` · ${n.scope.columnIds.length ? n.scope.columnIds.join(',') : 'all'}`);
-          meta.style.fontSize = '10px';
-          const wrap = el('div');
-          wrap.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;';
+          const wrap = el('div', 'ckp-stack');
           wrap.append(name, meta);
           const del = el('button', 'ckp-mini') as HTMLButtonElement;
           del.type = 'button';

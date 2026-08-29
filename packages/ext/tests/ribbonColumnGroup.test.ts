@@ -15,7 +15,8 @@ describe('ribbon Column group wiring', () => {
   it('the Column dropdown + panel are wired', () => {
     expect(src.includes("dropdownBtn(I.settings, 'Column'")).toBe(true);
     expect(src.includes('columnPanelMenu')).toBe(true);
-    expect(src.includes("seg('', colOpen)")).toBe(true);
+    // Named, per the 2026-08 look-and-feel pass — it was seg('').
+    expect(src.includes("seg('Column', colOpen)")).toBe(true);
   });
 
   it('Borders and Icons use compact flyout triggers', () => {

@@ -93,15 +93,15 @@
   --vg-fg-color: #3B3B3B;
   --vg-bg-color: #FFFFFF;
   --vg-row-alt-bg: #FFFFFF;
-  --vg-header-bg: #F8F8F8;
+  --vg-header-bg: #F0F1F4;
   --vg-header-fg: #3B3B3B;
   /* panel.border / editorGroup.border #E5E5E5 — Cursor's uniform pane line.
    * Cell gridlines are ~5pp more opaque than that gray (~10% → ~15% black). */
-  --vg-border-color: #E5E5E5;
+  --vg-border-color: var(--vg-line-edge);
   --vg-grid-line-color: #D8D8D8;
   /* list.hoverBackground #F2F2F2 / list.activeSelectionBackground #E8E8E8. */
   --vg-row-hover-bg: #F2F2F2;
-  --vg-row-selected-bg: #E8E8E8;
+  --vg-row-selected-bg: rgb(39 120 193 / 12%);
   /* Accent — Cursor Light primary button / link:
    * button.background #2778C1, button.foreground #FCFCFC,
    * textLink.foreground #0064B0 (links stay on the same blue family). */
@@ -121,9 +121,9 @@
   --vg-range-fill-color: rgb(39 120 193 / 12%);
   --vg-range-border-color: rgb(39 120 193 / 55%);
   /* Totals / pinned — sideBar/editorWidget #F8F8F8 lift. */
-  --vg-totals-bg: #F8F8F8;
+  --vg-totals-bg: #EDEEF1;
   --vg-totals-fg: #3B3B3B;
-  --vg-totals-border-top: #E5E5E5;
+  --vg-totals-border-top: var(--vg-grid-line-strong);
   --vg-totals-fg-muted: #6E7681;
   --vg-totals-font-weight: 500;
   --vg-pinned-row-bg: #F8F8F8;
@@ -144,7 +144,7 @@
   /* Inputs — input.background #FFFFFF / input.border #CECECE. */
   --vg-input-bg: #FFFFFF;
   --vg-input-fg: #3B3B3B;
-  --vg-input-border: #CECECE;
+  --vg-input-border: var(--vg-line-control);
   --vg-input-focus-border: var(--vg-focus-ring-color);
   --vg-input-disabled-bg: #F8F8F8;
   /* Popups / tooltips — editorWidget.background #F8F8F8, border #E5E5E5. */
@@ -155,7 +155,7 @@
   --vg-checkbox-checked-fg: #FCFCFC;
   --vg-cell-horizontal-border-color: transparent;
   --vg-popup-bg: #FFFFFF;
-  --vg-popup-border: #E5E5E5;
+  --vg-popup-border: var(--vg-line-edge);
   --vg-menu-hover-bg: #F2F2F2;
   /* Scrollbar — Cursor Light scrollbarSlider (#141414 @ ~12/19/28%). */
   --vg-scrollbar-thumb: rgb(20 20 20 / 12%);
@@ -164,6 +164,23 @@
   --vg-scrollbar-track: transparent;
   --vg-scrollbar-firefox: #c9c9c9;
   --vg-cell-padding-x: 8px;
+
+  /* ── Line ladder (2026-08 look-and-feel pass) — see the dark block. ── */
+  --vg-line-divider: #CCCCCC;   /* 1.6:1 */
+  --vg-line-edge: #BCBCBC;      /* 1.9:1 */
+  --vg-chrome-bg: #F8F8F8;
+  --vg-line-header: #B3B3B3;    /* 2.1:1 */
+  --vg-line-control: #A7A7A7;   /* 2.4:1 */
+  --vg-grid-line-h: #D8D8D8;
+  --vg-grid-line-v: #DEDEDE;
+  --vg-grid-line-header: #D4D4D4;
+  --vg-grid-line-strong: #C0C0C0;
+  --vg-flash-up-from-color: rgb(22 128 80 / 20%);
+  --vg-flash-up-to-color: rgb(22 128 80 / 0%);
+  --vg-flash-down-from-color: rgb(200 40 84 / 20%);
+  --vg-flash-down-to-color: rgb(200 40 84 / 0%);
+  --vg-cell-text-font-family: var(--vg-font-family);
+  --vg-row-selected-edge: var(--vg-chrome-accent);
 }
 
 .vg-theme-quartz-dark,
@@ -181,17 +198,17 @@
    * cool-blue cast (~+3–5 on B) so chrome reads cooler than pure grey.
    * Base: editor #1F1F1F → #1E1F24; sideBar #181818 → #17191E. */
   --vg-fg-color: #CCCCCC;
-  --vg-bg-color: #1E1F24;
-  --vg-row-alt-bg: #1E1F24;
-  --vg-header-bg: #17191E;
+  --vg-bg-color: #1D1D22;
+  --vg-row-alt-bg: #1D1D22;
+  --vg-header-bg: #21242B;
   --vg-header-fg: #CCCCCC;
   /* panel.border nudged cool / editorGroup.border #FFFFFF17
    * (~9% white — Cursor's own inter-pane line). Gridlines +5pp opacity. */
-  --vg-border-color: #2A2C32;
+  --vg-border-color: var(--vg-line-edge);
   --vg-grid-line-color: rgb(255 255 255 / 14%);
   /* list.hover / list.inactiveSelection — cool-shifted. */
-  --vg-row-hover-bg: #2A2D33;
-  --vg-row-selected-bg: #363A43;
+  --vg-row-hover-bg: #282B30;
+  --vg-row-selected-bg: rgb(129 161 193 / 14%);
   /* Accent — Cursor Dark Anysphere primary button / link:
    * button.background #81A1C1, button.foreground #191c22,
    * textLink.foreground #81A1C1. (Not VS Code Modern #0078D4.) */
@@ -203,26 +220,26 @@
   --vg-flash-to-color: rgb(241 180 103 / 0%);
   --vg-resizer-hot-zone: 4px;
   --vg-scrollbar-thickness: 10px;
-  --vg-floating-filter-bg: #1E1F24;
-  --vg-floating-filter-border: #3A3D44;
+  --vg-floating-filter-bg: #1D1D22;
+  --vg-floating-filter-border: var(--vg-line-edge);
   --vg-floating-filter-placeholder: #989898;
   --vg-quick-filter-match-bg: rgb(241 180 103 / 20%);
   --vg-unsort-icon-color: #9D9D9D;
   --vg-range-fill-color: rgb(129 161 193 / 14%);
   --vg-range-border-color: rgb(129 161 193 / 55%);
   /* Totals / pinned — one step above the editor plane. */
-  --vg-totals-bg: #1F2126;
+  --vg-totals-bg: #24282F;
   --vg-totals-fg: #CCCCCC;
-  --vg-totals-border-top: #2A2C32;
+  --vg-totals-border-top: var(--vg-grid-line-strong);
   --vg-totals-fg-muted: #9D9D9D;
   --vg-totals-font-weight: 500;
-  --vg-pinned-row-bg: #1F2126;
+  --vg-pinned-row-bg: #24282F;
   --vg-pinned-row-fg: var(--vg-fg-color);
   --vg-pinned-row-border: var(--vg-totals-border-top);
   --vg-group-chevron-color: var(--vg-totals-fg-muted);
   --vg-group-count-color: var(--vg-totals-fg-muted);
   --vg-group-indent: 14px;
-  --vg-group-row-bg: #17191E;
+  --vg-group-row-bg: #23262E;
   --vg-group-checkbox-border-color: rgb(240 240 240 / 40%);
   --vg-group-checkbox-check-color: var(--vg-fg-color);
   --vg-group-checkbox-indeterminate-color: var(--vg-fg-color);
@@ -232,28 +249,59 @@
   --vg-group-footer-border-top: var(--vg-totals-border-top);
   --vg-group-footer-font-weight: var(--vg-totals-font-weight);
   /* Inputs — cool-shifted from #313131 / #3C3C3C. */
-  --vg-input-bg: #2F3239;
+  --vg-input-bg: #2D3036;
   --vg-input-fg: #CCCCCC;
-  --vg-input-border: #3A3D44;
+  --vg-input-border: var(--vg-line-control);
   --vg-input-focus-border: var(--vg-focus-ring-color);
-  --vg-input-disabled-bg: #292B31;
+  --vg-input-disabled-bg: #27292F;
   /* Popups / tooltips. */
-  --vg-tooltip-bg: #1F2126;
+  --vg-tooltip-bg: #1D1F24;
   --vg-tooltip-fg: #CCCCCC;
-  --vg-tooltip-border: #2A2C32;
+  --vg-tooltip-border: var(--vg-line-edge);
   --vg-checkbox-checked-bg: #81A1C1;
   --vg-checkbox-checked-fg: #191c22;
   --vg-cell-horizontal-border-color: transparent;
-  --vg-popup-bg: #1E1F24;
-  --vg-popup-border: #2A2C32;
-  --vg-menu-hover-bg: #2A2D33;
+  --vg-popup-bg: #1D1D22;
+  --vg-popup-border: var(--vg-line-edge);
+  --vg-menu-hover-bg: #282B30;
   /* Scrollbar — Cursor Dark scrollbarSlider (#F0F0F0 @ ~7/12/19%). */
   --vg-scrollbar-thumb: rgb(240 240 240 / 6.7%);
   --vg-scrollbar-thumb-hover: rgb(240 240 240 / 11.8%);
   --vg-scrollbar-thumb-active: rgb(240 240 240 / 19%);
   --vg-scrollbar-track: transparent;
-  --vg-scrollbar-firefox: #393B42;
+  --vg-scrollbar-firefox: #36383F;
   --vg-cell-padding-x: 8px;
+
+  /* ── Line ladder (2026-08 look-and-feel pass) ────────────────────────
+   * Four structural weights replacing the single --vg-border-color, which
+   * drew panel edges, dividers, popovers and control borders alike at
+   * 1.18:1 — below the threshold at which a 1px line is visible at all.
+   * Measured against --vg-bg-color #1E1F24. */
+  --vg-line-divider: #3F4044;   /* 1.6:1 — inside a surface: section rules   */
+  --vg-line-edge: #4A4B4F;      /* 1.9:1 — a surface's own outline           */
+  /* Chrome plane — toolbars, drawers, menus. Was --vg-header-bg, which
+   * now sits ABOVE the data so the header is not the same field as the
+   * configuration above it. */
+  --vg-chrome-bg: #16181D;
+  --vg-line-header: #515256;    /* 2.2:1 — the header/body seam              */
+  --vg-line-control: #595A5E;   /* 2.4:1 — a control's border                */
+  /* Grid lattice — two axes, two weights. The vertical sits one step under
+   * the horizontal so nine of them never out-shout twenty-five. */
+  --vg-grid-line-h: rgb(255 255 255 / 10%);
+  --vg-grid-line-v: rgb(255 255 255 / 9%);
+  --vg-grid-line-header: rgb(255 255 255 / 10%);
+  --vg-grid-line-strong: #55565B;
+  /* Directional flash — a rise and a fall are the most-read signal on a
+   * blotter and used to share one amber. Falls back to the legacy pair. */
+  --vg-flash-up-from-color: rgb(63 162 102 / 26%);
+  --vg-flash-up-to-color: rgb(63 162 102 / 0%);
+  --vg-flash-down-from-color: rgb(229 81 122 / 26%);
+  --vg-flash-down-to-color: rgb(229 81 122 / 0%);
+  /* Cells: monospace earns its place on ids and numbers; on words it only
+   * costs width. Text columns opt into the chrome family. */
+  --vg-cell-text-font-family: var(--vg-font-family);
+  /* Selection speaks the chrome's vocabulary: accent wash + accent edge. */
+  --vg-row-selected-edge: var(--vg-chrome-accent);
 }
 
 /* Cycle 24 / Task 5 — high-contrast theme. WCAG 2.1 AAA: ≥ 7:1 body
@@ -337,6 +385,23 @@
   --vg-scrollbar-track: #ffffff;
   --vg-scrollbar-firefox: #000000;
   --vg-cell-padding-x: 8px;
+
+  /* ── Line ladder — high contrast collapses to the single ink. ── */
+  --vg-line-divider: #000000;
+  --vg-chrome-bg: var(--vg-bg-color);
+  --vg-line-edge: #000000;
+  --vg-line-header: #000000;
+  --vg-line-control: #000000;
+  --vg-grid-line-h: #000000;
+  --vg-grid-line-v: #000000;
+  --vg-grid-line-header: #000000;
+  --vg-grid-line-strong: #000000;
+  --vg-flash-up-from-color: var(--vg-flash-from-color);
+  --vg-flash-up-to-color: var(--vg-flash-to-color);
+  --vg-flash-down-from-color: var(--vg-flash-from-color);
+  --vg-flash-down-to-color: var(--vg-flash-to-color);
+  --vg-cell-text-font-family: var(--vg-cell-font-family);
+  --vg-row-selected-edge: var(--vg-focus-ring-color);
 }
 .vg-theme-high-contrast { background-color: var(--vg-bg-color); }
 .vg-theme-high-contrast .vg-canvas { background-color: var(--vg-bg-color); }
@@ -412,6 +477,23 @@
   --vg-scrollbar-track: #000000;
   --vg-scrollbar-firefox: #ffffff;
   --vg-cell-padding-x: 8px;
+
+  /* ── Line ladder — high contrast collapses to the single ink. ── */
+  --vg-line-divider: #ffffff;
+  --vg-chrome-bg: var(--vg-bg-color);
+  --vg-line-edge: #ffffff;
+  --vg-line-header: #ffffff;
+  --vg-line-control: #ffffff;
+  --vg-grid-line-h: #ffffff;
+  --vg-grid-line-v: #ffffff;
+  --vg-grid-line-header: #ffffff;
+  --vg-grid-line-strong: #ffffff;
+  --vg-flash-up-from-color: var(--vg-flash-from-color);
+  --vg-flash-up-to-color: var(--vg-flash-to-color);
+  --vg-flash-down-from-color: var(--vg-flash-from-color);
+  --vg-flash-down-to-color: var(--vg-flash-to-color);
+  --vg-cell-text-font-family: var(--vg-cell-font-family);
+  --vg-row-selected-edge: var(--vg-focus-ring-color);
 }
 .vg-theme-high-contrast-dark { background-color: var(--vg-bg-color); }
 .vg-theme-high-contrast-dark .vg-canvas { background-color: var(--vg-bg-color); }
@@ -448,12 +530,17 @@
 .vg-theme-starui-dark,
 .vg-theme-cursor-dark {
   --vg-pos-color: #3FA266;
-  --vg-neg-color: #E34671;
+  /* Was #E34671, which measured 4.21:1 on the #1E1F24 data plane — under
+   * WCAG AA on the P&L column, the number read most often on the screen.
+   * Lifted 6% toward white: same hue, 4.53:1 on data and 4.85:1 on chrome.
+   * (--vg-pos-color already passes at 5.15:1; the light pair passes too.) */
+  --vg-neg-color: #E5517A;
 }
 .vg-theme-high-contrast,
 .vg-theme-auto {
   --vg-pos-color: #0d9488;
   --vg-neg-color: #e11d48;
+
 }
 .vg-theme-high-contrast-dark {
   --vg-pos-color: #2dd4bf;
@@ -548,7 +635,7 @@
 .vg-theme-high-contrast,
 .vg-theme-high-contrast-dark,
 .vg-theme-auto {
-  --vg-bg-secondary: var(--vg-header-bg);
+  --vg-bg-secondary: var(--vg-chrome-bg, var(--vg-header-bg));
   --vg-bg-tertiary: var(--vg-row-hover-bg);
   --vg-fg-secondary: var(--vg-totals-fg-muted);
   --vg-fg-tertiary: var(--vg-unsort-icon-color);
@@ -584,12 +671,12 @@
   --vg-fg-color: #3B3B3B;
   --vg-bg-color: #FFFFFF;
   --vg-row-alt-bg: #FFFFFF;
-  --vg-header-bg: #F8F8F8;
+  --vg-header-bg: #F0F1F4;
   --vg-header-fg: #3B3B3B;
-  --vg-border-color: #E5E5E5;
+  --vg-border-color: var(--vg-line-edge);
   --vg-grid-line-color: #D8D8D8;
   --vg-row-hover-bg: #F2F2F2;
-  --vg-row-selected-bg: #E8E8E8;
+  --vg-row-selected-bg: rgb(39 120 193 / 12%);
   --vg-chrome-accent: #2778C1;
   --vg-focus-ring-color: #2778C1;
   --vg-focus-ring-width: 1px;
@@ -604,9 +691,9 @@
   --vg-unsort-icon-color: #6E7681;
   --vg-range-fill-color: rgb(39 120 193 / 12%);
   --vg-range-border-color: rgb(39 120 193 / 55%);
-  --vg-totals-bg: #F8F8F8;
+  --vg-totals-bg: #EDEEF1;
   --vg-totals-fg: #3B3B3B;
-  --vg-totals-border-top: #E5E5E5;
+  --vg-totals-border-top: var(--vg-grid-line-strong);
   --vg-totals-fg-muted: #6E7681;
   --vg-totals-font-weight: 500;
   --vg-pinned-row-bg: #F8F8F8;
@@ -626,7 +713,7 @@
   --vg-group-footer-font-weight: var(--vg-totals-font-weight);
   --vg-input-bg: #FFFFFF;
   --vg-input-fg: #3B3B3B;
-  --vg-input-border: #CECECE;
+  --vg-input-border: var(--vg-line-control);
   --vg-input-focus-border: var(--vg-focus-ring-color);
   --vg-input-disabled-bg: #F8F8F8;
   --vg-tooltip-bg: #F8F8F8;
@@ -636,7 +723,7 @@
   --vg-checkbox-checked-fg: #FCFCFC;
   --vg-cell-horizontal-border-color: transparent;
   --vg-popup-bg: #FFFFFF;
-  --vg-popup-border: #E5E5E5;
+  --vg-popup-border: var(--vg-line-edge);
   --vg-menu-hover-bg: #F2F2F2;
   --vg-cell-padding-x: 8px;
   --vg-pos-color: #1F8A65;
@@ -646,6 +733,22 @@
   --vg-scrollbar-thumb-active: rgb(20 20 20 / 28%);
   --vg-scrollbar-track: transparent;
   --vg-scrollbar-firefox: #c9c9c9;
+  /* ── Line ladder (2026-08 look-and-feel pass) — see the dark block. ── */
+  --vg-line-divider: #CCCCCC;   /* 1.6:1 */
+  --vg-line-edge: #BCBCBC;      /* 1.9:1 */
+  --vg-line-header: #B3B3B3;    /* 2.1:1 */
+  --vg-line-control: #A7A7A7;   /* 2.4:1 */
+  --vg-grid-line-h: #D8D8D8;
+  --vg-grid-line-v: #DEDEDE;
+  --vg-grid-line-header: #D4D4D4;
+  --vg-grid-line-strong: #C0C0C0;
+  --vg-flash-up-from-color: rgb(22 128 80 / 20%);
+  --vg-flash-up-to-color: rgb(22 128 80 / 0%);
+  --vg-flash-down-from-color: rgb(200 40 84 / 20%);
+  --vg-flash-down-to-color: rgb(200 40 84 / 0%);
+  --vg-cell-text-font-family: var(--vg-font-family);
+  --vg-row-selected-edge: var(--vg-chrome-accent);
+  --vg-chrome-bg: #F8F8F8;
 }
 .vg-theme-auto {
   background-color: var(--vg-bg-color);
@@ -657,50 +760,68 @@
 @media (prefers-color-scheme: dark) {
   .vg-theme-auto {
     --vg-pos-color: #3FA266;
-    --vg-neg-color: #E34671;
+    /* AA lift — see the .vg-theme-*-dark block above. */
+    --vg-neg-color: #E5517A;
     --vg-fg-color: #CCCCCC;
-    --vg-bg-color: #1E1F24;
-    --vg-row-alt-bg: #1E1F24;
-    --vg-header-bg: #17191E;
+    --vg-bg-color: #1D1D22;
+    --vg-row-alt-bg: #1D1D22;
+    --vg-header-bg: #21242B;
     --vg-header-fg: #CCCCCC;
-    --vg-border-color: #2A2C32;
+    --vg-border-color: var(--vg-line-edge);
     --vg-grid-line-color: rgb(255 255 255 / 14%);
-    --vg-row-hover-bg: #2A2D33;
-    --vg-row-selected-bg: #363A43;
+    --vg-row-hover-bg: #282B30;
+    --vg-row-selected-bg: rgb(129 161 193 / 14%);
     --vg-chrome-accent: #81A1C1;
     --vg-focus-ring-color: #81A1C1;
     --vg-flash-from-color: rgb(241 180 103 / 28%);
     --vg-flash-to-color: rgb(241 180 103 / 0%);
-    --vg-floating-filter-bg: #1E1F24;
-    --vg-floating-filter-border: #3A3D44;
+    --vg-floating-filter-bg: #1D1D22;
+    --vg-floating-filter-border: var(--vg-line-edge);
     --vg-floating-filter-placeholder: #989898;
     --vg-quick-filter-match-bg: rgb(241 180 103 / 20%);
     --vg-unsort-icon-color: #9D9D9D;
     --vg-range-fill-color: rgb(129 161 193 / 14%);
     --vg-range-border-color: rgb(129 161 193 / 55%);
-    --vg-totals-bg: #1F2126;
+    --vg-totals-bg: #24282F;
     --vg-totals-fg: #CCCCCC;
-    --vg-totals-border-top: #2A2C32;
+    --vg-totals-border-top: var(--vg-grid-line-strong);
     --vg-totals-fg-muted: #9D9D9D;
-    --vg-pinned-row-bg: #1F2126;
-    --vg-group-row-bg: #17191E;
-    --vg-input-bg: #2F3239;
+    --vg-pinned-row-bg: #24282F;
+    --vg-group-row-bg: #23262E;
+    --vg-input-bg: #2D3036;
     --vg-input-fg: #CCCCCC;
-    --vg-input-border: #3A3D44;
-    --vg-input-disabled-bg: #292B31;
-    --vg-tooltip-bg: #1F2126;
+    --vg-input-border: var(--vg-line-control);
+    --vg-input-disabled-bg: #27292F;
+    --vg-tooltip-bg: #1D1F24;
     --vg-tooltip-fg: #CCCCCC;
-    --vg-tooltip-border: #2A2C32;
+    --vg-tooltip-border: var(--vg-line-edge);
     --vg-checkbox-checked-bg: #81A1C1;
     --vg-checkbox-checked-fg: #191c22;
-    --vg-popup-bg: #1E1F24;
-    --vg-popup-border: #2A2C32;
-    --vg-menu-hover-bg: #2A2D33;
+    --vg-popup-bg: #1D1D22;
+    --vg-popup-border: var(--vg-line-edge);
+    --vg-menu-hover-bg: #282B30;
     --vg-scrollbar-thumb: rgb(240 240 240 / 6.7%);
     --vg-scrollbar-thumb-hover: rgb(240 240 240 / 11.8%);
     --vg-scrollbar-thumb-active: rgb(240 240 240 / 19%);
     --vg-scrollbar-track: transparent;
-    --vg-scrollbar-firefox: #393B42;
+    --vg-scrollbar-firefox: #36383F;
+    /* ── Line ladder — mirrors the .vg-theme-*-dark block above. ── */
+    --vg-line-divider: #3F4044;
+    --vg-line-edge: #4A4B4F;
+    --vg-chrome-bg: #16181D;
+    --vg-line-header: #515256;
+    --vg-line-control: #595A5E;
+    --vg-grid-line-h: rgb(255 255 255 / 10%);
+    --vg-grid-line-v: rgb(255 255 255 / 9%);
+    --vg-grid-line-header: rgb(255 255 255 / 10%);
+    --vg-grid-line-strong: #55565B;
+    --vg-flash-up-from-color: rgb(63 162 102 / 26%);
+    --vg-flash-up-to-color: rgb(63 162 102 / 0%);
+    --vg-flash-down-from-color: rgb(229 81 122 / 26%);
+    --vg-flash-down-to-color: rgb(229 81 122 / 0%);
+    --vg-cell-text-font-family: var(--vg-font-family);
+    --vg-row-selected-edge: var(--vg-chrome-accent);
+
   }
 }
 
@@ -1210,17 +1331,18 @@
   border-right: 1px solid var(--vg-border-color);
 }
 .vg-side-bar-tabs {
-  /* Slim vertical tab strip (ag-grid style). Tabs are minimal: just
-   * the rotated label, no chunky chips. Background is darker; border
-   * separates from the panel. */
+  /* Slim vertical tab strip. 2026-08 look-and-feel: 40px square tabs on
+   * the same rail width the grid's own icon rail uses, so the strip has a
+   * rhythm. Sits on the chrome plane, which is now a step BELOW the data
+   * plane rather than sharing the header's ground. */
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 0;
-  width: 36px;
+  gap: 2px;
+  width: 40px;
   padding: 4px 0;
-  background: var(--vg-header-bg);
-  border-left: 1px solid var(--vg-border-color);
+  background: var(--vg-chrome-bg, var(--vg-header-bg));
+  border-left: 1px solid var(--vg-line-divider, var(--vg-border-color));
   flex: 0 0 auto;
 }
 .vg-side-bar[data-position="left"] .vg-side-bar-tabs {
@@ -1229,20 +1351,24 @@
 }
 .vg-side-bar[data-position="left"] .vg-side-bar-tab[aria-pressed="true"] {
   border-left: none;
-  border-right: 2px solid var(--vg-focus-ring-color);
+  border-right: 2px solid var(--vg-chrome-accent);
   padding-right: 0;
 }
 .vg-side-bar-tab {
-  /* Minimal vertical tab button — just the icon + rotated label on a
-   * slim background. No borders, no padding bloat. Subtle hover + active
-   * states to signal interactivity. Matches ag-grid's slim sidebar aesthetic. */
+  /* 2026-08 look-and-feel — a uniform 40px square. Height used to be
+   * `auto` around a `writing-mode: vertical-rl` label, so a tab was as
+   * tall as its name was long (Columns 88px, Filters 73px, Smart Edit 96px)
+   * and nothing in the strip aligned with anything. A tab strip is a list
+   * of equals; the name is not lost, it moves to the panel header at full
+   * size, horizontal, and stays on the button as its accessible name and
+   * tooltip. */
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 3px;
-  padding: 10px 0;
-  height: auto;
+  padding: 0;
+  height: 40px;
   background: transparent;
   color: color-mix(in srgb, var(--vg-fg-color) 75%, transparent);
   border: none;
@@ -1265,10 +1391,14 @@
 }
 .vg-side-bar-tab[aria-pressed="true"] {
   /* Full foreground text keeps the active tab the most prominent (inactive
-   * tabs sit at 75%); the grey chrome accent carries the marker + tint. */
+   * tabs sit at 75%). 2026-08 look-and-feel — the marker is the CHROME
+   * ACCENT, not the focus ring: focus and selection are different states,
+   * and borrowing the focus colour for selection meant neither could be
+   * read reliably. This is now the same accent wash + 2px accent edge a
+   * selected row, segment or menu entry gets. */
   color: var(--vg-fg-color);
-  border-left: 2px solid var(--vg-focus-ring-color);
-  background: color-mix(in srgb, var(--vg-focus-ring-color) 12%, transparent);
+  border-left: 2px solid var(--vg-chrome-accent);
+  background: color-mix(in srgb, var(--vg-chrome-accent) 14%, transparent);
 }
 .vg-side-bar-tab-icon {
   display: flex;
@@ -1280,16 +1410,47 @@
   opacity: 1;
 }
 .vg-side-bar-tab-label {
-  writing-mode: vertical-rl;
-  padding-block: 4px;
-  font-size: var(--vg-font-size-sm);
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  line-height: 1;
-  width: auto;
-  flex-shrink: 0;
+  /* 2026-08 look-and-feel — the only rotated text in the product, and it
+   * sized its own tab. The label stays in the DOM (it is the button's
+   * accessible name and the source of its tooltip) but is no longer
+   * painted: the panel header carries the name horizontally at full size.
+   * Clipped rather than `display: none` so screen readers still reach it. */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+/* The panel's own header — where the tab's name went. Mirrors the ext
+ * chrome's 40px command-bar rung and its one eyebrow spec. */
+.vg-side-bar-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 16px;
+  flex: 0 0 auto;
+  background: var(--vg-chrome-bg, var(--vg-header-bg));
+  border-bottom: 1px solid var(--vg-line-divider, var(--vg-border-color));
+  font-family: var(--vg-font-family);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vg-fg-color);
+}
+.vg-side-bar-panel-header-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .vg-side-bar-panel {
+  display: flex;
+  flex-direction: column;
   flex: 1 1 auto;
   min-width: var(--vg-side-bar-min-width, 200px);
   overflow: hidden;
@@ -2259,19 +2420,23 @@
   min-height: 0;
   overflow-y: auto;
 }
-.vg-settings-band {
-  border-bottom: 1px solid color-mix(in srgb, var(--vg-border-color) 60%, transparent);
-}
+.vg-settings-band { border-bottom: none; }
+.vg-settings-band + .vg-settings-band { margin-top: 10px; }
 .vg-settings-band-header {
   display: flex;
   align-items: center;
   gap: 6px;
   width: 100%;
-  padding: 8px 10px 6px;
+  /* 2026-08 look-and-feel — 16px gutter and a ground of its own. The band
+   * header sat on a 10px gutter while its rows sat on 16px, so the section
+   * title and the field labels beneath it started on different left edges. */
+  height: 28px;
+  padding: 0 16px;
+  background: transparent;
   font-family: var(--vg-font-family);
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: color-mix(in srgb, var(--vg-fg-color) 62%, transparent);
   background: transparent;
@@ -2317,10 +2482,16 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px 14px;
   align-items: center;
-  padding: 9px 16px;
+  /* 2026-08 look-and-feel — no per-row divider. A rule under every row
+   * turned a pane of a dozen fields into as many horizontal lines, which
+   * is the look of a properties dialog: the lines group because nothing
+   * else does. The control column already sits on one vertical edge and
+   * the band already groups, so space carries it. */
+  padding: 7px 16px;
+  min-height: 40px;
   margin: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--vg-border-color) 70%, transparent);
-  transition: background 120ms ease, border-color 120ms ease;
+  box-sizing: border-box;
+  transition: background 120ms ease;
 }
 .vg-settings-row:hover {
   background: var(--vg-row-hover-bg);
@@ -2328,12 +2499,39 @@
 .vg-settings-row[data-modified] {
   box-shadow: inset 2px 0 0 var(--vg-settings-accent);
 }
+/* Every control in a settings row joins the chrome's 28px rung and carries
+ * a border that identifies it as a control (--vg-line-control clears WCAG
+ * 1.4.11's 3:1 for a UI component boundary; --vg-input-border used to
+ * measure 1.09:1 against its own fill). */
+.vg-settings-row-control :where(input, select, textarea, button) {
+  min-height: 28px;
+  box-sizing: border-box;
+}
+.vg-settings-row-control :where(input[type="text"], input[type="number"], input[type="search"], select, textarea) {
+  padding: 0 10px;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--vg-input-fg, var(--vg-fg-color));
+  background: var(--vg-input-bg);
+  border: 1px solid var(--vg-line-control, var(--vg-input-border));
+  border-radius: var(--vg-radius, 2px);
+}
+.vg-settings-row-control :where(select) { min-width: 140px; }
+.vg-settings-row-control :where(input[type="number"]) {
+  width: 80px;
+  font-family: var(--vg-cell-font-family);
+  text-align: right;
+}
+.vg-settings-row-control :where(input[type="checkbox"]) { min-height: 0; }
 .vg-settings-row-label {
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
-  padding-left: 10px;
+  /* Was padding-left: 10px, which put the label 26px in while its band
+   * header sat at 10px and the row edge at 16px — three left edges in one
+   * panel. Everything now lines up on the row's own 16px gutter. */
+  padding-left: 0;
 }
 .vg-settings-row-label label {
   font-size: 12.5px;
@@ -3080,11 +3278,14 @@
   padding-top: 2px;
 }
 .vg-colgroups-cluster-eyebrow {
+  /* The one eyebrow spec: 11px / 600 / 0.1em. This rule was the last
+   * holdout at 0.08em, and 55% fg measured under AA for a label that has
+   * to be read. */
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--vg-fg-color) 55%, transparent);
+  color: color-mix(in srgb, var(--vg-fg-color) 66%, transparent);
   margin: 0 0 6px;
   user-select: none;
 }
@@ -4171,6 +4372,18 @@
   --vg-grid-line-color: #000000;
   --vg-selection-bg: transparent;
   --vg-border-color: #000000;
+  /* ── Line ladder — print collapses to the single ink. ── */
+  --vg-line-divider: #000000;
+  --vg-line-edge: #000000;
+  --vg-line-header: #000000;
+  --vg-line-control: #000000;
+  --vg-grid-line-h: #000000;
+  --vg-grid-line-v: #000000;
+  --vg-grid-line-header: #000000;
+  --vg-grid-line-strong: #000000;
+  --vg-chrome-bg: #ffffff;
+  --vg-cell-text-font-family: var(--vg-cell-font-family);
+  --vg-row-selected-edge: #000000;
 }
 
 /* `@media print` — strip any residual decoration that survives the          */

@@ -25,6 +25,8 @@
     "dev:ext-angular-ssrm": "npm run dev --prefix examples/cgrid-ext-angular-ssrm",
     "examples:install": "node scripts/install-example-apps.mjs",
     "dev:stomp": "node scripts/run-stomp.mjs",
+    "audit:ext-chrome": "node scripts/audit-ext-chrome.mjs",
+    "audit:ext-classes": "node scripts/audit-ext-classes.mjs",
     "dev:stomp-perspective": "concurrently -k -n broker,sample -c blue,green \"npm run dev:stomp\" \"wait-on tcp:8082 && npm run dev:perspective-ssrm-sample\"",
     "ext-demo:openfin": "node scripts/run-ext-openfin.mjs",
     "verify:demos": "node scripts/verify-demos.mjs",

@@ -55,6 +55,13 @@ export function menu(
     if (!panel) return;
     panel.remove(); panel = null;
     document.removeEventListener('pointerdown', onDoc, true);
+    // One open-state vocabulary for every menu trigger in the chrome: the
+    // anchor carries `.is-open` while its panel is mounted, so "this is the
+    // control that opened the thing you're looking at" reads the same way
+    // on the title bar, the ribbon and inside the drawer. Purely visual —
+    // no caller has to opt in, and `onOpenChange` is unaffected.
+    anchor.classList.remove('is-open');
+    anchor.setAttribute('aria-expanded', 'false');
     onOpenChange?.(false);
   };
   const onDoc = (e: PointerEvent) => {
@@ -109,6 +116,8 @@ export function menu(
     panel.style.setProperty('--vgext-menu-top', `${top}px`);
     panel.style.setProperty('--vgext-menu-left', `${left}px`);
     document.addEventListener('pointerdown', onDoc, true);
+    anchor.classList.add('is-open');
+    anchor.setAttribute('aria-expanded', 'true');
     onOpenChange?.(true);
   };
   return { toggle: () => (panel ? close() : open()), destroy: close };

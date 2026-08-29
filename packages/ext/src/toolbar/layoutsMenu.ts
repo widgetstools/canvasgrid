@@ -515,7 +515,7 @@ const LAYOUTS_CSS = `
 }
 .vgext-layouts-row {
   position: relative; display: flex; align-items: center; gap: 8px;
-  padding: 7px 8px; border-radius: var(--vg-radius, 7px); cursor: pointer;
+  padding: 7px 8px; border-radius: var(--vg-radius, 2px); cursor: pointer;
   color: var(--vg-fg-color, #e5e9f0); font-size: 12.5px;
 }
 .vgext-layouts-row:hover { background: var(--vg-row-alt-bg, rgba(255,255,255,0.06)); }
@@ -540,15 +540,15 @@ const LAYOUTS_CSS = `
 .vgext-layouts-row:focus-within .vgext-layouts-actions { visibility: visible; opacity: 1; }
 .vgext-layouts-act {
   appearance: none; border: none; background: transparent;
-  width: 24px; height: 24px; border-radius: var(--vg-radius, 6px);
+  width: var(--vgext-icon-btn, 28px); height: var(--vgext-icon-btn, 28px); border-radius: var(--vg-radius, 2px);
   display: inline-flex; align-items: center; justify-content: center;
   color: var(--vg-muted-fg-color, #9aa4b6); cursor: pointer;
 }
 .vgext-layouts-act:hover { background: var(--vg-row-alt-bg, rgba(255,255,255,0.08)); color: var(--vg-fg-color, #e5e9f0); }
 .vgext-layouts-act:focus-visible { outline: 2px solid var(--vg-chrome-accent); outline-offset: 1px; }
-.vgext-layouts-lock { width: 24px; display: inline-flex; justify-content: center; color: var(--vg-muted-fg-color, #9aa4b6); opacity: 0.7; }
+.vgext-layouts-lock { width: var(--vgext-icon-btn, 28px); display: inline-flex; justify-content: center; color: var(--vg-muted-fg-color, #9aa4b6); opacity: 0.7; }
 .vgext-layouts-rename {
-  flex: 1 1 auto; min-width: 0; height: 26px; padding: 0 8px;
+  flex: 1 1 auto; min-width: 0; height: var(--vgext-control-h, 28px); padding: 0 var(--vgext-field-px, 10px);
   border: 1px solid var(--vg-chrome-accent); border-radius: var(--vg-radius, 2px);
   background: var(--vg-control-bg, rgba(0,0,0,0.25));
   color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: 12px;
@@ -557,34 +557,43 @@ const LAYOUTS_CSS = `
 .vgext-layouts-rename.is-error, .vgext-layouts-new input.is-error { border-color: var(--vg-neg-color, #e2606c); }
 .vgext-layouts-error { margin: 6px 12px 0; font-size: 12px; color: var(--vg-neg-color, #e2606c); }
 .vgext-layouts-new {
-  display: flex; gap: 6px; padding: 10px 12px;
-  border-top: 1px solid var(--vg-border-color, #2a3140); margin-top: 6px;
+  display: flex; gap: var(--vgext-space-2, 8px); padding: var(--vgext-space-3, 12px) var(--vgext-space-4, 16px);
+  border-top: 1px solid var(--vg-border-color, #2a3140); margin-top: var(--vgext-space-1, 4px);
 }
 .vgext-layouts-new input {
-  flex: 1 1 auto; min-width: 0; height: 28px; padding: 0 9px;
+  flex: 1 1 auto; min-width: 0; height: var(--vgext-control-h, 28px); padding: 0 var(--vgext-field-px, 10px);
   border: 1px solid var(--vg-border-color, #2a3140); border-radius: var(--vg-radius, 2px);
   background: var(--vg-control-bg, rgba(0,0,0,0.25));
   color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: 12px;
 }
 .vgext-layouts-new input:focus { outline: none; border-color: var(--vg-chrome-accent); }
+/* Saving a new layout is the primary action of this popover, and it used
+ * to render identically to Export and Import — which were also the two
+ * widest controls in it. Save takes the Primary rung; Export and Import
+ * drop to Secondary and size to their content. */
 .vgext-layouts-savenew {
-  height: 28px; padding: 0 12px; white-space: nowrap;
-  border: 1px solid var(--vg-border-color, #2a3140); border-radius: var(--vg-radius, 7px);
-  background: var(--vg-control-bg, rgba(255,255,255,0.04));
-  color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: 12px; font-weight: 550;
-  cursor: pointer; transition: border-color 120ms ease;
+  height: var(--vgext-control-h, 28px); padding: 0 var(--vgext-control-px, 13px); white-space: nowrap;
+  border: 1px solid var(--vg-chrome-accent); border-radius: var(--vg-radius, 2px);
+  background: var(--vg-chrome-accent);
+  color: var(--vg-accent-fg, #ffffff); font: inherit; font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: filter var(--vgext-t, 120ms ease), opacity var(--vgext-t, 120ms ease);
 }
-.vgext-layouts-savenew:hover:not(:disabled) { border-color: var(--vg-chrome-accent); }
-.vgext-layouts-savenew:disabled { opacity: 0.45; cursor: default; }
-.vgext-layouts-foot { display: flex; gap: 8px; padding: 0 12px 12px; }
+.vgext-layouts-savenew:hover:not(:disabled) { filter: brightness(1.08); }
+.vgext-layouts-savenew:disabled {
+  opacity: 0.45; cursor: default; filter: none;
+  border-color: var(--vg-border-color, #2a3140);
+  background: transparent;
+  color: var(--vg-muted-fg-color, #9aa4b6);
+}
+.vgext-layouts-foot { display: flex; justify-content: flex-end; gap: var(--vgext-space-2, 8px); padding: 0 var(--vgext-space-4, 16px) var(--vgext-space-4, 16px); }
 .vgext-layouts-foot button {
-  flex: 1; height: 28px;
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  border: 1px solid var(--vg-border-color, #2a3140); border-radius: var(--vg-radius, 7px);
-  background: var(--vg-control-bg, rgba(255,255,255,0.04));
-  color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: 12px; font-weight: 550;
-  cursor: pointer; transition: border-color 120ms ease;
+  flex: 0 0 auto; height: var(--vgext-control-h, 28px); padding: 0 var(--vgext-control-px, 13px);
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--vgext-space-1, 4px);
+  border: 1px solid var(--vg-border-color, #2a3140); border-radius: var(--vg-radius, 2px);
+  background: transparent;
+  color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: 12px; font-weight: 500;
+  cursor: pointer; transition: border-color var(--vgext-t, 120ms ease), background var(--vgext-t, 120ms ease);
 }
-.vgext-layouts-foot button:hover { border-color: var(--vg-chrome-accent); }
+.vgext-layouts-foot button:hover { border-color: var(--vg-chrome-accent); background: var(--vg-row-hover-bg, rgba(255,255,255,0.06)); }
 .vgext-layouts-foot button svg { color: var(--vg-muted-fg-color, #9aa4b6); }
 `;

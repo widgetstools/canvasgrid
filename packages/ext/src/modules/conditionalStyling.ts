@@ -197,7 +197,7 @@ export function conditionalStylingModule(): SettingsModule {
         rail.replaceChildren();
         const head = el('div', 'ckp-rail-head');
         const title = caps('Rules');
-        const count = el('span', 'ckp-caps ckp-count', String(rules.length).padStart(2, '0'));
+        const count = el('span', 'ckp-caps ckp-count', String(rules.length));
         const add = el('button', 'ckp-addbtn', '+');
         add.type = 'button';
         add.title = 'Add rule';

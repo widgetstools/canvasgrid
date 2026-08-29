@@ -3,17 +3,22 @@
  * section bands, summary chips, checkboxes, pill groups, Lucide icon
  * tiles, settings rows. One injected stylesheet. Tab groups for Phase 4 IA.
  *
- * Two parallel primitive sets live here, undocumented until now:
- *  - Original (`switchToggle`/`ckp-switch`, `chip`, `row`, …) — the first
- *    generation of the kit, still driving most modules.
- *  - Enhanced (`switchToggleEnhanced`/`ckp-switch-enhanced`,
- *    `actionButtonEnhanced`, `resetButtonEnhanced`, `CKP_TOKENS_ENHANCED`,
- *    `vgui*CssEnhanced` generators) — the premium visual pass (Phase 1),
- *    purely additive alongside the original set.
- * Enhanced is the target design system; new/touched UI should use it.
- * Adoption is mixed — some files (e.g. `columnSettings.ts`) still render
- * with the original primitives and haven't been migrated. This is a
- * documentation note only; migrating existing callers is a separate task.
+ * Two parallel primitive sets live here — "original" (`chip`, `row`, …) and
+ * "enhanced" (`actionButtonEnhanced`, `CKP_TOKENS_ENHANCED`, the
+ * `vgui*CssEnhanced` generators). They are additive, and adoption across
+ * modules is still mixed; that is a documentation note, not a task.
+ *
+ * Booleans are NOT part of that split any more. `switchToggle` and
+ * `switchToggleEnhanced` both return the kernel's canonical
+ * `<input class="vg-checkbox">` — one element type, one paint, one set of
+ * semantics for a boolean everywhere in the drawer. The pill-switch
+ * rendering and its two stylesheet generators are gone; the legacy
+ * `.ckp-switch` / `.ckp-switch-enhanced` classes ride along on the input
+ * so existing selectors keep resolving.
+ *
+ * Every metric, type and colour value below derives from
+ * `./chromeTokens.ts`. `npm run audit:ext-chrome -- <demo-url>` measures the
+ * rendered result against that token set; a value not on the scale is a bug.
  */
 import { ColorPickerControl, parseColor, rgbaToString } from '@wellsfargo-starui/velocity-grid';
 import type { BandComplexity, TabDefinition, TabGroup } from './tabGroup';
@@ -35,11 +40,9 @@ import {
   vguiButtonCss,
   vguiChipCss,
   vguiTileCss,
-  vguiSwitchCss,
   type VguiTokens,
 } from '@wellsfargo-starui/velocity-grid/ui/primitives';
 import {
-  vguiSwitchCssEnhanced,
   vguiButtonCssEnhanced,
   vguiRowCssEnhanced,
   vguiInputCssEnhanced,
@@ -156,42 +159,47 @@ export function checkbox(checked: boolean, onChange: (v: boolean) => void): HTML
   return box;
 }
 
-/** Toggle switch — 36×20 pill with knob. Used in ext cockpit panes. */
-export function switchToggle(checked: boolean, onChange: (v: boolean) => void): HTMLElement {
-  const root = el('button', `ckp-switch${checked ? ' on' : ''}`) as HTMLButtonElement;
-  root.type = 'button';
-  root.setAttribute('aria-pressed', checked ? 'true' : 'false');
-  root.setAttribute('aria-label', checked ? 'On' : 'Off');
-  const knob = el('span', 'ckp-knob');
-  root.appendChild(knob);
-  root.addEventListener('click', (e) => {
-    e.preventDefault();
-    const newState = !checked;
-    checked = newState;
-    root.classList.toggle('on', newState);
-    root.setAttribute('aria-pressed', newState ? 'true' : 'false');
-    onChange(newState);
+/**
+ * Boolean control for ext cockpit panes.
+ *
+ * Returns the kernel's canonical `<input class="vg-checkbox">`. A boolean is
+ * one control with one element type and one paint across the whole drawer —
+ * the pill switch is retired.
+ *
+ * The legacy `.ckp-switch` class rides along so selectors that target it
+ * (`columnSettings.test.ts`, any consumer CSS) still resolve, and the
+ * `(checked, onChange)` signature is unchanged, so all 37 call sites and the
+ * `switchToggleEnhanced` alias below need no edit. `.click()` behaves as
+ * before; the semantics move from `aria-pressed` to the input's own
+ * `checked`, which is what a checkbox is supposed to expose.
+ */
+function canonicalCheckbox(
+  extraClass: string,
+  checked: boolean,
+  onChange: (v: boolean) => void,
+): HTMLElement {
+  const box = el('input', `vg-checkbox ${extraClass}${checked ? ' on' : ''}`) as HTMLInputElement;
+  box.type = 'checkbox';
+  box.checked = checked;
+  box.setAttribute('aria-label', checked ? 'On' : 'Off');
+  box.addEventListener('click', () => {
+    box.classList.toggle('on', box.checked);
+    box.setAttribute('aria-label', box.checked ? 'On' : 'Off');
+    onChange(box.checked);
   });
-  return root;
+  return box;
 }
 
-/** Enhanced toggle switch — 44×24px with premium visual design */
+export function switchToggle(checked: boolean, onChange: (v: boolean) => void): HTMLElement {
+  return canonicalCheckbox('ckp-switch', checked, onChange);
+}
+
+/**
+ * Deprecated alias of `switchToggle` — both render the canonical checkbox.
+ * Kept so the "enhanced" call sites need no edit; prefer `switchToggle`.
+ */
 export function switchToggleEnhanced(checked: boolean, onChange: (v: boolean) => void): HTMLElement {
-  const root = el('button', `ckp-switch-enhanced${checked ? ' on' : ''}`) as HTMLButtonElement;
-  root.type = 'button';
-  root.setAttribute('aria-pressed', checked ? 'true' : 'false');
-  root.setAttribute('aria-label', checked ? 'On' : 'Off');
-  const knob = el('span', 'ckp-knob');
-  root.appendChild(knob);
-  root.addEventListener('click', (e) => {
-    e.preventDefault();
-    const newState = !checked;
-    checked = newState;
-    root.classList.toggle('on', newState);
-    root.setAttribute('aria-pressed', newState ? 'true' : 'false');
-    onChange(newState);
-  });
-  return root;
+  return canonicalCheckbox('ckp-switch-enhanced', checked, onChange);
 }
 
 /** Segmented pill group (single select). */
@@ -543,14 +551,14 @@ export function injectCockpitStyles(): void {
   display: flex;
   flex-direction: column;
   grid-template-columns: unset;
-  padding: 16px 20px 24px;
+  padding: var(--vgext-space-4, 16px) var(--vgext-space-4, 16px) var(--vgext-space-5, 24px);
   overflow: hidden;
   gap: 0;
 }
 .ckp.ckp-flat > .ckp-pane-head {
   flex: 0 0 auto;
   margin-bottom: 0;
-  padding: 0 0 14px;
+  padding: 0 0 var(--vgext-space-3, 12px);
   background: transparent;
   z-index: 2;
 }
@@ -569,39 +577,54 @@ export function injectCockpitStyles(): void {
 .ckp * { box-sizing: border-box; }
 ${vguiCapsCss('.ckp-caps', CKP_TOKENS)}
 ${vguiCapsCss('.ckp-band-title', CKP_TOKENS)}
-${vguiSwitchCss({ root: 'ckp-switch', knob: 'ckp-knob', on: 'on' }, CKP_TOKENS)}
 ${vguiRowCss({ root: 'ckp-row', label: 'ckp-row-label', title: 'ckp-row-title', help: 'ckp-help', control: 'ckp-row-control', modified: 'is-modified' }, CKP_TOKENS, { labelCol: '210px' })}
 ${vguiButtonCss({ primary: 'ckp-btn-primary', secondary: 'ckp-btn-secondary', quiet: 'ckp-btn-quiet', danger: 'ckp-btn-danger' }, CKP_TOKENS)}
 ${vguiChipCss({ root: 'ckp-chip', key: 'ckp-chip-label', value: 'ckp-chip-value', positive: 'positive', warning: 'warning', negative: 'negative', info: 'info' }, CKP_TOKENS)}
 ${vguiTileCss({ root: 'ckp-tile', on: 'on' }, CKP_TOKENS)}
 .ckp-help, .ckp-hint {
-  font-size: 11px; letter-spacing: 0; color: var(--ckp-muted); margin-top: 2px;
+  font-size: var(--vgext-help-size, 11px); letter-spacing: 0; color: var(--ckp-muted); margin-top: 2px;
   line-height: 1.45; text-transform: none; font-weight: 400;
 }
 /* rail */
 .ckp-rail {
   border-right: 1px solid var(--ckp-border);
-  padding: 16px 14px 20px;
+  padding: var(--vgext-space-4, 16px);
   overflow-y: auto; min-height: 0;
   background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 1.5%, transparent);
 }
-.ckp-rail-head { display: flex; align-items: center; gap: 8px; padding: 0 4px 14px; }
+.ckp-rail-head { display: flex; align-items: center; gap: var(--vgext-space-2, 8px); padding: 0 0 var(--vgext-space-3, 12px); }
 .ckp-rail-head .ckp-caps { flex: 1 1 auto; color: var(--vg-fg-color, #e5e9f0); letter-spacing: 0.1em; }
+/* One counter grammar. GROUPS rendered "0" flush to its label, RULES a
+ * zero-padded "00" pushed away from it, and LAYOUTS right-aligned its count
+ * across the popover — three readings of the same idea. */
 .ckp-count {
-  font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 10.5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 var(--vgext-space-2, 8px);
+  border-radius: var(--vg-radius, 2px);
+  background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 10%, transparent);
+  font-family: var(--vg-cell-font-family, ui-monospace, Menlo, Consolas, monospace);
+  font-size: 10.5px; font-weight: 600;
   color: var(--ckp-muted); font-variant-numeric: tabular-nums;
 }
+/* The create affordance is a real 28px control, the same size as every
+ * other control in the drawer — it used to be a 22px glyph that the empty
+ * state had to point at in prose. */
 .ckp-addbtn {
-  width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center;
-  background: color-mix(in srgb, var(--ckp-accent) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--ckp-accent) 45%, transparent);
-  color: var(--ckp-accent); border-radius: var(--vg-radius, 2px);
-  font-size: 14px; line-height: 1; cursor: pointer; padding: 0;
-  transition: background 110ms ease, border-color 110ms ease;
+  width: var(--vgext-control-h, 28px); height: var(--vgext-control-h, 28px);
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent;
+  border: 1px solid var(--ckp-input-border);
+  color: var(--vg-fg-color, #e5e9f0); border-radius: var(--vg-radius, 2px);
+  font-size: 15px; line-height: 1; cursor: pointer; padding: 0;
+  transition: background var(--vgext-t, 120ms ease), border-color var(--vgext-t, 120ms ease);
 }
-.ckp-addbtn:hover { background: color-mix(in srgb, var(--ckp-accent) 20%, transparent); }
+.ckp-addbtn:hover {
+  background: var(--vg-row-hover-bg, color-mix(in srgb, var(--ckp-accent) 12%, transparent));
+  border-color: var(--ckp-accent);
+}
+.ckp-addbtn:focus-visible { outline: 2px solid var(--ckp-accent); outline-offset: -2px; }
 .ckp-rail-row {
-  display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin: 1px 0;
+  display: flex; align-items: center; gap: var(--vgext-space-2, 8px); min-height: var(--vgext-row-h, 30px); padding: 0 var(--vgext-space-2, 8px); margin: 1px 0;
   cursor: pointer; border-radius: var(--vg-radius, 2px);
   border: 1px solid transparent;
   transition: background 110ms ease, border-color 110ms ease;
@@ -629,18 +652,18 @@ ${vguiTileCss({ root: 'ckp-tile', on: 'on' }, CKP_TOKENS)}
 }
 .ckp-pane-head {
   flex: 0 0 auto;
-  display: flex; gap: 10px; align-items: center;
-  margin: 0; padding: 14px 20px 12px;
+  display: flex; gap: var(--vgext-space-2, 8px); align-items: center;
+  margin: 0; padding: var(--vgext-space-3, 12px) var(--vgext-space-4, 16px);
   border-bottom: 1px solid var(--ckp-border);
   background: color-mix(in srgb, var(--vg-bg-color, #12161e) 88%, var(--vg-fg-color, #e5e9f0) 6%);
   z-index: 2;
 }
 .ckp-pane-body {
   flex: 1 1 auto; min-height: 0;
-  overflow-y: auto; padding: 14px 20px 28px;
+  overflow-y: auto; padding: var(--vgext-space-4, 16px) var(--vgext-space-4, 16px) var(--vgext-space-5, 24px);
 }
 .ckp-title {
-  flex: 1 1 auto; font-size: 14px; font-weight: 600; letter-spacing: -0.015em;
+  flex: 1 1 auto; font-size: var(--vgext-title-size, 15px); font-weight: var(--vgext-title-weight, 600); letter-spacing: var(--vgext-title-track, -0.01em);
   color: var(--vg-fg-color, #e5e9f0);
 }
 /* chips strip */
@@ -654,20 +677,21 @@ ${vguiTileCss({ root: 'ckp-tile', on: 'on' }, CKP_TOKENS)}
 .ckp-controls-strip > * + .ckp-caps { margin-left: 10px; }
 /* bands */
 /* bands — chevron means collapse; head is the control */
+/* Sections are separated by space, not by a filled bar and a rule each. */
 .ckp-band { margin: 0; }
+.ckp-band + .ckp-band { margin-top: 10px; }
 .ckp-band-head {
   appearance: none;
   display: flex; gap: 8px; align-items: center;
   width: 100%;
-  height: 26px; padding: 0 16px; margin: 0;
-  background: var(--ckp-surface); border: none;
-  border-bottom: 1px solid var(--ckp-border);
+  height: 28px; padding: 0 16px; margin: 0;
+  background: transparent; border: none;
   color: inherit; font: inherit; text-align: left;
   cursor: pointer;
   overflow: visible;
-  transition: background 120ms ease;
+  transition: color 120ms ease;
 }
-.ckp-band-head:hover { background: var(--ckp-surface-2); }
+.ckp-band-head:hover .ckp-band-title { color: var(--vg-fg-color, #e5e9f0); }
 .ckp-band-head:hover .ckp-band-chevron { color: var(--vg-fg-color, #e5e9f0); }
 .ckp-band-head:focus-visible { outline: 2px solid var(--ckp-accent); outline-offset: -2px; }
 .ckp-band-chevron {
@@ -693,7 +717,7 @@ ${vguiTileCss({ root: 'ckp-tile', on: 'on' }, CKP_TOKENS)}
   transform: rotate(-90deg);
 }
 .ckp-band.is-collapsed .ckp-band-body { display: none; }
-.ckp-band-body { padding: 6px 0 10px; max-width: 560px; }
+.ckp-band-body { padding: 0 0 4px; max-width: 560px; }
 /* rows + inputs — control column is a single vertical edge */
 .ckp-row-control > .ckp-input:not(.ckp-num),
 .ckp-row-control > .ckp-select { width: 100%; max-width: 420px; }
@@ -806,10 +830,11 @@ ${vguiInputInteractionCss(['.ckp-input'], CKP_TOKENS)}
 .ckp-stylechrome .vgext-rb-cluster { flex-wrap: wrap; }
 /* format anchor */
 .ckp-fmtbtn {
-  display: inline-flex; gap: 7px; align-items: center;
+  display: inline-flex; gap: var(--vgext-space-2, 8px); align-items: center;
   background: var(--ckp-input-bg); border: 1px solid var(--ckp-input-border); border-radius: var(--vg-radius, 2px);
-  color: inherit; font: inherit; font-size: 12px; font-weight: 500;
-  padding: 7px 12px; cursor: pointer;
+  color: inherit; font-family: inherit; font-size: 12px; font-weight: 500;
+  height: var(--vgext-control-h, 28px); box-sizing: border-box;
+  padding: 0 var(--vgext-control-px, 13px); cursor: pointer;
   transition: border-color 120ms ease, background 120ms ease;
 }
 .ckp-fmtbtn:hover {
@@ -823,8 +848,11 @@ ${vguiInputInteractionCss(['.ckp-input'], CKP_TOKENS)}
   display: flex; flex-direction: column;
 }
 .vgext-ip-placehead {
-  font-size: 9.5px; font-weight: 650; letter-spacing: 0.09em; text-transform: uppercase;
-  color: var(--vg-muted-fg-color, #7f8ba0); padding: 7px 8px 3px;
+  font-size: var(--vgext-eyebrow-size, 11px);
+  font-weight: var(--vgext-eyebrow-weight, 600);
+  letter-spacing: var(--vgext-eyebrow-track, 0.1em);
+  text-transform: uppercase;
+  color: var(--vg-muted-fg-color, #7f8ba0); padding: var(--vgext-space-2, 8px) var(--vgext-space-2, 8px) var(--vgext-space-1, 4px);
 }
 .vgext-ip-placehead:first-child { padding-top: 3px; }
 .vgext-ip-placeitem {
@@ -842,7 +870,6 @@ ${vguiInputInteractionCss(['.ckp-input'], CKP_TOKENS)}
 }
 /* ─── Enhanced Design System (Phase 1) ─────────────────────────────────── */
 /* Premium visual design with smooth animations and sophisticated hierarchy */
-${vguiSwitchCssEnhanced({ root: 'ckp-switch-enhanced', knob: 'ckp-knob', on: 'on' }, CKP_TOKENS_ENHANCED)}
 ${vguiButtonCssEnhanced({ primary: 'ckp-btn-primary-enhanced', secondary: 'ckp-btn-secondary-enhanced', tertiary: 'ckp-btn-tertiary-enhanced' }, CKP_TOKENS_ENHANCED)}
 ${vguiInputCssEnhanced({ root: 'ckp-input-enhanced' }, CKP_TOKENS_ENHANCED)}
 ${vguiRowCssEnhanced({ root: 'ckp-row-enhanced', label: 'ckp-row-label', title: 'ckp-row-title', help: 'ckp-help', control: 'ckp-row-control', modified: 'is-modified' }, CKP_TOKENS_ENHANCED, { labelCol: '210px' })}
@@ -1017,12 +1044,12 @@ ${vguiLoadingCss({ spinner: 'ckp-spinner' }, CKP_TOKENS_ENHANCED)}
 .ckp-workflow-link {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--vgext-space-3, 12px);
   width: 100%;
-  padding: 10px 12px;
+  padding: var(--vgext-space-2, 8px) var(--vgext-space-4, 16px);
   margin: 0;
   border: 1px solid var(--ckp-border, #32384f);
-  border-radius: 6px;
+  border-radius: var(--vg-radius, 2px);
   background: var(--ckp-surface-2, rgba(59, 130, 246, 0.04));
   color: var(--vg-fg-color, #e5e9f0);
   font: inherit;
@@ -1078,5 +1105,148 @@ ${vguiLoadingCss({ spinner: 'ckp-spinner' }, CKP_TOKENS_ENHANCED)}
   --ckp-transition-slow: ${VGUI_TRANSITIONS.slow};
   --ckp-transition-slower: ${VGUI_TRANSITIONS.slower};
 }
+/* ── Action buttons ───────────────────────────────────────────────────
+ * The glyph and the label had no gap, so a Save button read as one run of
+ * characters. Also pins the pane action bar to the one control height.
+ *
+ * .ckp-actbtn is included deliberately: it had NO rule anywhere in this
+ * stylesheet, so a bare .ckp-actbtn rendered as a browser-default button.
+ * Its siblings carry a rung modifier (.ckp-btn-secondary / -quiet) and so
+ * picked up the generator's 28px, which is why Save and Reset sat at two
+ * different heights in Calculated Columns, Column Settings, Styling Rules
+ * and Shortcuts. */
+.ckp-actbtn,
+.ckp-btn-primary-enhanced,
+.ckp-btn-secondary-enhanced,
+.ckp-btn-tertiary-enhanced,
+.ckp-btn-primary,
+.ckp-btn-secondary,
+.ckp-btn-quiet,
+.ckp-btn-danger {
+  /* flex: 0 0 auto — .ckp-pane-head is a flex row whose title input takes
+   * flex: 1 1 auto, so without this the buttons are the ones that shrink
+   * and the label wraps under the glyph, growing the button vertically. */
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--vgext-space-2, 8px);
+  height: var(--vgext-control-h, 28px);
+  min-height: var(--vgext-control-h, 28px);
+  padding: 0 var(--vgext-control-px, 13px);
+  box-sizing: border-box;
+  border-radius: var(--vg-radius, 2px);
+  /* font-family, not the font shorthand: the shorthand also resets
+   * font-weight, which would flatten the ladder's 500/600 distinction. */
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ckp-actbtn svg,
+.ckp-btn-primary-enhanced svg,
+.ckp-btn-secondary-enhanced svg,
+.ckp-btn-tertiary-enhanced svg,
+.ckp-btn-primary svg,
+.ckp-btn-secondary svg,
+.ckp-btn-quiet svg,
+.ckp-btn-danger svg { flex: 0 0 auto; }
+
+/* A bare .ckp-actbtn is the pane's commit — the Primary rung. The variants
+ * that carry an explicit rung modifier keep theirs. */
+.ckp-actbtn:not(.ckp-btn-secondary):not(.ckp-btn-quiet):not(.ckp-btn-danger) {
+  background: var(--ckp-accent);
+  border: 1px solid var(--ckp-accent);
+  color: var(--vg-checkbox-checked-fg, #FCFCFC);
+  font-weight: 600;
+  transition: filter var(--vgext-t, 120ms ease), opacity var(--vgext-t, 120ms ease);
+}
+.ckp-actbtn:not(.ckp-btn-secondary):not(.ckp-btn-quiet):not(.ckp-btn-danger):hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.ckp-actbtn:disabled { opacity: 0.45; cursor: default; filter: none; }
+.ckp-actbtn:focus-visible {
+  outline: 2px solid var(--ckp-accent);
+  outline-offset: -2px;
+}
+
+/* ── Remaining generator overrides ────────────────────────────────────
+ * The shared kernel generators predate the ext token scale and emit a few
+ * off-scale values. Correcting them here rather than in the kernel keeps
+ * the generators' other consumers untouched. */
+
+/* vguiChipCss emits 21px; the chip height in this chrome is 20px, which is
+ * what .vgext-dp__chip already uses. Two chip heights in one drawer. */
+.ckp-chip { height: var(--vgext-chip-h, 20px); }
+
+/* vguiTabsCssEnhanced emits a 41px tab. Tabs are a strip, not a control. */
+.ckp-tab {
+  height: var(--vgext-strip-h, 36px);
+  box-sizing: border-box;
+  padding: 0 var(--vgext-space-3, 12px);
+}
+
+/* A count is a number, not an eyebrow. It is rendered with .ckp-caps
+ * alongside it, so it needs the compound selector to outrank the caps rule
+ * and shed the uppercase letterspacing. */
+.ckp-count,
+.ckp-caps.ckp-count { letter-spacing: 0; text-transform: none; }
+
+/* Two-line navigation row (icon + label + sublabel). Not a control, so it
+ * does not take the 28px control height — it takes exactly two of them,
+ * which is what a two-line row is worth and keeps it on the same scale. */
+.ckp-workflow-link {
+  height: calc(var(--vgext-control-h, 28px) * 2);
+  box-sizing: border-box;
+}
+
+/* ── Dense list rows inside a module pane ─────────────────────────────
+ * The history monitor and the plus/minus + shortcut rule lists were styled
+ * with inline style.cssText, which no theme can reach and no audit can see:
+ * that is how a 4px radius and a 6px gap survived the token pass. Same
+ * markup, same classes — the values just live where they can be checked. */
+.ckp-monitor-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vgext-space-2, 8px);
+  max-height: 220px;
+  overflow: auto;
+}
+.ckp-monitor-row {
+  display: flex;
+  align-items: center;
+  gap: var(--vgext-space-2, 8px);
+  min-height: var(--vgext-row-h, 30px);
+  padding: 0 var(--vgext-space-2, 8px);
+  border-radius: var(--vg-radius, 2px);
+  background: var(--ckp-surface, transparent);
+}
+.ckp-monitor-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+/* Label-over-meta stack in a list row. */
+.ckp-stack {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vgext-space-1, 4px);
+}
+
+/* Multi-line text control. A textarea is the one control that legitimately
+ * grows past the 28px ladder, so it states its own minimum on the scale. */
+.ckp-textarea {
+  width: 100%;
+  min-height: calc(var(--vgext-control-h, 28px) * 2);
+  resize: vertical;
+  padding: var(--vgext-space-2, 8px) var(--vgext-field-px, 10px);
+  line-height: 1.45;
+}
+
 `;
 }

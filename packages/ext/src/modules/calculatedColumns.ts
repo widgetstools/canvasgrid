@@ -368,7 +368,7 @@ export function calculatedColumnsModule(): SettingsModule {
           const def = newColumn(columns.length);
           selectColumn(def.colId, true, def);
         });
-        head.append(caps('Columns'), el('span', 'ckp-caps ckp-count', String(columns.length).padStart(2, '0')), add);
+        head.append(caps('Columns'), el('span', 'ckp-caps ckp-count', String(columns.length)), add);
         rail.appendChild(head);
 
         for (const def of columns) {

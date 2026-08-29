@@ -268,7 +268,7 @@ export function alertsModule(): SettingsModule {
           const rule = newRule(rules.length);
           selectRule(rule.id, true, rule);
         });
-        head.append(caps('Alert rules'), el('span', 'ckp-caps ckp-count', String(rules.length).padStart(2, '0')), add);
+        head.append(caps('Alert rules'), el('span', 'ckp-caps ckp-count', String(rules.length)), add);
         rail.appendChild(head);
 
         if (rules.length === 0 && !draftIsNew) {

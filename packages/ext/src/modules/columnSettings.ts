@@ -353,7 +353,7 @@ export function columnSettingsModule(): SettingsModule {
         const head = el('div', 'ckp-rail-head');
         head.append(
           caps('Columns'),
-          el('span', 'ckp-caps ckp-count', String(columns.length).padStart(2, '0')),
+          el('span', 'ckp-caps ckp-count', String(columns.length)),
         );
         rail.appendChild(head);
 
@@ -440,13 +440,14 @@ export function columnSettingsModule(): SettingsModule {
           resetBtn.disabled = !dirty;
           dirtyChip.set(dirty ? 'YES' : '—', dirty ? 'warning' : 'neutral');
         };
-        let captionIn: HTMLInputElement | null = null;
+        // The pane's title field IS the caption — there is no longer a
+        // second one further down to mirror it into.
         const nameIn = textInput(d.headerName, (v) => {
           d.headerName = v;
-          if (captionIn) captionIn.value = v;
           syncDirty();
         }, { className: 'ckp-title', placeholder: 'Caption' });
-        nameIn.setAttribute('aria-label', 'Column caption');
+        nameIn.setAttribute('aria-label', 'Caption');
+        nameIn.title = 'Header label shown on the grid';
         head.append(nameIn, saveBtn, resetBtn);
         const body = appendPaneChrome(pane, head);
 
@@ -462,32 +463,18 @@ export function columnSettingsModule(): SettingsModule {
         }
 
         const chips = el('div', 'ckp-chips-strip');
-        chips.append(
-          chip('Col id', d.colId, 'info').root,
-          dirtyChip.root,
-          chip('Pinned', d.pinned ? d.pinned.toUpperCase() : 'OFF', d.pinned ? 'info' : 'neutral').root,
-          chip('Hidden', d.hide ? 'YES' : 'NO', d.hide ? 'warning' : 'neutral').root,
-          chip('fx', d.valueGetter ? 'SET' : 'OFF', d.valueGetter ? 'info' : 'neutral').root,
-        );
+        // Col id is identity, not state — it is always shown, and it is the
+        // reason the pane no longer carries a read-only "Col id" row too.
+        chips.append(chip('Col id', d.colId, 'info').root);
+        // Everything else is an EXCEPTION chip. Reporting "HIDDEN NO" and
+        // "FX OFF" made the strip loudest on the most ordinary column.
+        if (isDirty()) chips.appendChild(dirtyChip.root);
+        if (d.pinned) chips.appendChild(chip('Pinned', d.pinned.toUpperCase(), 'info').root);
+        if (d.hide) chips.appendChild(chip('Hidden', 'YES', 'warning').root);
+        if (d.valueGetter) chips.appendChild(chip('fx', 'SET', 'info').root);
         body.appendChild(chips);
 
         const sync = (): void => { renderRail(); renderPane(); };
-
-        const headerBand = band('Header');
-        const colIdIn = textInput(d.colId, () => {}, { mono: true });
-        colIdIn.readOnly = true;
-        colIdIn.setAttribute('aria-label', 'Column id');
-        captionIn = textInput(d.headerName, (v) => {
-          d.headerName = v;
-          nameIn.value = v;
-          syncDirty();
-        }, { placeholder: 'Display name in the column header' });
-        captionIn.setAttribute('aria-label', 'Caption');
-        headerBand.body.append(
-          row('Col id', colIdIn, 'Read-only · column identifier'),
-          row('Caption', captionIn, 'Header label shown on the grid'),
-        );
-        body.appendChild(headerBand.root);
 
         const filterBand = band('Filter');
         filterBand.body.append(
@@ -552,7 +539,7 @@ export function columnSettingsModule(): SettingsModule {
         ta.value = d.valueGetter;
         ta.placeholder = '[ask] - [bid]';
         ta.setAttribute('aria-label', 'Value getter expression');
-        ta.style.cssText = 'width:100%;min-height:72px;resize:vertical;padding:8px 10px;line-height:1.45';
+        ta.classList.add('ckp-textarea');
         ta.addEventListener('input', () => {
           d.valueGetter = ta.value;
           syncDirty();

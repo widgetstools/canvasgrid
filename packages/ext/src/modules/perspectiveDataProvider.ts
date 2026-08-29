@@ -14,115 +14,20 @@ import {
   type PerspectiveDataProviderControllerOptions,
 } from '@wellsfargo-starui/velocity-grid-perspective';
 import type { ModuleInstance, SettingsModule, VelocityGridExtContext } from '../extension/types';
+import { DATA_PANEL_STYLE } from './dataProvider';
 
 export type PerspectiveDataProviderModuleOptions = PerspectiveDataProviderControllerOptions & {
   controller?: PerspectiveDataProviderController;
 };
 
-/* Same chrome as hub dataProviderModule. */
-const STYLE = `
-.vgext-dp {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  height: 100%;
-  min-height: 0;
-  color: var(--vg-fg-color, #1a1f24);
-}
-.vgext-dp__section-title {
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 10.5px;
-  font-weight: 650;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--vg-fg-color, #1a1f24);
-}
-.vgext-dp__section-title::after {
-  content: "";
-  flex: 1 1 auto;
-  height: 1px;
-  background: var(--vg-border-color, #c5d0d8);
-}
-.vgext-dp__row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.vgext-dp__row label {
-  font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--vg-muted-fg-color, color-mix(in srgb, var(--vg-fg-color, #1a1f24) 55%, transparent));
-}
-.vgext-dp__row select {
-  flex: 1;
-  min-width: 160px;
-  font: inherit;
-  font-size: 12px;
-  padding: 7px 10px;
-  border: 1px solid var(--vg-border-color, #c5d0d8);
-  border-radius: var(--vg-radius, 2px);
-  background: var(--vg-input-bg, color-mix(in srgb, var(--vg-fg-color, #1a1f24) 3%, transparent));
-  color: var(--vg-fg-color, #1a1f24);
-  color-scheme: inherit;
-  cursor: pointer;
-  transition: border-color 110ms ease, box-shadow 140ms ease, background 110ms ease;
-}
-.vgext-dp__row select:hover {
-  border-color: color-mix(in srgb, var(--vg-muted-fg-color, #8a93a6) 45%, var(--vg-border-color, #c5d0d8));
-}
-.vgext-dp__row select:focus {
-  outline: none;
-  border-color: color-mix(in srgb, var(--vg-chrome-accent) 70%, var(--vg-border-color, #c5d0d8));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vg-chrome-accent) 16%, transparent);
-}
-.vgext-dp__row button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font: inherit;
-  font-size: 10.5px;
-  font-weight: 650;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  padding: 7px 12px;
-  border: 1px solid transparent;
-  border-radius: var(--vg-radius, 2px);
-  background: transparent;
-  color: var(--vg-muted-fg-color, color-mix(in srgb, var(--vg-fg-color, #1a1f24) 55%, transparent));
-  cursor: pointer;
-  transition: color 110ms ease, background 110ms ease, border-color 110ms ease;
-}
-.vgext-dp__row button:hover:not(:disabled) {
-  color: var(--vg-fg-color, #1a1f24);
-  background: color-mix(in srgb, var(--vg-fg-color, #1a1f24) 6%, transparent);
-  border-color: var(--vg-border-color, #c5d0d8);
-}
-.vgext-dp__row button.primary {
-  color: var(--vg-primary-fg, var(--vg-accent-fg, #ffffff));
-  background: var(--vg-primary-color, var(--vg-chrome-accent));
-  border-color: transparent;
-}
-.vgext-dp__row button.primary:hover:not(:disabled) {
-  filter: brightness(1.08);
-}
-.vgext-dp__row button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-.vgext-dp__hint {
-  font-size: 11px;
-  color: var(--vg-muted-fg-color, color-mix(in srgb, var(--vg-fg-color, #1a1f24) 55%, transparent));
-  line-height: 1.45;
-}
-`;
+/* Same chrome as the hub dataProviderModule — one shared stylesheet. */
 
 let stylesInjected = false;
 function ensureStyles(): void {
   if (typeof document === 'undefined') return;
   const existing = document.head.querySelector('style[data-vgext-psp-dp]');
   if (existing) {
-    existing.textContent = STYLE;
+    existing.textContent = DATA_PANEL_STYLE;
     stylesInjected = true;
     return;
   }
@@ -130,7 +35,7 @@ function ensureStyles(): void {
   stylesInjected = true;
   const el = document.createElement('style');
   el.setAttribute('data-vgext-psp-dp', '');
-  el.textContent = STYLE;
+  el.textContent = DATA_PANEL_STYLE;
   document.head.appendChild(el);
 }
 
@@ -198,6 +103,78 @@ export function perspectiveDataProviderModule(
         + 'the DataProvider owns the table. Author connection / columns in the editor.';
       root.appendChild(hint);
 
+      // ── Live feed state ──────────────────────────────────────────────
+      // In SSRM an empty grid can mean loading, filtered to nothing, a dead
+      // socket, or no provider applied — and the chrome rendered all four
+      // identically. The book already publishes phase / size / rate; this
+      // panel, whose subject IS the connection, now shows them.
+      const statusRow = document.createElement('div');
+      statusRow.className = 'vgext-dp__status';
+      statusRow.setAttribute('role', 'status');
+      root.appendChild(statusRow);
+
+      /** BookPhase → the chrome's three-colour state vocabulary. */
+      const PHASE_TONE: Record<string, 'live' | 'stale' | 'error' | 'idle'> = {
+        live: 'live',
+        snapshot: 'stale',
+        connecting: 'stale',
+        bootstrapping: 'stale',
+        idle: 'idle',
+        error: 'error',
+        disconnected: 'error',
+      };
+      const PHASE_LABEL: Record<string, string> = {
+        live: 'Live',
+        snapshot: 'Loading snapshot',
+        connecting: 'Connecting',
+        bootstrapping: 'Starting engine',
+        idle: 'Idle',
+        error: 'Error',
+        disconnected: 'Disconnected',
+      };
+
+      const chip = (key: string, value: string): HTMLElement => {
+        const c = document.createElement('span');
+        c.className = 'vgext-dp__chip';
+        const k = document.createElement('span');
+        k.className = 'vgext-dp__chip-key';
+        k.textContent = key;
+        const v = document.createElement('span');
+        v.className = 'vgext-dp__chip-val';
+        v.textContent = value;
+        c.append(k, v);
+        return c;
+      };
+
+      const paintStatus = (t?: { phase: string; bookSize: number; liveUpdatesPerSec: number; getRowsTotal: number } | null): void => {
+        statusRow.replaceChildren();
+        if (!controller.getActiveProviderId()) {
+          const empty = document.createElement('span');
+          empty.className = 'vgext-dp__status-empty';
+          empty.textContent = 'No provider attached — choose one above and Apply.';
+          statusRow.appendChild(empty);
+          return;
+        }
+        const tone = PHASE_TONE[t?.phase ?? ''] ?? 'idle';
+        const state = document.createElement('span');
+        state.className = `vgext-dp__state is-${tone}`;
+        const dot = document.createElement('span');
+        dot.className = 'vgext-state-dot';
+        dot.dataset.state = tone;
+        const label = document.createElement('span');
+        label.textContent = PHASE_LABEL[t?.phase ?? ''] ?? 'Waiting for feed';
+        state.append(dot, label);
+        statusRow.append(
+          state,
+          chip('book', (t?.bookSize ?? 0).toLocaleString()),
+          chip('rows/s', (t?.liveUpdatesPerSec ?? 0).toLocaleString()),
+          chip('getRows', (t?.getRowsTotal ?? 0).toLocaleString()),
+        );
+      };
+
+      paintStatus(controller.getTelemetry());
+      const offTelemetry = controller.subscribeTelemetry((t) => paintStatus(t));
+
       const catalog: ConfigBackend = controller.getCatalog();
 
       const rebuildSelect = async (): Promise<void> => {
@@ -258,9 +235,11 @@ export function perspectiveDataProviderModule(
               hint.textContent =
                 `Applied “${id}” · Perspective SSRM bound · selection saved for next load.`;
             }
+            paintStatus(controller.getTelemetry());
           } catch (err) {
             console.error('[velocity-grid-ext] Apply Perspective provider failed', err);
             hint.textContent = err instanceof Error ? err.message : String(err);
+            paintStatus({ phase: 'error', bookSize: 0, liveUpdatesPerSec: 0, getRowsTotal: 0 });
           } finally {
             applyBtn.disabled = false;
           }
@@ -282,10 +261,12 @@ export function perspectiveDataProviderModule(
       return {
         destroy() {
           window.removeEventListener('focus', onFocus);
+          offTelemetry();
           host.replaceChildren();
         },
         refresh() {
           void rebuildSelect();
+          paintStatus(controller.getTelemetry());
         },
       };
     },

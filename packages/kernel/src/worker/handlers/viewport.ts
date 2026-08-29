@@ -82,6 +82,7 @@ export async function handleViewport(
       const visIds = await helpers.visibleAsync();
       // Cycle 4 / Task 11 — pass pendingFlashes to the slicer.
       const pending = state.enableCellChangeFlash ? state.pendingFlashes : undefined;
+      const pendingDirs = state.enableCellChangeFlash ? state.pendingFlashDirs : undefined;
       // Damage-region rendering (Task 3) — pass pendingTouched to the
       // slicer. Unlike `pending`, this is NOT gated by
       // `enableCellChangeFlash` (damage tracking is independent of the
@@ -147,7 +148,7 @@ export async function handleViewport(
           visibleSliceIds[r] = visIds[entry.rowIndex] ?? '';
         }
       } else {
-        chunk = state.slicer.slice(visIds, req.payload, pending, touchedPending);
+        chunk = state.slicer.slice(visIds, req.payload, pending, touchedPending, pendingDirs);
         visibleSliceIds = visIds.slice(chunk.rowStart, chunk.rowStart + chunk.rowCount);
         // Sparse SSRM — host supplies grouped rows + field aggregates; ship
         // `groupTotals` in CSRM shape (AggPass parity) so paint needs no fork.
@@ -195,9 +196,17 @@ export async function handleViewport(
           const rowId = visibleSliceIds[r];
           if (!rowId) continue;
           const set = pending.get(rowId);
-          if (!set) continue;
-          for (const f of colFields) set.delete(f);
-          if (set.size === 0) pending.delete(rowId);
+          if (set) {
+            for (const f of colFields) set.delete(f);
+            if (set.size === 0) pending.delete(rowId);
+          }
+          // Directions drain on the same beat as the flashes they describe.
+          const dirMap = pendingDirs;
+          const dirs = dirMap?.get(rowId);
+          if (dirMap && dirs) {
+            for (const f of colFields) dirs.delete(f);
+            if (dirs.size === 0) dirMap.delete(rowId);
+          }
         }
       }
       // Damage-region rendering (Task 3) — drain: each rowId this chunk

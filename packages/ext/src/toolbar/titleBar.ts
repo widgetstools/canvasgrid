@@ -20,6 +20,7 @@ import { layoutsItem, layoutSaveItem } from './layoutsMenu';
 import { alertsBadgeItem } from './alertsChrome';
 import { savedFiltersItem } from './savedFiltersToolbar';
 import { runAutoFormat, type AutoFormatGrid } from './autoFormat';
+import { injectChromeTokens } from '../ui/chromeTokens';
 
 export interface TitleBarOptions {
   /** Brand label shown at the far left (e.g. the grid's name). */
@@ -517,6 +518,8 @@ function overflowItem(): ToolbarItem {
 // ── styles ─────────────────────────────────────────────────────────────────
 export function injectTitleBarStyles(): void {
   if (typeof document === 'undefined') return;
+  // Token layer first — every rule below derives from it.
+  injectChromeTokens();
   let style = document.getElementById('vgext-titlebar-styles') as HTMLStyleElement | null;
   if (!style) {
     style = document.createElement('style');
@@ -527,81 +530,75 @@ export function injectTitleBarStyles(): void {
 }
 
 const TITLEBAR_CSS = `
-/* Ext chrome token aliases — the ext stylesheets consume tokens the
- * kernel themes don't declare (--vg-accent-color / --vg-primary-color /
- * --vg-muted-fg-color / --vg-control-bg). Derive them from the active
- * theme's own tokens on ANY vg-theme-* class (grid root AND body-mounted
- * popups, which mirror the theme class) so every control follows the theme
- * instead of falling back to per-rule hardcoded colors.
- * Cursor light: primary/accent #2778C1 on #FCFCFC; dark Anysphere: #81A1C1 on #191c22.
- * Fallbacks preserve the pre-token look for unthemed hosts. */
-[class*="vg-theme-"] {
-  /* Primary fill + on-primary text from theme checkbox/button pair. */
-  --vg-primary-color: var(--vg-chrome-accent);
-  --vg-primary-fg: var(--vg-checkbox-checked-fg, #ffffff);
-  --vg-accent-color: var(--vg-chrome-accent);
-  --vg-accent-fg: var(--vg-checkbox-checked-fg, #ffffff);
-  --vg-muted-fg-color: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 62%, transparent);
-  --vg-control-bg: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 6%, transparent);
-  --vgext-space-1: 4px;
-  --vgext-space-2: 8px;
-  --vgext-space-3: 12px;
-  --vgext-space-4: 16px;
-}
+/* Token aliases and the spacing/control/type scales now live in
+ * ../ui/chromeTokens.ts, injected ahead of this sheet by
+ * injectTitleBarStyles(). Every rule below derives from those variables. */
 
 .vgext-iconbtn {
   appearance: none;
-  width: 32px; height: 32px;
+  width: var(--vgext-icon-btn, 28px); height: var(--vgext-icon-btn, 28px);
   display: inline-flex; align-items: center; justify-content: center;
   border: none; border-radius: var(--vg-radius, 2px);
   background: transparent;
   color: var(--vg-muted-fg-color, #9aa4b6);
   cursor: pointer;
-  transition: background 110ms ease, color 110ms ease;
+  transition: background var(--vgext-t, 120ms ease), color var(--vgext-t, 120ms ease);
 }
-.vgext-iconbtn:hover { background: var(--vg-row-alt-bg, rgba(255,255,255,0.06)); color: var(--vg-fg-color, #e5e9f0); }
-.vgext-iconbtn:focus-visible { outline: 2px solid var(--vg-chrome-accent); outline-offset: 1px; }
-.vgext-iconbtn:disabled { opacity: 0.5; cursor: default; }
+.vgext-iconbtn:hover { background: var(--vg-row-hover-bg, rgba(255,255,255,0.06)); color: var(--vg-fg-color, #e5e9f0); }
+.vgext-iconbtn:focus-visible { outline: 2px solid var(--vg-chrome-accent); outline-offset: -2px; }
+.vgext-iconbtn:disabled { opacity: 0.45; cursor: default; }
 .vgext-iconbtn:disabled:hover { background: transparent; }
+/* Shared open state — menu() puts .is-open on whatever anchored it, so
+ * every trigger in the chrome marks itself the same way while its panel is
+ * up: accent edge, never accent text (colour stays a state, not a label). */
+.vgext-iconbtn.is-open,
+.vgext-pill.is-open,
+.vgext-date.is-open {
+  color: var(--vg-fg-color, #e5e9f0);
+  background: var(--vg-row-hover-bg, rgba(255,255,255,0.06));
+  box-shadow: inset 0 -2px 0 var(--vg-chrome-accent);
+}
+.vgext-pill.is-open,
+.vgext-date.is-open { border-color: var(--vg-chrome-accent); }
 
 .vgext-brand { display: inline-flex; align-items: center; gap: var(--vgext-space-2); padding-right: var(--vgext-space-1); }
-.vgext-brand-name { font-weight: 650; font-size: 14px; letter-spacing: -0.01em; color: var(--vg-fg-color, #e5e9f0); }
-.vgext-brand-collapse { width: 28px; height: 28px; }
+.vgext-brand-name { font-weight: var(--vgext-title-weight, 600); font-size: 14px; letter-spacing: -0.01em; color: var(--vg-fg-color, #e5e9f0); }
+.vgext-brand-collapse { width: var(--vgext-icon-btn, 28px); height: var(--vgext-icon-btn, 28px); }
 .vgext-brand-collapse.is-collapsed { color: var(--vg-chrome-accent); }
 
 .vgext-search { display: inline-flex; align-items: center; gap: var(--vgext-space-1); }
 .vgext-search-open { background: var(--vg-control-bg, rgba(255,255,255,0.05)); border-radius: var(--vg-radius, 2px); padding-left: 2px; }
 .vgext-search-input {
-  width: 260px; height: 30px; padding: 0 var(--vgext-space-3);
+  width: 260px; height: var(--vgext-control-h, 28px); padding: 0 var(--vgext-field-px, 10px);
   border: 1px solid var(--vg-border-color, #2a3140); border-radius: var(--vg-radius, 2px);
   background: var(--vg-control-bg, rgba(0,0,0,0.25));
-  color: var(--vg-fg-color, #e5e9f0); font: inherit;
+  color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: var(--vgext-label-size, 12.5px);
 }
 .vgext-search-input:focus { outline: none; border-color: var(--vg-chrome-accent); }
 
 /* Shared named-picker chrome: profiles (user) vs layouts (grid). */
 .vgext-pill {
-  display: inline-flex; align-items: center; gap: 7px;
-  height: 32px; padding: 0 10px 0 6px;
+  display: inline-flex; align-items: center; gap: var(--vgext-space-2, 8px);
+  height: var(--vgext-control-h, 28px); padding: 0 var(--vgext-field-px, 10px) 0 6px;
   border: 1px solid var(--vg-border-color, #2a3140); border-radius: var(--vg-radius, 2px);
   background: var(--vg-control-bg, rgba(255,255,255,0.04));
   color: var(--vg-fg-color, #e5e9f0); font: inherit; cursor: pointer;
-  transition: border-color 110ms ease, background 110ms ease;
+  transition: border-color var(--vgext-t, 120ms ease), background var(--vgext-t, 120ms ease);
 }
 .vgext-pill:hover { border-color: var(--vg-chrome-accent); }
 .vgext-pill-icon {
-  width: 20px; height: 20px; border-radius: var(--vg-radius, 2px);
+  width: var(--vgext-chip-h, 20px); height: var(--vgext-chip-h, 20px); border-radius: var(--vg-radius, 2px);
   display: inline-flex; align-items: center; justify-content: center;
   background: color-mix(in srgb, var(--vg-muted-fg-color, #9aa4b6) 18%, transparent);
   color: var(--vg-muted-fg-color, #9aa4b6);
 }
 .vgext-profile-avatar {
-  width: 20px; height: 20px; border-radius: 50%;
+  width: var(--vgext-chip-h, 20px); height: var(--vgext-chip-h, 20px); border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
   background: color-mix(in srgb, var(--vg-chrome-accent) 22%, transparent);
   color: var(--vg-chrome-accent);
 }
-.vgext-pill-name, .vgext-profile-name { font-weight: 550; font-size: 12.5px; }
+.vgext-pill-name, .vgext-profile-name { font-weight: 500; font-size: var(--vgext-label-size, 12.5px); }
 .vgext-pill-caret { color: var(--vg-muted-fg-color, #9aa4b6); display: inline-flex; }
 
 /* Layout selector stays a fixed footprint so a growing filter-pill
@@ -625,25 +622,44 @@ const TITLEBAR_CSS = `
   text-align: left;
 }
 
+/* Unsaved profile reads as STATE, not as a warning. Warning amber has to
+ * stay available to the data plane (stale feed, degraded provider), so the
+ * dirty marker is an accent dot on an otherwise neutral button — the same
+ * accent that means "active" everywhere else in the chrome. */
 .vgext-save.is-dirty {
-  color: var(--vg-warning-color, #e0b341);
+  position: relative;
+  color: var(--vg-fg-color, #e5e9f0);
 }
-.vgext-settings-launcher.vgext-iconbtn { color: var(--vg-chrome-accent); }
+.vgext-save.is-dirty::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--vg-chrome-accent);
+}
+/* The launcher used to be permanently accent-coloured, which spent the
+ * "active" colour on a control that is never active. It is a neutral icon
+ * button now and picks up the shared .is-open treatment above. */
+.vgext-settings-launcher.vgext-iconbtn { color: var(--vg-muted-fg-color, #9aa4b6); }
+.vgext-settings-launcher.vgext-iconbtn:hover { color: var(--vg-fg-color, #e5e9f0); }
 
 .vgext-date {
   appearance: none;
-  display: inline-flex; align-items: center; gap: 6px;
-  height: 32px; padding: 0 var(--vgext-space-3);
-  border: 1px solid var(--vg-border-color, #2a3140); border-radius: 2px;
+  display: inline-flex; align-items: center; gap: var(--vgext-space-2, 8px);
+  height: var(--vgext-control-h, 28px); padding: 0 var(--vgext-field-px, 10px);
+  border: 1px solid var(--vg-border-color, #2a3140); border-radius: var(--vg-radius, 2px);
   background: var(--vg-control-bg, rgba(255,255,255,0.04));
-  color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: 12.5px;
+  color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: var(--vgext-label-size, 12.5px);
   font-variant-numeric: tabular-nums; cursor: pointer;
-  transition: border-color 110ms ease, background 110ms ease;
+  transition: border-color var(--vgext-t, 120ms ease), background var(--vgext-t, 120ms ease);
 }
 .vgext-date:hover { border-color: var(--vg-chrome-accent); }
 .vgext-date:focus-visible { outline: 2px solid var(--vg-chrome-accent); outline-offset: 1px; }
 .vgext-date svg { color: var(--vg-muted-fg-color, #9aa4b6); flex: 0 0 auto; }
-.vgext-date-label { font-weight: 550; }
+.vgext-date-label { font-weight: 500; }
 
 .vgext-date-pop {
   position: fixed; z-index: 70;
@@ -659,7 +675,7 @@ const TITLEBAR_CSS = `
   gap: 4px; margin-bottom: 8px;
 }
 .vgext-cal-title {
-  text-align: center; font-weight: 650; font-size: 13px; letter-spacing: -0.01em;
+  text-align: center; font-weight: 600; font-size: 13px; letter-spacing: -0.01em;
 }
 .vgext-cal-nav {
   appearance: none; width: 28px; height: 28px; padding: 0;
@@ -672,7 +688,7 @@ const TITLEBAR_CSS = `
   display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin-bottom: 4px;
 }
 .vgext-cal-dow > span {
-  text-align: center; font-size: 10px; font-weight: 650; letter-spacing: 0.04em;
+  text-align: center; font-size: var(--vgext-eyebrow-size, 11px); font-weight: var(--vgext-eyebrow-weight, 600); letter-spacing: var(--vgext-eyebrow-track, 0.1em);
   text-transform: uppercase; color: var(--vg-muted-fg-color, #9aa4b6); padding: 4px 0;
 }
 .vgext-cal-grid {
@@ -700,7 +716,7 @@ const TITLEBAR_CSS = `
 }
 .vgext-cal-today {
   appearance: none; border: none; background: transparent; cursor: pointer;
-  color: var(--vg-chrome-accent); font: inherit; font-weight: 550; font-size: 12px;
+  color: var(--vg-chrome-accent); font: inherit; font-weight: 500; font-size: 12px;
   padding: 4px 6px; border-radius: var(--vg-radius, 2px);
 }
 .vgext-cal-today:hover { background: color-mix(in srgb, var(--vg-chrome-accent) 12%, transparent); }
@@ -733,17 +749,20 @@ const TITLEBAR_CSS = `
 .vgext-menu-list { display: flex; flex-direction: column; gap: 1px; }
 .vgext-menu-section {
   margin: var(--vgext-space-2) var(--vgext-space-1) var(--vgext-space-1);
-  padding: 0 2px;
-  font-size: 10.5px; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 0 var(--vgext-space-2);
+  font-size: var(--vgext-eyebrow-size, 11px);
+  font-weight: var(--vgext-eyebrow-weight, 600);
+  letter-spacing: var(--vgext-eyebrow-track, 0.1em);
+  text-transform: uppercase;
   color: var(--vg-muted-fg-color, #9aa4b6);
 }
 .vgext-menu-section:first-child { margin-top: 2px; }
 .vgext-menu-item {
   display: grid;
   grid-template-columns: 18px 1fr auto;
-  align-items: center; column-gap: 10px;
-  min-height: 34px;
-  padding: 0 10px; border: none; border-radius: var(--vg-radius, 2px);
+  align-items: center; column-gap: var(--vgext-space-2);
+  min-height: var(--vgext-row-h, 30px);
+  padding: 0 var(--vgext-space-2); border: none; border-radius: var(--vg-radius, 2px);
   background: transparent; color: inherit; font: inherit; font-weight: 500; text-align: left;
   cursor: pointer;
 }

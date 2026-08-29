@@ -28,7 +28,7 @@ import type {
   ServerSideTransaction,
   SsrmExpressionHost,
 } from './types/ssrm';
-import { type ResolvedColDef, applyCellProps, composeFont } from './core/propertyChain';
+import { type ResolvedColDef, applyCellProps, composeFont, cellFontForColumn } from './core/propertyChain';
 import { resolveColumnTree, isColGroupDef, visibleHeaderGroupDepth, type ColumnTree, type ColumnTreeNode, type ResolvedColGroupDef } from './core/columnTree';
 import { moveColumnToGroup as moveColumnToGroupPure, moveColumnGroup as moveColumnGroupPure } from './core/columnGroupMutation';
 import { resolveSelection, applyResolvedSelectionToOptions } from './core/selectionConfig';
@@ -1261,6 +1261,23 @@ export class VelocityGrid<TRow = any> {
    * datasource refresh.
    */
   private ssrmClientPipeline = false;
+
+  /**
+   * Does the WORKER own `rowCount`?
+   *
+   * Under sparse SSRM the client owns the tree: the skeleton + flatten index
+   * are the source of truth and the worker holds no rows, so its
+   * `visibleCount` is 0. A column-shape round-trip (visibility, order, calc
+   * columns, group state) resolves asynchronously and can land AFTER a
+   * skeleton ingest — adopting its count there silently resets a correct
+   * row count to 0 and the grid paints empty even though the model is right.
+   *
+   * This is the same rule the worker's own `onModelUpdated` push already
+   * applies; these five column-shape callbacks were the paths that missed it.
+   */
+  private workerOwnsRowCount(): boolean {
+    return !(this.ssrm && !this.ssrmClientPipeline);
+  }
   /** Serialise SSRM full-hydrate + pipeline toggles. */
   private ssrmPipelineChain: Promise<void> = Promise.resolve();
   private chunk: ViewportChunk | null = null;
@@ -3883,12 +3900,7 @@ export class VelocityGrid<TRow = any> {
       },
       // v2 skeleton — grand totals (field-keyed root aggregates) for the
       // pinned totals subgrid + in-scroll grand-total footer.
-      setGrandTotals: (totals) => {
-        if (this.destroyed) return;
-        void this.workerCoord.ssrmSetGrandTotals(totals).then(() => {
-          if (!this.destroyed) this.cgridCanvas?.requestRepaint();
-        }).catch(() => { /* worker torn down */ });
-      },
+      setGrandTotals: (totals) => { this.setServerSideGrandTotals(totals); },
       setRowCount: (count, prevCount) => {
         if (this.destroyed) return;
         const prev = prevCount ?? this.rowCount;
@@ -4203,6 +4215,25 @@ export class VelocityGrid<TRow = any> {
       return;
     }
     void this.ssrm?.refresh(params);
+  }
+
+  /**
+   * Sparse SSRM — publish host-computed grand totals, keyed by FIELD.
+   *
+   * Grouped views get these from the skeleton's `path: []` root on every
+   * refresh, and ungrouped views from the `grandTotals` on a `getRows`
+   * reply. Neither covers a datasource that patches rows through
+   * `applyServerSideTransaction` without re-fetching a window — the rows
+   * tick while the pinned grand-total row keeps painting whatever it last
+   * saw. Such a datasource pushes its totals here instead.
+   *
+   * `null` clears them (AggPass over hydrated rows takes over again).
+   */
+  setServerSideGrandTotals(totals: Record<string, unknown> | null): void {
+    if (this.destroyed) return;
+    void this.workerCoord.ssrmSetGrandTotals(totals)
+      .then(() => { if (!this.destroyed) this.cgridCanvas?.requestRepaint(); })
+      .catch(() => { /* worker torn down */ });
   }
 
   applyServerSideTransaction(tx: ServerSideTransaction<TRow>): void {
@@ -9122,7 +9153,8 @@ export class VelocityGrid<TRow = any> {
       .catch((err) => { if (!this.destroyed) console.error('[velocity-grid] setCalcProgram:', err); });
     this.workerCoord.updateColumns(this.workerColumns())
       .then(({ visibleCount }) => {
-        this.rowCount = visibleCount;
+        // Column shape cannot change an SSRM row count — see workerOwnsRowCount.
+        if (this.workerOwnsRowCount()) this.rowCount = visibleCount;
         this.recomputeViewport();
         this.events.emit({ type: 'modelUpdated', visibleRowCount: visibleCount });
         this.events.emit({ type: 'displayedColumnsChanged', source: 'columnDefsChanged' });
@@ -10575,7 +10607,8 @@ export class VelocityGrid<TRow = any> {
       if (this.workerCoord) {
         this.workerCoord.updateColumns(this.workerColumns())
           .then(({ visibleCount }) => {
-            this.rowCount = visibleCount;
+            // Column shape cannot change an SSRM row count — see workerOwnsRowCount.
+            if (this.workerOwnsRowCount()) this.rowCount = visibleCount;
             this.recomputeViewport();
             this.requestViewport();
           })
@@ -12074,6 +12107,13 @@ export class VelocityGrid<TRow = any> {
                 || this.flashOverrides.has(`${sid}\0*`);
             }
           : undefined,
+        // 2026-08 look-and-feel — directional flash. The worker stages the
+        // sign of every numeric change; here it picks the paint. Themes that
+        // declare neither --vg-flash-up-* nor --vg-flash-down-* resolve both
+        // to the legacy neutral pair, so nothing changes for them.
+        dir: chunk.flashDir,
+        upColor: this.theme?.flashUpFromColor,
+        downColor: this.theme?.flashDownFromColor,
       });
       this.startFlashTickLoop();
     }
@@ -12971,7 +13011,8 @@ export class VelocityGrid<TRow = any> {
     this.rebuildColumns({ defaultColDef: this.options.defaultColDef });
     this.workerCoord.updateColumns(this.workerColumns())
       .then(({ visibleCount }) => {
-        this.rowCount = visibleCount;
+        // Column shape cannot change an SSRM row count — see workerOwnsRowCount.
+        if (this.workerOwnsRowCount()) this.rowCount = visibleCount;
         this.recomputeViewport();
         this.events.emit({ type: 'modelUpdated', visibleRowCount: visibleCount });
         this.events.emit({ type: 'displayedColumnsChanged', source: 'columnMoved' });
@@ -13856,7 +13897,7 @@ export class VelocityGrid<TRow = any> {
         groupRequests.push({
           colId: def.colId,
           headerName,
-          font: def.cellStyle?.font ?? this.theme.cellFont ?? this.theme.font,
+          font: def.cellStyle?.font ?? cellFontForColumn(def, this.theme),
           padding,
           headerPadding,
           minWidth: def.minWidth,
@@ -13896,7 +13937,7 @@ export class VelocityGrid<TRow = any> {
           const legacy: AutosizeColumnRequest[] = mainDefs.map((def) => ({
             colId: def.colId,
             headerName: decorateHeader(def, this.options.suppressAggFuncInHeader === true),
-            font: def.cellStyle?.font ?? this.theme.cellFont ?? this.theme.font,
+            font: def.cellStyle?.font ?? cellFontForColumn(def, this.theme),
             padding,
             headerPadding,
             minWidth: def.minWidth,
@@ -14023,9 +14064,9 @@ export class VelocityGrid<TRow = any> {
       cache.set(key, w);
       return w;
     };
-    const themeCellFont = this.theme.cellFont ?? this.theme.font;
     const out: Record<string, number> = {};
     for (const def of defs) {
+      const themeCellFont = cellFontForColumn(def, this.theme);
       const baseFont = def.cellStyle ? composeFont(def.cellStyle, themeCellFont) : themeCellFont;
       const isNumber = def.cellDataType === 'number';
       let maxData = 0;
@@ -14101,7 +14142,8 @@ export class VelocityGrid<TRow = any> {
     });
     this.workerCoord?.updateColumns(this.workerColumns())
       .then(({ visibleCount }) => {
-        this.rowCount = visibleCount;
+        // Column shape cannot change an SSRM row count — see workerOwnsRowCount.
+        if (this.workerOwnsRowCount()) this.rowCount = visibleCount;
         this.recomputeViewport();
         this.events.emit({ type: 'displayedColumnsChanged', source: 'columnVisible' });
         this.requestViewport();
@@ -14194,7 +14236,8 @@ export class VelocityGrid<TRow = any> {
     this.rebuildColumns({ defaultColDef: this.options.defaultColDef });
     this.workerCoord?.updateColumns(this.workerColumns())
       .then(({ visibleCount }) => {
-        this.rowCount = visibleCount;
+        // Column shape cannot change an SSRM row count — see workerOwnsRowCount.
+        if (this.workerOwnsRowCount()) this.rowCount = visibleCount;
         this.recomputeViewport();
         this.events.emit({ type: 'modelUpdated', visibleRowCount: visibleCount });
         this.events.emit({ type: 'displayedColumnsChanged', source: 'columnMoved' });

@@ -9,6 +9,7 @@ import type {
 } from '../extension/types';
 import { lucideBundle } from '@wellsfargo-starui/velocity-grid/icons/lucide.generated';
 import { delegateProfiles } from '../extension/context';
+import { injectChromeTokens } from '../ui/chromeTokens';
 
 /** Lucide name aliases for module.icon values that aren't 1:1 catalog keys. */
 const MODULE_ICON_ALIAS: Record<string, string> = {
@@ -209,12 +210,10 @@ export class ShellLayout {
     // Drawer header: product label + module title + close.
     const header = el('vgext-sheet-header');
     const titles = el('vgext-sheet-titles');
-    const eyebrow = el('vgext-sheet-eyebrow');
-    eyebrow.textContent = 'Customize';
     const title = el('vgext-sheet-title');
     title.id = 'vgext-sheet-title';
     title.textContent = entry.module.title;
-    titles.append(eyebrow, title);
+    titles.append(title);
     const close = document.createElement('button');
     close.type = 'button';
     close.className = 'vgext-sheet-close';
@@ -258,18 +257,7 @@ export class ShellLayout {
         nav.appendChild(tab);
       }
 
-      const crumb = el('vgext-sheet-nav-crumb');
-      crumb.setAttribute('data-testid', 'vgext-sheet-nav-crumb');
-      const crumbCat = el('vgext-sheet-nav-crumb-cat');
-      crumbCat.textContent = activeGroup?.label ?? 'Customize';
-      const crumbSep = el('vgext-sheet-nav-crumb-sep');
-      crumbSep.textContent = '·';
-      crumbSep.setAttribute('aria-hidden', 'true');
-      const crumbMod = el('vgext-sheet-nav-crumb-mod');
-      crumbMod.textContent = entry.module.title;
-      crumb.append(crumbCat, crumbSep, crumbMod);
-
-      wrap.append(nav, crumb);
+      wrap.append(nav);
       this.sheet.append(header, wrap);
 
       // Sibling modules within the active tab (e.g. Column Settings / Groups).
@@ -311,6 +299,9 @@ export class ShellLayout {
       hint.textContent = dirty
         ? `${Math.max(n, 1)} unsaved change${Math.max(n, 1) === 1 ? '' : 's'}`
         : 'All changes saved';
+      // Drives the accent dot in `.vgext-sheet-footer-hint::before`. Text is
+      // unchanged — this only makes the pending state visible at a glance.
+      hint.dataset.dirty = dirty ? 'true' : 'false';
     };
     renderHint();
     this.sheetUnsub.push(ctx.session.onChange(renderHint));
@@ -460,6 +451,9 @@ function sub(parent: HTMLElement, name: string): HTMLElement {
  *  theme and still looks intentional when no theme is set. */
 function injectShellStyles(): void {
   if (typeof document === 'undefined') return;
+  // Token layer first — the shell can mount without the title bar or ribbon
+  // ever being built, so it can't rely on their injectors for the scales.
+  injectChromeTokens();
   let style = document.getElementById('vgext-shell-styles') as HTMLStyleElement | null;
   if (!style) {
     style = document.createElement('style');
@@ -482,23 +476,30 @@ const SHELL_CSS = `
   --vg-radius: 2px;
   /* Inter everywhere — ride the theme's font token (kernel themes set
      --vg-font-family to the Inter stack); graceful system fallback. */
-  font: 13px/1.4 var(--vg-font-family, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif);
+  font: var(--vgext-body-size, 13px)/1.4 var(--vg-font-family, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif);
 }
 /* Body-mounted popups sit outside .vgext-root — pin the same 2px radius. */
 .vgext-menu,
 .vgext-ip-panel {
   --vg-radius: 2px;
 }
+/* Command bar. 28px controls in a space-2 gutter give a 44px bar — the
+ * same set of items as before in 21px less vertical space, which is 21px
+ * more data on every screen. Still wraps to a second row rather than
+ * overflowing when the filter strip grows. */
 .vgext-titlebar {
   flex: 0 0 auto;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  column-gap: 8px;
-  row-gap: 8px;
-  min-height: 48px;
+  /* border-box, or min-height resolves against the content box and the bar
+   * silently runs 17px taller than the number written here. */
+  box-sizing: border-box;
+  column-gap: var(--vgext-space-2, 8px);
+  row-gap: var(--vgext-space-2, 8px);
+  min-height: var(--vgext-bar-h, 44px);
   height: auto;
-  padding: 8px 14px;
+  padding: var(--vgext-space-2, 8px) var(--vgext-space-4, 16px);
   background: var(--vg-header-bg, var(--vg-popup-bg, #171c26));
   border-bottom: 1px solid var(--vg-border-color, #2a3140);
 }
@@ -548,27 +549,29 @@ const SHELL_CSS = `
   appearance: none;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 12px;
+  gap: var(--vgext-space-1, 4px);
+  height: var(--vgext-control-h, 28px);
+  padding: 0 var(--vgext-control-px, 13px);
   border: 1px solid transparent;
   border-radius: var(--vg-radius, 2px);
   background: transparent;
   color: var(--vg-fg-color, #e5e9f0);
   font: inherit;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+  transition: background var(--vgext-t, 120ms ease), border-color var(--vgext-t, 120ms ease), color var(--vgext-t, 120ms ease);
 }
-.vgext-btn:hover { background: var(--vg-row-alt-bg, rgba(255, 255, 255, 0.06)); }
-.vgext-btn:focus-visible { outline: 2px solid var(--vg-chrome-accent); outline-offset: 1px; }
-.vgext-btn:disabled { color: var(--vg-muted-fg-color, #7f8798); cursor: default; opacity: 0.65; }
+.vgext-btn:hover { background: var(--vg-row-hover-bg, rgba(255, 255, 255, 0.06)); }
+.vgext-btn:focus-visible { outline: 2px solid var(--vg-chrome-accent); outline-offset: -2px; }
+.vgext-btn:disabled { color: var(--vg-muted-fg-color, #7f8798); cursor: default; opacity: 0.45; }
 .vgext-btn:disabled:hover { background: transparent; }
 /* Save button reflects a dirty profile — accent when actionable. */
 .vgext-btn.vgext-save:not(:disabled) {
   background: var(--vg-primary-color, var(--vg-chrome-accent));
   border-color: var(--vg-primary-color, var(--vg-chrome-accent));
   color: var(--vg-primary-fg, var(--vg-accent-fg, #ffffff));
+  font-weight: 600;
 }
 .vgext-btn.vgext-save:not(:disabled):hover { filter: brightness(1.08); }
 
@@ -606,13 +609,20 @@ const SHELL_CSS = `
   pointer-events: auto;
 }
 .vgext-sheet[hidden] { display: none !important; }
+/* One gutter for every container in the drawer: space-4. The header, the
+ * nav strip, the module body and the footer used to run 18 / 10 / 16 / 16,
+ * so nothing lined up down the left edge. */
 .vgext-sheet-header {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-height: 56px;
-  padding: 10px 12px 10px 18px;
+  box-sizing: border-box;
+  gap: var(--vgext-space-3, 12px);
+  /* One line, on the command-bar rung. Was 52px around a stacked
+   * eyebrow + title, where the eyebrow named the drawer you had just
+   * opened and the title repeated the active tab. */
+  min-height: var(--vgext-bar-h, 44px);
+  padding: var(--vgext-space-2, 8px) var(--vgext-space-4, 16px);
   border-bottom: 1px solid color-mix(in srgb, var(--vg-border-color, #2a3140) 85%, transparent);
 }
 .vgext-sheet-titles {
@@ -622,16 +632,9 @@ const SHELL_CSS = `
   flex-direction: column;
   gap: 2px;
 }
-.vgext-sheet-eyebrow {
-  font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: color-mix(in srgb, var(--vg-muted-fg-color, #8a93a6) 92%, transparent);
-}
 .vgext-sheet-title {
-  font-weight: 650;
-  font-size: 15px;
+  font-weight: var(--vgext-title-weight, 600);
+  font-size: var(--vgext-title-size, 15px);
   letter-spacing: -0.02em;
   line-height: 1.2;
   color: var(--vg-fg-color, #e5e9f0);
@@ -641,8 +644,8 @@ const SHELL_CSS = `
 }
 .vgext-sheet-close {
   appearance: none;
-  width: 34px;
-  height: 34px;
+  width: var(--vgext-icon-btn, 28px);
+  height: var(--vgext-icon-btn, 28px);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -670,7 +673,7 @@ const SHELL_CSS = `
   position: relative;
   z-index: 2;
   border-bottom: 1px solid color-mix(in srgb, var(--vg-border-color, #2a3140) 85%, transparent);
-  padding: 0 14px 0 10px;
+  padding: 0 var(--vgext-space-4, 16px);
   background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 2%, transparent);
 }
 .vgext-sheet-nav {
@@ -687,21 +690,21 @@ const SHELL_CSS = `
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  height: 36px;
-  padding: 0 12px;
+  height: var(--vgext-strip-h, 36px);
+  padding: 0 var(--vgext-space-3, 12px);
   border: none;
   border-radius: 0;
   background: transparent;
   color: var(--vg-muted-fg-color, #8a93a6);
   font: inherit;
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.1em;
+  font-size: var(--vgext-eyebrow-size, 11px);
+  font-weight: var(--vgext-eyebrow-weight, 600);
+  letter-spacing: var(--vgext-eyebrow-track, 0.1em);
   text-transform: uppercase;
   white-space: nowrap;
   cursor: pointer;
   box-shadow: inset 0 -2px 0 transparent;
-  transition: color 140ms ease, box-shadow 140ms ease;
+  transition: color var(--vgext-t, 120ms ease), box-shadow var(--vgext-t, 120ms ease);
 }
 .vgext-sheet-nav-tab:hover {
   color: var(--vg-fg-color, #e5e9f0);
@@ -714,33 +717,6 @@ const SHELL_CSS = `
   outline: 2px solid var(--vg-chrome-accent);
   outline-offset: -2px;
 }
-.vgext-sheet-nav-crumb {
-  flex: 0 1 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  max-width: 42%;
-  margin-left: auto;
-  padding: 0 2px;
-  font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: color-mix(in srgb, var(--vg-muted-fg-color, #8a93a6) 92%, transparent);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.vgext-sheet-nav-crumb-cat { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.vgext-sheet-nav-crumb-sep { flex: 0 0 auto; opacity: 0.55; }
-.vgext-sheet-nav-crumb-mod {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--vg-fg-color, #e5e9f0);
-}
 .vgext-sheet-subnav {
   flex: 0 0 auto;
   display: flex;
@@ -748,7 +724,7 @@ const SHELL_CSS = `
   gap: 0;
   min-width: 0;
   overflow-x: auto;
-  padding: 0 10px;
+  padding: 0 var(--vgext-space-4, 16px);
   border-bottom: 1px solid color-mix(in srgb, var(--vg-border-color, #2a3140) 70%, transparent);
   background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 1.25%, transparent);
 }
@@ -757,19 +733,19 @@ const SHELL_CSS = `
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  height: 30px;
-  padding: 0 11px;
+  height: var(--vgext-row-h, 30px);
+  padding: 0 var(--vgext-space-3, 12px);
   border: none;
   background: transparent;
   color: var(--vg-muted-fg-color, #8a93a6);
   font: inherit;
-  font-size: 11.5px;
-  font-weight: 550;
-  letter-spacing: 0.01em;
+  font-size: var(--vgext-label-size, 12.5px);
+  font-weight: 500;
+  letter-spacing: 0;
   white-space: nowrap;
   cursor: pointer;
   box-shadow: inset 0 -2px 0 transparent;
-  transition: color 120ms ease, box-shadow 120ms ease;
+  transition: color var(--vgext-t, 120ms ease), box-shadow var(--vgext-t, 120ms ease);
 }
 .vgext-sheet-subnav-tab:hover { color: var(--vg-fg-color, #e5e9f0); }
 .vgext-sheet-subnav-tab.is-active {
@@ -784,8 +760,20 @@ const SHELL_CSS = `
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  padding: 16px 16px 24px;
+  padding: var(--vgext-space-4, 16px) var(--vgext-space-4, 16px) var(--vgext-space-5, 24px);
 }
+/* Kernel tool panels (Options / Column Groups) ship their own eyebrow spec
+ * (11px/0.08em). Hosted inside this drawer they sit alongside the cockpit's
+ * section heads and read as the same rank, so they take the chrome's single
+ * eyebrow. Scoped to .vgext-sheet so kernel consumers outside the ext are
+ * untouched. */
+.vgext-sheet .vg-settings-band-title,
+.vgext-sheet .vg-colgroups-list-title {
+  font-size: var(--vgext-eyebrow-size, 11px);
+  font-weight: var(--vgext-eyebrow-weight, 600);
+  letter-spacing: var(--vgext-eyebrow-track, 0.1em);
+}
+
 /* Kernel tool panels (Options / Column Groups) fill the body edge-to-edge. */
 .vgext-sheet-body:has(> .vgext-sheet-toolpanel) {
   padding: 0;
@@ -811,28 +799,47 @@ const SHELL_CSS = `
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 44px;
-  padding: 8px 14px;
+  box-sizing: border-box;
+  gap: var(--vgext-space-2, 8px);
+  min-height: var(--vgext-bar-h, 44px);
+  padding: var(--vgext-space-2, 8px) var(--vgext-space-4, 16px);
   border-top: 1px solid color-mix(in srgb, var(--vg-border-color, #2a3140) 85%, transparent);
   background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 2.5%, transparent);
 }
+/* Live status line, not a label: sentence case, no letterspacing. */
 .vgext-sheet-footer-hint {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: 10px;
-  font-weight: 550;
-  letter-spacing: 0.04em;
-  color: color-mix(in srgb, var(--vg-muted-fg-color, #8a93a6) 88%, transparent);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vgext-space-2, 8px);
+  font-size: var(--vgext-help-size, 11px);
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--vg-muted-fg-color, #8a93a6);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Accent dot when the session holds unsaved work — same dirty vocabulary
+ * as the title-bar Save button, so "there is something to commit" reads
+ * identically in both places. */
+.vgext-sheet-footer-hint::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--vg-chrome-accent);
+  opacity: 0;
+  transition: opacity var(--vgext-t, 120ms ease);
+}
+.vgext-sheet-footer-hint[data-dirty="true"]::before { opacity: 1; }
 .vgext-sheet-footer-keys {
   flex: 0 0 auto;
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
+  font-size: var(--vgext-help-size, 11px);
+  font-weight: 400;
+  letter-spacing: 0;
   color: color-mix(in srgb, var(--vg-muted-fg-color, #8a93a6) 72%, transparent);
   white-space: nowrap;
 }

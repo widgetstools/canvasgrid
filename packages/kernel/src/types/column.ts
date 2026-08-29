@@ -123,6 +123,23 @@ export interface CColDef<TRow = any, TValue = any> {
    */
   cellDataType?: 'text' | 'number';
   /**
+   * Which of the theme's two cell fonts this column paints with.
+   * Monospace earns its place where column alignment is the point — ids,
+   * tickers, CUSIPs, figures — and costs width everywhere else, so prose
+   * columns (desk, region, trader) read better in the chrome family.
+   *
+   * - `'auto'` (default) — `cellDataType: 'number'` paints monospace,
+   *   everything else paints the text family.
+   * - `'mono'` — always monospace. Set this on identifier columns, which
+   *   are `'text'` by data type but want the aligned face.
+   * - `'text'` — always the chrome family.
+   *
+   * Resolves against `--vg-cell-font-family` / `--vg-cell-text-font-family`.
+   * A theme that declares only the former makes every role monospace, so
+   * this is inert until a theme opts in. 2026-08 look-and-feel pass.
+   */
+  fontRole?: 'auto' | 'mono' | 'text';
+  /**
    * Derive the cell value from the row. Function form runs on the main
    * thread. String form is an expression (`[ask] - [bid]`, `IF([qty] > 0, [pnl], 0)`)
    * compiled with `@wellsfargo-starui/velocity-grid/expression` and also evaluated

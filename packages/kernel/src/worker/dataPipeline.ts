@@ -1164,6 +1164,14 @@ export class ViewportSlicer<TRow = any> {
      *  whose id is in the set. Caller drains the matched ids after slicing
      *  (mirrors the `pendingFlashes` drain-after-slice contract). */
     pendingTouched?: Set<string>,
+    /** 2026-08 look-and-feel — direction for the staged flashes, parallel
+     *  to `pendingFlashes`. When supplied, the slicer also packs
+     *  `flashDir: Uint8Array` — ONE BYTE per cell, row-major, matching
+     *  `flashMask`'s bit order: 0 = neutral, 1 = rose, 2 = fell. Omitted
+     *  when no flashing cell in the window has a known direction, so a
+     *  non-numeric feed ships exactly the bytes it always did. Last in the
+     *  list so every existing positional call site is untouched. */
+    pendingFlashDirs?: Map<string, Map<string, 1 | 2>>,
   ): ViewportChunk {
     const rowStart = Math.max(0, req.rowStart);
     const rowEnd = Math.min(visibleIds.length, req.rowEnd);
@@ -1278,6 +1286,7 @@ export class ViewportSlicer<TRow = any> {
     // against the per-row pending set. The mask is omitted when
     // there's nothing to flash so the transferable list stays minimal.
     let flashMask: Uint8Array | undefined;
+    let flashDir: Uint8Array | undefined;
     if (
       pendingFlashes !== undefined && pendingFlashes.size > 0
       && req.includeFlashMask !== false
@@ -1293,19 +1302,28 @@ export class ViewportSlicer<TRow = any> {
         const col = this.colIndex.get(req.columns[c]!);
         colFields[c] = col?.field;
       }
+      const dirBytes = pendingFlashDirs !== undefined ? new Uint8Array(totalBits) : undefined;
+      let anyDir = false;
       for (let r = 0; r < count; r++) {
         const rowId = visibleIds[rowStart + r]!;
         const fields = pendingFlashes.get(rowId);
         if (!fields || fields.size === 0) continue;
+        const rowDirs = pendingFlashDirs?.get(rowId);
         for (let c = 0; c < colCount; c++) {
           const field = colFields[c];
           if (!field || !fields.has(field)) continue;
           const bitIdx = r * colCount + c;
           mask[bitIdx >>> 3]! |= 1 << (bitIdx & 7);
           anySet = true;
+          const d = rowDirs?.get(field);
+          if (d !== undefined && dirBytes !== undefined) {
+            dirBytes[bitIdx] = d;
+            anyDir = true;
+          }
         }
       }
       if (anySet) flashMask = mask;
+      if (anySet && anyDir) flashDir = dirBytes;
     }
 
     // Damage-region rendering (Task 3, corrected Task 6) — touchedRows
@@ -1349,6 +1367,7 @@ export class ViewportSlicer<TRow = any> {
       numericCols,
       textCols,
       flashMask,
+      flashDir,
       touchedRows,
       groupValue,
       groupChildCount,

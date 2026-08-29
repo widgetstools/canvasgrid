@@ -104,6 +104,7 @@ export async function handleDataPipeline(
       state.distinct.invalidateRows([]);
       // Cycle 4 / Task 11 — wipe pendingFlashes.
       state.pendingFlashes.clear();
+      state.pendingFlashDirs.clear();
       // Damage-region rendering (Task 3) — a full data replace invalidates
       // any staged touched-row bookkeeping the same way it invalidates
       // pendingFlashes (row identities from the old dataset are meaningless
@@ -144,6 +145,7 @@ export async function handleDataPipeline(
           state.queue.discardPending();
           state.store.setAll([]);
           state.pendingFlashes.clear();
+          state.pendingFlashDirs.clear();
           state.pendingTouched.clear();
           state.calc.onSetRowData();
           state.ssrmGroupMetaSeen = false;
@@ -262,6 +264,7 @@ export async function handleDataPipeline(
           for (const id of present) {
             state.alwaysPassIds.delete(id);
             state.pendingFlashes.delete(id);
+            state.pendingFlashDirs.delete(id);
             // Fix wave 6 — `setRowData`'s reset path clears
             // `pendingTouched` alongside `pendingFlashes` (same
             // rationale: row identities that no longer exist can't stay
@@ -402,7 +405,10 @@ export async function handleDataPipeline(
     case 'setEnableCellChangeFlash': {
       // Cycle 4 / Task 11 — runtime mutation.
       state.enableCellChangeFlash = req.payload.enabled === true;
-      if (!state.enableCellChangeFlash) state.pendingFlashes.clear();
+      if (!state.enableCellChangeFlash) {
+        state.pendingFlashes.clear();
+        state.pendingFlashDirs.clear();
+      }
       post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: state.visibleCache?.length ?? 0 });
       return;
     }

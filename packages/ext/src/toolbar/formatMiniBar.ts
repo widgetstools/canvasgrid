@@ -143,9 +143,9 @@ function injectMiniBarStyles(): void {
 }
 .vgext-minibar[hidden] { display: none !important; }
 .vgext-minibar-label {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-size: var(--vgext-eyebrow-size, 11px);
+  font-weight: var(--vgext-eyebrow-weight, 600);
+  letter-spacing: var(--vgext-eyebrow-track, 0.1em);
   text-transform: uppercase;
   color: var(--vg-muted-fg-color, #8b93a7);
   margin-right: 6px;

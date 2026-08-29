@@ -95,11 +95,18 @@ function mini(...children: HTMLElement[]): HTMLDivElement {
   return r;
 }
 
+/**
+ * 2026-08 look-and-feel — the group's name moves from UNDER the controls
+ * (Office-ribbon style) to an inline eyebrow BEFORE them. Underneath, it
+ * cost 14px of vertical per group for a label read once, and it forced the
+ * deck into stacked mini-rows. Inline, it reads as the same eyebrow every
+ * other named segment in the chrome uses, and the group keeps its name.
+ */
 function grp(name: string, ...rows: HTMLElement[]): HTMLDivElement {
   const g = h('vgext-rb-grp');
   const deck = h('vgext-rb-deck');
   deck.append(...rows);
-  g.append(deck, h('vgext-rb-grp-name', name));
+  g.append(h('vgext-rb-grp-name', name), deck);
   return g;
 }
 

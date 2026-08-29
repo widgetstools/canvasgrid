@@ -104,19 +104,54 @@ export interface ResolvedTheme {
    *  chrome font when `--vg-cell-font-family` isn't declared so
    *  themes that haven't migrated keep their current look. */
   cellFont: string;
+  /** Cell font for columns whose values are words rather than ids or
+   *  figures. Monospace earns its place where column alignment is the
+   *  point; on prose it only costs width. Defaults to `cellFont` so a
+   *  theme that doesn't declare `--vg-cell-text-font-family` is
+   *  unchanged. */
+  cellTextFont: string;
   fg: string;
   bg: string;
   headerBg: string;
   headerFg: string;
   borderColor: string;
   gridLineColor: string;
+  /** 2026-08 look-and-feel — the lattice split into two axes so each can
+   *  be weighted. `gridLineH` carries the reading rhythm; `gridLineV`
+   *  sits one step under it so nine verticals never out-shout twenty-five
+   *  horizontals; `gridLineHeader` is drawn harder because in the header
+   *  the boundary is the thing you grab to resize. All three fall back to
+   *  `--vg-grid-line-color`, so a theme that declares only the old token
+   *  paints exactly as it did. Resolved from `--vg-grid-line-h` /
+   *  `-v` / `-header`. */
+  gridLineH: string;
+  gridLineV: string;
+  gridLineHeader: string;
+  /** Structural lattice line — pinned-band and group edges. Falls back to
+   *  `--vg-border-color`. Resolved from `--vg-grid-line-strong`. */
+  gridLineStrong: string;
   rowAltBg: string;
   rowHoverBg: string;
   rowSelectedBg: string;
+  /** 2026-08 look-and-feel — the 2px accent edge painted at the left of a
+   *  selected row, so selection inside the canvas speaks the same language
+   *  as a selected drawer row, rail item or menu entry. Falls back to
+   *  `--vg-focus-ring-color`. Resolved from `--vg-row-selected-edge`. */
+  rowSelectedEdge: string;
   focusRingColor: string;
   focusRingWidth: number;
   flashFromColor: string;
   flashToColor: string;
+  /** 2026-08 look-and-feel — directional flash. On a blotter the direction
+   *  of a change is the most-read signal, and one amber pair carried both.
+   *  Both pairs fall back to `flashFromColor`/`flashToColor`, so a theme
+   *  that declares neither (and high contrast, which deliberately does not
+   *  colour-code direction) flashes exactly as it did. Resolved from
+   *  `--vg-flash-up-*` / `--vg-flash-down-*`. */
+  flashUpFromColor: string;
+  flashUpToColor: string;
+  flashDownFromColor: string;
+  flashDownToColor: string;
   /** Cycle 7 / Task 7 — background fill applied behind any cell whose
    *  value contains an active quick-filter term. Resolved from
    *  `--vg-quick-filter-match-bg`. */
@@ -902,6 +937,9 @@ export class CssReader {
     // absent so legacy themes that haven't migrated still paint cells
     // with the same family they always did.
     const cellFontFamily = get('--vg-cell-font-family') || fontFamily;
+    // Text columns opt out of monospace. Defaults to the cell family so a
+    // theme that doesn't declare the token paints every cell as before.
+    const cellTextFontFamily = get('--vg-cell-text-font-family') || cellFontFamily;
 
     const { cellClassVariants, headerClassVariants } = scanVariantVariables();
 
@@ -927,19 +965,35 @@ export class CssReader {
     return {
       font: `${fontSize} ${fontFamily}`,
       cellFont: `${fontSize} ${cellFontFamily}`,
+      cellTextFont: `${fontSize} ${cellTextFontFamily}`,
       fg: get('--vg-fg-color') || '#1a1f24',
       bg: get('--vg-bg-color') || '#ffffff',
       headerBg: get('--vg-header-bg') || '#e8ecef',
       headerFg: get('--vg-header-fg') || '#1a1f24',
       borderColor: get('--vg-border-color') || '#d5dbe0',
       gridLineColor: get('--vg-grid-line-color') || '#e8ecef',
+      gridLineH: get('--vg-grid-line-h') || get('--vg-grid-line-color') || '#e8ecef',
+      gridLineV: get('--vg-grid-line-v') || get('--vg-grid-line-color') || '#e8ecef',
+      gridLineHeader: get('--vg-grid-line-header') || get('--vg-grid-line-color') || '#e8ecef',
+      gridLineStrong:
+        get('--vg-grid-line-strong') || get('--vg-border-color') || '#d5dbe0',
       rowAltBg: get('--vg-row-alt-bg') || '#f4f6f8',
       rowHoverBg: get('--vg-row-hover-bg') || '#eef1f3',
       rowSelectedBg: get('--vg-row-selected-bg') || 'rgba(13,148,136,0.12)',
+      rowSelectedEdge:
+        get('--vg-row-selected-edge') || get('--vg-focus-ring-color') || '#0d9488',
       focusRingColor: get('--vg-focus-ring-color') || '#0d9488',
       focusRingWidth: px('--vg-focus-ring-width', 1),
       flashFromColor: get('--vg-flash-from-color') || '#fef3c7',
       flashToColor: get('--vg-flash-to-color') || 'rgba(254,243,199,0)',
+      flashUpFromColor:
+        get('--vg-flash-up-from-color') || get('--vg-flash-from-color') || '#fef3c7',
+      flashUpToColor:
+        get('--vg-flash-up-to-color') || get('--vg-flash-to-color') || 'rgba(254,243,199,0)',
+      flashDownFromColor:
+        get('--vg-flash-down-from-color') || get('--vg-flash-from-color') || '#fef3c7',
+      flashDownToColor:
+        get('--vg-flash-down-to-color') || get('--vg-flash-to-color') || 'rgba(254,243,199,0)',
       quickFilterMatchBg: get('--vg-quick-filter-match-bg') || '#fff3b8',
       unsortIconColor: get('--vg-unsort-icon-color') || 'rgba(0, 0, 0, 0.4)',
       rangeFillColor: get('--vg-range-fill-color') || 'rgba(59, 130, 246, 0.22)',

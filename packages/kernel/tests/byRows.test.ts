@@ -721,20 +721,30 @@ describe('paintGridLines', () => {
     const verticals = calls.filter((call) => call[2] === 1).length;   // width === 1
     // 2 data row bottoms + 1 header→body separator = 3 horizontal lines
     expect(horizontals).toBe(vsGridLines.visibleRows.length + 1); // 3
-    expect(verticals).toBe(vsGridLines.visibleColumns.length - 1); // 1
+    // 2026-08 look-and-feel — the vertical axis is painted in TWO segments,
+    // the header band and the data band, so each can carry its own weight
+    // (--vg-grid-line-header vs --vg-grid-line-v). One inter-column gap is
+    // therefore two fillRects, not one. Coverage is unchanged: the same
+    // span, 0..lastRowBottom, is still drawn.
+    expect(verticals).toBe((vsGridLines.visibleColumns.length - 1) * 2); // 2
   });
 
   it('paints vertical separators in the header region too', () => {
-    // Regression: previously verticals spanned only [bodyTop, bodyBottom]; the
-    // header read as one merged strip with no column separators. Now verticals
-    // span 0..bodyBottom — every header column gets a divider.
+    // Regression: verticals once spanned only [bodyTop, bodyBottom] and the
+    // header read as one merged strip with no column separators. They now
+    // cover 0..lastRowBottom, but as two weighted segments rather than one
+    // full-height rect — so assert BOTH bands are drawn.
     const c = fakeGc();
     paintGridLines(c, { viewport: vsGridLines, theme, columnDefs: cols, cellRenderers: makeReg(), cellData, selection: selectionEmpty, sortModel: [] });
     const calls = (c.fillRect as any).mock.calls as number[][];
-    const fullHeightVerticals = calls.filter((call) =>
-      call[1] === 0 && call[2] === 1 && call[3] === vsGridLines.bodyBottom,
+    const headerBand = calls.filter((call) =>
+      call[1] === 0 && call[2] === 1 && call[3] === vsGridLines.bodyTop,
     );
-    expect(fullHeightVerticals.length).toBeGreaterThanOrEqual(1);
+    const dataBand = calls.filter((call) =>
+      call[1] === vsGridLines.bodyTop && call[2] === 1,
+    );
+    expect(headerBand.length).toBeGreaterThanOrEqual(1);
+    expect(dataBand.length).toBeGreaterThanOrEqual(1);
   });
 
   it('starts each vertical where the two columns\' group ancestry diverges (AG span-height borders)', () => {
@@ -866,13 +876,22 @@ describe('paintGridLines', () => {
     };
     paintGridLines(c, { viewport: vsPinned, theme, columnDefs: cols, cellRenderers: makeReg(), cellData, selection: selectionEmpty, sortModel: [] });
     const calls = (c.fillRect as any).mock.calls as number[][];
-    // Verticals now span the full canvas height (0..bodyBottom) so header
-    // column separators are visible too. Expect 2 band edges + 1 inter-center
-    // gap, all with width=1 and height=bodyBottom (y=0).
+    // Pinned band edges are structural and still run the full canvas height
+    // in one rect (they carry --vg-grid-line-strong, and have no per-pair
+    // ancestry divergence to honour). The ordinary separator between the two
+    // centre columns is the two-segment lattice vertical.
     const fullHeightVerticals = calls.filter((call) =>
       call[1] === 0 && call[2] === 1 && call[3] === vsPinned.bodyBottom,
     ).length;
-    expect(fullHeightVerticals).toBe(3);
+    expect(fullHeightVerticals).toBe(2); // the two pinned band edges
+    const headerBand = calls.filter((call) =>
+      call[1] === 0 && call[2] === 1 && call[3] === vsPinned.bodyTop,
+    ).length;
+    const dataBand = calls.filter((call) =>
+      call[1] === vsPinned.bodyTop && call[2] === 1,
+    ).length;
+    expect(headerBand).toBeGreaterThanOrEqual(1);
+    expect(dataBand).toBeGreaterThanOrEqual(1);
   });
 
   it('paints a trailing vertical on the last column when it does not meet the viewport edge', () => {

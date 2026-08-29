@@ -32,6 +32,7 @@ export function estimateChunkBytes(chunk: ViewportChunk | null | undefined): num
     bytes += tc.offsets.byteLength + tc.bytes.byteLength;
   }
   if (chunk.flashMask) bytes += chunk.flashMask.byteLength;
+  if (chunk.flashDir) bytes += chunk.flashDir.byteLength;
   if (chunk.groupChildCount) bytes += chunk.groupChildCount.byteLength;
   if (chunk.isExpanded) bytes += chunk.isExpanded.byteLength;
   return bytes;

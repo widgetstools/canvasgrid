@@ -311,7 +311,24 @@ export class SideBarHost {
     if (!instance) return; // unknown component string — silent no-op
 
     slot.instance = instance;
-    this.panelEl.appendChild(instance.getGui());
+    // 2026-08 look-and-feel — the panel names itself. The tab used to
+    // carry the name in `writing-mode: vertical-rl`, which made every tab
+    // as tall as its label was long and put the only rotated text in the
+    // product on the busiest strip. The tab keeps the name as its
+    // `aria-label` and tooltip; the name is DRAWN here, horizontally, at
+    // full size — the same move the ext chrome's drawer already makes.
+    const header = document.createElement('div');
+    header.className = 'vg-side-bar-panel-header';
+    const title = document.createElement('span');
+    title.className = 'vg-side-bar-panel-header-title';
+    title.textContent = slot.def.labelDefault;
+    header.appendChild(title);
+    this.panelEl.appendChild(header);
+    const gui = instance.getGui();
+    gui.style.flex = '1 1 auto';
+    gui.style.minHeight = '0';
+    gui.style.overflow = 'auto';
+    this.panelEl.appendChild(gui);
     this.panelWidth = slot.def.width ?? DEFAULT_PANEL_WIDTH;
     this.panelEl.style.width = `${this.panelWidth}px`;
     this.panelEl.style.display = '';
