@@ -1742,10 +1742,23 @@ export class VelocityGrid<TRow = any> {
     }
 
     this.scroller = document.createElement('div');
-    this.scroller.className = 'vg-scroller vg-scrollbar';
-    // overflow:auto — tracks hide when content fits. The themed
-    // `::-webkit-scrollbar` rules in tokens.css force a visible 8px thumb
-    // on Chromium/WebKit (macOS overlay scrollbars otherwise vanish when idle).
+    // The data area uses the BROWSER'S scrollbar. It deliberately does NOT
+    // carry `vg-scrollbar` — that class is the opt-in to the theme's
+    // --vg-scrollbar-* restyling, which the kernel's tool panels still take.
+    // Scrolling the grid is the most-used gesture in the product and it
+    // should feel like scrolling anything else on the platform — the
+    // browser's own hit target, and whatever the user has configured.
+    // Note this is NOT a way to avoid a Fluent-styled scrollbar: Chrome on
+    // Windows 11 draws Fluent (rounded thumb, no track, no arrow buttons)
+    // as its OWN default, measured on Chrome 151. Wanting a different
+    // shape means styling it again, not un-styling it.
+    //
+    // Layout is unaffected: `measureSize` compares root vs scroller
+    // clientWidth and only reserves `--vg-scrollbar-thickness` when the
+    // browser reserves no gutter of its own (macOS overlay), so a classic
+    // gutter-reserving scrollbar is measured, not double-counted.
+    this.scroller.className = 'vg-scroller';
+    // overflow:auto — tracks hide when the content fits.
     this.scroller.style.cssText = 'position:absolute; inset:0; overflow:auto;';
     this.sizer = document.createElement('div');
     this.sizer.className = 'vg-sizer';
