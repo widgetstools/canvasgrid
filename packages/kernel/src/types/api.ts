@@ -204,6 +204,12 @@ export interface VelocityGridApi<TRow = any> {
   refreshServerSide(params?: import('./ssrm').RefreshServerSideParams): void;
   /** SSRM — patch rows already (or about to be) in the block cache. */
   applyServerSideTransaction(tx: import('./ssrm').ServerSideTransaction<TRow>): void;
+  /** Sparse SSRM — publish a datasource-computed pivot cross-tab (`null`
+   *  clears). Lets a natively-pivoting datasource serve pivot without the
+   *  full-hydrate client pipeline. */
+  setServerSidePivotResult(
+    result: import('../worker/protocol').SsrmPivotResult | null,
+  ): void;
   /** CSRM — install / replace the live row source. `null` detaches. The grid
    *  unsubscribes on destroy but never destroys the provider itself. */
   setClientSideDataProvider(

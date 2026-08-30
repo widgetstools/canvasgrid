@@ -28,6 +28,7 @@ export type DataPipelineRequest = Extract<WorkerRequest, {
     | 'ssrmEvict'
     | 'ssrmSetClientPipeline'
     | 'ssrmSetGrandTotals'
+    | 'ssrmSetPivotResult'
     | 'applyTransaction'
     | 'updateColumns'
     | 'setEnableCellChangeFlash'
@@ -50,6 +51,15 @@ export async function handleDataPipeline(
   switch (req.type) {
     case 'ssrmSetGrandTotals': {
       state.ssrmGrandTotals = req.payload.totals;
+      post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: state.visibleCache?.length ?? 0 });
+      return;
+    }
+
+    case 'ssrmSetPivotResult': {
+      // Pure state swap — the matrix is stamped onto the chunk at
+      // getViewport time, so no pipeline rebuild is needed (the row set
+      // doesn't change; only the values painted into pivot columns do).
+      state.ssrmPivot = req.payload.result;
       post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: state.visibleCache?.length ?? 0 });
       return;
     }
@@ -88,6 +98,9 @@ export async function handleDataPipeline(
       state.ssrmRowCount = 0;
       state.ssrmGroupMetaSeen = false;
       state.ssrmGrandTotals = null;
+      // A host cross-tab is keyed by group keys from the dataset being
+      // replaced — meaningless against the new one.
+      state.ssrmPivot = null;
       // A-C2 (production hardening) — a full data replace wipes main's row
       // mirror; drain-and-discard any pending async transaction so a queued
       // tick can't replay onto (and diverge) the replacement store.

@@ -776,6 +776,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       ssrmRowCount: 0,
       ssrmGroupMetaSeen: false,
       ssrmGrandTotals: null,
+      ssrmPivot: null,
       groupMaintainOrder: payload.groupMaintainOrder === true,
       groupAggFiltering: payload.groupAggFiltering === true,
       pendingDefaultExpandSeed: false,

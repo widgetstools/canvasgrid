@@ -3,6 +3,29 @@ import type { PivotModel, PivotKeyNode } from './passes/pivotPass';
 
 export type ReqId = number;
 
+/**
+ * A pivot cross-tab computed by the DATASOURCE rather than by the worker's
+ * `PivotPass` — the sparse SSRM path never reaches that pass, so a datasource
+ * that pivots natively (Perspective `split_by`) supplies this instead.
+ *
+ * Field-for-field the subset of `PivotPassOutput` the chunk carries, so the
+ * main thread's consumption path (`pivotEngine.maybeSyncPivotColumns` →
+ * `synthesizePivotColumns` → the cell reader) is provenance-blind and needs no
+ * changes. Build `values` keys with the exported `encodePivotValueKey`.
+ */
+export interface SsrmPivotResult {
+  /** Distinct pivot-key tree; drives the synthesized column structure. */
+  keyTree: PivotKeyNode[];
+  /** Every leaf path, in column-render order. Cache key for re-synthesis. */
+  leafPaths: string[][];
+  /** Cross-tab cells, keyed by `encodePivotValueKey(groupKey, joinedPath, valueColId)`.
+   *  `groupKey` must match the composite group key the skeleton ships. */
+  values: Map<string, unknown>;
+  /** Set when the producer refused to materialize (too many columns), so the
+   *  grid can fire `pivotMaxColumnsReached` exactly as PivotPass does. */
+  maxColumnsReached?: { generatedColumns: number; cap: number };
+}
+
 export interface WorkerInitPayload {
   columns: WorkerColumn[];
   rowIdField: string;            // initial cycle: getRowId is the value of this field
@@ -465,6 +488,17 @@ export type WorkerRequest =
       id: ReqId;
       type: 'ssrmSetGrandTotals';
       payload: { totals: Record<string, unknown> | null };
+    }
+  /** Sparse SSRM v2 — install a host-computed pivot cross-tab. The sparse
+   *  path early-returns before `PivotPass` runs, so a datasource that can
+   *  pivot natively (e.g. Perspective `split_by`) supplies the result here
+   *  instead and the viewport handler stamps it onto the chunk verbatim.
+   *  `null` clears. Ignored while the client pipeline is on — PivotPass
+   *  owns the matrix there. */
+  | {
+      id: ReqId;
+      type: 'ssrmSetPivotResult';
+      payload: { result: SsrmPivotResult | null };
     }
   | { id: ReqId; type: 'applyTransaction'; payload: { add?: unknown[]; update?: unknown[]; remove?: string[]; async: boolean; heightsByRowId?: Map<string, number> } }
   | { id: ReqId; type: 'setSortModel';     payload: SortModel }

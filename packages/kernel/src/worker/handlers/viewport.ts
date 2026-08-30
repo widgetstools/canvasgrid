@@ -303,6 +303,22 @@ export async function handleViewport(
           chunk.pivotMaxColumnsReached = { ...pivotOut.maxColumnsReached };
         }
       }
+      // Sparse SSRM — `buildVisibleAsync` returns before PivotPass, so
+      // `pivotOut` is always null here. A datasource that pivots natively
+      // (Perspective `split_by`) pushes its cross-tab via
+      // `ssrmSetPivotResult`; stamp it in the same shape so the main
+      // thread's pivot path stays provenance-blind. Deliberately gated on
+      // the sparse path only: once the client pipeline is on, PivotPass
+      // owns the matrix and a stale host result must not shadow it.
+      if (state.ssrmActive && !state.ssrmClientPipeline && state.ssrmPivot !== null) {
+        const hostPivot = state.ssrmPivot;
+        chunk.pivotColumnTree = hostPivot.keyTree;
+        chunk.pivotLeafPaths = hostPivot.leafPaths;
+        chunk.pivotValues = hostPivot.values;
+        if (hostPivot.maxColumnsReached !== undefined) {
+          chunk.pivotMaxColumnsReached = { ...hostPivot.maxColumnsReached };
+        }
+      }
       post(
         { id: req.id, type: 'viewport', chunk, stickyAncestors },
         collectViewportTransferables(chunk) as ArrayBuffer[],

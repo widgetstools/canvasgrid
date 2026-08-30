@@ -370,6 +370,15 @@ export class WorkerClient {
     });
   }
 
+  ssrmSetPivotResult(
+    result: import('./protocol').SsrmPivotResult | null,
+  ): Promise<{ count: number; visibleCount: number }> {
+    return this.send<{ count: number; visibleCount: number }>({
+      type: 'ssrmSetPivotResult',
+      payload: { result },
+    });
+  }
+
   applyTransaction(payload: {
     add?: unknown[]; update?: unknown[]; remove?: string[];
     async: boolean; heightsByRowId?: Map<string, number>;

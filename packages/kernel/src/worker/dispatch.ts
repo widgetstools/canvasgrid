@@ -171,6 +171,7 @@ export const dispatchTable: DispatchTable = {
   ssrmEvict: handleDataPipeline as Handler,
   ssrmSetClientPipeline: handleDataPipeline as Handler,
   ssrmSetGrandTotals: handleDataPipeline as Handler,
+  ssrmSetPivotResult: handleDataPipeline as Handler,
   applyTransaction: handleDataPipeline as Handler,
   updateColumns: handleDataPipeline as Handler,
   setEnableCellChangeFlash: handleDataPipeline as Handler,

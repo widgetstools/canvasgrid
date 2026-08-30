@@ -29,6 +29,7 @@ import type {
   SsrmExpressionHost,
 } from './types/ssrm';
 import type { IClientSideDataProvider } from './types/clientSideDataProvider';
+import type { SsrmPivotResult } from './worker/protocol';
 import { type ResolvedColDef, applyCellProps, composeFont, cellFontForColumn } from './core/propertyChain';
 import { resolveColumnTree, isColGroupDef, visibleHeaderGroupDepth, type ColumnTree, type ColumnTreeNode, type ResolvedColGroupDef } from './core/columnTree';
 import { moveColumnToGroup as moveColumnToGroupPure, moveColumnGroup as moveColumnGroupPure } from './core/columnGroupMutation';
@@ -284,6 +285,17 @@ export { SSRM_ROW_META_KEY, attachSsrmRowMeta, readSsrmRowMeta, isServerSideData
 export type {
   IClientSideDataProvider, IClientSideDataProviderDelta,
 } from './types/clientSideDataProvider';
+// Sparse-SSRM pivot: a datasource that pivots natively (Perspective
+// `split_by`) builds the cross-tab in the kernel's own shape and pushes it
+// through `setServerSidePivotResult`. These are the helpers it needs to key
+// the value map identically to the worker's PivotPass — same "hosts build
+// kernel-shaped data with kernel-exported helpers" contract as the SSRM
+// row-meta exports above.
+export {
+  encodePivotValueKey, PIVOT_PATH_SEP, PIVOT_ROW_TOTAL_PATH_MARKER,
+} from './worker/passes/pivotPass';
+export type { PivotKeyNode } from './worker/passes/pivotPass';
+export type { SsrmPivotResult } from './worker/protocol';
 export { buildSsrmColumnKeys, mergeSsrmRowFields } from './core/ssrmColumnKeys';
 export type { SsrmColumnKeysInput } from './core/ssrmColumnKeys';
 export type { CellPainter, CellPaintConfig, RegisterCellRendererOpts } from './renderer/cellRenderers/registry';
@@ -1271,6 +1283,13 @@ export class VelocityGrid<TRow = any> {
    * else, so a provider shared by several grids survives any one of them.
    */
   private clientSideDataProviderUnsub: (() => void) | null = null;
+  /**
+   * The SSRM host has pushed a pivot result at least once, so it can compute
+   * cross-tabs itself. Latched by `setServerSidePivotResult`. Until then
+   * `setPivotMode(true)` keeps refusing on a sparse datasource, because
+   * nothing would supply the matrix.
+   */
+  private ssrmHostPivotDeclared = false;
   /** Resolves when async init emits `gridReady` (SSRM mounted if applicable). */
   private readonly readyPromise: Promise<void>;
   private resolveReady!: () => void;
@@ -4381,6 +4400,41 @@ export class VelocityGrid<TRow = any> {
       .catch(() => { /* worker torn down */ });
   }
 
+  /**
+   * Sparse SSRM — publish a datasource-computed pivot cross-tab.
+   *
+   * The sparse path returns before the worker's `PivotPass`, so a datasource
+   * that pivots natively (Perspective `split_by`) computes the matrix itself
+   * and pushes it here. The payload is the same shape `PivotPass` produces,
+   * so everything downstream — column synthesis, the cell reader, the totals
+   * row — is unchanged and source-agnostic.
+   *
+   * Build `values` keys with the exported {@link encodePivotValueKey}; the
+   * `groupKey` component must match the composite group key the skeleton
+   * ships for that row. `null` clears (pivot columns revert).
+   *
+   * Declaring pivot this way is also what lets `setPivotMode(true)` stop
+   * refusing on a sparse datasource — see {@link ssrmHostPivotDeclared}.
+   */
+  setServerSidePivotResult(result: SsrmPivotResult | null): void {
+    if (this.destroyed) return;
+    if (this.options.rowModelType !== 'serverSide') {
+      console.warn('[velocity-grid] setServerSidePivotResult requires rowModelType: "serverSide"');
+      return;
+    }
+    // Latch capability on the first push (including an explicit `null`, which
+    // is how a host says "I can pivot, there's just nothing to show yet").
+    this.ssrmHostPivotDeclared = true;
+    void this.workerCoord.ssrmSetPivotResult(result)
+      .then(() => {
+        if (this.destroyed) return;
+        // Column structure may have changed; a repaint alone would keep the
+        // old synthesized columns, so re-fetch to run maybeSyncPivotColumns.
+        this.requestViewport('rowDataChanged');
+      })
+      .catch(() => { /* worker torn down */ });
+  }
+
   applyServerSideTransaction(tx: ServerSideTransaction<TRow>): void {
     if (this.options.rowModelType !== 'serverSide' || !this.ssrm) {
       console.warn('[velocity-grid] applyServerSideTransaction requires rowModelType: "serverSide"');
@@ -6354,6 +6408,28 @@ export class VelocityGrid<TRow = any> {
       });
     }
     const wantsGroup = g.rowGroupCols.length > 0;
+    // Fail closed: client pipeline ON + a skeleton datasource + grouping is
+    // an incoherent combination. The controller's `grouped()` knows nothing
+    // about the pipeline, so it would switch to the skeleton path and start
+    // pushing `__ssrm` group-meta rows plus partially-fetched leaves into the
+    // very store GroupPass/PivotPass is aggregating over — totals that count
+    // meta rows and miss unfetched leaves, with nothing on screen to say so.
+    // Refuse the grouping rather than paint wrong numbers.
+    if (wantsGroup && this.ssrmClientPipeline && this.ssrmV2) {
+      console.error(
+        '[velocity-grid] SSRM: row grouping is not supported while the client pipeline is '
+        + 'active on a skeleton (getGroupSkeleton) datasource — the hydrated book and the '
+        + 'sparse skeleton would both write to the worker store and aggregates would be '
+        + 'wrong. Grouping was not applied. Turn off pivot / '
+        + 'serverSideEnableClientSidePipeline to group natively via the skeleton.',
+      );
+      return Promise.resolve({
+        visibleCount: this.rowCount,
+        groupKeys: [],
+        groupDescendants: [],
+        expandedKeys: null,
+      });
+    }
     const prep = wantsGroup
       ? this.enableSsrmClientPipeline()
       : this.disableSsrmClientPipelineIfIdle();
@@ -6376,16 +6452,38 @@ export class VelocityGrid<TRow = any> {
     // in local mode, and must keep taking the synchronous path below rather
     // than deferring the pivot change behind a hydrate that can't apply.
     if (this.options.rowModelType === 'serverSide' && this.ssrm && pivotMode) {
-      // Sparse Perspective SSRM cannot build a pivot matrix (no full hydrate
-      // while grouped; sample forces client pipeline off). Fail closed so
-      // the Columns panel doesn't show Pivot ON with an empty/wrong grid.
+      // The datasource pivots natively and pushes its cross-tab through
+      // `setServerSidePivotResult` — no hydrate needed, and the sparse path
+      // stamps the host matrix onto every chunk. This is the whole point of
+      // the pivot ingest channel: pivot without abandoning SSRM.
+      if (this.ssrmHostPivotDeclared) {
+        this.applyPivotModeChange(true, opts);
+        return;
+      }
+      // Otherwise pivot can only come from PivotPass over a fully hydrated
+      // book. Refuse loudly wherever that hydrate can't or shouldn't happen,
+      // and re-emit pivot state so an optimistic UI toggle snaps back
+      // (the columns panel flips `aria-pressed` before calling us).
       const sparsePerspective = this.ssrmExpressionHost != null
         && this.options.serverSideEnableClientSidePipeline === false;
       if (sparsePerspective) {
         console.warn(
           '[velocity-grid] Pivot mode is not supported on sparse Perspective SSRM. '
-          + 'Use clientSide, or set serverSideEnableClientSidePipeline: true (full hydrate).',
+          + 'Use clientSide, set serverSideEnableClientSidePipeline: true (full hydrate), '
+          + 'or have the datasource publish a cross-tab via setServerSidePivotResult.',
         );
+        this.notifyPivotModeRefused();
+        return;
+      }
+      // An explicit opt-out means "never download the whole book" — honour
+      // it instead of silently full-hydrating a server-side dataset.
+      if (this.options.serverSideEnableClientSidePipeline === false) {
+        console.warn(
+          '[velocity-grid] Pivot mode needs the client pipeline, but '
+          + 'serverSideEnableClientSidePipeline is false — refusing to hydrate the full book. '
+          + 'Set it to true, or publish a cross-tab via setServerSidePivotResult.',
+        );
+        this.notifyPivotModeRefused();
         return;
       }
       void this.enableSsrmClientPipeline().then(() => {
@@ -6394,6 +6492,7 @@ export class VelocityGrid<TRow = any> {
           console.warn(
             '[velocity-grid] Pivot mode aborted — SSRM could not fully hydrate for the client pipeline.',
           );
+          this.notifyPivotModeRefused();
           return;
         }
         this.applyPivotModeChange(true, opts);
@@ -6404,6 +6503,27 @@ export class VelocityGrid<TRow = any> {
       void this.disableSsrmClientPipelineIfIdle();
     }
     this.applyPivotModeChange(pivotMode, opts);
+  }
+
+  /**
+   * Re-announce the UNCHANGED pivot state after `setPivotMode` refuses.
+   *
+   * The columns tool panel flips its toggle optimistically and relies on the
+   * next `pivotStateChanged` to confirm or correct it. Every refusal path
+   * returns before `applyPivotModeChange`, so without this no event fires and
+   * the toggle stays visually ON over a grid that never pivoted — exactly the
+   * "Pivot ON with an empty/wrong grid" outcome the fail-closed design exists
+   * to prevent.
+   */
+  private notifyPivotModeRefused(): void {
+    if (this.destroyed) return;
+    this.events.emit({
+      type: 'pivotStateChanged',
+      pivotMode: this.pivotEngine.isPivotMode(),
+      pivotColumns: [...this.pivotEngine.getPivotColumns()],
+      valueColumns: this.pivotEngine.getValueColumnsApiShape(),
+      source: 'mode',
+    });
   }
 
   /** Shared body of setPivotMode after SSRM hydrate gating. */
@@ -10486,6 +10606,7 @@ export class VelocityGrid<TRow = any> {
       setClientSideDataProvider: (p) => this.setClientSideDataProvider(p),
       refreshServerSide: (p) => this.refreshServerSide(p),
       applyServerSideTransaction: (tx) => this.applyServerSideTransaction(tx),
+      setServerSidePivotResult: (r) => this.setServerSidePivotResult(r),
       whenReady: () => this.whenReady(),
       setSortModel: (s) => this.setSortModel(s),
       setFilterModel: (f) => this.setFilterModel(f),

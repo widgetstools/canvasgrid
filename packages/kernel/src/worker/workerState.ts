@@ -98,6 +98,11 @@ export interface State {
    *  root aggregates). When set, getViewport ships these as `chunk.totals`
    *  instead of AggPass output (which only sees hydrated rows). */
   ssrmGrandTotals: Record<string, unknown> | null;
+  /** Sparse SSRM v2 — host-computed pivot cross-tab. The sparse path returns
+   *  before `PivotPass` runs, so `pivotOut` is always null there; this is the
+   *  substitute, stamped onto the chunk verbatim. Ignored once the client
+   *  pipeline is on (PivotPass owns the matrix then). `null` = no pivot. */
+  ssrmPivot: import('./protocol').SsrmPivotResult | null;
   /** AG `groupMaintainOrder` — sorts never re-order group rows. */
   groupMaintainOrder: boolean;
   /** AG `groupAggFiltering` — filters evaluate group aggregates. */

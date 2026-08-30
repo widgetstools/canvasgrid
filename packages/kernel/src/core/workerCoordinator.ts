@@ -189,6 +189,13 @@ export class WorkerCoordinator {
     return this.client.ssrmSetGrandTotals(totals);
   }
 
+  /** Sparse SSRM v2 — host-computed pivot cross-tab (null clears). */
+  ssrmSetPivotResult(
+    result: import('../worker/protocol').SsrmPivotResult | null,
+  ): Promise<{ count: number; visibleCount: number }> {
+    return this.client.ssrmSetPivotResult(result);
+  }
+
   applyTransaction(payload: {
     add?: unknown[]; update?: unknown[]; remove?: string[];
     async: boolean; heightsByRowId?: Map<string, number>;
