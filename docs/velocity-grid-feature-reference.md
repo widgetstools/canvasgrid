@@ -164,7 +164,24 @@ Utility: `inferRowIdField`, `clampRowHeight`, `MIN_ROW_HEIGHT_PX` (**24**).
 | Replace | `setRowData(rows)` |
 | Sync tx | `applyTransaction({ add?, update?, remove? })` → `TransactionResult` |
 | Async tx | `applyTransactionAsync`, `flushAsyncTransactions` |
+| Live source | `clientSideDataProvider?` option + `setClientSideDataProvider(p \| null)` — see 4.1.1 |
 | Event | `asyncTransactionsFlushed`, `rowsChanged` (`source: 'transaction'\|'transactionAsync'\|'edit'`) |
+
+### 4.1.1 `clientSideDataProvider` — live row source
+
+CSRM counterpart to `serverSideDatasource`: the grid owns the subscription for its lifetime.
+
+| Member | Purpose |
+|--------|---------|
+| `getSnapshot(): readonly TRow[]` | Painted on install so a warm provider shows immediately |
+| `onSnapshot(fn): () => void` | Full replace (initial load, reconnect, resync) |
+| `onDelta?(fn): () => void` | Optional `{ add?, update?, removeIds? }`; omit for snapshot-only sources |
+
+- Deltas ride `applyTransactionAsync`, so the 4.2 knobs govern the feed — no second throttle.
+- `removeIds` is the `getRowId` domain, not row objects; unknown ids are ignored.
+- `destroy()` unsubscribes only — it never destroys the provider (one provider can feed many grids).
+- Installed after the `rowData` seed, so a live source wins over a static array.
+- `packages/data`: `toClientSideDataProvider(provider)` adapts a hub `IDataProvider`.
 
 ### 4.2 Async transaction knobs
 
@@ -221,7 +238,7 @@ See **§11** (`packages/calc` + `wireIntoKernel`). Runs in worker CalcPass; sort
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `serverSideDatasource` | — | v1 or v2 (duck-typed) |
+| `serverSideDatasource` | — | v2 datasource; a `getRows`-only object drives v2's flat path |
 | `cacheBlockSize` | **100** | Rows per block |
 | `maxConcurrentDatasourceRequests` | **2** | Parallel `getRows` |
 | `serverSideEnableClientSidePipeline` | auto | `true`/`false`/`undefined` — run CSRM filter/sort/group/pivot/agg on hydrated book |

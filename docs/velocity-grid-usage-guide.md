@@ -174,6 +174,47 @@ handles sort/filter/group over it.
 > **Good to know.** `setRowData()` is a CSRM-only call — it's a no-op with a console warning once the grid is
 > in SSRM mode. Feed SSRM grids through the datasource callback instead, never `setRowData`.
 
+#### Feeding CSRM from a live source
+
+Calling `setRowData` / `applyTransactionAsync` by hand is fine, but for a live feed there's a
+constructor option that mirrors how SSRM takes a datasource — hand the grid a row source and it owns
+the subscription:
+
+```ts
+import type { IClientSideDataProvider } from '@wellsfargo-starui/velocity-grid';
+
+const provider: IClientSideDataProvider<Row> = {
+  getSnapshot: () => currentRows,           // painted immediately on attach
+  onSnapshot: (fn) => subscribeSnapshot(fn), // full replace; returns unsubscribe
+  onDelta: (fn) => subscribeDelta(fn),       // optional: {add, update, removeIds}
+};
+
+const grid = new VelocityGrid<Row>(el, { columnDefs, getRowId, clientSideDataProvider: provider });
+// or later: grid.setClientSideDataProvider(provider) / (null) to detach
+```
+
+Deltas go through the normal `applyTransactionAsync` path, so
+`asyncTransactionWaitMillis` / `asyncTransactionConflate` / `asyncTransactionThrottleMillis` /
+`deferAsyncTransactionsWhileScrolling` tune the feed exactly as they do for hand-written
+transactions — there's no separate throttle to configure.
+
+> **`removeIds`, not rows.** Deltas remove by id, since a source has usually dropped the row from
+> its own cache by the time it classifies the removal. Ids the grid never saw are ignored.
+
+> **The grid never destroys your provider.** `grid.destroy()` unsubscribes only — one provider
+> commonly feeds several grids, so disposing it is the owner's job.
+
+Already using a `DataProvider` from `velocity-grid-data`? Adapt it in one call:
+
+```ts
+import { toClientSideDataProvider } from '@wellsfargo-starui/velocity-grid-data';
+
+new VelocityGrid(el, { …, clientSideDataProvider: toClientSideDataProvider(provider) });
+```
+
+`bindProviderToGrid` still works and is the right choice when you also want the provider's column
+defs pushed into the grid, or when the target isn't a `VelocityGrid`.
+
 ### Grid API
 
 The instance you get back from `new VelocityGrid(...)` is the API surface you'll use for everything after

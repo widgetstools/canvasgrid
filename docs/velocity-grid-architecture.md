@@ -36,7 +36,7 @@ flowchart TB
     WC["WorkerCoordinator"]
     VP["ViewportManager"]
     RND["Renderer + raster / paint cache"]
-    SSRM["SSRM v1 / v2 controllers"]
+    SSRM["SSRM v2 controller (also local mode)"]
     SLOTS["DI: format · rules · calc"]
     EV["TypedEventEmitter"]
     STATE["state + layouts + modules"]
@@ -198,8 +198,13 @@ RowStore
   → SortPass            (grouped or flat)
   → optional postSortRows RT (main)
   → visible id cache
-  → ViewportSlicer → ViewportChunk
 ```
+
+**Two phases, not one.** Everything above runs **once per data/model change**
+(`buildVisibleAsync`, cached as `visibleCache` behind a single-flight gate).
+`AggPass` and `ViewportSlicer` → `ViewportChunk` are **not** part of it — they
+run **once per `getViewport`**, over that cached output, so a burst of scroll
+fetches re-slices without re-running filter/group/sort.
 
 `AggPass` feeds group totals / footer / status aggregates from group trees. Calc columns sort/filter/group like data columns; Stage-B filter has a documented one-frame settle after aggregate deps change.
 
@@ -249,12 +254,19 @@ onViewportChunk → height/flash mirrors → Renderer paint (rAF)
 
 ## 6. SSRM — implementation approach
 
-### 6.1 Kernel controllers
+### 6.1 Kernel controller
 
-| Variant | Files | Approach |
-|---------|-------|----------|
-| **v1** | `core/serverSideRowModel.ts` | Flat block cache; `getRows`; sparse `ssrmHydrate` into worker |
-| **v2** | `core/serverSideRowModelV2.ts` | Client-owned skeleton + `FlattenIndex`; `getGroupSkeleton` / `getLeafRows` / flat `getRows`; expand/collapse local |
+`core/serverSideRowModelV2.ts` is the **only** SSRM controller — v1
+(`core/serverSideRowModel.ts`) was decommissioned and the file no longer exists.
+Its flat block-cache / `getRows` / sparse-`ssrmHydrate` behaviour lives on as v2's
+flat fallback, taken when there is no grouping or when the datasource can't answer
+skeleton queries (`skeletonCapable()` / `grouped()`).
+
+| Path | When | Approach |
+|------|------|----------|
+| **Skeleton** | grouped + datasource implements `getGroupSkeleton` | Client-owned skeleton + `FlattenIndex`; `getGroupSkeleton` / `getLeafRows`; expand/collapse local |
+| **Flat** | ungrouped, or `getRows`-only datasource | Flat block cache; `getRows`; sparse `ssrmHydrate` into worker |
+| **Local** | `rowModelType: 'clientSide'` | See §6.4 — mounted but inert; the worker store already holds the book |
 
 Soft refresh pacing + conflation; **purge cancels** pending soft refreshes (`softRefreshEpoch`).  
 Force block reloads mint **per-block fetch tokens** so stale in-flight `getRows` / `getLeafRows` replies cannot satisfy a newer reload.  
@@ -281,6 +293,45 @@ requestViewport → ViewportChunk → paint
 
 **Live tick (Perspective):** `View.on_update` → apply SSRM transaction / soft refresh → patch cache + rehydrate band.
 
+### 6.2.1 Local mode — one controller for both row models
+
+A `clientSide` grid mounts the **same** `ServerSideRowModelV2Controller`, with
+`localMode: true`. There is one row-model code path; the two models differ in
+where compute happens, not in which controller runs.
+
+Local mode makes every fetch-shaped operation inert — `ensureRange`, `refresh`
+and `ensureFullyHydrated` short-circuit, and no datasource is ever installed.
+The block cache, skeleton, fetch tokens and soft-refresh pacing exist to hide
+network latency and cap memory against an unbounded remote book; a resident
+array has neither problem. `setRowData` / `applyTransaction` fill the worker
+store exactly as before, and `buildVisibleAsync` is untouched.
+
+Because `this.ssrm` is now non-null for **every** grid, `this.ssrm != null` no
+longer means "is SSRM" — the SSRM-only entry points
+(`setServerSideDatasource`, `refreshServerSide`, `applyServerSideTransaction`,
+`getTotalRowCount`, the client-pipeline enable/disable pair) gate on
+`rowModelType` instead. The pipeline-disable guard is load-bearing: without it,
+toggling grouping on a client-side grid flips the main-thread
+`ssrmClientPipeline` mirror off, every `this.ssrm && !this.ssrmClientPipeline`
+gate then classifies the grid as sparse SSRM, and sort/filter return early into
+a `refresh()` that local mode no-ops — i.e. they silently stop working.
+Regression: `tests/clientSideLocalModePipeline.test.ts`.
+
+### 6.2.2 CSRM live sources — `clientSideDataProvider`
+
+The CSRM counterpart to `serverSideDatasource`: hand the grid a live row source
+and it owns the subscription for its lifetime (`IClientSideDataProvider` —
+`getSnapshot` / `onSnapshot` / optional `onDelta`). Snapshots full-replace;
+deltas ride `applyTransactionAsync`, so the `asyncTransaction*` knobs govern the
+feed and no second throttle layer is introduced. `removeIds` carries ids, not
+rows, because sources classify a removal after dropping the row from their own
+cache.
+
+`destroy()` unsubscribes but never calls into the provider — one provider
+commonly feeds several grids. `packages/data` adapts its hub providers via
+`toClientSideDataProvider`; `bindProviderToGrid` remains for hosts that also
+want column-def push or aren't a `VelocityGrid`.
+
 ### 6.3 Perspective (`packages/perspective`)
 
 | Concept | Approach |
@@ -294,6 +345,26 @@ requestViewport → ViewportChunk → paint
 | Filters | `cgridFilterToPsp` maps AG/cgrid models → Perspective triples |
 | AppData | Templated `wsUrl` / topics / `clientId` via `resolveProviderConfig` |
 | Connect purge | Hard purge **once** on phase `live` (not also on `snapshot`) to avoid flicker |
+| Query cache | Cross-view, same page: identical queries share one WASM read (below) |
+
+**Cross-view query cache.** Several grids on one page share one `PerspectiveBook`
+(one per feed config per page — `provider.ts`'s `bookEntries`), each with its own
+View, so two blotters showing the same thing used to issue byte-identical WASM
+reads. `getGroupedRaw` (the actual boundary crossing) and the windowed leaf/flat
+reads now cache by query signature, holding the **in-flight promise** so
+concurrent identical requests coalesce onto one read. Every hit returns a copy.
+
+The key is deliberately *not* `bound.lastQuerySig` — that one answers "did MY
+config change since MY last remount" and omits `spec.filter` and `expressions`,
+which across views would serve one view another's rows. Invalidation is
+event-driven (any View `on_update` clears both maps, since a tick means the
+shared table moved), with a short TTL backstop (`queryResultCacheTtlMs`,
+default 150ms). This relaxes `getGroupSkeleton`'s former unconditional per-call
+re-read to *fresh since the last table mutation*. Hit rate is visible via
+`BookTelemetry.queryResultCacheHits/Misses`.
+
+Scope: **same-page** dedup. Cross-tab sharing already happens a layer down (one
+Table in the SharedWorker); a second tab has its own book and its own cache.
 
 ### 6.3.1 Why Perspective’s own datagrid feels smoother
 
@@ -424,7 +495,7 @@ Architecture boundary: **kernel = engine**, **ext = product chrome**, **data/per
 | Passes | `packages/kernel/src/worker/passes/*`, `dataPipeline.ts` |
 | Worker coord | `packages/kernel/src/core/workerCoordinator.ts` |
 | Viewport | `packages/kernel/src/core/viewportManager.ts` |
-| SSRM v1/v2 | `packages/kernel/src/core/serverSideRowModel.ts`, `serverSideRowModelV2.ts` |
+| SSRM (+ local mode) | `packages/kernel/src/core/serverSideRowModelV2.ts` |
 | DI slots | `packages/kernel/src/core/{formatCompiler,ruleEngine,calc}Slot.ts` |
 | Paint | `packages/kernel/src/renderer/renderer.ts`, `painters/byRows.ts` |
 | Bridges | `packages/{format,calc,rules,edit,renderers}/src/bridge.ts` |
