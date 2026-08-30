@@ -481,6 +481,17 @@ export class StompPerspectiveProvider implements IServerSideDatasourceV2<Positio
     try {
       grid.setSsrmExpressionHost?.(this);
     } catch { /* optional */ }
+    // Declare pivot capability UP FRONT with an empty cross-tab.
+    //
+    // Ordering matters: `setPivotMode(true)` refuses unless the host has
+    // already declared it can pivot, but the provider only learns the pivot
+    // columns from `pivotStateChanged` — which `setPivotMode` never emits
+    // when it refuses. Waiting for the first real result would deadlock the
+    // two. A `null` push is exactly the "I can pivot, nothing to show yet"
+    // signal, so the kernel stops routing pivot through a full hydrate.
+    try {
+      grid.setServerSidePivotResult?.(null);
+    } catch { /* optional */ }
     try {
       const qf = typeof grid.getQuickFilterText === 'function'
         ? grid.getQuickFilterText()
