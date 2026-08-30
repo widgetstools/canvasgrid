@@ -238,8 +238,21 @@ function mulberry32(seed: number): () => number {
   };
 }
 
+/**
+ * Notional is the position SIZE — fixed for the life of a position.
+ *
+ * It must therefore derive from the position index alone, never from the
+ * rolling feed RNG: the live tick rebuilds a row via {@link makeSeedRow}, so
+ * drawing notional there handed an existing position a brand-new notional on
+ * every tick. The Notional column (and every group / pivot total summing it)
+ * churned constantly on a feed that is only supposed to move prices.
+ */
+export function seedNotional(i: number): number {
+  return Math.round(50_000 + mulberry32(0x5eed ^ i)() * 5_000_000);
+}
+
 function makeSeedRow(i: number, rnd: () => number): PositionRow {
-  const notional = Math.round(50_000 + rnd() * 5_000_000);
+  const notional = seedNotional(i);
   const pnl = Math.round((rnd() - 0.45) * 250_000 * 100) / 100;
   return {
     positionId: `P${String(i).padStart(6, '0')}`,
@@ -2408,11 +2421,20 @@ export class PerspectiveBook {
       const rows: PositionRow[] = [];
       for (let i = 0; i < n; i++) {
         const idx = Math.floor(rnd() * book);
-        const row = makeSeedRow(idx, rnd);
-        row.pnl = Math.round((rnd() - 0.5) * 80_000 * 100) / 100;
-        row.dailyPnl = Math.round(row.pnl * 0.08 * 100) / 100;
-        row.marketValue = Math.round((row.notionalAmount ?? 0) * (0.92 + rnd() * 0.2));
-        rows.push(row);
+        // Thin delta: key + the fields a price tick actually moves. Rebuilding
+        // the whole row here (the previous behaviour) re-emitted notional and
+        // the dimensions on every tick, so Notional appeared to tick even
+        // though a position's size never changes. Perspective's table is
+        // indexed by positionId, so a partial row merges onto the existing
+        // one — the same shape a real STOMP feed sends.
+        const pnl = Math.round((rnd() - 0.5) * 80_000 * 100) / 100;
+        rows.push({
+          positionId: `P${String(idx).padStart(6, '0')}`,
+          pnl,
+          dailyPnl: Math.round(pnl * 0.08 * 100) / 100,
+          // Market value DOES move — it tracks price against a fixed size.
+          marketValue: Math.round(seedNotional(idx) * (0.92 + rnd() * 0.2)),
+        });
       }
       this.liveRowsIn += rows.length;
       this.liveWindow.push({ t: Date.now(), n: rows.length });
