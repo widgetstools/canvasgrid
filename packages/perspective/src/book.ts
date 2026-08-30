@@ -129,6 +129,12 @@ export interface BookTelemetry {
   liveUpdatesPerSec: number;
   getRowsTotal: number;
   rowsServedTotal: number;
+  /** Reads served from another view's identical query instead of re-running
+   *  it against WASM. Hit rate = hits / (hits + misses). */
+  queryResultCacheHits: number;
+  queryResultCacheMisses: number;
+  /** Live entries across the grouped-dump + windowed caches. */
+  queryResultCacheSize: number;
   /** Rows dropped without ever reaching the table — missing-identity
    *  composite-key rows at ingest, plus rows evicted by the update-buffer
    *  over-cap trim. */
@@ -193,6 +199,16 @@ export interface PerspectiveBookOptions {
   onTelemetry?: (t: BookTelemetry) => void;
   onPhase?: (phase: BookPhase) => void;
   onViewTick?: (tick: ViewTick) => void;
+  /**
+   * How long a cached query result stays servable to a second view issuing
+   * the identical query, in ms. Default 150.
+   *
+   * This is only a backstop: any View `on_update` clears the caches outright,
+   * so the real staleness window is the gap between a table mutation and its
+   * update callback. Set `0` to keep in-flight coalescing but never serve an
+   * already-settled result.
+   */
+  queryResultCacheTtlMs?: number;
 }
 
 const SEED_DESKS = [
@@ -589,6 +605,25 @@ export function mergeLiveBatch(
   return [...byId.values()];
 }
 
+/** One cached (or in-flight) query result. `expiresAt` is null until the
+ *  promise settles — an in-flight entry never expires out from under its
+ *  waiters. */
+interface QueryCacheEntry<T> {
+  promise: Promise<T>;
+  expiresAt: number | null;
+}
+
+/** Max windowed (leaf/flat) entries kept. Windows multiply with scrolling at
+ *  `cacheBlockSize` granularity, so this is bounded; the raw grouped-dump
+ *  cache holds at most one entry per live query and needs no cap. */
+const WINDOWED_RESULT_CACHE_MAX = 32;
+
+/** Default freshness window for a cached read. Invalidation is primarily
+ *  event-driven (any View `on_update` clears both caches); this is the
+ *  backstop for a missed or late update, so it is deliberately short —
+ *  roughly the existing view-tick debounce. */
+const DEFAULT_QUERY_RESULT_CACHE_TTL_MS = 150;
+
 export class PerspectiveBook {
   private readonly opts: Required<
     Pick<
@@ -609,6 +644,7 @@ export class PerspectiveBook {
     Pick<
       PerspectiveBookOptions,
       'onTelemetry' | 'onPhase' | 'onViewTick' | 'snapshotTopic' | 'triggerTopic' | 'identity'
+      | 'queryResultCacheTtlMs'
     >;
 
   /** DataProvider-owned schema columns (Perspective table + view projection). */
@@ -620,6 +656,30 @@ export class PerspectiveBook {
    *  (which must drop ITS OWN stale pre-remount rows) never wipes another
    *  still-mounted view's queued ticks. */
   private pendingLiveBatch = new Map<string, PositionRow[]>();
+
+  // ─── Cross-view query-result cache ────────────────────────────────────
+  //
+  // Several grids on one page share ONE PerspectiveBook (see provider.ts's
+  // `bookEntries`), each with its own View. Two blotters showing the same
+  // thing therefore issue byte-identical WASM reads independently. These
+  // caches let the second one ride the first's result.
+  //
+  // Scope note: this is same-PAGE dedup. Cross-TAB sharing already happens a
+  // layer down (one Table in the SharedWorker); a second tab has its own
+  // PerspectiveBook and so its own caches.
+  //
+  // Entries hold the in-flight PROMISE, not the resolved value, so
+  // concurrent identical requests coalesce onto one read instead of racing
+  // two. Check-then-set happens in one synchronous stretch, so no lock is
+  // needed on top of the existing per-view / table chains.
+  /** Raw grouped dumps (skeleton reads). One entry per distinct live query —
+   *  inherently small, so no capacity bound beyond invalidation. */
+  private rawGroupDumpCache = new Map<string, QueryCacheEntry<Record<string, unknown>[]>>();
+  /** Windowed leaf/flat reads. Keyed additionally by row window, which
+   *  multiplies with scrolling — hence the LRU bound. */
+  private windowedResultCache = new Map<string, QueryCacheEntry<unknown>>();
+  private queryResultCacheHits = 0;
+  private queryResultCacheMisses = 0;
 
   private phase: BookPhase = 'idle';
   private table: Table | null = null;
@@ -708,6 +768,7 @@ export class PerspectiveBook {
       onTelemetry: options.onTelemetry,
       onPhase: options.onPhase,
       onViewTick: options.onViewTick,
+      queryResultCacheTtlMs: options.queryResultCacheTtlMs,
     };
     this.dataColumns = Object.keys(schema);
     this.valueAggregates = aggregatesFromSchema(schema);
@@ -1073,7 +1134,11 @@ export class PerspectiveBook {
         bound, viewId, req.sortModel, req.filterModel, req.rowGroupCols, true,
       );
       if (bound.groupBy.length === 0) return [];
-      // Live ticks must see fresh aggregates — never serve a stale dump.
+      // Drop this view's own single-slot cache so the read goes through the
+      // shared cache (where a sibling view's identical dump may serve it).
+      // Freshness now comes from that cache's invalidation — cleared on every
+      // View `on_update` — rather than from re-reading on literally every
+      // call: fresh-since-the-last-table-mutation instead of fresh-always.
       bound.groupedRawCache = null;
       const raw = await this.getGroupedRaw(bound);
       const groups: SkeletonGroup[] = [];
@@ -1168,7 +1233,15 @@ export class PerspectiveBook {
         const start = Math.max(0, req.startRow | 0);
         const end = Math.max(start, Math.min(req.endRow | 0, rowCount));
         if (end <= start || rowCount === 0) return { rows: [], rowCount, grandTotals };
-        const rows = (await readRows(bound.view!, { start_row: start, end_row: end })) as PositionRow[];
+        // Already inside withTableLock here, so the cached compute must NOT
+        // re-acquire it (the chain is not reentrant) — read directly.
+        const shared = await this.cachedQuery(
+          this.windowedResultCache,
+          `flat|${this.queryCacheBaseSig(bound)}|${JSON.stringify(bound.readColumns)}|${start}-${end}`,
+          () => readRows(bound.view!, { start_row: start, end_row: end }),
+          WINDOWED_RESULT_CACHE_MAX,
+        );
+        const rows = shared.slice() as PositionRow[];
         return { rows, rowCount, grandTotals };
       });
     });
@@ -1258,6 +1331,92 @@ export class PerspectiveBook {
         }
       });
     });
+  }
+
+  /**
+   * Query signature shared by every cache key: everything that can change
+   * WHAT a read returns.
+   *
+   * Deliberately NOT `bound.lastQuerySig` (which decides "did MY config
+   * change since MY last remount"). That one omits `spec.filter` and
+   * `expressions` — safe for a self-diff, but a data leak across views:
+   * two views differing only in their fixed filter or their calculated
+   * columns would otherwise collide and be served each other's rows.
+   */
+  private queryCacheBaseSig(bound: BoundView): string {
+    return JSON.stringify({
+      fixedFilter: bound.spec.filter ?? [],
+      filter: bound.lastExtraFilter,
+      sort: bound.lastSort,
+      quickFilterText: bound.quickFilterText,
+      groupBy: bound.groupBy,
+      valueAggOverrides: bound.valueAggOverrides,
+      expressions: bound.expressions,
+    });
+  }
+
+  private queryCacheTtlMs(): number {
+    return this.opts.queryResultCacheTtlMs ?? DEFAULT_QUERY_RESULT_CACHE_TTL_MS;
+  }
+
+  /**
+   * Serve `key` from `cache`, or run `compute` and cache the promise.
+   *
+   * Caches the PROMISE so a second caller with the same signature awaits the
+   * first read rather than issuing its own. The get/set pair runs with no
+   * `await` between them, so two callers can never both miss.
+   *
+   * `maxEntries` bounds the map (oldest insertion evicted). A rejected
+   * promise is evicted immediately so one transient WASM error doesn't
+   * poison the key for the whole TTL.
+   */
+  private async cachedQuery<T>(
+    cache: Map<string, QueryCacheEntry<unknown>>,
+    key: string,
+    compute: () => Promise<T>,
+    maxEntries?: number,
+  ): Promise<T> {
+    const now = Date.now();
+    const hit = cache.get(key);
+    if (hit && (hit.expiresAt === null || hit.expiresAt > now)) {
+      this.queryResultCacheHits++;
+      return hit.promise as Promise<T>;
+    }
+    this.queryResultCacheMisses++;
+    const entry: QueryCacheEntry<unknown> = { promise: undefined as never, expiresAt: null };
+    const promise = compute().then(
+      (value) => {
+        // Only stamp expiry if we're still the live entry — an invalidation
+        // during the read must not be undone by its own completion.
+        if (cache.get(key) === entry) entry.expiresAt = Date.now() + this.queryCacheTtlMs();
+        return value;
+      },
+      (err) => {
+        if (cache.get(key) === entry) cache.delete(key);
+        throw err;
+      },
+    );
+    entry.promise = promise;
+    cache.set(key, entry);
+    if (maxEntries !== undefined) {
+      while (cache.size > maxEntries) {
+        const oldest = cache.keys().next();
+        if (oldest.done) break;
+        cache.delete(oldest.value);
+      }
+    }
+    return promise as Promise<T>;
+  }
+
+  /**
+   * Drop every cached read. Called from each View's `on_update`: a tick means
+   * the shared table changed, and there is no cheap way to tell which
+   * signatures it affects without inspecting the delta — so clear all. Far
+   * cheaper than the WASM reads it prevents from going stale.
+   */
+  private invalidateQueryResultCache(): void {
+    this.rawGroupDumpCache.clear();
+    this.windowedResultCache.clear();
   }
 
   private async withTableLock<T>(fn: () => Promise<T>): Promise<T> {
@@ -1607,9 +1766,18 @@ export class PerspectiveBook {
         const start = range.offset + Math.max(0, leafStart);
         const end = range.offset + Math.min(range.count, leafEnd);
         if (end <= start) return [];
-        const rows = (await this.withTableLock(
-          () => readRows(bound.leafView!, { start_row: start, end_row: end }),
-        )) as PositionRow[];
+        // Keyed by the resolved leafView offsets plus the projected columns:
+        // two views sharing a query AND a scroll window read the same rows.
+        const shared = await this.cachedQuery(
+          this.windowedResultCache,
+          `leaf|${this.queryCacheBaseSig(bound)}|${JSON.stringify(bound.readColumns)}|${start}-${end}`,
+          () => this.withTableLock(
+            () => readRows(bound.leafView!, { start_row: start, end_row: end }),
+          ),
+          WINDOWED_RESULT_CACHE_MAX,
+        );
+        // Per-caller copy — see getGroupedRaw.
+        const rows = shared.slice() as PositionRow[];
         const first = rows[0] as Record<string, unknown> | undefined;
         const contiguous = first === undefined || bound.groupBy.every(
           (colId, i) => String(first[colId] ?? '') === groupPath[i],
@@ -1673,7 +1841,16 @@ export class PerspectiveBook {
 
   private async getGroupedRaw(bound: BoundView): Promise<Record<string, unknown>[]> {
     if (bound.groupedRawCache) return bound.groupedRawCache;
-    const raw = await this.withTableLock(() => readRows(bound.view!));
+    // Shared across views: another blotter with an identical query may have
+    // already paid for (or be mid-flight on) this exact dump.
+    const shared = await this.cachedQuery(
+      this.rawGroupDumpCache as Map<string, QueryCacheEntry<unknown>>,
+      `raw|${this.queryCacheBaseSig(bound)}`,
+      () => this.withTableLock(() => readRows(bound.view!)),
+    );
+    // Copy per view. Callers previously always got a freshly parsed array and
+    // may mutate it; handing the same one to two views would couple them.
+    const raw = shared.slice();
     bound.groupedRawCache = raw;
     bound.groupKeys = [];
     // Rebuild leaf ranges alongside the skeleton dump: deepest-level rows
@@ -1802,6 +1979,9 @@ export class PerspectiveBook {
     bound.groupedRawCache = null;
     bound.dataUpdateCb = Number(
       await bound.view.on_update(() => {
+        // Any view's tick means the shared table moved — every cached read
+        // for every view is now suspect.
+        this.invalidateQueryResultCache();
         bound.groupedRawCache = null;
         bound.groupKeys = [];
         // Adds/removes can shift leaf counts — recompute with the next
@@ -2106,6 +2286,8 @@ export class PerspectiveBook {
 
   destroy(): void {
     this.destroyed = true;
+    // Don't retain row arrays (or closures over torn-down Views) past teardown.
+    this.invalidateQueryResultCache();
     if (this.telemetryTimer !== null) {
       clearInterval(this.telemetryTimer);
       this.telemetryTimer = null;
@@ -2155,6 +2337,9 @@ export class PerspectiveBook {
       liveUpdatesPerSec,
       getRowsTotal: this.getRowsTotal,
       rowsServedTotal: this.rowsServedTotal,
+      queryResultCacheHits: this.queryResultCacheHits,
+      queryResultCacheMisses: this.queryResultCacheMisses,
+      queryResultCacheSize: this.rawGroupDumpCache.size + this.windowedResultCache.size,
       droppedRowCount: this.droppedRowCount,
       viewCount: this.views.size,
       views: [...this.views.values()].map((v) => ({
