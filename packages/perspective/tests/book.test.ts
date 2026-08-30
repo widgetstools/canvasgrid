@@ -36,6 +36,8 @@ function makeBoundView(id: string, overrides: Record<string, unknown> = {}): unk
     quickFilterExpressions: {},
     lastOrContains: {},
     valueAggOverrides: {},
+    pivotColIds: [],
+    pivotViews: [],
     ...overrides,
   };
 }

@@ -8,7 +8,12 @@
  * STOMP/seed → Table.update → Views → sparse SSRM getRows (windowed only).
  * Grouping / agg / filter / sort are per-View — never full hydrate.
  */
-import type { FilterModel, SkeletonGroup, SortModel } from '@wellsfargo-starui/velocity-grid';
+import type {
+  FilterModel, SkeletonGroup, SortModel, SsrmPivotResult,
+} from '@wellsfargo-starui/velocity-grid';
+import {
+  mapPerspectivePivot, type PerspectivePivotViewResult,
+} from './pivotMapper';
 import { Client, type IMessage } from '@stomp/stompjs';
 import {
   getPerspectiveWorkerMode,
@@ -302,6 +307,23 @@ interface BoundView {
    * Merged over schema defaults on every grouped / totals remount.
    */
   valueAggOverrides: Record<string, string>;
+  /**
+   * Pivot (column-label) columns in nesting order. Drives Perspective
+   * `split_by`; empty means not pivoting. The kernel's PivotPass never runs
+   * on the sparse path, so Perspective computes the cross-tab instead.
+   */
+  pivotColIds: string[];
+  /**
+   * One `split_by` View per pivot depth 1..L, in that order.
+   *
+   * The deepest view enumerates full leaf paths — that is the column tree.
+   * Shallower views exist ONLY to supply prefix aggregates: `split_by` emits
+   * leaf paths only, but the kernel reads a value at every path PREFIX once a
+   * pivot column group is collapsed (or `pivotColumnGroupTotals` is set).
+   * Rolling leaves up client-side would silently corrupt avg/median/dominant,
+   * so each prefix is aggregated by Perspective at its own depth instead.
+   */
+  pivotViews: View[];
 }
 
 /** Transpose Perspective columnar output into row objects. Keeps
@@ -1012,6 +1034,124 @@ export class PerspectiveBook {
       await this.withTableLock(() =>
         this.remountDataView(bound, bound.lastExtraFilter, bound.lastSort),
       );
+    });
+  }
+
+  /**
+   * Set the pivot (column-label) columns for a blotter view and rebuild its
+   * `split_by` views. `[]` turns pivoting off.
+   *
+   * Perspective owns the cross-tab exactly as it already owns group/filter/
+   * sort/agg — the kernel's own PivotPass never runs on the sparse path.
+   */
+  async setViewPivotColumns(viewId: string, pivotColIds: string[]): Promise<void> {
+    return this.withViewChain(viewId, async () => {
+      const bound = this.views.get(viewId);
+      if (!bound) return;
+      const next = normalizeRowGroupCols(
+        pivotColIds,
+        this.dataColumns,
+        Object.keys(bound.expressions),
+      );
+      if (stringListEqual(next, bound.pivotColIds)) return;
+      bound.pivotColIds = next;
+      await this.withTableLock(() => this.remountPivotViews(bound));
+    });
+  }
+
+  /** Active pivot columns for a blotter view. */
+  getViewPivotColumns(viewId: string): string[] {
+    return [...(this.views.get(viewId)?.pivotColIds ?? [])];
+  }
+
+  /** Tear down a view's `split_by` views. Caller holds the table lock. */
+  private async deletePivotViews(bound: BoundView): Promise<void> {
+    // Runs on teardown paths, which must never throw — tolerate a bound view
+    // that predates / lacks the field rather than aborting the rest of the
+    // cleanup and leaking the sibling Views.
+    for (const v of bound.pivotViews ?? []) {
+      try { await v.delete(); } catch { /* swallow */ }
+    }
+    bound.pivotViews = [];
+  }
+
+  /**
+   * Mount one `split_by` view per pivot depth 1..L — see `BoundView.pivotViews`
+   * for why the shallower ones are required and cannot be rolled up locally.
+   * Caller holds the table lock.
+   */
+  private async remountPivotViews(bound: BoundView): Promise<void> {
+    await this.deletePivotViews(bound);
+    if (bound.pivotColIds.length === 0 || bound.groupBy.length === 0) return;
+    if (!this.table) return;
+
+    const mergedExpressions: Record<string, string> = {
+      ...bound.expressions,
+      ...bound.quickFilterExpressions,
+    };
+    const filter = [...(bound.spec.filter ?? []), ...bound.lastExtraFilter];
+    const aggregates = this.resolveAggregates(bound);
+    // Measures only: split_by multiplies columns by the number of distinct
+    // pivot paths, so projecting a fat schema here is what makes a pivot
+    // explode. `resolvePivotValueColumns` keeps it to the aggregated columns.
+    const valueCols = this.pivotValueColumns(bound);
+    if (valueCols.length === 0) return;
+
+    for (let depth = 1; depth <= bound.pivotColIds.length; depth++) {
+      const config: Record<string, unknown> = {
+        columns: projectViewColumns(valueCols, mergedExpressions),
+        filter,
+        group_by: bound.groupBy,
+        split_by: bound.pivotColIds.slice(0, depth),
+        aggregates,
+      };
+      if (Object.keys(mergedExpressions).length > 0) {
+        config.expressions = mergedExpressions;
+      }
+      bound.pivotViews.push(await this.table.view(toViewConfig(config)));
+    }
+  }
+
+  /** Aggregated (measure) columns a pivot projects. */
+  private pivotValueColumns(bound: BoundView): string[] {
+    const overrides = Object.keys(bound.valueAggOverrides);
+    if (overrides.length > 0) return overrides.filter((c) => this.dataColumns.includes(c));
+    return [...this.measureColumns];
+  }
+
+  /**
+   * Read the cross-tab from the mounted `split_by` views and map it into the
+   * kernel's pivot shape. `null` when not pivoting — the caller passes that
+   * through to clear any previous matrix.
+   */
+  async getPivotResult(viewId: string): Promise<SsrmPivotResult | null> {
+    return this.withViewChain(viewId, async () => {
+      const bound = this.views.get(viewId);
+      if (!bound?.view || bound.pivotColIds.length === 0) return null;
+      if (bound.pivotViews.length === 0) return null;
+      const valueColIds = this.pivotValueColumns(bound);
+
+      return this.withTableLock(async () => {
+        const results: PerspectivePivotViewResult[] = [];
+        for (let i = 0; i < bound.pivotViews.length; i++) {
+          const view = bound.pivotViews[i]!;
+          results.push({
+            depth: i + 1,
+            columnPaths: await view.column_paths(),
+            rows: await readRows(view),
+          });
+        }
+        // Row totals come from the ordinary group_by view — the aggregate
+        // across ALL pivot values, which no split_by view emits.
+        const rowTotalRows = await readRows(bound.view!);
+        return mapPerspectivePivot({
+          results,
+          rowGroupCols: bound.groupBy,
+          pivotColIds: bound.pivotColIds,
+          valueColIds,
+          rowTotalRows,
+        });
+      });
     });
   }
 
@@ -1893,6 +2033,7 @@ export class PerspectiveBook {
       try { await bound.leafView.delete(); } catch { /* swallow */ }
       bound.leafView = null;
     }
+    await this.deletePivotViews(bound);
     bound.leafRanges = null;
     bound.leafRangeByPath = null;
     bound.leafOffsetsUnreliable = false;
@@ -1976,6 +2117,10 @@ export class PerspectiveBook {
       }
       bound.leafView = await this.table!.view(toViewConfig(leafConfig));
     }
+    // split_by views embed this view's filter / group_by / expressions /
+    // aggregates, so a query change invalidates them along with everything
+    // else. Rebuild here rather than leaving a cross-tab from the old query.
+    await this.remountPivotViews(bound);
     bound.groupedRawCache = null;
     bound.dataUpdateCb = Number(
       await bound.view.on_update(() => {
@@ -2033,6 +2178,8 @@ export class PerspectiveBook {
       quickFilterExpressions: {},
       lastOrContains: {},
       valueAggOverrides: {},
+      pivotColIds: [],
+      pivotViews: [],
     };
     await this.withTableLock(() => this.remountDataView(bound, extraFilter, sort));
     return bound;
@@ -2088,6 +2235,7 @@ export class PerspectiveBook {
       if (v.leafView) {
         try { await v.leafView.delete(); } catch { /* swallow */ }
       }
+      await this.deletePivotViews(v);
     });
     this.emitTelemetry();
   }

@@ -95,6 +95,12 @@ export {
   type GroupedDistinctRow,
 } from './distinctValues';
 export { createPerspectiveSsrmDatasource } from './ssrmDatasource';
+// Perspective `split_by` → kernel pivot cross-tab. Exported for hosts that
+// drive the views themselves instead of going through the provider.
+export {
+  mapPerspectivePivot, parsePerspectiveColumnPath,
+  type PerspectivePivotViewResult, type MapPerspectivePivotInput,
+} from './pivotMapper';
 export {
   POSITION_COLUMNS,
   COLUMNS,

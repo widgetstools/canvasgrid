@@ -122,6 +122,8 @@ export interface AttachableGrid {
   setSsrmExpressionHost?(host: unknown | null): void;
   /** Publish host-computed grand totals (sparse SSRM, keyed by field). */
   setServerSideGrandTotals?(totals: Record<string, unknown> | null): void;
+  /** Publish a Perspective-computed pivot cross-tab (sparse SSRM). */
+  setServerSidePivotResult?(result: unknown | null): void;
 }
 
 // ─── page-level book sharing ───────────────────────────────────────────────
@@ -437,6 +439,34 @@ export class StompPerspectiveProvider implements IServerSideDatasourceV2<Positio
   }
 
   /**
+   * Point Perspective's `split_by` at the grid's pivot columns, then publish
+   * the resulting cross-tab.
+   *
+   * Called on every `pivotStateChanged`. Turning pivot off passes `[]`, which
+   * tears the split_by views down and pushes `null` to clear the matrix.
+   */
+  private async syncPivot(grid: AttachableGrid, pivotColumns: string[]): Promise<void> {
+    if (typeof grid.setServerSidePivotResult !== 'function') return;
+    try {
+      await this.entry.book.setViewPivotColumns(this.viewId, pivotColumns);
+    } catch { return; /* view torn down mid-flight */ }
+    await this.pushPivotResult(grid);
+  }
+
+  /**
+   * Read the cross-tab from Perspective and hand it to the grid. Cheap no-op
+   * when not pivoting, so tick/refresh paths can call it unconditionally.
+   */
+  private async pushPivotResult(grid: AttachableGrid): Promise<void> {
+    if (typeof grid.setServerSidePivotResult !== 'function') return;
+    if (this.entry.book.getViewPivotColumns(this.viewId).length === 0) return;
+    try {
+      const result = await this.entry.book.getPivotResult(this.viewId);
+      grid.setServerSidePivotResult(result);
+    } catch { /* view torn down, or grid detached mid-read */ }
+  }
+
+  /**
    * Wire the live loop onto a mounted grid: Perspective `on_update` ticks
    * → SSRM transactions / soft refresh (scroll-deferred), and grid model
    * changes (group-by / sort / filter) → Perspective view remount +
@@ -500,6 +530,9 @@ export class StompPerspectiveProvider implements IServerSideDatasourceV2<Positio
       if (tick.refreshSsrm) {
         try { grid.refreshServerSide({ purge: false }); } catch { /* grid tearing down */ }
       }
+      // A tick moved the table, so a published cross-tab is now stale. Only
+      // re-read when actually pivoting — `pushPivotResult` no-ops otherwise.
+      void this.pushPivotResult(grid);
     };
 
     // Multiple ticks can land while one scroll is active — merge into the
@@ -550,14 +583,26 @@ export class StompPerspectiveProvider implements IServerSideDatasourceV2<Positio
         // Kernel does not auto-refresh SSRM on group changes — rebuild
         // the skeleton / flat window after the View remounts.
         try { grid.refreshServerSide({ purge: true }); } catch { /* grid tearing down */ }
+        // The cross-tab is keyed by composite GROUP key, so a group change
+        // invalidates every key in it. The remount above already rebuilt the
+        // split_by views against the new group_by; re-publish from them.
+        void this.pushPivotResult(grid);
       });
     }));
     // Value-column / aggFunc mutations live on PivotState even outside pivot
     // mode — remount Perspective aggregates when they change.
     unsubs.push(grid.on('pivotStateChanged', (ev) => {
-      const source = (ev as { source?: string }).source;
-      if (source === 'mode') return;
-      syncValueAggregates();
+      const e = ev as {
+        source?: string; pivotMode?: boolean; pivotColumns?: string[];
+      };
+      // Value-column / aggFunc mutations apply in or out of pivot mode.
+      if (e.source !== 'mode') syncValueAggregates();
+      // Drive Perspective `split_by` off the grid's pivot state. Previously
+      // `source === 'mode'` returned early and pivot never reached
+      // Perspective at all — the kernel had to full-hydrate to pivot, which
+      // a sparse book refuses. Now Perspective computes the cross-tab and we
+      // push it back, so pivot works without abandoning SSRM.
+      void this.syncPivot(grid, e.pivotMode === true ? (e.pivotColumns ?? []) : []);
     }));
     // Sort / column filters: kernel already `ssrm.refresh({ purge: true })`
     // on sparse SSRM — do not double-purge here (wipes in-flight blocks).
