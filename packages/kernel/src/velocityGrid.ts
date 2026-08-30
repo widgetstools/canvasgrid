@@ -30,6 +30,7 @@ import type {
 } from './types/ssrm';
 import type { IClientSideDataProvider } from './types/clientSideDataProvider';
 import type { SsrmPivotResult } from './worker/protocol';
+import { DEFAULT_PIVOT_MAX_GENERATED_COLUMNS } from './worker/passes/pivotPass';
 import { type ResolvedColDef, applyCellProps, composeFont, cellFontForColumn } from './core/propertyChain';
 import { resolveColumnTree, isColGroupDef, visibleHeaderGroupDepth, type ColumnTree, type ColumnTreeNode, type ResolvedColGroupDef } from './core/columnTree';
 import { moveColumnToGroup as moveColumnToGroupPure, moveColumnGroup as moveColumnGroupPure } from './core/columnGroupMutation';
@@ -293,6 +294,9 @@ export type {
 // row-meta exports above.
 export {
   encodePivotValueKey, PIVOT_PATH_SEP, PIVOT_ROW_TOTAL_PATH_MARKER,
+  // Shared so a host-side producer orders pivot keys exactly as the worker's
+  // PivotPass does — otherwise the two row models disagree on column order.
+  orderPivotKeys,
 } from './worker/passes/pivotPass';
 export type { PivotKeyNode } from './worker/passes/pivotPass';
 export type { SsrmPivotResult } from './worker/protocol';
@@ -4435,6 +4439,11 @@ export class VelocityGrid<TRow = any> {
     // Latch capability on the first push (including an explicit `null`, which
     // is how a host says "I can pivot, there's just nothing to show yet").
     this.ssrmHostPivotDeclared = true;
+    // Enforce `pivotMaxGeneratedColumns` HERE rather than plumbing the cap out
+    // to every datasource: one gate bounds any host, and a breach surfaces the
+    // same bypassed shape + `pivotMaxColumnsReached` event that PivotPass
+    // produces on the CSRM path, so both models behave identically at the cap.
+    result = this.capServerSidePivotResult(result);
     this.ssrmPivotResult = result;
     void this.workerCoord.ssrmSetPivotResult(result)
       .then(() => {
@@ -6522,6 +6531,29 @@ export class VelocityGrid<TRow = any> {
       void this.disableSsrmClientPipelineIfIdle();
     }
     this.applyPivotModeChange(pivotMode, opts);
+  }
+
+  /**
+   * Apply `pivotMaxGeneratedColumns` to a datasource-supplied cross-tab.
+   *
+   * The worker's `PivotPass` enforces the cap for CSRM, but the sparse path
+   * never runs it — without this a host could publish an unbounded matrix and
+   * the grid would try to synthesize every column. Returns the same bypassed
+   * shape `PivotPass` produces on a breach (`pivotPass.ts` `apply`), so the
+   * public `pivotMaxColumnsReached` event and the revert-to-primary-columns
+   * behaviour are identical in both row models.
+   */
+  private capServerSidePivotResult(result: SsrmPivotResult | null): SsrmPivotResult | null {
+    if (result === null || result.maxColumnsReached !== undefined) return result;
+    const cap = this.options.pivotMaxGeneratedColumns ?? DEFAULT_PIVOT_MAX_GENERATED_COLUMNS;
+    if (!Number.isFinite(cap) || cap <= 0) return result;
+    const valueCols = Math.max(1, this.pivotEngine.getValueColumns().length);
+    const generatedColumns = result.leafPaths.length * valueCols;
+    if (generatedColumns <= cap) return result;
+    return {
+      keyTree: [], leafPaths: [], values: new Map(),
+      maxColumnsReached: { generatedColumns, cap },
+    };
   }
 
   /**

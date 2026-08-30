@@ -156,3 +156,88 @@ describe('PivotPass vs Perspective mapper — producer parity', () => {
     compare([], ['region']);
   });
 });
+
+/**
+ * Column ORDER parity — the half that used to diverge.
+ *
+ * PivotPass orders pivot keys numerically-aware and honours
+ * `enableStrictPivotColumnOrder`; the mapper used a plain lexicographic sort
+ * and ignored the option, so `'10'` sorted before `'2'` and a newly-arrived
+ * key reshuffled existing columns on SSRM but not on CSRM. Both now call the
+ * kernel's exported `orderPivotKeys`.
+ */
+describe('PivotPass vs Perspective mapper — column ORDER parity', () => {
+  /** Numeric-looking pivot keys, deliberately not in lexicographic order. */
+  const NUMERIC_ROWS = [
+    { id: '1', desk: 'Rates', region: '2', sector: 'Govt', pnl: 10 },
+    { id: '2', desk: 'Rates', region: '10', sector: 'Govt', pnl: 20 },
+    { id: '3', desk: 'Rates', region: '9', sector: 'Govt', pnl: 30 },
+  ];
+
+  function kernelOrder(strict: boolean): string[][] {
+    const store = new RowStore('id');
+    store.setAll(NUMERIC_ROWS);
+    const ids = NUMERIC_ROWS.map((r) => r.id);
+    const gp = new GroupPass(store, COLS);
+    gp.setModel({ rowGroupCols: ['desk'] });
+    const groupOutput = gp.apply(ids);
+    const pivot = new PivotPass(store, COLS, new AggFuncRegistry());
+    pivot.setStrictPivotColumnOrder(strict);
+    pivot.setModel({ pivotColIds: ['region'], valueCols: [{ colId: 'pnl', aggFunc: 'sum' }] });
+    return pivot.apply(ids, groupOutput).leafPaths;
+  }
+
+  function mapperOrder(strict: boolean): string[][] {
+    const columnPaths = ['2|pnl', '10|pnl', '9|pnl'];
+    const out = mapPerspectivePivot({
+      results: [{ depth: 1, columnPaths, rows: [] }],
+      rowGroupCols: ['desk'],
+      pivotColIds: ['region'],
+      valueColIds: ['pnl'],
+      strictOrder: strict,
+      priorKeyOrder: new Map(),
+    })!;
+    return out.leafPaths;
+  }
+
+  it('orders numeric-looking keys identically (2 before 10, not lexicographic)', () => {
+    const kernel = kernelOrder(true);
+    expect(mapperOrder(true)).toEqual(kernel);
+    // Guard the assertion itself: a lexicographic order would be 10,2,9.
+    expect(kernel.map((p) => p[0])).toEqual(['2', '9', '10']);
+  });
+
+  it('non-strict ordering appends newly-seen keys instead of reshuffling', () => {
+    // Prior memory holds two keys; a third arrives and must land at the end.
+    const prior = new Map<string, string[]>([['', ['9', '2']]]);
+    const out = mapPerspectivePivot({
+      results: [{ depth: 1, columnPaths: ['2|pnl', '10|pnl', '9|pnl'], rows: [] }],
+      rowGroupCols: ['desk'],
+      pivotColIds: ['region'],
+      valueColIds: ['pnl'],
+      strictOrder: false,
+      priorKeyOrder: prior,
+    })!;
+    expect(out.leafPaths.map((p) => p[0])).toEqual(['9', '2', '10']);
+    // …and the memory is updated for the next call.
+    expect(prior.get('')).toEqual(['9', '2', '10']);
+  });
+
+  it('first-seen keys order deterministically even with strict OFF, in both', () => {
+    // With no prior memory, non-strict still sorts alphanumerically — so a
+    // fresh grid opens with identical columns in both row models.
+    expect(mapperOrder(false)).toEqual(kernelOrder(false));
+    expect(mapperOrder(false).map((p) => p[0])).toEqual(['2', '9', '10']);
+  });
+
+  it('keyTree and leafPaths agree on order', () => {
+    const out = mapPerspectivePivot({
+      results: [{ depth: 1, columnPaths: ['2|pnl', '10|pnl', '9|pnl'], rows: [] }],
+      rowGroupCols: ['desk'],
+      pivotColIds: ['region'],
+      valueColIds: ['pnl'],
+      strictOrder: true,
+    })!;
+    expect(out.keyTree.map((n) => n.value)).toEqual(out.leafPaths.map((p) => p[0]));
+  });
+});

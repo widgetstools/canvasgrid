@@ -248,3 +248,61 @@ describe('inline comparator guard is scoped to worker-side sorting', () => {
     restore();
   });
 });
+
+describe('pivotMaxGeneratedColumns applies to a host-supplied cross-tab', () => {
+  it('bypasses an oversized matrix and reports the breach', async () => {
+    // CSRM's PivotPass enforces the cap, but the sparse path never runs it.
+    // Enforcing on ingest bounds ANY datasource and keeps the
+    // pivotMaxColumnsReached signal identical across row models.
+    const { grid, restore } = buildGrid({
+      serverSideDatasource: skeletonDatasource(),
+      pivotMaxGeneratedColumns: 4,
+    });
+    await grid.whenReady();
+    await settle();
+    grid.addValueColumn('pnl', 'sum');
+
+    const leafPaths = Array.from({ length: 20 }, (_, i) => [`R${i}`]);
+    grid.setServerSidePivotResult({
+      keyTree: leafPaths.map(([v]) => ({ value: v!, path: [v!], children: [] })),
+      leafPaths,
+      values: new Map(),
+    });
+    await settle();
+
+    const stored = (grid as unknown as {
+      ssrmPivotResult: { leafPaths: string[][]; maxColumnsReached?: { cap: number } } | null;
+    }).ssrmPivotResult;
+    expect(stored?.maxColumnsReached?.cap).toBe(4);
+    expect(stored?.leafPaths).toEqual([]);
+    restore();
+  });
+
+  it('passes a within-cap matrix through untouched', async () => {
+    const { grid, restore } = buildGrid({
+      serverSideDatasource: skeletonDatasource(),
+      pivotMaxGeneratedColumns: 100,
+    });
+    await grid.whenReady();
+    await settle();
+    grid.addValueColumn('pnl', 'sum');
+
+    const leafPaths = [['EMEA'], ['AMER']];
+    grid.setServerSidePivotResult({
+      keyTree: [
+        { value: 'EMEA', path: ['EMEA'], children: [] },
+        { value: 'AMER', path: ['AMER'], children: [] },
+      ],
+      leafPaths,
+      values: new Map(),
+    });
+    await settle();
+
+    const stored = (grid as unknown as {
+      ssrmPivotResult: { leafPaths: string[][]; maxColumnsReached?: unknown } | null;
+    }).ssrmPivotResult;
+    expect(stored?.maxColumnsReached).toBeUndefined();
+    expect(stored?.leafPaths).toEqual(leafPaths);
+    restore();
+  });
+});

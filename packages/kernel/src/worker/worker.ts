@@ -295,12 +295,31 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       // GroupPass-emitted flatOrder carries.
       // Cycle 18 / Task 8d — also thread the cached PivotPass output
       // through so a pivot-result column sort can re-order each level.
+      // AG parity — sorting a value column orders the GROUPS by their
+      // aggregate, not just the leaves inside them (`groupMaintainOrder:
+      // true` is documented as suppressing that, which only makes sense
+      // if the default does it). That needs per-group totals BEFORE the
+      // sort; they're computed here rather than at getViewport time.
+      //
+      // Sort-invariant: `applyGrouped` only permutes `childIndices` within a
+      // leaf and reorders `childGroups`, so each group key's descendant-row
+      // SET is unchanged and these totals stay correct afterwards. That's
+      // what lets `rekeyGroupCache` below hand the same result to the
+      // post-sort viewport call instead of re-walking every row.
+      const preSortTotals = state.groupInputIds !== null
+        ? state.agg.applyGroups(state.groupInputIds, state.groupOutput).groupTotals
+        : undefined;
       state.groupOutput = state.sort.applyGrouped(state.groupOutput, ids, {
         includeFooter: state.group.getIncludeFooter(),
         includeTotalFooter: state.group.getIncludeTotalFooter(),
         removeSingleChildren: state.group.getRemoveSingleChildren(),
         maintainOrder: state.groupMaintainOrder,
-      }, state.pivotOut ?? undefined);
+      }, state.pivotOut ?? undefined, preSortTotals);
+      // Carry the memo onto the new tree identity so `getViewport`'s
+      // `applyGroups` is a cache hit rather than a second O(rows × depth) walk.
+      if (preSortTotals !== undefined && state.groupInputIds !== null) {
+        state.agg.rekeyGroupCache(state.groupInputIds, state.groupOutput);
+      }
     } else {
       ids = state.sort.apply(ids);
     }

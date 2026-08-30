@@ -195,6 +195,27 @@ export class AggPass<TRow = any> {
    *  there are no resolved agg columns (every column's aggFunc
    *  failed to resolve). Both fast paths skip every allocation
    *  beyond the empty record. */
+  /**
+   * Re-point an existing per-group memo at a new `GroupPassOutput` identity.
+   *
+   * `SortPass.applyGrouped` returns a NEW tree object, so the pipeline's
+   * pre-sort `applyGroups` and the later per-viewport call would otherwise
+   * never share a cache entry and the O(rows × depth) walk would run twice on
+   * every build. Sorting only permutes — `childIndices` within a leaf and the
+   * `childGroups` arrays — so each group key's descendant-row SET, and hence
+   * every per-group total, is unchanged. Transplanting the result is
+   * therefore exact, not an approximation.
+   *
+   * No-op unless the memo currently holds exactly the pre-sort inputs, so a
+   * stale or absent entry can never be laundered onto the new tree.
+   */
+  rekeyGroupCache(inputIds: readonly string[], groupOutput: GroupPassOutput): void {
+    const cached = this.groupCache;
+    if (cached === null || cached.inputIds !== inputIds) return;
+    if (!AggPass.keyEq(cached.key, this.cacheKey())) return;
+    this.groupCache = { ...cached, groupOutput };
+  }
+
   applyGroups(
     inputIds: readonly string[],
     groupOutput: GroupPassOutput,

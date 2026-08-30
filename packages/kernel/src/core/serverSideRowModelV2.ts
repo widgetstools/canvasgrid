@@ -29,8 +29,8 @@ import {
   type FlattenEntry,
   type SkeletonNode,
 } from './ssrmFlattenIndex';
-import { isPivotResultColumnId, decodePivotResultColumnId } from './pivotColumns';
-import { encodePivotValueKey, PIVOT_PATH_SEP } from '../worker/passes/pivotPass';
+import { decodePivotSortTarget } from './pivotColumns';
+import { encodePivotValueKey } from '../worker/passes/pivotPass';
 
 export const SSRM_GROUP_ROW_ID_PREFIX = '__grp__';
 export const SSRM_FOOTER_ROW_ID_PREFIX = '__footer__';
@@ -740,14 +740,16 @@ export class ServerSideRowModelV2Controller<TRow = any> {
   private buildPivotSiblingSort(): ((a: string, b: string) => number) | null {
     const pivot = this.host.getPivotResult?.();
     if (!pivot || pivot.values.size === 0) return null;
-    const entry = this.host.getSortModel().find((s) => isPivotResultColumnId(s.colId));
-    if (!entry) return null;
-    const decoded = decodePivotResultColumnId(entry.colId);
-    if (decoded === null) return null;
-    const joinedPath = decoded.pivotPath.join(PIVOT_PATH_SEP);
+    let decoded: { joinedPath: string; valueColId: string } | null = null;
+    let entry: { direction: 'asc' | 'desc' } | undefined;
+    for (const s of this.host.getSortModel()) {
+      const target = decodePivotSortTarget(s.colId);
+      if (target !== null) { decoded = target; entry = s; break; }
+    }
+    if (decoded === null || entry === undefined) return null;
     const dir = entry.direction === 'asc' ? 1 : -1;
     const valueOf = (key: string): unknown =>
-      pivot.values.get(encodePivotValueKey(key, joinedPath, decoded.valueColId));
+      pivot.values.get(encodePivotValueKey(key, decoded.joinedPath, decoded.valueColId));
     return (aKey, bKey) => {
       const av = valueOf(aKey);
       const bv = valueOf(bKey);

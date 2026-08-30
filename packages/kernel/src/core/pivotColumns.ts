@@ -27,7 +27,9 @@
  */
 
 import type { CColDef, CColGroupDef } from '../types';
-import { type PivotKeyNode, PIVOT_ROW_TOTAL_PATH_MARKER } from '../worker/passes/pivotPass';
+import {
+  type PivotKeyNode, PIVOT_ROW_TOTAL_PATH_MARKER, PIVOT_PATH_SEP,
+} from '../worker/passes/pivotPass';
 
 /** Prefix marking a synthesized pivot-result column id. Mirrors how
  *  `AUTO_GROUP_COLUMN_ID` marks the auto-group column. */
@@ -125,6 +127,36 @@ export function decodePivotRowTotalColumnId(colId: string): string | null {
   if (!isPivotRowTotalColumnId(colId)) return null;
   const parts = colId.split(PIVOT_ID_SEP);
   return parts.length >= 2 ? parts.slice(1).join(PIVOT_ID_SEP) : null;
+}
+
+/**
+ * Resolve a synthesized pivot colId to the `pivotValues` bucket it reads.
+ *
+ * Both kinds of pivot leaf are sortable and both address a bucket in the same
+ * map, but by different keys: a RESULT column addresses its pivot path, a
+ * ROW-TOTAL column addresses the across-all-keys sentinel. Sorting used to
+ * decode only the former, so clicking a row-total header did nothing even
+ * though the leaf is marked `sortable: true`.
+ *
+ * Returns the pre-joined path so callers can feed `encodePivotValueKey`
+ * directly; `null` for any other column. Shared by the CSRM SortPass and the
+ * SSRM controller so the two orderings cannot drift apart.
+ */
+export function decodePivotSortTarget(
+  colId: string,
+): { joinedPath: string; valueColId: string } | null {
+  const result = decodePivotResultColumnId(colId);
+  if (result !== null) {
+    return {
+      joinedPath: result.pivotPath.join(PIVOT_PATH_SEP),
+      valueColId: result.valueColId,
+    };
+  }
+  const rowTotalValueCol = decodePivotRowTotalColumnId(colId);
+  if (rowTotalValueCol !== null) {
+    return { joinedPath: PIVOT_ROW_TOTAL_PATH_MARKER, valueColId: rowTotalValueCol };
+  }
+  return null;
 }
 
 /** Stable groupId for a pivot column-group node at `path`. */

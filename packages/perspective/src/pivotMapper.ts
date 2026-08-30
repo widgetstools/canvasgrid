@@ -1,5 +1,6 @@
 import {
   encodePivotValueKey,
+  orderPivotKeys,
   PIVOT_PATH_SEP,
   PIVOT_ROW_TOTAL_PATH_MARKER,
   type PivotKeyNode,
@@ -60,8 +61,22 @@ export interface MapPerspectivePivotInput {
    * omit when `pivotRowTotals` is off.
    */
   rowTotalRows?: Array<Record<string, unknown>>;
-  /** Mirror of `pivotMaxGeneratedColumns` (kernel default 5000). */
+  /** Mirror of `pivotMaxGeneratedColumns` (kernel default 5000). The kernel
+   *  also enforces its own cap on ingest, so this is a cheap early-out. */
   maxGeneratedColumns?: number;
+  /**
+   * `enableStrictPivotColumnOrder`. Default `true` (strict alphanumeric).
+   * `false` is AG's behaviour: previously-seen keys hold their order and new
+   * ones append, so a live feed doesn't reshuffle existing pivot columns.
+   */
+  strictOrder?: boolean;
+  /**
+   * Per-path key order from the previous call, MUTATED in place to record
+   * this call's order. Required for non-strict ordering to have any memory —
+   * the caller keeps one map per view (mirrors `PivotPass`'s
+   * `previousChildrenByPath`).
+   */
+  priorKeyOrder?: Map<string, string[]>;
 }
 
 /**
@@ -109,9 +124,41 @@ function insertPath(roots: PivotKeyNode[], path: readonly string[]): void {
   }
 }
 
-function sortTree(nodes: PivotKeyNode[]): void {
-  nodes.sort((a, b) => (a.value < b.value ? -1 : a.value > b.value ? 1 : 0));
-  for (const n of nodes) sortTree(n.children);
+/**
+ * Order every level of the key tree with the kernel's own policy, and record
+ * the resulting order per path so the next call can honour non-strict
+ * (append-new-at-end) ordering.
+ *
+ * Uses the exported `orderPivotKeys` rather than a local sort: the worker's
+ * PivotPass orders numerically-aware and respects
+ * `enableStrictPivotColumnOrder`, so a local lexicographic sort put `'10'`
+ * before `'2'` and reshuffled columns whenever a live feed introduced a key —
+ * both visible disagreements with the CSRM path.
+ */
+function orderTree(
+  nodes: PivotKeyNode[],
+  prefix: string[],
+  priorKeyOrder: Map<string, string[]>,
+  strict: boolean,
+): PivotKeyNode[] {
+  const pathKey = prefix.join(PIVOT_PATH_SEP);
+  const byValue = new Map(nodes.map((n) => [n.value, n]));
+  const ordered = orderPivotKeys(byValue.keys(), priorKeyOrder.get(pathKey) ?? [], strict);
+  priorKeyOrder.set(pathKey, [...ordered]);
+  return ordered.map((value) => {
+    const node = byValue.get(value)!;
+    const path = [...prefix, value];
+    return { ...node, children: orderTree(node.children, path, priorKeyOrder, strict) };
+  });
+}
+
+/** Leaf paths in column-render order — derived from the ORDERED tree so the
+ *  two can never disagree (PivotPass derives them the same way). */
+function collectLeafPaths(nodes: readonly PivotKeyNode[], out: string[][]): void {
+  for (const n of nodes) {
+    if (n.children.length === 0) out.push([...n.path]);
+    else collectLeafPaths(n.children, out);
+  }
 }
 
 /**
@@ -129,8 +176,7 @@ export function mapPerspectivePivot(input: MapPerspectivePivotInput): SsrmPivotR
 
   // Column tree comes from the deepest view — it alone enumerates full leaf
   // paths. Shallower views only contribute values.
-  const roots: PivotKeyNode[] = [];
-  const leafPaths: string[][] = [];
+  const unordered: PivotKeyNode[] = [];
   const seenLeaf = new Set<string>();
   let ambiguous = 0;
   for (const columnPath of deepest.columnPaths) {
@@ -139,15 +185,16 @@ export function mapPerspectivePivot(input: MapPerspectivePivotInput): SsrmPivotR
     const joined = parsed.pivotPath.join(PIVOT_PATH_SEP);
     if (seenLeaf.has(joined)) continue;
     seenLeaf.add(joined);
-    leafPaths.push(parsed.pivotPath);
-    insertPath(roots, parsed.pivotPath);
+    insertPath(unordered, parsed.pivotPath);
   }
-  sortTree(roots);
-  leafPaths.sort((a, b) => {
-    const x = a.join(PIVOT_PATH_SEP);
-    const y = b.join(PIVOT_PATH_SEP);
-    return x < y ? -1 : x > y ? 1 : 0;
-  });
+  const roots = orderTree(
+    unordered,
+    [],
+    input.priorKeyOrder ?? new Map(),
+    input.strictOrder !== false,
+  );
+  const leafPaths: string[][] = [];
+  collectLeafPaths(roots, leafPaths);
 
   if (ambiguous > 0) {
     console.warn(

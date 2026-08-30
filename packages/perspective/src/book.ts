@@ -214,6 +214,13 @@ export interface PerspectiveBookOptions {
    * already-settled result.
    */
   queryResultCacheTtlMs?: number;
+  /**
+   * Mirrors the grid's `enableStrictPivotColumnOrder`. Default `true`
+   * (strict alphanumeric). `false` keeps previously-seen pivot keys in place
+   * and appends new ones, so a live feed doesn't reshuffle pivot columns.
+   * Must match the grid, or the two disagree on column order.
+   */
+  strictPivotColumnOrder?: boolean;
 }
 
 const SEED_DESKS = [
@@ -337,6 +344,13 @@ interface BoundView {
    * so each prefix is aggregated by Perspective at its own depth instead.
    */
   pivotViews: View[];
+  /**
+   * Per-path pivot key order from the last cross-tab build, so non-strict
+   * (`enableStrictPivotColumnOrder: false`) ordering can append newly-seen
+   * keys at the end instead of reshuffling existing pivot columns on every
+   * live tick. Mirrors `PivotPass.previousChildrenByPath` on the CSRM side.
+   */
+  pivotKeyOrder: Map<string, string[]>;
 }
 
 /** Transpose Perspective columnar output into row objects. Keeps
@@ -703,7 +717,7 @@ export class PerspectiveBook {
     Pick<
       PerspectiveBookOptions,
       'onTelemetry' | 'onPhase' | 'onViewTick' | 'snapshotTopic' | 'triggerTopic' | 'identity'
-      | 'queryResultCacheTtlMs'
+      | 'queryResultCacheTtlMs' | 'strictPivotColumnOrder'
     >;
 
   /** DataProvider-owned schema columns (Perspective table + view projection). */
@@ -828,6 +842,7 @@ export class PerspectiveBook {
       onPhase: options.onPhase,
       onViewTick: options.onViewTick,
       queryResultCacheTtlMs: options.queryResultCacheTtlMs,
+      strictPivotColumnOrder: options.strictPivotColumnOrder,
     };
     this.dataColumns = Object.keys(schema);
     this.valueAggregates = aggregatesFromSchema(schema);
@@ -1187,6 +1202,11 @@ export class PerspectiveBook {
           pivotColIds: bound.pivotColIds,
           valueColIds,
           rowTotalRows,
+          // Match the grid's column-ordering policy, and carry this view's
+          // key memory so non-strict ordering appends new keys instead of
+          // reshuffling on every tick — same contract as CSRM's PivotPass.
+          strictOrder: this.opts.strictPivotColumnOrder !== false,
+          priorKeyOrder: bound.pivotKeyOrder,
         });
       });
     });
@@ -2237,6 +2257,7 @@ export class PerspectiveBook {
       valueAggOverrides: {},
       pivotColIds: [],
       pivotViews: [],
+      pivotKeyOrder: new Map(),
     };
     await this.withTableLock(() => this.remountDataView(bound, extraFilter, sort));
     return bound;

@@ -57,7 +57,7 @@ import type {
   GroupPassOutput,
 } from './groupPass';
 import { ComparatorRegistry, type ComparatorFn } from '../comparatorRegistry';
-import { decodePivotResultColumnId } from '../../core/pivotColumns';
+import { decodePivotSortTarget } from '../../core/pivotColumns';
 import { encodePivotValueKey, PIVOT_PATH_SEP, type PivotPassOutput } from './pivotPass';
 import type { CalcValueSource } from './calcPass';
 import { readWorkerCellValue } from '../readCellValue';
@@ -194,6 +194,10 @@ export class SortPass<TRow = any> {
      *  this, pivot-result sort entries silently fall through and the
      *  level keeps the default composite-key order. */
     pivotOut?: PivotPassOutput,
+    /** Per-group aggregates (AggPass), so a value-column sort can order
+     *  GROUPS by their aggregate the way AG does. Undefined = unavailable,
+     *  in which case aggregate ordering is skipped. */
+    groupTotals?: Record<string, Record<string, unknown>>,
   ): GroupPassOutput {
     if (groupOutput.bypassed || groupOutput.roots.length === 0) {
       return groupOutput;
@@ -239,7 +243,7 @@ export class SortPass<TRow = any> {
     // result sort entry can override the per-level grouping sort.
     // AG `groupMaintainOrder` — group order is locked; only leaves sort.
     if (options.maintainOrder !== true) {
-      this.sortGroupLevels(roots, resolved, pivotOut);
+      this.sortGroupLevels(roots, resolved, pivotOut, groupTotals);
     }
 
     // Rebuild flatOrder DFS — preserves the GroupPass contract: each
@@ -412,6 +416,7 @@ export class SortPass<TRow = any> {
     nodes: GroupNode[],
     resolved: readonly ResolvedSortEntry[],
     pivotOut?: PivotPassOutput,
+    groupTotals?: Record<string, Record<string, unknown>>,
   ): void {
     if (nodes.length === 0) return;
     // Every node at the current `nodes` slot shares the same `colId` —
@@ -420,6 +425,7 @@ export class SortPass<TRow = any> {
     const levelColId = nodes[0]!.colId;
     let levelEntry: ResolvedSortEntry | undefined;
     let pivotEntry: ResolvedSortEntry | undefined;
+    let aggEntry: ResolvedSortEntry | undefined;
     for (const r of resolved) {
       if (r.entry.colId === levelColId && levelEntry === undefined) {
         levelEntry = r;
@@ -427,29 +433,74 @@ export class SortPass<TRow = any> {
       // Cycle 18 / Task 8d — capture any pivot-result entry. The first
       // one wins (matches the existing first-match-wins behaviour for
       // primary entries).
-      if (pivotEntry === undefined && decodePivotResultColumnId(r.entry.colId) !== null) {
+      if (pivotEntry === undefined && decodePivotSortTarget(r.entry.colId) !== null) {
         pivotEntry = r;
       }
+      // AG parity — an aggregated (value) column orders the GROUPS by their
+      // aggregate. Only meaningful for a column that isn't this level's own
+      // grouping column, which `reorderGroupLevel` already handles by key.
+      if (
+        aggEntry === undefined
+        && r.entry.colId !== levelColId
+        && r.col?.aggFunc != null
+      ) {
+        aggEntry = r;
+      }
     }
-    // Cycle 18 / Task 8d — a pivot-result sort entry takes precedence
-    // over the level's primary entry. The user clicked a synthesized
-    // pivot column header; that's their explicit intent for the row
-    // group order.
+    // Precedence: an explicitly-clicked pivot column beats an aggregate
+    // column, which beats this level's own grouping column. Each step down
+    // is a weaker signal of "order the groups by this".
     if (pivotEntry !== undefined && pivotOut !== undefined && !pivotOut.bypassed) {
       this.reorderGroupLevelByPivot(nodes, pivotEntry, pivotOut);
+    } else if (aggEntry !== undefined && groupTotals !== undefined) {
+      this.reorderGroupLevelByAggregate(nodes, aggEntry, groupTotals);
     } else if (levelEntry !== undefined) {
       this.reorderGroupLevel(nodes, levelEntry);
     }
     for (const node of nodes) {
       if (node.childGroups.length > 0) {
-        this.sortGroupLevels(node.childGroups, resolved, pivotOut);
+        this.sortGroupLevels(node.childGroups, resolved, pivotOut, groupTotals);
       }
     }
   }
 
+  /**
+   * AG parity — order child groups by their own aggregate for `colId`.
+   *
+   * Sorting a value column in AG re-sequences the groups by that column's
+   * aggregate (which is exactly what `groupMaintainOrder: true` exists to
+   * suppress); previously only the leaves inside each group re-sorted, so
+   * CSRM disagreed with both AG and this grid's own SSRM path, where
+   * Perspective orders the grouped view.
+   *
+   * Missing values sort last on asc / first on desc, matching
+   * `reorderGroupLevelByPivot` so a pivot and a plain aggregate sort behave
+   * the same way.
+   */
+  private reorderGroupLevelByAggregate(
+    nodes: GroupNode[],
+    resolved: ResolvedSortEntry,
+    groupTotals: Record<string, Record<string, unknown>>,
+  ): void {
+    const colId = resolved.entry.colId;
+    const dir = resolved.entry.direction === 'asc' ? 1 : -1;
+    nodes.sort((a, b) => {
+      const av = aggregateAsNumber(groupTotals[a.key]?.[colId]);
+      const bv = aggregateAsNumber(groupTotals[b.key]?.[colId]);
+      const aMissing = av === null;
+      const bMissing = bv === null;
+      if (aMissing && bMissing) return 0;
+      if (aMissing) return 1;
+      if (bMissing) return -1;
+      return dir * (av < bv ? -1 : av > bv ? 1 : 0);
+    });
+  }
+
   /** Cycle 18 / Task 8d — sort child groups by the pivot aggregate at
-   *  `(node.key × pivotPath × valueColId)`. The decoded path comes
-   *  straight from the synthesized colId via `decodePivotResultColumnId`.
+   *  `(node.key × pivotPath × valueColId)`. `decodePivotSortTarget` resolves
+   *  the bucket for BOTH a pivot-result column (its own path) and a
+   *  row-total column (the across-all-keys sentinel) — row totals are
+   *  marked sortable and must reorder groups the same way.
    *  `undefined` aggregates (no rows match the intersection) sort to
    *  the end on `asc`, to the front on `desc` — matching the
    *  null-handling the flat `compare()` already uses. */
@@ -458,10 +509,9 @@ export class SortPass<TRow = any> {
     resolved: ResolvedSortEntry,
     pivotOut: PivotPassOutput,
   ): void {
-    const decoded = decodePivotResultColumnId(resolved.entry.colId);
+    const decoded = decodePivotSortTarget(resolved.entry.colId);
     if (decoded === null) return;
-    const { pivotPath, valueColId } = decoded;
-    const joinedPath = pivotPath.join(PIVOT_PATH_SEP);
+    const { joinedPath, valueColId } = decoded;
     const dir = resolved.entry.direction === 'asc' ? 1 : -1;
     const valueOf = (key: string): unknown =>
       pivotOut.values.get(encodePivotValueKey(key, joinedPath, valueColId));
@@ -514,6 +564,28 @@ export class SortPass<TRow = any> {
  *  `null` / `undefined` always trail valid values; `NaN` always trails
  *  numeric values. Kept module-local so the existing pre-Task-11
  *  semantics stay byte-identical. */
+/**
+ * Coerce a per-group aggregate to a sortable number, or `null` when it can't
+ * be ordered numerically (absent, non-numeric, NaN).
+ *
+ * The built-ins return plain numbers, but `aggFunc` is user-extensible and a
+ * custom one may return a wrapper (AG's `IAggFuncResult` shape, or an object
+ * carrying `value`), so unwrap those rather than coercing the object to NaN
+ * and silently sorting every group as "missing".
+ */
+function aggregateAsNumber(raw: unknown): number | null {
+  if (raw === null || raw === undefined) return null;
+  let v: unknown = raw;
+  if (typeof v === 'object') {
+    const box = v as { toNumber?: () => unknown; value?: unknown };
+    if (typeof box.toNumber === 'function') v = box.toNumber();
+    else if ('value' in box) v = box.value;
+  }
+  if (typeof v === 'boolean') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 function compare(a: unknown, b: unknown, type: 'text' | 'number'): number {
   if (type === 'number') {
     const an = Number(a), bn = Number(b);
