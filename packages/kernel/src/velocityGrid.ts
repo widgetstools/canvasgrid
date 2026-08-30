@@ -28,6 +28,7 @@ import type {
   ServerSideTransaction,
   SsrmExpressionHost,
 } from './types/ssrm';
+import type { IClientSideDataProvider } from './types/clientSideDataProvider';
 import { type ResolvedColDef, applyCellProps, composeFont, cellFontForColumn } from './core/propertyChain';
 import { resolveColumnTree, isColGroupDef, visibleHeaderGroupDepth, type ColumnTree, type ColumnTreeNode, type ResolvedColGroupDef } from './core/columnTree';
 import { moveColumnToGroup as moveColumnToGroupPure, moveColumnGroup as moveColumnGroupPure } from './core/columnGroupMutation';
@@ -278,6 +279,11 @@ export type { ConditionalRuleShape } from './core/ruleEngineSlot';
 // bundle version).
 export { DEFAULT_LAYOUT_ID, DEFAULT_GRID_LEVEL_MODULES, LAYOUTS_BUNDLE_VERSION } from './types';
 export { SSRM_ROW_META_KEY, attachSsrmRowMeta, readSsrmRowMeta, isServerSideDatasourceV2 } from './types/ssrm';
+// Live row source for clientSide grids — the CSRM counterpart to
+// `serverSideDatasource`. Public so other packages (and apps) can implement it.
+export type {
+  IClientSideDataProvider, IClientSideDataProviderDelta,
+} from './types/clientSideDataProvider';
 export { buildSsrmColumnKeys, mergeSsrmRowFields } from './core/ssrmColumnKeys';
 export type { SsrmColumnKeysInput } from './core/ssrmColumnKeys';
 export type { CellPainter, CellPaintConfig, RegisterCellRendererOpts } from './renderer/cellRenderers/registry';
@@ -1251,6 +1257,20 @@ export class VelocityGrid<TRow = any> {
     | import('./types/ssrm').AnyServerSideDatasource<TRow>
     | null
     | undefined = undefined;
+  /**
+   * Provider installed via `setClientSideDataProvider` before async init
+   * runs. Flushed after the construction-time option so a late bind wins.
+   */
+  private pendingClientSideDataProvider:
+    | import('./types/clientSideDataProvider').IClientSideDataProvider<TRow>
+    | null
+    | undefined = undefined;
+  /**
+   * Tears down the current client-side provider subscription. The grid owns
+   * the subscription, not the provider: `destroy()` calls this and nothing
+   * else, so a provider shared by several grids survives any one of them.
+   */
+  private clientSideDataProviderUnsub: (() => void) | null = null;
   /** Resolves when async init emits `gridReady` (SSRM mounted if applicable). */
   private readonly readyPromise: Promise<void>;
   private resolveReady!: () => void;
@@ -3600,6 +3620,18 @@ export class VelocityGrid<TRow = any> {
       if (options.rowModelType !== 'serverSide' && options.rowData) {
         this.setRowData(options.rowData);
       }
+      // AFTER the static `rowData` seed above: a grid configured with both
+      // must end up showing the live source, not the frozen array.
+      if (options.rowModelType !== 'serverSide') {
+        if (options.clientSideDataProvider) {
+          this.installClientSideDataProvider(options.clientSideDataProvider);
+        }
+        // A provider bound during async init supersedes the option.
+        if (this.pendingClientSideDataProvider !== undefined) {
+          this.installClientSideDataProvider(this.pendingClientSideDataProvider);
+          this.pendingClientSideDataProvider = undefined;
+        }
+      }
       // AG parity — construction-time `colDef.rowGroup` / `rowGroupIndex`
       // seed the group model (previously only initialState / API / panel
       // grouping took effect; the colDef fields were parsed but inert).
@@ -3868,6 +3900,75 @@ export class VelocityGrid<TRow = any> {
     }
     this.pendingServerSideDatasource = undefined;
     this.installServerSideDatasource(ds);
+  }
+
+  /**
+   * CSRM — install / replace the live row source. `null` detaches the current
+   * one. Mirrors {@link setServerSideDatasource}, including the
+   * before-init deferral (this may be called from a `gridReady` handler or
+   * earlier), except there is no controller to wait on — the grid owns the
+   * subscription directly.
+   */
+  setClientSideDataProvider(p: IClientSideDataProvider<TRow> | null): void {
+    if (this.destroyed) return;
+    if (this.options.rowModelType === 'serverSide') {
+      console.warn('[velocity-grid] setClientSideDataProvider requires rowModelType: "clientSide"');
+      return;
+    }
+    if (!this.readySettled) {
+      // Installing now would race the construction-time `rowData` seed that
+      // async init still has to run; hold it and let init flush it after.
+      this.pendingClientSideDataProvider = p;
+      return;
+    }
+    this.pendingClientSideDataProvider = undefined;
+    this.installClientSideDataProvider(p);
+  }
+
+  /**
+   * Subscribe the grid to a client-side provider. Snapshots full-replace;
+   * deltas ride `applyTransactionAsync`, so the grid's existing
+   * throttle / conflate / defer-while-scrolling knobs govern the feed and no
+   * second throttling layer is introduced here.
+   */
+  private installClientSideDataProvider(p: IClientSideDataProvider<TRow> | null): void {
+    // Detach any previous provider first — re-installing must not leave the
+    // old subscription writing into the grid.
+    this.clientSideDataProviderUnsub?.();
+    this.clientSideDataProviderUnsub = null;
+    if (p === null) return;
+
+    const stops: Array<() => void> = [];
+    stops.push(p.onSnapshot((rows) => {
+      if (this.destroyed) return;
+      this.setRowData(rows.slice() as TRow[]);
+    }));
+    if (typeof p.onDelta === 'function') {
+      stops.push(p.onDelta((delta) => {
+        if (this.destroyed) return;
+        // `removeIds` is the id domain (the source has usually dropped the
+        // row by the time it classifies the removal). Resolve against the
+        // main-thread mirror so `Tx.remove` gets real rows; ids this grid
+        // never saw simply fall out.
+        const remove = delta.removeIds
+          ?.map((id) => this.rowDataById.get(id))
+          .filter((r): r is TRow => r !== undefined);
+        if (
+          !delta.add?.length && !delta.update?.length && !remove?.length
+        ) return;
+        this.applyTransactionAsync({
+          add: delta.add,
+          update: delta.update,
+          remove,
+        });
+      }));
+    }
+    this.clientSideDataProviderUnsub = () => { for (const stop of stops) stop(); };
+
+    // Paint whatever the provider already holds — a grid attaching to a warm
+    // provider should not sit empty until the next snapshot.
+    const existing = p.getSnapshot();
+    if (existing.length > 0) this.setRowData(existing.slice() as TRow[]);
   }
 
   /** Resolves once async init has emitted `gridReady` (SSRM live if configured). */
@@ -10243,6 +10344,12 @@ export class VelocityGrid<TRow = any> {
     this.ssrm?.destroy();
     this.ssrm = null;
     this.pendingServerSideDatasource = undefined;
+    // Unsubscribe ONLY. The provider is not ours to destroy — the same one
+    // commonly feeds several grids, and tearing it down here would starve
+    // the others. Its owner disposes it.
+    this.clientSideDataProviderUnsub?.();
+    this.clientSideDataProviderUnsub = null;
+    this.pendingClientSideDataProvider = undefined;
     if (!this.readySettled) {
       this.readySettled = true;
       this.resolveReady();
@@ -10376,6 +10483,7 @@ export class VelocityGrid<TRow = any> {
       applyTransactionAsync: (t) => this.applyTransactionAsync(t),
       flushAsyncTransactions: () => this.flushAsyncTransactions(),
       setServerSideDatasource: (ds) => this.setServerSideDatasource(ds),
+      setClientSideDataProvider: (p) => this.setClientSideDataProvider(p),
       refreshServerSide: (p) => this.refreshServerSide(p),
       applyServerSideTransaction: (tx) => this.applyServerSideTransaction(tx),
       whenReady: () => this.whenReady(),

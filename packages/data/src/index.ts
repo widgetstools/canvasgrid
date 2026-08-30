@@ -127,6 +127,7 @@ export {
   bindProviderToGrid,
 } from './client/bind';
 export type { CsrmBindableGrid } from './client/bind';
+export { toClientSideDataProvider } from './client/toClientSideDataProvider';
 
 export { resolveProviderConfig } from './client/resolveConfig';
 export {

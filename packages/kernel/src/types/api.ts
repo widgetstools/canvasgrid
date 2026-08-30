@@ -204,6 +204,11 @@ export interface VelocityGridApi<TRow = any> {
   refreshServerSide(params?: import('./ssrm').RefreshServerSideParams): void;
   /** SSRM — patch rows already (or about to be) in the block cache. */
   applyServerSideTransaction(tx: import('./ssrm').ServerSideTransaction<TRow>): void;
+  /** CSRM — install / replace the live row source. `null` detaches. The grid
+   *  unsubscribes on destroy but never destroys the provider itself. */
+  setClientSideDataProvider(
+    p: import('./clientSideDataProvider').IClientSideDataProvider<TRow> | null,
+  ): void;
   /** Resolves once async init has emitted `gridReady` (SSRM mounted if configured). */
   whenReady(): Promise<void>;
 

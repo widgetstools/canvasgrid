@@ -182,6 +182,12 @@ export {
 } from './types/ssrm';
 
 export type {
+  // clientSideDataProvider.ts — live row source for CSRM grids
+  IClientSideDataProvider,
+  IClientSideDataProviderDelta,
+} from './types/clientSideDataProvider';
+
+export type {
   // api.ts — VelocityGridApi + transaction shapes
   Tx,
   TransactionResult,

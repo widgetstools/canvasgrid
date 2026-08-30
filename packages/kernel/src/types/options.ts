@@ -85,6 +85,18 @@ export interface VelocityGridOptions<TRow = any> {
    * `api.setServerSideDatasource`.
    */
   serverSideDatasource?: import('./ssrm').AnyServerSideDatasource<TRow>;
+  /**
+   * Live row source for a client-side grid — the CSRM counterpart to
+   * {@link serverSideDatasource}. The grid subscribes for its lifetime:
+   * snapshots replace the row set, deltas ride the normal
+   * `applyTransactionAsync` path (so the `asyncTransaction*` knobs apply
+   * unchanged). Ignored when `rowModelType === 'serverSide'`.
+   *
+   * Runtime-mutable via `api.setClientSideDataProvider`. On `destroy()` the
+   * grid unsubscribes but never tears the provider down — providers are
+   * commonly shared across several grids.
+   */
+  clientSideDataProvider?: import('./clientSideDataProvider').IClientSideDataProvider<TRow>;
   /** Rows per SSRM block fetch. Default `100`. Initial-only. */
   cacheBlockSize?: number;
   /** Max parallel `getRows` calls. Default `2`. Initial-only. */
