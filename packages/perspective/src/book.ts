@@ -516,8 +516,32 @@ function extractRows(parsed: unknown): Partial<PositionRow>[] {
   return [];
 }
 
-function cgridSortToPsp(sortModel: SortModel): Array<[string, 'asc' | 'desc']> {
-  return sortModel.map((s) => [s.colId, s.direction] as [string, 'asc' | 'desc']);
+/**
+ * Convert a grid sort model to Perspective's `sort`, dropping any column
+ * Perspective does not have.
+ *
+ * The grid's sort model can carry SYNTHESIZED column ids that exist only in
+ * the kernel: pivot result columns (`pivotcol\x01EMEA\x01marketValue`), pivot
+ * row totals, the auto-group column. Perspective aborts on an unknown column
+ * — `Invalid column '…' found in View sorts` — and the WASM instance is left
+ * unusable ("null pointer passed to rust"), which kills the feed for the
+ * whole page. Clicking a pivot column header did exactly that.
+ *
+ * Mirrors `normalizeRowGroupCols`, which already filters group columns the
+ * same way. Sorting by a pivot value can't be pushed down to Perspective (the
+ * column is a cross-tab cell, not a table column), so it is dropped rather
+ * than crashing the engine.
+ */
+function cgridSortToPsp(
+  sortModel: SortModel,
+  allowed: ReadonlySet<string>,
+): Array<[string, 'asc' | 'desc']> {
+  const out: Array<[string, 'asc' | 'desc']> = [];
+  for (const s of sortModel) {
+    if (!allowed.has(s.colId)) continue;
+    out.push([s.colId, s.direction]);
+  }
+  return out;
 }
 
 function normalizeRowGroupCols(
@@ -1606,7 +1630,25 @@ export class PerspectiveBook {
     const extraFilter = converted.filters;
     bound.quickFilterExpressions = converted.expressions;
     bound.lastOrContains = converted.orContains;
-    const sort = cgridSortToPsp(sortModel);
+    // Only real table columns (+ ExprTK aliases) can be sorted by Perspective.
+    const sortable = new Set<string>([
+      ...this.dataColumns,
+      ...Object.keys(bound.expressions),
+      ...Object.keys(bound.quickFilterExpressions),
+    ]);
+    const sort = cgridSortToPsp(sortModel, sortable);
+    if (sort.length !== sortModel.length && !this.warnedUnsortableColumn) {
+      this.warnedUnsortableColumn = true;
+      const dropped = sortModel
+        .filter((s) => !sortable.has(s.colId))
+        .map((s) => s.colId);
+      console.warn(
+        '[perspective] ignoring sort on column(s) Perspective does not have: '
+        + `${JSON.stringify(dropped)}. Synthesized columns (pivot results, row `
+        + 'totals, the auto-group column) are kernel-side only — sorting by them '
+        + 'cannot be pushed down to the server-side view.',
+      );
+    }
     let requestedGroupBy = normalizeRowGroupCols(
       rowGroupCols,
       this.dataColumns,
@@ -1891,6 +1933,8 @@ export class PerspectiveBook {
   }
 
   private warnedLeafOffsetMismatch = false;
+  /** Warn once when a sort references a column Perspective doesn't have. */
+  private warnedUnsortableColumn = false;
 
   /** Windowed leaf rows for one fully-expanded deepest group.
    *

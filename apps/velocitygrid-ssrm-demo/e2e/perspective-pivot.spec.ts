@@ -122,3 +122,38 @@ test.describe('sparse SSRM pivot via Perspective split_by', () => {
     expect(after.rows).toBeGreaterThan(0);
   });
 });
+
+test('sorting by a pivot column header does not kill the Perspective engine', async ({ page }) => {
+  // A pivot result column id (pivotcol\x01EMEA\x01marketValue) exists only in
+  // the kernel. Forwarding it into Perspective's view sort aborted WASM
+  // ("Invalid column ... found in View sorts" → "null pointer passed to
+  // rust") and the live feed died for the whole page: the grid froze
+  // permanently on the first click of a pivot header.
+  const pageErrors: string[] = [];
+  page.on('pageerror', (e) => pageErrors.push(e.message));
+
+  await boot(page);
+  await enterPivot(page);
+
+  const cols = await pivotColumnIds(page, PIVOT_COL_PREFIX);
+  expect(cols.length).toBeGreaterThan(0);
+
+  const box = await page.evaluate((colId: string) => {
+    const g = (window as any).__simple.grid as any;
+    const b = g.getHeaderBoundsAt?.(colId);
+    const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+    const r = canvas.getBoundingClientRect();
+    return b ? { x: r.x + b.x + b.w / 2, y: r.y + b.y + b.h / 2 } : null;
+  }, cols[0]!);
+  expect(box).not.toBeNull();
+  await page.mouse.click(box!.x, box!.y);
+  await page.waitForTimeout(5000);
+
+  const health = await page.evaluate(() => {
+    const t = (window as any).__simple.provider.book.getTelemetry();
+    return { phase: t.phase, live: t.liveUpdatesPerSec };
+  });
+  expect(pageErrors).toEqual([]);
+  expect(health.phase).toBe('live');
+  expect(health.live).toBeGreaterThan(0);
+});
