@@ -181,6 +181,17 @@ export class ServerSideRowModelV2Controller<TRow = any> {
   private readonly groupTotalRow: 'top' | 'bottom' | null;
   private readonly grandTotalRow: 'top' | 'bottom' | null;
   private readonly maintainOrder: boolean;
+  /**
+   * Client-side ("local") mode — `rowModelType: 'clientSide'`. The whole book
+   * is already resident in the worker's `RowStore` (put there by `setRowData`
+   * / `applyTransaction`), so every fetch-shaped operation this controller
+   * owns is meaningless: there is no latency to hide, no unbounded remote
+   * dataset to cap, and nothing to refresh FROM. `ensureRange` / `refresh` /
+   * `ensureFullyHydrated` short-circuit, and no datasource is ever installed.
+   * The controller still mounts so client-side and server-side grids share
+   * ONE row-model code path.
+   */
+  private readonly localMode: boolean;
   /** Previous display position by key — pins sibling order across skeleton
    *  refetches when `maintainOrder` is on. */
   private prevOrder: Map<string, number> | null = null;
@@ -201,6 +212,8 @@ export class ServerSideRowModelV2Controller<TRow = any> {
       /** AG `groupMaintainOrder` — pin skeleton sibling order across
        *  refetches. */
       maintainOrder?: boolean;
+      /** Client-side grid — see {@link localMode}. */
+      localMode?: boolean;
     },
   ) {
     this.rowIdField = opts.rowIdField;
@@ -216,6 +229,12 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     this.groupTotalRow = opts.groupTotalRow ?? null;
     this.grandTotalRow = opts.grandTotalRow ?? null;
     this.maintainOrder = opts.maintainOrder === true;
+    this.localMode = opts.localMode === true;
+  }
+
+  /** True for a client-side grid — see {@link localMode}. */
+  isLocalMode(): boolean {
+    return this.localMode;
   }
 
   setDatasource(ds: SsrmDatasource<TRow> | null): void {
@@ -242,6 +261,11 @@ export class ServerSideRowModelV2Controller<TRow = any> {
   }
 
   ensureRange(rowStart: number, rowEnd: number): Promise<void> {
+    // Local mode: the worker already holds every row. This runs on the
+    // viewport hot path (once per scroll fetch), so short-circuit BEFORE
+    // `enqueue` — a client-side grid must not pay a promise-chain hop per
+    // scroll tick for a fetch that can never have anything to do.
+    if (this.localMode) return Promise.resolve();
     return this.enqueue(() => this.ensureRangeInner(rowStart, rowEnd));
   }
 
@@ -286,6 +310,11 @@ export class ServerSideRowModelV2Controller<TRow = any> {
   }
 
   refresh(params: RefreshServerSideParams = {}): Promise<void> {
+    // Local mode: there is no datasource to refresh FROM — the worker's
+    // store IS the book. Callers reach `refresh` through shared seams
+    // (e.g. the grouping coordinator), so absorb it here rather than
+    // requiring every caller to know the mode.
+    if (this.localMode) return Promise.resolve();
     // Conflate soft refreshes: live ticks can arrive faster than a refresh
     // completes, and queuing one op per tick grows the chain without bound
     // — refreshes lag ever further behind and anything queued later (a
@@ -388,6 +417,10 @@ export class ServerSideRowModelV2Controller<TRow = any> {
    *  Returns false when hydration is refused so the caller must NOT
    *  enable the client pipeline over the sparse store. */
   async ensureFullyHydrated(): Promise<boolean> {
+    // Local mode is fully hydrated by definition — `setRowData` /
+    // `applyTransaction` put the whole book in the worker store directly,
+    // so there is nothing to page in and the answer is trivially yes.
+    if (this.localMode) return true;
     // Only the SKELETON path refuses. A getRows-only datasource with a group
     // model is NOT sparse — full hydrate is exactly how it serves grouping
     // (worker CSRM pipeline), which is what the decommissioned v1 controller

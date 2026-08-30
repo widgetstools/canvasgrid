@@ -2090,7 +2090,10 @@ export class VelocityGrid<TRow = any> {
       // live in `handleViewportChunk` and are reached via the coord's
       // `onViewportChunk` dep.
       dispatchViewportRequest: async (opts) => {
-        if (this.ssrm) {
+        // Local mode has nothing to fetch, and awaiting its no-op would
+        // push the worker dispatch into a microtask — the fetch must stay
+        // synchronous with the scroll for client-side grids.
+        if (this.ssrm && this.options.rowModelType === 'serverSide') {
           await this.ssrm.ensureRange(opts.rowStart, opts.rowEnd);
           if (this.destroyed) return;
         }
@@ -3584,6 +3587,12 @@ export class VelocityGrid<TRow = any> {
           this.installServerSideDatasource(this.pendingServerSideDatasource);
           this.pendingServerSideDatasource = undefined;
         }
+      } else {
+        // Client-side grids mount the SAME controller in local mode, so both
+        // row models run one code path. It never fetches (no datasource, and
+        // ensureRange/refresh/ensureFullyHydrated short-circuit) — the store
+        // is filled by setRowData/applyTransaction as before.
+        this.mountSsrmController(false);
       }
       this.events.emit({ type: 'gridReady', api: this.makeApi() });
       this.readySettled = true;
@@ -3840,14 +3849,21 @@ export class VelocityGrid<TRow = any> {
   // down with the rest of the editor-cycle additions (Cycle 5 / Task 1).
 
   setServerSideDatasource(ds: AnyServerSideDatasource<TRow> | null): void {
+    // Client-side grids now mount the controller too (local mode), so
+    // `this.ssrm` being live no longer implies SSRM — check the row model
+    // itself, or a real datasource would be installed on a local-mode
+    // controller that never fetches.
+    if (this.options.rowModelType !== 'serverSide') {
+      console.warn('[velocity-grid] setServerSideDatasource requires rowModelType: "serverSide"');
+      return;
+    }
     if (!this.ssrm) {
-      if (this.options.rowModelType === 'serverSide' && !this.readySettled) {
+      if (!this.readySettled) {
         // Async worker init hasn't mounted SSRM yet — keep the latest ds
         // and install it after the construction-time placeholder.
         this.pendingServerSideDatasource = ds;
         return;
       }
-      console.warn('[velocity-grid] setServerSideDatasource requires rowModelType: \"serverSide\"');
       return;
     }
     this.pendingServerSideDatasource = undefined;
@@ -4066,8 +4082,19 @@ export class VelocityGrid<TRow = any> {
       groupTotalRow,
       grandTotalRow: grandInScroll,
       maintainOrder: this.options.groupMaintainOrder === true,
+      localMode: this.options.rowModelType !== 'serverSide',
     });
-    this.wireSsrmColumnWindowRefill();
+    // Local mode is permanently "pipelined": every main-thread sparse gate
+    // reads `this.ssrm && !this.ssrmClientPipeline`, so leaving this false
+    // would classify a client-side grid as sparse SSRM and make sort/filter
+    // return early into a refresh() that local mode no-ops. Seeded here so
+    // it holds from the first tick — local mode never makes the worker
+    // round trip that would otherwise set it.
+    if (this.options.rowModelType !== 'serverSide') this.ssrmClientPipeline = true;
+    // H-scroll column refill re-fetches narrower column windows from a
+    // datasource. Local mode has none, so skip the subscription entirely
+    // rather than run a no-op handler on every virtualColumnsChanged.
+    if (this.options.rowModelType === 'serverSide') this.wireSsrmColumnWindowRefill();
   }
 
   /**
@@ -4214,6 +4241,10 @@ export class VelocityGrid<TRow = any> {
   }
 
   refreshServerSide(params?: RefreshServerSideParams): void {
+    // SSRM-only. Silent no-op on client-side grids (as before local mode
+    // mounted a controller for them) — deliberately no warning, since this
+    // was always a quiet no-op there and hosts call it defensively.
+    if (this.options.rowModelType !== 'serverSide') return;
     if (
       this.bodyScrollActive
       && this.options.deferAsyncTransactionsWhileScrolling !== false
@@ -4250,8 +4281,8 @@ export class VelocityGrid<TRow = any> {
   }
 
   applyServerSideTransaction(tx: ServerSideTransaction<TRow>): void {
-    if (!this.ssrm) {
-      console.warn('[velocity-grid] applyServerSideTransaction requires rowModelType: \"serverSide\"');
+    if (this.options.rowModelType !== 'serverSide' || !this.ssrm) {
+      console.warn('[velocity-grid] applyServerSideTransaction requires rowModelType: "serverSide"');
       return;
     }
     if (
@@ -4493,7 +4524,10 @@ export class VelocityGrid<TRow = any> {
   }
 
   setRowData(rows: TRow[]): void {
-    if (this.ssrm) {
+    // `this.ssrm` is now mounted for client-side grids too (local mode), so
+    // gate on the row model — otherwise this would reject the very call that
+    // populates a client-side grid.
+    if (this.options.rowModelType === 'serverSide') {
       console.warn('[velocity-grid] setRowData is ignored in serverSide row model — use the datasource');
       return;
     }
@@ -6079,7 +6113,9 @@ export class VelocityGrid<TRow = any> {
    *  (the datasource owns filtering; `rowDataById` is only a hydrate
    *  cache and must not drive the status bar). */
   getTotalRowCount(): number {
-    if (this.ssrm) return this.rowCount;
+    // Row model, not `this.ssrm` — local mode mounts the controller on
+    // client-side grids, where this must stay the unfiltered mirror size.
+    if (this.options.rowModelType === 'serverSide') return this.rowCount;
     return this.rowDataById.size;
   }
 
@@ -6129,6 +6165,9 @@ export class VelocityGrid<TRow = any> {
   }
 
   private enableSsrmClientPipeline(): Promise<void> {
+    // Local mode is permanently pipelined (seeded at mount) — nothing to
+    // enable, and no hydrate to await.
+    if (this.options.rowModelType !== 'serverSide') return Promise.resolve();
     if (!this.ssrm || this.destroyed) return Promise.resolve();
     if (this.ssrmClientPipeline) return Promise.resolve();
     const run = async (): Promise<void> => {
@@ -6156,6 +6195,15 @@ export class VelocityGrid<TRow = any> {
   }
 
   private disableSsrmClientPipeline(): Promise<void> {
+    // Client-side (local mode) grids mount `this.ssrm` but must NEVER leave
+    // the pipeline: `buildVisibleAsync` would take the sparse early-return
+    // over an `ssrmOrder` local mode never populates and paint zero rows.
+    // Guarding at this single choke point covers every caller — the grouping
+    // seam and setPivotMode both route here via
+    // `disableSsrmClientPipelineIfIdle`, and neither of the guards below
+    // catches local mode (`ssrmWantsClientPipeline()` returns false for a
+    // client-side row model, so it does not stop execution here).
+    if (this.options.rowModelType !== 'serverSide') return Promise.resolve();
     if (!this.ssrm || this.destroyed) return Promise.resolve();
     // Keep pipeline on when CSRM parity is requested for the life of the grid.
     if (this.ssrmWantsClientPipeline()) {
@@ -6223,7 +6271,10 @@ export class VelocityGrid<TRow = any> {
   isPivotMode(): boolean { return this.pivotEngine.isPivotMode(); }
   setPivotMode(pivotMode: boolean, opts?: { discardSettings?: boolean }): void {
     if (this.destroyed) return;
-    if (this.ssrm && pivotMode) {
+    // Row model, not `this.ssrm` — a client-side grid mounts the controller
+    // in local mode, and must keep taking the synchronous path below rather
+    // than deferring the pivot change behind a hydrate that can't apply.
+    if (this.options.rowModelType === 'serverSide' && this.ssrm && pivotMode) {
       // Sparse Perspective SSRM cannot build a pivot matrix (no full hydrate
       // while grouped; sample forces client pipeline off). Fail closed so
       // the Columns panel doesn't show Pivot ON with an empty/wrong grid.
@@ -6248,7 +6299,7 @@ export class VelocityGrid<TRow = any> {
       });
       return;
     }
-    if (this.ssrm && !pivotMode) {
+    if (this.options.rowModelType === 'serverSide' && this.ssrm && !pivotMode) {
       void this.disableSsrmClientPipelineIfIdle();
     }
     this.applyPivotModeChange(pivotMode, opts);

@@ -65,20 +65,25 @@ function mountGrid() {
   el.style.height = '400px';
   document.body.appendChild(el);
 
+  // A REAL serverSide grid: client-side grids now also mount an SSRM
+  // controller (local mode), so `grid.ssrm != null` no longer implies SSRM
+  // and the server-side entry points gate on `rowModelType` instead.
+  // Injecting a fake controller onto a clientSide grid would no longer
+  // reach the sparse dispatch path this suite exercises.
   const grid = new VelocityGrid(el, {
+    rowModelType: 'serverSide',
     columnDefs: [
       { field: 'symbol' },
       { field: 'pnl', type: 'number' },
     ],
     getRowId: (r: { id: string }) => r.id,
-    rowData: [
-      { id: 'a', symbol: 'AAA', pnl: 10 },
-      { id: 'b', symbol: 'BBB', pnl: 20 },
-    ],
   } as never);
 
+  // No datasource and a FakeWorker that never replies: async init stays
+  // parked, so the stub below is never replaced by a real controller.
+  //
   // Install a stub SSRM controller so applyServerSideTransaction routes
-  // through the sparse-SSRM dispatch path without waiting on async mount.
+  // through the sparse-SSRM dispatch path with no datasource attached.
   const fakeSsrm = {
     applyServerSideTransaction: vi.fn(),
     refresh: vi.fn(async () => undefined),
