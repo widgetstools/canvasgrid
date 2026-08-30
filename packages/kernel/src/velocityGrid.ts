@@ -1290,6 +1290,13 @@ export class VelocityGrid<TRow = any> {
    * nothing would supply the matrix.
    */
   private ssrmHostPivotDeclared = false;
+  /**
+   * Last cross-tab published via `setServerSidePivotResult`. Kept on main so
+   * the SSRM controller can order skeleton groups by a pivot cell value when
+   * the user sorts a pivot column — the datasource can't do that, since a
+   * pivot result column isn't one of its columns.
+   */
+  private ssrmPivotResult: SsrmPivotResult | null = null;
   /** Resolves when async init emits `gridReady` (SSRM mounted if applicable). */
   private readonly readyPromise: Promise<void>;
   private resolveReady!: () => void;
@@ -4050,6 +4057,9 @@ export class VelocityGrid<TRow = any> {
       // v2 skeleton — grand totals (field-keyed root aggregates) for the
       // pinned totals subgrid + in-scroll grand-total footer.
       setGrandTotals: (totals) => { this.setServerSideGrandTotals(totals); },
+      // Lets the controller order groups by a pivot cell when the user sorts
+      // a pivot column — see SsrmHostV2.getPivotResult.
+      getPivotResult: () => this.ssrmPivotResult,
       setRowCount: (count, prevCount) => {
         if (this.destroyed) return;
         const prev = prevCount ?? this.rowCount;
@@ -4425,6 +4435,7 @@ export class VelocityGrid<TRow = any> {
     // Latch capability on the first push (including an explicit `null`, which
     // is how a host says "I can pivot, there's just nothing to show yet").
     this.ssrmHostPivotDeclared = true;
+    this.ssrmPivotResult = result;
     void this.workerCoord.ssrmSetPivotResult(result)
       .then(() => {
         if (this.destroyed) return;
@@ -5254,14 +5265,22 @@ export class VelocityGrid<TRow = any> {
     // text/number compare on the worker — surprising and hard to debug.
     // Throwing here points the app at `registerComparator`, which round-
     // trips a serialised function through `new Function` on the worker.
-    for (const entry of s) {
-      const col = this.columnDefsMap.get(entry.colId);
-      if (col && typeof col.comparator === 'function') {
-        throw new Error(
-          `[velocity-grid] column '${entry.colId}' has an inline-closure comparator; ` +
-          `sort runs worker-side and closures don't cross postMessage. ` +
-          `Use api.registerComparator(name, fn) and set comparator: name on the col def.`,
-        );
+    // Only meaningful when the sort actually runs in the worker. On the
+    // sparse SSRM path the datasource sorts, so nothing crosses postMessage
+    // and throwing here would reject a perfectly valid sort with a rationale
+    // that doesn't apply. (The comparator is still ignored there — the
+    // datasource owns ordering — but that's a limitation, not an error.)
+    const sortsInWorker = !(this.ssrm && !this.ssrmClientPipeline);
+    if (sortsInWorker) {
+      for (const entry of s) {
+        const col = this.columnDefsMap.get(entry.colId);
+        if (col && typeof col.comparator === 'function') {
+          throw new Error(
+            `[velocity-grid] column '${entry.colId}' has an inline-closure comparator; ` +
+            `sort runs worker-side and closures don't cross postMessage. ` +
+            `Use api.registerComparator(name, fn) and set comparator: name on the col def.`,
+          );
+        }
       }
     }
     this.sortModel = s;

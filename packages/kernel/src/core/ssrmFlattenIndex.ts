@@ -53,6 +53,17 @@ export function toDisplayOrder(
   groups: readonly SkeletonGroup[],
   rowGroupCols: readonly string[],
   preferredOrder?: ReadonlyMap<string, number>,
+  /**
+   * Explicit sibling ordering by composite group key, applied at every level.
+   * Used to sort groups by a PIVOT cell value — the datasource can't do it
+   * (a pivot column isn't a table column), so the kernel orders the skeleton
+   * itself, mirroring what CSRM's SortPass does via `reorderGroupLevelByPivot`.
+   *
+   * Takes precedence over `preferredOrder`: an explicit user sort must beat
+   * `groupMaintainOrder`'s "keep previous positions", or clicking a header
+   * would do nothing.
+   */
+  siblingSort?: (aKey: string, bKey: string) => number,
 ): SkeletonNode[] {
   const maxDepth = rowGroupCols.length - 1;
   const nodes = new Map<string, SkeletonNode>();
@@ -82,6 +93,14 @@ export function toDisplayOrder(
   }
 
   const orderSiblings = (keys: string[]): string[] => {
+    if (siblingSort) {
+      // Stable: fall back to input order when the comparator ties (e.g. two
+      // groups with the same pivot value, or both missing one).
+      return keys
+        .map((key, seq) => ({ key, seq }))
+        .sort((a, b) => siblingSort(a.key, b.key) || (a.seq - b.seq))
+        .map((e) => e.key);
+    }
     if (!preferredOrder || preferredOrder.size === 0) return keys;
     return keys
       .map((key, seq) => ({ key, seq, prev: preferredOrder.get(key) ?? Number.POSITIVE_INFINITY }))

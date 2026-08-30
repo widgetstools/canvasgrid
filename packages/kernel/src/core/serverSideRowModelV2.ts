@@ -29,6 +29,8 @@ import {
   type FlattenEntry,
   type SkeletonNode,
 } from './ssrmFlattenIndex';
+import { isPivotResultColumnId, decodePivotResultColumnId } from './pivotColumns';
+import { encodePivotValueKey, PIVOT_PATH_SEP } from '../worker/passes/pivotPass';
 
 export const SSRM_GROUP_ROW_ID_PREFIX = '__grp__';
 export const SSRM_FOOTER_ROW_ID_PREFIX = '__footer__';
@@ -84,6 +86,13 @@ export interface SsrmHostV2<TRow> extends SsrmHost<TRow> {
    *  by FIELD) in the worker — drives the pinned totals subgrid and the
    *  in-scroll grand-total footer. `null` clears. */
   setGrandTotals?(totals: Record<string, unknown> | null): void;
+  /**
+   * The pivot cross-tab currently published via `setServerSidePivotResult`,
+   * or `null`. Read when the sort model targets a pivot result column: the
+   * datasource cannot sort by one (it isn't a table column), so the
+   * controller orders the skeleton's groups by the cell value instead.
+   */
+  getPivotResult?(): import('../worker/protocol').SsrmPivotResult | null;
 }
 
 interface LeafBlock<TRow> {
@@ -195,6 +204,8 @@ export class ServerSideRowModelV2Controller<TRow = any> {
   /** Previous display position by key — pins sibling order across skeleton
    *  refetches when `maintainOrder` is on. */
   private prevOrder: Map<string, number> | null = null;
+  /** Sort model the current `prevOrder` was captured under — see ingestSkeleton. */
+  private lastSortSig: string | null = null;
   private warnedUnsupportedTx = false;
 
   constructor(
@@ -713,6 +724,48 @@ export class ServerSideRowModelV2Controller<TRow = any> {
   }
 
   /**
+   * Sibling comparator for a sort on a PIVOT result column, or `null` when
+   * the sort model doesn't target one.
+   *
+   * A pivot result column is synthesized by the kernel and does not exist in
+   * the datasource, so the sort can't be pushed down — Perspective aborts on
+   * an unknown column. The cross-tab is already published here, so order the
+   * skeleton's groups by the cell value instead.
+   *
+   * Deliberately mirrors CSRM's `reorderGroupLevelByPivot`
+   * (worker/passes/sortPass.ts) including its missing-value rule — nullish
+   * and NaN sort last on asc, first on desc — so the same click produces the
+   * same order in both row models.
+   */
+  private buildPivotSiblingSort(): ((a: string, b: string) => number) | null {
+    const pivot = this.host.getPivotResult?.();
+    if (!pivot || pivot.values.size === 0) return null;
+    const entry = this.host.getSortModel().find((s) => isPivotResultColumnId(s.colId));
+    if (!entry) return null;
+    const decoded = decodePivotResultColumnId(entry.colId);
+    if (decoded === null) return null;
+    const joinedPath = decoded.pivotPath.join(PIVOT_PATH_SEP);
+    const dir = entry.direction === 'asc' ? 1 : -1;
+    const valueOf = (key: string): unknown =>
+      pivot.values.get(encodePivotValueKey(key, joinedPath, decoded.valueColId));
+    return (aKey, bKey) => {
+      const av = valueOf(aKey);
+      const bv = valueOf(bKey);
+      const aMissing = av === undefined || av === null;
+      const bMissing = bv === undefined || bv === null;
+      if (aMissing && bMissing) return 0;
+      if (aMissing) return 1;
+      if (bMissing) return -1;
+      const an = Number(av);
+      const bn = Number(bv);
+      if (Number.isNaN(an) && Number.isNaN(bn)) return 0;
+      if (Number.isNaN(an)) return 1;
+      if (Number.isNaN(bn)) return -1;
+      return dir * (an < bn ? -1 : an > bn ? 1 : 0);
+    };
+  }
+
+  /**
    * Install a fetched skeleton. On soft refresh, caches survive for groups
    * whose leafCount is unchanged (their leaf indices are stable); changed /
    * removed groups drop theirs.
@@ -722,10 +775,24 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     soft: boolean,
   ): void {
     const rowGroupCols = this.host.getRowGroupCols();
+    // `groupMaintainOrder` keeps group order stable across DATA refreshes.
+    // It must not outlive a sort change: `prevOrder` is recaptured from the
+    // order it just imposed, so without this the first order ever seen gets
+    // re-pinned onto every later skeleton and group order can never change
+    // again — sorting a group column would silently do nothing.
+    const sortSig = JSON.stringify(this.host.getSortModel());
+    if (sortSig !== this.lastSortSig) {
+      this.lastSortSig = sortSig;
+      this.prevOrder = null;
+    }
+    const pivotSort = this.buildPivotSiblingSort();
     const nodes = toDisplayOrder(
       groups,
       rowGroupCols,
-      this.maintainOrder ? (this.prevOrder ?? undefined) : undefined,
+      // An explicit pivot sort overrides maintain-order; otherwise a header
+      // click would be pinned back to the previous positions.
+      this.maintainOrder && pivotSort === null ? (this.prevOrder ?? undefined) : undefined,
+      pivotSort ?? undefined,
     );
     if (this.maintainOrder) {
       this.prevOrder = new Map(nodes.map((n, i) => [n.key, i]));

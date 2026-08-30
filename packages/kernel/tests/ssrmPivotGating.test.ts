@@ -226,3 +226,25 @@ describe('SSRM pivot gating', () => {
     (globalThis as { Worker?: unknown }).Worker = prev;
   });
 });
+
+describe('inline comparator guard is scoped to worker-side sorting', () => {
+  it('does not reject a sort on sparse SSRM, where the datasource sorts', async () => {
+    // The guard exists because closures can't cross postMessage to the
+    // worker. On the sparse path the datasource sorts, so nothing is
+    // serialized — throwing there rejected a valid sort with a rationale
+    // that doesn't apply to it.
+    const { grid, restore } = buildGrid({
+      serverSideDatasource: skeletonDatasource(),
+      columnDefs: [
+        { field: 'desk', comparator: (a: string, b: string) => a.localeCompare(b) },
+        { field: 'pnl', type: 'number', aggFunc: 'sum' },
+      ] as never,
+    });
+    await grid.whenReady();
+    await settle();
+
+    expect(() => grid.setSortModel([{ colId: 'desk', direction: 'asc' }])).not.toThrow();
+    expect(grid.getSortModel()).toEqual([{ colId: 'desk', direction: 'asc' }]);
+    restore();
+  });
+});
