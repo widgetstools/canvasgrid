@@ -41,13 +41,17 @@ export const POSITION_COLUMNS: CColDef<PositionRow>[] = [
 
   },
 
-  { colId: 'ticker', field: 'ticker', headerName: 'Ticker', cellDataType: 'text', width: 110, filter: 'text', enableRowGroup: true },
+  // Dimensions carry `enablePivot` as well as `enableRowGroup`: the two are
+  // independent opt-ins, and without it the Columns panel's Column Labels
+  // zone rejects every drag (`isColumnPivotEnabled` is false for all
+  // columns), so pivot mode can never build a matrix.
+  { colId: 'ticker', field: 'ticker', headerName: 'Ticker', cellDataType: 'text', width: 110, filter: 'text', enableRowGroup: true, enablePivot: true },
 
-  { colId: 'desk', field: 'desk', headerName: 'Desk', cellDataType: 'text', width: 130, filter: 'text', enableRowGroup: true },
+  { colId: 'desk', field: 'desk', headerName: 'Desk', cellDataType: 'text', width: 130, filter: 'text', enableRowGroup: true, enablePivot: true },
 
-  { colId: 'region', field: 'region', headerName: 'Region', cellDataType: 'text', width: 100, filter: 'text', enableRowGroup: true },
+  { colId: 'region', field: 'region', headerName: 'Region', cellDataType: 'text', width: 100, filter: 'text', enableRowGroup: true, enablePivot: true },
 
-  { colId: 'instrumentType', field: 'instrumentType', headerName: 'Instrument', cellDataType: 'text', width: 140, filter: 'text', enableRowGroup: true },
+  { colId: 'instrumentType', field: 'instrumentType', headerName: 'Instrument', cellDataType: 'text', width: 140, filter: 'text', enableRowGroup: true, enablePivot: true },
 
   { colId: 'notionalAmount', field: 'notionalAmount', headerName: 'Notional', cellDataType: 'number', width: 140, filter: 'number', aggFunc: 'sum', enableValue: true },
 

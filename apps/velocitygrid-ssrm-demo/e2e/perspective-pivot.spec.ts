@@ -46,6 +46,25 @@ async function pivotColumnIds(page: Page, prefix: string): Promise<string[]> {
 }
 
 test.describe('sparse SSRM pivot via Perspective split_by', () => {
+  test('dimensions are pivotable, so Column Labels accepts them', async ({ page }) => {
+    // Regression guard. The other specs call setPivotColumns() directly,
+    // which bypasses `enablePivot` — so they all passed while the Columns
+    // panel's Column Labels zone silently rejected every drag (no column
+    // declared enablePivot). Pivot mode then hid the primaries with no
+    // pivot columns to replace them, and the grid showed only the group
+    // column. Assert the gate the UI actually consults.
+    await boot(page);
+    const pivotable = await page.evaluate(() => {
+      const g = (window as any).__simple.grid as any;
+      return (g.getColumnState() ?? [])
+        .map((c: any) => c.colId)
+        .filter((id: string) => g.isColumnPivotEnabled?.(id) === true);
+    });
+    expect(pivotable).toEqual(
+      expect.arrayContaining(['desk', 'region', 'ticker', 'instrumentType']),
+    );
+  });
+
   test('pivot engages WITHOUT falling back to a full hydrate', async ({ page }) => {
     await boot(page);
     await enterPivot(page);
