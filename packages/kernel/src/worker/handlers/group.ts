@@ -76,18 +76,30 @@ export async function handleGroup(
     }
 
     case 'setExpandedKeys': {
-      // Cycle 15 / Task 7 — replace the persistent expanded set.
-      state.expandedKeys = req.payload.keys === null
-        ? null
-        : new Set(req.payload.keys);
-      const visibleCount = await helpers.invalidateAndCount();
+      const payload = req.payload;
+      const isToggle = 'toggle' in payload;
+      if (isToggle) {
+        // Delta. Main only sends this once it holds an explicit set, so the
+        // all-expanded sentinel is never resolved on two sides independently.
+        const set = state.expandedKeys ?? new Set(helpers.currentGroupKeys());
+        if (payload.toggle.expanded) set.add(payload.toggle.key);
+        else set.delete(payload.toggle.key);
+        state.expandedKeys = set;
+      } else {
+        state.expandedKeys = payload.keys === null ? null : new Set(payload.keys);
+      }
+      // Expansion changes neither the data nor the tree, so the pipeline
+      // result still stands — only the flat order needs re-counting.
+      const visibleCount = await helpers.countAfterExpansionChange();
       post({
         id: req.id,
         type: 'groupKeysSnapshot',
         count: state.store.size(),
         visibleCount,
-        groupKeys: helpers.currentGroupKeys(),
-        groupDescendants: state.emitGroupDescendants
+        // A toggle changes which rows are VISIBLE, never the tree, so the
+        // caller's key list and descendant map are still current.
+        groupKeys: isToggle ? undefined : helpers.currentGroupKeys(),
+        groupDescendants: !isToggle && state.emitGroupDescendants
           ? helpers.collectGroupDescendantRowIds()
           : undefined,
       });

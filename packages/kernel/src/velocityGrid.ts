@@ -7076,7 +7076,18 @@ export class VelocityGrid<TRow = any> {
    *  Cycle 15 / Task 8 — also refreshes the descendant cache from
    *  `groupDescendants` when the worker is emitting them. The
    *  selection model's membership resolver reads from this cache. */
-  private shipExpandedKeys(keys: string[] | null): void {
+  /**
+   * Push expansion state to the worker.
+   *
+   * `toggle` ships ONE key instead of the whole set. The set is O(group
+   * nodes) — ~40 KB and 711 keys on a 26k-row tree — and was being sent on
+   * every chevron click, with an equally sized reply coming back. The grid
+   * virtualises what it PAINTS; this is the interaction catching up.
+   */
+  private shipExpandedKeys(
+    keys: string[] | null,
+    toggle?: { key: string; expanded: boolean },
+  ): void {
     // Sparse SSRM — expansion state drives the flattened order. v2: local
     // skeleton reflow (same frame). v1: `refreshExpansion` drops the whole
     // block cache (a toggle shifts every flattened index below it;
@@ -7091,12 +7102,18 @@ export class VelocityGrid<TRow = any> {
       }).catch((err) => { if (!this.destroyed) console.error('[velocity-grid]', err); });
       return;
     }
-    this.workerCoord
-      .setExpandedKeys(keys)
+    const request = toggle
+      ? this.workerCoord.toggleExpandedKey(toggle.key, toggle.expanded)
+      : this.workerCoord.setExpandedKeys(keys);
+    request
       .then(({ visibleCount, groupKeys, groupDescendants }) => {
         if (this.destroyed) return;
-        this.knownGroupKeys = groupKeys;
-        this.updateGroupDescendantsCache(groupKeys, groupDescendants);
+        // `null` = unchanged. A toggle alters which rows are visible, never
+        // the tree, so these caches stay valid and the reply omits them.
+        if (groupKeys !== null) {
+          this.knownGroupKeys = groupKeys;
+          this.updateGroupDescendantsCache(groupKeys, groupDescendants ?? []);
+        }
         this.rowCount = visibleCount;
         this.rowHeightIndex = null;
         this.recomputeViewport();
@@ -11392,8 +11409,13 @@ export class VelocityGrid<TRow = any> {
       : new Set(this.expandedKeys);
     if (next) materialised.add(groupKey);
     else materialised.delete(groupKey);
+    const wasSentinel = this.expandedKeys === null;
     this.expandedKeys = materialised;
-    this.shipExpandedKeys(Array.from(materialised));
+    // Ship the whole set only when leaving the all-expanded sentinel, so main
+    // and the worker never materialise it independently and risk disagreeing.
+    // Every toggle after that is a one-key delta.
+    if (wasSentinel) this.shipExpandedKeys(Array.from(materialised));
+    else this.shipExpandedKeys(null, { key: groupKey, expanded: next });
     this.events.emit({
       type: 'rowGroupOpened',
       key: groupKey,

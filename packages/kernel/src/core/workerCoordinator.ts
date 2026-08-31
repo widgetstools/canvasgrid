@@ -19,7 +19,7 @@
 // conflate / throttle) lives inside the worker `TransactionQueue`.
 // `flushAsyncTransactions()` force-drains that queue.
 
-import type { WorkerLike, WorkerClientHandlers } from '../worker/client';
+import type { ExpandedKeysReply, WorkerLike, WorkerClientHandlers } from '../worker/client';
 import { WorkerClient } from '../worker/client';
 import type {
   WorkerColumn, WorkerInitPayload, ViewportChunk, AutosizeColumnRequest,
@@ -234,10 +234,13 @@ export class WorkerCoordinator {
     return this.client.setStrictPivotColumnOrder(strict);
   }
 
-  setExpandedKeys(keys: string[] | null): Promise<{
-    visibleCount: number; groupKeys: string[]; groupDescendants: string[][];
-  }> {
+  setExpandedKeys(keys: string[] | null): Promise<ExpandedKeysReply> {
     return this.client.setExpandedKeys(keys);
+  }
+
+  /** One key flipped — see `WorkerClient.toggleExpandedKey`. */
+  toggleExpandedKey(key: string, expanded: boolean): Promise<ExpandedKeysReply> {
+    return this.client.toggleExpandedKey(key, expanded);
   }
 
   setEmitGroupDescendants(enabled: boolean): Promise<{

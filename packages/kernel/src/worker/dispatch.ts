@@ -108,6 +108,9 @@ export interface WorkerHelpers {
   /** Rebuild `state.visibleCache` then return `visibleCount` (row count
    *  after grouping expansion is applied). */
   invalidateAndCount(): Promise<number>;
+  /** Recount after an expansion change only — reuses the built group tree
+   *  instead of re-running the pipeline. See worker.ts. */
+  countAfterExpansionChange(): Promise<number>;
   /** Diff `updates` against the pre-apply store and stage per-row-field
    *  flashes into `state.pendingFlashes`. */
   stageFlashesForUpdates(updates: unknown[]): void;

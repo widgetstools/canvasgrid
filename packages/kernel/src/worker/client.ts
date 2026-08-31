@@ -75,6 +75,14 @@ export interface WorkerLike {
 
 interface Pending { resolve: (v: unknown) => void; reject: (e: Error) => void; }
 
+/** Reply to an expansion change. `null` fields mean 'unchanged' — see
+ *  `sendExpanded`. */
+export interface ExpandedKeysReply {
+  visibleCount: number;
+  groupKeys: string[] | null;
+  groupDescendants: string[][] | null;
+}
+
 export class WorkerClient {
   private nextId = 1;
   private pending = new Map<number, Pending>();
@@ -478,17 +486,31 @@ export class WorkerClient {
    *  `groupKeys`) when the worker has been switched to emit them via
    *  `setEmitGroupDescendants(true)`. Empty array when descendant
    *  emission is off. */
-  setExpandedKeys(keys: string[] | null): Promise<{
-    visibleCount: number;
-    groupKeys: string[];
-    groupDescendants: string[][];
-  }> {
-    return this.send<{ visibleCount: number; groupKeys?: string[]; groupDescendants?: string[][] }>({
-      type: 'setExpandedKeys', payload: { keys },
-    }).then((r) => ({
+  /** Full replace of the expanded set (or the all-expanded sentinel). */
+  setExpandedKeys(keys: string[] | null): Promise<ExpandedKeysReply> {
+    return this.sendExpanded({ keys });
+  }
+
+  /**
+   * Flip ONE key. Preferred over `setExpandedKeys` for chevron clicks: the
+   * worker already holds the set, so re-sending it whole made both the
+   * request and the reply grow with the number of group nodes.
+   */
+  toggleExpandedKey(key: string, expanded: boolean): Promise<ExpandedKeysReply> {
+    return this.sendExpanded({ toggle: { key, expanded } });
+  }
+
+  private sendExpanded(
+    payload: { keys: string[] | null } | { toggle: { key: string; expanded: boolean } },
+  ): Promise<ExpandedKeysReply> {
+    return this.send<{
+      visibleCount: number; groupKeys?: string[]; groupDescendants?: string[][];
+    }>({ type: 'setExpandedKeys', payload }).then((r) => ({
       visibleCount: r.visibleCount,
-      groupKeys: r.groupKeys ?? [],
-      groupDescendants: r.groupDescendants ?? [],
+      // `null` means UNCHANGED, which a toggle reply omits. Coercing to `[]`
+      // here would tell main the grid has no groups and wipe its caches.
+      groupKeys: r.groupKeys ?? null,
+      groupDescendants: r.groupDescendants ?? null,
     }));
   }
 

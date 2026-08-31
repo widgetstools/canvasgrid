@@ -556,7 +556,21 @@ export type WorkerRequest =
    *  so main can materialise its own mirror (needed for the
    *  `getExpandedKeys()` snapshot when the main-side mirror is still
    *  at the "default = all expanded" sentinel). */
-  | { id: ReqId; type: 'setExpandedKeys';  payload: { keys: string[] | null } }
+  /**
+   * Expansion state. Two forms:
+   *
+   *   `{ keys }`   full replace (or the all-expanded sentinel when null).
+   *   `{ toggle }` ONE key flipped. The worker already holds the set, so
+   *                re-sending all of it per click made the request O(group
+   *                nodes) — ~40 KB and 711 keys on a 26k-row tree, on every
+   *                chevron. The delta is O(1).
+   */
+  | {
+      id: ReqId; type: 'setExpandedKeys';
+      payload:
+        | { keys: string[] | null }
+        | { toggle: { key: string; expanded: boolean } };
+    }
   /** Cycle 15 / Task 8 — toggle whether subsequent `groupKeysSnapshot`
    *  replies carry the parallel `groupDescendants: string[][]` array.
    *  Main flips this on when `groupSelectsChildren: true` lands so the
@@ -799,7 +813,10 @@ export type WorkerResponse =
       type: 'groupKeysSnapshot';
       count: number;
       visibleCount: number;
-      groupKeys: string[];
+      /** Absent on a TOGGLE reply: expansion does not change the tree, so
+       *  the key list and descendant map the caller already holds are still
+       *  valid. Sending them anyway made the reply O(group nodes) too. */
+      groupKeys?: string[];
       groupDescendants?: string[][];
       /** Cycle 15 / Task 9 — present on `setGroupModel` replies that
        *  re-seed the default expansion (when `groupDefaultExpanded` /

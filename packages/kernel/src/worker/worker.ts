@@ -581,6 +581,32 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     return result;
   }
 
+  /**
+   * Recount after an EXPANSION change, without rebuilding the pipeline.
+   *
+   * Expanding a node changes which rows are displayed. It does not change the
+   * data, the filter, the group tree or the sort order — so calc, filter,
+   * group, pivot and sort all still hold, and `state.groupOutput` is current.
+   * The visible-id cache is unaffected too: it holds the post-sort order, and
+   * expansion is applied at SLICE time from `expandedKeys`.
+   *
+   * `invalidateAndCount` nulls both cache tokens and forces a full rebuild,
+   * which for a chevron click meant re-filtering, re-grouping and re-sorting
+   * the whole book to learn a number already derivable from the flat order.
+   *
+   * Falls back when there is no built tree to reuse.
+   */
+  async function countAfterExpansionChange(): Promise<number> {
+    if (!state) return 0;
+    if (isGroupingActive() && state.groupOutput) {
+      return computeGroupVisibleRowCount(
+        state.groupOutput.flatOrder, effectiveExpandedKeys(),
+        state.groupHideOpenParents, isPivotActive(),
+      );
+    }
+    return invalidateAndCount();
+  }
+
   async function invalidateAndCount(): Promise<number> {
     if (!state) return 0;
     // A-C3 (production hardening) — this helper's contract is "invalidate
@@ -1021,6 +1047,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       buildGroupMetaLookup,
       computeStickyAncestors,
       invalidateAndCount: invalidateAndCountSerialized,
+      countAfterExpansionChange,
       stageFlashesForUpdates: (updates) => stageFlashesForUpdates(state!, updates),
       autoHeightCols,
       runAutoHeightPass,
