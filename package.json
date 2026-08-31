@@ -20,6 +20,8 @@
     "dev:ssrm-demo": "npm run dev --workspace=velocitygrid-ssrm-demo",
     "dev:perspective-ssrm-sample": "npm run dev --workspace=velocitygrid-perspective-ssrm-sample",
     "dev:vg-lab": "npm run dev --workspace=velocitygrid-vg-lab",
+    "dev:csrm-provider": "npm run dev --workspace=velocitygrid-csrm-provider-demo",
+    "dev:ssrm-provider": "npm run dev --workspace=velocitygrid-ssrm-provider-demo",
     "dev:ext-react": "npm run dev --prefix examples/cgrid-ext-react",
     "dev:ext-angular": "npm run dev --prefix examples/cgrid-ext-angular",
     "dev:ext-angular-ssrm": "npm run dev --prefix examples/cgrid-ext-angular-ssrm",

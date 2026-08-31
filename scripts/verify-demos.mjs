@@ -21,6 +21,8 @@ const ALL = [
   { name: 'velocitygrid-ssrm-demo', workspace: 'velocitygrid-ssrm-demo', port: 5191, needsKernelDist: true },
   { name: 'velocitygrid-perspective-ssrm-sample', workspace: 'velocitygrid-perspective-ssrm-sample', port: 5201, needsKernelDist: true },
   { name: 'velocitygrid-vg-lab', workspace: 'velocitygrid-vg-lab', port: 5196, needsKernelDist: true },
+  { name: 'velocitygrid-csrm-provider-demo', workspace: 'velocitygrid-csrm-provider-demo', port: 5210, needsKernelDist: true },
+  { name: 'velocitygrid-ssrm-provider-demo', workspace: 'velocitygrid-ssrm-provider-demo', port: 5211, needsKernelDist: true },
   { name: 'colgroups', workspace: 'colgroups', port: 5176, needsKernelDist: false },
   { name: 'showcase', workspace: 'showcase', port: 5174, needsKernelDist: false },
 ];

@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["vite/client"],
+    "paths": {
+      "@demo/*": ["../provider-demo-shared/*"]
+    }
+  },
+  "include": ["src/**/*", "../provider-demo-shared/**/*"]
+}
