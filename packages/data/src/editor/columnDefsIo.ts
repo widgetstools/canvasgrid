@@ -53,6 +53,14 @@ function sanitizeColumnDef(raw: Record<string, unknown>): ColumnDefinition | nul
   if (typeof raw.valueGetter === 'string' && raw.valueGetter.trim()) {
     out.valueGetter = raw.valueGetter;
   }
+  // Capability flags. This sanitizer is an ALLOW-LIST, so anything missing
+  // here is silently dropped on import — which would quietly discard an
+  // author's explicit `enablePivot: false` and hand the column back to the
+  // type heuristic.
+  if (typeof raw.enableRowGroup === 'boolean') out.enableRowGroup = raw.enableRowGroup;
+  if (typeof raw.enablePivot === 'boolean') out.enablePivot = raw.enablePivot;
+  if (typeof raw.enableValue === 'boolean') out.enableValue = raw.enableValue;
+  if (typeof raw.aggFunc === 'string' && raw.aggFunc.trim()) out.aggFunc = raw.aggFunc.trim();
   return out;
 }
 

@@ -1,3 +1,4 @@
+import { AppDataStore } from '@wellsfargo-starui/velocity-grid-data/appdata';
 /**
  * Seed catalog entries for the two provider demos.
  *
@@ -44,8 +45,11 @@ export const DEMO_COLUMNS: ColumnDefinition[] = [
 function stompConfig(): Record<string, unknown> {
   return {
     websocketUrl: WS_URL,
-    listenerTopic: `/snapshot/positions/${CLIENT_ID}`,
-    requestMessage: `/snapshot/positions/${CLIENT_ID}/${LIVE_RATE}/${BATCH}`,
+    // Templated on purpose: the catalog entry is authored once and the
+    // trader is substituted per session from AppData at bind time. Both row
+    // models resolve these now — see demoAppData below.
+    listenerTopic: '/snapshot/positions/{{session.trader}}',
+    requestMessage: `/snapshot/positions/{{session.trader}}/${LIVE_RATE}/${BATCH}`,
     requestBody: '',
     snapshotEndToken: 'Success',
     keyColumn: 'positionId',
@@ -111,4 +115,20 @@ export async function ensureSeeded(
   if (existing && seededVersion === SEED_VERSION) return existing;
   await catalog.save(seed);
   return seed;
+}
+
+/**
+ * Session AppData for both demos.
+ *
+ * The catalog entries above template the trader into their topics, so this is
+ * what turns `/snapshot/positions/{{session.trader}}` into a real destination
+ * at bind time. Shared by the CSRM and SSRM demos precisely because the two
+ * used to disagree: only the CSRM controller resolved tokens, so the same
+ * catalog entry connected on one grid and subscribed to a literal
+ * brace-containing topic on the other.
+ */
+export function createDemoAppData(): AppDataStore {
+  const store = new AppDataStore();
+  store.set('session', 'trader', CLIENT_ID);
+  return store;
 }

@@ -139,3 +139,5 @@ export {
 export type { DataProviderFeedControl } from './feedControlRegistry';
 export { rowsToColumnar, columnarToRows, type ColumnarBatch } from './pipeline/wireFormat';
 export { projectRow, thinDelta } from './pipeline/project';
+
+export { toGridColumnDefs, type GridColumnDef, type ToGridColumnDefsOptions } from './schema/gridColumnDefs';

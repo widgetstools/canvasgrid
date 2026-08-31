@@ -21,6 +21,21 @@ export interface ColumnDefinition {
   valueGetter?: string;
   width?: number;
   hide?: boolean;
+  /**
+   * Capability flags — what the column may be dragged into. Each is
+   * optional and OVERRIDES the type heuristic in `toGridColumnDefs`, which
+   * otherwise treats numerics as measures and everything else (bar the key
+   * column) as dimensions.
+   *
+   * `enablePivot` in particular is what the pivot panel checks before
+   * accepting a drop into Column Labels; a column without it cannot be
+   * pivoted no matter what the panel shows.
+   */
+  enableRowGroup?: boolean;
+  enablePivot?: boolean;
+  enableValue?: boolean;
+  /** Default aggregation when used as a value column (e.g. `'sum'`). */
+  aggFunc?: string;
 }
 
 export interface SchemaConfig {

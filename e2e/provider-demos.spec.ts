@@ -82,6 +82,75 @@ for (const demo of DEMOS) {
   });
 }
 
+for (const demo of DEMOS) {
+  /**
+   * Pivot must work when the grid is mounted by VelocityGridExt.
+   *
+   * Under Ext, column defs come from the provider catalog and are the ONLY
+   * defs — and neither catalog mapper emitted `enablePivot`, which the pivot
+   * panel checks before accepting a drop. So the panel rendered, invited a
+   * drag, and silently refused every one. An app that hand-writes columnDefs
+   * sets the flag itself, so the same feature worked or not depending purely
+   * on how the grid was mounted.
+   *
+   * This drags for real rather than calling `setPivotColumns`, because the
+   * API path bypasses the very gate that was broken.
+   */
+  test(`${demo.name} accepts a column dragged into Column Labels`, async ({ page }) => {
+    await page.goto(demo.url);
+    await page.waitForFunction(() => (window as any).__demo?.ext !== undefined, { timeout: 45_000 });
+    await page.waitForTimeout(6000);
+
+    const capabilities = await page.evaluate(() => {
+      const g = (window as any).__demo.grid;
+      const ids: string[] = (g.getColumnState() ?? []).map((c: any) => c.colId);
+      return {
+        pivotable: ids.filter((c) => g.isColumnPivotEnabled(c)),
+        groupable: ids.filter((c) => g.isColumnRowGroupEnabled(c)),
+        valued: ids.filter((c) => g.isColumnValueEnabled(c)),
+      };
+    });
+
+    // Dimensions are pivotable and groupable; measures aggregate.
+    expect(capabilities.pivotable).toEqual(
+      expect.arrayContaining(['desk', 'region', 'ticker', 'instrumentType']),
+    );
+    expect(capabilities.valued).toEqual(expect.arrayContaining(['pnl', 'marketValue']));
+    // The key column identifies rows; pivoting by it would mint one column per row.
+    expect(capabilities.pivotable).not.toContain('positionId');
+    expect(capabilities.groupable).not.toContain('positionId');
+
+    const from = await page.evaluate(() => {
+      const bb = (window as any).__demo.grid.getHeaderBoundsAt('region');
+      if (!bb) return null;
+      const r = document.querySelector('canvas')!.getBoundingClientRect();
+      return { x: r.left + bb.x + bb.w / 2, y: r.top + bb.y + bb.h / 2 };
+    });
+    const panel = await page.locator('.vg-pivot-panel').first().boundingBox();
+    expect(from).not.toBeNull();
+    expect(panel).not.toBeNull();
+
+    expect(await page.evaluate(() => (window as any).__demo.grid.getPivotColumns())).toEqual([]);
+
+    const tx = panel!.x + panel!.width / 2;
+    const ty = panel!.y + panel!.height / 2;
+    await page.mouse.move(from!.x, from!.y);
+    await page.mouse.down();
+    // Stepped, not a single jump — the drag controller needs movement to start.
+    for (let i = 1; i <= 14; i++) {
+      await page.mouse.move(
+        from!.x + ((tx - from!.x) * i) / 14,
+        from!.y + ((ty - from!.y) * i) / 14,
+      );
+      await page.waitForTimeout(25);
+    }
+    await page.mouse.up();
+    await page.waitForTimeout(2500);
+
+    expect(await page.evaluate(() => (window as any).__demo.grid.getPivotColumns())).toEqual(['region']);
+  });
+}
+
 /**
  * SSRM status bar: `Total Rows` is the unfiltered book, `Rows` is what the
  * filter left. They used to print the same number, because server-side

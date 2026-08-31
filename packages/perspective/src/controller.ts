@@ -14,6 +14,7 @@ import type {
 } from '@wellsfargo-starui/velocity-grid-data';
 import {
   createDefaultConfigBackend,
+  resolveProviderConfig,
 } from '@wellsfargo-starui/velocity-grid-data';
 import {
   StompPerspectiveProvider,
@@ -58,8 +59,18 @@ type ExtLikeContext = {
   profiles: { markDirty: () => void; save: () => Promise<void> };
 };
 
+/** `{{name.key}}` lookup — pass `store.lookup` from an AppDataStore. */
+export type PerspectiveAppDataLookup = (providerName: string, key: string) => unknown;
+
 export type PerspectiveDataProviderControllerOptions = {
   catalog?: ConfigBackend;
+  /**
+   * Resolves `{{name.key}}` tokens in a provider config at bind time — pass
+   * `store.lookup` from an AppDataStore. Matches the CSRM controller, which
+   * has always done this; without it a templated topic like
+   * `/snapshot/positions/{{session.trader}}` was sent to the broker verbatim.
+   */
+  appData?: PerspectiveAppDataLookup | { lookup: PerspectiveAppDataLookup };
   onActiveChange?: (
     providerId: string | null,
     provider: StompPerspectiveProvider | null,
@@ -78,6 +89,7 @@ export class PerspectiveDataProviderController {
   private static readonly byGrid = new WeakMap<object, PerspectiveDataProviderController>();
 
   private readonly catalog: ConfigBackend;
+  private readonly appDataLookup: PerspectiveAppDataLookup | null;
   private readonly onActiveChange?: PerspectiveDataProviderControllerOptions['onActiveChange'];
   private readonly onTelemetry?: (t: BookTelemetry) => void;
   private readonly hubOpts?: ProviderClientOptions;
@@ -99,6 +111,8 @@ export class PerspectiveDataProviderController {
 
   constructor(opts?: PerspectiveDataProviderControllerOptions) {
     this.catalog = opts?.catalog ?? createDefaultConfigBackend();
+    const ad = opts?.appData;
+    this.appDataLookup = typeof ad === 'function' ? ad : (ad?.lookup ?? null);
     this.onActiveChange = opts?.onActiveChange;
     this.onTelemetry = opts?.onTelemetry;
     this.hubOpts = opts?.hubOpts;
@@ -312,7 +326,13 @@ export class PerspectiveDataProviderController {
       if (epoch !== this.activateEpoch) return;
     }
 
-    const mapped = dataProviderConfigToPerspective(entry);
+    // Resolve `{{name.key}}` against AppData BEFORE mapping, so tokens are
+    // substituted everywhere they can appear — topics, urls, clientId, key
+    // column — rather than only in the handful of fields the mapper copies.
+    const resolved = this.appDataLookup
+      ? resolveProviderConfig(entry, this.appDataLookup)
+      : entry;
+    const mapped = dataProviderConfigToPerspective(resolved);
     const cfg: StompPerspectiveProviderConfig = {
       ...mapped,
       // Fan out to the constructor callback AND to anything that registered
@@ -371,7 +391,11 @@ export class PerspectiveDataProviderController {
     const expressions = this.expressionsByProvider.get(entry.providerId) ?? {};
     const exprMeta = this.exprMetaByProvider.get(entry.providerId) ?? {};
     const columnDefs = mergeExpressionColumnDefs(
-      gridColumnDefsFromDataProvider(entry),
+      // `resolved`, not `entry` — a templated headerName or valueGetter must
+      // substitute too, matching CSRM where the whole config is resolved
+      // before the provider ever reads its columns. Identity (providerId)
+      // deliberately stays off the resolved copy.
+      gridColumnDefsFromDataProvider(resolved),
       expressions,
       exprMeta,
     );

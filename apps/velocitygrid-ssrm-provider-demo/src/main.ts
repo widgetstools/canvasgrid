@@ -32,7 +32,9 @@ import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid/f
 import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid/calc';
 import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid/rules';
 import { wireEditIntoKernel } from '@wellsfargo-starui/velocity-grid-ext/edit';
-import { buildSsrmProviderConfig, SSRM_PROVIDER_ID, ensureSeeded } from '@demo/providerCatalog';
+import {
+  buildSsrmProviderConfig, createDemoAppData, ensureSeeded, SSRM_PROVIDER_ID,
+} from '@demo/providerCatalog';
 import { DEMO_THEME, mountShell } from '@demo/shell';
 import '@demo/styles.css';
 
@@ -59,8 +61,12 @@ function paintTelemetry(t: BookTelemetry): void {
   );
 }
 
+const demoAppData = createDemoAppData();
+
 const dataController = new PerspectiveDataProviderController({
   catalog,
+  // Resolves {{session.trader}} in the catalog topics — both row models.
+  appData: demoAppData,
   onTelemetry: paintTelemetry,
   onActiveChange: (providerId) => {
     if (!providerId) setStatus('no provider — Customize → Data → Apply', 'err');

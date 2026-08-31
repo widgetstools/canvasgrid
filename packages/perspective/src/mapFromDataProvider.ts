@@ -6,6 +6,7 @@ import type {
   ColumnDefinition,
   DataProviderConfig,
 } from '@wellsfargo-starui/velocity-grid-data';
+import { toGridColumnDefs } from '@wellsfargo-starui/velocity-grid-data';
 import type { CColDef } from '@wellsfargo-starui/velocity-grid';
 import type { StompPerspectiveProviderConfig } from './provider';
 import { POSITION_SCHEMA, type PositionRow } from './bootstrap';
@@ -102,52 +103,29 @@ export function columnDefinitionsToPerspectiveSchema(
 }
 
 /**
- * Map catalog `columnDefinitions` onto VelocityGrid columnDefs 1:1.
- * Returns `[]` when the catalog has no columns (grid shows none).
+ * SSRM column defs from catalog definitions.
+ *
+ * Delegates to the shared mapper in `@wellsfargo-starui/velocity-grid-data` so
+ * CSRM and SSRM cannot disagree about what a column may be dragged into. This
+ * used to be a parallel implementation, and it had already drifted: it derived
+ * `enableRowGroup` / `enableValue` where the CSRM one derived nothing, and
+ * neither emitted `enablePivot` — so Column Labels rejected every drag on a
+ * provider-driven grid. It also hard-coded `positionId` as the key column,
+ * which is configurable; the shared mapper is told the real one.
  */
 export function columnDefinitionsToGridDefs(
   cols: readonly ColumnDefinition[] | undefined | null,
+  keyColumn?: string | string[],
 ): CColDef<PositionRow>[] {
-  if (!cols?.length) return [];
-  return cols.map((d) => {
-    const def: CColDef<PositionRow> = {
-      field: d.field as keyof PositionRow & string,
-      colId: d.field,
-      headerName: d.headerName ?? d.field,
-    };
-    if (d.cellDataType === 'number' || d.cellDataType === 'text') {
-      def.cellDataType = d.cellDataType;
-    }
-    if (typeof d.valueGetter === 'string' && d.valueGetter.trim()) {
-      def.valueGetter = d.valueGetter.trim();
-    }
-    if (d.width != null) def.width = d.width;
-    if (d.hide != null) def.hide = d.hide;
-    if (d.sortable != null) def.sortable = d.sortable;
-    if (d.resizable != null) def.resizable = d.resizable;
-    if (d.filter === true) {
-      // Text dimensions → set filter (unique-value checklist). Numerics
-      // keep comparison / range floating filters.
-      def.filter = d.cellDataType === 'number' ? 'number' : 'set';
-      def.floatingFilter = true;
-    }
-    // Heuristics from catalog cellDataType (not a hard-coded column list).
-    if (d.cellDataType === 'number') {
-      def.aggFunc = 'sum';
-      def.enableValue = true;
-    } else if (d.field !== 'positionId') {
-      def.enableRowGroup = true;
-    }
-    return def;
-  });
+  return toGridColumnDefs(cols, { keyColumn }) as unknown as CColDef<PositionRow>[];
 }
 
 /** ColumnDefs from the DataProvider catalog only — never invents columns. */
 export function gridColumnDefsFromDataProvider(
   cfg: DataProviderConfig,
 ): CColDef<PositionRow>[] {
-  const cols = (cfg.config as StompBag | undefined)?.columnDefinitions;
-  return columnDefinitionsToGridDefs(cols);
+  const c = (cfg.config ?? {}) as StompBag;
+  return columnDefinitionsToGridDefs(c.columnDefinitions, keyColumnOf(c) ?? 'positionId');
 }
 
 export function dataProviderConfigToPerspective(

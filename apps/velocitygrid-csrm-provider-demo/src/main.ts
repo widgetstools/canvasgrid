@@ -33,7 +33,9 @@ import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid/f
 import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid/calc';
 import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid/rules';
 import { wireEditIntoKernel } from '@wellsfargo-starui/velocity-grid-ext/edit';
-import { buildCsrmProviderConfig, CSRM_PROVIDER_ID, ensureSeeded } from '@demo/providerCatalog';
+import {
+  buildCsrmProviderConfig, CSRM_PROVIDER_ID, createDemoAppData, ensureSeeded,
+} from '@demo/providerCatalog';
 import { DEMO_THEME, mountShell } from '@demo/shell';
 import '@demo/styles.css';
 
@@ -48,8 +50,12 @@ const { host, setStatus } = mountShell({
 const storage = new LocalStore();
 const catalog = new LocalStorageConfigBackend({ storage });
 
+const demoAppData = createDemoAppData();
+
 const dataController = new DataProviderController({
   catalog,
+  // Resolves {{session.trader}} in the catalog topics — both row models.
+  appData: demoAppData,
   onActiveChange: (providerId, provider) => {
     if (!providerId || !provider) {
       setStatus('no provider — Customize → Data → Apply', 'err');

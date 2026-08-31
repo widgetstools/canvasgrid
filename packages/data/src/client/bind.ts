@@ -1,4 +1,5 @@
 import type { IDataProvider } from '../types';
+import { toGridColumnDefs } from '../schema/gridColumnDefs';
 
 /** Minimal CSRM grid surface. */
 export interface CsrmBindableGrid<T = Record<string, unknown>> {
@@ -14,23 +15,6 @@ export interface CsrmBindableGrid<T = Record<string, unknown>> {
   setColumnDefs?(defs: unknown[]): void;
 }
 
-/** Map provider catalog columns onto a VelocityGrid columnDefs payload. */
-function toGridColumnDefs(
-  defs: ReturnType<IDataProvider['getColumnDefs']>,
-): unknown[] {
-  return defs.map((d) => ({
-    field: d.field,
-    headerName: d.headerName,
-    filter: d.filter,
-    sortable: d.sortable,
-    resizable: d.resizable,
-    hide: d.hide,
-    width: d.width,
-    ...(d.cellDataType === 'number' || d.cellDataType === 'text'
-      ? { cellDataType: d.cellDataType }
-      : {}),
-  }));
-}
 
 /**
  * Wire a CSRM provider to a VelocityGrid-like API.
@@ -43,7 +27,11 @@ export function bindProviderToGrid<T extends Record<string, unknown>>(
   const stops: Array<() => void> = [];
   const defs = provider.getColumnDefs();
   if (defs.length && grid.setColumnDefs) {
-    grid.setColumnDefs(toGridColumnDefs(defs));
+    // Key column comes from the provider config so the dimension defaults
+    // skip it — grouping or pivoting by a unique id is never what is meant.
+    grid.setColumnDefs(toGridColumnDefs(defs, {
+      keyColumn: provider.getConfig().config.keyColumn as string | string[] | undefined,
+    }));
   }
 
   stops.push(provider.onSnapshotData((rows) => {
