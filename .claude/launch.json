@@ -2,16 +2,16 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "velocitygrid-positions",
+      "name": "velocitygrid-csrm-provider-demo",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--workspace=velocitygrid-positions"],
-      "port": 5183
+      "runtimeArgs": ["run", "dev", "--workspace=velocitygrid-csrm-provider-demo"],
+      "port": 5210
     },
     {
-      "name": "velocitygrid-showcase",
+      "name": "velocitygrid-ssrm-provider-demo",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--workspace=velocitygrid-showcase"],
-      "port": 5185
+      "runtimeArgs": ["run", "dev", "--workspace=velocitygrid-ssrm-provider-demo"],
+      "port": 5211
     }
   ]
 }

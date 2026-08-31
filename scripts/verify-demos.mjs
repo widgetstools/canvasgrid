@@ -5,7 +5,7 @@
  *
  * Usage:
  *   node scripts/verify-demos.mjs
- *   node scripts/verify-demos.mjs --only velocitygrid-showcase,velocitygrid-ssrm-demo
+ *   node scripts/verify-demos.mjs --only velocitygrid-csrm-provider-demo
  *
  * Requires `npm run build` (or at least kernel dist) beforehand for demos
  * that alias @wellsfargo-starui/velocity-grid to packages/kernel/dist.
@@ -14,17 +14,8 @@ import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 const ALL = [
-  { name: 'velocitygrid-showcase', workspace: 'velocitygrid-showcase', port: 5185, needsKernelDist: true },
-  { name: 'velocitygrid-positions', workspace: 'velocitygrid-positions', port: 5175, needsKernelDist: true },
-  { name: 'velocitygrid-customizer-demo', workspace: 'velocitygrid-customizer-demo', port: 5187, needsKernelDist: true },
-  { name: 'velocitygrid-ext-demo', workspace: 'velocitygrid-ext-demo', port: 5188, needsKernelDist: true },
-  { name: 'velocitygrid-ssrm-demo', workspace: 'velocitygrid-ssrm-demo', port: 5191, needsKernelDist: true },
-  { name: 'velocitygrid-perspective-ssrm-sample', workspace: 'velocitygrid-perspective-ssrm-sample', port: 5201, needsKernelDist: true },
-  { name: 'velocitygrid-vg-lab', workspace: 'velocitygrid-vg-lab', port: 5196, needsKernelDist: true },
   { name: 'velocitygrid-csrm-provider-demo', workspace: 'velocitygrid-csrm-provider-demo', port: 5210, needsKernelDist: true },
   { name: 'velocitygrid-ssrm-provider-demo', workspace: 'velocitygrid-ssrm-provider-demo', port: 5211, needsKernelDist: true },
-  { name: 'colgroups', workspace: 'colgroups', port: 5176, needsKernelDist: false },
-  { name: 'showcase', workspace: 'showcase', port: 5174, needsKernelDist: false },
 ];
 
 const onlyArg = process.argv.find((a) => a.startsWith('--only='))

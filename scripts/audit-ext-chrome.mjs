@@ -12,7 +12,7 @@
  * specs and 84 padding values without anyone noticing: values that nothing
  * measures do not stay on a scale. Exit is informational — read the list.
  *
- *   npm run dev:ext-demo                    # or dev:perspective-ssrm-sample
+ *   npm run dev:ssrm-provider
  *   node scripts/audit-ext-chrome.mjs http://localhost:5188/
  *
  * A clean run reports `violations: 0`. Anything else is a real deviation or

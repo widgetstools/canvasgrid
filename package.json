@@ -11,15 +11,6 @@
     "apps/*"
   ],
   "scripts": {
-    "dev:showcase": "npm run dev --workspace=velocitygrid-showcase",
-    "dev:positions": "npm run dev --workspace=velocitygrid-positions",
-    "dev:customizer": "npm run dev --workspace=velocitygrid-customizer-demo",
-    "dev:colgroups": "npm run dev --workspace=colgroups",
-    "dev:ag-showcase": "npm run dev --workspace=showcase",
-    "dev:ext-demo": "npm run dev --workspace=velocitygrid-ext-demo",
-    "dev:ssrm-demo": "npm run dev --workspace=velocitygrid-ssrm-demo",
-    "dev:perspective-ssrm-sample": "npm run dev --workspace=velocitygrid-perspective-ssrm-sample",
-    "dev:vg-lab": "npm run dev --workspace=velocitygrid-vg-lab",
     "dev:csrm-provider": "npm run dev --workspace=velocitygrid-csrm-provider-demo",
     "dev:ssrm-provider": "npm run dev --workspace=velocitygrid-ssrm-provider-demo",
     "dev:ext-react": "npm run dev --prefix examples/cgrid-ext-react",
@@ -29,8 +20,6 @@
     "dev:stomp": "node scripts/run-stomp.mjs",
     "audit:ext-chrome": "node scripts/audit-ext-chrome.mjs",
     "audit:ext-classes": "node scripts/audit-ext-classes.mjs",
-    "dev:stomp-perspective": "concurrently -k -n broker,sample -c blue,green \"npm run dev:stomp\" \"wait-on tcp:8082 && npm run dev:perspective-ssrm-sample\"",
-    "ext-demo:openfin": "node scripts/run-ext-openfin.mjs",
     "verify:demos": "node scripts/verify-demos.mjs",
     "build": "turbo run build",
     "build:kernel": "npm run build --workspace=@wellsfargo-starui/velocity-grid",
@@ -39,7 +28,9 @@
     "test": "turbo run test",
     "test:kernel": "npm test --workspace=@wellsfargo-starui/velocity-grid",
     "typecheck": "turbo run typecheck",
-    "lint": "eslint \"packages/*/src/**/*.ts\" \"packages/*/tests/**/*.ts\" \"apps/*/src/**/*.{ts,tsx}\" \"apps/*/e2e/**/*.ts\""
+    "lint": "eslint \"packages/*/src/**/*.ts\" \"packages/*/tests/**/*.ts\" \"apps/*/src/**/*.{ts,tsx}\" \"apps/*/e2e/**/*.ts\"",
+    "dev:stomp-ssrm-provider": "concurrently -k -n broker,app -c blue,green \"npm run dev:stomp\" \"wait-on tcp:8082 && npm run dev:ssrm-provider\"",
+    "dev:stomp-csrm-provider": "concurrently -k -n broker,app -c blue,green \"npm run dev:stomp\" \"wait-on tcp:8082 && npm run dev:csrm-provider\""
   },
   "devDependencies": {
     "@openfin/node-adapter": "^43.101.2",
