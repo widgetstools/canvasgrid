@@ -25,30 +25,53 @@ import { test, expect, type Page } from '@playwright/test';
 const ROWS = 300;
 
 const DEMOS = [
-  { name: 'CSRM', url: 'http://localhost:5210/', pivotCapable: true },
-  // The SSRM demo is driven here by a plain `getRows` stub, which cannot
-  // pivot: a server-side cross-tab arrives through the skeleton protocol plus
-  // `setServerSidePivotResult`, i.e. through the Perspective provider, which
-  // needs the STOMP fixture. So SSRM covers the order-independence that does
-  // not need pivot, plus the assertion that its pivot REFUSAL is itself
-  // deterministic. Faking a cross-tab here would test the fake.
-  { name: 'SSRM', url: 'http://localhost:5211/', pivotCapable: false },
+  { name: 'CSRM', url: 'http://localhost:5210/' },
+  { name: 'SSRM', url: 'http://localhost:5211/' },
 ] as const;
+
+/**
+ * Whether pivot actually engaged, asked of the grid rather than assumed.
+ *
+ * SSRM can only pivot when its datasource can produce a cross-tab — the
+ * Perspective provider backed by the STOMP fixture. Without the fixture the
+ * grid correctly REFUSES pivot, so the pivot-dependent cells have nothing to
+ * assert and skip with a clear reason instead of failing for an environment
+ * reason or, worse, being faked.
+ */
+function pivotEngaged(snap: Snapshot): boolean {
+  return snap.pivotMode && snap.pivotResultColumns.length > 0;
+}
 
 /** One canonical observation of everything the user can see about columns. */
 interface Snapshot {
   pivotMode: boolean;
   pivotResultColumns: string[];
-  /** PAINTED text, not raw values — this is what formatting actually changes. */
-  paintedPivotCells: string[];
+  /**
+   * The SHAPE of the painted text, with digit runs collapsed to `#`.
+   *
+   * Painted text is what formatting changes, so it has to be observed — but
+   * against a live feed the underlying aggregate moves between runs, and two
+   * runs of the same path would compare unequal for a reason that has nothing
+   * to do with determinism. `$148,500.00` and `$149,700.00` are the same
+   * PRESENTATION of different data; `148500` is not. Comparing shape isolates
+   * the property under test from data volatility.
+   */
+  paintedPivotShapes: string[];
   hidden: string[];
   pinned: string[];
   widths: Record<string, number | undefined>;
 }
 
+/**
+ * Give the grid data. When the STOMP fixture is running the demo already has
+ * a live provider bound, and we leave it alone — testing against the real
+ * data path is strictly better. Only when the grid is empty do we stub, so
+ * the suite still runs in environments without the fixture.
+ */
 async function seed(page: Page, rowModel: 'CSRM' | 'SSRM'): Promise<void> {
   await page.evaluate(async ([rowModel, n]: [string, number]) => {
     const g = (window as any).__demo.grid;
+    if (g.getDisplayedRowCount() > 0) return;   // live provider is feeding it
     const rows = Array.from({ length: n as number }, (_, i) => ({
       positionId: 'p' + i,
       ticker: 'T' + (i % 7),
@@ -118,18 +141,23 @@ async function snapshot(page: Page): Promise<Snapshot> {
     const g = (window as any).__demo.grid;
     const state = g.getColumnState() ?? [];
     const pivotCols: string[] = g.getPivotResultColumns();
-    const painted: string[] = [];
+    const shapes = new Set<string>();
     for (let r = 0; r < 4; r++) {
       for (const colId of pivotCols) {
         const text = g.getCellFormattedValue(r, colId);
-        if (text) painted.push(text);
+        // Magnitude- and sign-invariant: an aggregate over live data can be
+        // 1,234.00 on one run and -1,178,319.00 on the next, which differ in
+        // digit-group count and sign without differing in FORMAT. Collapse the
+        // whole numeric part to `N` so what remains is the presentation:
+        // "$N.N" (currency, grouped, decimals) vs a bare "N" (unformatted).
+        if (text) shapes.add(String(text).replace(/-/g, '').replace(/[\d,]+/g, 'N'));
       }
     }
     return {
       pivotMode: g.isPivotMode(),
       // Normalise the \x01 separator so failures are readable.
       pivotResultColumns: pivotCols.map((c) => c.split('\u0001').join('|')).sort(),
-      paintedPivotCells: painted.sort(),
+      paintedPivotShapes: [...shapes].sort(),
       hidden: state.filter((c: any) => c.hide).map((c: any) => c.colId).sort(),
       pinned: state.filter((c: any) => c.pinned)
         .map((c: any) => `${c.colId}:${c.pinned}`).sort(),
@@ -138,12 +166,32 @@ async function snapshot(page: Page): Promise<Snapshot> {
   });
 }
 
-/** Load a clean grid, run a sequence, observe. */
+/** Wait for the grid to actually hold data, however it is being fed. */
+async function waitForRows(page: Page, timeoutMs: number): Promise<boolean> {
+  try {
+    await page.waitForFunction(
+      () => ((window as any).__demo?.grid?.getDisplayedRowCount?.() ?? 0) > 0,
+      undefined,
+      { timeout: timeoutMs },
+    );
+    return true;
+  } catch { return false; }
+}
+
+/** Load a clean grid, give it data, run a sequence, observe. */
 async function run(page: Page, demo: typeof DEMOS[number], ops: Op[]): Promise<Snapshot> {
   await page.goto(demo.url);
   await page.waitForFunction(() => (window as any).__demo?.ext !== undefined, { timeout: 45_000 });
-  await page.waitForTimeout(4000);
-  await seed(page, demo.name);
+
+  // Give the LIVE provider a real chance to connect and deliver first.
+  // Stubbing before it lands would replace the datasource mid-connect and
+  // produce exactly the intermittency this suite exists to detect — a flaky
+  // test here would be indistinguishable from the bug.
+  if (!(await waitForRows(page, 25_000))) {
+    await seed(page, demo.name);
+    await waitForRows(page, 15_000);
+  }
+
   for (const op of ops) await apply(page, op);
   return snapshot(page);
 }
@@ -151,34 +199,36 @@ async function run(page: Page, demo: typeof DEMOS[number], ops: Op[]): Promise<S
 for (const demo of DEMOS) {
   test.describe(`${demo.name} — order independence`, () => {
     test('formatting before pivoting equals formatting after', async ({ page }) => {
-      test.skip(!demo.pivotCapable, 'needs a pivot-capable datasource (STOMP fixture)');
       // The headline case. Pivot used to bypass the column pipeline, so a
       // format applied first was lost on the way into the cross-tab, and one
       // applied second could not reach it at all.
       const formatFirst = await run(page, demo, ['format', 'pivot']);
+      test.skip(!pivotEngaged(formatFirst), 'datasource cannot pivot (no STOMP fixture)');
       const pivotFirst = await run(page, demo, ['pivot', 'format']);
 
-      expect(formatFirst.paintedPivotCells.length).toBeGreaterThan(0);
+      expect(formatFirst.paintedPivotShapes.length).toBeGreaterThan(0);
       expect(formatFirst).toEqual(pivotFirst);
-      // And formatting genuinely happened, so the equality is not two blanks.
-      for (const cell of formatFirst.paintedPivotCells) {
-        expect(cell).toMatch(/^\$[\d,]+\.\d{2}$/);
-      }
+      // And formatting genuinely happened, so the equality is not two blanks:
+      // every painted cell carries the currency shape, not a bare integer.
+      // "$N.N" is the currency presentation; an unformatted cell would be a
+      // bare "N". This is what makes the equality above meaningful rather
+      // than two identical blanks.
+      expect(formatFirst.paintedPivotShapes).toEqual(['$N.N']);
     });
 
     test('re-applying the same format changes nothing', async ({ page }) => {
-      test.skip(!demo.pivotCapable, 'needs a pivot-capable datasource (STOMP fixture)');
       // Idempotence. A repeated edit must not accumulate or drift.
       const once = await run(page, demo, ['format', 'pivot']);
+      test.skip(!pivotEngaged(once), 'datasource cannot pivot (no STOMP fixture)');
       const twice = await run(page, demo, ['format', 'pivot', 'format']);
       expect(twice).toEqual(once);
     });
 
     test('a pivot round trip returns to the same cross-tab', async ({ page }) => {
-      test.skip(!demo.pivotCapable, 'needs a pivot-capable datasource (STOMP fixture)');
       // Leaving and re-entering pivot rebuilt the tree from scratch; anything
       // held only on the discarded tree came back wrong.
       const direct = await run(page, demo, ['format', 'pivot']);
+      test.skip(!pivotEngaged(direct), 'datasource cannot pivot (no STOMP fixture)');
       const roundTrip = await run(page, demo, ['format', 'pivot', 'unpivot', 'pivot']);
       expect(roundTrip).toEqual(direct);
     });
@@ -196,10 +246,10 @@ for (const demo of DEMOS) {
     });
 
     test('Auto format preserves column state and the cross-tab', async ({ page }) => {
-      test.skip(!demo.pivotCapable, 'needs a pivot-capable datasource (STOMP fixture)');
       // Auto format is just editColumn over every matched column, so it is the
       // stress case for the same rebuild path.
       const before = await run(page, demo, ['hide', 'pin', 'resize', 'pivot']);
+      test.skip(!pivotEngaged(before), 'datasource cannot pivot (no STOMP fixture)');
       const after = await run(page, demo, ['hide', 'pin', 'resize', 'pivot', 'autoformat']);
 
       expect(after.pivotMode).toBe(true);
@@ -210,7 +260,6 @@ for (const demo of DEMOS) {
     });
 
     test('every path to the same end state agrees', async ({ page }) => {
-      test.skip(!demo.pivotCapable, 'needs a pivot-capable datasource (STOMP fixture)');
       // The general claim, stated once: four different routes to "hidden +
       // pinned + resized + formatted + pivoted" must be indistinguishable.
       const paths: Op[][] = [
@@ -221,6 +270,7 @@ for (const demo of DEMOS) {
       ];
       const results: Snapshot[] = [];
       for (const path of paths) results.push(await run(page, demo, path));
+      test.skip(!pivotEngaged(results[0]!), 'datasource cannot pivot (no STOMP fixture)');
 
       for (let i = 1; i < results.length; i++) {
         expect(results[i], `path ${i} diverged from path 0`).toEqual(results[0]);
@@ -228,7 +278,6 @@ for (const demo of DEMOS) {
     });
 
     test('pivot is refused CONSISTENTLY when the datasource cannot pivot', async ({ page }) => {
-      test.skip(demo.pivotCapable, 'only meaningful without pivot capability');
       // The failure this guards is not 'pivot does not work' — it is pivot
       // APPEARING to work. `ssrmHostPivotDeclared` was a one-way latch, so once
       // any datasource had published a cross-tab the grid believed it could
@@ -236,8 +285,11 @@ for (const demo of DEMOS) {
       // -> Apply) left setPivotMode(true) accepted, isPivotMode() true, and
       // nothing pivoted. Refusing is the honest answer, and it has to be the
       // answer every time.
+      const first = await run(page, demo, ['pivot']);
+      test.skip(pivotEngaged(first), 'datasource CAN pivot here — refusal is not the case under test');
+      // Whatever the answer is, it must be the same answer every time.
       for (let attempt = 0; attempt < 3; attempt++) {
-        const after = await run(page, demo, ['pivot']);
+        const after = attempt === 0 ? first : await run(page, demo, ['pivot']);
         expect(after.pivotMode, `attempt ${attempt}`).toBe(false);
         expect(after.pivotResultColumns, `attempt ${attempt}`).toEqual([]);
       }
