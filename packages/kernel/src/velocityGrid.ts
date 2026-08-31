@@ -4082,6 +4082,10 @@ export class VelocityGrid<TRow = any> {
           void this.enableSsrmClientPipeline();
         }
       },
+      refreshStatusBar: () => {
+        if (this.destroyed) return;
+        this.statusBar?.refresh();
+      },
       getRefreshRange: () => {
         const block = this.options.cacheBlockSize ?? 100;
         const vp = this.viewport;
@@ -6292,13 +6296,20 @@ export class VelocityGrid<TRow = any> {
   getDisplayedRowCount(): number { return this.rowCount; }
 
   /** Cycle 13 / Task 2 — total pre-filter row count. CSRM: size of the
-   *  main-thread `rowDataById` mirror. SSRM: same as displayed count
-   *  (the datasource owns filtering; `rowDataById` is only a hydrate
-   *  cache and must not drive the status bar). */
+   *  main-thread `rowDataById` mirror.
+   *
+   *  SSRM: the unfiltered book size the datasource declared via
+   *  `LoadSuccessParams.unfilteredRowCount`. Only the datasource can know it
+   *  — it owns filtering, and `rowDataById` is a sparse hydrate cache, not
+   *  the book — so a datasource that declares nothing still falls back to
+   *  the displayed count. That fallback used to be the ONLY behaviour, which
+   *  made `Total Rows` and `Rows` print the same number under a filter. */
   getTotalRowCount(): number {
     // Row model, not `this.ssrm` — local mode mounts the controller on
     // client-side grids, where this must stay the unfiltered mirror size.
-    if (this.options.rowModelType === 'serverSide') return this.rowCount;
+    if (this.options.rowModelType === 'serverSide') {
+      return this.ssrm?.getUnfilteredRowCount() ?? this.rowCount;
+    }
     return this.rowDataById.size;
   }
 

@@ -93,6 +93,14 @@ export interface SsrmHostV2<TRow> extends SsrmHost<TRow> {
    * controller orders the skeleton's groups by the cell value instead.
    */
   getPivotResult?(): import('../worker/protocol').SsrmPivotResult | null;
+  /**
+   * Re-render the status bar. Called when a reply declares a new
+   * `unfilteredRowCount`, which moves `Total Rows` without moving the
+   * displayed count — so `setRowCount` short-circuits on `prev === count`
+   * and no `modelUpdated` fires. Without this seam the new total would sit
+   * unpainted until some unrelated event happened to refresh the panel.
+   */
+  refreshStatusBar?(): void;
 }
 
 interface LeafBlock<TRow> {
@@ -171,6 +179,19 @@ export class ServerSideRowModelV2Controller<TRow = any> {
    */
   private flatRowCountSource: 'unknown' | 'declared' | 'inferred' = 'unknown';
   private reportedRowCount = 0;
+
+  /**
+   * Book size with the grid's filters removed, as declared by a datasource
+   * reply's `unfilteredRowCount`. Null until some reply carries one; the
+   * status bar then falls back to the filtered count.
+   *
+   * Deliberately NOT cleared by a purge refresh. Purge is what a filter change
+   * triggers, and this number is invariant under filtering — clearing it would
+   * blank `Total Rows` on every filter keystroke and re-latch a frame later.
+   * It is cleared when the DATASOURCE changes, which is the one event that
+   * really can mean a different book.
+   */
+  private unfilteredRowCount: number | null = null;
 
   /** Bumped on purge (sort/filter/groupBy/datasource change) — leaf and
    *  skeleton results from an older generation are discarded. Expansion
@@ -251,11 +272,32 @@ export class ServerSideRowModelV2Controller<TRow = any> {
   setDatasource(ds: SsrmDatasource<TRow> | null): void {
     this.datasource?.destroy?.();
     this.datasource = ds;
+    // A different datasource is a different book — the old total no longer
+    // describes anything. Unlike a purge refresh, which must retain it.
+    this.unfilteredRowCount = null;
     void this.refresh({ purge: true });
   }
 
   getRowCount(): number {
     return this.reportedRowCount;
+  }
+
+  /** Unfiltered book size, or null when no reply has declared one. Backs
+   *  `getTotalRowCount()` on server-side grids. */
+  getUnfilteredRowCount(): number | null {
+    return this.unfilteredRowCount;
+  }
+
+  /** Latch a reply's declared unfiltered total, ignoring absent or nonsense
+   *  values, and repaint the status bar when it actually moves — every block
+   *  reply carries this, so refreshing unconditionally would fan out to every
+   *  panel on every scroll. */
+  private noteUnfilteredRowCount(v: number | undefined): void {
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) return;
+    const next = Math.trunc(v);
+    if (this.unfilteredRowCount === next) return;
+    this.unfilteredRowCount = next;
+    this.host.refreshStatusBar?.();
   }
 
   /**
@@ -717,7 +759,10 @@ export class ServerSideRowModelV2Controller<TRow = any> {
           filterModel: this.host.getFilterModel(),
           rowGroupCols: this.host.getRowGroupCols(),
         },
-        success: (result) => resolve(result.groups ?? []),
+        success: (result) => {
+          this.noteUnfilteredRowCount(result.unfilteredRowCount);
+          resolve(result.groups ?? []);
+        },
         fail: () => resolve(null),
       });
     });
@@ -1032,6 +1077,8 @@ export class ServerSideRowModelV2Controller<TRow = any> {
             resolve();
             return;
           }
+          // No unfiltered-count read here on purpose: the grouped path
+          // declares it once on the skeleton, not on every leaf block.
           // B-C6 — `cache` (closure-captured above) can reference a map
           // `dropGroupCache` already deleted from `this.leafCaches` (a soft
           // refresh whose skeleton fetch raced this leaf fetch and found the
@@ -1402,6 +1449,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
             resolve();
             return;
           }
+          this.noteUnfilteredRowCount(result.unfilteredRowCount);
           const requested = Math.max(0, endRow - startRow);
           const prevFlatCount = this.flatRowCount;
           const prevExact = this.flatRowCountExact;

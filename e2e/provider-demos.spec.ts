@@ -83,6 +83,59 @@ for (const demo of DEMOS) {
 }
 
 /**
+ * SSRM status bar: `Total Rows` is the unfiltered book, `Rows` is what the
+ * filter left. They used to print the same number, because server-side
+ * `getTotalRowCount()` just returned the displayed count.
+ *
+ * Driven by a stub datasource rather than the STOMP fixture: the fixture is
+ * not present in every environment, and the assertion is about which count
+ * each label reads, which a stub states far more precisely than live data.
+ */
+test('SSRM Total Rows reports the unfiltered book, not the filtered count', async ({ page }) => {
+  await page.goto('http://localhost:5211/');
+  await page.waitForFunction(() => (window as any).__demo?.ext !== undefined, { timeout: 45_000 });
+  await page.waitForTimeout(2500);
+
+  const install = async (matching: number, declare: boolean) => {
+    await page.evaluate(([matching, declare]: [number, boolean]) => {
+      (window as any).__demo.grid.setServerSideDatasource({
+        getRows: ({ request, success }: any) => {
+          const rowData = [];
+          for (let i = request.startRow; i < Math.min(request.endRow, matching); i++) {
+            rowData.push({ positionId: 'p' + i, desk: 'FX', region: 'EMEA', pnl: i });
+          }
+          success({
+            rowData,
+            rowCount: matching,
+            ...(declare ? { unfilteredRowCount: 5000 } : {}),
+          });
+        },
+      });
+    }, [matching, declare] as [number, boolean]);
+    await page.waitForTimeout(1200);
+  };
+
+  const counts = () => page.evaluate(() => [...document.querySelectorAll('.vg-status-panel-count')]
+    .map((e) => (e.textContent ?? '').replace(/\s+/g, ' ').trim())
+    .filter((t) => t.includes('Rows'))
+    .join(' '));
+
+  // Filtered: the two labels must disagree. This is the reported bug.
+  await install(3337, true);
+  expect(await counts()).toContain('5,000');
+  expect(await counts()).toContain('3,337');
+
+  // Unfiltered: agreeing here is correct, not a regression.
+  await install(5000, true);
+  expect(await counts()).toMatch(/Total Rows:\s*5,000\s*Rows:\s*5,000/);
+
+  // A datasource that declares nothing keeps the old fallback rather than
+  // printing "Total Rows: 0".
+  await install(3337, false);
+  expect(await counts()).toMatch(/Total Rows:\s*3,337\s*Rows:\s*3,337/);
+});
+
+/**
  * Saved-filter pill: stadium shape, and per-pill actions that stay out of the
  * way until the pill is hovered OR focused.
  *

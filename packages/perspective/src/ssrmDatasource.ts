@@ -71,6 +71,9 @@ export function createPerspectiveSsrmDatasource(
           params.success({
             rowData: result.rows,
             rowCount: result.rowCount,
+            // Backs the status bar's Total Rows. Counted alongside the
+            // window under the same table lock, so it costs no extra round trip.
+            unfilteredRowCount: result.unfilteredRowCount,
             grandTotals: result.grandTotals,
           });
           ok = true;
@@ -91,7 +94,10 @@ export function createPerspectiveSsrmDatasource(
         try {
           const groups = await book.getGroupSkeleton(viewId, params.request);
           served = groups.length;
-          params.success({ groups });
+          // One count per generation. The grouped path declares Total Rows
+          // here rather than on every getLeafRows block, which would take the
+          // table lock once per scroll block.
+          params.success({ groups, unfilteredRowCount: await book.sharedTableSize() });
           ok = true;
         } catch (err) {
           console.error('[PerspectiveSsrmDatasource] getGroupSkeleton', err);

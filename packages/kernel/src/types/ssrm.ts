@@ -55,6 +55,20 @@ export interface LoadSuccessParams<TRow = any> {
   /** Exact total row count when known. Omitted keeps the previous total. */
   rowCount?: number;
   /**
+   * Row count with the grid's filters REMOVED — the size of the underlying
+   * book. Backs the status bar's `Total Rows`, which is otherwise unknowable
+   * server-side: `rowCount` is post-filter, so without this the two counts
+   * are the same number and the panel reads as broken under a filter.
+   *
+   * Only a datasource can supply it, and only if computing it is cheap
+   * (Perspective reads `table.size()` under the lock it already holds).
+   * Omit it and `Total Rows` falls back to the filtered count, which is the
+   * previous behaviour. Invariant under filtering, so a datasource may send
+   * it on the first reply only and skip it thereafter — the last non-null
+   * value is retained.
+   */
+  unfilteredRowCount?: number;
+  /**
    * @deprecated The v1 server-side tree-materialization protocol was removed
    * with the v1 row-model controller. The kernel never reads this field —
    * server-side grouping goes through `getGroupSkeleton` / `getLeafRows`
@@ -107,7 +121,14 @@ export interface IServerSideGetSkeletonRequest {
 
 export interface IServerSideGetSkeletonParams {
   request: IServerSideGetSkeletonRequest;
-  success(result: { groups: SkeletonGroup[] }): void;
+  success(result: {
+    groups: SkeletonGroup[];
+    /** See {@link LoadSuccessParams.unfilteredRowCount}. Declaring it here
+     *  costs one count per generation instead of one per leaf block, which
+     *  is why the grouped path carries it on the skeleton rather than on
+     *  every getLeafRows reply. */
+    unfilteredRowCount?: number;
+  }): void;
   fail(): void;
 }
 

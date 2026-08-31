@@ -1011,7 +1011,10 @@ export class PerspectiveBook {
     if (this.feedRole === 'leader') this.feedRole = 'none';
   }
 
-  private async sharedTableSize(): Promise<number> {
+  /** Unfiltered row count of the shared Table. Public because the SSRM
+   *  datasource declares it as the status bar's Total Rows on the grouped
+   *  path, where getGroupSkeleton has no view to count. */
+  async sharedTableSize(): Promise<number> {
     try {
       return Number(await this.withTableLock(() => this.table!.size()));
     } catch {
@@ -1405,7 +1408,12 @@ export class PerspectiveBook {
       filterModel: FilterModel;
       columnKeys?: string[];
     },
-  ): Promise<{ rows: PositionRow[]; rowCount: number; grandTotals?: Record<string, unknown> }> {
+  ): Promise<{
+    rows: PositionRow[];
+    rowCount: number;
+    unfilteredRowCount?: number;
+    grandTotals?: Record<string, unknown>;
+  }> {
     return this.withViewChain(viewId, async () => {
       const bound = this.views.get(viewId);
       if (!bound?.view) return { rows: [], rowCount: 0 };
@@ -1416,6 +1424,14 @@ export class PerspectiveBook {
       // count + read under one lock — see fetchLeafWindowByPath.
       return this.withTableLock(async () => {
         const rowCount = Math.max(0, Number(await bound.view!.num_rows()));
+        // The view's ONLY filter is the grid's (syncQuery builds it from the
+        // filter model + quick filter; there is no base filter), so the table
+        // size IS the unfiltered total the status bar wants for Total Rows.
+        // Read directly — this chain is not reentrant and the lock is held.
+        let unfilteredRowCount: number | undefined;
+        try {
+          unfilteredRowCount = Math.max(0, Number(await this.table!.size()));
+        } catch { /* leave undefined; the grid falls back to rowCount */ }
         let grandTotals: Record<string, unknown> | undefined;
         if (bound.totalsView) {
           try {
@@ -1429,7 +1445,7 @@ export class PerspectiveBook {
         }
         const start = Math.max(0, req.startRow | 0);
         const end = Math.max(start, Math.min(req.endRow | 0, rowCount));
-        if (end <= start || rowCount === 0) return { rows: [], rowCount, grandTotals };
+        if (end <= start || rowCount === 0) return { rows: [], rowCount, unfilteredRowCount, grandTotals };
         // Already inside withTableLock here, so the cached compute must NOT
         // re-acquire it (the chain is not reentrant) — read directly.
         const shared = await this.cachedQuery(
@@ -1439,7 +1455,7 @@ export class PerspectiveBook {
           WINDOWED_RESULT_CACHE_MAX,
         );
         const rows = shared.slice() as PositionRow[];
-        return { rows, rowCount, grandTotals };
+        return { rows, rowCount, unfilteredRowCount, grandTotals };
       });
     });
   }
