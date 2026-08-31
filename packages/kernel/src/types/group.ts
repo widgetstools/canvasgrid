@@ -50,3 +50,15 @@ export interface GroupModel {
    */
   treePathField?: string;
 }
+
+/**
+ * Is a row hierarchy active at all?
+ *
+ * Two sources produce one structure: grouped COLUMNS, or a tree PATH. Code
+ * that gates on `rowGroupCols.length > 0` alone silently excludes tree data —
+ * which is how the tree chevron ended up unclickable while the caption still
+ * toggled, and why the auto column had to be special-cased separately.
+ */
+export function isGroupHierarchyActive(model: GroupModel): boolean {
+  return model.rowGroupCols.length > 0 || model.treePathField !== undefined;
+}

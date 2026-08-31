@@ -422,7 +422,7 @@ export { registerIcon, registerIcons, hasIcon } from './renderer/icons';
  */
 export const SYNTHETIC_ROW_ID_FIELD = '__vgRowId';
 
-import { TREE_PATH_FIELD } from './types/group';
+import { TREE_PATH_FIELD, isGroupHierarchyActive } from './types/group';
 export { TREE_PATH_FIELD };
 
 /**
@@ -11175,7 +11175,9 @@ export class VelocityGrid<TRow = any> {
    */
   private hitTestGroupChevron(x: number, y: number): { groupKey: string } | null {
     if (!this.chunk) return null;
-    if (this.grouping.getGroupModel().rowGroupCols.length === 0) return null;
+    // Tree data has NO rowGroupCols, so gating on their count made the
+    // chevron unhittable and left the caption as the only way to expand.
+    if (!isGroupHierarchyActive(this.grouping.getGroupModel())) return null;
     const vs = this.viewport;
     if (y < vs.bodyTop || y >= vs.bodyBottom) return null;
     let row: ViewportRow | null = null;

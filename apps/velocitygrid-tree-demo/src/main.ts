@@ -74,6 +74,12 @@ function baseOptions(): Record<string, unknown> {
       pinned: 'left',
     },
 
+    // Open with the top two levels showing. Left unset, VelocityGrid treats
+    // the expansion set as 'expand everything', which on a large tree means
+    // painting every leaf on load — AG collapses to `groupDefaultExpanded`
+    // (default 0) instead. Set explicitly here rather than relying on either.
+    groupDefaultExpanded: 1,
+
     rowGroupPanelShow: 'always',
     sideBar: { toolPanels: ['columns', 'filters'] },
     statusBar: {

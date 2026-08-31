@@ -49,6 +49,9 @@ test('the tree renders, once per source row', async ({ page }) => {
   page.on('pageerror', (e) => errors.push(e.message));
   await open(page);
 
+  // The demo opens collapsed to depth 1; expand everything to count the tree.
+  await page.evaluate(() => (window as any).__tree.csrm.expandAll());
+  await page.waitForTimeout(1500);
   const csrm = await readTree(page, 'csrm');
   // Exactly one displayed row per source row. The first cut emitted a group
   // row AND a data row for every leaf, which showed up here as 174.
@@ -58,6 +61,11 @@ test('the tree renders, once per source row', async ({ page }) => {
 
 test('client-side and server-side produce the identical tree', async ({ page }) => {
   await open(page);
+  await page.evaluate(() => {
+    (window as any).__tree.csrm.expandAll();
+    (window as any).__tree.ssrm.expandAll();
+  });
+  await page.waitForTimeout(2000);
   const csrm = await readTree(page, 'csrm');
   const ssrm = await readTree(page, 'ssrm');
 
@@ -102,6 +110,8 @@ test('the auto group column exists, though tree data has no grouped columns', as
 
 test('collapsing a node hides its subtree', async ({ page }) => {
   await open(page);
+  await page.evaluate(() => (window as any).__tree.csrm.expandAll());
+  await page.waitForTimeout(1500);
   const before = await page.evaluate(() => (window as any).__tree.csrm.getDisplayedRowCount());
 
   await page.evaluate(() => {

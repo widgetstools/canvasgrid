@@ -1,4 +1,5 @@
 import type { CColDef, GroupModel } from '../types';
+import { isGroupHierarchyActive } from '../types/group';
 import { resolveColDef, type ResolvedColDef } from './propertyChain';
 
 /**
@@ -128,7 +129,10 @@ export function shouldInsertAutoGroupColumn(
   groupModel: GroupModel,
   groupDisplayType: GroupDisplayType,
 ): boolean {
-  if (groupModel.rowGroupCols.length === 0) return false;
+  if (!isGroupHierarchyActive(groupModel)) return false;
+  // Tree data always renders through a single auto column, whatever the
+  // display type — there are no per-level columns to spread.
+  if (groupModel.treePathField) return true;
   return groupDisplayType === 'singleColumn';
 }
 
