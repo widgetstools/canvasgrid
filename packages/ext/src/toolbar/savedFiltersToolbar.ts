@@ -593,23 +593,30 @@ const SAVED_FILTERS_CSS = `
  * are changing what you see.
  *
  * It also sat at 22px on no rung (the chip rung is 20px, the control rung
- * 28px) with a 999px radius and weight 550, neither of which exists
- * anywhere else in the chrome. It now joins the control rung it shares a
- * strip with, and takes the same 2px radius as the group-by chip — the
- * same kind of object, drawn the same way. */
+ * 28px) with weight 550, which exists nowhere else in the chrome. It now
+ * joins the control rung it shares a strip with.
+ *
+ * The radius is the one thing it keeps from the old drawing: a stadium, not
+ * the chrome's 2px. These are the only free-form, user-named objects in the
+ * bar — everything else on the rung is a fixed control — and the shape is
+ * what separates them at a glance. Padding is symmetric while the action
+ * cluster is collapsed, and tightens on the right as it expands. */
 .vgext-sf-pill {
   display: inline-flex; align-items: center; gap: 6px;
-  height: var(--vgext-control-h, 28px); padding: 0 4px 0 10px;
+  height: var(--vgext-control-h, 28px); padding: 0 10px;
   box-sizing: border-box;
   border: 1px solid var(--vg-line-control, var(--vg-border-color));
-  border-radius: var(--vg-radius, 2px);
+  border-radius: 999px;
   background: transparent;
   color: var(--vg-fg-color, #e5e9f0);
   font: inherit; font-size: 12px; font-weight: 500;
   cursor: pointer; flex: 0 0 auto; white-space: nowrap;
   transition: background var(--vgext-t, 120ms ease), color var(--vgext-t, 120ms ease),
-              border-color var(--vgext-t, 120ms ease);
+              border-color var(--vgext-t, 120ms ease),
+              padding-right var(--vgext-t, 120ms ease);
 }
+.vgext-sf-pill:hover,
+.vgext-sf-pill:focus-within { padding-right: 4px; }
 .vgext-sf-pill:hover {
   border-color: var(--vg-chrome-accent);
   background: color-mix(in srgb, var(--vg-chrome-accent) 8%, transparent);
@@ -629,7 +636,9 @@ const SAVED_FILTERS_CSS = `
 .vgext-sf-label { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
 .vgext-sf-count {
   min-width: 18px; height: 16px; padding: 0 5px;
-  border-radius: var(--vg-radius, 2px);
+  /* Matches the pill it sits in — a 2px badge inside a stadium reads as a
+   * separate object rather than part of the same one. */
+  border-radius: 999px;
   background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 10%, transparent);
   color: var(--vg-muted-fg-color, #9aa4b6);
   font-family: var(--vg-cell-font-family);
@@ -640,14 +649,30 @@ const SAVED_FILTERS_CSS = `
   background: color-mix(in srgb, var(--vg-accent-fg, #191c22) 20%, transparent);
   color: var(--vg-accent-fg, var(--vg-checkbox-checked-fg, #191c22));
 }
-/* Rename / delete / edit-JSON were display:none until hover, then
- * appeared as three 16px targets inside a 22px pill — below the 24px
- * minimum, invisible to anyone not already hovering, and unreachable by a
- * keyboard scan. They are now always laid out at 20px, drawn quietly so
- * they never compete with the label, and lifted to full contrast on hover
- * or focus-within. */
+/* Rename / delete / edit-JSON reveal on hover, so an idle strip shows only
+ * what each pill IS — its name and match count — and not three controls per
+ * pill competing with them.
+ *
+ * Collapsed with max-width + overflow rather than display:none, for two
+ * reasons. The buttons stay in the layout, so they remain focusable and a
+ * keyboard user still reaches them: focus lands on one, focus-within expands
+ * the cluster, and it becomes visible at the moment it is focused. And the
+ * width animates instead of snapping, so neighbouring pills slide rather
+ * than jump. The negative margin cancels the pill's 6px gap, which would
+ * otherwise leave phantom space beside a zero-width cluster.
+ *
+ * They were briefly display:none until hover at 16px, which is what made
+ * that version unreachable; the targets are 20px here and the reveal is
+ * keyboard-triggerable, so neither problem carries over. */
 .vgext-sf-actions {
-  display: inline-flex; align-items: center; gap: 0; margin-left: 1px;
+  display: inline-flex; align-items: center; gap: 0;
+  max-width: 0; margin-left: -6px; overflow: hidden;
+  transition: max-width var(--vgext-t, 120ms ease), margin-left var(--vgext-t, 120ms ease);
+}
+.vgext-sf-pill:hover .vgext-sf-actions,
+.vgext-sf-pill:focus-within .vgext-sf-actions {
+  max-width: 80px; /* 3 x 20px targets, plus slack */
+  margin-left: 1px;
 }
 .vgext-sf-act {
   appearance: none; width: 20px; height: 20px; padding: 0; border: none;
@@ -666,6 +691,14 @@ const SAVED_FILTERS_CSS = `
   color: var(--vg-accent-fg, #191c22);
 }
 .vgext-sf-act:hover { background: color-mix(in srgb, currentColor 18%, transparent); }
+/* Needed now that the cluster is hidden until hover: without a ring, tabbing
+ * into a just-revealed button gives no clue which of the three has focus. */
+.vgext-sf-act:focus-visible {
+  outline: 2px solid var(--vg-chrome-accent); outline-offset: -1px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .vgext-sf-pill, .vgext-sf-actions { transition: none; }
+}
 .vgext-sf-iconbtn {
   appearance: none; width: 28px; height: 28px; padding: 0; border: none; border-radius: var(--vg-radius, 2px);
   background: transparent; color: var(--vg-muted-fg-color, #9aa4b6); cursor: pointer;
