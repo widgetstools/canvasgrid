@@ -108,26 +108,27 @@ describe('VelocityGridApi.moveColumnGroup', () => {
  * tree, rather than returning a stale `[]` from a cache built against the
  * OLD tree's `leafById`.
  */
-describe('colGroupPathCache invalidation on pivot column-tree swap', () => {
-  it('rebuilds ancestor paths after `setColumnTree` swaps in a new tree (regression: stale cache after pivot enter/exit)', async () => {
+describe('colGroupPathCache invalidation when the column tree changes', () => {
+  it('rebuilds ancestor paths after a resolve installs a new tree', async () => {
     const grid = await mount();
     // Warm the lazily-built cache against the ORIGINAL tree.
     expect((grid as any).getColGroupPath('b')).toEqual(['G']);
 
-    // Drive the pivot engine's `setColumnTree` dep directly — the exact
-    // callback FIX 2 patches — with a brand-new tree whose leaf 'd' didn't
-    // exist in the original tree at all, nested under a new group 'Z'.
-    const newTree = resolveColumnTree([
-      { field: 'a' },
-      { groupId: 'Z', headerName: 'Z', children: [{ field: 'd' }] },
-    ] as any);
-    const deps = (grid as any).makePivotEngineDeps();
-    deps.setColumnTree(newTree);
+    // Install a tree whose leaf 'd' did not exist before, nested under a new
+    // group 'Z'. This used to be driven through the pivot engine's
+    // `setColumnTree` dep, which no longer exists — the engine does not swap
+    // trees any more, every tree comes from the one resolve. So drive the
+    // real path instead: change the defs and let the grid re-resolve.
+    grid.updateGridOptions({
+      columnDefs: [
+        { field: 'a' },
+        { groupId: 'Z', headerName: 'Z', children: [{ field: 'd' }] },
+      ] as never,
+    });
 
-    // Pre-fix: the stale cache (keyed by the OLD tree's colIds) has no
-    // entry for 'd' → `?? []` fallback silently returns the WRONG empty
-    // path. Post-fix: the cache was cleared, so this rebuilds against the
-    // NEW tree and correctly resolves 'd' → ['Z'].
+    // A stale cache (keyed by the OLD tree's colIds) has no entry for 'd' and
+    // its `?? []` fallback silently returns the WRONG empty path. The resolve
+    // clears the cache, so this rebuilds against the NEW tree.
     expect((grid as any).getColGroupPath('d')).toEqual(['Z']);
     grid.destroy();
   });

@@ -6745,11 +6745,7 @@ export class VelocityGrid<TRow = any> {
       requestViewport: () => this.requestViewport(),
       getPivotPanel: () => this.pivotPanel,
       getColumnTree: () => this.columnTree,
-      setColumnTree: (tree) => { this.columnTree = tree; this.colGroupPathCache = null; },
-      getColumnGroupState: () => this.columnGroupState,
-      setColumnGroupState: (state) => { this.columnGroupState = state; },
       getColumnDefsMap: () => this.columnDefsMap,
-      setColumnDefsMap: (map) => { this.columnDefsMap = map; },
       rebuildColumns: () => this.rebuildColumns({ defaultColDef: this.options.defaultColDef }),
       // The pre-resolve shape of a value column — host def folded with its calc
       // override — filtered to what a synthesized aggregate leaf may inherit.
@@ -6770,8 +6766,6 @@ export class VelocityGrid<TRow = any> {
         ) ?? null;
         return pickPivotInheritedProps({ ...raw, ...patch });
       },
-      getAutoGroupColumns: () => this.grouping.getAutoGroupColumns(),
-      subscribeColumnGroupState: () => this.subscribeColumnGroupState(),
       computeVisibleColumnOrder: () => this.computeVisibleColumnOrder(),
       setColumnOrder: (order) => { this.columnOrder = order; },
       getLayoutWidth: () =>
@@ -14876,6 +14870,7 @@ export class VelocityGrid<TRow = any> {
       setRowCount: (n) => { this.rowCount = n; },
       isPivotActive: () => this.pivotEngine.isPivotActive(),
       getPrimaryColumnTree: () => this.pivotEngine.getPrimaryColumnTree(),
+      recordLiveColumnState: (colId, patch) => { this.liveColumnState.set(colId, patch); },
       getPivotColumns: () => this.pivotEngine.getPivotColumns(),
       getPivotValueColumns: () => this.pivotEngine.getValueColumns(),
       setPivotColumns: (cols) => this.pivotEngine.setPivotColumns(cols),

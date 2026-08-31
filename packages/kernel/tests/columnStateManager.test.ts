@@ -1,3 +1,4 @@
+import { LiveColumnState } from '../src/core/liveColumnState';
 import { describe, it, expect, vi } from 'vitest';
 import {
   ColumnStateManager,
@@ -116,6 +117,7 @@ function makeHarness(opts: {
   const rowCount = { value: 100 };
   const isPivotActive = { value: opts.isPivotActive ?? false };
   const primaryTree = { value: null as ColumnTree | null };
+  const liveColumnState = new LiveColumnState();
   const pivotColumns = { value: opts.pivotColumns ?? [] };
   const valueColumns = { value: opts.valueColumns ?? [] };
   const rowGroupColumns = { value: opts.rowGroupColumns ?? [] };
@@ -185,6 +187,10 @@ function makeHarness(opts: {
     setRowCount: (n) => { rowCount.value = n; },
     isPivotActive: () => isPivotActive.value,
     getPrimaryColumnTree: () => primaryTree.value,
+    // Mirrors VelocityGrid: durable record of the runtime change, so a
+    // rebuild re-applies it as an input instead of the manager applying the
+    // state a second time afterwards.
+    recordLiveColumnState: (colId, patch) => { liveColumnState.set(colId, patch); },
     getPivotColumns: () => pivotColumns.value,
     getPivotValueColumns: () => valueColumns.value,
     setPivotColumns: (cols) => setPivotColumns(cols),

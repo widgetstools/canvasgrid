@@ -116,6 +116,13 @@ export interface ColumnStateManagerDeps<TRow> {
   // ── pivot engine bridge (Cycle 18 / Task 9 pivot-primary snapshot) ───
   isPivotActive(): boolean;
   getPrimaryColumnTree(): ColumnTree | null;
+  /** Persist a runtime column change so it survives the next resolve. The
+   *  resolved tree is derived; this is where width / hide / pinned actually
+   *  live. See core/liveColumnState.ts. */
+  recordLiveColumnState(
+    colId: string,
+    patch: { width?: number; hide?: boolean; pinned?: 'left' | 'right' | null },
+  ): void;
   getPivotColumns(): string[];
   getPivotValueColumns(): ColumnStateValueColumn[];
   /** Role fan-out target for pivot columns. */
@@ -251,6 +258,22 @@ export class ColumnStateManager<TRow = unknown> {
     const oldOrder = this.deps.getColumnOrder().map((c) => c.colId);
     const result = applyStateToTree(applyTree, params, locks);
 
+    // `applyStateToTree` mutates the RESOLVED defs, which are derived and
+    // discarded by the next resolve. Record the same changes durably so a
+    // rebuild re-applies them as an input. This is what replaces the old
+    // apply -> rebuild -> apply-again dance below.
+    for (const change of result.changes) {
+      if (change.kind === 'hide') {
+        this.deps.recordLiveColumnState(change.colId, { hide: change.newValue === true });
+      } else if (change.kind === 'pinned') {
+        this.deps.recordLiveColumnState(change.colId, {
+          pinned: (change.newValue ?? null) as 'left' | 'right' | null,
+        });
+      } else if (change.kind === 'width' && typeof change.newValue === 'number') {
+        this.deps.recordLiveColumnState(change.colId, { width: change.newValue });
+      }
+    }
+
     // Cycle 18 / Task 8b — fan the role slots out to the runtime state
     // primitives (GroupingState + PivotState). The Cycle 6 columnState
     // primitive writes the def slots opaquely; without this step
@@ -285,17 +308,11 @@ export class ColumnStateManager<TRow = unknown> {
     }
 
     if (leafOrderChanged) {
+      // One resolve. The state recorded above is an INPUT to it, so there is
+      // nothing left to re-apply afterwards — this used to call
+      // applyStateToTree a SECOND time because the rebuild threw the first
+      // pass away, which is why Restore needed two clicks to fully land.
       this.deps.rebuildColumns();
-      // rebuildColumns rebuilt the tree from `options.columnDefs` — the
-      // raw `CColDef`s do not carry the runtime width / hide / pinned
-      // mutations `applyStateToTree` just applied to the now-discarded
-      // tree. Re-apply the state against the freshly-resolved leaves so
-      // the round-trip lands in ONE call (without this, the demo's
-      // Restore button needed two clicks to fully restore). The second
-      // call is intentionally a no-op for event reporting — we keep
-      // `result.changes` from the first call as the authoritative
-      // change log.
-      applyStateToTree(this.deps.getColumnTree(), params, locks);
       // Re-run visibility + width pass after the second mutation pass so
       // hide flips light up and widths land before the repaint.
       this.relayout();

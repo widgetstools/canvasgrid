@@ -1,30 +1,40 @@
-// Cycle 19 / Task 5 — owns the pivot subsystem extracted from VelocityGrid:
-// the canonical `PivotState` (pivotMode + pivotColumns + valueColumns),
-// the `pivotActive` flag that gates whether the synthesized pivot tree
-// is currently installed, the saved primary column tree + group state
-// used to revert on deactivation, the `pivotCellSpecById` reverse index
-// the body cell reader uses to address `chunk.pivotValues`, and the
-// signature-compare that keeps steady-state scrolls from churning the
-// column tree.
+// Owns the pivot subsystem: the canonical `PivotState` (pivotMode +
+// pivotColumns + valueColumns), the `pivotActive` flag, the
+// `pivotCellSpecById` reverse index the body cell reader uses to address
+// `chunk.pivotValues`, and the signature-compare that keeps steady-state
+// scrolls from churning the column tree.
+//
+// The engine DESCRIBES the cross-tab; it does not build one.
+// `getProjection()` is stage 4 of `resolveDisplayedColumns`, and the host
+// runs that single resolve. `adoptResolved()` takes the outcome back.
+//
+// It used to do the opposite: synthesize a tree, stash the primary tree and
+// its group state, swap the column tree + defs map + group state, re-run the
+// order/layout/subgrid pass and repaint — all in parallel with the host's own
+// `rebuildColumns`, which did the same job from different inputs. Two builders
+// meant whichever ran last won, so a rebuild could leave pivot mode ON while
+// painting source columns, and formatting applied to a value column never
+// reached its pivot cells. That parallel path is gone; there is one resolve.
+//
+// The seam shrank with it. Six deps existed only to serve the swap —
+// setColumnTree, get/setColumnGroupState, setColumnDefsMap,
+// getAutoGroupColumns, subscribeColumnGroupState — and are gone. What remains
+// is state, worker plumbing, and the layout tail.
 //
 // VelocityGrid is the thin consumer:
 //   • Public pivot API (`isPivotMode` / `setPivotMode` / `getPivotColumns`
 //     / …) delegates to `pivotEngine.*`.
-//   • Chunk-arrival path calls `pivotEngine.maybeSyncPivotColumns(chunk)`
-//     which decides whether to re-synthesize (`applyPivotColumns`) or
-//     revert (`revertPivotColumns`).
-//   • `pivotEngine.pivotWorkerModel()` provides the model shipped to
-//     the worker.
-//   • `pivotEngine.getPrimaryColumnTree()` exposes the saved tree so
-//     `workerColumns()` can source primary leaves under pivot.
-//   • `pivotEngine.getCellSpec(colId)` powers the body cell reader
-//     dispatch for synthesized pivot columns.
-//
-// The seam is FAT by necessity: the pivot swap mutates the column tree,
-// the group state, the columnDefsMap, the visible column order, the
-// column layout, the subgrid stack, and repaints the canvas. Every
-// touch is routed through explicit deps callbacks so the engine stays
-// unaware of VelocityGrid's private fields.
+//   • Chunk-arrival calls `maybeSyncPivotColumns(chunk)`, which records the
+//     new cross-tab shape and asks the host to re-resolve, or drops the
+//     projection to deactivate.
+//   • `pivotWorkerModel()` provides the model shipped to the worker.
+//   • `getPrimaryColumnTree()` exposes the last resolve's SOURCE tree so
+//     `workerColumns()` and the panels can read source columns while pivot is
+//     active. Unlike the old stash it is never null — it is recomputed by
+//     every resolve, so it cannot go stale, and when pivot is off it is the
+//     displayed tree.
+//   • `getCellSpec(colId)` powers the body cell reader dispatch for
+//     synthesized pivot columns.
 //
 // Cycle 19 / Task 5b — the pivot-mode-toggle now owns the AG-v36
 // "primaries auto-hide under pivot mode" invariant. When the mode
@@ -46,7 +56,6 @@
 
 import type { TypedEventEmitter } from './eventEmitter';
 import type { ColumnTree } from './columnTree';
-import { ColumnGroupState } from './columnGroupState';
 import type { ResolvedColDef } from './propertyChain';
 import type { ColumnLayout } from './layout';
 import type { VelocityGridEvent, VelocityGridOptions } from '../types';
@@ -58,12 +67,7 @@ import {
   type PivotStateSnapshot,
   type PivotValueColumn,
 } from './pivotState';
-import {
-  synthesizePivotColumns,
-  type PivotCellSpec,
-  type PivotValueColumnSpec,
-} from './pivotColumns';
-import { resolveColumnTree } from './columnTree';
+import type { PivotCellSpec, PivotValueColumnSpec } from './pivotColumns';
 import type { PivotProjection } from './resolveDisplayedColumns';
 import { resolveColumnWidths } from './layout';
 
@@ -113,20 +117,10 @@ export interface PivotEngineDeps<TRow> {
 
   // ── column tree / group state / defs map access ──────────────────────
   getColumnTree(): ColumnTree;
-  setColumnTree(tree: ColumnTree): void;
-  getColumnGroupState(): ColumnGroupState;
-  setColumnGroupState(state: ColumnGroupState): void;
   getColumnDefsMap(): Map<string, ResolvedColDef<TRow>>;
-  setColumnDefsMap(map: Map<string, ResolvedColDef<TRow>>): void;
   /** Pre-resolve presentation properties a pivot result column should
    *  inherit from its source value column. See PIVOT_INHERITED_COLDEF_KEYS. */
   getPivotValueInheritance?(colId: string): Record<string, unknown>;
-  /** Auto-group columns are re-added to `columnDefsMap` after every
-   *  swap so the painter / leaf header can still resolve them. */
-  getAutoGroupColumns(): ReadonlyArray<ResolvedColDef<TRow>>;
-  /** Re-subscribe `columnGroupState.onChange` after a swap so the
-   *  pivot column-group chevron toggles keep flowing. */
-  subscribeColumnGroupState(): void;
 
   // ── layout + repaint pipeline ────────────────────────────────────────
   computeVisibleColumnOrder(): ResolvedColDef<TRow>[];
@@ -169,7 +163,6 @@ export class PivotEngine<TRow = unknown> {
   /** Last cross-tab shape synthesized, so the pivot tree can be rebuilt
    *  without waiting for another chunk (see onPrimaryColumnsRebuilt). */
   private lastKeyTree: import('../worker/passes/pivotPass').PivotKeyNode[] | null = null;
-  private primaryColumnGroupState: ColumnGroupState | null = null;
   /** Reverse index: synthetic pivot colId → (pivotPath, valueColId),
    *  for the body cell lookup against `chunk.pivotValues`. */
   private cellSpecById: Map<string, PivotCellSpec> = new Map();
@@ -201,37 +194,6 @@ export class PivotEngine<TRow = unknown> {
 
   isPivotMode(): boolean { return this.state.isPivotMode(); }
 
-  /**
-   * The host re-resolved the PRIMARY column tree — a calc `editColumn`, a
-   * template application, an `updateGridOptions({ columnDefs })`.
-   *
-   * While pivot is active the displayed tree is synthetic, and the host's
-   * rebuild installs the SOURCE columns over it. The pivot model survives
-   * (`isPivotMode` stays true, the panels keep their chips) but the grid
-   * paints primary columns, and nothing brings the cross-tab back: chunk
-   * arrival only re-synthesizes when the tree SIGNATURE changes, and a
-   * column rebuild does not change it. Auto format made this unmissable —
-   * it edits every matched column at once, so one click dropped the whole
-   * cross-tab and left the Column Labels chip pointing at nothing.
-   *
-   * So: adopt the refreshed primary tree as the thing pivot reverts to, and
-   * re-synthesize immediately from the last cross-tab shape. Re-synthesizing
-   * rather than merely restoring also means the rebuild's own changes (a new
-   * format, a header rename) reach the pivot VALUE columns, which are derived
-   * from the primary leaves.
-   *
-   * No-op when pivot is inactive — the ordinary rebuild path is correct then.
-   */
-  onPrimaryColumnsRebuilt(primaryTree: ColumnTree): void {
-    if (!this.active) return;
-    this.primaryColumnTree = primaryTree;
-    // The saved group state is what `revertPivotColumns` reinstalls; leaving
-    // it bound to the pre-rebuild tree would restore a state describing
-    // columns that no longer exist.
-    this.primaryColumnGroupState?.setTree(primaryTree);
-    if (!this.lastKeyTree) return;
-    this.applyPivotColumns(this.lastKeyTree);
-  }
 
   /**
    * Stage 4 of the column resolve, or `null` when pivot is inactive.
