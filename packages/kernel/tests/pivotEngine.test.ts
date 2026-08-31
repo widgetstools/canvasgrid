@@ -8,6 +8,7 @@ import {
 import { TypedEventEmitter } from '../src/core/eventEmitter';
 import { ColumnGroupState } from '../src/core/columnGroupState';
 import { resolveColumnTree, type ColumnTree } from '../src/core/columnTree';
+import { resolveDisplayedColumns } from '../src/core/resolveDisplayedColumns';
 import type { VelocityGridEvent } from '../src/types';
 import type { ResolvedColDef } from '../src/core/propertyChain';
 import type { ColumnLayout } from '../src/core/layout';
@@ -64,6 +65,13 @@ function leaf(
     ...overrides,
   } as unknown as ResolvedColDef;
 }
+
+const PRIMARY_DEFS = [
+  { colId: 'sector', field: 'sector', headerName: 'Sector', cellDataType: 'text' },
+  { colId: 'region', field: 'region', headerName: 'Region', cellDataType: 'text' },
+  { colId: 'pnl', field: 'pnl', headerName: 'P&L', cellDataType: 'number' },
+  { colId: 'notional', field: 'notional', headerName: 'Notional', cellDataType: 'number' },
+] as never[];
 
 function makePrimaryTree(): ColumnTree {
   return resolveColumnTree([
@@ -167,6 +175,9 @@ function makeHarness(opts: {
     opts.computeVisibleOrder ?? (() => columnTree.value.leaves.slice()),
   );
 
+  const rebuildColumnsMock = vi.fn();
+  // The dep closure needs the engine that is constructed from these deps.
+  const engineRef: { value: PivotEngine | null } = { value: null };
   const deps: PivotEngineDeps<unknown> = {
     events,
     isDestroyed: () => destroyed.value,
@@ -195,9 +206,36 @@ function makeHarness(opts: {
     requestRepaint: () => requestRepaint(),
     applyVerticalInsets: () => applyVerticalInsets(),
     setColumnsVisible: (ids, visible) => setColumnsVisible(ids, visible),
+    // Mirrors what VelocityGrid does on every resolve: run the single
+    // pipeline with whatever projection the engine currently describes, hand
+    // the outcome back, then re-run the layout tail. The engine no longer
+    // builds or swaps a tree itself, so this is the seam its behaviour has to
+    // be observed through.
+    rebuildColumns: () => {
+      rebuildColumnsMock();
+      const resolved = resolveDisplayedColumns<unknown>({
+        hostDefs: PRIMARY_DEFS,
+        liveState: undefined,
+        autoGroupColumns,
+        pivot: engineRef.value?.getProjection() ?? null,
+      });
+      columnTree.value = resolved.tree;
+      columnDefsMap.value = resolved.defsMap;
+      engineRef.value?.adoptResolved(
+        resolved.primaryTree,
+        resolved.cellSpecById,
+        resolved.pivoted,
+      );
+      columnGroupState.value = new ColumnGroupState(resolved.tree);
+      subscribeColumnGroupState();
+      columnOrder.value = computeVisibleColumnOrder();
+      rebuildSubgridStack();
+      recomputeViewport();
+    },
   };
 
   const engine = new PivotEngine(deps, { pivotMode: opts.pivotMode ?? false });
+  engineRef.value = engine;
 
   return {
     engine, events, seen, destroyed, options,
@@ -436,7 +474,12 @@ describe('PivotEngine — column-tree swap', () => {
     h.engine.maybeSyncPivotColumns(chunkWithoutPivot());
     expect(h.engine.isPivotActive()).toBe(false);
     expect(h.engine.getPivotResultColumns()).toEqual([]);
-    expect(h.engine.getPrimaryColumnTree()).toBeNull();
+    // The primary tree is no longer a STASH that gets cleared on revert — it
+    // is recomputed by every resolve, so it stays populated and simply equals
+    // the displayed tree once pivot is off. That is the point of the change:
+    // there is nothing to save, so there is nothing to go stale. What matters
+    // is asserted above — pivot is inactive and no result columns remain.
+    expect(h.engine.getPrimaryColumnTree()?.leafById.has('sector')).toBe(true);
     // Revert re-fetches a viewport since the current chunk carried no
     // primary data (pivot values only).
     expect(h.requestViewport).toHaveBeenCalled();
@@ -452,7 +495,12 @@ describe('PivotEngine — column-tree swap', () => {
     // Drop the value column → pivot becomes inactive → handler reverts.
     h.engine.removeValueColumn('pnl');
     expect(h.engine.isPivotActive()).toBe(false);
-    expect(h.engine.getPrimaryColumnTree()).toBeNull();
+    // The primary tree is no longer a STASH that gets cleared on revert — it
+    // is recomputed by every resolve, so it stays populated and simply equals
+    // the displayed tree once pivot is off. That is the point of the change:
+    // there is nothing to save, so there is nothing to go stale. What matters
+    // is asserted above — pivot is inactive and no result columns remain.
+    expect(h.engine.getPrimaryColumnTree()?.leafById.has('sector')).toBe(true);
   });
 });
 

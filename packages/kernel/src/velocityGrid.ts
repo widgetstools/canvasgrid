@@ -218,6 +218,7 @@ import {
   type CalcProviderShape,
 } from './core/calcSlot';
 import { LiveColumnState, LIVE_COLUMN_KEYS, type LiveColumnKey } from './core/liveColumnState';
+import { resolveDisplayedColumns } from './core/resolveDisplayedColumns';
 import { buildFormatEvalCtx } from './core/formatEvalMemo';
 import { resolveThemeKind, isDarkColor } from './theming/themeKind';
 import {
@@ -6749,6 +6750,7 @@ export class VelocityGrid<TRow = any> {
       setColumnGroupState: (state) => { this.columnGroupState = state; },
       getColumnDefsMap: () => this.columnDefsMap,
       setColumnDefsMap: (map) => { this.columnDefsMap = map; },
+      rebuildColumns: () => this.rebuildColumns({ defaultColDef: this.options.defaultColDef }),
       // The pre-resolve shape of a value column — host def folded with its calc
       // override — filtered to what a synthesized aggregate leaf may inherit.
       // Pre-resolve on purpose: a RESOLVED leaf has had `cellStyle` split into
@@ -10165,6 +10167,40 @@ export class VelocityGrid<TRow = any> {
   /** Re-resolve the column tree from `options.columnDefs`, rebuild the
    *  visible column list, refresh layout, and rebuild the subgrid stack so
    *  any change in group depth lands a matching number of header rows. */
+/**
+   * The "who outranks the user?" rule for {@link LiveColumnState}, built once
+   * per resolve.
+   *
+   * A remembered runtime value loses to exactly two things, both of which are
+   * a deliberate statement about that column:
+   *
+   *   - a calc override / template that sets the property, and
+   *   - a host colDef whose value for it CHANGED since the last resolve.
+   *
+   * Merely DECLARING the property is not enough. `columnDefs` almost always
+   * carry a width, and a calc rebuild re-resolves those same defs — so
+   * "declared wins" would discard every drag-resize, which is exactly the
+   * regression the width test caught when this rule was first written that way.
+   */
+  private buildLiveColumnVeto(): (colId: string, key: LiveColumnKey) => boolean {
+    const provider = getCalcProvider();
+    const rawLeaves = rawLeafDefsById(this.options.columnDefs ?? []);
+    const prevRaw = this.prevRawColState;
+    const patchCache = new Map<string, Record<string, unknown> | null>();
+    return (colId, key) => {
+      const rawBefore = prevRaw?.get(colId);
+      if (rawBefore !== undefined && rawLeaves.get(colId)?.[key] !== rawBefore[key]) return true;
+      if (!patchCache.has(colId)) {
+        const leaf = this.columnDefsMap?.get(colId) as { cellDataType?: string } | undefined;
+        patchCache.set(colId, provider?.resolvedPatchFor(
+          colId,
+          leaf?.cellDataType === 'number' ? 'number' : 'text',
+        ) ?? null);
+      }
+      return patchCache.get(colId)?.[key] !== undefined;
+    };
+  }
+
   private rebuildColumns({ defaultColDef }: { defaultColDef?: Partial<any> }): void {
     // Cycle 22 / Task 3 — layoutEpoch contract: DEF-LEVEL rule / format /
     // renderer / cellStyle changes. A columnDefs / defaultColDef rebuild
@@ -10173,59 +10209,24 @@ export class VelocityGrid<TRow = any> {
     // setter's equality guard alone can't cover this site) — bump
     // unconditionally.
     if (this.rasterStrips !== null) this.stripLayoutEpochBump();
-    const prevLeaves = this.columnDefsMap as Map<string, ResolvedColDef<TRow>> | undefined;
-    // Cycle 21d / Task 9 — same calc-provider fold as the constructor path.
-    this.columnTree = resolveColumnTree(foldCalcColumnDefs<CColDef<TRow> | CColGroupDef<TRow>>(this.options.columnDefs), defaultColDef ?? this.options.defaultColDef, this.options.columnTypes);
-    // Live column state is an INPUT to the resolve, not something rescued
-    // after it. `width` / `hide` / `pinned` are mutated on the resolved def by
-    // drag-resize, setColumnsVisible, setColumnsPinned and applyColumnState,
-    // and the resolved tree is derived — re-resolving from
-    // `options.columnDefs` discards every one of them. LiveColumnState is
-    // where those changes actually live, so a rebuild just re-applies it.
-    //
-    // A remembered value yields to anything that deliberately asks for a
-    // different one: a calc override/template that sets the property, or a
-    // host colDef whose value CHANGED since the last resolve. Merely
-    // DECLARING it is not enough — columnDefs almost always carry a width, and
-    // a calc rebuild re-resolves those same defs, so "declared wins" would
-    // throw away every drag-resize.
-    {
-      const provider = getCalcProvider();
-      const rawLeaves = rawLeafDefsById(this.options.columnDefs ?? []);
-      const prevRaw = this.prevRawColState;
-      const leaves = this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>;
-      const patchCache = new Map<string, Record<string, unknown> | null>();
-      const calcPatchFor = (colId: string): Record<string, unknown> | null => {
-        if (!patchCache.has(colId)) {
-          const leaf = leaves.get(colId) as { cellDataType?: string } | undefined;
-          patchCache.set(colId, provider?.resolvedPatchFor(
-            colId,
-            leaf?.cellDataType === 'number' ? 'number' : 'text',
-          ) ?? null);
-        }
-        return patchCache.get(colId) ?? null;
-      };
-      this.liveColumnState.prune(leaves.keys());
-      this.liveColumnState.applyTo(
-        leaves.values() as unknown as Iterable<{ colId: string }>,
-        (colId, key: LiveColumnKey) => {
-          const rawBefore = prevRaw?.get(colId);
-          if (rawBefore !== undefined && rawLeaves.get(colId)?.[key] !== rawBefore[key]) return true;
-          return calcPatchFor(colId)?.[key] !== undefined;
-        },
-      );
-    }
-
-    // Baseline for the NEXT rebuild's "did the host change it?" test.
+    // ONE resolve. Stages: host defs -> calc overrides -> live runtime state
+    // -> pivot projection. Every input is passed in; nothing is salvaged off
+    // the previous tree and nothing is applied twice.
+    const resolved = resolveDisplayedColumns<TRow>({
+      hostDefs: this.options.columnDefs ?? [],
+      defaultColDef: defaultColDef ?? this.options.defaultColDef,
+      columnTypes: this.options.columnTypes,
+      liveState: this.liveColumnState,
+      liveStateVeto: this.buildLiveColumnVeto(),
+      autoGroupColumns: this.grouping.getAutoGroupColumns(),
+      pivot: this.pivotEngine.getProjection(),
+    });
+    // Baseline for the NEXT resolve's "did the host change it?" test.
     this.prevRawColState = snapshotRawColState(rawLeafDefsById(this.options.columnDefs ?? []));
-    this.columnDefsMap = this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>;
+    this.columnTree = resolved.tree;
+    this.columnDefsMap = resolved.defsMap;
+    this.pivotEngine.adoptResolved(resolved.primaryTree, resolved.cellSpecById, resolved.pivoted);
     this.colGroupPathCache = null;
-    // columnTree.leafById is a fresh Map that only holds user-supplied columns.
-    // Re-register the synthesized auto-group columns so painter lookups
-    // by colId keep working after any rebuildColumns() call (e.g. reorderColumn).
-    for (const col of this.grouping.getAutoGroupColumns()) {
-      this.columnDefsMap.set(col.colId, col);
-    }
     this.columnGroupState.setTree(this.columnTree);
     this.columnOrder = this.computeVisibleColumnOrder();
     this.columnLayout = resolveColumnWidths(
@@ -10234,10 +10235,6 @@ export class VelocityGrid<TRow = any> {
     );
     this.rebuildSubgridStack();
     this.recomputeViewport();
-    // Under active pivot the tree just installed is the SOURCE one, which is
-    // not what should be on screen. Hand it to the pivot engine as the new
-    // revert target and let it re-synthesize the cross-tab over the top.
-    this.pivotEngine.onPrimaryColumnsRebuilt(this.columnTree);
     // Style-only rebuilds (halign / cellStyle) may leave columnLayout
     // equal — the setter's geometry guard would skip wipe. Always
     // invalidate retained paint + full-paint so alignment/move never

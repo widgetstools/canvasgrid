@@ -64,6 +64,7 @@ import {
   type PivotValueColumnSpec,
 } from './pivotColumns';
 import { resolveColumnTree } from './columnTree';
+import type { PivotProjection } from './resolveDisplayedColumns';
 import { resolveColumnWidths } from './layout';
 
 /** Subset of `VelocityGridOptions` the pivot engine reads. Passed through a
@@ -149,6 +150,10 @@ export interface PivotEngineDeps<TRow> {
    *  Routing through VelocityGrid keeps the `columnVisible` event + worker
    *  updateColumns roundtrip intact. */
   setColumnsVisible(colIds: string[], visible: boolean): void;
+  /** Re-run the single column resolve. The engine describes the cross-tab
+   *  (getProjection) and the host builds it — the engine no longer installs a
+   *  tree of its own. */
+  rebuildColumns(): void;
 }
 
 export class PivotEngine<TRow = unknown> {
@@ -226,6 +231,73 @@ export class PivotEngine<TRow = unknown> {
     this.primaryColumnGroupState?.setTree(primaryTree);
     if (!this.lastKeyTree) return;
     this.applyPivotColumns(this.lastKeyTree);
+  }
+
+  /**
+   * Stage 4 of the column resolve, or `null` when pivot is inactive.
+   *
+   * The engine no longer BUILDS a tree and swaps it in. It describes what the
+   * cross-tab should be and `resolveDisplayedColumns` builds it, from the
+   * stage-3 primary leaves — which is what lets a value column's formatting
+   * reach its pivot cells, and what stops a rebuild from installing source
+   * columns over the cross-tab (there is no separate tree left to overwrite).
+   */
+  getProjection(): PivotProjection<TRow> | null {
+    if (!this.state.isPivotMode() || !this.lastKeyTree) return null;
+    const valueColumns = this.buildValueColumnSpecs();
+    if (valueColumns.length === 0) return null;
+    const opts = this.deps.getOptions();
+    return {
+      keyTree: this.lastKeyTree,
+      valueColumns,
+      // A role mutation discards the previous layout and re-synthesizes, and
+      // the product rule is that it opens fully — dragging a column into any
+      // pivot section must produce a visible matrix without a toggle-off/on
+      // round trip. The FIRST synthesis still honours the app's configured
+      // depth so first paint matches construction intent.
+      pivotDefaultExpanded: this.active
+        ? Number.POSITIVE_INFINITY
+        : opts.pivotDefaultExpanded,
+      pivotGrandTotals: opts.pivotGrandTotals === true,
+      pivotRowTotals: opts.pivotRowTotals ?? null,
+      pivotColumnGroupTotals: opts.pivotColumnGroupTotals ?? null,
+      processPivotResultColDef: opts.processPivotResultColDef as
+        ((colDef: import('../types').CColDef<TRow>) => void) | undefined,
+      processPivotResultColGroupDef: opts.processPivotResultColGroupDef as
+        ((groupDef: import('../types').CColGroupDef<TRow>) => void) | undefined,
+    };
+  }
+
+  /** Value-column specs, each carrying the presentation its source column
+   *  resolved to. Shared by the projection and the legacy swap path. */
+  private buildValueColumnSpecs(): PivotValueColumnSpec[] {
+    const primaryLeaves = (this.primaryColumnTree ?? this.deps.getColumnTree()).leafById;
+    return this.state.getValueColumns().map((v) => {
+      const primary = primaryLeaves.get(v.colId);
+      return {
+        colId: v.colId,
+        aggFunc: v.aggFunc,
+        headerName: primary?.headerName ?? v.colId,
+        cellDataType: primary?.cellDataType ?? 'number',
+        width: primary?.width,
+        inherit: this.deps.getPivotValueInheritance?.(v.colId),
+      };
+    });
+  }
+
+  /**
+   * Take the outcome of a resolve. Replaces the save/restore dance: the
+   * primary tree is recomputed on every resolve, so there is nothing to
+   * stash and nothing to go stale.
+   */
+  adoptResolved(
+    primaryTree: ColumnTree,
+    cellSpecById: Map<string, PivotCellSpec>,
+    pivoted: boolean,
+  ): void {
+    this.primaryColumnTree = primaryTree;
+    this.cellSpecById = cellSpecById;
+    this.active = pivoted;
   }
   isPivotActive(): boolean { return this.active; }
   /** True when PivotState is configured to produce pivot output
@@ -516,113 +588,34 @@ export class PivotEngine<TRow = unknown> {
    *  become column groups (`HeaderGroupSubgrid` renders them verbatim),
    *  the primary data columns drop out, and the auto-group column is
    *  kept as the row-dim axis. */
+  /**
+   * A new cross-tab shape arrived. Record it and re-resolve — the resolve
+   * builds the pivot tree as stage 4, from the same primary leaves the
+   * non-pivot path uses.
+   *
+   * This used to synthesize a tree, stash the primary one, swap both column
+   * maps, rebuild the group state and re-run layout itself. That parallel
+   * path is what a column rebuild could silently overwrite (leaving pivot
+   * mode ON with source columns painted), and what kept formatting out of
+   * pivot cells. There is now only one path.
+   */
   private applyPivotColumns(keyTree: import('../worker/passes/pivotPass').PivotKeyNode[]): void {
     this.lastKeyTree = keyTree;
-    const opts = this.deps.getOptions();
-    const primaryLeaves = (this.primaryColumnTree ?? this.deps.getColumnTree()).leafById;
-    const valueColumns: PivotValueColumnSpec[] = this.state.getValueColumns().map((v) => {
-      const primary = primaryLeaves.get(v.colId);
-      return {
-        colId: v.colId,
-        aggFunc: v.aggFunc,
-        headerName: primary?.headerName ?? v.colId,
-        cellDataType: primary?.cellDataType ?? 'number',
-        width: primary?.width,
-        // Pre-resolve presentation from the SOURCE column (host def folded
-        // with any calc override), so a pivot cell formats exactly like the
-        // column it aggregates. Supplied by the host because only it holds
-        // the raw defs and the calc provider.
-        inherit: this.deps.getPivotValueInheritance?.(v.colId),
-      };
-    });
-    // When this re-synthesis is a role-change re-build (the prior
-    // pivot was already active), the previous layout — including
-    // expansion depth — is discarded and the new tree opens fully.
-    // The user's cardinal principle: every role mutation produces a
-    // fresh, fully-visible matrix without a toggle-off/on round trip.
-    // The initial synthesis (active: false) still honours the app's
-    // `pivotDefaultExpanded` so first-paint matches construction
-    // intent.
-    const resolvedExpansion = this.active
-      ? Number.POSITIVE_INFINITY
-      : opts.pivotDefaultExpanded;
-    const { defs, cellSpecById } = synthesizePivotColumns<TRow>({
-      keyTree,
-      valueColumns,
-      pivotDefaultExpanded: resolvedExpansion,
-      pivotGrandTotals: opts.pivotGrandTotals === true,
-      pivotRowTotals: opts.pivotRowTotals ?? null,
-      pivotColumnGroupTotals: opts.pivotColumnGroupTotals ?? null,
-      processPivotResultColDef: opts.processPivotResultColDef as
-        (colDef: import('../types').CColDef<TRow>) => void | undefined,
-      processPivotResultColGroupDef: opts.processPivotResultColGroupDef as
-        (groupDef: import('../types').CColGroupDef<TRow>) => void | undefined,
-    });
-
-    // Save the primary structures on first activation so revert
-    // restores the exact pre-pivot tree (with its column-group
-    // open/closed state).
-    if (!this.active) {
-      this.primaryColumnTree = this.deps.getColumnTree();
-      this.primaryColumnGroupState = this.deps.getColumnGroupState();
-    }
-
-    const pivotTree = resolveColumnTree<TRow>(defs);
-    this.deps.setColumnTree(pivotTree);
-    // Late import (require) would circularise; deps.setColumnGroupState
-    // gets a fresh instance from VelocityGrid via `subscribeColumnGroupState`
-    // which the ctor sets up. We must construct the new state HERE so
-    // the freshly-swapped tree is what the pivot column-group chevron
-    // reads from. VelocityGrid's subscribe hook re-wires the change listener
-    // after we install the new state.
-    this.deps.setColumnGroupState(new ColumnGroupState(pivotTree));
-    this.deps.subscribeColumnGroupState();
-    const nextDefsMap = pivotTree.leafById as Map<string, ResolvedColDef<TRow>>;
-    // Keep the auto-group column(s) resolvable for the painter / leaf
-    // header.
-    for (const col of this.deps.getAutoGroupColumns()) nextDefsMap.set(col.colId, col);
-    this.deps.setColumnDefsMap(nextDefsMap);
-    this.cellSpecById = cellSpecById;
-    this.active = true;
-
-    const order = this.deps.computeVisibleColumnOrder();
-    this.deps.setColumnOrder(order);
-    this.deps.setColumnLayout(resolveColumnWidths(order, this.deps.getLayoutWidth()));
-    this.deps.rebuildSubgridStack();
-    this.deps.recomputeViewport();
+    this.deps.rebuildColumns();
+    this.deps.requestViewport();
     this.deps.requestRepaint();
   }
 
-  /** Restore the primary columns when pivot deactivates. Drops the
-   *  synthetic columns en masse and re-fetches a viewport for the
-   *  primary column data (the current chunk only carries pivot values). */
+  /** Deactivate pivot. Re-fetches a viewport too, because the current chunk
+   *  carries pivot values rather than primary column data. */
   private revertPivotColumns(): void {
     if (!this.active) return;
-    if (this.primaryColumnTree) this.deps.setColumnTree(this.primaryColumnTree);
-    if (this.primaryColumnGroupState) {
-      this.deps.setColumnGroupState(this.primaryColumnGroupState);
-      this.deps.subscribeColumnGroupState();
-    }
-    const restoredTree = this.deps.getColumnTree();
-    const nextDefsMap = restoredTree.leafById as Map<string, ResolvedColDef<TRow>>;
-    for (const col of this.deps.getAutoGroupColumns()) nextDefsMap.set(col.colId, col);
-    this.deps.setColumnDefsMap(nextDefsMap);
-    this.cellSpecById = new Map();
-    this.treeSignature = '';
+    // Nothing to restore: the primary tree is recomputed by every resolve, so
+    // dropping the projection is the whole of deactivation.
     this.lastKeyTree = null;
-    this.active = false;
-    this.primaryColumnTree = null;
-    this.primaryColumnGroupState = null;
-
-    const order = this.deps.computeVisibleColumnOrder();
-    this.deps.setColumnOrder(order);
-    this.deps.setColumnLayout(resolveColumnWidths(order, this.deps.getLayoutWidth()));
-    this.deps.rebuildSubgridStack();
-    this.deps.recomputeViewport();
-    this.deps.requestRepaint();
-    // The chunk that drove the revert carried no primary column data
-    // (it was requested with the synthetic colIds) — fetch fresh
-    // data.
+    this.treeSignature = '';
+    this.deps.rebuildColumns();
     this.deps.requestViewport();
+    this.deps.requestRepaint();
   }
 }
