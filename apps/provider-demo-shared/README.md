@@ -5,25 +5,27 @@ model, with the **real DataProvider editor** authoring the config.
 
 | App | Port | Row model | Data path |
 |-----|------|-----------|-----------|
-| `velocitygrid-csrm-provider-demo` | 5210 | `clientSide` | hub → `toClientSideDataProvider` → `clientSideDataProvider` option |
-| `velocitygrid-ssrm-provider-demo` | 5211 | `serverSide` | `dataProviderConfigToPerspective` → `StompPerspectiveProvider` → `serverSideDatasource` |
+| `velocitygrid-csrm-provider-demo` | 5210 | `clientSide` | hub → Ext `DataProviderController` → `bindProviderToGrid` |
+| `velocitygrid-ssrm-provider-demo` | 5211 | `serverSide` | Ext `PerspectiveDataProviderController` → `StompPerspectiveProvider` → `serverSideDatasource` |
 
 ```bash
 npm run dev:stomp            # required — the feed both apps read (ws://localhost:8082)
 npm run dev:csrm-provider    # :5210
 npm run dev:ssrm-provider    # :5211
+npm run test:e2e             # smoke both (servers must be running)
 ```
 
 Both apps share **one catalog** (`LocalStorageConfigBackend` over `LocalStore`),
-so a provider authored in either editor is visible in the other. The only field
-that decides which app can drive a config is `rowModel`; each app refuses the
-other's and says so in the status bar.
+so a provider authored in either editor is visible in the other. The `rowModel` field decides which
+app can drive a config: each app's data controller only binds providers
+matching its own row model.
 
-**Configure provider** opens the editor embedded in a drawer; **Open in popout**
-opens the same catalog in a separate window (the path VelocityGridExt uses in
-production). Saving in either re-applies the config live — columns, topics and
-pipeline knobs all take effect without a reload, because the grid rebuilds from
-`config.columnDefinitions` rather than hard-coded colDefs.
+Both apps run **VelocityGridExt** (title bar, ribbon, Customize drawer) on the
+kernel dark theme `vg-theme-cursor-dark`. Provider wiring is Ext's own data
+module: **Customize → Data** lists the catalog, **Apply** binds the selected
+provider, and **Edit…** opens the real DataProvider editor in a popout. Column
+defs come from the provider config, so editing the Columns tab and applying is
+visible in the grid — no hard-coded colDefs.
 
 ## Notes
 

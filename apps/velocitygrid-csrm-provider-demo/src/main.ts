@@ -1,140 +1,133 @@
 /**
- * CSRM + DataProvider demo.
+ * CSRM + DataProvider demo, on VelocityGridExt.
  *
- * Shows the client-side row model fed by a catalog DataProvider, with the
- * real DataProvider editor authoring that catalog entry.
+ * The client-side row model fed by a catalog DataProvider, with the full Ext
+ * chrome (title bar, ribbon, Customize drawer) around it.
  *
- * Data path:
- *   catalog config (rowModel: 'clientSide')
- *     → ProviderClientAdapter   (SharedWorker hub owns the socket + RowCache)
- *     → toClientSideDataProvider (adapts the hub provider to the kernel contract)
- *     → grid `clientSideDataProvider` option
+ * Provider wiring is Ext's own `dataProviderModule`: Customize → Data lists
+ * the catalog, Apply binds the selected provider to the grid through the hub,
+ * and "Edit…" opens the real DataProvider editor in a popout. Column defs come
+ * from the provider's `columnDefinitions`, so editing the Columns tab and
+ * applying is visible in the grid — no hard-coded colDefs here.
  *
- * The grid owns the subscription: snapshots full-replace, deltas ride
- * `applyTransactionAsync`. Note there are TWO independent throttle stages —
- * the hub's pipeline (`throttleMs` / `conflateEnabled`, authored in the
- * editor's Pipeline tab) and the grid's own `asyncTransaction*` options set
- * below. Tune the first for wire volume, the second for paint cadence.
+ * Note there are TWO independent throttle stages: the hub pipeline
+ * (`throttleMs` / `conflateEnabled`, Pipeline tab in the editor) and the
+ * grid's `asyncTransaction*` options below. Tune the first for wire volume,
+ * the second for paint cadence.
  */
-import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
-import '@wellsfargo-starui/velocity-grid/style.css';
+import {
+  VelocityGridExt,
+  titleBarExtensions,
+  ribbonExtensions,
+  dataProviderModule,
+  DataProviderController,
+  type VelocityGridExtOptions,
+} from '@wellsfargo-starui/velocity-grid-ext';
 import {
   LocalStorageConfigBackend,
-  ProviderClientAdapter,
   registerDefaultTransports,
-  toClientSideDataProvider,
-  type DataProviderConfig,
 } from '@wellsfargo-starui/velocity-grid-data';
 import { LocalStore } from '@wellsfargo-starui/velocity-grid-data/storage';
-import {
-  buildCsrmProviderConfig,
-  CSRM_PROVIDER_ID,
-  ensureSeeded,
-} from '@demo/providerCatalog';
-import { gridColumnsFrom } from '@demo/columns';
-import { mountEditorDrawer } from '@demo/editorDrawer';
+import '@wellsfargo-starui/velocity-grid/style.css';
+import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid/format';
+import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid/calc';
+import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid/rules';
+import { wireEditIntoKernel } from '@wellsfargo-starui/velocity-grid-ext/edit';
+import { buildCsrmProviderConfig, CSRM_PROVIDER_ID, ensureSeeded } from '@demo/providerCatalog';
+import { DEMO_THEME, mountShell } from '@demo/shell';
 import '@demo/styles.css';
 
 registerDefaultTransports();
 
-const app = document.getElementById('app')!;
-app.className = 'pd-app';
-app.innerHTML = `
-  <div class="pd-bar">
-    <h1>CSRM + DataProvider</h1>
-    <span class="pd-mode">clientSide</span>
-    <button type="button" class="pd-btn" id="edit">Configure provider</button>
-    <span class="pd-status" id="status"></span>
-  </div>
-  <div class="pd-hint">Needs the STOMP fixture: <code>npm run dev:stomp</code> (ws://localhost:8082).</div>
-  <div class="pd-main"><div class="pd-grid" id="grid"></div></div>
-`;
-const gridHost = document.getElementById('grid')!;
-const statusEl = document.getElementById('status')!;
-const main = app.querySelector('.pd-main') as HTMLElement;
+const { host, setStatus } = mountShell({
+  title: 'CSRM + DataProvider',
+  mode: 'clientSide',
+});
 
-/** One KV transport shared by the catalog (and, in a real app, ConfigSession). */
-const catalog = new LocalStorageConfigBackend({ storage: new LocalStore() });
+/** One KV transport shared by the provider catalog and Ext's ConfigSession. */
+const storage = new LocalStore();
+const catalog = new LocalStorageConfigBackend({ storage });
 
-let grid: VelocityGrid | null = null;
-let provider: ProviderClientAdapter | null = null;
-
-function paintStatus(text: string, cls = ''): void {
-  statusEl.innerHTML = `<span class="${cls}">${text}</span>`;
-}
-
-/**
- * (Re)build the grid for a catalog config. Called on boot and again whenever
- * the editor saves — so changing columns, topics or pipeline knobs is visible
- * without a reload.
- */
-async function applyConfig(cfg: DataProviderConfig): Promise<void> {
-  if (cfg.rowModel === 'serverSide') {
-    paintStatus('provider is serverSide — open the SSRM demo for this one', 'err');
-    return;
-  }
-  // Tear the old pair down first: the grid unsubscribes but never destroys a
-  // provider (they're shared), so the provider is ours to dispose.
-  grid?.destroy();
-  grid = null;
-  provider?.destroy();
-  provider = null;
-  gridHost.replaceChildren();
-
-  const columnDefs = gridColumnsFrom(cfg.config.columnDefinitions ?? []);
-  if (columnDefs.length === 0) {
-    paintStatus('no columns configured — add some in the editor’s Columns tab', 'err');
-    return;
-  }
-
-  provider = new ProviderClientAdapter(cfg);
-  provider.onStatus((s, err) => {
-    paintStatus(
-      `provider <b>${s}</b>${err ? ` — ${err}` : ''} · rows <b>${grid?.getTotalRowCount() ?? 0}</b>`,
-      s === 'ready' ? 'ok' : s === 'error' ? 'err' : '',
-    );
-  });
-
-  grid = new VelocityGrid(gridHost, {
-    columnDefs,
-    getRowId: (r: Record<string, unknown>) => String(r.positionId ?? ''),
-    theme: 'vg-theme-quartz',
-    rowSelection: 'multiple',
-    sideBar: { toolPanels: ['columns', 'filters'] },
-    rowGroupPanelShow: 'always',
-    pivotPanelShow: 'always',
-    grandTotalRow: 'bottom',
-    // The provider option — the grid owns the subscription for its lifetime.
-    clientSideDataProvider: toClientSideDataProvider(provider),
-    // Paint cadence, independent of the hub's own pipeline throttling.
-    asyncTransactionWaitMillis: 60,
-    asyncTransactionThrottleMillis: 200,
-  } as never);
-
-  await grid.whenReady();
-  await provider.start();
-}
-
-const drawer = mountEditorDrawer(main, {
+const dataController = new DataProviderController({
   catalog,
-  providerId: CSRM_PROVIDER_ID,
-  onSaved: (cfg) => {
-    if (cfg.providerId !== CSRM_PROVIDER_ID) return;
-    void applyConfig(cfg);
+  onActiveChange: (providerId, provider) => {
+    if (!providerId || !provider) {
+      setStatus('no provider — Customize → Data → Apply', 'err');
+      return;
+    }
+    provider.onStatus((s, err) => {
+      setStatus(
+        `provider <b>${s}</b>${err ? ` — ${err}` : ''} · rows <b>${ext.grid.getTotalRowCount()}</b>`,
+        s === 'ready' ? 'ok' : s === 'error' ? 'err' : '',
+      );
+    });
+    setStatus(`bound <b>${providerId}</b>`);
   },
 });
-document.getElementById('edit')!.addEventListener('click', () => drawer.toggle());
+
+/** Wired after construction — the ribbon looks this up lazily. */
+let editHandle: ReturnType<typeof wireEditIntoKernel> | undefined;
+
+const ext = new VelocityGridExt(host, {
+  gridId: 'csrm-provider-demo',
+  theme: DEMO_THEME,
+  // Columns are owned by the DataProvider — the controller pushes them on
+  // Apply, so starting empty is correct rather than a placeholder.
+  columnDefs: [],
+  defaultColDef: {
+    resizable: true, sortable: true, editable: true,
+    minWidth: 80, filter: true, floatingFilter: true,
+  },
+  getRowId: (r: { positionId?: string }) => String(r.positionId ?? ''),
+  enableCellChangeFlash: true,
+  cellSelection: { suppressHeader: true },
+  sideBar: { toolPanels: ['columns', 'filters'] },
+  rowGroupPanelShow: 'always',
+  pivotPanelShow: 'always',
+  grandTotalRow: 'pinnedBottom',
+  groupDisplayType: 'singleColumn',
+  groupDefaultExpanded: 0,
+  // Paint cadence — independent of the hub's own pipeline throttling.
+  asyncTransactionWaitMillis: 60,
+  asyncTransactionThrottleMillis: 200,
+  ext: {
+    storage,
+    extensions: [
+      ...titleBarExtensions({
+        name: 'CSRM · Positions (client-side)',
+        date: new Date().toISOString().slice(0, 10),
+      }),
+      ...ribbonExtensions({ edit: () => editHandle }),
+      dataProviderModule({ controller: dataController }),
+    ],
+  },
+} as unknown as VelocityGridExtOptions);
+
+wireFormat(ext.grid);
+wireCalc(ext.grid);
+wireRules(ext.grid);
+editHandle = wireEditIntoKernel(ext.grid, {
+  commitUpdates: (rows) => { ext.grid.applyTransactionAsync({ update: rows }); },
+});
 
 void (async () => {
-  paintStatus('seeding catalog…');
-  const cfg = await ensureSeeded(catalog, buildCsrmProviderConfig());
-  await applyConfig(cfg);
-})();
+  await ensureSeeded(catalog, buildCsrmProviderConfig());
+  await ext.grid.whenReady();
+  await ext.reapplyActiveProfile();
+  if (!dataController.getActiveProviderId()) {
+    await dataController.setActiveProvider(CSRM_PROVIDER_ID, { force: true });
+  }
+})().catch((err) => {
+  console.error('[csrm-provider-demo] startup failed', err);
+  setStatus('startup failed — see console', 'err');
+});
 
-// Test/debug handle, mirroring the other demos.
 (window as unknown as { __demo: unknown }).__demo = {
-  get grid() { return grid; },
-  get provider() { return provider; },
-  catalog,
-  applyConfig,
+  ext, get grid() { return ext.grid; }, catalog, storage, dataController,
+  providerId: CSRM_PROVIDER_ID,
 };
+
+window.addEventListener('beforeunload', () => {
+  dataController.detach();
+  ext.destroy();
+});

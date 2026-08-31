@@ -11,7 +11,8 @@
   },
   "dependencies": {
     "@wellsfargo-starui/velocity-grid": "*",
-    "@wellsfargo-starui/velocity-grid-data": "*"
+    "@wellsfargo-starui/velocity-grid-data": "*",
+    "@wellsfargo-starui/velocity-grid-ext": "*"
   },
   "devDependencies": {
     "typescript": "~5.9.3",

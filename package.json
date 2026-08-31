@@ -30,10 +30,12 @@
     "typecheck": "turbo run typecheck",
     "lint": "eslint \"packages/*/src/**/*.ts\" \"packages/*/tests/**/*.ts\" \"apps/*/src/**/*.{ts,tsx}\" \"apps/*/e2e/**/*.ts\"",
     "dev:stomp-ssrm-provider": "concurrently -k -n broker,app -c blue,green \"npm run dev:stomp\" \"wait-on tcp:8082 && npm run dev:ssrm-provider\"",
-    "dev:stomp-csrm-provider": "concurrently -k -n broker,app -c blue,green \"npm run dev:stomp\" \"wait-on tcp:8082 && npm run dev:csrm-provider\""
+    "dev:stomp-csrm-provider": "concurrently -k -n broker,app -c blue,green \"npm run dev:stomp\" \"wait-on tcp:8082 && npm run dev:csrm-provider\"",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
     "@openfin/node-adapter": "^43.101.2",
+    "@playwright/test": "^1.62.1",
     "concurrently": "^10.0.3",
     "eslint": "^9.39.4",
     "turbo": "^2.10.11",

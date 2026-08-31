@@ -1,61 +1,31 @@
-:root { color-scheme: light dark; }
+/* Page chrome only — VelocityGridExt brings its own themed UI. Dark first,
+   because both demos default to a dark kernel theme. */
+:root { color-scheme: dark; }
 * { box-sizing: border-box; }
 body {
   margin: 0;
   font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
-  background: #f6f7f9;
-  color: #1a1f24;
-}
-@media (prefers-color-scheme: dark) {
-  body { background: #14171c; color: #e6e9ee; }
+  background: #0f1216;
+  color: #e6e9ee;
 }
 .pd-app { display: flex; flex-direction: column; height: 100vh; }
 .pd-bar {
-  display: flex; align-items: center; gap: 12px;
-  padding: 8px 12px; border-bottom: 1px solid #c9d1d9;
-  flex: 0 0 auto; flex-wrap: wrap;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 8px 12px; border-bottom: 1px solid #2a3138; flex: 0 0 auto;
 }
-@media (prefers-color-scheme: dark) { .pd-bar { border-color: #2a3138; } }
 .pd-bar h1 { margin: 0; font-size: 14px; font-weight: 650; }
-.pd-bar .pd-mode {
+.pd-mode {
   font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
-  padding: 2px 8px; border-radius: 10px; background: #dde5ee; color: #35506e;
+  padding: 2px 8px; border-radius: 10px; background: #22303f; color: #a8c6e6;
 }
-.pd-btn {
-  font: inherit; padding: 4px 10px; border-radius: 6px;
-  border: 1px solid #b7c2cc; background: #fff; color: inherit; cursor: pointer;
-}
-.pd-btn:hover { background: #eef2f6; }
-@media (prefers-color-scheme: dark) {
-  .pd-btn { background: #1c2128; border-color: #3a424b; }
-  .pd-btn:hover { background: #262d35; }
-  .pd-bar .pd-mode { background: #22303f; color: #a8c6e6; }
-}
+.pd-tip { font-size: 12px; color: #8a93a6; }
 .pd-status { margin-left: auto; display: flex; gap: 14px; font-variant-numeric: tabular-nums; }
 .pd-status b { font-weight: 650; }
-.pd-status .ok { color: #1a7f37; }
-.pd-status .err { color: #cf222e; }
-.pd-main { flex: 1 1 auto; display: flex; min-height: 0; }
-.pd-grid { flex: 1 1 auto; min-width: 0; }
-.pd-drawer {
-  flex: 0 0 620px; max-width: 70vw; display: flex; flex-direction: column;
-  border-left: 1px solid #c9d1d9; background: #fff; min-height: 0;
-}
-@media (prefers-color-scheme: dark) {
-  .pd-drawer { background: #171b21; border-color: #2a3138; }
-}
-.pd-drawer[hidden] { display: none; }
-.pd-drawer__head {
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px 12px; border-bottom: 1px solid #c9d1d9; flex: 0 0 auto;
-}
-@media (prefers-color-scheme: dark) { .pd-drawer__head { border-color: #2a3138; } }
-.pd-drawer__head h2 { margin: 0; font-size: 13px; font-weight: 650; flex: 1 1 auto; }
-.pd-drawer__body { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.pd-status .ok { color: #4ac26b; }
+.pd-status .err { color: #ff7b72; }
 .pd-hint {
   padding: 6px 12px; font-size: 12px;
-  background: #fff8c5; color: #573a00; border-bottom: 1px solid #e6d071;
+  background: #2d2611; color: #e6c95c; border-bottom: 1px solid #4a3f18;
 }
-@media (prefers-color-scheme: dark) {
-  .pd-hint { background: #2d2611; color: #e6c95c; border-color: #4a3f18; }
-}
+.pd-main { flex: 1 1 auto; display: flex; min-height: 0; }
+.pd-grid { flex: 1 1 auto; min-width: 0; }

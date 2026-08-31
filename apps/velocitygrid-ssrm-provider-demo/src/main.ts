@@ -1,139 +1,136 @@
 /**
- * SSRM + DataProvider demo.
+ * SSRM + DataProvider demo, on VelocityGridExt.
  *
- * The same catalog entry shape as the CSRM demo, but with
- * `rowModel: 'serverSide'` — which routes it to Perspective instead of the
- * hub. Perspective owns the book (filter / sort / group / aggregate / pivot
- * all run in WASM); the grid only ever holds the rows it is painting.
+ * Same catalog entry shape as the CSRM demo, but `rowModel: 'serverSide'`
+ * routes it to Perspective instead of the hub. Perspective owns the book —
+ * filter, sort, group, aggregate and the pivot cross-tab all run in WASM, and
+ * the grid only ever holds the rows it paints.
  *
- * Data path:
- *   catalog config (rowModel: 'serverSide')
- *     → dataProviderConfigToPerspective  (catalog fields → provider config)
- *     → StompPerspectiveProvider          (owns the Perspective Table + feed)
- *     → grid `serverSideDatasource` (+ provider.attach for live ticks)
- *
- * Pivot here is computed by Perspective via `split_by` and pushed to the grid,
- * so it works WITHOUT hydrating the whole book — the point of sparse SSRM.
+ * Provider wiring is Ext's `perspectiveDataProviderModule`: Customize → Data
+ * lists the catalog, Apply maps the STOMP config onto StompPerspectiveProvider
+ * and binds it as the SSRM datasource, and "Edit…" opens the real DataProvider
+ * editor in a popout.
  */
-import { VelocityGrid } from '@wellsfargo-starui/velocity-grid';
-import '@wellsfargo-starui/velocity-grid/style.css';
+import {
+  VelocityGridExt,
+  titleBarExtensions,
+  ribbonExtensions,
+  perspectiveDataProviderModule,
+  type VelocityGridExtOptions,
+} from '@wellsfargo-starui/velocity-grid-ext';
 import {
   LocalStorageConfigBackend,
   registerDefaultTransports,
-  type DataProviderConfig,
 } from '@wellsfargo-starui/velocity-grid-data';
 import { LocalStore } from '@wellsfargo-starui/velocity-grid-data/storage';
 import {
-  StompPerspectiveProvider,
-  dataProviderConfigToPerspective,
+  PerspectiveDataProviderController,
   type BookTelemetry,
 } from '@wellsfargo-starui/velocity-grid-perspective';
-import {
-  buildSsrmProviderConfig,
-  SSRM_PROVIDER_ID,
-  ensureSeeded,
-} from '@demo/providerCatalog';
-import { gridColumnsFrom } from '@demo/columns';
-import { mountEditorDrawer } from '@demo/editorDrawer';
+import '@wellsfargo-starui/velocity-grid/style.css';
+import { wireIntoKernel as wireFormat } from '@wellsfargo-starui/velocity-grid/format';
+import { wireIntoKernel as wireCalc } from '@wellsfargo-starui/velocity-grid/calc';
+import { wireIntoKernel as wireRules } from '@wellsfargo-starui/velocity-grid/rules';
+import { wireEditIntoKernel } from '@wellsfargo-starui/velocity-grid-ext/edit';
+import { buildSsrmProviderConfig, SSRM_PROVIDER_ID, ensureSeeded } from '@demo/providerCatalog';
+import { DEMO_THEME, mountShell } from '@demo/shell';
 import '@demo/styles.css';
 
 registerDefaultTransports();
 
-const app = document.getElementById('app')!;
-app.className = 'pd-app';
-app.innerHTML = `
-  <div class="pd-bar">
-    <h1>SSRM + DataProvider</h1>
-    <span class="pd-mode">serverSide</span>
-    <button type="button" class="pd-btn" id="edit">Configure provider</button>
-    <span class="pd-status" id="status"></span>
-  </div>
-  <div class="pd-hint">Needs the STOMP fixture: <code>npm run dev:stomp</code> (ws://localhost:8082).</div>
-  <div class="pd-main"><div class="pd-grid" id="grid"></div></div>
-`;
-const gridHost = document.getElementById('grid')!;
-const statusEl = document.getElementById('status')!;
-const main = app.querySelector('.pd-main') as HTMLElement;
+const { host, setStatus } = mountShell({
+  title: 'SSRM + DataProvider',
+  mode: 'serverSide',
+});
 
-const catalog = new LocalStorageConfigBackend({ storage: new LocalStore() });
-
-let grid: VelocityGrid | null = null;
-let provider: StompPerspectiveProvider | null = null;
-let detach: (() => void) | null = null;
+const storage = new LocalStore();
+const catalog = new LocalStorageConfigBackend({ storage });
 
 function paintTelemetry(t: BookTelemetry): void {
   const cls = t.phase === 'live' ? 'ok' : t.phase === 'error' ? 'err' : '';
-  statusEl.innerHTML = [
-    `<span class="${cls}">phase <b>${t.phase}</b></span>`,
-    `<span>book <b>${t.bookSize.toLocaleString()}</b></span>`,
-    `<span>rows/s <b>${t.liveUpdatesPerSec.toLocaleString()}</b></span>`,
-    `<span>getRows <b>${t.getRowsTotal.toLocaleString()}</b></span>`,
-  ].join('');
+  setStatus(
+    [
+      `phase <b>${t.phase}</b>`,
+      `book <b>${t.bookSize.toLocaleString()}</b>`,
+      `rows/s <b>${t.liveUpdatesPerSec.toLocaleString()}</b>`,
+      `getRows <b>${t.getRowsTotal.toLocaleString()}</b>`,
+    ].join(' · '),
+    cls,
+  );
 }
 
-async function applyConfig(cfg: DataProviderConfig): Promise<void> {
-  if (cfg.rowModel !== 'serverSide') {
-    statusEl.innerHTML =
-      '<span class="err">provider is clientSide — open the CSRM demo for this one</span>';
-    return;
-  }
-  detach?.();
-  detach = null;
-  grid?.destroy();
-  grid = null;
-  await provider?.destroy();
-  provider = null;
-  gridHost.replaceChildren();
-
-  const columnDefs = gridColumnsFrom(cfg.config.columnDefinitions ?? []);
-  if (columnDefs.length === 0) {
-    statusEl.innerHTML = '<span class="err">no columns configured — see the editor’s Columns tab</span>';
-    return;
-  }
-
-  provider = new StompPerspectiveProvider({
-    ...dataProviderConfigToPerspective(cfg),
-    onTelemetry: paintTelemetry,
-  });
-
-  // `gridOptions()` is the provider's own recommended bundle: it already
-  // wires itself as the datasource with the sparse contract
-  // (serverSideEnableClientSidePipeline: false) and supplies getRowId from
-  // the configured keyColumn. Spread FIRST, then override presentation.
-  grid = new VelocityGrid(gridHost, {
-    ...provider.gridOptions(),
-    columnDefs,
-    theme: 'vg-theme-quartz',
-    rowSelection: 'multiple',
-    sideBar: { toolPanels: ['columns', 'filters'] },
-    pivotPanelShow: 'always',
-  } as never);
-
-  await grid.whenReady();
-  // Live ticks, group/sort/filter push-down, and the pivot cross-tab all ride
-  // this attachment — without it the grid renders a static first page.
-  detach = provider.attach(grid as never);
-}
-
-const drawer = mountEditorDrawer(main, {
+const dataController = new PerspectiveDataProviderController({
   catalog,
-  providerId: SSRM_PROVIDER_ID,
-  onSaved: (cfg) => {
-    if (cfg.providerId !== SSRM_PROVIDER_ID) return;
-    void applyConfig(cfg);
+  onTelemetry: paintTelemetry,
+  onActiveChange: (providerId) => {
+    if (!providerId) setStatus('no provider — Customize → Data → Apply', 'err');
   },
 });
-document.getElementById('edit')!.addEventListener('click', () => drawer.toggle());
+
+let editHandle: ReturnType<typeof wireEditIntoKernel> | undefined;
+
+const ext = new VelocityGridExt(host, {
+  gridId: 'ssrm-provider-demo',
+  theme: DEMO_THEME,
+  columnDefs: [],
+  defaultColDef: {
+    resizable: true, sortable: true, editable: true,
+    minWidth: 80, filter: true, floatingFilter: true,
+  },
+  getRowId: (r: { positionId?: string }) => String(r.positionId ?? ''),
+  rowModelType: 'serverSide',
+  // Sparse: Perspective owns the query, pivot cross-tab included. Never
+  // hydrate the whole book into the client — that is the point of SSRM.
+  serverSideEnableClientSidePipeline: false,
+  cacheBlockSize: 100,
+  serverSideMaxCachedLeafBlocks: 20,
+  groupDefaultExpanded: 0,
+  enableCellChangeFlash: true,
+  cellSelection: { suppressHeader: true },
+  sideBar: { toolPanels: ['columns', 'filters'] },
+  rowGroupPanelShow: 'always',
+  pivotPanelShow: 'always',
+  grandTotalRow: 'pinnedBottom',
+  groupDisplayType: 'singleColumn',
+  ext: {
+    storage,
+    extensions: [
+      ...titleBarExtensions({
+        name: 'SSRM · Positions (server-side)',
+        date: new Date().toISOString().slice(0, 10),
+      }),
+      ...ribbonExtensions({ edit: () => editHandle }),
+      perspectiveDataProviderModule({ controller: dataController }),
+    ],
+  },
+} as unknown as VelocityGridExtOptions);
+
+wireFormat(ext.grid);
+wireCalc(ext.grid);
+wireRules(ext.grid);
+editHandle = wireEditIntoKernel(ext.grid, {
+  // SSRM patches ride the server-side transaction path, not applyTransaction.
+  commitUpdates: (rows) => { ext.grid.applyServerSideTransaction({ update: rows }); },
+});
 
 void (async () => {
-  statusEl.textContent = 'seeding catalog…';
-  const cfg = await ensureSeeded(catalog, buildSsrmProviderConfig());
-  await applyConfig(cfg);
-})();
+  await ensureSeeded(catalog, buildSsrmProviderConfig());
+  await ext.grid.whenReady();
+  await ext.reapplyActiveProfile();
+  if (!dataController.getActiveProviderId()) {
+    await dataController.setActiveProvider(SSRM_PROVIDER_ID, { force: true });
+  }
+})().catch((err) => {
+  console.error('[ssrm-provider-demo] startup failed', err);
+  setStatus('startup failed — see console', 'err');
+});
 
 (window as unknown as { __demo: unknown }).__demo = {
-  get grid() { return grid; },
-  get provider() { return provider; },
-  catalog,
-  applyConfig,
+  ext, get grid() { return ext.grid; }, catalog, storage, dataController,
+  providerId: SSRM_PROVIDER_ID,
 };
+
+window.addEventListener('beforeunload', () => {
+  dataController.detach();
+  ext.destroy();
+});
