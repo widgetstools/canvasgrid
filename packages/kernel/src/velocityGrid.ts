@@ -136,6 +136,7 @@ import {
 import {
   isPivotResultColumnId, isPivotRowTotalColumnId,
   isPivotResultGroupId,
+  pickPivotInheritedProps,
 } from './core/pivotColumns';
 import { encodePivotValueKey, PIVOT_PATH_SEP } from './worker/passes/pivotPass';
 import type { MenuItem, GetContextMenuItemsParams, GetMainMenuItemsParams } from './interaction/contextMenu/types';
@@ -6748,6 +6749,25 @@ export class VelocityGrid<TRow = any> {
       setColumnGroupState: (state) => { this.columnGroupState = state; },
       getColumnDefsMap: () => this.columnDefsMap,
       setColumnDefsMap: (map) => { this.columnDefsMap = map; },
+      // The pre-resolve shape of a value column — host def folded with its calc
+      // override — filtered to what a synthesized aggregate leaf may inherit.
+      // Pre-resolve on purpose: a RESOLVED leaf has had `cellStyle` split into
+      // static overrides plus a compiled `cellStyleFn`, so it is no longer a
+      // legal input to another resolve. Feeding synthesis the same raw shape
+      // the primary column got is what makes a pivot cell format identically
+      // to the column it aggregates, through the same resolver, every time.
+      getPivotValueInheritance: (colId: string) => {
+        const raw = rawLeafDefsById(this.options.columnDefs ?? []).get(colId);
+        const leaf = this.pivotEngine.getPrimaryColumnTree()?.leafById.get(colId)
+          ?? this.columnDefsMap.get(colId);
+        const patch = getCalcProvider()?.resolvedPatchFor(
+          colId,
+          (leaf as { cellDataType?: string } | undefined)?.cellDataType === 'number'
+            ? 'number'
+            : 'text',
+        ) ?? null;
+        return pickPivotInheritedProps({ ...raw, ...patch });
+      },
       getAutoGroupColumns: () => this.grouping.getAutoGroupColumns(),
       subscribeColumnGroupState: () => this.subscribeColumnGroupState(),
       computeVisibleColumnOrder: () => this.computeVisibleColumnOrder(),
@@ -15101,6 +15121,14 @@ export class VelocityGrid<TRow = any> {
    *  isn't in the chunk (most common: row outside the visible window). */
   getCellValue(rowIndex: number, colId: string): unknown {
     return this.cellAt(rowIndex, colId)?.value ?? null;
+  }
+
+  /** The PAINTED text for a cell — the value after this column's
+   *  valueFormatter. `getCellValue` returns the raw value, which cannot tell
+   *  you whether formatting actually reached the column; this can, which is
+   *  what makes formatting assertable on synthesized pivot columns. */
+  getCellFormattedValue(rowIndex: number, colId: string): string | null {
+    return this.cellAt(rowIndex, colId)?.valueFormatted ?? null;
   }
 
   /**

@@ -46,6 +46,42 @@ const PIVOT_ID_SEP = '';
 
 /** A measured column under pivot — the source colId + the aggregation to
  *  apply, plus presentation hints for the synthesized leaf. */
+/**
+ * Presentation properties a pivot result column inherits from the value column
+ * it aggregates.
+ *
+ * Deliberately an allow-list. A synthesized leaf is a DIFFERENT column from its
+ * source — it has no `field` (its value comes from `chunk.pivotValues`), its own
+ * `colId`, and role flags like `enablePivot` / `rowGroup` are meaningless on it.
+ * Copying the whole def across would drag identity and layout state along and
+ * break the cross-tab; copying nothing is what left formatting behind.
+ *
+ * The source is the PRE-RESOLVE def (host colDef folded with any calc override),
+ * not the resolved leaf: the resolver has already split `cellStyle` into static
+ * overrides plus a compiled `cellStyleFn`, so a resolved leaf is no longer a
+ * legal input to another resolve. Feeding synthesis the same raw shape the
+ * primary column got means a pivot leaf resolves through exactly the same path
+ * as the column it came from — which is what makes formatting deterministic
+ * across pivot mode rather than a separate code path that has to be kept in
+ * sync.
+ */
+export const PIVOT_INHERITED_COLDEF_KEYS = [
+  'valueFormatter',
+  'cellStyle',
+  'cellClass',
+  'cellClassRules',
+  'cellRenderer',
+  'cellRendererParams',
+  'cellIcon',
+  'headerStyle',
+  'headerClass',
+  'type',
+  'minWidth',
+  'maxWidth',
+] as const;
+
+export type PivotInheritedColDefKey = typeof PIVOT_INHERITED_COLDEF_KEYS[number];
+
 export interface PivotValueColumnSpec {
   colId: string;
   aggFunc: string;
@@ -57,6 +93,26 @@ export interface PivotValueColumnSpec {
   /** Leaf column width. Inherited from the source value column when set;
    *  the column-width resolver picks a default when omitted. */
   width?: number;
+  /**
+   * Pre-resolve presentation properties copied from the source value column —
+   * see {@link PIVOT_INHERITED_COLDEF_KEYS}. Applied UNDER the synthesized
+   * identity (colId / aggFunc / sortable), so synthesis always wins on the
+   * properties that make a pivot leaf a pivot leaf, and OVER nothing else —
+   * `processPivotResultColDef` still runs last and beats both.
+   */
+  inherit?: Record<string, unknown>;
+}
+
+/** Filter a pre-resolve def down to the properties a pivot leaf may inherit. */
+export function pickPivotInheritedProps(
+  source: Record<string, unknown> | null | undefined,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (!source) return out;
+  for (const key of PIVOT_INHERITED_COLDEF_KEYS) {
+    if (source[key] !== undefined) out[key] = source[key];
+  }
+  return out;
 }
 
 /** Reverse index entry: how a synthetic colId addresses `pivotValues`. */
@@ -266,6 +322,13 @@ export function synthesizePivotColumns<TRow = unknown>(input: {
       const colId = pivotResultColumnId(pivotPath, vc.colId);
       cellSpecById.set(colId, { pivotPath: [...pivotPath], valueColId: vc.colId });
       const def: CColDef<TRow> = {
+        // Inherited presentation first, so the synthesized identity below
+        // always wins. This is the channel that makes a format applied to a
+        // value column show up on its aggregate cells — without it a leaf was
+        // built from these few properties alone and the calc engine (the
+        // format toolbar, Column format…, Auto format) had no path in at all.
+        // Row totals inherit too: a total of P&L should read like P&L.
+        ...(vc.inherit as Partial<CColDef<TRow>> | undefined),
         colId,
         headerName: vc.headerName ?? vc.colId,
         cellDataType: vc.cellDataType ?? 'number',
@@ -390,6 +453,13 @@ export function synthesizePivotColumns<TRow = unknown>(input: {
         isRowTotal: true,
       });
       const def: CColDef<TRow> = {
+        // Inherited presentation first, so the synthesized identity below
+        // always wins. This is the channel that makes a format applied to a
+        // value column show up on its aggregate cells — without it a leaf was
+        // built from these few properties alone and the calc engine (the
+        // format toolbar, Column format…, Auto format) had no path in at all.
+        // Row totals inherit too: a total of P&L should read like P&L.
+        ...(vc.inherit as Partial<CColDef<TRow>> | undefined),
         colId,
         headerName: vc.headerName ?? vc.colId,
         cellDataType: vc.cellDataType ?? 'number',

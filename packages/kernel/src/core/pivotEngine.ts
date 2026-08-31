@@ -117,6 +117,9 @@ export interface PivotEngineDeps<TRow> {
   setColumnGroupState(state: ColumnGroupState): void;
   getColumnDefsMap(): Map<string, ResolvedColDef<TRow>>;
   setColumnDefsMap(map: Map<string, ResolvedColDef<TRow>>): void;
+  /** Pre-resolve presentation properties a pivot result column should
+   *  inherit from its source value column. See PIVOT_INHERITED_COLDEF_KEYS. */
+  getPivotValueInheritance?(colId: string): Record<string, unknown>;
   /** Auto-group columns are re-added to `columnDefsMap` after every
    *  swap so the painter / leaf header can still resolve them. */
   getAutoGroupColumns(): ReadonlyArray<ResolvedColDef<TRow>>;
@@ -525,6 +528,11 @@ export class PivotEngine<TRow = unknown> {
         headerName: primary?.headerName ?? v.colId,
         cellDataType: primary?.cellDataType ?? 'number',
         width: primary?.width,
+        // Pre-resolve presentation from the SOURCE column (host def folded
+        // with any calc override), so a pivot cell formats exactly like the
+        // column it aggregates. Supplied by the host because only it holds
+        // the raw defs and the calc provider.
+        inherit: this.deps.getPivotValueInheritance?.(v.colId),
       };
     });
     // When this re-synthesis is a role-change re-build (the prior

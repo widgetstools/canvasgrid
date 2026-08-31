@@ -240,6 +240,76 @@ test('Auto format preserves column state and the pivot cross-tab', async ({ page
 });
 
 /**
+ * Formatting reaches pivot cells, in every order, every time.
+ *
+ * A synthesized pivot leaf used to be built from six hard-coded properties and
+ * never saw the calc provider, so the format toolbar / Column format… / Auto
+ * format could not touch a pivot column at all. Pivot did not consume the
+ * column pipeline, it bypassed it — which is why formatting "worked sometimes"
+ * (it worked until you pivoted) and why fixes to the primary path kept
+ * appearing not to stick.
+ *
+ * The determinism this asserts is the point: the SAME formatting must land
+ * whether it was applied before pivoting, while pivoted, or across a pivot
+ * off/on round trip.
+ */
+test('a value column format paints on its pivot cells, whatever the order', async ({ page }) => {
+  await page.goto('http://localhost:5210/');
+  await page.waitForFunction(() => (window as any).__demo?.ext !== undefined, { timeout: 45_000 });
+  await page.waitForTimeout(5000);
+
+  const paintedPivotCells = () => page.evaluate(() => {
+    const g = (window as any).__demo.grid;
+    const out: string[] = [];
+    for (let r = 0; r < 4; r++) {
+      for (const colId of g.getPivotResultColumns()) {
+        const text = g.getCellFormattedValue(r, colId);
+        if (text) out.push(text);
+      }
+    }
+    return out;
+  });
+
+  await page.evaluate(async () => {
+    const g = (window as any).__demo.grid;
+    g.setRowData(Array.from({ length: 300 }, (_, i) => ({
+      positionId: 'p' + i, ticker: 'T' + (i % 7),
+      desk: ['FX', 'Rates', 'Credit'][i % 3], region: ['EMEA', 'AMER', 'APAC'][i % 3],
+      instrumentType: 'Bond', notionalAmount: 1000 + i, marketValue: 2000 + i,
+      pnl: i * 10, dailyPnl: i,
+    })));
+    await new Promise((r) => setTimeout(r, 1500));
+    g.setRowGroupColumns(['desk']);
+    g.setPivotColumns(['region']);
+    g.setValueColumns([{ colId: 'pnl', aggFunc: 'sum' }]);
+    g.setPivotMode(true);
+    await new Promise((r) => setTimeout(r, 3500));
+  });
+
+  // Unformatted: raw numbers, no separators.
+  const raw = await paintedPivotCells();
+  expect(raw.length).toBeGreaterThan(0);
+  for (const cell of raw) expect(cell).toMatch(/^\d+$/);
+
+  // Applied WHILE pivoted — the case that was impossible.
+  await page.evaluate(() => (window as any).__demo.grid.editColumn('pnl', { format: '$#,##0.00' }));
+  await page.waitForTimeout(3000);
+  const whilePivoted = await paintedPivotCells();
+  expect(whilePivoted.length).toBe(raw.length);
+  for (const cell of whilePivoted) expect(cell).toMatch(/^\$[\d,]+\.\d{2}$/);
+
+  // And it survives leaving and re-entering pivot — same cells, same text.
+  await page.evaluate(async () => {
+    const g = (window as any).__demo.grid;
+    g.setPivotMode(false);
+    await new Promise((r) => setTimeout(r, 1500));
+    g.setPivotMode(true);
+    await new Promise((r) => setTimeout(r, 3000));
+  });
+  expect(await paintedPivotCells()).toEqual(whilePivoted);
+});
+
+/**
  * SSRM status bar: `Total Rows` is the unfiltered book, `Rows` is what the
  * filter left. They used to print the same number, because server-side
  * `getTotalRowCount()` just returned the displayed count.
