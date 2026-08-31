@@ -3972,6 +3972,15 @@ export class VelocityGrid<TRow = any> {
       console.warn('[velocity-grid] setServerSideDatasource requires rowModelType: "serverSide"');
       return;
     }
+    // Capabilities belong to the DATASOURCE, so a new one resets them.
+    // `ssrmHostPivotDeclared` used to be a one-way latch: once any datasource
+    // published a cross-tab, the grid believed it could pivot forever. Swap a
+    // pivot-capable provider for one that is not — which is just Customize →
+    // Data → Apply — and `setPivotMode(true)` was still ACCEPTED, then nothing
+    // pivoted, with no warning and `isPivotMode()` reporting true. The refusal
+    // path below exists precisely to stop that, and a stale latch walked
+    // straight past it. Cleared before the swap so the next call re-evaluates.
+    this.ssrmHostPivotDeclared = false;
     if (!this.ssrm) {
       if (!this.readySettled) {
         // Async worker init hasn't mounted SSRM yet — keep the latest ds
@@ -14572,8 +14581,7 @@ export class VelocityGrid<TRow = any> {
       // round-trip through the panel checkbox and survive pivot
       // toggles. Mutate the primary def in place when the live
       // map doesn't carry the colId.
-      const def = this.columnDefsMap.get(key)
-        ?? this.pivotEngine.getPrimaryColumnTree()?.leafById.get(key);
+      const def = this.columnForMutation(key);
       if (!def) continue;
       if (def.lockVisible) continue;
       if (def.hide === targetHide) continue;
@@ -14605,11 +14613,30 @@ export class VelocityGrid<TRow = any> {
    *  re-layout + one `columnPinned` event per distinct `pinned` bucket
    *  whose `colIds` lists the actually-changed columns. No-op when
    *  nothing flipped. */
+  /**
+   * The def a column mutation should write to.
+   *
+   * Under pivot the DISPLAYED tree is the cross-tab, so a SOURCE column the
+   * user is still acting on — through the columns panel, a restored layout, or
+   * the public API — is not in `columnDefsMap` at all. It is in the primary
+   * tree, which every resolve produces.
+   *
+   * Without this fallback the mutation silently no-ops: the call succeeds, no
+   * event fires, and nothing changes. `setColumnsVisible` had the fallback;
+   * `setColumnsPinned` and `setColumnWidths` did not, so pinning or resizing
+   * while pivoted did nothing while the same calls worked when not pivoted.
+   * That is the order-dependence this grid keeps being bitten by, so the
+   * lookup is now in one place rather than three.
+   */
+  private columnForMutation(colId: string): ResolvedColDef<TRow> | undefined {
+    return this.columnDefsMap.get(colId)
+      ?? this.pivotEngine.getPrimaryColumnTree()?.leafById.get(colId);
+  }
   setColumnsPinned(keys: string[], pinned: 'left' | 'right' | null): void {
     const targetPinned = pinned ?? undefined;
     const changed: string[] = [];
     for (const key of keys) {
-      const def = this.columnDefsMap.get(key);
+      const def = this.columnForMutation(key);
       if (!def) continue;
       if (def.lockPinned) continue;
       if (def.pinned === targetPinned) continue;
@@ -14636,7 +14663,7 @@ export class VelocityGrid<TRow = any> {
   ): void {
     const changes: Array<{ colId: string; width: number }> = [];
     for (const { key, newWidth } of columnWidths) {
-      const def = this.columnDefsMap.get(key);
+      const def = this.columnForMutation(key);
       if (!def) continue;
       const clamped = Math.max(def.minWidth, Math.min(def.maxWidth, newWidth));
       if (def.width === clamped) continue;
