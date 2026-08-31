@@ -422,6 +422,9 @@ export { registerIcon, registerIcons, hasIcon } from './renderer/icons';
  */
 export const SYNTHETIC_ROW_ID_FIELD = '__vgRowId';
 
+import { TREE_PATH_FIELD } from './types/group';
+export { TREE_PATH_FIELD };
+
 /**
  * Infer the row-ID field name from a `(row) => row.<field>` style accessor.
  * Exported as a top-level function so it can be unit-tested independently of VelocityGrid.
@@ -4170,6 +4173,7 @@ export class VelocityGrid<TRow = any> {
         // the same value the worker's flat `row[rowIdField]` lookup will find.
         // Positional: this is a sparse hydrate window, not an unordered list.
         rows = this.stampSyntheticRowIds(rows, true) ?? rows;
+        rows = this.stampTreePaths(rows) ?? rows;
         // Keep main-side id mirror in sync for selection / external APIs.
         // Skeleton chrome (group/footer/grand-total rows) stays out of the
         // mirror — it is paint state, not data, and forEachNode/getRowNode
@@ -4702,6 +4706,7 @@ export class VelocityGrid<TRow = any> {
   /** Surfaced once (not per row) the first time `getRowId` throws while
    *  stamping synthetic ids — see {@link stampSyntheticRowIds}. */
   private warnedGetRowIdThrew = false;
+  private warnedGetDataPathThrew = false;
 
   /**
    * Materialize `getRowId(row)` into the synthetic id field on rows heading
@@ -4764,6 +4769,51 @@ export class VelocityGrid<TRow = any> {
     return out;
   }
 
+  /**
+   * Stamp each row with its tree path so the worker can build the hierarchy.
+   *
+   * Mirrors {@link stampSyntheticRowIds}: a main-thread callback resolved
+   * here, its result carried into the worker on the row. Rows are copied
+   * rather than mutated — the host still owns the objects it handed us.
+   *
+   * A throwing or non-array `getDataPath` yields no path, which excludes the
+   * row from the tree instead of corrupting it. Warned once, because a
+   * silently missing branch is far harder to diagnose than a console line.
+   */
+  private stampTreePaths(rows: TRow[] | undefined): TRow[] | undefined {
+    if (rows === undefined || rows.length === 0) return rows;
+    const getPath = this.options.getDataPath;
+    if (this.options.treeData !== true || typeof getPath !== 'function') return rows;
+    const out: TRow[] = [];
+    for (const row of rows) {
+      if (row === null || row === undefined || typeof row !== 'object') {
+        out.push(row as TRow);
+        continue;
+      }
+      let path: unknown;
+      try {
+        path = getPath(row);
+      } catch (err) {
+        if (!this.warnedGetDataPathThrew) {
+          this.warnedGetDataPathThrew = true;
+          console.error(
+            '[velocity-grid] getDataPath threw — the row is left out of the tree '
+            + 'rather than given a guessed path.',
+            err,
+          );
+        }
+        out.push(row);
+        continue;
+      }
+      if (!Array.isArray(path) || path.length === 0) {
+        out.push(row);
+        continue;
+      }
+      out.push({ ...(row as object), [TREE_PATH_FIELD]: path.map(String) } as TRow);
+    }
+    return out;
+  }
+
   setRowData(rows: TRow[]): void {
     // `this.ssrm` is now mounted for client-side grids too (local mode), so
     // gate on the row model — otherwise this would reject the very call that
@@ -4772,7 +4822,7 @@ export class VelocityGrid<TRow = any> {
       console.warn('[velocity-grid] setRowData is ignored in serverSide row model — use the datasource');
       return;
     }
-    const stamped = this.stampSyntheticRowIds(rows, false) ?? rows;
+    const stamped = this.stampTreePaths(this.stampSyntheticRowIds(rows, false) ?? rows) ?? rows;
     const heightsByRowId = this.resolveHeightsForRows(stamped);
     // Cycle 7 / Task 8 — refresh the main-side row cache so the external
     // filter + alwaysPass predicates evaluate against current data.
@@ -4824,8 +4874,8 @@ export class VelocityGrid<TRow = any> {
 
   applyTransaction(t: Tx<TRow>): TransactionResult {
     // Foundation: async only. For sync semantics, callers use the worker's sync path via separate cycle.
-    const add = this.stampSyntheticRowIds(t.add, false);
-    const update = this.stampSyntheticRowIds(t.update, false);
+    const add = this.stampTreePaths(this.stampSyntheticRowIds(t.add, false));
+    const update = this.stampTreePaths(this.stampSyntheticRowIds(t.update, false));
     const heightsByRowId = this.resolveHeightsForRows([...(add ?? []), ...(update ?? [])]);
     this.updateRowDataCache(t, 'transaction');
     // A-P6 — capture the touched rowIds BEFORE the round-trip so the
@@ -6806,6 +6856,8 @@ export class VelocityGrid<TRow = any> {
         autoGroupColumnDef: this.options.autoGroupColumnDef as
           GroupingCoordinatorOptions['autoGroupColumnDef'],
         groupRowRenderer: this.options.groupRowRenderer,
+        treeData: this.options.treeData,
+        getDataPath: this.options.getDataPath as GroupingCoordinatorOptions['getDataPath'],
       }),
       workerColumns: () => this.workerColumns(),
       updateWorkerColumns: (cols) =>

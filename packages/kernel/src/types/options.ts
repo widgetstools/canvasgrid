@@ -901,6 +901,26 @@ export interface VelocityGridOptions<TRow = any> {
    *  Design plan:
    *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md` § Task 5. */
   groupDisplayType?: 'singleColumn' | 'multipleColumns' | 'groupRows' | 'custom';
+
+  /**
+   * Tree data — take the hierarchy from the DATA rather than from column
+   * values. Requires {@link getDataPath}. AG parity: `treeData`.
+   *
+   * Replaces row grouping while active: a tree and a column hierarchy are two
+   * sources for the same structure and are never combined.
+   */
+  treeData?: boolean;
+
+  /**
+   * The full path of a row, root first — e.g. `['FX', 'EMEA', 'Book 1']`.
+   * AG parity: `getDataPath`.
+   *
+   * Called on the main thread once per row and the RESULT is shipped to the
+   * worker (a callback cannot cross that boundary), so it must be pure and
+   * cheap. Returning an empty array or a non-array excludes the row from the
+   * tree rather than throwing.
+   */
+  getDataPath?: (data: TRow) => string[];
   /** Cycle 18 / Task 3 — master pivot switch. When `true`, the grid
    *  enters pivot mode: the configured pivot (Column Label) columns'
    *  distinct values become secondary column groups, the value columns

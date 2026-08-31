@@ -38,6 +38,7 @@ import type { ColumnTree } from './columnTree';
 import type { ResolvedColDef } from './propertyChain';
 import type { ColumnLayout } from './layout';
 import type { VelocityGridEvent, VelocityGridOptions, GroupModel, SortModel } from '../types';
+import { TREE_PATH_FIELD } from '../types/group';
 import type { GroupCellValue } from '../renderer/cellRenderers/group';
 import type { CColDef } from '../types';
 import {
@@ -60,6 +61,11 @@ export interface GroupingCoordinatorOptions {
   groupDisplayType?: VelocityGridOptions<unknown>['groupDisplayType'];
   autoGroupColumnDef?: VelocityGridOptions<unknown>['autoGroupColumnDef'];
   groupRowRenderer?: VelocityGridOptions<unknown>['groupRowRenderer'];
+  /** Tree data. Part of THIS interface, not read through a cast: the deps
+   *  object is a deliberately narrowed view of the grid options, so a cast
+   *  compiles and then reads undefined at runtime. */
+  treeData?: VelocityGridOptions<unknown>['treeData'];
+  getDataPath?: VelocityGridOptions<unknown>['getDataPath'];
 }
 
 /** Row group panel host surface consumed on grouping-state changes.
@@ -196,6 +202,16 @@ export class GroupingCoordinator<TRow = unknown> {
    *  (Task 1). The empty model bypasses every group-aware pass cleanly. */
   private groupModel: GroupModel = { rowGroupCols: [] };
 
+  /** The tree path field when `treeData` is on, else undefined. Read from
+   *  options on every model build rather than latched, so a runtime
+   *  `setGridOption('treeData', …)` takes effect on the next model. */
+  private treePathField(): string | undefined {
+    const opts = this.deps.getOptions();
+    return opts.treeData === true && typeof opts.getDataPath === 'function'
+      ? TREE_PATH_FIELD
+      : undefined;
+  }
+
   /** Cycle 15.5 / Task 1 — the canonical mutable grouping state shared
    *  by the three grouping UIs (row group panel, columns tool panel
    *  Row Groups drop zone, header context menu Group / Un-Group items).
@@ -225,7 +241,20 @@ export class GroupingCoordinator<TRow = unknown> {
     private readonly deps: GroupingCoordinatorDeps<TRow>,
     init: { rowGroupCols: string[] },
   ) {
-    this.groupModel = { rowGroupCols: [...init.rowGroupCols] };
+    this.groupModel = { rowGroupCols: [...init.rowGroupCols], treePathField: this.treePathField() };
+    // Tree data has no rowGroupCols to trigger a model, but it still needs
+    // one: the worker must be told the path field, and the auto group column
+    // is where the hierarchy renders. Without this the tree builds nowhere —
+    // stamping the paths onto rows is not enough on its own.
+    //
+    // Deferred to a microtask because the constructor has not finished wiring
+    // the deps this call reaches through (column tree, worker dispatch).
+    if (this.groupModel.treePathField) {
+      queueMicrotask(() => {
+        if (this.deps.isDestroyed()) return;
+        this.setGroupModel({ rowGroupCols: [] });
+      });
+    }
     this.state = new GroupingState({
       rowGroupColumns: init.rowGroupCols,
     });
@@ -283,7 +312,7 @@ export class GroupingCoordinator<TRow = unknown> {
     // the user's expand/collapse set — worker `setGroupModel` resets to
     // defaults on its side, so we snapshot and re-apply after the reply.
     const preservedExpansion = sameOrder ? this.deps.getExpandedKeysMirror() : null;
-    this.groupModel = { rowGroupCols: [...g.rowGroupCols] };
+    this.groupModel = { rowGroupCols: [...g.rowGroupCols], treePathField: this.treePathField() };
     this.rebuildAutoGroupColumn();
     // Cycle 15.5 / Task 1 — sync the GroupingState primitive so any
     // subscribed view (panel, tool-panel zone, context menu)

@@ -136,6 +136,107 @@ interface BuildBucket {
   leafIndices: number[] | null;
 }
 
+/**
+ * Flatten a group tree depth-first into the row order the slicer walks.
+ *
+ * ONE implementation for both shapes, because there are two callers —
+ * `GroupPass` builds the first ordering and `SortPass` rebuilds it after
+ * sorting — and a second copy is how the tree ended up rendering every leaf
+ * twice: SortPass's rebuild applied column-grouping rules to a tree.
+ *
+ * The shapes differ in exactly one rule:
+ *
+ *   columns   every node is a GROUP; rows hang off leaf-level groups and ride
+ *             one depth deeper than the deepest group, so the slicer's depth
+ *             comparison skips a collapsed subtree cleanly.
+ *   tree      a node with no children IS a row, so it emits `row` and no
+ *             `group`; rows ride at their own path depth because depth is
+ *             what positions them in the hierarchy.
+ */
+export interface FlattenOptions {
+  /** Tree data (per-row depth, childless nodes are rows) vs column grouping. */
+  treeMode?: boolean;
+  includeFooter?: boolean;
+  includeTotalFooter?: boolean;
+  removeSingleChildren?: boolean | 'leafGroupsOnly';
+  /** Column mode only: the depth rows ride at. Derived when omitted. */
+  rowDepth?: number;
+}
+
+export function flattenGroupTree(
+  roots: readonly GroupNode[],
+  opts: FlattenOptions = {},
+): FlatOrderEntry[] {
+  const {
+    treeMode = false,
+    includeFooter = false,
+    includeTotalFooter = false,
+    removeSingleChildren = false,
+  } = opts;
+
+  let rowDepth = opts.rowDepth;
+  if (rowDepth === undefined) {
+    let maxGroupDepth = -1;
+    const seedMax = (nodes: readonly GroupNode[]): void => {
+      for (const n of nodes) {
+        if (n.depth > maxGroupDepth) maxGroupDepth = n.depth;
+        if (n.childGroups.length > 0) seedMax(n.childGroups);
+      }
+    };
+    seedMax(roots);
+    rowDepth = maxGroupDepth + 1;
+  }
+
+  const flatOrder: FlatOrderEntry[] = [];
+  const walk = (nodes: readonly GroupNode[]): void => {
+    for (const n of nodes) {
+      const childless = n.childGroups.length === 0;
+
+      if (treeMode && childless) {
+        // The node IS the row. Emitting a group here as well is what produced
+        // a chevron above every leaf with the same values underneath it.
+        const idxs = n.childIndices;
+        for (let i = 0; i < idxs.length; i++) {
+          flatOrder.push({ kind: 'row', rowIndex: idxs[i]!, depth: n.depth });
+        }
+        continue;
+      }
+
+      const skipGroupEntry = !treeMode && n.childCount === 1 && (
+        removeSingleChildren === true
+        || (removeSingleChildren === 'leafGroupsOnly' && childless)
+      );
+      if (!skipGroupEntry) {
+        flatOrder.push({ kind: 'group', key: n.key, depth: n.depth });
+      }
+
+      if (!childless) {
+        walk(n.childGroups);
+        // Tree only: a node can be a real row as well as a parent, so its own
+        // row is emitted after its children rather than being lost.
+        if (treeMode && n.selfRowIndex !== undefined) {
+          flatOrder.push({ kind: 'row', rowIndex: n.selfRowIndex, depth: n.depth + 1 });
+        }
+      } else {
+        const idxs = n.childIndices;
+        for (let i = 0; i < idxs.length; i++) {
+          flatOrder.push({ kind: 'row', rowIndex: idxs[i]!, depth: rowDepth });
+        }
+      }
+
+      if (includeFooter && !skipGroupEntry) {
+        flatOrder.push({ kind: 'footer', key: n.key, depth: n.depth + 1 });
+      }
+    }
+  };
+  walk(roots);
+
+  if (includeFooter && includeTotalFooter && roots.length > 0) {
+    flatOrder.push({ kind: 'footer', key: '', depth: 0 });
+  }
+  return flatOrder;
+}
+
 export class GroupPass<TRow = any> {
   private model: GroupModel = { rowGroupCols: [] };
   private colIndex = new Map<string, WorkerColumn>();
@@ -482,29 +583,11 @@ export class GroupPass<TRow = any> {
     for (const child of root.childByKey.values()) finalise(child);
     const roots = root.node.childGroups;
 
-    const flatOrder: FlatOrderEntry[] = [];
-    const footers = this.includeFooter;
-    const walk = (nodes: readonly GroupNode[]): void => {
-      for (const n of nodes) {
-        if (n.childGroups.length === 0) {
-          // A path nobody extends: AG renders it as a leaf ROW, not a group.
-          const idxs = n.childIndices;
-          for (let i = 0; i < idxs.length; i++) {
-            flatOrder.push({ kind: 'row', rowIndex: idxs[i]!, depth: n.depth });
-          }
-          continue;
-        }
-        flatOrder.push({ kind: 'group', key: n.key, depth: n.depth });
-        walk(n.childGroups);
-        if (footers) {
-          flatOrder.push({ kind: 'footer', key: n.key, depth: n.depth + 1 });
-        }
-      }
-    };
-    walk(roots);
-    if (footers && this.includeTotalFooter && roots.length > 0) {
-      flatOrder.push({ kind: 'footer', key: '', depth: 0 });
-    }
+    const flatOrder = flattenGroupTree(roots, {
+      treeMode: true,
+      includeFooter: this.includeFooter,
+      includeTotalFooter: this.includeTotalFooter,
+    });
 
     return { roots, flatOrder, bypassed: false };
   }

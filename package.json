@@ -32,7 +32,8 @@
     "dev:stomp-ssrm-provider": "concurrently -k -n broker,app -c blue,green \"npm run dev:stomp\" \"wait-on tcp:8082 && npm run dev:ssrm-provider\"",
     "dev:stomp-csrm-provider": "concurrently -k -n broker,app -c blue,green \"npm run dev:stomp\" \"wait-on tcp:8082 && npm run dev:csrm-provider\"",
     "test:e2e": "playwright test",
-    "dev:aggrid": "npm run dev --workspace=aggrid-reference"
+    "dev:aggrid": "npm run dev --workspace=aggrid-reference",
+    "dev:tree": "npm run dev --workspace=velocitygrid-tree-demo"
   },
   "devDependencies": {
     "@openfin/node-adapter": "^43.101.2",

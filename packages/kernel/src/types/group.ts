@@ -28,6 +28,12 @@ export type IAggFunc<TValue = unknown, TResult = unknown, TRow = any> =
 
 /** Cycle 15 / Task 1 — row-group model. The ordered list of colIds that
  *  define the grouping hierarchy. */
+/** Row field carrying the result of `getDataPath`, stamped on the main thread
+ *  so the worker can build the tree. Lives here beside {@link GroupModel}
+ *  because it is part of that contract, and so both the grid and the grouping
+ *  coordinator can reach it without either importing the other. */
+export const TREE_PATH_FIELD = '__vgTreePath';
+
 export interface GroupModel {
   rowGroupCols: string[];
   /**

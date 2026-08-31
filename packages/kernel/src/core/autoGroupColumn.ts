@@ -293,6 +293,18 @@ export function synthesizeAutoGroupColumns<TRow = unknown>(
   const { groupModel, groupDisplayType } = input;
   const fullRowStrip = isGroupRowStripMode(groupDisplayType);
 
+  // Tree data always renders through ONE auto group column, whatever the
+  // display type: the hierarchy comes from the row path, so there are no
+  // per-level source columns to spread across `multipleColumns`, and no
+  // grouped column to name it after. AG does the same, labelling it 'Group'.
+  if (groupModel.treePathField) {
+    return {
+      columns: [buildAutoGroupColumn<TRow>({ override: input.override })],
+      displayType: 'singleColumn',
+      fullRowStrip: false,
+    };
+  }
+
   if (groupModel.rowGroupCols.length === 0) {
     return { columns: [], displayType: groupDisplayType, fullRowStrip: false };
   }

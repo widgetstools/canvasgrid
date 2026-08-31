@@ -56,6 +56,7 @@ import type {
   GroupNode,
   GroupPassOutput,
 } from './groupPass';
+import { flattenGroupTree, TREE_LEVEL_PREFIX } from './groupPass';
 import { ComparatorRegistry, type ComparatorFn } from '../comparatorRegistry';
 import { decodePivotSortTarget } from '../../core/pivotColumns';
 import { encodePivotValueKey, PIVOT_PATH_SEP, type PivotPassOutput } from './pivotPass';
@@ -254,11 +255,18 @@ export class SortPass<TRow = any> {
     // route them to footer chunk slots. Likewise the optional
     // grand-total footer (`includeTotalFooter`) and the elision rule
     // (`removeSingleChildren`) ride through.
+    // Tree mode is detected from the tree itself rather than threaded through
+    // yet another option: a tree node carries the positional level id that
+    // only `applyTree` mints. Getting this wrong is what made every leaf
+    // render as a group with its own row beneath it.
+    const treeMode = roots.length > 0
+      && String(roots[0]!.colId).startsWith(TREE_LEVEL_PREFIX);
     const flatOrder = rebuildFlatOrder(
       roots,
       options.includeFooter === true,
       options.includeTotalFooter === true,
       options.removeSingleChildren ?? false,
+      treeMode,
     );
     return { roots, flatOrder, bypassed: false };
   }
@@ -611,48 +619,9 @@ export function rebuildFlatOrder(
   includeFooter: boolean = false,
   includeTotalFooter: boolean = false,
   removeSingleChildren: boolean | 'leafGroupsOnly' = false,
+  treeMode: boolean = false,
 ): FlatOrderEntry[] {
-  const flatOrder: FlatOrderEntry[] = [];
-  let maxGroupDepth = -1;
-  const seedMax = (nodes: readonly GroupNode[]): void => {
-    for (const n of nodes) {
-      if (n.depth > maxGroupDepth) maxGroupDepth = n.depth;
-      if (n.childGroups.length > 0) seedMax(n.childGroups);
-    }
-  };
-  seedMax(roots);
-  const rowDepth = maxGroupDepth + 1;
-  const walk = (nodes: readonly GroupNode[]): void => {
-    for (const n of nodes) {
-      // Mirrors GroupPass's elision rule, incl. the 'leafGroupsOnly' mode.
-      const skipGroupEntry = n.childCount === 1 && (
-        removeSingleChildren === true
-        || (removeSingleChildren === 'leafGroupsOnly' && n.childGroups.length === 0)
-      );
-      if (!skipGroupEntry) {
-        flatOrder.push({ kind: 'group', key: n.key, depth: n.depth });
-      }
-      if (n.childGroups.length > 0) {
-        walk(n.childGroups);
-      } else {
-        const idxs = n.childIndices;
-        for (let i = 0; i < idxs.length; i++) {
-          flatOrder.push({ kind: 'row', rowIndex: idxs[i]!, depth: rowDepth });
-        }
-      }
-      // Cycle 15 / Task 12 — per-group footer entry. Mirrors the
-      // GroupPass.apply walk: skipped when the group was elided AND
-      // when includeFooter is off. The footer's depth is one deeper
-      // than the parent group's so the slicer's skip-depth logic
-      // drops it on collapse without any special handling.
-      if (includeFooter && !skipGroupEntry) {
-        flatOrder.push({ kind: 'footer', key: n.key, depth: n.depth + 1 });
-      }
-    }
-  };
-  walk(roots);
-  if (includeFooter && includeTotalFooter && roots.length > 0) {
-    flatOrder.push({ kind: 'footer', key: '', depth: 0 });
-  }
-  return flatOrder;
+  return flattenGroupTree(roots, {
+    treeMode, includeFooter, includeTotalFooter, removeSingleChildren,
+  });
 }
