@@ -216,6 +216,7 @@ import {
   foldCalcColumnDefs,
   type CalcProviderShape,
 } from './core/calcSlot';
+import { LiveColumnState, LIVE_COLUMN_KEYS, type LiveColumnKey } from './core/liveColumnState';
 import { buildFormatEvalCtx } from './core/formatEvalMemo';
 import { resolveThemeKind, isDarkColor } from './theming/themeKind';
 import {
@@ -1032,13 +1033,12 @@ function copyColDefDeepish<T>(value: T, seen = new WeakMap<object, unknown>()): 
 }
 
 /**
- * Resolved-def properties the RUNTIME mutates in place — drag-resize,
- * setColumnsVisible, setColumnsPinned, applyColumnState — rather than writing
- * back to the host's `columnDefs`. Every one of these has to be carried
- * across a column rebuild or the user's own change disappears the next time
- * anything re-resolves the tree.
+ * The properties whose "who wins?" question this file has to answer on every
+ * rebuild. Re-exported from the store that owns them rather than restated —
+ * two lists of the same thing is precisely how `hide` and `pinned` ended up
+ * missing from the carry-forward that already handled `width`.
  */
-const LIVE_COLUMN_STATE_KEYS = ['width', 'hide', 'pinned'] as const;
+const LIVE_COLUMN_STATE_KEYS = LIVE_COLUMN_KEYS;
 
 /** Raw (pre-resolve) leaf defs by colId, descending through column groups.
  *  Used to tell "the host declared this property" from "the host never
@@ -1210,6 +1210,10 @@ export class VelocityGrid<TRow = any> {
    *  rebuild can tell a CHANGED host declaration (which wins) from an
    *  unchanged one (which does not). Null until the first rebuild. */
   private prevRawColState: Map<string, Record<string, unknown>> | null = null;
+  /** Durable home for runtime column changes (width / hide / pinned). The
+   *  resolved tree is derived and discarded on every rebuild; this is what
+   *  makes those changes survive one. See core/liveColumnState.ts. */
+  private readonly liveColumnState = new LiveColumnState();
   private columnGroupState!: ColumnGroupState;
   private columnDefsMap: Map<string, ResolvedColDef<TRow>> = new Map();
   private columnOrder: ResolvedColDef<TRow>[] = [];
@@ -10152,56 +10156,46 @@ export class VelocityGrid<TRow = any> {
     const prevLeaves = this.columnDefsMap as Map<string, ResolvedColDef<TRow>> | undefined;
     // Cycle 21d / Task 9 — same calc-provider fold as the constructor path.
     this.columnTree = resolveColumnTree(foldCalcColumnDefs<CColDef<TRow> | CColGroupDef<TRow>>(this.options.columnDefs), defaultColDef ?? this.options.defaultColDef, this.options.columnTypes);
-    // Live column state survives the rebuild. Drag-resize, setColumnsVisible,
-    // setColumnsPinned and applyColumnState all mutate ONLY the resolved def,
-    // never `options.columnDefs` — so re-resolving from the options silently
-    // discards them, and any calc-driven rebuild (editColumn styling a header,
-    // applying a template, Auto format walking every column) reset the user's
-    // widths, un-hid every hidden column, and unpinned every pinned one.
+    // Live column state is an INPUT to the resolve, not something rescued
+    // after it. `width` / `hide` / `pinned` are mutated on the resolved def by
+    // drag-resize, setColumnsVisible, setColumnsPinned and applyColumnState,
+    // and the resolved tree is derived — re-resolving from
+    // `options.columnDefs` discards every one of them. LiveColumnState is
+    // where those changes actually live, so a rebuild just re-applies it.
     //
-    // Width was carried forward here already; `hide` and `pinned` were not,
-    // which is the same defect one property over. Auto format made it obvious
-    // because it edits every matched column at once, so the whole grid
-    // visibly reverted at the click of one button.
-    //
-    // A live value is carried forward UNLESS something explicitly asks for a
-    // different one: a calc override/template that sets the property, or an
-    // incoming colDef that declares it. Both are deliberate statements about
-    // that column and must win; a rebuild is not.
-    if (prevLeaves !== undefined) {
+    // A remembered value yields to anything that deliberately asks for a
+    // different one: a calc override/template that sets the property, or a
+    // host colDef whose value CHANGED since the last resolve. Merely
+    // DECLARING it is not enough — columnDefs almost always carry a width, and
+    // a calc rebuild re-resolves those same defs, so "declared wins" would
+    // throw away every drag-resize.
+    {
       const provider = getCalcProvider();
       const rawLeaves = rawLeafDefsById(this.options.columnDefs ?? []);
       const prevRaw = this.prevRawColState;
-      for (const [colId, def] of this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>) {
-        const prev = prevLeaves.get(colId) as Record<string, unknown> | undefined;
-        if (prev === undefined) continue;
-        const live = def as unknown as Record<string, unknown>;
-        const raw = rawLeaves.get(colId);
-        const rawBefore = prevRaw?.get(colId);
-        let patch: Record<string, unknown> | null = null;
-        let patchLoaded = false;
-        for (const key of LIVE_COLUMN_STATE_KEYS) {
-          const was = prev[key];
-          // `undefined` means the user never set it — nothing to preserve.
-          if (was === undefined || was === live[key]) continue;
-          // Only a CHANGED host declaration outranks the live value. Merely
-          // declaring the property does not: `columnDefs` almost always carry
-          // a width, and a calc rebuild re-resolves those same defs, so
-          // "declared" would throw away every drag-resize.
-          if (rawBefore !== undefined && raw?.[key] !== rawBefore[key]) continue;
-          if (!patchLoaded) {
-            // Resolved lazily: only worth asking once a property actually differs.
-            patch = provider?.resolvedPatchFor(
-              colId,
-              (def as { cellDataType?: string }).cellDataType === 'number' ? 'number' : 'text',
-            ) ?? null;
-            patchLoaded = true;
-          }
-          if (patch?.[key] !== undefined) continue;
-          live[key] = was;
+      const leaves = this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>;
+      const patchCache = new Map<string, Record<string, unknown> | null>();
+      const calcPatchFor = (colId: string): Record<string, unknown> | null => {
+        if (!patchCache.has(colId)) {
+          const leaf = leaves.get(colId) as { cellDataType?: string } | undefined;
+          patchCache.set(colId, provider?.resolvedPatchFor(
+            colId,
+            leaf?.cellDataType === 'number' ? 'number' : 'text',
+          ) ?? null);
         }
-      }
+        return patchCache.get(colId) ?? null;
+      };
+      this.liveColumnState.prune(leaves.keys());
+      this.liveColumnState.applyTo(
+        leaves.values() as unknown as Iterable<{ colId: string }>,
+        (colId, key: LiveColumnKey) => {
+          const rawBefore = prevRaw?.get(colId);
+          if (rawBefore !== undefined && rawLeaves.get(colId)?.[key] !== rawBefore[key]) return true;
+          return calcPatchFor(colId)?.[key] !== undefined;
+        },
+      );
     }
+
     // Baseline for the NEXT rebuild's "did the host change it?" test.
     this.prevRawColState = snapshotRawColState(rawLeafDefsById(this.options.columnDefs ?? []));
     this.columnDefsMap = this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>;
@@ -13349,6 +13343,7 @@ export class VelocityGrid<TRow = any> {
     const maxW = def.maxWidth ?? Number.POSITIVE_INFINITY;
     const newW = Math.max(def.minWidth, Math.min(maxW, base + dx));
     def.width = newW;
+    this.liveColumnState.set(def.colId, { width: newW });
     // Enter drag paint mode once: wipe the retained layer and keep paints
     // on the legacy path for the whole gesture (see columnResizeDragActive).
     if (!this.columnResizeDragActive) {
@@ -14264,6 +14259,7 @@ export class VelocityGrid<TRow = any> {
       if (next == null) continue;
       if (def.width === next) continue;
       def.width = next;
+      this.liveColumnState.set(def.colId, { width: next });
       changes.push({ colId: def.colId, width: next });
     }
     if (changes.length === 0) return;
@@ -14404,6 +14400,7 @@ export class VelocityGrid<TRow = any> {
       const clamped = Math.max(def.minWidth, Math.min(maxW, Math.ceil(measured)));
       if (def.width === clamped) continue;
       def.width = clamped;
+      this.liveColumnState.set(def.colId, { width: clamped });
       changes.push({ colId: def.colId, width: clamped });
     }
     if (changes.length === 0) return;
@@ -14570,6 +14567,10 @@ export class VelocityGrid<TRow = any> {
       if (def.lockVisible) continue;
       if (def.hide === targetHide) continue;
       def.hide = targetHide;
+      // Record it, do not just stamp it: the resolved def is derived and the
+      // next rebuild re-resolves from options.columnDefs, which never carried
+      // this. LiveColumnState is what survives.
+      this.liveColumnState.set(def.colId, { hide: targetHide });
       changed.push(def.colId);
     }
     if (changed.length === 0) return;
@@ -14602,6 +14603,8 @@ export class VelocityGrid<TRow = any> {
       if (def.lockPinned) continue;
       if (def.pinned === targetPinned) continue;
       def.pinned = targetPinned;
+      // Durable: the resolved def is derived, LiveColumnState is not.
+      this.liveColumnState.set(def.colId, { pinned: targetPinned });
       changed.push(def.colId);
     }
     if (changed.length === 0) return;
@@ -14627,6 +14630,7 @@ export class VelocityGrid<TRow = any> {
       const clamped = Math.max(def.minWidth, Math.min(def.maxWidth, newWidth));
       if (def.width === clamped) continue;
       def.width = clamped;
+      this.liveColumnState.set(def.colId, { width: clamped });
       changes.push({ colId: def.colId, width: clamped });
     }
     if (changes.length === 0) return;
