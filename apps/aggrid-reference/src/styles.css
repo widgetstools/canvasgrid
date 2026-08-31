@@ -1,0 +1,32 @@
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+html, body, #app { height: 100%; margin: 0; }
+body {
+  background: #0f1216;
+  color: #e6ebf2;
+  font: 13px/1.5 "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+}
+#app { display: flex; flex-direction: column; }
+.bar {
+  flex: 0 0 auto;
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px;
+  background: #151b23;
+  border-bottom: 1px solid #262f3b;
+}
+.tag {
+  font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+  color: #45bac4; border: 1px solid #266970; border-radius: 3px; padding: 2px 6px;
+}
+.modes { display: flex; gap: 6px; margin-left: 8px; }
+.modes button {
+  appearance: none; cursor: pointer;
+  background: transparent; color: #a6b0bd;
+  border: 1px solid #2a3441; border-radius: 4px;
+  padding: 5px 12px; font: inherit; font-size: 12px;
+}
+.modes button:hover { color: #e6ebf2; border-color: #3a4553; }
+.modes button.is-active { color: #0f1216; background: #45bac4; border-color: #45bac4; font-weight: 600; }
+.modes button:focus-visible { outline: 2px solid #45bac4; outline-offset: 2px; }
+.hint { color: #77828f; font-size: 12px; }
+.grid { flex: 1 1 auto; min-height: 0; }

@@ -7202,7 +7202,7 @@ export class VelocityGrid<TRow = any> {
    *  surface — can resolve header names without round-tripping through
    *  the API surface. Mirrors the `getColumnHeaderName` API entry. */
   getColumnHeaderName(colId: string): string | undefined {
-    return this.columnDefsMap.get(colId)?.headerName;
+    return this.resolveColumnDef(colId)?.headerName;
   }
 
   /**
@@ -7299,16 +7299,14 @@ export class VelocityGrid<TRow = any> {
    *  so cross-section drags (Row Groups → Column Labels) can still
    *  check them. */
   isColumnPivotEnabled(colId: string): boolean {
-    if (this.columnDefsMap.get(colId)?.enablePivot === true) return true;
-    return this.pivotEngine.getPrimaryColumnTree()?.leafById.get(colId)?.enablePivot === true;
+    return this.resolveColumnDef(colId)?.enablePivot === true;
   }
 
   /** Cycle 18 / Task 5 — `true` when the column's resolved colDef carries
    *  `enableValue: true`. Gates whether the columns tool panel + context
    *  menu offer the "add as value/aggregation" affordance. */
   isColumnValueEnabled(colId: string): boolean {
-    if (this.columnDefsMap.get(colId)?.enableValue === true) return true;
-    return this.pivotEngine.getPrimaryColumnTree()?.leafById.get(colId)?.enableValue === true;
+    return this.resolveColumnDef(colId)?.enableValue === true;
   }
 
   /** Cycle 18 / Task 7 — `true` when the column's resolved colDef would
@@ -14581,7 +14579,7 @@ export class VelocityGrid<TRow = any> {
       // round-trip through the panel checkbox and survive pivot
       // toggles. Mutate the primary def in place when the live
       // map doesn't carry the colId.
-      const def = this.columnForMutation(key);
+      const def = this.resolveColumnDef(key);
       if (!def) continue;
       if (def.lockVisible) continue;
       if (def.hide === targetHide) continue;
@@ -14614,21 +14612,23 @@ export class VelocityGrid<TRow = any> {
    *  whose `colIds` lists the actually-changed columns. No-op when
    *  nothing flipped. */
   /**
-   * The def a column mutation should write to.
+   * The def for a colId, wherever it currently lives.
    *
    * Under pivot the DISPLAYED tree is the cross-tab, so a SOURCE column the
    * user is still acting on — through the columns panel, a restored layout, or
    * the public API — is not in `columnDefsMap` at all. It is in the primary
    * tree, which every resolve produces.
    *
-   * Without this fallback the mutation silently no-ops: the call succeeds, no
-   * event fires, and nothing changes. `setColumnsVisible` had the fallback;
-   * `setColumnsPinned` and `setColumnWidths` did not, so pinning or resizing
-   * while pivoted did nothing while the same calls worked when not pivoted.
-   * That is the order-dependence this grid keeps being bitten by, so the
-   * lookup is now in one place rather than three.
+   * Without this fallback a WRITE silently no-ops (the call succeeds, no event
+   * fires, nothing changes) and a READ silently returns nothing.
+   * `setColumnsVisible` had the fallback; `setColumnsPinned`,
+   * `setColumnWidths` and `getColumnHeaderName` did not — so pinning or
+   * resizing while pivoted did nothing, and the columns tool panel listed raw
+   * colIds (`notionalAmount`) instead of header names (`Notional`) the moment
+   * you pivoted. Same defect, three different symptoms, which is why the
+   * lookup now lives in one place instead of being re-derived per caller.
    */
-  private columnForMutation(colId: string): ResolvedColDef<TRow> | undefined {
+  private resolveColumnDef(colId: string): ResolvedColDef<TRow> | undefined {
     return this.columnDefsMap.get(colId)
       ?? this.pivotEngine.getPrimaryColumnTree()?.leafById.get(colId);
   }
@@ -14636,7 +14636,7 @@ export class VelocityGrid<TRow = any> {
     const targetPinned = pinned ?? undefined;
     const changed: string[] = [];
     for (const key of keys) {
-      const def = this.columnForMutation(key);
+      const def = this.resolveColumnDef(key);
       if (!def) continue;
       if (def.lockPinned) continue;
       if (def.pinned === targetPinned) continue;
@@ -14663,7 +14663,7 @@ export class VelocityGrid<TRow = any> {
   ): void {
     const changes: Array<{ colId: string; width: number }> = [];
     for (const { key, newWidth } of columnWidths) {
-      const def = this.columnForMutation(key);
+      const def = this.resolveColumnDef(key);
       if (!def) continue;
       const clamped = Math.max(def.minWidth, Math.min(def.maxWidth, newWidth));
       if (def.width === clamped) continue;

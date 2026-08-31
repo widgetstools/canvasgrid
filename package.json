@@ -31,7 +31,8 @@
     "lint": "eslint \"packages/*/src/**/*.ts\" \"packages/*/tests/**/*.ts\" \"apps/*/src/**/*.{ts,tsx}\" \"apps/*/e2e/**/*.ts\"",
     "dev:stomp-ssrm-provider": "concurrently -k -n broker,app -c blue,green \"npm run dev:stomp\" \"wait-on tcp:8082 && npm run dev:ssrm-provider\"",
     "dev:stomp-csrm-provider": "concurrently -k -n broker,app -c blue,green \"npm run dev:stomp\" \"wait-on tcp:8082 && npm run dev:csrm-provider\"",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "dev:aggrid": "npm run dev --workspace=aggrid-reference"
   },
   "devDependencies": {
     "@openfin/node-adapter": "^43.101.2",
