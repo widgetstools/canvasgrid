@@ -57,6 +57,11 @@ import type { GroupModel } from '../../types';
 import type { CalcValueSource } from './calcPass';
 import { createStaticFunction } from '../staticFunction';
 
+/** Level id for a tree node. Tree levels are positional, not columns, so they
+ *  cannot borrow a colId — this keeps the composite-key grammar intact while
+ *  staying unambiguous against any real column. */
+export const TREE_LEVEL_PREFIX = '__vgTreeLevel';
+
 export interface GroupNode {
   /** Stable composite key — `${colId}:${value}` per level (each segment
    *  escaped via `escapeGroupKeySegment`), joined by `::` for nested
@@ -78,6 +83,15 @@ export interface GroupNode {
   childGroups: GroupNode[];
   /** Total descendant LEAF rows under this node (recursive). */
   childCount: number;
+  /**
+   * TREE DATA ONLY — the input index of the row that IS this node.
+   *
+   * Column grouping has no equivalent: a group row there is synthetic, so
+   * this stays undefined. In a tree a path like `['FX','EMEA']` can be both a
+   * real row and the parent of deeper paths, and the node has to be able to
+   * render its own values rather than only aggregates.
+   */
+  selfRowIndex?: number;
 }
 
 export type FlatOrderEntry =
@@ -204,7 +218,7 @@ export class GroupPass<TRow = any> {
         seen.add(colId);
       }
     }
-    this.model = { rowGroupCols: cols.slice() };
+    this.model = { rowGroupCols: cols.slice(), treePathField: model.treePathField };
   }
 
   /** Swap column metadata in place. Preserves the current model — the
@@ -244,7 +258,7 @@ export class GroupPass<TRow = any> {
 
   /** Read-only access for tests + the slicer. */
   getModel(): GroupModel {
-    return { rowGroupCols: this.model.rowGroupCols.slice() };
+    return { rowGroupCols: this.model.rowGroupCols.slice(), treePathField: this.model.treePathField };
   }
 
   /** Cycle 15 / Task 9 — install the default-expansion rule. Called
@@ -376,9 +390,132 @@ export class GroupPass<TRow = any> {
     return set;
   }
 
+  /**
+   * Tree data — build the hierarchy from each row's own path instead of from
+   * column values.
+   *
+   * Structurally this is the same tree row grouping produces, with two
+   * differences that the column path cannot express:
+   *
+   *   - Depth is PER ROW. `['FX','EMEA','Book 1']` and `['FX','EMEA']` are
+   *     both valid and sit at different depths in the same tree.
+   *   - A node can have its OWN row as well as children. `['FX','EMEA']` may
+   *     be a real row and also the parent of `['FX','EMEA','Book 1']`. Column
+   *     grouping never has this: a group row is synthetic by construction.
+   *
+   * Everything else is deliberately shared with `applyColumns` — the same
+   * `GroupNode`, the same `BuildBucket`, the same finalise/flatten vocabulary
+   * — so expand/collapse, aggregation, footers and the auto group column keep
+   * working without a second implementation to hold in sync.
+   *
+   * Nodes with children emit as `group` (expandable); nodes without emit as
+   * `row`, which is how AG renders the leaves of a tree. Intermediate paths
+   * that no row occupies still become nodes — AG calls these filler nodes.
+   */
+  private applyTree(inputIds: readonly string[], pathField: string): GroupPassOutput {
+    const root: BuildBucket = {
+      node: {
+        key: '', value: null, depth: -1, colId: '',
+        childIndices: new Uint32Array(0), childGroups: [], childCount: 0,
+      },
+      childByKey: new Map(),
+      leafIndices: null,
+    };
+
+    let sawAnyPath = false;
+    for (let i = 0; i < inputIds.length; i++) {
+      const rowId = inputIds[i]!;
+      const row = this.store.getById(rowId);
+      if (row === undefined) continue;
+      const rawPath = (row as Record<string, unknown>)[pathField];
+      if (!Array.isArray(rawPath) || rawPath.length === 0) continue;
+      sawAnyPath = true;
+
+      let parent: BuildBucket = root;
+      for (let d = 0; d < rawPath.length; d++) {
+        const seg = rawPath[d];
+        const keyPart = seg == null ? '' : '' + seg;
+        let bucket = parent.childByKey.get(keyPart);
+        if (bucket === undefined) {
+          const parentKey = parent.node.key;
+          // Same composite-key grammar as column grouping so `expandedKeys`,
+          // `splitGroupKey` and every other consumer keep working unchanged.
+          // The level id is the depth rather than a colId — a tree level is
+          // not a column.
+          const escapedSeg = escapeGroupKeySegment(TREE_LEVEL_PREFIX + d)
+            + ':' + escapeGroupKeySegment(keyPart);
+          const node: GroupNode = {
+            key: parentKey === '' ? escapedSeg : parentKey + '::' + escapedSeg,
+            value: seg,
+            depth: d,
+            colId: TREE_LEVEL_PREFIX + d,
+            childIndices: new Uint32Array(0),
+            childGroups: [],
+            childCount: 0,
+          };
+          bucket = { node, childByKey: new Map(), leafIndices: [] };
+          parent.childByKey.set(keyPart, bucket);
+          parent.node.childGroups.push(node);
+        }
+        if (d === rawPath.length - 1) {
+          // This row IS this node. Recorded rather than pushed as an
+          // anonymous leaf, so the node can render the row's own values.
+          bucket.node.selfRowIndex = i;
+          bucket.leafIndices!.push(i);
+        }
+        parent = bucket;
+      }
+    }
+
+    if (!sawAnyPath) return { roots: [], flatOrder: [], bypassed: true };
+
+    // childCount counts descendant DATA rows, self included, so a parent that
+    // is also a row is not undercounted.
+    const finalise = (bucket: BuildBucket): number => {
+      const node = bucket.node;
+      let total = bucket.leafIndices !== null ? bucket.leafIndices.length : 0;
+      node.childIndices = Uint32Array.from(bucket.leafIndices ?? []);
+      for (const child of bucket.childByKey.values()) total += finalise(child);
+      node.childCount = total;
+      return total;
+    };
+    for (const child of root.childByKey.values()) finalise(child);
+    const roots = root.node.childGroups;
+
+    const flatOrder: FlatOrderEntry[] = [];
+    const footers = this.includeFooter;
+    const walk = (nodes: readonly GroupNode[]): void => {
+      for (const n of nodes) {
+        if (n.childGroups.length === 0) {
+          // A path nobody extends: AG renders it as a leaf ROW, not a group.
+          const idxs = n.childIndices;
+          for (let i = 0; i < idxs.length; i++) {
+            flatOrder.push({ kind: 'row', rowIndex: idxs[i]!, depth: n.depth });
+          }
+          continue;
+        }
+        flatOrder.push({ kind: 'group', key: n.key, depth: n.depth });
+        walk(n.childGroups);
+        if (footers) {
+          flatOrder.push({ kind: 'footer', key: n.key, depth: n.depth + 1 });
+        }
+      }
+    };
+    walk(roots);
+    if (footers && this.includeTotalFooter && roots.length > 0) {
+      flatOrder.push({ kind: 'footer', key: '', depth: 0 });
+    }
+
+    return { roots, flatOrder, bypassed: false };
+  }
+
   /** Build the group tree off `inputIds`. The bypass branch allocates
    *  nothing — the empty-model fast path is free. */
   apply(inputIds: readonly string[]): GroupPassOutput {
+    // Tree data replaces the column hierarchy outright — the two are
+    // alternative sources for the same structure, never combined.
+    const treeField = this.model.treePathField;
+    if (treeField) return this.applyTree(inputIds, treeField);
     const cols = this.model.rowGroupCols;
     if (cols.length === 0) {
       return { roots: [], flatOrder: [], bypassed: true };

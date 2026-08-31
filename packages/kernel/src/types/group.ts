@@ -28,4 +28,19 @@ export type IAggFunc<TValue = unknown, TResult = unknown, TRow = any> =
 
 /** Cycle 15 / Task 1 — row-group model. The ordered list of colIds that
  *  define the grouping hierarchy. */
-export interface GroupModel { rowGroupCols: string[] }
+export interface GroupModel {
+  rowGroupCols: string[];
+  /**
+   * Tree data. Names the row field holding a pre-computed `string[]` path,
+   * stamped on the main thread from `getDataPath` (the callback cannot cross
+   * the worker boundary, so the PATH does instead — the same trick
+   * `stampSyntheticRowIds` uses for `getRowId`).
+   *
+   * When set it REPLACES `rowGroupCols` as the hierarchy source: the tree
+   * comes from the data rather than from column values. Everything
+   * downstream — expand/collapse, aggregation, the auto group column, the
+   * flatten vocabulary — is shared with row grouping, because a tree is the
+   * same structure with a per-row depth instead of a fixed one.
+   */
+  treePathField?: string;
+}
