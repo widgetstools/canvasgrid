@@ -14,13 +14,15 @@
  * as one surface with the grid. Icons are inline single-path SVG (Lucide
  * geometry) — no external asset, crisp at any DPI.
  */
-import type { VelocityGridExtension, VelocityGridExtContext, ToolbarItem, ToolbarItemInstance } from '../extension/types';
+import type { VelocityGridExtContext, ToolbarItem, ToolbarItemInstance } from '../extension/types';
+import type { ExtensionSpec } from '../extension/registry';
 import { menu, mirrorThemeClass, svg, iconButton } from './ui';
 import { layoutsItem, layoutSaveItem } from './layoutsMenu';
 import { alertsBadgeItem } from './alertsChrome';
 import { savedFiltersItem } from './savedFiltersToolbar';
 import { runAutoFormat, type AutoFormatGrid } from './autoFormat';
 import { injectChromeTokens } from '../ui/chromeTokens';
+import { TITLE_BAR_ORDER } from './order';
 
 export interface TitleBarOptions {
   /** Brand label shown at the far left (e.g. the grid's name). */
@@ -36,17 +38,25 @@ export interface TitleBarOptions {
   historyEnabled?: boolean;
 }
 
-/** Build the full title-bar extension set. Compose into `ext.extensions`
- *  (removing the default `settings-launcher`/`save` first — this set
- *  supersedes them with the richer bar).
+/** Build the full title-bar extension set. Compose into `ext.extensions` — it
+ *  supersedes the default bundle's plain `settings-launcher`/`save` buttons and
+ *  now drops them itself rather than asking every consumer to remember: leaving
+ *  `save` mounted put a second, unrelated save control (profile save) beside
+ *  the layout disk, and the two write through different persisters.
+ *
+ *  Listed in visual order, though placement comes from each item's
+ *  {@link TITLE_BAR_ORDER} value — the array's order is not the bar's.
  *
  *  Named views live under **layouts** only — "profile" was the same concept
  *  in MarketsGrid jargon; we do not mount a second switcher. */
-export function titleBarExtensions(opts: TitleBarOptions = {}): VelocityGridExtension[] {
+export function titleBarExtensions(opts: TitleBarOptions = {}): ExtensionSpec[] {
   injectTitleBarStyles();
   return [
+    { remove: 'save' },
+    // primary-left
     brandItem(opts.name ?? 'VelocityGrid'),
     savedFiltersItem(),
+    // primary-right
     searchItem(),
     alertsBadgeItem(),
     layoutsItem(),
@@ -56,8 +66,8 @@ export function titleBarExtensions(opts: TitleBarOptions = {}): VelocityGridExte
       onDateChange: opts.onDateChange,
       historyEnabled: opts.historyEnabled !== false,
     }),
-    overflowItem(),
     settingsItem(),
+    overflowItem(),
   ];
 }
 
@@ -119,13 +129,14 @@ const ICON = {
 function item(
   id: string,
   slot: ToolbarItem['slot'],
+  order: number,
   render: (host: HTMLElement, ctx: VelocityGridExtContext) => ToolbarItemInstance,
 ): ToolbarItem {
-  return { id, kind: 'toolbar-item', slot, init() {}, render };
+  return { id, kind: 'toolbar-item', slot, order, init() {}, render };
 }
 
 function brandItem(name: string): ToolbarItem {
-  return item('brand', 'primary-left', (host) => {
+  return item('brand', 'primary-left', TITLE_BAR_ORDER.brand, (host) => {
     const wrap = document.createElement('div');
     wrap.className = 'vgext-brand';
     const label = document.createElement('span');
@@ -174,7 +185,7 @@ function brandItem(name: string): ToolbarItem {
 function searchItem(): ToolbarItem {
   // Sit in the right cluster immediately before the alerts badge so search
   // and bell are adjacent (not split by the center slot / right-cluster rule).
-  return item('search', 'primary-right', (host, ctx) => {
+  return item('search', 'primary-right', TITLE_BAR_ORDER.search, (host, ctx) => {
     const wrap = document.createElement('div');
     wrap.className = 'vgext-search';
     const btn = iconButton(ICON.search, 'Search grid');
@@ -188,7 +199,9 @@ function searchItem(): ToolbarItem {
       wrap.classList.toggle('vgext-search-open', on);
       if (on) input.focus();
     };
-    btn.addEventListener('click', () => expand(input.hidden));
+    // `hidden` is `boolean | 'until-found'` in current lib.dom, so compare
+    // rather than pass it through: any non-`false` value means collapsed.
+    btn.addEventListener('click', () => expand(input.hidden !== false));
     input.addEventListener('input', () => {
       // Best-effort quick filter — harmless no-op if the kernel build
       // doesn't expose the option.
@@ -207,7 +220,7 @@ function dateItem(opts: {
   onDateChange?: (iso: string) => void;
   historyEnabled: boolean;
 }): ToolbarItem {
-  return item('date', 'primary-right', (host, ctx) => {
+  return item('date', 'primary-right', TITLE_BAR_ORDER.date, (host, ctx) => {
     let value = isoToDate(opts.initial) ? opts.initial : todayIsoDate();
     let pop: HTMLElement | null = null;
     let viewYear = 0;
@@ -410,7 +423,7 @@ function dateItem(opts: {
 
 function settingsItem(): ToolbarItem {
   // Sliders icon hosts the More menu (Columns / toolbars / theme).
-  return item('settings-launcher', 'primary-right', (host, ctx) => {
+  return item('settings-launcher', 'primary-right', TITLE_BAR_ORDER.settingsLauncher, (host, ctx) => {
     const btn = iconButton(ICON.sliders, 'More');
     btn.classList.add('vgext-settings-launcher');
     const offAutoFormat = ctx.events.on('auto-format', () => {
@@ -507,7 +520,7 @@ function settingsItem(): ToolbarItem {
 
 function overflowItem(): ToolbarItem {
   // Ellipsis opens the settings drawer.
-  return item('overflow', 'primary-right', (host, ctx) => {
+  return item('overflow', 'primary-right', TITLE_BAR_ORDER.overflow, (host, ctx) => {
     const btn = iconButton(ICON.more, 'Settings');
     btn.addEventListener('click', () => ctx.events.emit({ type: 'open-settings', id: 'grid-options' }));
     host.appendChild(btn);

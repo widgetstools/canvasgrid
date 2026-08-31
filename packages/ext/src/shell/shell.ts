@@ -140,6 +140,13 @@ export class ShellLayout {
     injectShellStyles();
     root.classList.add('vgext-root');
     this.titlebar = el('vgext-titlebar');
+    // Create the three primary slots up-front, in visual order. `sub()` builds
+    // a slot on first use, so leaving this to mount order meant whichever slot
+    // an extension happened to touch first became the left-most child — and
+    // the default bundle's `primary-right` buttons always mount before any
+    // `primary-left` item, which rendered the utility cluster to the LEFT of
+    // the caption.
+    for (const slot of PRIMARY_SLOTS) sub(this.titlebar, slot);
     this.ribbon = el('vgext-ribbon');
     this.gridMount = el('vgext-grid');
     this.sheet = el('vgext-sheet');
@@ -159,7 +166,8 @@ export class ShellLayout {
   mountToolbarItem(item: ToolbarItem, ctx: VelocityGridExtContext): void {
     const host = el('vgext-toolbar-item');
     host.dataset.itemId = item.id;
-    this.slotHost(item.slot).appendChild(host);
+    host.dataset.order = String(item.order ?? UNORDERED_TOOLBAR_ITEM);
+    insertByOrder(this.slotHost(item.slot), host);
     this.toolbarInstances.push(item.render(host, ctx));
   }
 
@@ -436,12 +444,43 @@ function el(cls: string): HTMLElement {
   d.className = cls;
   return d;
 }
+/** The title bar's slots, in the order they must appear. */
+const PRIMARY_SLOTS = ['primary-left', 'primary-center', 'primary-right'] as const;
+
+/** Items declaring no `order` sort after every item that does, so a consumer's
+ *  extra button appends to the cluster rather than displacing the chrome. */
+const UNORDERED_TOOLBAR_ITEM = 1000;
+
+/** Place `host` in `slot` by its `data-order`: before the first sibling that
+ *  sorts after it, which leaves equal orders in registration order.
+ *
+ *  Position has to be resolved here rather than by append order, because mount
+ *  order is not the declared order: `ExtensionRegistry.register` keeps an id's
+ *  ORIGINAL index when a later spec replaces it, so the title bar's
+ *  `settings-launcher` inherited the default bundle's index 0 and rendered at
+ *  the head of the cluster. */
+function insertByOrder(slot: HTMLElement, host: HTMLElement): void {
+  const order = Number(host.dataset.order);
+  const after = Array.from(slot.children).find(
+    (c) => Number((c as HTMLElement).dataset.order) > order,
+  );
+  slot.insertBefore(host, after ?? null);
+}
+
 /** Get-or-create a stable named child of `parent`. */
 function sub(parent: HTMLElement, name: string): HTMLElement {
   const key = `vgext-slot-${name}`;
-  let found = parent.querySelector<HTMLElement>(`:scope > .${key}`);
-  if (!found) { found = el(key); parent.appendChild(found); }
-  return found;
+  // Scan children rather than `querySelector(':scope > …')`. `:scope` is not
+  // supported by every DOM implementation this runs against (the test DOM
+  // matches nothing with it), and the failure mode is silent: the lookup finds
+  // no existing slot, so every call appends ANOTHER one and the items scatter
+  // across duplicate containers. A child scan has no such dependency.
+  for (const c of Array.from(parent.children)) {
+    if ((c as HTMLElement).classList.contains(key)) return c as HTMLElement;
+  }
+  const made = el(key);
+  parent.appendChild(made);
+  return made;
 }
 
 /** Inject the shell chrome CSS once per document. Kept in JS (not a
@@ -533,8 +572,13 @@ const SHELL_CSS = `
 .vgext-titlebar > .vgext-slot-primary-left > .vgext-toolbar-item[data-item-id="brand"] {
   flex: 0 0 auto;
 }
+/* Content-width, shrink-only. Growing it stretched an EMPTY pill strip across
+ * the whole left half, stranding the two funnel buttons in mid-bar instead of
+ * beside the caption. min-width:0 still lets it shrink once there are more
+ * pills than fit, and the strip's own scroller takes over from there.
+ * (No backticks in here — this block lives inside a JS template literal.) */
 .vgext-titlebar > .vgext-slot-primary-left > .vgext-toolbar-item[data-item-id="saved-filters"] {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
 }
 .vgext-titlebar > .vgext-slot-primary-right > .vgext-toolbar-item {

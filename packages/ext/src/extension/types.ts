@@ -140,6 +140,15 @@ export interface ToolbarItemInstance { destroy(): void; refresh?(): void }
 export interface ToolbarItem extends VelocityGridExtension {
   kind: 'toolbar-item';
   slot: ToolbarSlot;
+  /**
+   * Position within the slot, ascending. Ties keep registration order, and
+   * items that declare nothing sort after every item that does — so a
+   * consumer's extra button lands at the end of the cluster instead of at its
+   * head. Without this, position fell out of registration order, which the
+   * registry does not preserve when a spec replaces a default (see
+   * {@link TITLE_BAR_ORDER}).
+   */
+  order?: number;
   toggleable?: boolean;
   render(host: HTMLElement, ctx: VelocityGridExtContext): ToolbarItemInstance;
 }

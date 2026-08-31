@@ -18,6 +18,7 @@ import type {
 } from '@wellsfargo-starui/velocity-grid';
 import { menu, svg, iconButton } from './ui';
 import { saveConfigToLocalStorage } from '../configStorage';
+import { TITLE_BAR_ORDER } from './order';
 
 /** Kernel layout surface this module drives — structural subset of VelocityGridApi
  *  so the module stays testable against a stub. Exported (but NOT re-exported
@@ -81,7 +82,7 @@ export function uniqueCopyName(base: string, existing: string[]): string {
  *  (`velocity-grid:instance:<gridId>`). Requires a construction `gridId`. */
 export function layoutSaveItem(): ToolbarItem {
   return {
-    id: 'layout-save', kind: 'toolbar-item', slot: 'primary-right',
+    id: 'layout-save', kind: 'toolbar-item', slot: 'primary-right', order: TITLE_BAR_ORDER.layoutSave,
     init() {},
     render(host, ctx) {
       const grid = surface(ctx);
@@ -246,7 +247,7 @@ export function handleImportText(
 
 export function layoutsItem(): ToolbarItem {
   return {
-    id: 'layouts', kind: 'toolbar-item', slot: 'primary-right',
+    id: 'layouts', kind: 'toolbar-item', slot: 'primary-right', order: TITLE_BAR_ORDER.layouts,
     init() {},
     render(host, ctx) {
       injectLayoutsMenuStyles();

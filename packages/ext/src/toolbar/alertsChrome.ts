@@ -5,6 +5,7 @@
 import type { AlertEvent, AlertSeverity } from '@wellsfargo-starui/velocity-grid/rules';
 import type { ToolbarItem, ToolbarItemInstance } from '../extension/types';
 import { iconButton } from './ui';
+import { TITLE_BAR_ORDER } from './order';
 
 const BELL = 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0';
 
@@ -133,6 +134,7 @@ export function alertsBadgeItem(): ToolbarItem {
     id: 'notifications',
     kind: 'toolbar-item',
     slot: 'primary-right',
+    order: TITLE_BAR_ORDER.notifications,
     init() { ensureBadgeStyles(); },
     render(host, ctx): ToolbarItemInstance {
       const wrap = document.createElement('div');

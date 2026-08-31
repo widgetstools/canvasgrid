@@ -50,4 +50,34 @@ for (const demo of DEMOS) {
     expect(state.activeProvider).toBe(demo.providerId);
     expect(pageErrors).toEqual([]);
   });
+
+  test(`${demo.name} title bar renders in the declared left-to-right order`, async ({ page }) => {
+    await page.goto(demo.url);
+    await page.waitForSelector('.vgext-titlebar .vgext-toolbar-item', { timeout: 45_000 });
+    await page.waitForTimeout(2000);
+
+    // Read PAINTED position, not DOM order. The bug this pins was a layout
+    // one — the utility cluster rendered left of the caption — and the
+    // happy-dom unit test in packages/ext cannot measure that.
+    const painted = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>('.vgext-titlebar .vgext-toolbar-item')]
+        .map((c) => ({ id: c.dataset.itemId!, x: c.getBoundingClientRect().left }))
+        .sort((a, b) => a.x - b.x)
+        .map((c) => c.id));
+
+    expect(painted).toEqual([
+      'brand',              // caption
+      'saved-filters',      // filter pills + funnels, beside the caption
+      'search',
+      'notifications',      // alerts
+      'layouts',            // layout selector
+      'layout-save',
+      'date',
+      'settings-launcher',  // toolbar selector (Columns / toolbars / theme)
+      'overflow',           // ellipsis menu
+    ]);
+    // The default bundle's profile Save is dropped — it duplicated the layout
+    // disk beside it and wrote through a different persister.
+    expect(painted).not.toContain('save');
+  });
 }

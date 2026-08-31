@@ -14,6 +14,7 @@ import {
   subtractFilterModel,
   type SavedFilterShape,
 } from './savedFiltersLogic';
+import { TITLE_BAR_ORDER } from './order';
 
 export interface SavedFilter {
   id: string;
@@ -111,6 +112,7 @@ export function savedFiltersItem(): ToolbarItem {
     id: 'saved-filters',
     kind: 'toolbar-item',
     slot: 'primary-left',
+    order: TITLE_BAR_ORDER.savedFilters,
     init() { ensureStyles(); },
     render(host, ctx): ToolbarItemInstance {
       ensureStyles();
