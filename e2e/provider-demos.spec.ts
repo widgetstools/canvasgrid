@@ -152,6 +152,94 @@ for (const demo of DEMOS) {
 }
 
 /**
+ * Auto format must not undo the user's column state, and must not drop the
+ * pivot cross-tab.
+ *
+ * Auto format edits every matched column in one pass, so it made two rebuild
+ * defects unmissable: live `hide` / `pinned` were not carried across a column
+ * rebuild (only `width` was), and under pivot the rebuild installed the SOURCE
+ * columns over the synthetic cross-tab while `isPivotMode()` stayed true — the
+ * grid painted primary columns with a Column Labels chip pointing at nothing.
+ *
+ * Run against CSRM because it takes rows synchronously; the rebuild path under
+ * test is kernel-side and identical for both row models.
+ */
+test('Auto format preserves column state and the pivot cross-tab', async ({ page }) => {
+  await page.goto('http://localhost:5210/');
+  await page.waitForFunction(() => (window as any).__demo?.ext !== undefined, { timeout: 45_000 });
+  await page.waitForTimeout(5000);
+
+  const columnState = () => page.evaluate(() => {
+    const st = (window as any).__demo.grid.getColumnState();
+    return {
+      hidden: st.filter((c: any) => c.hide).map((c: any) => c.colId),
+      pinned: st.filter((c: any) => c.pinned).map((c: any) => `${c.colId}:${c.pinned}`),
+      tickerWidth: st.find((c: any) => c.colId === 'ticker')?.width,
+    };
+  });
+  const autoFormat = async () => {
+    await page.evaluate(() => (window as any).__demo.ext.context.events.emit({ type: 'auto-format' }));
+    await page.waitForTimeout(3000);
+  };
+
+  await page.evaluate(() => {
+    const g = (window as any).__demo.grid;
+    g.setColumnsVisible(['ticker', 'instrumentType'], false);
+    g.setColumnsPinned(['desk'], 'left');
+    g.setColumnWidths([{ key: 'ticker', newWidth: 222 }]);
+  });
+  await page.waitForTimeout(1000);
+
+  const before = await columnState();
+  expect(before.hidden).toEqual(['ticker', 'instrumentType']);
+  expect(before.pinned).toEqual(['desk:left']);
+  expect(before.tickerWidth).toBe(222);
+
+  await autoFormat();
+  expect(await columnState()).toEqual(before);
+
+  // Now the pivot half: build a cross-tab, then auto format over the top.
+  await page.evaluate(async () => {
+    const g = (window as any).__demo.grid;
+    g.setRowData(Array.from({ length: 300 }, (_, i) => ({
+      positionId: 'p' + i, ticker: 'T' + (i % 7),
+      desk: ['FX', 'Rates', 'Credit'][i % 3], region: ['EMEA', 'AMER', 'APAC'][i % 3],
+      instrumentType: 'Bond', notionalAmount: 1000 + i, marketValue: 2000 + i,
+      pnl: i * 10, dailyPnl: i,
+    })));
+    await new Promise((r) => setTimeout(r, 1200));
+    g.setRowGroupColumns(['desk']);
+    g.setPivotColumns(['region']);
+    g.setValueColumns([{ colId: 'pnl', aggFunc: 'sum' }]);
+    g.setPivotMode(true);
+    await new Promise((r) => setTimeout(r, 3500));
+  });
+
+  const pivotState = () => page.evaluate(() => {
+    const g = (window as any).__demo.grid;
+    return {
+      mode: g.isPivotMode(),
+      resultColumns: g.getPivotResultColumns().length,
+      // What is actually on screen — a rebuild left the model intact and
+      // only the painted tree wrong, so the model alone would not catch it.
+      paintedPivotHeaders: (g.getColumnState() ?? [])
+        .filter((c: any) => String(c.colId).startsWith('pivotcol')).length
+        + g.getPivotResultColumns().filter((id: string) => g.getHeaderBoundsAt(id) !== null).length,
+    };
+  });
+
+  const pivotBefore = await pivotState();
+  expect(pivotBefore.mode).toBe(true);
+  expect(pivotBefore.resultColumns).toBe(3);
+  expect(pivotBefore.paintedPivotHeaders).toBeGreaterThan(0);
+
+  await autoFormat();
+
+  // The cross-tab is still the thing being painted, not the source columns.
+  expect(await pivotState()).toEqual(pivotBefore);
+});
+
+/**
  * SSRM status bar: `Total Rows` is the unfiltered book, `Rows` is what the
  * filter left. They used to print the same number, because server-side
  * `getTotalRowCount()` just returned the displayed count.

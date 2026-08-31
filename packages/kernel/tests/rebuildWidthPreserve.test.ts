@@ -75,6 +75,16 @@ function widthOf(grid: VelocityGrid<any>, colId: string): number | undefined {
   return grid.getColumnState().find((c) => c.colId === colId)?.width;
 }
 
+function hiddenIds(grid: VelocityGrid<any>): string[] {
+  return grid.getColumnState().filter((c) => c.hide).map((c) => c.colId);
+}
+
+function pinnedIds(grid: VelocityGrid<any>): string[] {
+  return grid.getColumnState()
+    .filter((c) => c.pinned)
+    .map((c) => `${c.colId}:${c.pinned}`);
+}
+
 describe('rebuildColumns — live width preservation', () => {
   it('a resized width survives a calc-driven rebuild (style-only patch)', () => {
     const { grid, host } = mountGrid();
@@ -99,6 +109,77 @@ describe('rebuildColumns — live width preservation', () => {
       resolvedPatchFor: (colId) => colId === 'a' ? { width: 260 } : null,
     }));
     expect(widthOf(grid, 'a')).toBe(260);    // override width beats carry-over
+    grid.destroy(); host.remove();
+  });
+});
+
+/**
+ * Visibility and pinning are live state too — mutated on the resolved def by
+ * setColumnsVisible / setColumnsPinned, never written back to `columnDefs`.
+ * Neither was carried across a rebuild, so any calc mutation un-hid every
+ * hidden column and unpinned every pinned one: the same defect as width, one
+ * property over.
+ *
+ * Auto format is what made it obvious — it edits every matched column in a
+ * single pass, so one click reverted the whole grid. The reported symptom was
+ * "auto format makes all the columns visible without syncing the columns side
+ * bar", and the side bar was the half telling the truth.
+ */
+describe('rebuildColumns — live visibility and pinning', () => {
+  it('a hidden column stays hidden across a calc-driven rebuild', () => {
+    const { grid, host } = mountGrid();
+    grid.setColumnsVisible(['a'], false);
+    expect(hiddenIds(grid)).toEqual(['a']);
+
+    grid.registerCalcProvider(makeProvider({
+      resolvedPatchFor: (colId) => colId === 'id' ? { headerStyle: { fontWeight: 'bold' } } : null,
+    }));
+
+    expect(hiddenIds(grid)).toEqual(['a']);
+    grid.destroy(); host.remove();
+  });
+
+  it('a pinned column stays pinned across a calc-driven rebuild', () => {
+    const { grid, host } = mountGrid();
+    grid.setColumnsPinned(['id'], 'left');
+    expect(pinnedIds(grid)).toEqual(['id:left']);
+
+    grid.registerCalcProvider(makeProvider({
+      resolvedPatchFor: () => ({ cellStyle: { halign: 'right' } }),
+    }));
+
+    expect(pinnedIds(grid)).toEqual(['id:left']);
+    grid.destroy(); host.remove();
+  });
+
+  it('an explicit calc override still wins over the live value', () => {
+    const { grid, host } = mountGrid();
+    grid.setColumnsVisible(['a'], false);
+    grid.registerCalcProvider(makeProvider({
+      resolvedPatchFor: (colId) => colId === 'a' ? { hide: false } : null,
+    }));
+    expect(hiddenIds(grid)).toEqual([]);
+    grid.destroy(); host.remove();
+  });
+
+  it('a CHANGED host colDef wins; re-pushing the same defs does not', () => {
+    const { grid, host } = mountGrid();
+    grid.setColumnsVisible(['a'], false);
+
+    // Re-pushing identical defs is not new intent — the user's choice stands.
+    // This is the case that matters in practice: a provider rebind pushes the
+    // catalog's columnDefs again on every Apply.
+    grid.updateGridOptions({ columnDefs: grid.getGridOption('columnDefs') as never });
+    expect(hiddenIds(grid)).toEqual(['a']);
+
+    // Declaring a DIFFERENT value is new intent, and outranks the live value.
+    grid.updateGridOptions({
+      columnDefs: [
+        { colId: 'id', field: 'id', width: 90, hide: true },
+        { colId: 'a', field: 'a', cellDataType: 'number', width: 120 },
+      ] as never,
+    });
+    expect(hiddenIds(grid)).toContain('id');
     grid.destroy(); host.remove();
   });
 });

@@ -158,6 +158,9 @@ export class PivotEngine<TRow = unknown> {
   /** Saved primary column structures, restored when pivot deactivates.
    *  `null` while pivot is inactive. */
   private primaryColumnTree: ColumnTree | null = null;
+  /** Last cross-tab shape synthesized, so the pivot tree can be rebuilt
+   *  without waiting for another chunk (see onPrimaryColumnsRebuilt). */
+  private lastKeyTree: import('../worker/passes/pivotPass').PivotKeyNode[] | null = null;
   private primaryColumnGroupState: ColumnGroupState | null = null;
   /** Reverse index: synthetic pivot colId → (pivotPath, valueColId),
    *  for the body cell lookup against `chunk.pivotValues`. */
@@ -189,6 +192,38 @@ export class PivotEngine<TRow = unknown> {
   // ── Public read surface ───────────────────────────────────────────────────
 
   isPivotMode(): boolean { return this.state.isPivotMode(); }
+
+  /**
+   * The host re-resolved the PRIMARY column tree — a calc `editColumn`, a
+   * template application, an `updateGridOptions({ columnDefs })`.
+   *
+   * While pivot is active the displayed tree is synthetic, and the host's
+   * rebuild installs the SOURCE columns over it. The pivot model survives
+   * (`isPivotMode` stays true, the panels keep their chips) but the grid
+   * paints primary columns, and nothing brings the cross-tab back: chunk
+   * arrival only re-synthesizes when the tree SIGNATURE changes, and a
+   * column rebuild does not change it. Auto format made this unmissable —
+   * it edits every matched column at once, so one click dropped the whole
+   * cross-tab and left the Column Labels chip pointing at nothing.
+   *
+   * So: adopt the refreshed primary tree as the thing pivot reverts to, and
+   * re-synthesize immediately from the last cross-tab shape. Re-synthesizing
+   * rather than merely restoring also means the rebuild's own changes (a new
+   * format, a header rename) reach the pivot VALUE columns, which are derived
+   * from the primary leaves.
+   *
+   * No-op when pivot is inactive — the ordinary rebuild path is correct then.
+   */
+  onPrimaryColumnsRebuilt(primaryTree: ColumnTree): void {
+    if (!this.active) return;
+    this.primaryColumnTree = primaryTree;
+    // The saved group state is what `revertPivotColumns` reinstalls; leaving
+    // it bound to the pre-rebuild tree would restore a state describing
+    // columns that no longer exist.
+    this.primaryColumnGroupState?.setTree(primaryTree);
+    if (!this.lastKeyTree) return;
+    this.applyPivotColumns(this.lastKeyTree);
+  }
   isPivotActive(): boolean { return this.active; }
   /** True when PivotState is configured to produce pivot output
    *  (pivotMode ON AND ≥1 pivot col AND ≥1 value col) — the pre-5a
@@ -479,6 +514,7 @@ export class PivotEngine<TRow = unknown> {
    *  the primary data columns drop out, and the auto-group column is
    *  kept as the row-dim axis. */
   private applyPivotColumns(keyTree: import('../worker/passes/pivotPass').PivotKeyNode[]): void {
+    this.lastKeyTree = keyTree;
     const opts = this.deps.getOptions();
     const primaryLeaves = (this.primaryColumnTree ?? this.deps.getColumnTree()).leafById;
     const valueColumns: PivotValueColumnSpec[] = this.state.getValueColumns().map((v) => {
@@ -565,6 +601,7 @@ export class PivotEngine<TRow = unknown> {
     this.deps.setColumnDefsMap(nextDefsMap);
     this.cellSpecById = new Map();
     this.treeSignature = '';
+    this.lastKeyTree = null;
     this.active = false;
     this.primaryColumnTree = null;
     this.primaryColumnGroupState = null;

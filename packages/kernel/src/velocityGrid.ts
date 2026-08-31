@@ -1031,6 +1031,47 @@ function copyColDefDeepish<T>(value: T, seen = new WeakMap<object, unknown>()): 
   return out as unknown as T;
 }
 
+/**
+ * Resolved-def properties the RUNTIME mutates in place — drag-resize,
+ * setColumnsVisible, setColumnsPinned, applyColumnState — rather than writing
+ * back to the host's `columnDefs`. Every one of these has to be carried
+ * across a column rebuild or the user's own change disappears the next time
+ * anything re-resolves the tree.
+ */
+const LIVE_COLUMN_STATE_KEYS = ['width', 'hide', 'pinned'] as const;
+
+/** Raw (pre-resolve) leaf defs by colId, descending through column groups.
+ *  Used to tell "the host declared this property" from "the host never
+ *  mentioned it and it resolved to a default" — only the former outranks a
+ *  live runtime value. */
+/** Just the {@link LIVE_COLUMN_STATE_KEYS} values from each raw leaf def —
+ *  a value snapshot, not a reference, so a host mutating its own def objects
+ *  in place cannot retroactively rewrite the baseline. */
+function snapshotRawColState(
+  rawLeaves: Map<string, Record<string, unknown>>,
+): Map<string, Record<string, unknown>> {
+  const out = new Map<string, Record<string, unknown>>();
+  for (const [colId, def] of rawLeaves) {
+    const picked: Record<string, unknown> = {};
+    for (const key of LIVE_COLUMN_STATE_KEYS) picked[key] = def[key];
+    out.set(colId, picked);
+  }
+  return out;
+}
+function rawLeafDefsById(defs: readonly unknown[]): Map<string, Record<string, unknown>> {
+  const out = new Map<string, Record<string, unknown>>();
+  const walk = (list: readonly unknown[]): void => {
+    for (const node of list) {
+      const d = node as { colId?: string; field?: string; children?: unknown[] };
+      if (d?.children?.length) { walk(d.children); continue; }
+      const colId = d?.colId ?? (typeof d?.field === 'string' ? d.field : undefined);
+      if (colId) out.set(colId, node as Record<string, unknown>);
+    }
+  };
+  walk(defs);
+  return out;
+}
+
 export class VelocityGrid<TRow = any> {
   private events = new TypedEventEmitter<VelocityGridEvent<TRow>>();
   /** Cycle 21i Phase 2 / T2 — named, versioned engine-state slices that
@@ -1165,6 +1206,10 @@ export class VelocityGrid<TRow = any> {
    *  the pivot engine's `setColumnTree` callback (all three
    *  `this.columnTree = …` sites). */
   private colGroupPathCache: Map<string, string[]> | null = null;
+  /** Last rebuild's raw values for {@link LIVE_COLUMN_STATE_KEYS}, so the next
+   *  rebuild can tell a CHANGED host declaration (which wins) from an
+   *  unchanged one (which does not). Null until the first rebuild. */
+  private prevRawColState: Map<string, Record<string, unknown>> | null = null;
   private columnGroupState!: ColumnGroupState;
   private columnDefsMap: Map<string, ResolvedColDef<TRow>> = new Map();
   private columnOrder: ResolvedColDef<TRow>[] = [];
@@ -1940,6 +1985,8 @@ export class VelocityGrid<TRow = any> {
     // calc columns + override/template patches) into the def array before
     // tree resolution. No provider → same-reference pass-through.
     this.columnTree = resolveColumnTree(foldCalcColumnDefs<CColDef<TRow> | CColGroupDef<TRow>>(options.columnDefs), options.defaultColDef, options.columnTypes);
+    // Baseline for the next rebuild's "did the host change it?" test.
+    this.prevRawColState = snapshotRawColState(rawLeafDefsById(options.columnDefs ?? []));
     this.columnDefsMap = this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>;
     this.colGroupPathCache = null;
     this.columnGroupState = new ColumnGroupState(this.columnTree);
@@ -10105,27 +10152,58 @@ export class VelocityGrid<TRow = any> {
     const prevLeaves = this.columnDefsMap as Map<string, ResolvedColDef<TRow>> | undefined;
     // Cycle 21d / Task 9 — same calc-provider fold as the constructor path.
     this.columnTree = resolveColumnTree(foldCalcColumnDefs<CColDef<TRow> | CColGroupDef<TRow>>(this.options.columnDefs), defaultColDef ?? this.options.defaultColDef, this.options.columnTypes);
-    // Live column widths survive the rebuild. A drag-resize (and
-    // setColumnWidths / applyColumnState) mutates ONLY the resolved def —
-    // re-resolving from `options.columnDefs` would silently discard it, so
-    // any calc-driven rebuild (editColumn styling a header, applying a
-    // template, …) visibly reset the user's column widths. Carry the
-    // previous leaf's width forward UNLESS the calc override explicitly
-    // sets a width for that column (an explicit `editColumn({width})` /
-    // template width must still win).
+    // Live column state survives the rebuild. Drag-resize, setColumnsVisible,
+    // setColumnsPinned and applyColumnState all mutate ONLY the resolved def,
+    // never `options.columnDefs` — so re-resolving from the options silently
+    // discards them, and any calc-driven rebuild (editColumn styling a header,
+    // applying a template, Auto format walking every column) reset the user's
+    // widths, un-hid every hidden column, and unpinned every pinned one.
+    //
+    // Width was carried forward here already; `hide` and `pinned` were not,
+    // which is the same defect one property over. Auto format made it obvious
+    // because it edits every matched column at once, so the whole grid
+    // visibly reverted at the click of one button.
+    //
+    // A live value is carried forward UNLESS something explicitly asks for a
+    // different one: a calc override/template that sets the property, or an
+    // incoming colDef that declares it. Both are deliberate statements about
+    // that column and must win; a rebuild is not.
     if (prevLeaves !== undefined) {
       const provider = getCalcProvider();
+      const rawLeaves = rawLeafDefsById(this.options.columnDefs ?? []);
+      const prevRaw = this.prevRawColState;
       for (const [colId, def] of this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>) {
-        const prev = prevLeaves.get(colId);
-        if (prev?.width === undefined || prev.width === def.width) continue;
-        const patch = provider?.resolvedPatchFor(
-          colId, (def as { cellDataType?: string }).cellDataType === 'number' ? 'number' : 'text',
-        );
-        if (patch === null || patch === undefined || (patch as { width?: number }).width === undefined) {
-          (def as { width?: number }).width = prev.width;
+        const prev = prevLeaves.get(colId) as Record<string, unknown> | undefined;
+        if (prev === undefined) continue;
+        const live = def as unknown as Record<string, unknown>;
+        const raw = rawLeaves.get(colId);
+        const rawBefore = prevRaw?.get(colId);
+        let patch: Record<string, unknown> | null = null;
+        let patchLoaded = false;
+        for (const key of LIVE_COLUMN_STATE_KEYS) {
+          const was = prev[key];
+          // `undefined` means the user never set it — nothing to preserve.
+          if (was === undefined || was === live[key]) continue;
+          // Only a CHANGED host declaration outranks the live value. Merely
+          // declaring the property does not: `columnDefs` almost always carry
+          // a width, and a calc rebuild re-resolves those same defs, so
+          // "declared" would throw away every drag-resize.
+          if (rawBefore !== undefined && raw?.[key] !== rawBefore[key]) continue;
+          if (!patchLoaded) {
+            // Resolved lazily: only worth asking once a property actually differs.
+            patch = provider?.resolvedPatchFor(
+              colId,
+              (def as { cellDataType?: string }).cellDataType === 'number' ? 'number' : 'text',
+            ) ?? null;
+            patchLoaded = true;
+          }
+          if (patch?.[key] !== undefined) continue;
+          live[key] = was;
         }
       }
     }
+    // Baseline for the NEXT rebuild's "did the host change it?" test.
+    this.prevRawColState = snapshotRawColState(rawLeafDefsById(this.options.columnDefs ?? []));
     this.columnDefsMap = this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>;
     this.colGroupPathCache = null;
     // columnTree.leafById is a fresh Map that only holds user-supplied columns.
@@ -10142,6 +10220,10 @@ export class VelocityGrid<TRow = any> {
     );
     this.rebuildSubgridStack();
     this.recomputeViewport();
+    // Under active pivot the tree just installed is the SOURCE one, which is
+    // not what should be on screen. Hand it to the pivot engine as the new
+    // revert target and let it re-synthesize the cross-tab over the top.
+    this.pivotEngine.onPrimaryColumnsRebuilt(this.columnTree);
     // Style-only rebuilds (halign / cellStyle) may leave columnLayout
     // equal — the setter's geometry guard would skip wipe. Always
     // invalidate retained paint + full-paint so alignment/move never
