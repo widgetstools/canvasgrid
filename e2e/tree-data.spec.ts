@@ -125,3 +125,77 @@ test('collapsing a node hides its subtree', async ({ page }) => {
   const after = await page.evaluate(() => (window as any).__tree.csrm.getDisplayedRowCount());
   expect(after).toBeLessThan(before);
 });
+
+/**
+ * Live ticks on a tree.
+ *
+ * The async transaction path is the LIVE one, and it stamped row ids but not
+ * tree paths — so an updated row arrived pathless, `applyTree` skipped it, and
+ * the row silently dropped out of the hierarchy on its first tick. Row count
+ * went 102 -> 101 and stayed there.
+ *
+ * Asserts the three things a ticking tree has to do: keep the row, show the
+ * new value, and roll the change up to its ancestors.
+ */
+test('a live tick updates a leaf, keeps it in the tree, and rolls up', async ({ page }) => {
+  await open(page);
+  const result = await page.evaluate(async () => {
+    const g = (window as any).__tree.csrm;
+    const rows = (window as any).__tree.rows;
+    g.expandAll();
+    await new Promise((r) => setTimeout(r, 1800));
+
+    const before = g.getDisplayedRowCount();
+    const rootBefore = g.getCellValue(0, 'pnl');
+    const leaf = rows.find((r: any) => r.path.length === 4);
+
+    g.applyTransactionAsync({ update: [{ ...leaf, pnl: 777777 }] });
+    await new Promise((r) => setTimeout(r, 2000));
+
+    // Found by VALUE, not by index: a tick can reorder the flat order, and
+    // asserting on a stale index tests the probe rather than the grid.
+    let idx = -1;
+    for (let i = 0; i < g.getDisplayedRowCount(); i++) {
+      if (!g.isGroupRow(i) && g.getCellValue(i, 'pnl') === 777777) { idx = i; break; }
+    }
+    return {
+      countHeld: g.getDisplayedRowCount() === before,
+      tickVisible: idx >= 0,
+      stillALeaf: idx >= 0 ? !g.isGroupRow(idx) : false,
+      rootChanged: g.getCellValue(0, 'pnl') !== rootBefore,
+    };
+  });
+
+  expect(result.countHeld).toBe(true);      // the row did not fall out
+  expect(result.tickVisible).toBe(true);    // the new value is painted
+  expect(result.stillALeaf).toBe(true);     // still a row, not a group
+  expect(result.rootChanged).toBe(true);    // the ancestor aggregate followed
+});
+
+test('a tick that changes the path moves the row in the hierarchy', async ({ page }) => {
+  await open(page);
+  const result = await page.evaluate(async () => {
+    const g = (window as any).__tree.csrm;
+    const leaf = (window as any).__tree.rows.find((r: any) => r.path.length === 4);
+    g.expandAll();
+    await new Promise((r) => setTimeout(r, 1500));
+    const before = g.getDisplayedRowCount();
+
+    // Move it under a branch that does not exist yet.
+    g.applyTransactionAsync({ update: [{ ...leaf, path: ['MOVED', 'X', leaf.name] }] });
+    for (let waited = 0; waited < 8000; waited += 100) {
+      await new Promise((r) => setTimeout(r, 100));
+      if (g.getDisplayedRowCount() !== before) break;
+    }
+    return { before, after: g.getDisplayedRowCount() };
+  });
+
+  // Asserted on the row COUNT, not by scanning for the group key: keys only
+  // resolve for rows inside the current chunk, and the new branch lands at
+  // the end of the tree — outside the viewport at most window sizes. The
+  // count is viewport-independent.
+  //
+  // The row leaves FX/EMEA/Book 1 and lands under MOVED/X, and the two
+  // filler nodes that path needs are created, so the tree grows by exactly 2.
+  expect(result.after).toBe(result.before + 2);
+});

@@ -4923,8 +4923,12 @@ export class VelocityGrid<TRow = any> {
 
   /** Apply an async transaction immediately (bypasses scroll deferral). */
   private dispatchAsyncTransaction(t: Tx<TRow>): void {
-    const add = this.stampSyntheticRowIds(t.add, false);
-    const update = this.stampSyntheticRowIds(t.update, false);
+    // Tree paths are stamped here as well as on the sync path. This is the
+    // LIVE-TICK route, and an updated row arriving without its path is not
+    // merely unsorted — `applyTree` skips pathless rows, so the row silently
+    // drops out of the hierarchy on its first tick.
+    const add = this.stampTreePaths(this.stampSyntheticRowIds(t.add, false));
+    const update = this.stampTreePaths(this.stampSyntheticRowIds(t.update, false));
     const heightsByRowId = this.resolveHeightsForRows([...(add ?? []), ...(update ?? [])]);
     this.updateRowDataCache(t, 'transactionAsync');
     // A-P6 — see `applyTransaction`.
