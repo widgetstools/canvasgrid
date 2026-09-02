@@ -85,17 +85,30 @@ test('default: each app bundles its own worker, so each gets its own engine', as
 });
 
 test('configured: one deployed worker joins both apps to one engine, table and feed', async ({ context }) => {
-  const q = `?swurl=${encodeURIComponent(DEPLOYED_WORKER)}`;
+  // What a deployment hard-codes: one deployed script, one instance name,
+  // and `strict` so a silent fall back to a per-app engine is an error
+  // rather than a quiet degrade.
+  const q = `?swurl=${encodeURIComponent(DEPLOYED_WORKER)}&swname=positions-engine&swstrict`;
   const a = await context.newPage(); await a.goto(A1 + q); await waitLive(a);
   const b = await context.newPage(); await b.goto(A2 + q); await waitLive(b);
   await b.waitForTimeout(4000);
   const [pa, pb] = await Promise.all([probe(a), probe(b)]);
   test.skip(pa.mode !== 'shared' || pb.mode !== 'shared', 'dedicated-worker fallback');
 
-  // Same script, reached from two different app paths.
+  // (origin, instance name) with bundled:false — the intended model. Both
+  // apps resolved the root-relative path to the same absolute URL despite
+  // being served from different paths, which is what makes the name the
+  // only axis that still varies.
   expect(pa.target.bundled).toBe(false);
+  expect(pb.target.bundled).toBe(false);
   expect(pb.target.url).toBe(pa.target.url);
-  expect(pa.target.name).toBe(pb.target.name);
+  expect(pa.target.url).toBe(new URL(DEPLOYED_WORKER, ORIGIN).href);
+  expect(pa.target.name).toBe('positions-engine');
+  expect(pb.target.name).toBe(pa.target.name);
+  // `strict` was on, so reaching this point at all proves no silent
+  // fallback happened — the engine really is the shared one.
+  expect(pa.mode).toBe('shared');
+  expect(pb.mode).toBe('shared');
 
   // ONE engine, seeing both apps.
   expect(pa.stats.sessions, 'one engine hosting both apps').toBe(2);

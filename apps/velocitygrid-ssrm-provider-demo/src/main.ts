@@ -45,18 +45,33 @@ import '@demo/styles.css';
 
 registerDefaultTransports();
 
-// `?swurl=<path>` points this tab at a specific shared-worker script.
+// `?swurl=<path>` / `?swname=<name>` / `?swstrict` stand in for what a real
+// deployment hard-codes.
 //
-// A SharedWorker's identity is (origin, script URL, name), so this is the
-// knob that decides whether several apps on ONE origin share a Perspective
-// engine or each get their own. Tabs of a single app already share without
-// it — they resolve to the same bundled URL. Deployments running more than
-// one blotter app from an origin point them all at one deployed copy of the
-// worker script instead. Here it also makes the property demonstrable: two
-// tabs on different `swurl` values provably get two engines.
+// The model to aim for is (origin, instance name) with `bundled: false`: an
+// app joins the engine NAMED `swname` on its origin. Getting there needs the
+// script URL to stop varying, because the browser keys on it too — so every
+// app points at ONE deployed copy and the name becomes the only axis left.
+// Tabs of a single app already share without any of this; it is several apps
+// on one origin that need the agreement.
+//
+//   configurePerspectiveSharedWorker({
+//     url: '/vendor/velocity-grid/psp-shared-worker.js',
+//     name: 'positions-engine',
+//     strict: true,   // a silent per-app engine is a failure, not a degrade
+//   });
 {
-  const swurl = new URLSearchParams(location.search).get('swurl');
-  if (swurl) configurePerspectiveSharedWorker({ url: swurl });
+  const q = new URLSearchParams(location.search);
+  const url = q.get('swurl');
+  const name = q.get('swname');
+  const strict = q.has('swstrict');
+  if (url || name || strict) {
+    configurePerspectiveSharedWorker({
+      ...(url ? { url } : {}),
+      ...(name ? { name } : {}),
+      ...(strict ? { strict: true } : {}),
+    });
+  }
 }
 
 const { host, setStatus } = mountShell({

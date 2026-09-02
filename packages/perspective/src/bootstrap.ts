@@ -65,8 +65,33 @@ export interface PerspectiveSharedWorkerOptions {
    * app, wrong for several sharing one origin (see below).
    */
   url?: string | URL;
-  /** SharedWorker name. Defaults to `cgrid-ssrm-perspective`. */
+  /**
+   * SharedWorker instance name. Defaults to `cgrid-ssrm-perspective`.
+   *
+   * Once `url` is a deployed constant every app agrees on, THIS is the axis
+   * that decides which engine an app joins: same origin + same name ⇒ same
+   * engine. Leave it alone to put every blotter on the origin's one engine
+   * (the usual intent — one engine hosts many providers' tables, each keyed
+   * by `providerId` + schema). Set it to deliberately partition, e.g. to
+   * keep a heavyweight book off the engine everything else shares.
+   */
   name?: string;
+  /**
+   * Refuse to run on anything but the configured shared engine.
+   *
+   * Both fallbacks below are silent by design, and silence is the wrong
+   * default once several apps share an origin: everything still works, just
+   * with N engines, N copies of each table and N feeds — plus the
+   * origin-scoped feed lock making all but one of them wait out a 30s
+   * snapshot timeout. `strict` turns each into a thrown error at
+   * `getPerspectiveClient()`:
+   *
+   *   - no `url` configured, so this app would use its own bundled copy and
+   *     could never share with another app;
+   *   - the SharedWorker failed to start, so this app would fall back to a
+   *     dedicated worker and share with nothing at all.
+   */
+  strict?: boolean;
 }
 
 let sharedWorkerOptions: PerspectiveSharedWorkerOptions = {};
@@ -74,24 +99,35 @@ let sharedWorkerOptions: PerspectiveSharedWorkerOptions = {};
 /**
  * Point every app on an origin at ONE Perspective engine.
  *
- * A SharedWorker's identity is `(origin, script URL, name)` — all three. The
- * default script URL is whatever the bundler emitted for this app's copy of
- * `sharedServer.worker.ts`, which is a content-hashed asset path. Two apps
- * built separately therefore land on two DIFFERENT URLs, and so get two
- * engines, two copies of the same table and two feeds, even on one origin
- * with one `providerId`. Tabs of a single app share correctly without any of
- * this; it is only the several-apps case that needs a decision.
+ * The target to aim for is **(origin, instance name)** with `bundled: false`
+ * — an app joins the engine named `name` on its origin, and nothing else
+ * enters into it. Getting there takes one deployment step, because the
+ * browser's own rule is stricter than that.
  *
- * The fix is a URL both apps can agree on: deploy the worker script once per
- * origin at a fixed path and name it here, from every app, before the first
- * `getPerspectiveClient()`.
+ * A SharedWorker's identity is `(origin, script URL, name)` — all three, and
+ * the URL cannot be opted out of. Left unconfigured it is whatever the
+ * bundler emitted for THIS app's copy of `sharedServer.worker.ts`, a
+ * content-hashed asset path: so two apps built separately land on two
+ * different URLs and get two engines, two copies of every table and two
+ * feeds, even on one origin with one `providerId`. (Tabs of a single app
+ * share for free — they load the same bundle. It is only several apps that
+ * need a decision.)
+ *
+ * Deploy the script ONCE per origin and name that path from every app, and
+ * the URL stops varying — it is the same constant everywhere, so the only
+ * axis left is the name, which is the intended model:
  *
  * ```ts
- * configurePerspectiveSharedWorker({ url: '/vendor/velocity-grid/psp-shared-worker.js' });
+ * // build: npm run build:shared-worker -w @wellsfargo-starui/velocity-grid-perspective
+ * configurePerspectiveSharedWorker({
+ *   url: '/vendor/velocity-grid/psp-shared-worker.js',
+ *   name: 'positions-engine',   // (origin, name) now decides sharing
+ *   strict: true,               // and a silent fallback is an error
+ * });
  * ```
  *
- * Init-only: the engine is created once and the URL cannot change under it,
- * so a call after the client exists warns and is ignored.
+ * Init-only: the engine is created once and its identity cannot change under
+ * it, so a call after the client exists warns and is ignored.
  */
 export function configurePerspectiveSharedWorker(opts: PerspectiveSharedWorkerOptions): void {
   if (initPromise !== null) {
@@ -102,6 +138,16 @@ export function configurePerspectiveSharedWorker(opts: PerspectiveSharedWorkerOp
     return;
   }
   sharedWorkerOptions = { ...sharedWorkerOptions, ...opts };
+}
+
+/** Test-only — clear the module-level engine configuration between cases.
+ *  The engine is a per-page singleton by design, so there is no production
+ *  reason to reset it; unit tests need each case to start from the default. */
+export function __resetSharedWorkerConfigForTests(): void {
+  sharedWorkerOptions = {};
+  initPromise = null;
+  client = null;
+  workerMode = 'dedicated';
 }
 
 export interface PerspectiveSharedWorkerTarget {
@@ -239,6 +285,26 @@ export async function getPerspectiveClient(): Promise<Client> {
   if (client) return client;
   if (!initPromise) {
     initPromise = (async () => {
+      // `strict` means "a shared engine or nothing" — see the option's doc.
+      // Checked FIRST, before the multi-megabyte WASM fetches: a
+      // misconfiguration should surface as itself, immediately, not after
+      // the expensive part has already run.
+      if (sharedWorkerOptions.strict) {
+        if (sharedWorkerOptions.url == null) {
+          throw new Error(
+            '[perspective] strict shared worker: no `url` configured, so this app would use '
+            + 'its own bundled copy and could never share an engine with another app on this '
+            + 'origin. Deploy the worker script once per origin and pass its path to '
+            + 'configurePerspectiveSharedWorker({ url }).',
+          );
+        }
+        if (!wantSharedWorker()) {
+          throw new Error(
+            '[perspective] strict shared worker: SharedWorker is unavailable in this browser '
+            + '(or was disabled with ?worker=dedicated), so no engine can be shared.',
+          );
+        }
+      }
       await perspective.init_server(fetch(serverWasmUrl));
       await perspective.init_client(fetch(clientWasmUrl));
       if (wantSharedWorker()) {
@@ -254,6 +320,14 @@ export async function getPerspectiveClient(): Promise<Client> {
           armSessionRelease(sw.port);
           return c;
         } catch (err) {
+          if (sharedWorkerOptions.strict) {
+            throw new Error(
+              '[perspective] strict shared worker: the shared engine failed to start, and '
+              + 'falling back to a dedicated worker would silently give this app an engine of '
+              + `its own. Cause: ${err instanceof Error ? err.message : String(err)}`,
+              { cause: err },
+            );
+          }
           console.warn('[perspective] SharedWorker unavailable — dedicated fallback:', err);
         }
       }

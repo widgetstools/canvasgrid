@@ -63,26 +63,45 @@ loses polls its own table for a snapshot that can never arrive there, and
 only falls back after a 30s timeout. Measured: **35s to live unshared, ~10s
 shared**.
 
-The fix is one deployed worker per origin. Build it:
+**The model to aim for is `(origin, instance name)` with `bundled: false`** —
+an app joins the engine *named* `name` on its origin, and nothing else enters
+into it. Getting there takes one deployment step, because the URL cannot be
+opted out of; fix it to a constant and the name becomes the only axis that
+still varies. Build the artefact:
 
 ```bash
 npm run build:shared-worker --workspace=@wellsfargo-starui/velocity-grid-perspective
 # → packages/perspective/dist/perspective-shared-worker.js  (self-contained)
 ```
 
-serve it at a fixed path, and name that path from **every** app before the
-first `getPerspectiveClient()`:
+serve it at a fixed path, and say the same thing from **every** app before
+the first `getPerspectiveClient()`:
 
 ```ts
-configurePerspectiveSharedWorker({ url: '/vendor/velocity-grid/psp-shared-worker.js' });
+configurePerspectiveSharedWorker({
+  url: '/vendor/velocity-grid/psp-shared-worker.js',
+  name: 'positions-engine',   // (origin, name) now decides sharing
+  strict: true,               // and a silent per-app engine is an error
+});
 ```
 
-`__demo.workerTarget()` reports what this tab is keyed on. `bundled: true`
-means "this app's own copy — shared only with tabs of this same build";
-apps meant to share must all report `bundled: false` and the same `url` and
-`name`. The demo takes `?swurl=<path>` so it can be tried directly, and
-`npm run verify:shared-engine` builds the whole two-app scenario and asserts
-it end to end.
+`strict` matters more than it looks. Both fallbacks — using the bundled copy,
+and dropping to a dedicated worker when the SharedWorker will not start — are
+silent, and silence is the wrong default once several apps share an origin:
+everything still works, just with N engines, N tables and N feeds. Under
+`strict` each throws at `getPerspectiveClient()` instead, before the
+multi-megabyte WASM fetch.
+
+Leave `name` alone to put every blotter on the origin's one engine, which is
+the usual intent (one engine hosts many providers' tables, each keyed by
+`providerId` + schema). Set it to deliberately partition — say, to keep a
+heavyweight book off the engine everything else shares.
+
+`__demo.workerTarget()` reports what this tab is keyed on: apps meant to
+share must all report `bundled: false` and the same `url` and `name`. The
+demo takes `?swurl=`, `?swname=` and `?swstrict` so it can be tried directly,
+and `npm run verify:shared-engine` builds the whole two-app scenario and
+asserts it end to end.
 
 Two more consequences worth knowing when debugging:
 
