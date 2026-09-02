@@ -193,7 +193,9 @@ export interface PainterCtx {
   /**
    * Cycle 15 / Task 12 — per-row kind probe for the chunk's
    * `rowKinds[localIndex]` array. Returns `0` for ordinary data rows
-   * (the default), `1` for group rows, `3` for per-group footer rows.
+   * (the default), `1` for group rows, `3` for per-group footer rows,
+   * `4` for a master/detail band (stamped main-side — see
+   * `core/masterDetailIndex.ts`).
    * The painter reads it once per visible data row to decide:
    *   - whether to paint `theme.groupFooterBg` instead of the data-row
    *     bg / alt-row / selection bg (rowKind === 3);

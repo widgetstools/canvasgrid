@@ -328,11 +328,17 @@ export type VelocityGridEvent<TRow = any> =
    *  `setExpanded(key, expanded)` call. The bulk `expandAll()` /
    *  `collapseAll()` API does NOT fan out per-group events; listen
    *  for `expandOrCollapseAll` for those. */
+  /** Master / detail reuses this event, as ag-grid does — a master row
+   *  opening and a row group opening are the same gesture. When the toggle
+   *  was a master row, `rowId` is set (and `key` carries the same value)
+   *  and `data` is the master row's data; both are absent for a row group. */
   | {
       type: 'rowGroupOpened';
       key: string;
       expanded: boolean;
       source: 'ui' | 'api';
+      rowId?: string;
+      data?: unknown;
     }
   /** Cycle 15 / Task 7 — fires after `expandAll()` / `collapseAll()`
    *  fans out the state. `expanded` is the target state every group

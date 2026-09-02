@@ -84,6 +84,17 @@ export type {
 } from './types/group';
 
 export type {
+  // masterDetail.ts — master / detail option + callback surface
+  MasterDetailRowNode,
+  IsRowMaster,
+  GetDetailRowDataParams,
+  DetailRefreshStrategy,
+  DetailCellRendererParams,
+  IDetailCellRendererParams,
+  DetailGridInfo,
+} from './types/masterDetail';
+
+export type {
   // filter.ts — filter models + params
   FilterModelEntryLegacy,
   CTextFilterOp,

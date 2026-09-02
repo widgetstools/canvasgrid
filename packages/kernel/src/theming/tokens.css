@@ -141,6 +141,11 @@
   --vg-group-footer-fg: var(--vg-totals-fg);
   --vg-group-footer-border-top: var(--vg-totals-border-top);
   --vg-group-footer-font-weight: var(--vg-totals-font-weight);
+  /* Master/detail — the band an expanded row opens into. Recessed one
+     step from the body so the embedded grid reads as nested content
+     belonging to the row above, not as another row. */
+  --vg-detail-row-bg: #EDEEF0;
+  --vg-detail-row-border: var(--vg-grid-line-color);
   /* Inputs — input.background #FFFFFF / input.border #CECECE. */
   --vg-input-bg: #FFFFFF;
   --vg-input-fg: #3B3B3B;
@@ -248,6 +253,8 @@
   --vg-group-footer-fg: var(--vg-totals-fg);
   --vg-group-footer-border-top: var(--vg-totals-border-top);
   --vg-group-footer-font-weight: var(--vg-totals-font-weight);
+  --vg-detail-row-bg: #1C1F25;
+  --vg-detail-row-border: var(--vg-grid-line-color);
   /* Inputs — cool-shifted from #313131 / #3C3C3C. */
   --vg-input-bg: #2D3036;
   --vg-input-fg: #CCCCCC;
@@ -365,6 +372,8 @@
   --vg-group-footer-fg: #000000;
   --vg-group-footer-border-top: #000000;
   --vg-group-footer-font-weight: 700;
+  --vg-detail-row-bg: #ffffff;
+  --vg-detail-row-border: #000000;
   --vg-input-bg: #ffffff;
   --vg-input-fg: #000000;
   --vg-input-border: #000000;

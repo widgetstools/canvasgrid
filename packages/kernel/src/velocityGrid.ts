@@ -85,6 +85,14 @@ import {
   type ViewportState,
 } from './core/viewport';
 import { RowHeightIndex } from './core/rowHeightIndex';
+import { MasterDetailIndex, ROW_KIND_DETAIL } from './core/masterDetailIndex';
+import {
+  MasterDetailController,
+  DEFAULT_DETAIL_ROW_HEIGHT,
+  type DetailBand,
+  type DetailGridHandle,
+} from './core/masterDetail';
+import type { DetailGridInfo } from './types/masterDetail';
 import { PaintCacheLayer, planLayer, defaultCanvasFactory, type LayerGeometry, type LayerPlan } from './core/paintCache';
 import { RasterBudget, CellBitmapCache, RowStripCache } from './renderer/rasterCache';
 import type { RasterCellsCtx, RasterStripsCtx } from './renderer/painters/types';
@@ -1282,7 +1290,47 @@ export class VelocityGrid<TRow = any> {
    *  tail of `requestViewport` lives on VelocityGrid as `handleViewportChunk`
    *  until cycle 19 / task 3 lands `WorkerCoordinator`. */
   private viewportManager!: ViewportManager;
-  private rowCount = 0;
+  /**
+   * Visible rows the WORKER reports — post filter / group / sort, with no
+   * master-detail bands in it. Every `visibleCount` a worker reply carries
+   * lands here.
+   */
+  private baseRowCount = 0;
+  /**
+   * Rows the grid DISPLAYS — the worker's count plus one slot per open
+   * detail band.
+   *
+   * Kept as an accessor pair rather than a field so the ~15 sites that
+   * assign the worker's `visibleCount` keep reading as they did, while
+   * everything downstream (viewport extent, height index length, row-count
+   * events, the status bar) sees the number of rows actually on screen. The
+   * two coincide exactly when nothing is expanded, which is every grid that
+   * does not use master/detail.
+   */
+  private get rowCount(): number {
+    return this.baseRowCount + this.detailIndex.count;
+  }
+  private set rowCount(next: number) {
+    this.baseRowCount = next;
+  }
+  /** Master / detail — display↔base index arithmetic. Empty (and every
+   *  mapping the identity) until a row is expanded. */
+  private detailIndex = new MasterDetailIndex();
+  /** Master / detail — expansion state + the detail-band DOM. Constructed
+   *  after the DOM scaffold; see construction step 4b. */
+  private masterDetail!: MasterDetailController<TRow>;
+  /** Master / detail — the expanded master rows in base-index order, as
+   *  last resolved against the worker's visible order. Parallel to
+   *  `detailIndex`'s positions, and carries the rowId each position belongs
+   *  to so a band can be sized and mounted without a chunk. */
+  private detailRows: Array<{ rowId: string; base: number }> = [];
+  /** Master / detail — DISPLAY index of each open band → its master's row id.
+   *  Rebuilt with `detailRows`; read once per displayed row whenever the
+   *  row-height index is rebuilt, so it has to be a direct lookup. */
+  private detailByDisplayIndex = new Map<number, string>();
+  /** Master / detail — bumped per `refreshDetailPositions` so a superseded
+   *  in-flight resolve is dropped rather than applied out of order. */
+  private detailResolveSeq = 0;
   /** SSRM controller — present only when `rowModelType === 'serverSide'`.
    *  Always the v2 controller since the v1 flat-block model was
    *  decommissioned; `getRows`-only datasources drive its flat path. */
@@ -1416,6 +1464,9 @@ export class VelocityGrid<TRow = any> {
    *  / `reserveSideBarSpace`) and handed into `EditController` when the
    *  edit subsystem gets wired up at construction step 9. */
   private editorContainer: HTMLDivElement;
+  /** Master / detail — DOM layer the detail bands mount into. Tracks the
+   *  canvas region's insets so viewport coordinates land unmodified. */
+  private detailContainer: HTMLDivElement;
   private cssReader: CssReader;
   private cellRenderers: CellRendererRegistry;
   private renderer: Renderer;
@@ -1878,6 +1929,16 @@ export class VelocityGrid<TRow = any> {
     this.editorContainer = document.createElement('div');
     this.editorContainer.style.cssText = 'position:absolute; left:0; top:0; right:0; bottom:0; pointer-events:none;';
     // Children of editorContainer set pointer-events:auto themselves.
+    // Master / detail — its own overlay, sharing the canvas region's insets
+    // (see `applyVerticalInsets` / `reserveSideBarSpace`) so a detail band's
+    // coordinates are the viewport's coordinates with no correction.
+    // `overflow:hidden` is what stops a band scrolled past the body edge
+    // painting over the header. Created here, but appended AFTER the canvas
+    // (further down, beside `editorContainer`) — the canvas is opaque and
+    // would otherwise paint straight over every band.
+    this.detailContainer = document.createElement('div');
+    this.detailContainer.className = 'vg-detail-layer';
+    this.detailContainer.style.cssText = 'position:absolute; left:0; top:0; right:0; bottom:0; overflow:hidden; pointer-events:none;';
     this.root.appendChild(this.scroller);
     // Cycle 22 / Task 5 — when shadow mode is active, mount the entire
     // grid DOM inside the shadow root. Otherwise the grid lives in the
@@ -1895,6 +1956,26 @@ export class VelocityGrid<TRow = any> {
     // so any setup-time events (initial column resolution, etc.) get
     // captured.
     this.stateUpdatedBus = new StateUpdatedBus(this.events, () => this.getState());
+    // 2b. Master / detail. Constructed here because `recomputeViewport`
+    // (step 4) already reconciles the detail bands, and because the
+    // controller only needs the DOM layer + the row mirror, both of which
+    // exist by now. The embedded grid arrives through a factory rather than
+    // an import so `core/masterDetail.ts` stays out of a cycle back here.
+    this.masterDetail = new MasterDetailController<TRow>({
+      container: this.detailContainer,
+      getOptions: () => this.options,
+      getRowData: (rowId) => this.rowDataById.get(rowId),
+      createDetailGrid: (host, detailOptions) => this.createDetailGrid(host, detailOptions),
+      onExpandedChanged: (rowId, expanded, source) =>
+        this.onDetailExpandedChanged(rowId, expanded, source),
+      onDetailHeightChanged: () => {
+        // An auto-height band re-measured: the Fenwick index carries the old
+        // height at that slot, so rebuild rather than patch.
+        this.rowHeightIndex = null;
+        this.recomputeViewport();
+        this.cgridCanvas?.requestRepaint();
+      },
+    });
     // Cycle 22 / Task 2 — `cacheable: true` opts a built-in into the
     // Tier-1 cell-bitmap cache. Set ONLY where every `config.` read the
     // painter makes is (a) a `cellStyleSignature` covered field, (b) a
@@ -2196,14 +2277,27 @@ export class VelocityGrid<TRow = any> {
       // live in `handleViewportChunk` and are reached via the coord's
       // `onViewportChunk` dep.
       dispatchViewportRequest: async (opts) => {
+        // Master / detail — ViewportManager works in DISPLAY rows; the
+        // worker only knows base rows. Widen the window here so the reply
+        // covers every display row asked for, and the SSRM range below is
+        // asked about rows that actually exist server-side.
+        const win = this.detailIndex.isEmpty
+          ? { rowStart: opts.rowStart, rowEnd: opts.rowEnd }
+          : this.detailIndex.mapWindowToBase(opts.rowStart, opts.rowEnd);
+        const mapped = this.detailIndex.isEmpty ? opts : {
+          ...opts,
+          rowStart: win.rowStart,
+          rowEnd: win.rowEnd,
+          stickyBoundaryRow: this.detailIndex.resolve(opts.stickyBoundaryRow).base,
+        };
         // Local mode has nothing to fetch, and awaiting its no-op would
         // push the worker dispatch into a microtask — the fetch must stay
         // synchronous with the scroll for client-side grids.
         if (this.ssrm && this.options.rowModelType === 'serverSide') {
-          await this.ssrm.ensureRange(opts.rowStart, opts.rowEnd);
+          await this.ssrm.ensureRange(mapped.rowStart, mapped.rowEnd);
           if (this.destroyed) return;
         }
-        await this.workerCoord.dispatchViewportRequest(opts);
+        await this.workerCoord.dispatchViewportRequest(mapped);
       },
     });
     this.recomputeViewport();
@@ -2834,8 +2928,13 @@ export class VelocityGrid<TRow = any> {
         };
       },
     });
-    // Stack editorContainer above the canvas (canvas was appended to root
-    // by VelocityGridCanvas, so editor goes on top).
+    // Stack order, by DOM order alone — no z-index anywhere on this axis, so
+    // nothing here creates a stacking context that would trap the very high
+    // z-indexes popups and context menus set on themselves:
+    //   scroller  →  canvas  →  detail bands  →  editors / popups
+    // The canvas was appended to root by VelocityGridCanvas just above, so
+    // both overlays go on after it, detail first.
+    this.root.appendChild(this.detailContainer);
     this.root.appendChild(this.editorContainer);
 
     // Theming — the constructor's first `cssReader.read()` can run before
@@ -3200,6 +3299,11 @@ export class VelocityGrid<TRow = any> {
       hitTestGroupChevron: (x, y) => this.hitTestGroupChevron(x, y),
       hitTestStickyChevron: (x, y) => this.hitTestStickyChevron(x, y),
       toggleGroupExpanded: (key) => this.toggleGroupExpandedFromUi(key),
+      // Master / detail — same feature routes it: a chevron is a chevron,
+      // and both must be consumed before the click reaches selection or the
+      // editor.
+      hitTestDetailChevron: (x, y) => this.hitTestDetailChevron(x, y),
+      toggleDetailExpanded: (rowId) => this.toggleDetailFromUi(rowId),
       isGroupDoubleClickExpandSuppressed: () => this.isGroupDoubleClickExpandSuppressed(),
       // Cycle 15 / Task 8 — tri-state checkbox hit-test + cascade
       // toggle. Same geometry-on-grid / feature-stays-thin split as
@@ -3267,7 +3371,7 @@ export class VelocityGrid<TRow = any> {
           colId: this.selection.state.focusedColId,
         }),
         focusCanvas: () => { this.cgridCanvas.canvas.focus({ preventScroll: true }); },
-        getRowByIndex: (rowIndex) => this.workerCoord.getRowByIndex(rowIndex),
+        getRowByIndex: (rowIndex) => this.getRowByDisplayIndex(rowIndex),
         applyTransaction: (payload) => {
           // Cycle 21e / Task 12 — rowsChanged (source 'edit'), listener-gated.
           this.mirrorEditCommit(payload.update as TRow[] | undefined);
@@ -3485,15 +3589,20 @@ export class VelocityGrid<TRow = any> {
           if (
             existingIdx === null
             || existingIdx.length() !== this.rowCount
+            // Master / detail — an index carrying detail bands is not
+            // uniform, and the O(1) "already exactly that" skip below would
+            // wrongly claim it is.
+            || !this.detailIndex.isEmpty
             || !existingIdx.isUniformAt(fallbackH)
           ) {
-            this.rowHeightIndex = new RowHeightIndex(this.rowCount, () => fallbackH);
+            this.rowHeightIndex = new RowHeightIndex(this.rowCount, (i) => this.rowHeightSeed(i, fallbackH));
           }
           this.recomputeViewport();
           // Re-resolve persistent selection ids against the freshly-sorted /
           // filtered visible order. Without this, indices set by
           // `setSelectedRowIds` and `setFocusedCell` would point at the wrong
           // rows the moment the user sorts.
+          this.refreshDetailPositions();
           this.rebuildSelectionFromPersistentIds();
           this.events.emit({ type: 'modelUpdated', visibleRowCount: visibleCount });
           // Cycle 14 / Task 6 — the worker pushes `modelUpdated` only after
@@ -4131,7 +4240,10 @@ export class VelocityGrid<TRow = any> {
       getPivotResult: () => this.ssrmPivotResult,
       setRowCount: (count, prevCount) => {
         if (this.destroyed) return;
-        const prev = prevCount ?? this.rowCount;
+        // `count` is the SERVER's row count — compare against the base
+        // count, not the displayed one, or an open detail band would make
+        // an unchanged count look changed (and vice versa).
+        const prev = prevCount ?? this.baseRowCount;
         if (prev === count) return;
         this.rowCount = count;
         this.rowHeightIndex = null;
@@ -4858,6 +4970,11 @@ export class VelocityGrid<TRow = any> {
       if (groupCols.length > 0 && groupKeys === undefined) {
         this.setGroupModel({ rowGroupCols: [...groupCols] });
       }
+      // Master / detail — the whole row set was replaced. Seed any row
+      // `isMasterOpenByDefault` wants open, then re-resolve every open
+      // band's position against the new order.
+      this.masterDetail.applyOpenByDefault(Array.from(this.rowDataById.keys()));
+      this.refreshDetailPositions();
       this.recomputeViewport();
       this.events.emit({ type: 'modelUpdated', visibleRowCount: visibleCount });
       // Cycle 14 / Task 6 — full row-set replace re-aggregates totals;
@@ -5000,6 +5117,13 @@ export class VelocityGrid<TRow = any> {
    *  listener-gated: without a listener this method is byte-identical
    *  to its pre-21e body. */
   private updateRowDataCache(t: Tx<TRow>, source: 'transaction' | 'transactionAsync'): void {
+    // Master / detail — a removed master takes its band with it, and an
+    // updated master pushes into any open detail grid per `refreshStrategy`.
+    // Done here (before the mirror is rewritten below) because this is the
+    // one place every transaction shape funnels through.
+    if (this.options.masterDetail === true) {
+      this.syncMasterDetailForTransaction(t);
+    }
     if (!this.events.hasListener('rowsChanged')) {
       if (t.add) {
         for (const row of t.add) {
@@ -5341,6 +5465,7 @@ export class VelocityGrid<TRow = any> {
       this.rowCount = visibleCount;
       this.rowHeightIndex = null;
       this.recomputeViewport();
+      this.refreshDetailPositions();
       this.rebuildSelectionFromPersistentIds();
       const combined: FilterModel = {};
       for (const [id, entry] of this.columnFilterModels) combined[id] = entry;
@@ -5435,6 +5560,7 @@ export class VelocityGrid<TRow = any> {
       // replies with the new rowCount — so persistent selections need an
       // explicit rebuild here. Without this `setSelectedRowIds` /
       // `setFocusedCell` would silently paint the wrong rows after a sort.
+      this.refreshDetailPositions();
       this.rebuildSelectionFromPersistentIds();
       this.events.emit({ type: 'sortChanged', sortModel: s });
       this.cgridCanvas.requestRepaint();
@@ -5570,7 +5696,7 @@ export class VelocityGrid<TRow = any> {
     // send back includes the unchanged fields so `RowStore.apply` doesn't
     // drop anything.
     const fetches = targetRows.map((rowIndex) =>
-      this.workerCoord.getRowByIndex(rowIndex).then((fetched) => ({ rowIndex, fetched })),
+      this.getRowByDisplayIndex(rowIndex).then((fetched) => ({ rowIndex, fetched })),
     );
     Promise.all(fetches).then((results) => {
       if (this.destroyed) return;
@@ -5679,6 +5805,7 @@ export class VelocityGrid<TRow = any> {
       // Same rationale as setSortModel — filter changes don't trigger a
       // `modelUpdated` push, so persistent selection indices need to be
       // rebuilt here against the freshly-filtered visible order.
+      this.refreshDetailPositions();
       this.rebuildSelectionFromPersistentIds();
       this.events.emit({
         type: 'filterChanged',
@@ -5774,6 +5901,7 @@ export class VelocityGrid<TRow = any> {
       this.rowCount = visibleCount;
       this.rowHeightIndex = null;
       this.recomputeViewport();
+      this.refreshDetailPositions();
       this.rebuildSelectionFromPersistentIds();
       this.events.emit({
         type: 'filterChanged',
@@ -5924,6 +6052,7 @@ export class VelocityGrid<TRow = any> {
         // viewport request reads heights against the new visible order.
         this.rowHeightIndex = null;
         this.recomputeViewport();
+        this.refreshDetailPositions();
         this.rebuildSelectionFromPersistentIds();
         // The filterChanged event carries the COMPOSED per-column model
         // (not the quick-filter text), matching the existing setFilterModel
@@ -6267,7 +6396,7 @@ export class VelocityGrid<TRow = any> {
     const uniqueIndexes = Array.from(new Set(rowIndexes));
     return Promise.all(
       uniqueIndexes.map((rowIndex) =>
-        this.workerCoord.getRowByIndex(rowIndex).then((r) => ({ rowIndex, ...r })),
+        this.getRowByDisplayIndex(rowIndex).then((r) => ({ rowIndex, ...r })),
       ),
     ).then((fetched) => {
       if (this.destroyed) return rowIndexes.map(() => null);
@@ -7120,6 +7249,10 @@ export class VelocityGrid<TRow = any> {
         }
         this.rowCount = visibleCount;
         this.rowHeightIndex = null;
+        // Master / detail — collapsing a group hides its leaves, so their
+        // bands must go with them (and come back on re-expand: the
+        // expansion state is kept, only the resolved position drops).
+        this.refreshDetailPositions();
         this.recomputeViewport();
         this.cgridCanvas.requestRepaint();
         this.requestViewport();
@@ -7725,7 +7858,9 @@ export class VelocityGrid<TRow = any> {
     const idx = await this.workerCoord.getRowIndexForId(rowId);
     if (this.destroyed) return;
     if (idx < 0) return;
-    this.ensureRowIndexVisible(idx, position);
+    // Master / detail — the worker answered in base rows; scroll to where
+    // the row actually paints.
+    this.ensureRowIndexVisible(this.detailIndex.displayOfBase(idx), position);
   }
 
   /** Scroll `colId` into view. Pinned columns + unknown IDs are no-ops. */
@@ -7788,7 +7923,7 @@ export class VelocityGrid<TRow = any> {
     }
     const rowIndices = Array.from(byRow.keys());
     Promise.all(rowIndices.map((rowIndex) =>
-      this.workerCoord.getRowByIndex(rowIndex).then((fetched) => ({ rowIndex, fetched })),
+      this.getRowByDisplayIndex(rowIndex).then((fetched) => ({ rowIndex, fetched })),
     )).then((results) => {
       if (this.destroyed) return;
       const updates: TRow[] = [];
@@ -7839,7 +7974,7 @@ export class VelocityGrid<TRow = any> {
       const targetRows: number[] = [];
       for (let r = range.rowStart + 1; r <= range.rowEnd; r++) targetRows.push(r);
       return Promise.all(targetRows.map((rowIndex) =>
-        this.workerCoord.getRowByIndex(rowIndex).then((fetched) => ({ rowIndex, fetched })),
+        this.getRowByDisplayIndex(rowIndex).then((fetched) => ({ rowIndex, fetched })),
       )).then((results) => {
         const updates: TRow[] = [];
         for (const { fetched } of results) {
@@ -7903,7 +8038,7 @@ export class VelocityGrid<TRow = any> {
       this.selection.setSelectedRowIds([], []);
       return;
     }
-    this.workerCoord.getRowIndicesForIds(ids).then((indices) => {
+    this.getDisplayIndicesForIds(ids).then((indices) => {
       if (this.destroyed) return;
       this.selection.setSelectedRowIds(ids, Array.from(indices));
     }).catch((err) => { if (!this.destroyed) console.error('[velocity-grid] setSelectedRowIds:', err); });
@@ -7929,7 +8064,7 @@ export class VelocityGrid<TRow = any> {
   setFocusedCell(rowId: string, colId: string): void {
     if (this.destroyed) return;
     if (!this.columnDefsMap.has(colId)) return;
-    this.workerCoord.getRowIndicesForIds([rowId]).then((idx) => {
+    this.getDisplayIndicesForIds([rowId]).then((idx) => {
       if (this.destroyed) return;
       const resolved = idx.length > 0 ? idx[0]! : -1;
       if (resolved >= 0) this.ensureRowIndexVisible(resolved);
@@ -8115,7 +8250,7 @@ export class VelocityGrid<TRow = any> {
     }
     const indexArr = Array.from(rowIndexSet);
     const fetched = await Promise.all(indexArr.map((rowIndex) =>
-      this.workerCoord.getRowByIndex(rowIndex).then((r) => ({ rowIndex, ...r })),
+      this.getRowByDisplayIndex(rowIndex).then((r) => ({ rowIndex, ...r })),
     ));
     if (this.destroyed) return '';
     const rowsByIndex = new Map<number, Record<string, unknown>>();
@@ -8356,7 +8491,7 @@ export class VelocityGrid<TRow = any> {
     }
     const indexArr = Array.from(rowIndexSet);
     const fetched = await Promise.all(indexArr.map((rowIndex) =>
-      this.workerCoord.getRowByIndex(rowIndex).then((r) => ({ rowIndex, ...r })),
+      this.getRowByDisplayIndex(rowIndex).then((r) => ({ rowIndex, ...r })),
     ));
     if (this.destroyed) return '';
     // Build the sparse `rows` array `serializeRanges` consumes — keyed
@@ -8432,7 +8567,7 @@ export class VelocityGrid<TRow = any> {
     const targetRowIndices: number[] = [];
     for (let r = 0; r < parsed.length; r++) targetRowIndices.push(focusedRowIndex + r);
     const fetches = targetRowIndices.map((rowIndex) =>
-      this.workerCoord.getRowByIndex(rowIndex).then((fetched) => ({ rowIndex, fetched })),
+      this.getRowByDisplayIndex(rowIndex).then((fetched) => ({ rowIndex, fetched })),
     );
     const results = await Promise.all(fetches);
     if (this.destroyed) return;
@@ -8534,7 +8669,7 @@ export class VelocityGrid<TRow = any> {
     }
     const indexArr = Array.from(rowIndexSet);
     const fetched = await Promise.all(indexArr.map((rowIndex) =>
-      this.workerCoord.getRowByIndex(rowIndex).then((r) => ({ rowIndex, ...r })),
+      this.getRowByDisplayIndex(rowIndex).then((r) => ({ rowIndex, ...r })),
     ));
     if (this.destroyed) return;
     const byIndex = new Map<number, { rowId: string | null; data: unknown | null }>();
@@ -9332,6 +9467,8 @@ export class VelocityGrid<TRow = any> {
     this.scroller.style.right = `${right}px`;
     this.editorContainer.style.left = `${left}px`;
     this.editorContainer.style.right = `${right}px`;
+    this.detailContainer.style.left = `${left}px`;
+    this.detailContainer.style.right = `${right}px`;
     // setHostBounds shifts the canvas element + triggers a resize() so
     // the backing store re-fits to the new clientWidth and the renderer
     // re-lays out columns + repaints in the same call. Skips when the
@@ -9468,6 +9605,8 @@ export class VelocityGrid<TRow = any> {
     this.scroller.style.bottom = `${bottom}px`;
     this.editorContainer.style.top = `${top}px`;
     this.editorContainer.style.bottom = `${bottom}px`;
+    this.detailContainer.style.top = `${top}px`;
+    this.detailContainer.style.bottom = `${bottom}px`;
     if (this.cgridCanvas) {
       this.cgridCanvas.setHostBounds({
         left: this.sideBarInsets.left,
@@ -10188,7 +10327,23 @@ export class VelocityGrid<TRow = any> {
       updateGroupSelectsChildren: (enabled) => this.applyGroupSelectsChildren(enabled),
       resetPaintCacheLayer: () => this.resetPaintCacheLayer(),
       resetRasterCache: () => this.resetRasterCache(),
+      updateMasterDetail: () => this.updateMasterDetail(),
     };
+  }
+
+  /** Runtime apply for every master/detail option. Switching the feature
+   *  off collapses everything (an open band with no feature behind it would
+   *  be an orphan); otherwise the heights or the renderer may have changed,
+   *  so the height index is rebuilt and the bands re-placed. */
+  private updateMasterDetail(): void {
+    if (this.destroyed) return;
+    if (this.options.masterDetail !== true) {
+      this.masterDetail.collapseAll('api');
+    }
+    this.rowHeightIndex = null;
+    this.refreshDetailPositions();
+    this.recomputeViewport();
+    this.cgridCanvas?.requestRepaint();
   }
 
   /**
@@ -10666,6 +10821,11 @@ export class VelocityGrid<TRow = any> {
     // state payload is a stub until Cycle 22's snapshot API; shipping the
     // event surface now means apps can wire listeners against a stable shape.
     this.events.emit({ type: 'gridPreDestroyed', state: {} });
+    // Master / detail — every embedded grid is a full grid with its own
+    // worker; tear them down before the master's own teardown starts, so
+    // nothing outlives the container it painted into.
+    this.masterDetail?.destroy();
+    this.detailContainer.remove();
     if (this.columnResizeFlushRaf !== 0) {
       cancelAnimationFrame(this.columnResizeFlushRaf);
       this.columnResizeFlushRaf = 0;
@@ -10867,6 +11027,14 @@ export class VelocityGrid<TRow = any> {
       getExpandedKeys: () => this.getExpandedKeys(),
       ensureIndexVisible: (i, pos) => this.ensureIndexVisible(i, pos),
       resetRowGroupExpansion: () => this.resetRowGroupExpansion(),
+      setDetailExpanded: (rowId, expanded) => this.setDetailExpanded(rowId, expanded),
+      isDetailExpanded: (rowId) => this.isDetailExpanded(rowId),
+      getExpandedDetailRowIds: () => this.getExpandedDetailRowIds(),
+      collapseAllDetailRows: () => this.collapseAllDetailRows(),
+      getDetailGridInfo: (id) => this.getDetailGridInfo(id),
+      forEachDetailGridInfo: (cb) => this.forEachDetailGridInfo(cb),
+      addDetailGridInfo: (id, info) => this.addDetailGridInfo(id, info),
+      removeDetailGridInfo: (id) => this.removeDetailGridInfo(id),
       showColumnFilter: (c) => this.showColumnFilter(c),
       hideColumnFilter: () => this.hideColumnFilter(),
       onFilterChanged: (source) => this.onFilterChanged(source),
@@ -11266,6 +11434,412 @@ export class VelocityGrid<TRow = any> {
     return { groupKey };
   }
 
+  // ── Master / detail ──────────────────────────────────────────────────────
+  //
+  // A detail row is a display-only slot below its master (see
+  // `core/masterDetailIndex.ts` for the index arithmetic and
+  // `core/masterDetail.ts` for the band DOM). The three seams into the rest
+  // of the grid are: the request/reply window mapping (`dispatchViewportRequest`
+  // + `handleViewportChunk`), the row-height index, and the chevron.
+
+  /** True when `colId` carries the master toggle — the column an app gives
+   *  `cellRenderer: 'group'`, matching ag-grid's `agGroupCellRenderer`
+   *  convention. Auto-group columns are excluded: they already build their
+   *  payload through `groupCellContextAt`, which merges the master fields
+   *  itself so a grid that groups AND expands gets one chevron, not two. */
+  private isDetailToggleColumn(colId: string): boolean {
+    if (this.options.masterDetail !== true) return false;
+    if (isAutoGroupColumnId(colId)) return false;
+    return this.columnDefsMap.get(colId)?.cellRenderer === 'group';
+  }
+
+  /** Wrap a plain cell result from a master-toggle column in the payload the
+   *  `'group'` renderer expects, so the chevron paints beside the column's
+   *  own value. Returns `raw` untouched for every other column — including
+   *  when master/detail is off, which is the only check on the hot path. */
+  private wrapMasterDetailCell(
+    rowIndex: number,
+    colId: string,
+    raw: { value: unknown; valueFormatted: string; flashAlpha?: number; flashColor?: string } | null,
+  ): { value: unknown; valueFormatted: string; flashAlpha?: number; flashColor?: string } | null {
+    if (raw === null) return null;
+    if (!this.isDetailToggleColumn(colId)) return raw;
+    const chunk = this.chunk;
+    if (!chunk) return raw;
+    const local = rowIndex - chunk.rowStart;
+    if (local < 0 || local >= chunk.rowCount) return raw;
+    // Only leaf data rows carry a master toggle. Group / footer / total rows
+    // keep whatever their own branch produced.
+    if ((chunk.rowKinds[local] ?? 0) !== 0) return raw;
+    const rowId = chunk.stringRowIds?.[local] ?? '';
+    const payload: GroupCellValue = {
+      kind: 'group',
+      rowKind: 0,
+      depth: 0,
+      valueFormatted: raw.valueFormatted,
+      childCount: 0,
+      isExpanded: true,
+      masterDetail: true,
+      isMaster: this.masterDetail.isRowMaster(rowId),
+      masterExpanded: this.masterDetail.isExpanded(rowId),
+    };
+    return { ...raw, value: payload };
+  }
+
+  /**
+   * Hit-test the master row's expand chevron.
+   *
+   * Geometry mirrors `paintMasterCell` in `renderer/cellRenderers/group.ts`:
+   * the chevron sits at `col.left + PADDING`, 12 px wide, with a 4 px hit
+   * pad. Unlike the group chevron the hit zone is the CHEVRON ONLY — a
+   * master row is a data row, and swallowing clicks across the whole cell
+   * would break cell selection and editing on it.
+   */
+  private hitTestDetailChevron(x: number, y: number): { rowId: string } | null {
+    if (this.options.masterDetail !== true) return null;
+    const chunk = this.chunk;
+    if (!chunk) return null;
+    const vs = this.viewport;
+    if (y < vs.bodyTop || y >= vs.bodyBottom) return null;
+    let row: ViewportRow | null = null;
+    for (const r of vs.visibleRows) {
+      if (y >= r.top && y < r.bottom) { row = r; break; }
+    }
+    if (!row || !row.subgrid.isData) return null;
+    // Same zone partitioning as `hitTestGroupChevron` — a center column
+    // extending past `bodyRight` must not win a click in the pinned zone.
+    let zone: 'left' | 'right' | 'center';
+    if (x < vs.bodyLeft) zone = 'left';
+    else if (x >= vs.bodyRight) zone = 'right';
+    else zone = 'center';
+    let col: ViewportColumn | null = null;
+    for (const c of vs.visibleColumns) {
+      const home = c.pinned ?? 'center';
+      if (home !== zone) continue;
+      if (x >= c.left && x < c.right) { col = c; break; }
+    }
+    if (!col) return null;
+    const isAutoGroup = isAutoGroupColumnId(col.colId);
+    if (!isAutoGroup && !this.isDetailToggleColumn(col.colId)) return null;
+    const local = row.localRowIndex - chunk.rowStart;
+    if (local < 0 || local >= chunk.rowCount) return null;
+    if ((chunk.rowKinds[local] ?? 0) !== 0) return null;
+    const rowId = chunk.stringRowIds?.[local] ?? '';
+    if (rowId === '' || !this.masterDetail.isRowMaster(rowId)) return null;
+    const PADDING = 6;
+    const CHEVRON_SIZE = 12;
+    const HIT_PAD = 4;
+    // In the auto-group column the master chevron paints at depth 0 (a data
+    // row under grouping still gets its toggle flush left, per
+    // `paintMasterCell`).
+    const chevronLeft = col.left + PADDING;
+    if (x < chevronLeft - HIT_PAD || x > chevronLeft + CHEVRON_SIZE + HIT_PAD) return null;
+    return { rowId };
+  }
+
+  /** Toggle a master row's detail from a chevron click. Mirrors
+   *  `toggleGroupExpandedFromUi` — the only difference is that the event
+   *  carries the row, not a composite group key. */
+  private toggleDetailFromUi(rowId: string): void {
+    if (this.destroyed) return;
+    this.masterDetail.toggle(rowId, 'ui');
+  }
+
+  /** Expansion changed (chevron or api). Emits `rowGroupOpened` — ag-grid
+   *  uses the same event for master rows and row groups — then re-resolves
+   *  where the detail rows land in the display order. */
+  private onDetailExpandedChanged(rowId: string, expanded: boolean, source: 'ui' | 'api'): void {
+    if (this.destroyed) return;
+    this.events.emit({
+      type: 'rowGroupOpened',
+      key: rowId,
+      rowId,
+      data: this.rowDataById.get(rowId),
+      expanded,
+      source,
+    });
+    this.refreshDetailPositions();
+  }
+
+  /**
+   * Re-resolve every expanded master row to its index in the worker's
+   * visible order.
+   *
+   * This is the one worker round-trip master/detail costs, and it is the
+   * batched `getRowIndicesForIds` that selection already uses. It has to run
+   * whenever the base order can have moved — a sort, a filter, a transaction,
+   * a group toggle — because a detail row's position is defined relative to
+   * its master's, and nothing else on the main thread knows where that is.
+   *
+   * A master that resolved to -1 (filtered out, or hidden inside a collapsed
+   * group) contributes no detail row while it stays hidden, and comes back
+   * on its own the next time it resolves — expansion state is kept, only the
+   * band goes away.
+   */
+  private refreshDetailPositions(): void {
+    if (this.destroyed) return;
+    const ids = this.masterDetail.expandedRowIds();
+    if (ids.length === 0) {
+      this.detailResolveSeq++;
+      this.applyDetailPositions([]);
+      return;
+    }
+    const seq = ++this.detailResolveSeq;
+    // The RAW worker call, deliberately: these ARE the base indices the
+    // display mapping is about to be rebuilt from, so mapping them through
+    // the current (stale) index would be circular.
+    this.workerCoord.getRowIndicesForIds(ids).then((indices) => {
+      if (this.destroyed || seq !== this.detailResolveSeq) return;
+      const rows: Array<{ rowId: string; base: number }> = [];
+      for (let i = 0; i < ids.length; i++) {
+        const base = indices[i] ?? -1;
+        if (base < 0) continue;
+        rows.push({ rowId: ids[i]!, base });
+      }
+      rows.sort((a, b) => a.base - b.base);
+      this.applyDetailPositions(rows);
+    }).catch((err) => {
+      if (!this.destroyed) console.error('[velocity-grid] master/detail resolve:', err);
+    });
+  }
+
+  /** Install a freshly-resolved position list and reflow if it moved. */
+  private applyDetailPositions(rows: Array<{ rowId: string; base: number }>): void {
+    const changed = this.detailIndex.setPositions(rows.map((r) => r.base));
+    const sameIds = !changed && rows.length === this.detailRows.length
+      && rows.every((r, i) => this.detailRows[i]!.rowId === r.rowId);
+    this.detailRows = rows;
+    // Rebuild the display-index → master lookup alongside the positions; the
+    // two are only ever read together and must never disagree.
+    this.detailByDisplayIndex.clear();
+    for (const r of rows) {
+      const d = this.detailIndex.detailDisplayForBase(r.base);
+      if (d >= 0) this.detailByDisplayIndex.set(d, r.rowId);
+    }
+    if (!changed && sameIds) return;
+    // Row count and every row's y-offset below the first band just moved.
+    this.rowHeightIndex = null;
+    this.recomputeViewport();
+    this.rebuildSelectionFromPersistentIds();
+    this.events.emit({ type: 'modelUpdated', visibleRowCount: this.rowCount });
+    this.requestViewport();
+    this.cgridCanvas?.requestRepaint();
+  }
+
+  /**
+   * Fetch a row by DISPLAY index.
+   *
+   * The worker indexes its own visible order; every caller inside the grid
+   * (fill handle, clipboard, clear-cells, row fetch api) is holding a
+   * display index off a selection range. Resolving here is what keeps those
+   * callers from each needing a master/detail branch. A detail band resolves
+   * to its master's base index but returns nothing — a band is not a row and
+   * must never be copied, filled or edited as one.
+   */
+  private getRowByDisplayIndex(displayIndex: number): Promise<{ rowId: string | null; data: unknown }> {
+    if (this.detailIndex.isEmpty) return this.workerCoord.getRowByIndex(displayIndex);
+    const ref = this.detailIndex.resolve(displayIndex);
+    if (ref.isDetail) return Promise.resolve({ rowId: null, data: null });
+    return this.workerCoord.getRowByIndex(ref.base);
+  }
+
+  /** Batched rowId → DISPLAY index resolve. Wraps the worker's base-index
+   *  answer so selection, focus and scroll-to-row address the same row
+   *  space the painter does. */
+  private getDisplayIndicesForIds(rowIds: string[]): Promise<Int32Array> {
+    return this.workerCoord.getRowIndicesForIds(rowIds).then((indices) => {
+      if (this.detailIndex.isEmpty) return indices;
+      const out = new Int32Array(indices.length);
+      for (let i = 0; i < indices.length; i++) {
+        const base = indices[i]!;
+        out[i] = base < 0 ? base : this.detailIndex.displayOfBase(base);
+      }
+      return out;
+    });
+  }
+
+  /**
+   * Fold one transaction into master/detail state.
+   *
+   * Removed masters drop their expansion and their band outright — an open
+   * detail for a row that no longer exists is a leak, not a feature. Updated
+   * masters go through `refreshStrategy`, so a live-ticking blotter's detail
+   * grid follows its master by default (`'rows'`) and an app that would
+   * rather not be interrupted can say `'nothing'`.
+   */
+  private syncMasterDetailForTransaction(t: Tx<TRow>): void {
+    const idOf = (row: TRow): string | null => {
+      try { return this.options.getRowId(row); } catch { return null; }
+    };
+    if (t.remove && t.remove.length > 0) {
+      const removed: string[] = [];
+      for (const row of t.remove) {
+        const id = idOf(row);
+        if (id !== null) removed.push(id);
+      }
+      if (this.masterDetail.dropRows(removed)) this.refreshDetailPositions();
+    }
+    if (t.update && t.update.length > 0) {
+      const updated: string[] = [];
+      for (const row of t.update) {
+        const id = idOf(row);
+        if (id !== null) updated.push(id);
+      }
+      // Deferred one turn: the mirror is rewritten immediately after this
+      // call returns, and `getDetailRowData` must see the NEW master row.
+      queueMicrotask(() => {
+        if (this.destroyed) return;
+        this.masterDetail.refreshMasterRows(updated);
+      });
+    }
+  }
+
+  /**
+   * Master row id owning the detail band at display index `d`, or null.
+   *
+   * A direct map rather than a search over `detailRows`, because
+   * `rowHeightSeed` calls this once per DISPLAYED ROW whenever the Fenwick
+   * index is rebuilt — on a million-row book anything worse than O(1) here is
+   * a million times worse than it looks.
+   */
+  private detailRowIdAtDisplay(d: number): string | null {
+    return this.detailByDisplayIndex.get(d) ?? null;
+  }
+
+  /** Height of the row at display index `d` when it is a detail band, else
+   *  null. Answered from `detailRows` rather than the chunk so a band
+   *  outside the fetched window still sizes correctly — otherwise the
+   *  scroll extent would jump as bands scrolled into view. */
+  private detailHeightAtDisplay(d: number): number | null {
+    const rowId = this.detailRowIdAtDisplay(d);
+    if (rowId === null) return null;
+    return this.masterDetail.detailHeight(rowId);
+  }
+
+  /**
+   * Position the detail bands for this frame.
+   *
+   * Runs off `viewport.visibleRows`, so a band is placed by exactly the
+   * geometry the canvas used for the slot it is filling — the two cannot
+   * drift on a partial paint or a mid-scroll frame.
+   */
+  private syncDetailBands(): void {
+    if (!this.masterDetail) return;
+    if (!this.options.masterDetail || this.detailIndex.isEmpty) {
+      this.masterDetail.syncBands([]);
+      return;
+    }
+    const vs = this.viewport;
+    const bands: DetailBand[] = [];
+    const left = 0;
+    const width = Math.max(0, vs.bodyRight - left);
+    for (const row of vs.visibleRows) {
+      if (!row.subgrid.isData) continue;
+      const rowId = this.detailRowIdAtDisplay(row.localRowIndex);
+      if (rowId === null) continue;
+      bands.push({
+        rowId,
+        // Inset by the framing hairlines the painter draws.
+        top: row.top + 1,
+        height: Math.max(0, row.height - 2),
+        left,
+        width,
+        clipTop: vs.bodyTop,
+        clipBottom: vs.bodyBottom,
+      });
+    }
+    this.masterDetail.syncBands(bands);
+  }
+
+  /** Build one embedded detail grid. Injected into `MasterDetailController`
+   *  so that module never imports this one back.
+   *
+   *  The detail grid inherits the master's theme, density and row metrics
+   *  unless `detailGridOptions` overrides them — two visually unrelated
+   *  grids stacked inside one another read as a rendering fault, not as a
+   *  feature. `getRowId` is synthesized when absent (the kernel requires
+   *  one; ag-grid's detail grids do not), keyed on object identity so it
+   *  stays stable for as long as the row objects do. */
+  private createDetailGrid(host: HTMLElement, detailOptions: Record<string, unknown>): DetailGridHandle {
+    host.style.width = '100%';
+    host.style.height = '100%';
+    const merged: Record<string, unknown> = {
+      theme: this.options.theme,
+      density: this.options.density,
+      rowHeight: this.options.rowHeight,
+      headerHeight: this.options.headerHeight,
+      // A detail grid configured without columns is a mistake, not a crash:
+      // it renders an empty grid the app can see is empty.
+      columnDefs: [],
+      ...detailOptions,
+    };
+    if (typeof merged.getRowId !== 'function') merged.getRowId = identityRowIdFactory();
+    const opts = merged as unknown as VelocityGridOptions<any>;
+    const grid = new VelocityGrid<any>(host, opts);
+    const api = grid.makeApi();
+    let rowCount = (opts.rowData?.length ?? 0);
+    return {
+      api,
+      setRowData: (rows) => {
+        rowCount = rows.length;
+        grid.setRowData(rows as never[]);
+      },
+      rowCount: () => rowCount,
+      metrics: () => ({
+        rowHeight: clampRowHeight(opts.rowHeight ?? grid.theme.rowHeight),
+        headerHeight: opts.headerHeight ?? grid.theme.headerHeight,
+      }),
+      destroy: () => grid.destroy(),
+    };
+  }
+
+  // ── Master / detail — public api ─────────────────────────────────────────
+
+  /** Expand or collapse one master row's detail. No-op when master/detail
+   *  is off or `isRowMaster` vetoes the row. */
+  setDetailExpanded(rowId: string, expanded: boolean): void {
+    if (this.destroyed) return;
+    this.masterDetail.setExpanded(rowId, expanded, 'api');
+  }
+
+  /** True when `rowId`'s detail row is currently open. */
+  isDetailExpanded(rowId: string): boolean {
+    return this.masterDetail.isExpanded(rowId);
+  }
+
+  /** Every master row id whose detail is currently open. */
+  getExpandedDetailRowIds(): string[] {
+    return this.masterDetail.expandedRowIds();
+  }
+
+  /** Collapse every open detail row. */
+  collapseAllDetailRows(): void {
+    if (this.destroyed) return;
+    this.masterDetail.collapseAll('api');
+  }
+
+  /** The detail grid registered under `id` (`detail_{ROW-ID}`), or
+   *  undefined. AG parity: `getDetailGridInfo`. */
+  getDetailGridInfo(id: string): DetailGridInfo | undefined {
+    return this.masterDetail.getDetailGridInfo(id);
+  }
+
+  /** Visit every live detail grid. AG parity: `forEachDetailGridInfo`. */
+  forEachDetailGridInfo(cb: (info: DetailGridInfo, index: number) => void): void {
+    this.masterDetail.forEachDetailGridInfo(cb);
+  }
+
+  /** Register a detail grid the app built itself inside a custom
+   *  `detailCellRenderer`. AG parity: `addDetailGridInfo`. */
+  addDetailGridInfo(id: string, info: DetailGridInfo): void {
+    this.masterDetail.addDetailGridInfo(id, info);
+  }
+
+  /** Unregister a detail grid registered via `addDetailGridInfo`. */
+  removeDetailGridInfo(id: string): void {
+    this.masterDetail.removeDetailGridInfo(id);
+  }
+
   /** Cycle 15 / Task 16 — hit-test the sticky group band painted at the
    *  top of the body area. Returns the ancestor's composite group key
    *  when the pointer falls on a chevron within the pinned band.
@@ -11561,6 +12135,19 @@ export class VelocityGrid<TRow = any> {
       && this.pivotEngine.isPivotActive()
       && rowGroupDepthCount > 0
       && depth === rowGroupDepthCount - 1;
+    // Master / detail — a DATA row inside the auto-group column carries the
+    // master toggle. Merged here rather than in `wrapMasterDetailCell` so a
+    // grid that both groups and expands emits one payload with one chevron:
+    // the group chevron on group rows, the master chevron on leaves.
+    let masterDetail: true | undefined;
+    let isMaster: boolean | undefined;
+    let masterExpanded: boolean | undefined;
+    if (rowKind === 0 && this.options.masterDetail === true) {
+      const rowId = this.chunk.stringRowIds?.[localIndex] ?? '';
+      masterDetail = true;
+      isMaster = rowId !== '' && this.masterDetail.isRowMaster(rowId);
+      masterExpanded = rowId !== '' && this.masterDetail.isExpanded(rowId);
+    }
     return {
       kind: 'group',
       rowKind,
@@ -11572,6 +12159,9 @@ export class VelocityGrid<TRow = any> {
       suppressCount: suppressCount || undefined,
       innerRenderer,
       suppressChevron: suppressChevron || undefined,
+      masterDetail,
+      isMaster,
+      masterExpanded,
     };
   }
 
@@ -11960,6 +12550,11 @@ export class VelocityGrid<TRow = any> {
    *  re-pin (via the `afterRecompute` dep). */
   private recomputeViewport(afterScroll: boolean = false): void {
     this.viewport = this.viewportManager.recompute(afterScroll);
+    // Master / detail — the bands ride the row geometry that was just
+    // recomputed. Doing it here (rather than on paint) is what keeps a band
+    // pinned to its slot through a scroll: `recompute` is the single choke
+    // point where a row's y-offset can move.
+    this.syncDetailBands();
     // Horizontal-scroll staleness fix (Cycle 22 closeout) — the viewport
     // now carries a scrollLeft the canvas was NOT last painted at: the
     // scroll handler's queued FULL damage was consumed by a paint that
@@ -12474,7 +13069,7 @@ export class VelocityGrid<TRow = any> {
       this.rebuildIndicesWithoutAutoScroll(new Map());
       return;
     }
-    this.workerCoord.getRowIndicesForIds(allIds).then((indices) => {
+    this.getDisplayIndicesForIds(allIds).then((indices) => {
       if (this.destroyed) return;
       const map = new Map<string, number>();
       for (let i = 0; i < allIds.length; i++) map.set(allIds[i]!, indices[i]!);
@@ -12530,6 +13125,20 @@ export class VelocityGrid<TRow = any> {
     chunk: ViewportChunk,
     stickyAncestors: StickyAncestor[],
   ): Promise<void> {
+    // Master / detail — the worker replied in BASE rows. Splice the detail
+    // slots in before anything else touches the chunk, so every consumer
+    // below (the staleness check, the window diff, the height index, the
+    // painter, `cellAt`) sees one consistent display-space chunk and needs
+    // no master-detail branch of its own.
+    if (!this.detailIndex.isEmpty) {
+      chunk = this.detailIndex.expandChunk(chunk, DEFAULT_DETAIL_ROW_HEIGHT);
+      for (let i = 0; i < chunk.rowCount; i++) {
+        if ((chunk.rowKinds[i] ?? 0) !== ROW_KIND_DETAIL) continue;
+        const rowId = chunk.stringRowIds?.[i] ?? '';
+        if (rowId !== '') chunk.heights[i] = this.masterDetail.detailHeight(rowId);
+      }
+      opts = { ...opts, rowStart: chunk.rowStart, rowEnd: chunk.rowStart + chunk.rowCount };
+    }
     const { rowStart, rowEnd, columns: cols } = opts;
     // A-C5 (production hardening) — drop replies that miss the live fetch
     // window entirely (a coalesced in-flight fetch can still resolve for a
@@ -12811,7 +13420,7 @@ export class VelocityGrid<TRow = any> {
   private refreshRowHeightIndex(chunk: ViewportChunk): void {
     const fallback = clampRowHeight(this.options.rowHeight ?? this.theme.rowHeight);
     if (!this.rowHeightIndex || this.rowHeightIndex.length() !== this.rowCount) {
-      this.rowHeightIndex = new RowHeightIndex(this.rowCount, () => fallback);
+      this.rowHeightIndex = new RowHeightIndex(this.rowCount, (i) => this.rowHeightSeed(i, fallback));
     }
     const idx = this.rowHeightIndex;
     for (let i = 0; i < chunk.heights.length; i++) {
@@ -12825,6 +13434,22 @@ export class VelocityGrid<TRow = any> {
     }
   }
 
+  /**
+   * Seed height for display row `i` when the Fenwick index is (re)built.
+   *
+   * Master / detail is the reason this is not a constant: a detail band is
+   * several hundred pixels tall and most of them sit OUTSIDE the fetched
+   * window, so seeding every row at the fallback would put the scroll extent
+   * wrong by the height of every unfetched band and make the thumb jump as
+   * they scrolled into view. `detailRows` knows where all of them are, so
+   * the index can be exact from the first build.
+   */
+  private rowHeightSeed(i: number, fallback: number): number {
+    if (this.detailIndex.isEmpty) return fallback;
+    const h = this.detailHeightAtDisplay(i);
+    return h === null ? fallback : clampRowHeight(h);
+  }
+
   /** Resolve the height of the data row at `localRowIndex`. When the row is
    *  present in the current viewport chunk and has a non-zero per-row entry,
    *  use that; otherwise fall back to the grid-level `rowHeight`. The 0
@@ -12833,6 +13458,13 @@ export class VelocityGrid<TRow = any> {
    *  Task 7's Fenwick tree extends this with O(log n) global coverage. */
   private rowHeightAt(localRowIndex: number): number {
     const fallback = clampRowHeight(this.options.rowHeight ?? this.theme.rowHeight);
+    // Master / detail — answered from `detailRows`, not the chunk, so a band
+    // outside the fetched window still reports its real height (see
+    // `rowHeightSeed`).
+    if (!this.detailIndex.isEmpty) {
+      const detail = this.detailHeightAtDisplay(localRowIndex);
+      if (detail !== null) return clampRowHeight(detail);
+    }
     if (!this.chunk) return fallback;
     const i = localRowIndex - this.chunk.rowStart;
     if (i < 0 || i >= this.chunk.heights.length) {
@@ -13054,9 +13686,26 @@ export class VelocityGrid<TRow = any> {
   }
 
   private cellAt(rowIndex: number, colId: string): { value: unknown; valueFormatted: string; flashAlpha?: number; flashColor?: string } | null {
+    // Master / detail — one option read gates the whole seam, so a grid
+    // without the feature pays a single boolean compare per cell.
+    if (this.options.masterDetail === true) {
+      return this.wrapMasterDetailCell(rowIndex, colId, this.cellAtRaw(rowIndex, colId));
+    }
+    return this.cellAtRaw(rowIndex, colId);
+  }
+
+  /** The cell lookup proper. Split out of `cellAt` so master/detail can wrap
+   *  the result without threading a branch through every return site. */
+  private cellAtRaw(rowIndex: number, colId: string): { value: unknown; valueFormatted: string; flashAlpha?: number; flashColor?: string } | null {
     if (!this.chunk) return null;
     const localIndex = rowIndex - this.chunk.rowStart;
     if (localIndex < 0 || localIndex >= this.chunk.rowCount) return null;
+    // Master / detail — a detail band holds no cells. The painter skips the
+    // row entirely, but `cellAt` is also the clipboard / export / rule-fold
+    // path, and those must see a blank, not the master's values.
+    if ((this.chunk.rowKinds[localIndex] ?? 0) === ROW_KIND_DETAIL) {
+      return { value: '', valueFormatted: '' };
+    }
     // Cycle 4 / Task 11 + Cycle 25 / Task 7 — prefer the paint-frame
     // flash alpha mask (one Map walk per paint) over per-cell
     // `registry.getAlpha`. Fall back when the mask is cold or the
@@ -13234,6 +13883,12 @@ export class VelocityGrid<TRow = any> {
     if (!this.chunk) return null;
     const localIndex = rowIndex - this.chunk.rowStart;
     if (localIndex < 0 || localIndex >= this.chunk.rowCount) return null;
+    // Master / detail — a band's slot carries its MASTER's id (that is how
+    // the host finds which grid to mount). It is not that row, though, so
+    // anything resolving an index to a row id — selection, the rule fold,
+    // the a11y probe — must see nothing here, or a select-all would report
+    // every master twice.
+    if ((this.chunk.rowKinds[localIndex] ?? 0) === ROW_KIND_DETAIL) return null;
     return this.chunk.stringRowIds?.[localIndex] ?? null;
   }
 
@@ -15288,6 +15943,28 @@ export class VelocityGrid<TRow = any> {
     });
     return throwaway.bg;
   }
+}
+
+/**
+ * Master / detail — a `getRowId` for a detail grid that was not given one.
+ *
+ * The kernel requires `getRowId`; ag-grid's detail grids do not, and asking
+ * every app to invent one for a five-row popover would be a pointless tax.
+ * Identity-keyed through a `WeakMap`, so the id is stable for as long as the
+ * row object is — which is exactly as long as the detail grid holds it — and
+ * the entries go away with the rows.
+ */
+function identityRowIdFactory(): (row: unknown) => string {
+  const ids = new WeakMap<object, string>();
+  let next = 0;
+  return (row: unknown): string => {
+    if (row === null || typeof row !== 'object') return String(row);
+    const existing = ids.get(row);
+    if (existing !== undefined) return existing;
+    const id = `d${next++}`;
+    ids.set(row, id);
+    return id;
+  };
 }
 
 // ─── Cycle 20 / Task 3 — export support ─────────────────────────────────────

@@ -20,6 +20,7 @@ import type {
 } from './column';
 import type { CFilterModelEntry, FilterModel } from './filter';
 import type { GroupModel } from './group';
+import type { DetailGridInfo } from './masterDetail';
 import type { VelocityGridEvent } from './event';
 import type { VelocityGridOptions } from './options';
 import type { FloatingRect } from '../interaction/floatingPanel/host';
@@ -314,6 +315,31 @@ export interface VelocityGridApi<TRow = any> {
   ensureIndexVisible(index: number, position?: 'auto' | 'top' | 'middle' | 'bottom'): void;
   /** Cycle 15.5 / Task 1 — reset all row groups to collapsed. */
   resetRowGroupExpansion(): void;
+
+  // ── Master / detail ──────────────────────────────────────────────────────
+  /** Open or close one master row's detail. No-op when `masterDetail` is
+   *  off or `isRowMaster` vetoes the row. Fires `rowGroupOpened` with
+   *  `source: 'api'` and the row's `rowId` / `data`. */
+  setDetailExpanded(rowId: string, expanded: boolean): void;
+  /** True when `rowId`'s detail row is currently open. */
+  isDetailExpanded(rowId: string): boolean;
+  /** Every master row id whose detail is open, in insertion order. */
+  getExpandedDetailRowIds(): string[];
+  /** Close every open detail row. */
+  collapseAllDetailRows(): void;
+  /** The detail grid registered under `id` — the format is
+   *  `detail_{ROW-ID}`, as in ag-grid — or `undefined` when that detail
+   *  grid is not currently live. AG parity: `getDetailGridInfo`. */
+  getDetailGridInfo(id: string): DetailGridInfo | undefined;
+  /** Visit every live detail grid. AG parity: `forEachDetailGridInfo`. */
+  forEachDetailGridInfo(cb: (info: DetailGridInfo, index: number) => void): void;
+  /** Register a detail grid built by a custom `detailCellRenderer`, so it
+   *  shows up in `getDetailGridInfo` / `forEachDetailGridInfo`. The default
+   *  embedded-grid renderer registers itself. AG parity:
+   *  `addDetailGridInfo`. */
+  addDetailGridInfo(id: string, info: DetailGridInfo): void;
+  /** Unregister a detail grid registered via `addDetailGridInfo`. */
+  removeDetailGridInfo(id: string): void;
 
   /** Cycle 7 / Task 9 — read the v2 per-column filter entry for
    *  `colId`. Returns `null` when the column is unfiltered or

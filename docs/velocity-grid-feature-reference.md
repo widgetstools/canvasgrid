@@ -703,6 +703,31 @@ Events: `pivotStateChanged`, `pivotMaxColumnsReached`
 
 **Note:** `packages/excel-pivot` is a **scaffold** for a future Excel-native engine; kernel AG-style pivot is what ships today.
 
+### 16.5 Master / detail
+
+A master row expands into an embedded detail grid — a full VelocityGrid with its own columns, sort, filter, selection and scrollbars, mounted as DOM over the master's canvas.
+
+A detail row is **display-only**: it occupies a slot in the displayed order directly beneath its master and never reaches the worker. Expanding therefore costs no refilter, regroup or resort — see `core/masterDetailIndex.ts` for the display↔base index arithmetic and `core/masterDetail.ts` for the band lifecycle.
+
+| Key | Notes |
+|-----|-------|
+| `masterDetail` | Master switch. Put `cellRenderer: 'group'` on the column that should carry the caret (the analogue of AG's `agGroupCellRenderer`) |
+| `isRowMaster` | `(data) => boolean` — `false` means no caret and no detail row |
+| `detailRowHeight` | Fixed band height. Default **300** |
+| `detailRowAutoHeight` | Size each band to its own content |
+| `keepDetailRows` / `keepDetailRowsCount` | Retain a collapsed/scrolled-away detail grid (scroll, sort, filter, selection survive). Default cap **10**, least-recently-shown evicted first |
+| `detailCellRendererParams` | `{ detailGridOptions, getDetailRowData, refreshStrategy, template }`. May be a function evaluated per master row |
+| `detailCellRenderer` | `(params) => HTMLElement \| string` — replaces the embedded grid with app-owned DOM |
+| `isMasterOpenByDefault` | Open a row's detail as its data arrives |
+
+API: `setDetailExpanded(rowId, expanded)`, `isDetailExpanded`, `getExpandedDetailRowIds`, `collapseAllDetailRows`, `getDetailGridInfo('detail_{ROW-ID}')`, `forEachDetailGridInfo`, `addDetailGridInfo`, `removeDetailGridInfo`
+
+Event: `rowGroupOpened` — AG uses one event for a master row and a row group; the master-row form carries `rowId` and `data`.
+
+**Deltas from AG Grid.** Runtime-mutable where AG marks initial-only (`detailRowHeight`, `detailRowAutoHeight`, `keepDetailRows*`) — the controller reads them lazily, so a flip only costs a reflow. `detailCellRenderer` takes a function rather than a framework component name. `embedFullWidthRows` has no analogue: a band always spans the body width and never scrolls horizontally with the columns. `getRowId` is synthesised for a detail grid that does not supply one. Grouping and master/detail combine — group rows keep the group caret, leaf rows get the master caret. Master rows under **SSRM** are not supported yet (band positions resolve through the CSRM visible order).
+
+Demo: `apps/velocitygrid-master-detail-demo` (`npm run dev:master-detail`, port 5240). E2E: `e2e/master-detail.spec.ts`.
+
 ---
 
 ## 17. Side bar, tool panels, status bar, overlays
@@ -885,7 +910,7 @@ Used by data + perspective for templated URLs/topics/`clientId`. Does **not** ow
 |---------|--------|
 | Infinite scrolling row model | Absent |
 | Tree data path model | Absent (grouping only) |
-| Master/detail row expansion | Absent |
+| Master/detail row expansion | **Ships** — see §16.5. Master rows under SSRM are not supported yet |
 | Advanced Filter builder | Absent |
 | Charts (as a product area) | Absent (sparklines/renderers only) |
 | Full pagination row model | Absent |

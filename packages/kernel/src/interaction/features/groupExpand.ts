@@ -37,7 +37,13 @@ export class GroupExpandFeature extends Feature {
     const checkbox = sticky === null && chevron === null
       ? ctx.grid.hitTestGroupCheckbox(ctx.point.x, ctx.point.y)
       : null;
-    this.cursor = sticky !== null || chevron !== null || checkbox !== null ? 'pointer' : null;
+    // Master / detail — a master row's chevron gets the same affordance.
+    const detail = sticky === null && chevron === null && checkbox === null
+      ? ctx.grid.hitTestDetailChevron(ctx.point.x, ctx.point.y)
+      : null;
+    this.cursor = sticky !== null || chevron !== null || checkbox !== null || detail !== null
+      ? 'pointer'
+      : null;
     super.handleMouseMove(ctx);
   }
 
@@ -78,6 +84,16 @@ export class GroupExpandFeature extends Feature {
       // an editor / move focus to the auto-group cell.
       return;
     }
+    // Master / detail — last of the chevron lanes, because its hit zone is
+    // the narrowest and the three above are strictly more specific about
+    // what they own.
+    const detail = ctx.grid.hitTestDetailChevron(ctx.point.x, ctx.point.y);
+    if (detail !== null) {
+      ctx.grid.toggleDetailExpanded(detail.rowId);
+      // CONSUME — expanding a master must not also select the row, start a
+      // range drag, or open an editor on the cell the chevron sits in.
+      return;
+    }
     super.handleMouseDown(ctx);
   }
 
@@ -111,6 +127,7 @@ export class GroupExpandFeature extends Feature {
     if (chevron !== null) return;
     const checkbox = ctx.grid.hitTestGroupCheckbox(ctx.point.x, ctx.point.y);
     if (checkbox !== null) return;
+    if (ctx.grid.hitTestDetailChevron(ctx.point.x, ctx.point.y) !== null) return;
     super.handleClick(ctx);
   }
 

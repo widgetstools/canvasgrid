@@ -15,6 +15,12 @@ import type {
   GetRowHeightParams,
 } from './column';
 import type { IAggFunc } from './group';
+import type {
+  DetailCellRendererParams,
+  IDetailCellRendererParams,
+  IsRowMaster,
+  MasterDetailRowNode,
+} from './masterDetail';
 import type { CgTheme } from '../theming/theme/themeObject';
 import type {
   ExportCallback,
@@ -921,6 +927,65 @@ export interface VelocityGridOptions<TRow = any> {
    * tree rather than throwing.
    */
   getDataPath?: (data: TRow) => string[];
+
+  /**
+   * Master / detail — let a row expand into an embedded detail grid.
+   * AG parity: `masterDetail`.
+   *
+   * A detail row is display-only: it takes a slot in the DISPLAYED order
+   * directly beneath its master and holds a real DOM grid over the canvas.
+   * It never reaches the worker, so expanding a row costs no refilter,
+   * regroup or resort — see `core/masterDetailIndex.ts`.
+   *
+   * To get the expand chevron, give the column you want it on
+   * `cellRenderer: 'group'` (the analogue of ag-grid's
+   * `agGroupCellRenderer`). Runtime-mutable.
+   */
+  masterDetail?: boolean;
+
+  /**
+   * Return `false` to make a row non-expandable — no chevron, no detail row.
+   * AG parity: `isRowMaster`. Called with the raw row data. Rows whose data
+   * has not reached the main-thread mirror yet are treated as masters.
+   */
+  isRowMaster?: IsRowMaster<TRow>;
+
+  /** Fixed height (CSS px) of every detail row. Defaults to 300, matching
+   *  ag-grid. Ignored when {@link detailRowAutoHeight} is on. */
+  detailRowHeight?: number;
+
+  /** Size each detail band to its own content instead of
+   *  {@link detailRowHeight}. AG parity: `detailRowAutoHeight`. */
+  detailRowAutoHeight?: boolean;
+
+  /** Keep a detail grid alive when its row collapses or scrolls out of view,
+   *  preserving its scroll position, sort, filter and selection. AG parity:
+   *  `keepDetailRows`. Retained grids are capped by
+   *  {@link keepDetailRowsCount}. */
+  keepDetailRows?: boolean;
+
+  /** Maximum retained detail grids under {@link keepDetailRows}. Default 10,
+   *  matching ag-grid. Least-recently-shown is evicted first. */
+  keepDetailRowsCount?: number;
+
+  /** Configuration for the embedded detail grid — its `detailGridOptions`
+   *  and the `getDetailRowData` callback that feeds it. Supply a function
+   *  to configure per master row. AG parity:
+   *  `detailCellRendererParams`. */
+  detailCellRendererParams?:
+    | IDetailCellRendererParams<TRow>
+    | ((params: { node: MasterDetailRowNode<TRow>; data: TRow }) => IDetailCellRendererParams<TRow>);
+
+  /** Replace the embedded grid with app-owned DOM. Return an element (or an
+   *  HTML string) and it fills the detail band; `detailCellRendererParams`
+   *  is then unused. AG parity: `detailCellRenderer`, adapted — this takes
+   *  a function, not a framework component name. */
+  detailCellRenderer?: (params: DetailCellRendererParams<TRow>) => HTMLElement | string | void;
+
+  /** Open a master row's detail automatically when its data first arrives.
+   *  AG parity: `isMasterOpenByDefault`. */
+  isMasterOpenByDefault?: (params: { node: MasterDetailRowNode<TRow>; data: TRow }) => boolean;
+
   /** Cycle 18 / Task 3 — master pivot switch. When `true`, the grid
    *  enters pivot mode: the configured pivot (Column Label) columns'
    *  distinct values become secondary column groups, the value columns

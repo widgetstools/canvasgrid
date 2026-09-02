@@ -118,6 +118,8 @@ export interface CgThemeParams {
   groupFooterTextColor?: ColorValue;
   groupFooterBorderColor?: ColorValue;
   groupFooterFontWeight?: FontWeightValue;
+  detailRowBackgroundColor?: ColorValue;
+  detailRowBorderColor?: ColorValue;
 
   // Status-bar chrome
   statusBarBackgroundColor?: ColorValue;
@@ -270,6 +272,8 @@ const SCALAR_PARAMS: readonly ScalarParamSpec[] = [
     tokens: ['--vg-group-footer-font-weight'],
     kind: 'fontWeight',
   },
+  { name: 'detailRowBackgroundColor', tokens: ['--vg-detail-row-bg'], kind: 'color' },
+  { name: 'detailRowBorderColor', tokens: ['--vg-detail-row-border'], kind: 'color' },
 
   // Status-bar chrome
   { name: 'statusBarBackgroundColor', tokens: ['--vg-status-bar-bg'], kind: 'color' },

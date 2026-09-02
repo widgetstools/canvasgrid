@@ -89,6 +89,10 @@ export const GRID_OPTIONS_SCHEMA_EXCLUDED: ReadonlyMap<RuntimeOption, string> = 
   ['paintCacheOverscan', 'perf-tuning knob paired with paintCache, same rationale'],
   ['rasterCache', 'perf-tuning escape hatch (mirrors paintCache\'s framing), not a customizer-facing display setting'],
   ['rasterCacheBudgetMB', 'perf-tuning knob paired with rasterCache, same rationale'],
+  ['isRowMaster', 'callback'],
+  ['isMasterOpenByDefault', 'callback'],
+  ['detailCellRenderer', 'callback'],
+  ['detailCellRendererParams', 'the detail grid\'s own columnDefs + data callback — a grid config, not a scalar setting'],
 ] as Array<[RuntimeOption, string]>);
 
 const opts = (...pairs: Array<[string, string]>): SettingsSelectOption[] =>
@@ -244,6 +248,17 @@ const OPTION_BANDS: BandSpec[] = [
       { key: 'rowGroupPanelSuppressSort', label: 'No sort from panel', type: 'switch', kernelDefault: false, hint: 'Panel chips stop cycling sort' },
       { key: 'suppressCount', label: 'Hide group counts', type: 'switch', kernelDefault: false },
       { key: 'suppressAggFuncInHeader', label: 'Hide agg in header', type: 'switch', kernelDefault: false, hint: 'P&L, not sum(P&L)' },
+    ],
+  },
+  {
+    id: 'masterDetail',
+    title: 'Master / detail',
+    fields: [
+      { key: 'masterDetail', label: 'Master / detail', type: 'switch', kernelDefault: false, hint: 'Rows expand into an embedded grid' },
+      { key: 'detailRowHeight', label: 'Detail height', type: 'number', min: 60, max: 900, step: 10, kernelDefault: 300, hint: 'px · ignored when auto height is on' },
+      { key: 'detailRowAutoHeight', label: 'Auto detail height', type: 'switch', kernelDefault: false, hint: 'Size each band to its own content' },
+      { key: 'keepDetailRows', label: 'Keep detail grids', type: 'switch', kernelDefault: false, hint: 'Preserve scroll / sort / selection when collapsed' },
+      { key: 'keepDetailRowsCount', label: 'Detail grids kept', type: 'number', min: 1, max: 50, step: 1, kernelDefault: 10 },
     ],
   },
   {

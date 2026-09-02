@@ -65,6 +65,10 @@ interface MockGrid {
    *  behaviour; cases that want checkbox interactions override. */
   hitTestGroupCheckbox?: (x: number, y: number) => { groupKey: string; state: 'none' | 'partial' | 'all' } | null;
   toggleGroupChildrenSelected?: ReturnType<typeof vi.fn>;
+  /** Master / detail stubs. Same default-null convention as the checkbox
+   *  lane above, so every pre-existing case stays on its own path. */
+  hitTestDetailChevron?: (x: number, y: number) => { rowId: string } | null;
+  toggleDetailExpanded?: ReturnType<typeof vi.fn>;
 }
 
 function makeCtx(
@@ -81,6 +85,8 @@ function makeCtx(
     hitTestGroupCheckbox: () => null,
     toggleGroupChildrenSelected: vi.fn(),
     hitTestStickyChevron: () => null,
+    hitTestDetailChevron: () => null,
+    toggleDetailExpanded: vi.fn(),
     ...grid,
   };
   return {
@@ -304,6 +310,57 @@ describe('GroupExpandFeature — chain semantics', () => {
     f.handleMouseDown(makeCtx(grid, { x: 12, y: 40 }));
     expect(toggleExpand).toHaveBeenCalledWith('desk:APAC');
     expect(toggleSelect).not.toHaveBeenCalled();
+  });
+
+  it('14. mousedown on a master row chevron toggles its detail and consumes the event', () => {
+    // The master lane is last, so it must still fire when the three group
+    // lanes above it all miss — and it must consume, or the same click
+    // would also focus the cell and start a range drag under the band that
+    // is about to open.
+    const toggleDetail = vi.fn();
+    const grid: MockGrid = {
+      hitTestGroupChevron: () => null,
+      toggleGroupExpanded: vi.fn(),
+      hitTestDetailChevron: () => ({ rowId: 'TICK4032' }),
+      toggleDetailExpanded: toggleDetail,
+    };
+    const f = new GroupExpandFeature();
+    const ctx = makeCtx(grid, { x: 12, y: 40 });
+    f.handleMouseDown(ctx);
+    expect(toggleDetail).toHaveBeenCalledWith('TICK4032');
+    // Consumed — the trailing click must not reach `cellClicked` either.
+    f.handleClick(ctx);
+  });
+
+  it('15. a group chevron hit wins over a master chevron hit in the same gesture', () => {
+    // A grouped master-detail grid paints one chevron per row: the group
+    // caret on group rows, the master caret on leaves. If both ever report
+    // a hit, the group lane owns it — expanding a group is the coarser,
+    // more destructive-to-get-wrong gesture.
+    const toggleGroup = vi.fn();
+    const toggleDetail = vi.fn();
+    const grid: MockGrid = {
+      hitTestGroupChevron: () => ({ groupKey: 'desk:APAC' }),
+      toggleGroupExpanded: toggleGroup,
+      hitTestDetailChevron: () => ({ rowId: 'TICK4032' }),
+      toggleDetailExpanded: toggleDetail,
+    };
+    const f = new GroupExpandFeature();
+    f.handleMouseDown(makeCtx(grid, { x: 12, y: 40 }));
+    expect(toggleGroup).toHaveBeenCalledWith('desk:APAC');
+    expect(toggleDetail).not.toHaveBeenCalled();
+  });
+
+  it('16. hovering a master chevron shows the pointer cursor', () => {
+    const grid: MockGrid = {
+      hitTestGroupChevron: () => null,
+      toggleGroupExpanded: vi.fn(),
+      hitTestDetailChevron: () => ({ rowId: 'TICK4032' }),
+      toggleDetailExpanded: vi.fn(),
+    };
+    const f = new GroupExpandFeature();
+    f.handleMouseMove(makeCtx(grid, { x: 12, y: 40 }));
+    expect(f.cursor).toBe('pointer');
   });
 });
 

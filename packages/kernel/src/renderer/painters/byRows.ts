@@ -12,6 +12,7 @@ import { cellMatchesAnyQuickFilterTerm } from '../../worker/dataPipeline';
 import { isPivotResultGroupId } from '../../core/pivotColumns';
 import { resolveIcon as resolveIconPath } from '../../icons/registry';
 import { bumpFormatEvalGeneration } from '../../core/formatEvalMemo';
+import { ROW_KIND_DETAIL } from '../../core/masterDetailIndex';
 import type { DecoratorPosition } from '../../types';
 
 const RULE_INDICATOR_POSITIONAL = new Set<string>(['tl', 'tr', 'bl', 'br', 'ml', 'mr']);
@@ -281,6 +282,11 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx, mode?: ByRo
   // (rather than per cell × N) keeps the bg-bundle + per-cell route
   // synchronised without paying for redundant chunk reads.
   const isFooterRow: boolean[] = new Array(vs.visibleRows.length).fill(false);
+  // Master / detail — a detail row is a hole in the paint. The canvas fills
+  // the band and stops; the embedded grid is DOM sitting over it (see
+  // `core/masterDetail.ts`). Resolved in the same pass as the footer probe.
+  const isDetailRow: boolean[] = new Array(vs.visibleRows.length).fill(false);
+  let anyDetailRow = false;
   // Tests that build a partial PainterCtx may omit `rowKindAt` — guard
   // defensively so the per-row check never crashes existing harnesses.
   const rowKindAt = p.rowKindAt;
@@ -288,11 +294,19 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx, mode?: ByRo
     for (let r = 0; r < vs.visibleRows.length; r++) {
       const row = vs.visibleRows[r]!;
       if (!row.subgrid.isData) continue;
-      if (rowKindAt(row.localRowIndex) === 3) isFooterRow[r] = true;
+      const kind = rowKindAt(row.localRowIndex);
+      if (kind === 3) isFooterRow[r] = true;
+      else if (kind === ROW_KIND_DETAIL) { isDetailRow[r] = true; anyDetailRow = true; }
     }
   }
   for (let r = 0; r < vs.visibleRows.length; r++) {
     const row = vs.visibleRows[r]!;
+    // Master / detail wins over every data-row bg rule — a detail band is
+    // not a row and must not pick up zebra, hover or selection chrome.
+    if (isDetailRow[r]) {
+      rowBgs[r] = theme.detailRowBg;
+      continue;
+    }
     // Cycle 15 / Task 5 — group-row strip mode wins over selection /
     // alt-row bg. The row IS a group label, not a data row; the strip's
     // `groupRowBg` carries the structural signal.
@@ -484,6 +498,7 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx, mode?: ByRo
     rowBgs,
     groupStripRows,
     isFooterRow,
+    isDetailRow,
     config: sharedConfig,
     sortLookup,
     columnDefs,
@@ -547,6 +562,29 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx, mode?: ByRo
   // row-bg bundle (`theme.groupRowBg` selected in step 2).
   // Task 4 — the strip is data content (full-row group labels live inside
   // the DataSubgrid); the chrome pass never paints it.
+  // Master / detail — re-fill each detail band after the column bands have
+  // run. The row-bg bundle already laid the tint down, but the vertical
+  // column separators paint over it, and a detail band has no columns to
+  // separate. Re-filling here (rather than special-casing the verticals) is
+  // one rect per band and keeps the gridline painter free of a
+  // master-detail branch. The framing hairlines go on top, so the band reads
+  // as attached to the master row above it.
+  if (anyDetailRow && mode !== 'chrome') {
+    for (let r = 0; r < vs.visibleRows.length; r++) {
+      if (!isDetailRow[r]) continue;
+      const row = vs.visibleRows[r]!;
+      const top = Math.max(row.top, vs.bodyTop);
+      const bottom = Math.min(row.bottom, vs.bodyBottom);
+      if (bottom <= top) continue;
+      if (db && (bottom < db.minY || top > db.maxY)) continue;
+      gc.cache.fillStyle = theme.detailRowBg;
+      gc.fillRect(0, top, rightEdge, bottom - top);
+      gc.cache.fillStyle = theme.detailRowBorder;
+      if (row.top >= vs.bodyTop) gc.fillRect(0, Math.round(row.top), rightEdge, 1);
+      if (row.bottom <= vs.bodyBottom) gc.fillRect(0, Math.round(row.bottom) - 1, rightEdge, 1);
+    }
+  }
+
   if (groupRowStrip && mode !== 'chrome') {
     const stripPainter = cellRenderers.get(groupRowStrip.renderer);
     for (let r = 0; r < vs.visibleRows.length; r++) {
@@ -737,6 +775,9 @@ interface PaintBandCtx {
   rowBgs: string[];
   groupStripRows: (import('../cellRenderers/group').GroupCellValue | null)[];
   isFooterRow: boolean[];
+  /** Master / detail — visible-row positions holding a detail band. Their
+   *  cells are never painted; the band is DOM. */
+  isDetailRow: boolean[];
   config: CellPaintConfig;
   sortLookup: Map<string, { direction: 'asc' | 'desc'; index: number }>;
   columnDefs: PainterCtx['columnDefs'];
@@ -781,7 +822,7 @@ interface PaintBandCtx {
 function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void {
   const { rows, cols, x0, x1, yTop, yBottom, clip } = band;
   const {
-    rowBgs, groupStripRows, isFooterRow, config, sortLookup, columnDefs,
+    rowBgs, groupStripRows, isFooterRow, isDetailRow, config, sortLookup, columnDefs,
     cellRenderers, cellData, selection, theme, rowDataSnapshotAt,
     quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader,
     getColumnGroupOpen, totalRowCount,
@@ -815,6 +856,9 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
     // band loop with the row's `groupRowBg` and the strip renderer
     // owning the full visible width.
     if (groupStripRows[r] !== null) continue;
+    // Master / detail — a detail band carries no cells. Skipping here is
+    // what leaves the band clear for the DOM grid parked over it.
+    if (isDetailRow[r]) continue;
 
     // HeaderGroupSubgrid: walk columns left→right, merging adjacent leaves
     // that resolve to the same group at this row's depth. One rect per group;

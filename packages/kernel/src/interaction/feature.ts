@@ -378,6 +378,20 @@ export interface VelocityGridLike {
    *  `rowGroupOpened` event with `source: 'ui'`. */
   toggleGroupExpanded(groupKey: string): void;
 
+  // --- Master / detail chevron ---
+  /** Hit-test a canvas-local point against a MASTER row's expand chevron.
+   *  Returns the master row's id, or `null` — including for non-master
+   *  rows, group rows, and any column that does not carry the toggle. The
+   *  hit zone is the chevron glyph plus 4 px, and no wider: a master row is
+   *  a data row, so a whole-cell zone would swallow selection and editing
+   *  clicks on it (the group chevron can be greedier because a group row
+   *  has no cell content to click). */
+  hitTestDetailChevron(x: number, y: number): { rowId: string } | null;
+  /** Toggle `rowId`'s detail row. Routes through the same path the
+   *  `setDetailExpanded` api uses, so the click fires `rowGroupOpened`
+   *  with `source: 'ui'`. */
+  toggleDetailExpanded(rowId: string): void;
+
   // --- Group tri-state checkbox (Cycle 15 / Task 8) ---
   /** Hit-test a canvas-local point against the tri-state checkbox of
    *  an auto-group cell. Returns the composite group key + current

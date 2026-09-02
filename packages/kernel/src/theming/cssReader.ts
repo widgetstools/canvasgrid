@@ -276,6 +276,15 @@ export interface ResolvedTheme {
    *  same +1 weight stop. Apps that want a lighter footer (e.g. 450)
    *  override independently. */
   groupFooterFontWeight: number;
+  /** Master / detail — background of the band a detail row occupies. The
+   *  embedded grid sits on top of it, so what shows is the gutter around
+   *  that grid; a recessed tint is what tells the eye the band belongs to
+   *  the row above rather than being another row. Resolved from
+   *  `--vg-detail-row-bg`, defaulting to the alt-row tint. */
+  detailRowBg: string;
+  /** Master / detail — hairline framing the detail band, top and bottom.
+   *  Resolved from `--vg-detail-row-border`, defaulting to the grid line. */
+  detailRowBorder: string;
   rowHeight: number;
   headerHeight: number;
   resizerHotZone: number;
@@ -1019,6 +1028,8 @@ export class CssReader {
       groupFooterFg: get('--vg-group-footer-fg') || get('--vg-totals-fg') || '#0f172a',
       groupFooterBorderTop: get('--vg-group-footer-border-top') || get('--vg-totals-border-top') || '#cbd5e1',
       groupFooterFontWeight: px('--vg-group-footer-font-weight', px('--vg-totals-font-weight', 500)),
+      detailRowBg: get('--vg-detail-row-bg') || get('--vg-row-alt-bg') || get('--vg-bg-color') || '#f4f6f8',
+      detailRowBorder: get('--vg-detail-row-border') || get('--vg-grid-line-color') || '#e2e8f0',
       rowHeight: px('--vg-row-height', 30),
       headerHeight: px('--vg-header-height', 32),
       resizerHotZone: px('--vg-resizer-hot-zone', 4),

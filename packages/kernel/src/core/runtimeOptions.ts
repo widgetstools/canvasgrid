@@ -102,7 +102,20 @@ export type RuntimeOption =
   | 'paintCache'
   | 'paintCacheOverscan'
   | 'rasterCache'
-  | 'rasterCacheBudgetMB';
+  | 'rasterCacheBudgetMB'
+  // Master / detail. Every one of these is read lazily by the controller
+  // (through `getOptions()`), so a flip needs nothing but a reflow — which
+  // is why they are runtime here even though ag-grid marks the height and
+  // `keepDetailRows*` knobs initial-only.
+  | 'masterDetail'
+  | 'isRowMaster'
+  | 'detailRowHeight'
+  | 'detailRowAutoHeight'
+  | 'keepDetailRows'
+  | 'keepDetailRowsCount'
+  | 'detailCellRenderer'
+  | 'detailCellRendererParams'
+  | 'isMasterOpenByDefault';
 
 /** Minimal grid surface the apply table needs. Lives here to avoid a circular
  *  import on `VelocityGrid` (velocityGrid.ts imports this module). */
@@ -130,6 +143,11 @@ export interface RuntimeOptionTarget<TRow = any> {
   rebuildColumns(opts: { defaultColDef?: Partial<any> }): void;
   /** Repaint + viewport invalidation hook. Cheap; safe to call repeatedly. */
   refreshLayout(): void;
+  /** Master / detail — re-apply the feature after any of its options
+   *  changed: collapse everything if it was switched off, re-resolve band
+   *  positions, rebuild the row-height index (heights may have changed) and
+   *  repaint. */
+  updateMasterDetail(): void;
   /** SelectionModel mode swap (rowSelection runtime option). */
   setSelectionMode(mode: 'none' | 'single' | 'multiple'): void;
   /** Replace the row data set (mirrors `api.setRowData`). */
@@ -503,6 +521,21 @@ export function applyRuntimeOption<TRow>(
       // tiers and forces a full repaint (see `resetRasterCache`'s doc).
       target.resetRasterCache();
       return;
+    case 'masterDetail':
+    case 'isRowMaster':
+    case 'detailRowHeight':
+    case 'detailRowAutoHeight':
+    case 'keepDetailRows':
+    case 'keepDetailRowsCount':
+    case 'detailCellRenderer':
+    case 'detailCellRendererParams':
+    case 'isMasterOpenByDefault':
+      // Master / detail — the controller reads every one of these lazily,
+      // so applying one is "re-measure and re-place the bands". Turning the
+      // feature OFF also has to drop the open ones, which is why this goes
+      // through a grid hook rather than a bare `refreshLayout`.
+      target.updateMasterDetail();
+      return;
   }
 }
 
@@ -548,6 +581,9 @@ export const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOpt
   'domLayout',
   'groupSelectsChildren',
   'suppressCount', 'singleClickEdit', 'suppressClickEdit', 'enableExcelEditing',
+  'masterDetail', 'isRowMaster', 'detailRowHeight', 'detailRowAutoHeight',
+  'keepDetailRows', 'keepDetailRowsCount', 'detailCellRenderer',
+  'detailCellRendererParams', 'isMasterOpenByDefault',
   'paintCache', 'paintCacheOverscan',
   'rasterCache', 'rasterCacheBudgetMB',
 ]);

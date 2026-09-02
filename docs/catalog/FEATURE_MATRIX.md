@@ -574,26 +574,26 @@
 | 12 | ✅ Fill handle value progression | Enterprise | behavior | no | P2 | Numbers increment linearly; non-numbers copy; override with `options.fillOperation` |
 
 <!-- area:13 Master/Detail -->
-| 13 | masterDetail | Enterprise | option | no | P2 | Enables Master/Detail mode |
-| 13 | isRowMaster | Enterprise | option | no | P2 | Callback; return false to prevent a row being expandable |
-| 13 | detailCellRenderer | Enterprise | option | no | P2 | Custom renderer for the detail row |
-| 13 | detailCellRendererParams | Enterprise | option | no | P2 | Params for default or custom detail renderer |
-| 13 | detailCellRendererParams.detailGridOptions | Enterprise | option | no | P2 | Full GridOptions for the embedded detail grid |
-| 13 | detailCellRendererParams.getDetailRowData | Enterprise | option | no | P2 | Callback to supply detail rows (async via successCallback) |
-| 13 | detailCellRendererParams.refreshStrategy | Enterprise | option | no | P2 | 'rows' / 'everything' / 'nothing' on master data change |
-| 13 | detailCellRendererParams.template | Enterprise | option | no | P3 | Custom HTML wrapper around detail grid |
-| 13 | detailRowHeight | Enterprise | option | no | P2 | Fixed pixel height for detail rows (initial-only) |
-| 13 | detailRowAutoHeight | Enterprise | option | no | P2 | Expand detail row to fit content (initial-only) |
-| 13 | keepDetailRows | Enterprise | option | no | P2 | Cache detail grid instances when master row collapses (initial-only) |
-| 13 | keepDetailRowsCount | Enterprise | option | no | P2 | Max cached detail instances; LRU eviction (initial-only) |
-| 13 | getDetailGridInfo | Enterprise | api | no | P2 | Returns DetailGridInfo (including api) by detail row ID |
-| 13 | forEachDetailGridInfo | Enterprise | api | no | P2 | Iterates all active detail grid instances |
-| 13 | addDetailGridInfo | Enterprise | api | no | P3 | Registers custom detail renderer with master (internal use) |
-| 13 | removeDetailGridInfo | Enterprise | api | no | P3 | Unregisters custom detail renderer on destroy |
-| 13 | rowGroupOpened | Community | event | no | P2 | Master row expanded or collapsed (expanded field) |
-| 13 | Detail row lifecycle (create/destroy) | Enterprise | behavior | no | P2 | keepDetailRows false: destroy on collapse; true: cache up to keepDetailRowsCount |
-| 13 | refreshStrategy behaviour | Enterprise | behavior | no | P2 | 'rows' applies delta; 'everything' re-fetches; 'nothing' leaves detail unchanged |
-| 13 | Accessing detail grid API | Enterprise | behavior | no | P2 | getDetailGridInfo('detail_{id}').api for operations on detail grid |
+| 13 | ✅ masterDetail | Enterprise | option | no | P2 | Enables Master/Detail mode. Caret goes on the column with `cellRenderer: 'group'` |
+| 13 | ✅ isRowMaster | Enterprise | option | no | P2 | Callback; return false to prevent a row being expandable |
+| 13 | ✅ detailCellRenderer | Enterprise | option | no | P2 | Custom renderer for the detail row. Takes a function, not a framework component name |
+| 13 | ✅ detailCellRendererParams | Enterprise | option | no | P2 | Params for default or custom detail renderer |
+| 13 | ✅ detailCellRendererParams.detailGridOptions | Enterprise | option | no | P2 | Full GridOptions for the embedded detail grid |
+| 13 | ✅ detailCellRendererParams.getDetailRowData | Enterprise | option | no | P2 | Callback to supply detail rows (async via successCallback) |
+| 13 | ✅ detailCellRendererParams.refreshStrategy | Enterprise | option | no | P2 | 'rows' / 'everything' / 'nothing' on master data change |
+| 13 | ✅ detailCellRendererParams.template | Enterprise | option | no | P3 | Custom HTML wrapper around detail grid |
+| 13 | ✅ detailRowHeight | Enterprise | option | no | P2 | Fixed pixel height for detail rows. Runtime-mutable here (AG: initial-only) |
+| 13 | ✅ detailRowAutoHeight | Enterprise | option | no | P2 | Expand detail row to fit content. Runtime-mutable here (AG: initial-only) |
+| 13 | ✅ keepDetailRows | Enterprise | option | no | P2 | Cache detail grid instances when master row collapses. Runtime-mutable here (AG: initial-only) |
+| 13 | ✅ keepDetailRowsCount | Enterprise | option | no | P2 | Max cached detail instances; LRU eviction. Runtime-mutable here (AG: initial-only) |
+| 13 | ✅ getDetailGridInfo | Enterprise | api | no | P2 | Returns DetailGridInfo (including api) by detail row ID |
+| 13 | ✅ forEachDetailGridInfo | Enterprise | api | no | P2 | Iterates all active detail grid instances |
+| 13 | ✅ addDetailGridInfo | Enterprise | api | no | P3 | Registers custom detail renderer with master (internal use) |
+| 13 | ✅ removeDetailGridInfo | Enterprise | api | no | P3 | Unregisters custom detail renderer on destroy |
+| 13 | ✅ rowGroupOpened | Community | event | no | P2 | Master row expanded or collapsed. Carries `rowId` + `data` for the master-row form |
+| 13 | ✅ Detail row lifecycle (create/destroy) | Enterprise | behavior | no | P2 | keepDetailRows false: destroy on collapse; true: cache up to keepDetailRowsCount |
+| 13 | ✅ refreshStrategy behaviour | Enterprise | behavior | no | P2 | 'rows' applies delta; 'everything' re-fetches; 'nothing' leaves detail unchanged |
+| 13 | ✅ Accessing detail grid API | Enterprise | behavior | no | P2 | getDetailGridInfo('detail_{id}').api for operations on detail grid |
 | 13 | masterSelects: 'detail' integration | Community | behavior | no | P2 | Selecting master row acts as header checkbox of detail; see 12-selection.md |
 
 <!-- area:14 Tree data -->

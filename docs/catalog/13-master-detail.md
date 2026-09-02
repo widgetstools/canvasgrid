@@ -101,7 +101,39 @@ By default (`masterSelects: 'self'`), selecting a master row has no effect on th
 
 ![Master row expanded showing detail grid](screenshots/13-master-detail-row-expanded.png) — Master/Detail toggle ON; the first leaf row (TICK4032 / Tom Brown) is expanded revealing the embedded detail AG Grid beneath it, displaying position-level sub-data with its own column headers and rows.
 
-## Canvas-port implications
+## Canvas-port status — SHIPPED
+
+Master/detail ships in the kernel. The port's shape, and where it departs from
+the notes below:
+
+- **The detail row is display-only.** It takes a slot in the DISPLAYED row
+  order beneath its master and never reaches the worker, so expanding costs no
+  refilter, regroup or resort. `core/masterDetailIndex.ts` owns the
+  display↔base index arithmetic (and the chunk rewrite that splices the band
+  into a worker reply); `core/masterDetail.ts` owns the band DOM, the pane
+  lifecycle and the `keepDetailRows` LRU.
+- **The caret** goes on whichever column carries `cellRenderer: 'group'` — the
+  analogue of `agGroupCellRenderer`. Grouping and master/detail combine: group
+  rows keep the group caret, leaf rows get the master one.
+- **Row-height reflow** was not the problem the note below anticipated. Main
+  knows where every open band is (not just the ones on screen), so the Fenwick
+  height index is seeded exactly and the scroll extent is right before any
+  chunk covering a band has arrived.
+- **`detailRowAutoHeight`** needs no two-pass layout: the detail grid is a
+  canvas, so the height comes from what it will lay out (header + n rows)
+  rather than from measuring DOM.
+- **Runtime-mutable** where ag-grid marks initial-only (`detailRowHeight`,
+  `detailRowAutoHeight`, `keepDetailRows*`) — the controller reads them
+  lazily, so a flip costs a reflow and nothing more.
+- **`detailCellRenderer`** takes a function returning an element or an HTML
+  string, not a framework component name.
+- **Not yet supported:** master rows under SSRM (band positions resolve
+  through the CSRM visible order), and `embedFullWidthRows` (a band always
+  spans the body width and never scrolls horizontally with the columns).
+
+Demo: `apps/velocitygrid-master-detail-demo`. E2E: `e2e/master-detail.spec.ts`.
+
+## Canvas-port implications (original port notes)
 
 - The detail grid is a fully separate grid instance with its own render surface. In a canvas-based master, the detail would need a DOM `<canvas>` or `<div>` overlay positioned absolutely below the expanded master row, injected into the canvas container.
 - Row-height calculation must account for the detail row height; the canvas layout engine needs to reflow subsequent rows when a master row expands or collapses.

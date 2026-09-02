@@ -121,6 +121,10 @@ function setup(opts: { rowCount?: number; cols?: string[]; initialFocus?: { row:
     // hit-lane so chain tests stay on the data-cell path.
     hitTestGroupCheckbox: () => null,
     toggleGroupChildrenSelected: () => {},
+    // Master / detail — same default so chain tests stay on the data-cell
+    // path and no click is stolen by the master chevron lane.
+    hitTestDetailChevron: () => null,
+    toggleDetailExpanded: () => {},
     // Cycle 15.5 / Task 6 — keyboard group nav stubs (data rows only so
     // handleKeyDown delegates to super / column nav as before).
     getGroupKeyAtRow: () => '',

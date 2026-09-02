@@ -154,6 +154,18 @@ export interface GroupCellValue {
    *  and the call's return string replaces the value text. Omit to use
    *  the default text path. */
   readonly innerRenderer?: string;
+  /** Master / detail — `true` when this column carries the master row's
+   *  expand toggle (`masterDetail: true` and this is a `'group'`-rendered
+   *  column). Set on EVERY data row, master or not, so the chevron slot is
+   *  reserved and values stay aligned down the column — the same thing
+   *  ag-grid's `agGroupCellRenderer` does with its hidden expand icon. */
+  readonly masterDetail?: boolean;
+  /** Master / detail — `true` when THIS row can be expanded (`isRowMaster`
+   *  did not veto it). Only then does a chevron paint. */
+  readonly isMaster?: boolean;
+  /** Master / detail — `true` when this master row's detail is open;
+   *  chooses `chevron-down` over `chevron-right`. */
+  readonly masterExpanded?: boolean;
 }
 
 /** Type-narrow `value` to a `GroupCellValue`. Defensive — the painter
@@ -229,6 +241,14 @@ export const groupCell: CellPainter = {
     // multipleColumns + data rows.
     if (groupValue.rowKind !== 1) {
       if (ownDepth !== null) return;
+      // Master / detail — a DATA row in a master-detail grid paints its own
+      // value behind a chevron slot. This runs before the opened-group echo
+      // because a master-detail grid without row grouping has no group label
+      // to echo, and one WITH grouping wants the master toggle, not the echo.
+      if (groupValue.masterDetail) {
+        paintMasterCell(gc, p, groupValue);
+        return;
+      }
       if (groupValue.valueFormatted === '') return;
       paintOpenedGroupLabel(gc, p, groupValue);
       return;
@@ -325,6 +345,50 @@ export const groupCell: CellPainter = {
     }
   },
 };
+
+/**
+ * Master / detail — paint a data row's cell in the column that carries the
+ * expand toggle.
+ *
+ * Layout, matching the group-row path so the two read as one column:
+ *
+ *   [PADDING] [chevron 12 | blank] [GAP 6] [value]
+ *
+ * The chevron slot is reserved whether or not the row is a master. A grid
+ * where some rows expand and some do not would otherwise show its values
+ * stepping left and right down the column, which reads as a rendering bug
+ * rather than as "this row has nothing to open".
+ *
+ * The chevron's x geometry is mirrored by `VelocityGrid.hitTestDetailChevron`
+ * — the same load-bearing duplication the group chevron already carries.
+ */
+function paintMasterCell(
+  gc: CachedContext2D,
+  p: CellPaintConfig,
+  groupValue: GroupCellValue,
+): void {
+  const cy = p.bounds.y + p.bounds.h / 2;
+  const left = p.bounds.x + PADDING;
+  if (groupValue.isMaster) {
+    drawIcon(
+      gc,
+      groupValue.masterExpanded ? 'chevron-down' : 'chevron-right',
+      left + CHEVRON_SIZE / 2,
+      cy,
+      CHEVRON_SIZE,
+      { color: p.groupChevronColor ?? p.fg, strokeWidth: 2 },
+    );
+  }
+  const text = groupValue.valueFormatted;
+  if (text === '') return;
+  // Same `gc.cache` bypass as the group-row text path — `drawIcon` leaves the
+  // proxy's value tracker stale against the restored ctx.
+  gc.fillStyle = p.fg;
+  gc.font = p.font;
+  gc.textBaseline = 'middle';
+  gc.textAlign = 'left';
+  gc.fillText(text, left + CHEVRON_SIZE + CHEVRON_GAP, cy);
+}
 
 /**
  * Cycle 15 / Task 8 — paint the tri-state checkbox at `(x, y)` (top-left
