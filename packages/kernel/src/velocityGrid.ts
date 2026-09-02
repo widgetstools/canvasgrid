@@ -11706,13 +11706,40 @@ export class VelocityGrid<TRow = any> {
     return this.detailByDisplayIndex.get(d) ?? null;
   }
 
-  /** Height of the row at display index `d` when it is a detail band, else
-   *  null. Answered from `detailRows` rather than the chunk so a band
-   *  outside the fetched window still sizes correctly — otherwise the
-   *  scroll extent would jump as bands scrolled into view. */
+  /**
+   * Height of the row at display index `d` when it is a detail band, else
+   * null. Answered from `detailRows` rather than the chunk so a band outside
+   * the fetched window still sizes correctly — otherwise the scroll extent
+   * would jump as bands scrolled into view.
+   *
+   * Precedence matches ag-grid's `_getRowHeightForNode`: a `getRowHeight`
+   * callback is consulted FIRST and wins outright when it returns a finite
+   * number, so an app can size one band differently from another. Only when
+   * it declines (or is absent) does `detailRowHeight` /
+   * `detailRowAutoHeight` decide.
+   */
   private detailHeightAtDisplay(d: number): number | null {
     const rowId = this.detailRowIdAtDisplay(d);
     if (rowId === null) return null;
+    const cb = this.options.getRowHeight;
+    if (cb) {
+      const data = this.rowDataById.get(rowId);
+      if (data !== undefined) {
+        let h: number | undefined | null;
+        try {
+          h = cb({
+            data,
+            rowId,
+            rowIndex: d,
+            // AG passes the MASTER's data on a detail node, and marks it with
+            // `node.detail` — that flag is the whole point of the callback
+            // here, so the app can tell a band from a row.
+            node: { detail: true, master: false, id: rowId, data },
+          });
+        } catch { h = undefined; }
+        if (typeof h === 'number' && Number.isFinite(h) && h > 0) return h;
+      }
+    }
     return this.masterDetail.detailHeight(rowId);
   }
 

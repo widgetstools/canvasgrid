@@ -30,6 +30,7 @@ import type {
   DetailGridInfo,
   DetailRefreshStrategy,
   IDetailCellRendererParams,
+  IsMasterOpenByDefaultParams,
   MasterDetailRowNode,
 } from '../types/masterDetail';
 
@@ -69,7 +70,7 @@ export interface MasterDetailOptions<TRow = any> {
   detailCellRendererParams?:
     | IDetailCellRendererParams<TRow>
     | ((params: { node: MasterDetailRowNode<TRow>; data: TRow }) => IDetailCellRendererParams<TRow>);
-  isMasterOpenByDefault?: (params: { node: MasterDetailRowNode<TRow>; data: TRow }) => boolean;
+  isMasterOpenByDefault?: (params: IsMasterOpenByDefaultParams<TRow>) => boolean;
 }
 
 export interface MasterDetailDeps<TRow = any> {
@@ -189,7 +190,11 @@ export class MasterDetailController<TRow = any> {
       if (data === undefined) continue;
       if (!this.isRowMaster(rowId)) continue;
       let open = false;
-      try { open = cb({ node: { id: rowId, data }, data }) === true; } catch { open = false; }
+      try {
+        // AG's `IsMasterOpenByDefaultParams`: `{ rowNode, data, level }`.
+        // A master row is always a leaf of the master grid, so `level` is 0.
+        open = cb({ rowNode: { id: rowId, data }, data, level: 0 }) === true;
+      } catch { open = false; }
       if (!open) continue;
       this.expanded.add(rowId);
       changed = true;
@@ -356,15 +361,19 @@ export class MasterDetailController<TRow = any> {
     let mount: HTMLElement = el;
 
     // `template` wraps the grid in app HTML — a title bar, a toolbar. The
-    // element carrying `ref="eDetailGrid"` is where the grid goes; without
-    // one the template is treated as decoration and the grid fills the
-    // wrapper as usual.
+    // element carrying `data-ref="eDetailGrid"` is where the grid goes.
+    // ag-grid renamed that attribute from `ref` to `data-ref`; both are
+    // accepted here because templates written against either generation of
+    // the docs are out there, and silently ignoring one would put the grid
+    // in the wrong place rather than fail loudly. Without either, the
+    // template is treated as decoration and the grid fills the wrapper.
     const template = typeof params.template === 'function'
       ? safeCall(() => (params.template as (p: never) => string)({ node, data } as never))
       : params.template;
     if (typeof template === 'string' && template.trim() !== '') {
       el.innerHTML = template;
-      const slot = el.querySelector('[ref="eDetailGrid"]');
+      const slot = el.querySelector('[data-ref="eDetailGrid"]')
+        ?? el.querySelector('[ref="eDetailGrid"]');
       if (slot instanceof HTMLElement) mount = slot;
     }
 
@@ -437,10 +446,12 @@ export class MasterDetailController<TRow = any> {
     const grid = pane.grid;
     if (!grid) return;
     const { rowHeight, headerHeight } = grid.metrics();
-    const wanted = Math.max(
-      MIN_AUTO_DETAIL_HEIGHT,
-      headerHeight + grid.rowCount() * rowHeight + DETAIL_PADDING * 2,
-    );
+    // AG parity: the floor applies to the ROWS SECTION, not the whole band —
+    // an auto-height detail grid keeps at least 150px of row area, and the
+    // header sits above that. Flooring the total instead would let a
+    // one-row detail collapse until its header ate the whole band.
+    const rowsHeight = Math.max(MIN_AUTO_DETAIL_ROWS_HEIGHT, grid.rowCount() * rowHeight);
+    const wanted = headerHeight + rowsHeight + DETAIL_PADDING * 2;
     if (this.autoHeights.get(pane.rowId) === wanted) return;
     this.autoHeights.set(pane.rowId, wanted);
     this.deps.onDetailHeightChanged();
@@ -488,8 +499,9 @@ export class MasterDetailController<TRow = any> {
   }
 }
 
-/** Minimum height an auto-sized detail band may collapse to. */
-const MIN_AUTO_DETAIL_HEIGHT = 60;
+/** Minimum height the ROWS SECTION of an auto-sized detail grid may collapse
+ *  to, matching ag-grid's own 150px floor. The header rides on top of it. */
+const MIN_AUTO_DETAIL_ROWS_HEIGHT = 150;
 /** Inner padding the detail band reserves around its embedded grid. */
 const DETAIL_PADDING = 1;
 

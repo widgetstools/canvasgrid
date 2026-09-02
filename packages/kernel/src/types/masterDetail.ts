@@ -37,6 +37,17 @@ export interface GetDetailRowDataParams<TRow = any, TDetail = any> {
   successCallback: (rowData: TDetail[]) => void;
 }
 
+/** Params for `isMasterOpenByDefault`. Field-for-field ag-grid's
+ *  `IsMasterOpenByDefaultParams`, including the `rowNode` name (NOT `node` —
+ *  `getDetailRowData` is the callback that says `node`, and porting an app
+ *  across is easier when both keep the name they already had). `level` is
+ *  always 0: a master row is a leaf of the master grid. */
+export interface IsMasterOpenByDefaultParams<TRow = any> {
+  rowNode: MasterDetailRowNode<TRow>;
+  data: TRow;
+  level: number;
+}
+
 /** How an open detail grid reacts when its master row's data changes. */
 export type DetailRefreshStrategy = 'rows' | 'everything' | 'nothing';
 

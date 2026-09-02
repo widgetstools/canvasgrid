@@ -714,17 +714,38 @@ A detail row is **display-only**: it occupies a slot in the displayed order dire
 | `masterDetail` | Master switch. Put `cellRenderer: 'group'` on the column that should carry the caret (the analogue of AG's `agGroupCellRenderer`) |
 | `isRowMaster` | `(data) => boolean` — `false` means no caret and no detail row |
 | `detailRowHeight` | Fixed band height. Default **300** |
-| `detailRowAutoHeight` | Size each band to its own content |
+| `detailRowAutoHeight` | Size each band to its own content. Floors the detail grid's ROWS section at 150px, as AG does |
 | `keepDetailRows` / `keepDetailRowsCount` | Retain a collapsed/scrolled-away detail grid (scroll, sort, filter, selection survive). Default cap **10**, least-recently-shown evicted first |
 | `detailCellRendererParams` | `{ detailGridOptions, getDetailRowData, refreshStrategy, template }`. May be a function evaluated per master row |
 | `detailCellRenderer` | `(params) => HTMLElement \| string` — replaces the embedded grid with app-owned DOM |
-| `isMasterOpenByDefault` | Open a row's detail as its data arrives |
+| `isMasterOpenByDefault` | Open a row's detail as its data arrives. Params `{ rowNode, data, level }` |
+| `getRowHeight` | Also called for detail bands, with `params.node.detail === true` and the MASTER's data. Consulted **before** `detailRowHeight` / `detailRowAutoHeight`, matching AG's precedence |
+
+`template` marks the grid's mount point with `data-ref="eDetailGrid"` (AG's current attribute); the legacy `ref="eDetailGrid"` is accepted too.
 
 API: `setDetailExpanded(rowId, expanded)`, `isDetailExpanded`, `getExpandedDetailRowIds`, `collapseAllDetailRows`, `getDetailGridInfo('detail_{ROW-ID}')`, `forEachDetailGridInfo`, `addDetailGridInfo`, `removeDetailGridInfo`
 
 Event: `rowGroupOpened` — AG uses one event for a master row and a row group; the master-row form carries `rowId` and `data`.
 
-**Deltas from AG Grid.** Runtime-mutable where AG marks initial-only (`detailRowHeight`, `detailRowAutoHeight`, `keepDetailRows*`) — the controller reads them lazily, so a flip only costs a reflow. `detailCellRenderer` takes a function rather than a framework component name. `embedFullWidthRows` has no analogue: a band always spans the body width and never scrolls horizontally with the columns. `getRowId` is synthesised for a detail grid that does not supply one. Grouping and master/detail combine — group rows keep the group caret, leaf rows get the master caret. Master rows under **SSRM** are not supported yet (band positions resolve through the CSRM visible order).
+#### Parity with AG Grid 36.1.0
+
+Verified against the installed `ag-grid-community` / `ag-grid-enterprise` type definitions and bundles, not just the docs. Every documented option, callback param shape, API method and default matches, with these deliberate deltas:
+
+| Delta | Why |
+|-------|-----|
+| Runtime-mutable where AG marks `@initial` (`detailRowHeight`, `detailRowAutoHeight`, `keepDetailRows*`) | The controller reads every option lazily, so a flip costs a reflow and nothing more. A superset — code written against AG's stricter rule still works |
+| `detailCellRenderer` is `(params) => HTMLElement \| string` | No framework component registry to name one in |
+| `detailRowAutoHeight` keeps the detail grid virtualised | AG's auto height "renders all of its rows all the time" and warns off 100+ rows. Ours computes the height from row count × row height instead, so the detail grid keeps its virtualisation |
+| `getRowId` synthesised for a detail grid that omits one | The kernel requires one; AG's detail grids do not. Keyed on object identity, so `refreshStrategy: 'rows'` preserves detail selection without the app supplying anything |
+| No `embedFullWidthRows` | A band always spans the body width and never scrolls horizontally with the columns |
+
+Not implemented:
+
+| Gap | Notes |
+|-----|-------|
+| Master rows under **SSRM** | Band positions resolve through the CSRM visible order |
+| Master/detail + **tree data** | AG lets a tree GROUP node also be a master. Here only leaf rows (`rowKind 0`) can be masters — which does match AG under row grouping, where only leaves may be masters |
+| `rowSelection.masterSelects: 'detail'` | Selecting a master row acting as the detail grid's header checkbox |
 
 Demo: `apps/velocitygrid-master-detail-demo` (`npm run dev:master-detail`, port 5240). E2E: `e2e/master-detail.spec.ts`.
 

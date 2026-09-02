@@ -87,6 +87,7 @@ export type {
   // masterDetail.ts — master / detail option + callback surface
   MasterDetailRowNode,
   IsRowMaster,
+  IsMasterOpenByDefaultParams,
   GetDetailRowDataParams,
   DetailRefreshStrategy,
   DetailCellRendererParams,

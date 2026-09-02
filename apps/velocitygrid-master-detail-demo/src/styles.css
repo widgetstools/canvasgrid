@@ -45,4 +45,18 @@ body {
 /* The detail band the grid parks over the canvas. The kernel paints the
    band's ground and its framing hairlines; this is the inset that makes the
    embedded grid read as nested rather than as a full-bleed second grid. */
-.vg-detail-row { padding: 6px 10px 8px 34px; }
+.vg-detail-row {
+  padding: 4px 10px 8px 34px;
+  display: flex;
+  flex-direction: column;
+}
+/* App chrome from `detailCellRendererParams.template`, above the slot the
+   grid mounts into (`data-ref="eDetailGrid"`). */
+.detail-caption {
+  flex: 0 0 auto;
+  padding: 2px 2px 5px;
+  font-size: 11px;
+  letter-spacing: .02em;
+  color: #8b95a3;
+}
+.detail-slot { flex: 1 1 auto; min-height: 0; }

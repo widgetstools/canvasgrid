@@ -27,6 +27,17 @@ export interface GetRowHeightParams<TRow = any> {
   data: TRow;
   rowId: string;
   rowIndex: number;
+  /**
+   * Master / detail — the row-node view ag-grid's `getRowHeight` receives.
+   * `node.detail` is `true` when this call is for a DETAIL band rather than
+   * a data row, which is how an app sizes one band differently from another
+   * (AG parity: `params.node.detail`). `data` is the MASTER's data in that
+   * case, exactly as ag-grid passes it.
+   *
+   * Present only on the master/detail call path; ordinary data rows resolve
+   * their height in the worker, which has no row node to hand over.
+   */
+  node?: { detail: boolean; master: boolean; id: string; data: TRow };
 }
 
 /** Predicate that decides whether a single cell is editable. Receives the

@@ -160,6 +160,49 @@ describe('master / detail — expansion', () => {
     grid.destroy(); host.remove();
   });
 
+  it('lets getRowHeight override a band, the way ag-grid orders it', async () => {
+    // AG's `_getRowHeightForNode` consults `getRowHeight` FIRST, for every
+    // row including detail bands, and only falls through to
+    // `detailRowHeight` when the callback declines. `node.detail` is how the
+    // callback tells a band from a row.
+    const seen: Array<{ detail: boolean; rowId: string }> = [];
+    const { grid, host, drain } = mount({
+      masterDetail: true,
+      detailRowHeight: 180,
+      getRowHeight: (p: any) => {
+        if (p.node?.detail) {
+          seen.push({ detail: true, rowId: p.rowId });
+          // Size this band from the master's own data.
+          return p.data.qty * 10;
+        }
+        return undefined;
+      },
+    });
+    grid.setRowData(ROWS);
+    await drain();
+    grid.setDetailExpanded('b', true);   // qty 20 → 200px, not the 180 default
+    await drain();
+    const heightAt = (i: number) => (grid as any).rowHeightAt(i) as number;
+    expect(heightAt(2)).toBe(200);
+    expect(seen.some((s) => s.detail && s.rowId === 'b')).toBe(true);
+
+    grid.destroy(); host.remove();
+  });
+
+  it('falls back to detailRowHeight when getRowHeight declines the band', async () => {
+    const { grid, host, drain } = mount({
+      masterDetail: true,
+      detailRowHeight: 180,
+      getRowHeight: () => undefined,
+    });
+    grid.setRowData(ROWS);
+    await drain();
+    grid.setDetailExpanded('a', true);
+    await drain();
+    expect((grid as any).rowHeightAt(1)).toBe(180);
+    grid.destroy(); host.remove();
+  });
+
   it('honours isRowMaster', async () => {
     const { grid, host, drain } = mount({
       masterDetail: true,

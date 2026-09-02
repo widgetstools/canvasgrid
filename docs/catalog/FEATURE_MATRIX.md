@@ -581,9 +581,9 @@
 | 13 | ✅ detailCellRendererParams.detailGridOptions | Enterprise | option | no | P2 | Full GridOptions for the embedded detail grid |
 | 13 | ✅ detailCellRendererParams.getDetailRowData | Enterprise | option | no | P2 | Callback to supply detail rows (async via successCallback) |
 | 13 | ✅ detailCellRendererParams.refreshStrategy | Enterprise | option | no | P2 | 'rows' / 'everything' / 'nothing' on master data change |
-| 13 | ✅ detailCellRendererParams.template | Enterprise | option | no | P3 | Custom HTML wrapper around detail grid |
+| 13 | ✅ detailCellRendererParams.template | Enterprise | option | no | P3 | Custom HTML wrapper around detail grid; mount point is data-ref=eDetailGrid (legacy ref= also accepted) |
 | 13 | ✅ detailRowHeight | Enterprise | option | no | P2 | Fixed pixel height for detail rows. Runtime-mutable here (AG: initial-only) |
-| 13 | ✅ detailRowAutoHeight | Enterprise | option | no | P2 | Expand detail row to fit content. Runtime-mutable here (AG: initial-only) |
+| 13 | ✅ detailRowAutoHeight | Enterprise | option | no | P2 | Expand detail row to fit content; rows section floored at 150px. Runtime-mutable here (AG: initial-only), and the detail grid stays virtualised (AG's renders every row) |
 | 13 | ✅ keepDetailRows | Enterprise | option | no | P2 | Cache detail grid instances when master row collapses. Runtime-mutable here (AG: initial-only) |
 | 13 | ✅ keepDetailRowsCount | Enterprise | option | no | P2 | Max cached detail instances; LRU eviction. Runtime-mutable here (AG: initial-only) |
 | 13 | ✅ getDetailGridInfo | Enterprise | api | no | P2 | Returns DetailGridInfo (including api) by detail row ID |
@@ -594,7 +594,11 @@
 | 13 | ✅ Detail row lifecycle (create/destroy) | Enterprise | behavior | no | P2 | keepDetailRows false: destroy on collapse; true: cache up to keepDetailRowsCount |
 | 13 | ✅ refreshStrategy behaviour | Enterprise | behavior | no | P2 | 'rows' applies delta; 'everything' re-fetches; 'nothing' leaves detail unchanged |
 | 13 | ✅ Accessing detail grid API | Enterprise | behavior | no | P2 | getDetailGridInfo('detail_{id}').api for operations on detail grid |
-| 13 | masterSelects: 'detail' integration | Community | behavior | no | P2 | Selecting master row acts as header checkbox of detail; see 12-selection.md |
+| 13 | ✅ getRowHeight for detail rows | Enterprise | behavior | no | P2 | params.node.detail is true for a band; consulted BEFORE detailRowHeight, matching AG precedence |
+| 13 | ✅ isMasterOpenByDefault | Enterprise | option | no | P2 | Params { rowNode, data, level } |
+| 13 | Master/detail on tree data group nodes | Enterprise | behavior | no | P3 | NOT IMPLEMENTED. AG allows a tree group node to be a master; only leaf rows can be here |
+| 13 | Master rows under SSRM | Enterprise | behavior | no | P2 | NOT IMPLEMENTED. Band positions resolve through the CSRM visible order |
+| 13 | masterSelects: 'detail' integration | Community | behavior | no | P2 | NOT IMPLEMENTED. Selecting master row acts as header checkbox of detail; see 12-selection.md |
 
 <!-- area:14 Tree data -->
 | 14 | treeData | Enterprise | option | no | P2 | Enables Tree Data mode |

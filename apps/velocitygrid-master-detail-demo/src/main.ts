@@ -84,6 +84,11 @@ function masterDetailOptions(): Record<string, unknown> {
     isRowMaster: (row: Account) => row.callRecords.length > 0,
     detailCellRendererParams: {
       refreshStrategy: 'rows',
+      // The mount point ag-grid looks for. Everything outside it is app
+      // chrome — here a caption naming the account whose calls these are.
+      template: (p: { data: Account }) =>
+        `<div class="detail-caption">${p.data.name} · ${p.data.callRecords.length} calls</div>`
+        + '<div data-ref="eDetailGrid" class="detail-slot"></div>',
       detailGridOptions: {
         columnDefs: DETAIL_COLUMNS.map((c) => ({ ...c })),
         rowSelection: 'multiple',

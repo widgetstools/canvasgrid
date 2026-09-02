@@ -127,9 +127,23 @@ the notes below:
   lazily, so a flip costs a reflow and nothing more.
 - **`detailCellRenderer`** takes a function returning an element or an HTML
   string, not a framework component name.
+- **`getRowHeight` is consulted first** for a detail band, with
+  `params.node.detail === true` and the master's data — the same precedence
+  as ag-grid's `_getRowHeightForNode`, which checks the callback before
+  falling through to `detailRowHeight` / `detailRowAutoHeight`.
+- **`template`** marks its mount point with `data-ref="eDetailGrid"` (the
+  attribute ag-grid uses today; the notes below were written against 35.3.1,
+  when it was `ref=`). Both are accepted.
 - **Not yet supported:** master rows under SSRM (band positions resolve
-  through the CSRM visible order), and `embedFullWidthRows` (a band always
-  spans the body width and never scrolls horizontally with the columns).
+  through the CSRM visible order); `embedFullWidthRows` (a band always spans
+  the body width and never scrolls horizontally with the columns);
+  master/detail on a tree-data GROUP node (ag-grid allows it there but not
+  under row grouping — only leaves can be masters here); and
+  `rowSelection.masterSelects: 'detail'`.
+
+Parity was re-verified against the installed AG Grid 36.1.0 type definitions
+and bundles, not only the published docs — see §16.5 of
+`docs/velocity-grid-feature-reference.md` for the full table.
 
 Demo: `apps/velocitygrid-master-detail-demo`. E2E: `e2e/master-detail.spec.ts`.
 

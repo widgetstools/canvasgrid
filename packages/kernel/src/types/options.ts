@@ -18,6 +18,7 @@ import type { IAggFunc } from './group';
 import type {
   DetailCellRendererParams,
   IDetailCellRendererParams,
+  IsMasterOpenByDefaultParams,
   IsRowMaster,
   MasterDetailRowNode,
 } from './masterDetail';
@@ -984,7 +985,7 @@ export interface VelocityGridOptions<TRow = any> {
 
   /** Open a master row's detail automatically when its data first arrives.
    *  AG parity: `isMasterOpenByDefault`. */
-  isMasterOpenByDefault?: (params: { node: MasterDetailRowNode<TRow>; data: TRow }) => boolean;
+  isMasterOpenByDefault?: (params: IsMasterOpenByDefaultParams<TRow>) => boolean;
 
   /** Cycle 18 / Task 3 — master pivot switch. When `true`, the grid
    *  enters pivot mode: the configured pivot (Column Label) columns'
