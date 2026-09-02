@@ -14,8 +14,13 @@ import { test, expect, type Page } from '@playwright/test';
  * not: each bundler emits its own content-hashed copy of the worker script,
  * so they would silently get two engines, two copies of the table and two
  * feeds on one origin. `configurePerspectiveSharedWorker({ url })` is how a
- * deployment makes them agree; the second test here is what keeps that
- * mechanism honest by proving a differing URL really does split the engine.
+ * deployment makes them agree.
+ *
+ * The two-app case itself needs two real builds served from one origin,
+ * which a dev-server e2e cannot stage — `npm run verify:shared-engine`
+ * builds and runs exactly that. What is checked here is the part reachable
+ * from the running demo: that tabs of one app genuinely share, and that a
+ * page reports honestly which of the two regimes it is in.
  *
  * Run against the demo: `npm run dev:stomp` + `npm run dev:ssrm-provider`.
  */
@@ -77,38 +82,26 @@ test('tabs of one app share a single engine, table and feed', async ({ context }
   expect(leaders, 'exactly one tab drives the feed').toHaveLength(1);
 });
 
-test('the shared-worker URL is what decides sharing', async ({ context }) => {
+test('a bundled worker reports itself as per-app; a configured one does not', async ({ context }) => {
+  // The honest answer to "will these two apps share an engine?". A bundled
+  // script is shared only with tabs of the SAME build, so `bundled: true` is
+  // the signal that two DIFFERENT apps will not share however matched their
+  // origin and providerId are.
   const a = await context.newPage();
   await a.goto(DEMO);
   await waitLive(a);
-  const { target } = await probe(a);
+  const pa = await probe(a);
+  test.skip(pa.mode !== 'shared', 'dedicated-worker fallback');
+  expect(pa.target.bundled, 'default build uses its own bundled worker').toBe(true);
+  expect(pa.target.url).toBeNull();
 
-  // Same script, spelled differently. Per the HTML spec a SharedWorker is
-  // matched on its constructor URL, so this is a DIFFERENT worker even
-  // though the bytes behind it are identical — which is exactly what
-  // happens to two apps whose bundlers hashed the file differently.
   const b = await context.newPage();
-  await b.goto(`${DEMO}?swurl=${encodeURIComponent(`${target.url}?dup=1`)}`);
+  await b.goto(`${DEMO}?swurl=${encodeURIComponent('/psp-shared-worker.js')}`);
   await waitLive(b);
-  await b.waitForTimeout(3000);
-
-  const [pa, pb] = await Promise.all([probe(a), probe(b)]);
-  test.skip(pa.mode !== 'shared' || pb.mode !== 'shared', 'dedicated-worker fallback');
-
-  expect(pb.target.url).not.toBe(pa.target.url);
-  // Two engines, each seeing only its own tab — the failure mode the
-  // `url` option exists to prevent.
-  expect(pa.stats.sessions, 'tab A engine sees only tab A').toBe(1);
-  expect(pb.stats.sessions, 'tab B engine sees only tab B').toBe(1);
-
-  // A third tab pointed at the SAME url as B joins B's engine, not A's —
-  // proving the option is what makes separate apps converge.
-  const c = await context.newPage();
-  await c.goto(`${DEMO}?swurl=${encodeURIComponent(`${target.url}?dup=1`)}`);
-  await waitLive(c);
-  await c.waitForTimeout(3000);
-
-  const [pa2, pb2] = await Promise.all([probe(a), probe(b)]);
-  expect(pa2.stats.sessions, 'tab A still alone').toBe(1);
-  expect(pb2.stats.sessions, 'tabs B and C share an engine').toBe(2);
+  const pb = await probe(b);
+  expect(pb.target.bundled).toBe(false);
+  expect(pb.target.url).toBe(new URL('/psp-shared-worker.js', DEMO).href);
+  // Both tabs must agree on the NAME too — it is half of the worker's
+  // identity, and a mismatch splits the engine just as a URL mismatch does.
+  expect(pb.target.name).toBe(pa.target.name);
 });

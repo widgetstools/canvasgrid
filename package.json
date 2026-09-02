@@ -34,7 +34,8 @@
     "test:e2e": "playwright test",
     "dev:aggrid": "npm run dev --workspace=aggrid-reference",
     "dev:tree": "npm run dev --workspace=velocitygrid-tree-demo",
-    "dev:master-detail": "npm run dev --workspace=velocitygrid-master-detail-demo"
+    "dev:master-detail": "npm run dev --workspace=velocitygrid-master-detail-demo",
+    "verify:shared-engine": "node scripts/verify-shared-engine.mjs"
   },
   "devDependencies": {
     "@openfin/node-adapter": "^43.101.2",

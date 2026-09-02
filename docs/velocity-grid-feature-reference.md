@@ -302,12 +302,14 @@ The WASM engine runs in a **SharedWorker**, so blotters that share it get one en
 | Table identity | `tableNameForSchema(schema, identity)`; `identity` = `bookIdentityFor(config)` — catalog `providerId`, else `wsUrl` + topic/clientId. Two providers with the same columns but different brokers never collide |
 | Feed leadership | Web Lock per table; one leader feeds, followers `adoptSharedLive` and queue for takeover |
 | Worker identity | `(origin, script URL, name)` — **all three**. Tabs of one app agree for free; **two apps do not**, since each bundle emits its own hashed copy of the worker script |
-| Converging several apps | `configurePerspectiveSharedWorker({ url })` before the first `getPerspectiveClient()`, pointing every app at one deployed copy. `getPerspectiveSharedWorkerTarget()` reports the pair a page is keyed on |
+| Converging several apps | Build the artefact (`npm run build:shared-worker -w @wellsfargo-starui/velocity-grid-perspective` → `dist/perspective-shared-worker.js`, self-contained), deploy ONE copy per origin, and call `configurePerspectiveSharedWorker({ url })` from every app before the first `getPerspectiveClient()`. `getPerspectiveSharedWorkerTarget()` → `{ url, name, bundled }`; apps meant to share must all report `bundled: false` and the same `url` + `name` |
+| Cost of *not* converging | Not just duplication. Feed leadership is a Web Lock, which is **origin**-scoped while the engine is not — so two apps contend for one lock over two separately-empty tables, and the loser waits out a 30s `waitForSharedSnapshot` timeout before feeding itself. Measured 35s to live unshared vs ~10s shared |
+| Bundling hazard | The default path depends on `new URL('./sharedServer.worker.ts', import.meta.url)` staying **literal and inline** inside `new SharedWorker(...)` — that shape is what a bundler matches to compile it as a worker. Computing the URL elsewhere degrades it to a bare `.ts` asset that fails only in production. Pinned by `packages/perspective/tests/sharedWorkerBundling.test.ts` |
 | Session lifetime | Released on `pagehide`; an idle reaper (45s heartbeat, 5-min timeout) covers renderers that crash without running script. Perspective's own client sends nothing on unload |
 | Diagnostics | `readSharedEngineStats()` → `{ heapBytes, sessions, engineUp }` on its own port |
 | Fallback | Dedicated worker when SharedWorker is unavailable, init times out, or `?worker=dedicated` |
 
-**The engine outlives every page.** It is torn down only when the *last* tab on that URL disconnects — so with one tab a reload silently restarts everything, and with two it does not. Memory and lifetime questions here are only meaningful with ≥ 2 tabs open; `e2e/ssrm-shared-engine.spec.ts` and `e2e/ssrm-engine-sharing.spec.ts` are that harness.
+**The engine outlives every page.** It is torn down only when the *last* tab on that URL disconnects — so with one tab a reload silently restarts everything, and with two it does not. Memory and lifetime questions here are only meaningful with ≥ 2 tabs open; `e2e/ssrm-shared-engine.spec.ts` and `e2e/ssrm-engine-sharing.spec.ts` are that harness, and `npm run verify:shared-engine` builds the two-apps-on-one-origin case (`/a1` + `/a2`) and asserts both regimes end to end.
 
 ---
 

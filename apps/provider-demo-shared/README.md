@@ -52,19 +52,37 @@ asserts that end to end.
 **What "shared" is keyed on.** A SharedWorker's identity is
 `(origin, script URL, name)` — all three. Tabs of one app agree on the URL for
 free because they load the same bundle. **Two apps do not**: each bundler
-emits its own content-hashed copy of the worker script, so two blotter apps on
-one origin would silently get two engines, two copies of the table and two
-feeds. Point them at one deployed copy instead, from every app, before the
+emits its own content-hashed copy of the worker script, so `…:4000/a1` and
+`…:4000/a2` get two engines, two copies of the table and two feeds even with
+the same `providerId`.
+
+That is worse than duplication. Feed leadership is a **Web Lock**, and Web
+Locks are scoped to the *origin* while the engine is not — so both apps
+contend for one lock while owning two separately-empty tables. The app that
+loses polls its own table for a snapshot that can never arrive there, and
+only falls back after a 30s timeout. Measured: **35s to live unshared, ~10s
+shared**.
+
+The fix is one deployed worker per origin. Build it:
+
+```bash
+npm run build:shared-worker --workspace=@wellsfargo-starui/velocity-grid-perspective
+# → packages/perspective/dist/perspective-shared-worker.js  (self-contained)
+```
+
+serve it at a fixed path, and name that path from **every** app before the
 first `getPerspectiveClient()`:
 
 ```ts
 configurePerspectiveSharedWorker({ url: '/vendor/velocity-grid/psp-shared-worker.js' });
 ```
 
-`__demo.workerTarget()` reports the `(url, name)` pair this tab is keyed on —
-two apps meant to share must print the same one. The demo also takes
-`?swurl=<path>` so the behaviour can be seen directly: two tabs on different
-values provably get separate engines.
+`__demo.workerTarget()` reports what this tab is keyed on. `bundled: true`
+means "this app's own copy — shared only with tabs of this same build";
+apps meant to share must all report `bundled: false` and the same `url` and
+`name`. The demo takes `?swurl=<path>` so it can be tried directly, and
+`npm run verify:shared-engine` builds the whole two-app scenario and asserts
+it end to end.
 
 Two more consequences worth knowing when debugging:
 

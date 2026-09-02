@@ -104,14 +104,62 @@ export function configurePerspectiveSharedWorker(opts: PerspectiveSharedWorkerOp
   sharedWorkerOptions = { ...sharedWorkerOptions, ...opts };
 }
 
-/** The script URL + name the SharedWorker is (or would be) constructed with.
- *  Two apps that share an engine must agree on BOTH — surfaced so a host can
- *  assert that from the console or a health check. */
-export function getPerspectiveSharedWorkerTarget(): { url: string; name: string } {
-  const url = sharedWorkerOptions.url != null
-    ? new URL(sharedWorkerOptions.url, typeof location !== 'undefined' ? location.href : undefined)
-    : new URL('./sharedServer.worker.ts', import.meta.url);
-  return { url: url.href, name: sharedWorkerOptions.name ?? DEFAULT_SHARED_WORKER_NAME };
+export interface PerspectiveSharedWorkerTarget {
+  /**
+   * Configured script URL, or `null` when this app is using its own bundled
+   * copy. Deliberately not a URL in the bundled case: the bundler substitutes
+   * a content-hashed path at build time that nothing here can read back, and
+   * reporting the pre-substitution one would be a URL the engine never runs —
+   * two apps could compare equal strings and conclude they share when they
+   * do not.
+   */
+  url: string | null;
+  name: string;
+  /**
+   * `true` when the script is this app's own bundled copy, which is shared
+   * only with tabs of the SAME build — never with another app on the origin,
+   * whatever its `providerId`. That is the actionable answer to "will these
+   * two apps share an engine?", and it is `false` only once every one of them
+   * has been pointed at one deployed script via
+   * {@link configurePerspectiveSharedWorker}.
+   */
+  bundled: boolean;
+}
+
+/** What this page's engine is keyed on. Two apps meant to share one engine
+ *  must report the same `url` AND `name`, with `bundled: false`. */
+export function getPerspectiveSharedWorkerTarget(): PerspectiveSharedWorkerTarget {
+  const name = sharedWorkerOptions.name ?? DEFAULT_SHARED_WORKER_NAME;
+  if (sharedWorkerOptions.url == null) return { url: null, name, bundled: true };
+  const base = typeof location !== 'undefined' ? location.href : undefined;
+  return { url: new URL(sharedWorkerOptions.url, base).href, name, bundled: false };
+}
+
+/**
+ * Construct the engine's SharedWorker.
+ *
+ * The default branch keeps `new URL('./sharedServer.worker.ts',
+ * import.meta.url)` LITERAL and INLINE in the constructor, which is not
+ * stylistic: that exact shape is what a bundler pattern-matches to compile
+ * the file as a worker and bundle its imports. Hand it a URL computed
+ * elsewhere and Vite falls back to generic asset handling — it emits the
+ * bare `.ts` source (14 KB, its `@perspective-dev/server` import unresolved,
+ * and an extension most servers do not serve as JavaScript) instead of a
+ * 3 MB self-contained worker. Dev servers hide this; production builds do
+ * not. Verified by `packages/perspective/tests/sharedWorkerBundling.test.ts`.
+ */
+function newSharedEngineWorker(): SharedWorker {
+  const name = sharedWorkerOptions.name ?? DEFAULT_SHARED_WORKER_NAME;
+  if (sharedWorkerOptions.url != null) {
+    return new SharedWorker(
+      new URL(sharedWorkerOptions.url, location.href),
+      { name, type: 'module' },
+    );
+  }
+  return new SharedWorker(
+    new URL('./sharedServer.worker.ts', import.meta.url),
+    { name, type: 'module' },
+  );
 }
 
 /** Resolved AFTER `getPerspectiveClient()` settles. */
@@ -195,8 +243,7 @@ export async function getPerspectiveClient(): Promise<Client> {
       await perspective.init_client(fetch(clientWasmUrl));
       if (wantSharedWorker()) {
         try {
-          const target = getPerspectiveSharedWorkerTarget();
-          const sw = new SharedWorker(target.url, { name: target.name, type: 'module' });
+          const sw = newSharedEngineWorker();
           const c = await withTimeout(
             perspective.worker(Promise.resolve(sw)),
             10_000,
@@ -308,10 +355,9 @@ export async function readSharedEngineStats(
   if (typeof SharedWorker === 'undefined') return null;
   let sw: SharedWorker;
   try {
-    // The SAME target the client uses — a stats port must land on the engine
-    // this page is actually talking to, not on a second one.
-    const target = getPerspectiveSharedWorkerTarget();
-    sw = new SharedWorker(target.url, { name: target.name, type: 'module' });
+    // The SAME constructor the client uses — a stats port must land on the
+    // engine this page is actually talking to, not on a second one.
+    sw = newSharedEngineWorker();
   } catch { return null; }
   const port = sw.port;
   const id = Math.floor(Math.random() * 1e9);

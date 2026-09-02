@@ -123,5 +123,6 @@ export {
   configurePerspectiveSharedWorker,
   getPerspectiveSharedWorkerTarget,
   type PerspectiveSharedWorkerOptions,
+  type PerspectiveSharedWorkerTarget,
   type SharedEngineStats,
 } from './bootstrap';

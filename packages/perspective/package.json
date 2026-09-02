@@ -13,6 +13,7 @@
   },
   "scripts": {
     "build": "echo '@wellsfargo-starui/velocity-grid-perspective ships source (worker URLs resolve in the consuming app bundle)' && exit 0",
+    "build:shared-worker": "vite build -c vite.sharedWorker.config.ts",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },
