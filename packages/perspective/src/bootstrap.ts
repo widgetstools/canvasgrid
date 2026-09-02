@@ -51,6 +51,69 @@ let initPromise: Promise<Client> | null = null;
 let client: Client | null = null;
 let workerMode: PerspectiveWorkerMode = 'dedicated';
 
+/** Default SharedWorker name. Part of the worker's identity, alongside its
+ *  script URL — see {@link configurePerspectiveSharedWorker}. */
+const DEFAULT_SHARED_WORKER_NAME = 'cgrid-ssrm-perspective';
+
+export interface PerspectiveSharedWorkerOptions {
+  /**
+   * URL of the DEPLOYED shared-worker script, absolute or root-relative
+   * (`/vendor/velocity-grid/perspective-shared-worker.js`). Resolved against
+   * the document, and must be same-origin.
+   *
+   * Leave unset and each bundle uses its own copy — correct for a single
+   * app, wrong for several sharing one origin (see below).
+   */
+  url?: string | URL;
+  /** SharedWorker name. Defaults to `cgrid-ssrm-perspective`. */
+  name?: string;
+}
+
+let sharedWorkerOptions: PerspectiveSharedWorkerOptions = {};
+
+/**
+ * Point every app on an origin at ONE Perspective engine.
+ *
+ * A SharedWorker's identity is `(origin, script URL, name)` — all three. The
+ * default script URL is whatever the bundler emitted for this app's copy of
+ * `sharedServer.worker.ts`, which is a content-hashed asset path. Two apps
+ * built separately therefore land on two DIFFERENT URLs, and so get two
+ * engines, two copies of the same table and two feeds, even on one origin
+ * with one `providerId`. Tabs of a single app share correctly without any of
+ * this; it is only the several-apps case that needs a decision.
+ *
+ * The fix is a URL both apps can agree on: deploy the worker script once per
+ * origin at a fixed path and name it here, from every app, before the first
+ * `getPerspectiveClient()`.
+ *
+ * ```ts
+ * configurePerspectiveSharedWorker({ url: '/vendor/velocity-grid/psp-shared-worker.js' });
+ * ```
+ *
+ * Init-only: the engine is created once and the URL cannot change under it,
+ * so a call after the client exists warns and is ignored.
+ */
+export function configurePerspectiveSharedWorker(opts: PerspectiveSharedWorkerOptions): void {
+  if (initPromise !== null) {
+    console.warn(
+      '[perspective] configurePerspectiveSharedWorker() ignored — the client is already '
+      + 'initialising. Call it before the first getPerspectiveClient().',
+    );
+    return;
+  }
+  sharedWorkerOptions = { ...sharedWorkerOptions, ...opts };
+}
+
+/** The script URL + name the SharedWorker is (or would be) constructed with.
+ *  Two apps that share an engine must agree on BOTH — surfaced so a host can
+ *  assert that from the console or a health check. */
+export function getPerspectiveSharedWorkerTarget(): { url: string; name: string } {
+  const url = sharedWorkerOptions.url != null
+    ? new URL(sharedWorkerOptions.url, typeof location !== 'undefined' ? location.href : undefined)
+    : new URL('./sharedServer.worker.ts', import.meta.url);
+  return { url: url.href, name: sharedWorkerOptions.name ?? DEFAULT_SHARED_WORKER_NAME };
+}
+
 /** Resolved AFTER `getPerspectiveClient()` settles. */
 export function getPerspectiveWorkerMode(): PerspectiveWorkerMode {
   return workerMode;
@@ -132,10 +195,8 @@ export async function getPerspectiveClient(): Promise<Client> {
       await perspective.init_client(fetch(clientWasmUrl));
       if (wantSharedWorker()) {
         try {
-          const sw = new SharedWorker(
-            new URL('./sharedServer.worker.ts', import.meta.url),
-            { name: 'cgrid-ssrm-perspective', type: 'module' },
-          );
+          const target = getPerspectiveSharedWorkerTarget();
+          const sw = new SharedWorker(target.url, { name: target.name, type: 'module' });
           const c = await withTimeout(
             perspective.worker(Promise.resolve(sw)),
             10_000,
@@ -247,10 +308,10 @@ export async function readSharedEngineStats(
   if (typeof SharedWorker === 'undefined') return null;
   let sw: SharedWorker;
   try {
-    sw = new SharedWorker(
-      new URL('./sharedServer.worker.ts', import.meta.url),
-      { name: 'cgrid-ssrm-perspective', type: 'module' },
-    );
+    // The SAME target the client uses — a stats port must land on the engine
+    // this page is actually talking to, not on a second one.
+    const target = getPerspectiveSharedWorkerTarget();
+    sw = new SharedWorker(target.url, { name: target.name, type: 'module' });
   } catch { return null; }
   const port = sw.port;
   const id = Math.floor(Math.random() * 1e9);

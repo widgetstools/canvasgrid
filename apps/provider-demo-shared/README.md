@@ -43,9 +43,30 @@ visible in the grid — no hard-coded colDefs.
 
 ## The shared Perspective engine (SSRM only)
 
-The SSRM app's Perspective engine runs in a **per-origin SharedWorker**, so
-every blotter on `localhost:5211` shares one WASM engine, one table and one
-feed. Two consequences worth knowing when debugging:
+The SSRM app's Perspective engine runs in a **SharedWorker**, so every blotter
+sharing it gets one WASM engine, one physical table and one feed — each with
+its own View (own group / sort / filter), and exactly one tab leading the
+feed while the rest read the shared book. `e2e/ssrm-engine-sharing.spec.ts`
+asserts that end to end.
+
+**What "shared" is keyed on.** A SharedWorker's identity is
+`(origin, script URL, name)` — all three. Tabs of one app agree on the URL for
+free because they load the same bundle. **Two apps do not**: each bundler
+emits its own content-hashed copy of the worker script, so two blotter apps on
+one origin would silently get two engines, two copies of the table and two
+feeds. Point them at one deployed copy instead, from every app, before the
+first `getPerspectiveClient()`:
+
+```ts
+configurePerspectiveSharedWorker({ url: '/vendor/velocity-grid/psp-shared-worker.js' });
+```
+
+`__demo.workerTarget()` reports the `(url, name)` pair this tab is keyed on —
+two apps meant to share must print the same one. The demo also takes
+`?swurl=<path>` so the behaviour can be seen directly: two tabs on different
+values provably get separate engines.
+
+Two more consequences worth knowing when debugging:
 
 - **It outlives your page.** Reloading does not reset it. It is torn down only
   when the *last* tab on that origin disconnects — so with one tab open a
@@ -54,8 +75,11 @@ feed. Two consequences worth knowing when debugging:
   and fatal with several blotters open (it ended in `Aw, Snap! Out of
   Memory`). Sessions are now released on `pagehide`, with an idle reaper
   behind it for renderers that crash without running any script.
-- **You can measure it.** `await __demo.engineStats()` in the console returns
-  `{ heapBytes, sessions, engineUp }` for the shared engine. `sessions` should
-  equal the number of open blotters — if it climbs as you reload, something
-  is stranding sessions again. `e2e/ssrm-shared-engine.spec.ts` asserts
-  exactly that.
+- **You can measure it.** In the console:
+  - `await __demo.engineStats()` → `{ heapBytes, sessions, engineUp }`.
+    `sessions` should equal the number of open blotters; if it climbs as you
+    reload, something is stranding sessions again
+    (`e2e/ssrm-shared-engine.spec.ts` asserts exactly that).
+  - `await __demo.hostedTables()` → the engine's tables. Several blotters on
+    one origin sharing a `providerId` should show **one**, not one per tab.
+  - `__demo.workerTarget()` → the `(url, name)` this tab's engine is keyed on.

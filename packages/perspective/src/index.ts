@@ -120,5 +120,8 @@ export {
   type Table,
   type View,
   readSharedEngineStats,
+  configurePerspectiveSharedWorker,
+  getPerspectiveSharedWorkerTarget,
+  type PerspectiveSharedWorkerOptions,
   type SharedEngineStats,
 } from './bootstrap';

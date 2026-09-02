@@ -25,6 +25,10 @@ import {
 import { LocalStore } from '@wellsfargo-starui/velocity-grid-data/storage';
 import {
   PerspectiveDataProviderController,
+  configurePerspectiveSharedWorker,
+  getPerspectiveClient,
+  getPerspectiveSharedWorkerTarget,
+  getPerspectiveWorkerMode,
   readSharedEngineStats,
   type BookTelemetry,
 } from '@wellsfargo-starui/velocity-grid-perspective';
@@ -40,6 +44,20 @@ import { DEMO_THEME, mountShell } from '@demo/shell';
 import '@demo/styles.css';
 
 registerDefaultTransports();
+
+// `?swurl=<path>` points this tab at a specific shared-worker script.
+//
+// A SharedWorker's identity is (origin, script URL, name), so this is the
+// knob that decides whether several apps on ONE origin share a Perspective
+// engine or each get their own. Tabs of a single app already share without
+// it — they resolve to the same bundled URL. Deployments running more than
+// one blotter app from an origin point them all at one deployed copy of the
+// worker script instead. Here it also makes the property demonstrable: two
+// tabs on different `swurl` values provably get two engines.
+{
+  const swurl = new URLSearchParams(location.search).get('swurl');
+  if (swurl) configurePerspectiveSharedWorker({ url: swurl });
+}
 
 const { host, setStatus } = mountShell({
   title: 'SSRM + DataProvider',
@@ -139,6 +157,13 @@ void (async () => {
   // its WASM heap is the number to watch when a tab dies with "Out of
   // Memory". Nothing else on the page can see it.
   engineStats: readSharedEngineStats,
+  // What the engine is actually hosting. Several blotters on one origin
+  // sharing a providerId should show ONE table here, not one per tab.
+  hostedTables: async () => (await getPerspectiveClient()).get_hosted_table_names(),
+  workerMode: getPerspectiveWorkerMode,
+  // The (url, name) pair this tab's engine is keyed on. Two apps that mean
+  // to share one engine must report the same pair here.
+  workerTarget: getPerspectiveSharedWorkerTarget,
 };
 
 window.addEventListener('beforeunload', () => {
