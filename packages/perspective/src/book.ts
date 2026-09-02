@@ -2755,14 +2755,20 @@ export class PerspectiveBook {
       for (;;) {
         this.flushQueued = false;
         if (this.pauseFanout && !force) break;
-        if (!this.table || this.updateBuffer.length === 0) break;
+        // Capture the handle ONCE. Everything below awaits, and `destroy()`
+        // nulls `this.table` — re-reading it as `this.table!` after an await
+        // is what produced "Cannot read properties of null (reading
+        // 'update')" on every page unload.
+        const table = this.table;
+        if (!table || this.destroyed || this.updateBuffer.length === 0) break;
         const batch = this.updateBuffer.splice(0);
         try {
           // Serialized with view ops — see the seed-snapshot sibling comment.
-          await this.withTableLock(() => this.table!.update(batch));
+          await this.withTableLock(() => table.update(batch));
+          if (this.destroyed) break;
           this.consecutiveFlushFailures = 0;
           if (!this.snapshotComplete) {
-            this.snapshotRowsLoaded = Number(await this.withTableLock(() => this.table!.size()));
+            this.snapshotRowsLoaded = Number(await this.withTableLock(() => table.size()));
           } else {
             this.liveBatches++;
             // Accumulate per view (last write per id wins) — overwriting
@@ -2780,6 +2786,10 @@ export class PerspectiveBook {
           }
           this.emitTelemetry();
         } catch (err) {
+          // A flush that loses its race with teardown is not a failure —
+          // the table it was writing to is being deleted. Reporting it as
+          // one put the book into `error` and logged on every page unload.
+          if (this.destroyed) break;
           console.error('[PerspectiveBook] table.update', err);
           this.setPhase('error');
           this.consecutiveFlushFailures++;

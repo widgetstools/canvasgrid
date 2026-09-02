@@ -11,6 +11,7 @@
 
 import perspective from '@perspective-dev/client';
 import type { Client, Table, View } from '@perspective-dev/client';
+import type { SharedEngineStats } from './sharedServer.worker';
 
 // Vite URL imports — served as static assets with correct MIME.
 import clientWasmUrl from '@perspective-dev/client/dist/wasm/perspective-js.wasm?url';
@@ -74,6 +75,55 @@ export function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promis
   });
 }
 
+/**
+ * Tell the shared engine to drop this page's session when the page goes away.
+ *
+ * The engine lives in a per-ORIGIN SharedWorker that outlives every page
+ * talking to it, and a session it still believes is connected keeps
+ * everything that session owns — views, their materialised state, their
+ * update subscriptions. Nothing reclaims that on its own:
+ *
+ *   - Perspective's browser client never sends a close and never listens for
+ *     unload (checked in `@perspective-dev/client`: no `pagehide`,
+ *     `beforeunload` or `close` anywhere in the browser bundle).
+ *   - The MessagePort `close` event the worker also listens for is recent and
+ *     not dependable.
+ *   - The page's own teardown is async (`view.delete()` is a round-trip to
+ *     the worker) and a unloading document does not stay alive for it.
+ *
+ * With ONE tab this was invisible: the last disconnect kills the SharedWorker
+ * and takes the whole engine with it. With two or more, the worker survives
+ * every reload and the sessions pile up — which is the reported crash.
+ *
+ * `pagehide` rather than `beforeunload`: it fires in cases `beforeunload`
+ * does not (mobile, tab discard), and `persisted` distinguishes a page that
+ * is really going away from one entering bfcache — a bfcached page can come
+ * back and must keep its session.
+ */
+function armSessionRelease(port: MessagePort): void {
+  if (typeof addEventListener !== 'function') return;
+  addEventListener('pagehide', (ev) => {
+    if ((ev as PageTransitionEvent).persisted) return;
+    // Synchronous and one-way: no reply to wait for, so it lands even though
+    // the document is on its way out.
+    try { port.postMessage({ cmd: 'close' }); } catch { /* already torn down */ }
+  });
+  // Heartbeat for the worker's reaper — the backstop for the one case
+  // `pagehide` cannot cover, a renderer that crashed or was discarded without
+  // running any script. An open blotter can be silent for minutes, so
+  // silence alone must never be read as death; this is what makes it
+  // distinguishable. One postMessage per beat, no reply.
+  const beat = setInterval(() => {
+    try { port.postMessage({ cmd: 'ping' }); } catch { clearInterval(beat); }
+  }, SESSION_HEARTBEAT_MS);
+  // Never hold the page open on this timer's account.
+  (beat as unknown as { unref?: () => void }).unref?.();
+}
+
+/** Heartbeat period. Comfortably inside the worker's idle timeout even when
+ *  a hidden tab's timers are throttled to roughly one per minute. */
+const SESSION_HEARTBEAT_MS = 45_000;
+
 export async function getPerspectiveClient(): Promise<Client> {
   if (client) return client;
   if (!initPromise) {
@@ -93,6 +143,7 @@ export async function getPerspectiveClient(): Promise<Client> {
           );
           workerMode = 'shared';
           client = c;
+          armSessionRelease(sw.port);
           return c;
         } catch (err) {
           console.warn('[perspective] SharedWorker unavailable — dedicated fallback:', err);
@@ -179,4 +230,48 @@ export async function openOrCreatePositionsTable(
   };
 }
 
+/**
+ * Read the shared engine's WASM heap + live session count.
+ *
+ * Opens its OWN port to the SharedWorker rather than borrowing the
+ * Perspective client's — that port speaks a protobuf protocol and must not
+ * carry anything else. A stats port never calls `init`, so it creates no
+ * engine session and the number it reports is not skewed by the asking.
+ *
+ * Returns `null` when the engine is not shared (dedicated-worker fallback,
+ * or SharedWorker unavailable) — there is nothing cross-page to measure then.
+ */
+export async function readSharedEngineStats(
+  timeoutMs = 3_000,
+): Promise<SharedEngineStats | null> {
+  if (typeof SharedWorker === 'undefined') return null;
+  let sw: SharedWorker;
+  try {
+    sw = new SharedWorker(
+      new URL('./sharedServer.worker.ts', import.meta.url),
+      { name: 'cgrid-ssrm-perspective', type: 'module' },
+    );
+  } catch { return null; }
+  const port = sw.port;
+  const id = Math.floor(Math.random() * 1e9);
+  try {
+    return await withTimeout(new Promise<SharedEngineStats>((resolve) => {
+      const onMessage = (ev: MessageEvent): void => {
+        const d = ev.data as { id?: number; stats?: SharedEngineStats };
+        if (d?.id !== id || !d.stats) return;
+        port.removeEventListener('message', onMessage);
+        resolve(d.stats);
+      };
+      port.addEventListener('message', onMessage);
+      port.start();
+      port.postMessage({ cmd: 'stats', id });
+    }), timeoutMs, 'Perspective engine stats');
+  } catch {
+    return null;
+  } finally {
+    try { port.close(); } catch { /* already gone */ }
+  }
+}
+
 export type { Client, Table, View };
+export type { SharedEngineStats } from './sharedServer.worker';

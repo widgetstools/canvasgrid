@@ -40,3 +40,22 @@ visible in the grid — no hard-coded colDefs.
   stays `false`.
 - Without the STOMP fixture running, both apps render their columns and an empty
   grid with a `disconnected` status — that is the expected no-broker state.
+
+## The shared Perspective engine (SSRM only)
+
+The SSRM app's Perspective engine runs in a **per-origin SharedWorker**, so
+every blotter on `localhost:5211` shares one WASM engine, one table and one
+feed. Two consequences worth knowing when debugging:
+
+- **It outlives your page.** Reloading does not reset it. It is torn down only
+  when the *last* tab on that origin disconnects — so with one tab open a
+  reload silently restarts everything, and with two it does not. That
+  asymmetry is why a session leak here was invisible in single-tab testing
+  and fatal with several blotters open (it ended in `Aw, Snap! Out of
+  Memory`). Sessions are now released on `pagehide`, with an idle reaper
+  behind it for renderers that crash without running any script.
+- **You can measure it.** `await __demo.engineStats()` in the console returns
+  `{ heapBytes, sessions, engineUp }` for the shared engine. `sessions` should
+  equal the number of open blotters — if it climbs as you reload, something
+  is stranding sessions again. `e2e/ssrm-shared-engine.spec.ts` asserts
+  exactly that.

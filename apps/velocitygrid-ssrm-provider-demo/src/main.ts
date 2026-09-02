@@ -25,6 +25,7 @@ import {
 import { LocalStore } from '@wellsfargo-starui/velocity-grid-data/storage';
 import {
   PerspectiveDataProviderController,
+  readSharedEngineStats,
   type BookTelemetry,
 } from '@wellsfargo-starui/velocity-grid-perspective';
 import '@wellsfargo-starui/velocity-grid/style.css';
@@ -134,6 +135,10 @@ void (async () => {
 (window as unknown as { __demo: unknown }).__demo = {
   ext, get grid() { return ext.grid; }, catalog, storage, dataController,
   providerId: SSRM_PROVIDER_ID,
+  // The shared Perspective engine outlives every page that talks to it, so
+  // its WASM heap is the number to watch when a tab dies with "Out of
+  // Memory". Nothing else on the page can see it.
+  engineStats: readSharedEngineStats,
 };
 
 window.addEventListener('beforeunload', () => {

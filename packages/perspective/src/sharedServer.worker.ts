@@ -15,7 +15,29 @@
  *   out: { id }                                  — init ack.
  *   in : ArrayBuffer                             — protobuf request bytes.
  *   out: ArrayBuffer                             — protobuf response bytes.
- *   in : { cmd: 'close' }                        — page unload courtesy close.
+ *   in : { cmd: 'close' }                        — page is going away.
+ *   in : { cmd: 'ping' }                         — liveness, for the reaper.
+ *   in : { cmd: 'stats', id }                    — diagnostics.
+ *   out: { id, stats }                             (see SharedEngineStats)
+ *
+ * SESSION LIFETIME is the load-bearing part of this host, because the engine
+ * is per-ORIGIN and outlives every page that connects to it. A session the
+ * engine still believes is connected keeps everything that session owns —
+ * views, their materialised state, their update subscriptions — so a session
+ * that is never closed leaks for as long as the worker lives. Three things
+ * close one, in descending order of reliability:
+ *
+ *   1. `{ cmd: 'close' }` from the page's `pagehide` (see
+ *      `bootstrap.ts::armSessionRelease`). Perspective's own browser client
+ *      sends nothing on unload, so this is ours to do.
+ *   2. The MessagePort `close` event — Chrome ≥ 132 only.
+ *   3. The idle reaper below, for a renderer that crashed or was discarded
+ *      without running any script at all.
+ *
+ * With a single tab none of this showed: the last disconnect terminates the
+ * SharedWorker and takes the engine with it. With two or more open, the
+ * worker survives every reload — and before (1) and (3) existed, each page
+ * load stranded a session until the shared engine ran the tab out of memory.
  */
 
 /// <reference lib="webworker" />
@@ -97,13 +119,35 @@ async function withCopiedBytes<T>(
   }
 }
 
+/**
+ * How long a session may go without any sign of life before the reaper
+ * closes it.
+ *
+ * Liveness is whatever the page sends: a protobuf request, or the
+ * `{ cmd: 'ping' }` heartbeat `bootstrap.ts` sends on a timer for exactly
+ * this purpose (an open blotter can be legitimately silent for minutes — no
+ * scrolling, no feed — and must never be mistaken for a dead one).
+ *
+ * The margin is deliberately wide. Chrome throttles a hidden tab's timers to
+ * roughly one per minute, so a 45s heartbeat can arrive as slowly as ~60s
+ * apart; five minutes leaves room for several missed beats before anything
+ * is reclaimed.
+ */
+const SESSION_IDLE_TIMEOUT_MS = 300_000;
+/** How often the reaper looks. */
+const SESSION_REAP_INTERVAL_MS = 60_000;
+
 class EngineSession {
+  /** Last time this session was heard from — see the reaper on `Engine`. */
+  lastSeen = Date.now();
+
   constructor(
     private readonly engine: Engine,
     readonly clientId: number,
   ) {}
 
   async handleRequest(bytes: Uint8Array): Promise<void> {
+    this.lastSeen = Date.now();
     const mod = this.engine.mod;
     const mem64 = mod._psp_is_memory64() !== 0;
     const result = await withCopiedBytes(mod, bytes, (ptr) =>
@@ -118,6 +162,7 @@ class EngineSession {
   }
 
   close(): void {
+    this.engine.forgetSession(this);
     this.engine.mod._psp_close_session(this.engine.server, this.clientId);
     this.engine.clients.delete(this.clientId);
   }
@@ -129,17 +174,45 @@ class Engine {
   readonly lock = new OpQueue();
   readonly server: number;
   private pollHandle: Promise<void> | undefined;
+  /** Live sessions, so the reaper can find ones whose page is gone. */
+  private readonly sessions = new Set<EngineSession>();
 
   constructor(readonly mod: MainModule) {
     // realtime flag on: the engine requests polls (live table updates fan
     // out to every session's client without an explicit request).
     this.server = mod._psp_new_server(1);
+    this.startReaper();
   }
 
   makeSession(send: SendFn): EngineSession {
     const clientId = this.mod._psp_new_session(this.server);
     this.clients.set(clientId, send);
-    return new EngineSession(this, clientId);
+    const session = new EngineSession(this, clientId);
+    this.sessions.add(session);
+    return session;
+  }
+
+  forgetSession(session: EngineSession): void {
+    this.sessions.delete(session);
+  }
+
+  /**
+   * Close sessions whose page stopped talking.
+   *
+   * The explicit `{ cmd: 'close' }` a page sends on `pagehide` covers the
+   * ordinary case; this covers the one it cannot — a renderer that crashed,
+   * was killed under memory pressure, or was discarded without running any
+   * script. Without it a single crashed tab strands its session, and its
+   * views, in an engine that never restarts while any other tab is open.
+   */
+  private startReaper(): void {
+    setInterval(() => {
+      const cutoff = Date.now() - SESSION_IDLE_TIMEOUT_MS;
+      for (const session of [...this.sessions]) {
+        if (session.lastSeen >= cutoff) continue;
+        try { session.close(); } catch { /* already gone */ }
+      }
+    }, SESSION_REAP_INTERVAL_MS);
   }
 
   private async poll(): Promise<void> {
@@ -204,6 +277,24 @@ interface InitMessage {
   args: [WebAssembly.Module | ArrayBuffer];
 }
 
+/**
+ * What `{ cmd: 'stats' }` reports back.
+ *
+ * The engine is per-ORIGIN and outlives every page that talks to it, so its
+ * WASM linear memory is the one number that matters when a tab dies with
+ * "Out of Memory": it only ever grows, and nothing on a page can see it.
+ * `sessions` is the live port count — a reload that fails to close its
+ * session shows up here as a count that climbs and never falls.
+ */
+export interface SharedEngineStats {
+  /** WASM linear memory currently committed, in bytes. */
+  heapBytes: number;
+  /** Sessions the engine still believes are connected. */
+  sessions: number;
+  /** False before the first `init` — nothing has been measured yet. */
+  engineUp: boolean;
+}
+
 function attachPort(port: MessagePort): void {
   let session: EngineSession | null = null;
   const send: SendFn = (data) => {
@@ -216,10 +307,19 @@ function attachPort(port: MessagePort): void {
   };
   port.addEventListener('message', (ev: MessageEvent) => {
     void (async () => {
-      const d = ev.data as InitMessage | { cmd: 'close' } | ArrayBuffer;
+      const d = ev.data as
+        | InitMessage
+        | { cmd: 'close' | 'ping' }
+        | { cmd: 'stats'; id: number }
+        | ArrayBuffer;
       try {
         if (d instanceof ArrayBuffer) {
           if (session) await session.handleRequest(new Uint8Array(d));
+          return;
+        }
+        if ((d as { cmd?: string })?.cmd === 'ping') {
+          // Liveness only — no reply, so a heartbeat costs one postMessage.
+          if (session) session.lastSeen = Date.now();
           return;
         }
         if (d?.cmd === 'init') {
@@ -229,7 +329,19 @@ function attachPort(port: MessagePort): void {
           port.postMessage({ id: d.id });
           return;
         }
-        if (d?.cmd === 'close') close();
+        if (d?.cmd === 'close') { close(); return; }
+        if ((d as { cmd?: string })?.cmd === 'stats') {
+          // Answerable without a session, so a diagnostic port can connect,
+          // ask, and leave without touching the engine's session bookkeeping.
+          const engine = enginePromise ? await enginePromise : null;
+          const stats: SharedEngineStats = {
+            heapBytes: engine?.mod.HEAPU8.buffer.byteLength ?? 0,
+            sessions: engine?.clients.size ?? 0,
+            engineUp: engine !== null,
+          };
+          port.postMessage({ id: (d as { id: number }).id, stats });
+          return;
+        }
       } catch (err) {
         console.error('[psp-shared-worker]', err);
       }

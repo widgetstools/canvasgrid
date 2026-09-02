@@ -119,4 +119,6 @@ export {
   type PositionRow,
   type Table,
   type View,
+  readSharedEngineStats,
+  type SharedEngineStats,
 } from './bootstrap';
