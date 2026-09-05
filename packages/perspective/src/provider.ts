@@ -97,8 +97,8 @@ export interface StompPerspectiveProviderConfig {
   schema?: Record<string, string>;
   /**
    * Run the STOMP transport inside the SharedWorker rather than on this
-   * tab's main thread. Opt-in; falls back silently where it cannot apply.
-   * See `PerspectiveBookOptions.workerFeed`.
+   * tab's main thread. **Default `true`**; falls back silently where it
+   * cannot apply. See `PerspectiveBookOptions.workerFeed`.
    */
   workerFeed?: boolean;
   /** Label shown in telemetry for this provider's view. */

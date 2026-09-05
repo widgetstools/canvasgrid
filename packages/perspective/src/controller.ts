@@ -85,10 +85,12 @@ export type PerspectiveDataProviderControllerOptions = {
   hubOpts?: ProviderClientOptions;
   /**
    * Run the SSRM transport inside the shared engine's SharedWorker rather
-   * than on an elected tab's main thread. Opt-in while both paths exist;
-   * falls back silently where it cannot apply (no shared engine, or a
-   * deployed worker older than the `feed:*` commands). `BookTelemetry.feedRole`
-   * reports which path actually ran.
+   * than on an elected tab's main thread. **Default `true`.**
+   *
+   * Falls back silently where it cannot apply (no shared engine, or a
+   * deployed worker older than the `feed:*` commands), so no environment
+   * loses its feed. `BookTelemetry.feedRole` reports which path actually ran.
+   * Set `false` to force the main-thread feed.
    */
   workerFeed?: boolean;
 };
@@ -125,7 +127,7 @@ export class PerspectiveDataProviderController {
     this.onActiveChange = opts?.onActiveChange;
     this.onTelemetry = opts?.onTelemetry;
     this.hubOpts = opts?.hubOpts;
-    this.workerFeed = opts?.workerFeed ?? false;
+    this.workerFeed = opts?.workerFeed ?? true;
   }
 
   /** Hub options for the editor popout's Diagnostics session (C-m12). */

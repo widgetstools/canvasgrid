@@ -219,13 +219,17 @@ export interface PerspectiveBookOptions {
   identity?: string;
   /**
    * Run the STOMP transport inside the SharedWorker instead of on this tab's
-   * main thread.
+   * main thread. **Default `true`.**
    *
-   * Opt-in while the two paths coexist. It only applies when there is a
-   * shared engine to run in and the deployed worker is new enough to
-   * understand `feed:*`; anything else falls back to the main-thread feed,
-   * silently and by design — a page that cannot delegate its feed still has
-   * to have one. `feedRole` reports which path actually ran.
+   * It only applies where there is a shared engine to run in and the deployed
+   * worker understands `feed:*` (protocol ≥ 2); anything else falls back to
+   * the main-thread feed, silently and by design — a page that cannot
+   * delegate its feed still has to have one. `feedRole` reports which path
+   * actually ran: `worker`, or `leader`/`follower` for the fallback.
+   *
+   * Set `false` to force the main-thread feed. Worth knowing before you do:
+   * that path elects one tab to hold the socket, so the feed is throttled
+   * when that tab is backgrounded and briefly down when it closes.
    */
   workerFeed?: boolean;
   onTelemetry?: (t: BookTelemetry) => void;
@@ -811,6 +815,8 @@ export class PerspectiveBook {
   /** Last state the worker pushed — the source for the feed half of
    *  telemetry, since none of those counters happen on this thread. */
   private workerFeedState: WorkerFeedState | null = null;
+  /** Mismatch already reported, so a 4Hz state push does not repeat it. */
+  private warnedMismatch: string | null = null;
   /** Resolving this releases the Web Lock held while leading the feed. */
   private releaseFeedLock: (() => void) | null = null;
   private leadershipQueued = false;
@@ -875,7 +881,7 @@ export class PerspectiveBook {
       onViewTick: options.onViewTick,
       queryResultCacheTtlMs: options.queryResultCacheTtlMs,
       strictPivotColumnOrder: options.strictPivotColumnOrder,
-      workerFeed: options.workerFeed,
+      workerFeed: options.workerFeed ?? true,
     };
     this.dataColumns = Object.keys(schema);
     this.valueAggregates = aggregatesFromSchema(schema);
@@ -2511,6 +2517,7 @@ export class PerspectiveBook {
     if (!state || this.destroyed) return;
     const wasLive = this.workerFeedState?.phase === 'live';
     this.workerFeedState = state;
+    this.warnOnConfigMismatch(state);
     this.snapshotComplete = state.snapshotComplete;
     this.snapshotRowsLoaded = state.bookSize || state.snapshotRowsLoaded;
     this.setPhase(state.phase);
@@ -2518,6 +2525,31 @@ export class PerspectiveBook {
       for (const id of this.views.keys()) void this.refreshProjected(id);
     }
     this.emitTelemetry();
+  }
+
+  /**
+   * Say so, once, when another app is being served this table's feed while
+   * having asked for something different.
+   *
+   * Reachable because table identity folds in `providerId` but not the
+   * RESOLVED config: two apps that resolve one provider to different topics —
+   * an AppData `{{token}}` standing for a different desk, say — arrive at the
+   * same table and therefore the same feed, and one of them renders data it
+   * did not ask for. Joining is still better than two feeds writing one
+   * table; being quiet about it was not.
+   */
+  private warnOnConfigMismatch(state: WorkerFeedState): void {
+    const fields = state.configMismatch;
+    if (!fields || fields.length === 0) return;
+    const key = fields.join(',');
+    if (this.warnedMismatch === key) return;
+    this.warnedMismatch = key;
+    console.warn(
+      `[PerspectiveBook] table "${state.tableName}" is fed by ONE connection, but apps `
+      + `sharing it disagree on: ${fields.join(', ')}. Whichever app started the feed `
+      + 'decided; the others are reading its data. Give the providers distinct ids if '
+      + 'they are meant to carry different data.',
+    );
   }
 
   private activateStomp(): void {

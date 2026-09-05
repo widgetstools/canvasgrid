@@ -2,11 +2,11 @@
 
 **Scope:** the Perspective-backed SSRM data path (`packages/perspective`) and how
 it compares to the CSRM data hub (`packages/data`).
-**Status:** the design in §5 is **built and measured**, behind an opt-in
-(`workerFeed` / `?feed=worker`). The main-thread feed is still the default and
-still the only path where there is no shared engine to delegate to. §5 records
-what was actually built, including the one load-bearing thing this document
-previously got wrong.
+**Status:** the design in §5 is **built, measured, and now the default**.
+`workerFeed: false` (or `?feed=main` on the demo) forces the main-thread feed,
+which also remains the automatic fallback wherever there is no shared engine or
+the deployed worker predates `feed:*`. §5 records what was actually built,
+including the one load-bearing thing this document previously got wrong.
 **Related:** [velocity-grid-architecture.md §6.3](./velocity-grid-architecture.md),
 [velocity-grid-feature-reference.md §5.7](./velocity-grid-feature-reference.md)
 
@@ -181,9 +181,28 @@ not merely wasteful, it is *user-visibly broken*.
 
 ## 5. Hub parity, as built
 
-Opt in with `workerFeed: true` on the controller, or `?feed=worker` on the demo.
-`BookTelemetry.feedRole` reports what actually happened: `worker` means the
-transport moved, `leader`/`follower` means it fell back.
+On by default. `workerFeed: false` on the controller (or `?feed=main` on the
+demo) forces the old path. `BookTelemetry.feedRole` reports what actually
+happened: `worker` means the transport moved, `leader`/`follower` means it fell
+back.
+
+### What flipping the default changed, measured
+
+Point 4 of §4 — the origin-scoped Web Lock stalling an unshared second app —
+turns out to be a property of the MAIN-THREAD feed specifically, not of being
+unshared. Two unconfigured apps each feeding from their own worker share no
+lock, so there is nothing to contend over and nothing to time out. Same two
+apps, same origin, same build:
+
+```
+[feed=main] second app reached live in 34.9s
+[default]   second app reached live in  3.5s
+```
+
+That does not make deploying one worker unnecessary — two engines and two
+copies of the book are still two of each — but the unshared configuration is no
+longer *user-visibly broken*, only wasteful. Asserted by
+`e2e/ssrm-two-apps-one-origin.spec.ts`, which keeps both regimes.
 
 ### Correction: `getCompiledClientWasm()` is not the way in
 
@@ -283,15 +302,31 @@ Resolved by building it:
   feed — otherwise a closed blotter would hold a broker connection for the life
   of a per-origin worker.
 
+- **Config disagreement.** Two apps *can* resolve one `providerId` to different
+  topics — table identity folds in the provider id but not the resolved config —
+  and they then land on one table and one feed, with the first caller's config
+  deciding. Joining is still right (two feeds writing one table would be worse),
+  so this now **reports** rather than resolves: `workerFeedConfigMismatch`
+  compares effective values, `WorkerFeedState.configMismatch` carries the
+  differing fields to *every* subscriber, and `PerspectiveBook` warns once. The
+  real fix is table identity that folds in the resolved config, which is a
+  separate decision — a changed table name splits books meant to be shared.
+- **Credentials — not a worker-feed gap.** Checked: nothing in the STOMP path
+  carries credentials, on either feed path or in CSRM's hub transport
+  (`new Client({ brokerURL, reconnectDelay, heartbeat* })` and nothing else).
+  It is a missing feature project-wide, not something moving the feed took
+  away, and adding it is a `connectHeaders` field on the config rather than a
+  design problem.
+
 Still open:
 
-- **Config into the worker.** AppData `{{token}}` resolution happens on the page,
-  so what crosses is fully resolved — but two apps can still ship *different*
-  resolved config for one `providerId`. Today the first caller's config wins
-  silently, which is the wrong answer; it should at least be detectable.
-- **Credentials.** Anything the transport needs (auth headers, tokens) has to
-  cross into the worker and be refreshable there. Untouched.
-- **Flipping the default**, and then deleting the election layer.
+- **Deleting the election layer.** Not possible yet, and the reason is worth
+  stating plainly: the main-thread feed is the automatic fallback for a
+  protocol-1 deployed worker, and *that* path genuinely needs election — two
+  tabs feeding one shared table without it would both snapshot. Election can go
+  when no protocol-1 workers remain in the field, which is a rollout gate, not
+  a refactor.
+- **Table identity vs resolved config**, per the first bullet above.
 
 ---
 
@@ -322,10 +357,11 @@ between the app and the broker, so a test can take the connection away and give
 it back. That case earns its harness: once the socket is in the worker, no tab
 can see or repair it, and both of the bugs in §7 were found this way.
 
-### 7. Two defects this found, and what they have in common
+### 7. Three defects this found, and what they have in common
 
-Both were invisible to reasoning and obvious to measurement, and both were about
-state that only *looks* right while data is flowing.
+Each was invisible to reasoning and obvious to measurement — and two of them
+were about state that only *looks* right while data is flowing. The third was
+sitting in a red test suite that had been written off as unrelated.
 
 **A rate that never falls.** `liveRowsPerSec` is a one-second window, and state
 is pushed when rows arrive — so the last push before a feed goes quiet reports
@@ -333,6 +369,18 @@ whatever the rate was at that instant, and every subscribed tab keeps showing it
 A feed stopped from Diagnostics sat there claiming 40 rows/s; so did one whose
 broker had dropped. The worker now sends one trailing state ~1.1s after its
 window empties. Any real push reschedules it, so a running feed never pays for it.
+
+**The worker options were not a static literal** — and this one had been
+breaking something else entirely. `newSharedEngineWorker` passed
+`{ name, type: 'module' }`, and Vite `eval`s that object to decide the worker
+type. Depending on the Vite version that is a silently skipped worker transform
+(the bare-`.ts` bug this package already has a guard for) or a hard throw at
+import — and vitest ships its own, stricter Vite, so it was throwing: **11
+suites in `packages/ext` could not load at all**, hiding 50 tests. They had been
+red long enough to be filed as "pre-existing, unrelated". `packages/data` hit
+exactly this and moved its name into the URL; this did not follow until the ext
+failures were traced back. The name now rides in the deployed URL as `?engine=`,
+the options are `{ type: 'module' }`, and both halves are pinned.
 
 **A snapshot latch that survives a reconnect** — and this one is older than the
 worker feed. `onConnected` fires on reconnect as well as first connect, and

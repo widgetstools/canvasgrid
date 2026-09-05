@@ -77,9 +77,19 @@ test('tabs of one app share a single engine, table and feed', async ({ context }
     expect(p.views).toBe(1);
   }
 
-  // ONE feed: exactly one leader, everyone else reading the shared book.
-  const leaders = probes.filter((p) => p.feedRole === 'leader');
-  expect(leaders, 'exactly one tab drives the feed').toHaveLength(1);
+  // ONE feed. Which is a weaker claim than it used to be: the feed now runs
+  // inside the worker by default, so no tab drives it at all. Both shapes are
+  // "one feed", and this spec is about the ENGINE — `ssrm-worker-feed.spec.ts`
+  // is where each feed path is pinned in its own right.
+  const roles = probes.map((p) => p.feedRole);
+  if (roles.every((r) => r === 'worker')) {
+    expect(roles, 'the worker owns it, so no tab does').toEqual(['worker', 'worker', 'worker']);
+  } else {
+    expect(
+      probes.filter((p) => p.feedRole === 'leader'),
+      'fell back to the main-thread feed, so exactly one tab must drive it',
+    ).toHaveLength(1);
+  }
 });
 
 test('a bundled worker reports itself as per-app; a configured one does not', async ({ context }) => {
@@ -100,7 +110,9 @@ test('a bundled worker reports itself as per-app; a configured one does not', as
   await waitLive(b);
   const pb = await probe(b);
   expect(pb.target.bundled).toBe(false);
-  expect(pb.target.url).toBe(new URL('/psp-shared-worker.js', DEMO).href);
+  // The instance name rides IN the url (`?engine=`), because the SharedWorker
+  // options object has to stay a static literal for the bundler.
+  expect(pb.target.url).toBe(new URL('/psp-shared-worker.js?engine=cgrid-ssrm-perspective', DEMO).href);
   // Both tabs must agree on the NAME too — it is half of the worker's
   // identity, and a mismatch splits the engine just as a URL mismatch does.
   expect(pb.target.name).toBe(pa.target.name);

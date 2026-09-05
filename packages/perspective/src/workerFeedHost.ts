@@ -36,10 +36,11 @@ import type { Client, Table } from '@perspective-dev/client';
 import { Client as StompClient, type IMessage } from '@stomp/stompjs';
 import { boundUpdateBuffer, updateBufferCap } from './updateBuffer';
 import { rowIdentity } from './rowIdentity';
-import type {
-  WorkerFeedConfig,
-  WorkerFeedPhase,
-  WorkerFeedState,
+import {
+  workerFeedConfigMismatch,
+  type WorkerFeedConfig,
+  type WorkerFeedPhase,
+  type WorkerFeedState,
 } from './workerFeedProtocol';
 
 /**
@@ -90,7 +91,22 @@ function hostClient(bridge: FeedEngineBridge, clientWasmUrl: string): Promise<Cl
     perspective.init_client(fetch(clientWasmUrl));
     const channel = new MessageChannel();
     bridge.attachPort(channel.port1);
-    return await perspective.worker(Promise.resolve(channel.port2));
+    const client = await perspective.worker(Promise.resolve(channel.port2));
+    // Two of the three things this depends on are undocumented library
+    // behaviour — `init_client`'s type dispatch and the `customElements`
+    // probe — so check that what came back is actually a client rather than
+    // trusting it. Both known ways this breaks produce something truthy but
+    // useless, which would otherwise surface much later as a feed that
+    // connects and then cannot write a row.
+    if (typeof (client as { table?: unknown })?.table !== 'function') {
+      throw new Error(
+        'perspective.worker() returned something that is not a Client. The usual cause is '
+        + '`init_client` having been handed a shape it does not route to the compile path '
+        + '(it dispatches on argument TYPE), or the `customElements` shim no longer '
+        + 'satisfying the library\'s wasm lookup. See the header of this file.',
+      );
+    }
+    return client;
   })().catch((err) => {
     hostClientPromise = null;   // a failed build must not poison later starts
     throw err;
@@ -145,6 +161,8 @@ class WorkerFeed {
   private stopped = false;
   private lastError: string | null = null;
   private startedAt: number | null = null;
+  /** Fields any joiner has ever disagreed with this feed's config on. */
+  private readonly mismatched = new Set<string>();
 
   /** Control ports holding this feed open, with their last sign of life. */
   private readonly subscribers = new Map<MessagePort, number>();
@@ -176,11 +194,23 @@ class WorkerFeed {
       stopped: this.stopped,
       lastError: this.lastError,
       startedAt: this.startedAt,
+      configMismatch: this.mismatched.size > 0 ? [...this.mismatched].sort() : null,
     };
   }
 
   addSubscriber(port: MessagePort): void {
     this.subscribers.set(port, Date.now());
+  }
+
+  /**
+   * Record that a joiner asked for something this feed is not carrying.
+   *
+   * @returns the differing fields, so the caller can decide whether to push.
+   */
+  noteJoin(joining: WorkerFeedConfig): string[] {
+    const diff = workerFeedConfigMismatch(this.config, joining);
+    for (const field of diff) this.mismatched.add(field);
+    return diff;
   }
 
   touch(port: MessagePort): void {
@@ -204,6 +234,12 @@ class WorkerFeed {
 
   eachSubscriber(fn: (port: MessagePort) => void): void {
     for (const port of this.subscribers.keys()) fn(port);
+  }
+
+  /** Push state now, bypassing the throttle. For changes that are not driven
+   *  by rows arriving and so would otherwise wait for one. */
+  announce(): void {
+    this.push(true);
   }
 
   async start(): Promise<void> {
@@ -556,6 +592,7 @@ export class WorkerFeedRegistry {
   /** Start or join. The caller's port becomes a subscriber either way. */
   async start(port: MessagePort, config: WorkerFeedConfig): Promise<WorkerFeedState> {
     let feed = this.feeds.get(config.tableName);
+    let mismatch: string[] = [];
     if (!feed) {
       feed = new WorkerFeed(this.bridge, config, (state) => {
         feed!.eachSubscriber((p) => {
@@ -563,9 +600,17 @@ export class WorkerFeedRegistry {
         });
       });
       this.feeds.set(config.tableName, feed);
+    } else {
+      // A join, and therefore the moment to check the two callers actually
+      // want the same data. They can differ and still land here: table
+      // identity folds in `providerId` but not the resolved config.
+      mismatch = feed.noteJoin(config);
     }
     feed.addSubscriber(port);
     await feed.start();
+    // Tell EVERY subscriber, not just the joiner — the app already being fed
+    // is the one whose data the joiner is about to render.
+    if (mismatch.length > 0) feed.announce();
     return feed.state();
   }
 

@@ -50,16 +50,22 @@ const probe = (page: Page) => page.evaluate(async () => {
     target: d.workerTarget(),
     protocol: d.workerProtocol() as { expected: number; deployed: number | null },
     mode: d.workerMode() as string,
+    workerFeed: d.workerFeed() as { requested: boolean; available: boolean },
     feedRole: t?.feedRole as string | undefined,
     bookSize: t?.bookSize as number | undefined,
   };
 });
 
-test('default: each app bundles its own worker, so each gets its own engine', async ({ context }) => {
-  const a = await context.newPage(); await a.goto(A1); await waitLive(a);
+test('unconfigured + ?feed=main: the origin-scoped feed lock stalls the second app', async ({ context }) => {
+  // Pinned on `?feed=main` deliberately. This hazard belongs to the
+  // MAIN-THREAD feed, and the next test shows the default no longer has it —
+  // but the main-thread path is still what anything without a protocol-2
+  // worker falls back to, so it is still reachable and still worth pinning.
+  const q = '?feed=main';
+  const a = await context.newPage(); await a.goto(A1 + q); await waitLive(a);
   const b = await context.newPage();
   const startedB = Date.now();
-  await b.goto(A2); await waitLive(b);
+  await b.goto(A2 + q); await waitLive(b);
   const bTookMs = Date.now() - startedB;
   await b.waitForTimeout(3000);
   const [pa, pb] = await Promise.all([probe(a), probe(b)]);
@@ -83,17 +89,53 @@ test('default: each app bundles its own worker, so each gets its own engine', as
 
   // The loser then polls ITS OWN empty table for the leader's snapshot,
   // which can never arrive there, and only falls back to feeding itself
-  // after `waitForSharedSnapshot`'s 30s timeout. Measured ~44s to live
+  // after `waitForSharedSnapshot`'s 30s timeout. Measured ~35s to live
   // versus ~10s once the apps share an engine.
   // eslint-disable-next-line no-console
-  console.log(`  second app reached live in ${(bTookMs / 1000).toFixed(1)}s (shared: ~10s)`);
+  console.log(`  [feed=main] second app reached live in ${(bTookMs / 1000).toFixed(1)}s`);
 });
 
-test('configured: one deployed worker joins both apps to one engine, table and feed', async ({ context }) => {
+test('unconfigured, by default: no shared lock to contend over, so no stall', async ({ context }) => {
+  // The same two unconfigured apps, on the default feed path. Each has its
+  // own worker feeding its own table, so the origin-scoped Web Lock is not
+  // involved at all and the 30s `waitForSharedSnapshot` timeout above cannot
+  // be reached. Still two engines and two copies of the book — deploying one
+  // worker is what fixes THAT — but no longer user-visibly broken.
+  const a = await context.newPage(); await a.goto(A1); await waitLive(a);
+  const b = await context.newPage();
+  const startedB = Date.now();
+  await b.goto(A2); await waitLive(b);
+  const bTookMs = Date.now() - startedB;
+  await b.waitForTimeout(2500);
+  const [pa, pb] = await Promise.all([probe(a), probe(b)]);
+  test.skip(pa.mode !== 'shared' || pb.mode !== 'shared', 'dedicated-worker fallback');
+  test.skip(!pa.workerFeed.available, 'deployed worker predates feed:*');
+
+  expect(pa.feedRole, 'a1 delegated its feed').toBe('worker');
+  expect(pb.feedRole, 'a2 delegated its feed').toBe('worker');
+  // One feed per app's own worker — separate, but each complete.
+  expect(pa.feeds, 'a1 worker runs its own feed').toHaveLength(1);
+  expect(pb.feeds).toHaveLength(1);
+  expect(pa.feeds[0]!.subscribers, 'and only its own app is on it').toBe(1);
+  expect(pb.feeds[0]!.subscribers).toBe(1);
+  expect(pa.bookSize).toBeGreaterThan(0);
+  expect(pb.bookSize).toBeGreaterThan(0);
+
+  // eslint-disable-next-line no-console
+  console.log(`  [default] second app reached live in ${(bTookMs / 1000).toFixed(1)}s`);
+  // Comfortably inside the 30s timeout the main-thread path waits out. Not a
+  // tight bound — the point is the stall is structurally absent, not that
+  // this machine is fast.
+  expect(bTookMs, 'second app stalled as if a lock were involved').toBeLessThan(25_000);
+});
+
+test('configured + ?feed=main: one deployed worker joins both apps to one engine, table and feed', async ({ context }) => {
   // What a deployment hard-codes: one deployed script, one instance name,
   // and `strict` so a silent fall back to a per-app engine is an error
-  // rather than a quiet degrade.
-  const q = `?swurl=${encodeURIComponent(DEPLOYED_WORKER)}&swname=positions-engine&swstrict`;
+  // rather than a quiet degrade. On `?feed=main` because it asserts the
+  // main-thread feed's leader/follower shape; the worker-feed equivalent is
+  // the test after this one.
+  const q = `?swurl=${encodeURIComponent(DEPLOYED_WORKER)}&swname=positions-engine&swstrict&feed=main`;
   const a = await context.newPage(); await a.goto(A1 + q); await waitLive(a);
   const b = await context.newPage(); await b.goto(A2 + q); await waitLive(b);
   await b.waitForTimeout(4000);
@@ -107,7 +149,9 @@ test('configured: one deployed worker joins both apps to one engine, table and f
   expect(pa.target.bundled).toBe(false);
   expect(pb.target.bundled).toBe(false);
   expect(pb.target.url).toBe(pa.target.url);
-  expect(pa.target.url).toBe(new URL(DEPLOYED_WORKER, ORIGIN).href);
+  // The instance name rides IN the url — the SharedWorker options object has
+  // to stay a static literal or the bundler skips the worker transform.
+  expect(pa.target.url).toBe(new URL(`${DEPLOYED_WORKER}?engine=positions-engine`, ORIGIN).href);
   expect(pa.target.name).toBe('positions-engine');
   expect(pb.target.name).toBe(pa.target.name);
   // `strict` was on, so reaching this point at all proves no silent
@@ -139,7 +183,7 @@ test('configured: one deployed worker joins both apps to one engine, table and f
   expect(pa.stats.clientProtocols).toEqual([pa.protocol.expected]);
 });
 
-test('configured + ?feed=worker: the DEPLOYED worker runs one feed for both apps', async ({ context }) => {
+test('configured, by default: the DEPLOYED worker runs one feed for both apps', async ({ context }) => {
   // The end state the whole exercise is aimed at: two separately-built apps,
   // one deployed worker, one engine, one table — and now one TRANSPORT,
   // owned by the worker rather than by whichever tab won a lock.
@@ -150,7 +194,7 @@ test('configured + ?feed=worker: the DEPLOYED worker runs one feed for both apps
   // supplies, and here that URL is under `/a1/assets/…` while the worker
   // itself is served from the origin root — a shape a dev server never
   // produces, and the one that would break if the URL were relative.
-  const q = `?swurl=${encodeURIComponent(DEPLOYED_WORKER)}&swname=positions-engine&swstrict&feed=worker`;
+  const q = `?swurl=${encodeURIComponent(DEPLOYED_WORKER)}&swname=positions-engine&swstrict`;
   const a = await context.newPage(); await a.goto(A1 + q); await waitLive(a);
   const b = await context.newPage(); await b.goto(A2 + q); await waitLive(b);
   await b.waitForTimeout(4000);

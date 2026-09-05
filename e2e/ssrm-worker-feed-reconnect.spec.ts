@@ -52,8 +52,8 @@ const feed = (page: Page) => page.evaluate(async () => {
 const relay = (path: string) => fetch(`${RELAY}${path}`).then((r) => r.json() as Promise<unknown>);
 
 test('a broker drop is visible to every tab, and the feed comes back', async ({ context }) => {
-  const a = await context.newPage(); await a.goto(`${DEMO}?feed=worker`); await waitLive(a);
-  const b = await context.newPage(); await b.goto(`${DEMO}?feed=worker`); await waitLive(b);
+  const a = await context.newPage(); await a.goto(DEMO); await waitLive(a);
+  const b = await context.newPage(); await b.goto(DEMO); await waitLive(b);
   await b.waitForTimeout(2500);
 
   const before = await feed(a);

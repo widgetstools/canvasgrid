@@ -56,6 +56,28 @@ describe('shared-worker bundling pattern', () => {
       .toContain('new SharedWorker(');
   });
 
+  it('keeps the worker options a static literal', () => {
+    // Vite `eval`s the options object to decide the worker type, so a
+    // variable in there is unparseable. Depending on the Vite version that is
+    // either a hard build failure ("unable to parse the worker options as the
+    // value is not static") or a silently skipped worker transform — which
+    // lands straight back on the emitted-bare-`.ts` bug this file exists for.
+    //
+    // Not hypothetical: `{ name, type: 'module' }` shipped here and broke ELEVEN
+    // test suites in `packages/ext`, which import this module transitively and
+    // hit vitest's own (stricter) Vite. `packages/data` had already hit the
+    // same thing and moved its name into the URL; this did not follow until
+    // the failures were traced. Hence `?engine=` in `resolveEngineUrl`.
+    const fn = flat.slice(flat.indexOf('function newSharedEngineWorker'));
+    const body = fn.slice(0, fn.indexOf('function ', 1) + 1 || 800);
+    for (const m of body.matchAll(/\{[^{}]*type: 'module'[^{}]*\}/g)) {
+      expect(m[0], 'worker options must contain nothing but a literal type')
+        .toBe("{ type: 'module' }");
+    }
+    expect(body, 'the instance name is back in the options object')
+      .not.toMatch(/\{\s*name\s*[,}]/);
+  });
+
   it('keeps the page and worker protocol constants in lockstep', () => {
     // They are exchanged on `hello` and compared at runtime, so a drift is
     // reported rather than silent — but a drift introduced by editing one

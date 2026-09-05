@@ -61,7 +61,9 @@ describe('shared worker identity', () => {
     configurePerspectiveSharedWorker({ url: DEPLOYED });
     const t = getPerspectiveSharedWorkerTarget();
     expect(t.bundled).toBe(false);
-    expect(t.url).toBe(RESOLVED);
+    // The name rides IN the url — it cannot live in the SharedWorker options,
+    // which a bundler needs to be a static literal. See `resolveEngineUrl`.
+    expect(t.url).toBe(`${RESOLVED}?engine=cgrid-ssrm-perspective`);
   });
 
   it('makes the NAME the axis that partitions engines once the URL is fixed', () => {
@@ -74,8 +76,13 @@ describe('shared worker identity', () => {
     configurePerspectiveSharedWorker({ url: DEPLOYED, name: 'risk-engine' });
     const b = getPerspectiveSharedWorkerTarget();
 
-    expect(a.url).toBe(b.url);          // same script...
-    expect(a.name).not.toBe(b.name);    // ...different engine
+    // Same deployed script, but differing names are now differing URLs —
+    // which is the same partition by a different mechanism, since the URL was
+    // always half the worker's identity.
+    expect(a.url).not.toBe(b.url);
+    expect(a.url).toContain('engine=positions-engine');
+    expect(b.url).toContain('engine=risk-engine');
+    expect(a.name).not.toBe(b.name);
     expect(a.bundled).toBe(false);
     expect(b.bundled).toBe(false);
   });
@@ -84,14 +91,31 @@ describe('shared worker identity', () => {
     configurePerspectiveSharedWorker({ url: DEPLOYED });
     configurePerspectiveSharedWorker({ name: 'positions-engine' });
     const t = getPerspectiveSharedWorkerTarget();
-    expect(t.url).toBe(RESOLVED);
+    expect(t.url).toBe(`${RESOLVED}?engine=positions-engine`);
     expect(t.name).toBe('positions-engine');
     expect(t.bundled).toBe(false);
   });
 
   it('accepts a URL object as readily as a string', () => {
     configurePerspectiveSharedWorker({ url: new URL(RESOLVED) });
-    expect(getPerspectiveSharedWorkerTarget().url).toBe(RESOLVED);
+    expect(getPerspectiveSharedWorkerTarget().url)
+      .toBe(`${RESOLVED}?engine=cgrid-ssrm-perspective`);
+  });
+
+  it('says so when a name is set with no URL to carry it', () => {
+    // A bundled worker is already private to its own build, and the name has
+    // nowhere to live — so it reports but partitions nothing. An app that
+    // believed it had split its engines would find out much later.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      configurePerspectiveSharedWorker({ name: 'risk-engine' });
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('no effect'));
+      const t = getPerspectiveSharedWorkerTarget();
+      expect(t.name, 'still reported honestly').toBe('risk-engine');
+      expect(t.bundled).toBe(true);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
 

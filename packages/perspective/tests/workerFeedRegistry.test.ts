@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { WorkerFeedRegistry } from '../src/workerFeedHost';
-import type { WorkerFeedConfig } from '../src/workerFeedProtocol';
+import {
+  workerFeedConfigMismatch,
+  type WorkerFeedConfig,
+} from '../src/workerFeedProtocol';
 
 /**
  * Who keeps a worker-side feed alive, and who lets it go.
@@ -108,6 +111,77 @@ describe('worker feed subscribers', () => {
 
     registry.release(a!);
     expect(registry.summary(), 'the port held both, and took both with it').toHaveLength(0);
+  });
+});
+
+describe('config disagreement between apps sharing a feed', () => {
+  /**
+   * Reachable because table identity folds in `providerId` but NOT the
+   * resolved config: two apps that resolve one provider to different topics
+   * (an AppData `{{token}}` standing for a different desk, say) arrive at the
+   * same table and therefore the same feed, and one renders data it did not
+   * ask for. Joining is still better than two feeds writing one table — the
+   * requirement is only that it stops being SILENT.
+   */
+  it('reports the fields a joiner disagreed on, to everyone on the feed', async () => {
+    const [a, b] = ports();
+    await registry.start(a!, config('positions'));
+    const other = { ...config('positions'), snapshotTopic: '/snapshot/positions/bob' };
+    await registry.start(b!, other);
+
+    expect(registry.summary(), 'still one feed — joining beats two writers').toHaveLength(1);
+    const state = registry.state('positions');
+    expect(state?.configMismatch).toContain('snapshotTopic');
+    // The originator sees it too: its data is what the joiner is now reading.
+    expect(state?.subscribers).toBe(2);
+  });
+
+  it('stays silent when the apps actually agree', async () => {
+    const [a, b] = ports();
+    await registry.start(a!, config('positions'));
+    await registry.start(b!, config('positions'));
+    expect(registry.state('positions')?.configMismatch).toBeNull();
+  });
+
+  it('does not mistake a per-app asset path for a disagreement', async () => {
+    // `clientWasmUrl` is each app's own hashed path and legitimately differs
+    // between apps that SHOULD share a feed. Flagging it would make the
+    // warning meaningless in exactly the case it exists for.
+    const [a, b] = ports();
+    await registry.start(a!, config('positions'));
+    await registry.start(b!, {
+      ...config('positions'),
+      clientWasmUrl: 'http://localhost/a2/assets/perspective-js-other.wasm',
+    });
+    expect(registry.state('positions')?.configMismatch).toBeNull();
+  });
+});
+
+describe('workerFeedConfigMismatch', () => {
+  it('compares EFFECTIVE topics, not the fields they are derived from', () => {
+    // `clientId` defaults to a per-page random value and feeds the default
+    // topic. Comparing raw fields would flag every single join; comparing
+    // what they resolve to flags only real divergence.
+    const base = { ...config('positions'), snapshotTopic: '/snapshot/x' };
+    const differentClientId = { ...base, clientId: 'someone-else' };
+    expect(workerFeedConfigMismatch(base, differentClientId)).toEqual([]);
+
+    const noTopic = { ...config('positions'), snapshotTopic: undefined, clientId: 'alice' };
+    const noTopicBob = { ...noTopic, clientId: 'bob' };
+    expect(
+      workerFeedConfigMismatch(noTopic, noTopicBob),
+      'with no explicit topic, a different clientId IS a different topic',
+    ).toContain('snapshotTopic');
+  });
+
+  it('catches a different broker, schema or key column', () => {
+    const base = config('positions');
+    expect(workerFeedConfigMismatch(base, { ...base, wsUrl: 'ws://elsewhere:9000' }))
+      .toContain('wsUrl');
+    expect(workerFeedConfigMismatch(base, { ...base, schema: { positionId: 'string' } }))
+      .toContain('schema');
+    expect(workerFeedConfigMismatch(base, { ...base, keyColumn: ['desk', 'book'] }))
+      .toContain('keyColumn');
   });
 });
 

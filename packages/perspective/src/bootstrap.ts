@@ -130,6 +130,17 @@ let sharedWorkerOptions: PerspectiveSharedWorkerOptions = {};
  * it, so a call after the client exists warns and is ignored.
  */
 export function configurePerspectiveSharedWorker(opts: PerspectiveSharedWorkerOptions): void {
+  if (opts.name != null && (opts.url ?? sharedWorkerOptions.url) == null) {
+    // The name rides in the deployed URL (see `resolveEngineUrl`), and a
+    // bundled worker has no URL to put it in — so on that path the name is
+    // reported but does not partition anything. Saying so beats letting an
+    // app believe it split its engines when it did not.
+    console.warn(
+      `[perspective] configurePerspectiveSharedWorker({ name: '${opts.name}' }) has no effect `
+      + 'without a `url`: a bundled worker is already private to this build, and the name '
+      + 'is carried by the deployed script URL. Pass `url` to partition engines by name.',
+    );
+  }
   if (initPromise !== null) {
     console.warn(
       '[perspective] configurePerspectiveSharedWorker() ignored — the client is already '
@@ -173,13 +184,33 @@ export interface PerspectiveSharedWorkerTarget {
   bundled: boolean;
 }
 
+/**
+ * Where the instance name lives once a script is deployed: IN THE URL.
+ *
+ * Not in the `SharedWorker` options, where it belongs conceptually, because
+ * Vite `eval`s that object to decide the worker type — so anything
+ * non-literal in there is either an outright build failure ("unable to parse
+ * the worker options as the value is not static") or, worse, a silently
+ * skipped worker transform. Which of the two you get depends on the Vite
+ * version, and that is not a difference worth depending on: `packages/data`
+ * hit exactly this and moved its app name into the URL as `?app=`.
+ *
+ * Partitioning is identical either way, since a SharedWorker is keyed on
+ * `(origin, script URL, name)` and the URL is doing the work regardless.
+ */
+function resolveEngineUrl(url: string | URL, name: string): URL {
+  const resolved = new URL(url, typeof location !== 'undefined' ? location.href : undefined);
+  resolved.searchParams.set('engine', name);
+  return resolved;
+}
+
 /** What this page's engine is keyed on. Two apps meant to share one engine
- *  must report the same `url` AND `name`, with `bundled: false`. */
+ *  must report the same `url` (which now carries the name) with
+ *  `bundled: false`. */
 export function getPerspectiveSharedWorkerTarget(): PerspectiveSharedWorkerTarget {
   const name = sharedWorkerOptions.name ?? DEFAULT_SHARED_WORKER_NAME;
   if (sharedWorkerOptions.url == null) return { url: null, name, bundled: true };
-  const base = typeof location !== 'undefined' ? location.href : undefined;
-  return { url: new URL(sharedWorkerOptions.url, base).href, name, bundled: false };
+  return { url: resolveEngineUrl(sharedWorkerOptions.url, name).href, name, bundled: false };
 }
 
 /**
@@ -196,16 +227,17 @@ export function getPerspectiveSharedWorkerTarget(): PerspectiveSharedWorkerTarge
  * not. Verified by `packages/perspective/tests/sharedWorkerBundling.test.ts`.
  */
 function newSharedEngineWorker(): SharedWorker {
-  const name = sharedWorkerOptions.name ?? DEFAULT_SHARED_WORKER_NAME;
   if (sharedWorkerOptions.url != null) {
+    // A computed URL is fine on this branch — that script is DEPLOYED, not
+    // bundled, so there is no worker entry for Vite to compile here.
     return new SharedWorker(
-      new URL(sharedWorkerOptions.url, location.href),
-      { name, type: 'module' },
+      resolveEngineUrl(sharedWorkerOptions.url, sharedWorkerOptions.name ?? DEFAULT_SHARED_WORKER_NAME),
+      { type: 'module' },
     );
   }
   return new SharedWorker(
     new URL('./sharedServer.worker.ts', import.meta.url),
-    { name, type: 'module' },
+    { type: 'module' },
   );
 }
 

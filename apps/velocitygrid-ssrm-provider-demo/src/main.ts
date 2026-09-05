@@ -101,12 +101,12 @@ function paintTelemetry(t: BookTelemetry): void {
 
 const demoAppData = createDemoAppData();
 
-// `?feed=worker` runs the STOMP transport inside the SharedWorker that hosts
-// the engine, instead of on an elected tab's main thread. Watch `feedRole` in
-// telemetry to see which path actually ran: `worker` means the delegation
-// took, `leader`/`follower` means it fell back (no shared engine, or a
-// deployed worker older than the `feed:*` commands).
-const workerFeed = new URLSearchParams(location.search).get('feed') === 'worker';
+// The STOMP transport runs inside the SharedWorker that hosts the engine by
+// DEFAULT, instead of on an elected tab's main thread. `?feed=main` forces
+// the old path back for comparison. Watch `feedRole` in telemetry to see
+// which one actually ran: `worker`, or `leader`/`follower` when it fell back
+// (no shared engine, or a deployed worker older than the `feed:*` commands).
+const workerFeed = new URLSearchParams(location.search).get('feed') !== 'main';
 
 const dataController = new PerspectiveDataProviderController({
   catalog,

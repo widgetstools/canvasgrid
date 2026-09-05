@@ -11,10 +11,11 @@ import { test, expect, type Page } from '@playwright/test';
  * the Web Lock. None of that is fixed here so much as removed: there is one
  * worker, so there is one feed, so there is nothing to elect.
  *
- * All three regimes are asserted, because the ones that DON'T delegate are
- * what make the option safe to ship. A page that cannot hand its feed over
- * must still have one, and must not sit waiting for a snapshot that is never
- * going to arrive.
+ * This is now the DEFAULT. `?feed=main` forces the old path back, and is also
+ * what anything without a protocol-2 worker falls back to on its own — which
+ * is why the regimes that do NOT delegate are asserted just as hard as the one
+ * that does. A page that cannot hand its feed over must still have one, and
+ * must not sit waiting for a snapshot that is never going to arrive.
  *
  *   npm run dev:stomp                                # the fixture feed
  *   npm run dev:ssrm-provider                        # :5211
@@ -83,8 +84,8 @@ async function openTabs(context: import('@playwright/test').BrowserContext, n: n
   return pages;
 }
 
-test('?feed=worker: one feed in the worker serves every tab', async ({ context }) => {
-  const pages = await openTabs(context, 3, '?feed=worker');
+test('by default, one feed in the worker serves every tab', async ({ context }) => {
+  const pages = await openTabs(context, 3, '');
   const probes = await Promise.all(pages.map(probe));
   test.skip(probes.some((p) => p.mode !== 'shared'), 'dedicated-worker fallback');
   test.skip(probes.some((p) => !p.workerFeed.available), 'deployed worker predates feed:*');
@@ -120,8 +121,11 @@ test('?feed=worker: one feed in the worker serves every tab', async ({ context }
   expect(probes[0]!.clientProtocols, 'no phantom pre-hello client').not.toContain(0);
 });
 
-test('default: the main-thread feed is untouched', async ({ context }) => {
-  const pages = await openTabs(context, 2, '');
+test('?feed=main: the main-thread feed is still there, and still works', async ({ context }) => {
+  // The opt-out, and the path anything without a protocol-2 worker falls back
+  // to. It cannot be deleted while that fallback exists, so it has to keep
+  // being tested rather than merely kept.
+  const pages = await openTabs(context, 2, '?feed=main');
   const probes = await Promise.all(pages.map(probe));
   test.skip(probes.some((p) => p.mode !== 'shared'), 'dedicated-worker fallback');
 
@@ -148,7 +152,7 @@ test('reloading one tab does not disturb the feed, and strands nothing', async (
   // reloading tab sends `feed:release` on `pagehide`, and if that were
   // treated as "nobody wants this any more" the other tab's feed would stop
   // and re-snapshot underneath it.
-  const pages = await openTabs(context, 2, '?feed=worker');
+  const pages = await openTabs(context, 2, '');
   const before = await probe(pages[0]!);
   test.skip(before.mode !== 'shared' || !before.workerFeed.available, 'no shared worker feed');
   const startedAt = before.feeds[0]!.startedAt;
@@ -178,7 +182,7 @@ test('Stop from one tab stops the feed for all of them', async ({ context }) => 
   // tab, Diagnostics Stop froze whichever tab was leading and the others kept
   // running — `feedBroadcast.ts` exists to paper over exactly that. With one
   // feed in the worker there is nothing to broadcast to.
-  const pages = await openTabs(context, 2, '?feed=worker');
+  const pages = await openTabs(context, 2, '');
   const first = await probe(pages[0]!);
   test.skip(first.mode !== 'shared' || !first.workerFeed.available, 'no shared worker feed');
 
@@ -215,7 +219,7 @@ test('asking for a worker feed without a shared worker falls back rather than ha
   // or fails to start. The page asks for a worker feed and cannot have one;
   // the point is that it feeds itself instead of waiting.
   const page = await context.newPage();
-  await page.goto(`${DEMO}?feed=worker&worker=dedicated`);
+  await page.goto(`${DEMO}?worker=dedicated`);
   await waitLive(page);
   const p = await probe(page);
 

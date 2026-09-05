@@ -45,9 +45,10 @@ visible in the grid — no hard-coded colDefs.
 
 The SSRM app's Perspective engine runs in a **SharedWorker**, so every blotter
 sharing it gets one WASM engine, one physical table and one feed — each with
-its own View (own group / sort / filter), and exactly one tab leading the
-feed while the rest read the shared book. `e2e/ssrm-engine-sharing.spec.ts`
-asserts that end to end.
+its own View (own group / sort / filter). The feed runs inside that worker too
+(see below), so no tab drives it; on the `?feed=main` fallback one tab leads
+and the rest read the shared book. `e2e/ssrm-engine-sharing.spec.ts` asserts
+the engine and table end to end.
 
 **What "shared" is keyed on.** A SharedWorker's identity is
 `(origin, script URL, name)` — all three. Tabs of one app agree on the URL for
@@ -56,12 +57,14 @@ emits its own content-hashed copy of the worker script, so `…:4000/a1` and
 `…:4000/a2` get two engines, two copies of the table and two feeds even with
 the same `providerId`.
 
-That is worse than duplication. Feed leadership is a **Web Lock**, and Web
-Locks are scoped to the *origin* while the engine is not — so both apps
-contend for one lock while owning two separately-empty tables. The app that
-loses polls its own table for a snapshot that can never arrive there, and
-only falls back after a 30s timeout. Measured: **35s to live unshared, ~10s
-shared**.
+That used to be worse than duplication. Feed leadership is a **Web Lock**, and
+Web Locks are scoped to the *origin* while the engine is not — so both apps
+contended for one lock while owning two separately-empty tables, and the loser
+polled its own table for a snapshot that could never arrive there, falling back
+only after a 30s timeout. That is a property of the main-thread feed, so the
+current default no longer has it (measured: `?feed=main` 34.9s to live, default
+3.5s). Two engines and two copies of the book remain — deploying one worker is
+what removes those.
 
 **The model to aim for is `(origin, instance name)` with `bundled: false`** —
 an app joins the engine *named* `name` on its origin, and nothing else enters
@@ -95,7 +98,12 @@ multi-megabyte WASM fetch.
 Leave `name` alone to put every blotter on the origin's one engine, which is
 the usual intent (one engine hosts many providers' tables, each keyed by
 `providerId` + schema). Set it to deliberately partition — say, to keep a
-heavyweight book off the engine everything else shares.
+heavyweight book off the engine everything else shares. Note it only partitions
+**alongside a `url`**: the name rides in the deployed script's URL as
+`?engine=`, because the `SharedWorker` options object has to stay a static
+literal for the bundler to compile the worker at all. Setting `name` without
+`url` warns and changes nothing (a bundled worker is already private to its
+own build).
 
 `__demo.workerTarget()` reports what this tab is keyed on: apps meant to
 share must all report `bundled: false` and the same `url` and `name`. The
@@ -103,7 +111,7 @@ demo takes `?swurl=`, `?swname=` and `?swstrict` so it can be tried directly,
 and `npm run verify:shared-engine` builds the whole two-app scenario and
 asserts it end to end.
 
-### The feed inside the worker (`?feed=worker`)
+### The feed inside the worker (the default; `?feed=main` opts out)
 
 By default the SSRM engine is shared but the **transport** is not: rows arrive
 on one elected tab's main thread and are pushed into the shared table. That tab
@@ -111,19 +119,34 @@ is throttled when it is backgrounded, competes with paint when it is busy, and
 the feed is down for the moment between it closing and a follower winning the
 Web Lock.
 
-`?feed=worker` moves the STOMP client into the SharedWorker that already hosts
-the engine. There is then one feed because there is one worker — nothing to
-elect, no takeover gap, and no cross-thread hop per update, because the rows are
-already on the side of the wire the table lives on. In an app:
+The STOMP client now runs inside the SharedWorker that already hosts the
+engine. There is then one feed because there is one worker — nothing to elect,
+no takeover gap, and no cross-thread hop per update, because the rows are
+already on the side of the wire the table lives on. To force the old path:
 
 ```ts
-new PerspectiveDataProviderController({ catalog, workerFeed: true });
+new PerspectiveDataProviderController({ catalog, workerFeed: false });
 ```
 
 It applies only where there is a shared engine to delegate to and the deployed
 worker is new enough to understand the `feed:*` commands (protocol ≥ 2).
 Anything else falls back to the main-thread feed, deliberately and silently — a
-page that cannot delegate its feed still has to have one. Watch which path ran:
+page that cannot delegate its feed still has to have one. That fallback is also
+why the election layer still exists: it is doing real work on that path.
+
+One measured consequence of the switch. The 35s stall two unconfigured apps
+used to suffer (they contended for an origin-scoped Web Lock over two
+separately-empty tables) is gone, because nothing takes that lock any more:
+
+```
+[feed=main] second app reached live in 34.9s
+[default]   second app reached live in  3.5s
+```
+
+Deploying one worker is still what removes the duplication — two engines and
+two copies of the book — it just is not urgent the way it was.
+
+Watch which path ran:
 
 ```js
 __demo.workerFeed()        // { requested, available } — why, if it fell back
@@ -152,6 +175,15 @@ Two things to know when debugging a feed you can no longer see from a tab:
   `npm run verify:worker-feed-reconnect` stages it by putting a severable relay
   (`scripts/ws-relay.mjs`) in front of the broker, cutting it, and asserting
   both tabs see the drop and both recover.
+- **Two apps can disagree about what a feed carries.** Table identity folds in
+  `providerId` but not the *resolved* config, so two apps that resolve one
+  provider to different topics — an AppData `{{token}}` standing for a
+  different desk — land on the same table and the same feed, and the first one
+  there decides. Joining still beats two feeds writing one table, so this is
+  reported rather than resolved: the differing fields appear as
+  `configMismatch` on every subscriber's feed state, and the book logs a
+  warning naming them. If two providers are meant to carry different data,
+  give them different ids.
 
 ### Rolling out a new worker
 

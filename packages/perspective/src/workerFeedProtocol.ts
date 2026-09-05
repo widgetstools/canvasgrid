@@ -72,6 +72,65 @@ export interface WorkerFeedConfig {
   clientWasmUrl: string;
 }
 
+/**
+ * The config reduced to what actually decides WHAT DATA a feed carries.
+ *
+ * Used to answer "did the app that just joined ask for the same thing as the
+ * app already being fed?" — see {@link workerFeedConfigMismatch}. Compared on
+ * EFFECTIVE values, because the defaults are where the disagreements hide: a
+ * page that sets no `snapshotTopic` derives one from its `clientId`, which is
+ * random per page, so comparing the raw fields would report a mismatch on
+ * every join while comparing the resolved topics reports one only when the
+ * two are genuinely listening to different places.
+ *
+ * `clientWasmUrl` is deliberately absent. It is each app's own hashed asset
+ * path and legitimately differs between apps that should share a feed; it
+ * says nothing about the data.
+ */
+function feedConfigFingerprint(c: WorkerFeedConfig): Record<string, string> {
+  const topic = c.snapshotTopic ?? `/snapshot/positions/${c.clientId}`;
+  const trigger = c.triggerTopic ?? `${topic}/${c.rate}/${c.batchSize}`;
+  return {
+    wsUrl: c.wsUrl,
+    snapshotTopic: topic,
+    triggerTopic: trigger,
+    snapshotEndToken: c.snapshotEndToken,
+    keyColumn: JSON.stringify(c.keyColumn),
+    index: c.index,
+    schema: JSON.stringify(Object.entries(c.schema).sort()),
+    snapshotRows: String(c.snapshotRows),
+    rate: String(c.rate),
+    batchSize: String(c.batchSize),
+    updatesPerTick: String(c.updatesPerTick),
+    sparse: String(c.sparse ?? false),
+  };
+}
+
+/**
+ * Fields on which a joiner disagrees with the feed already running.
+ *
+ * This is the sharp edge of keying a feed on table name. Table identity folds
+ * in `providerId` but NOT the resolved config, so two apps that resolve one
+ * `providerId` to different topics — an AppData `{{token}}` standing for a
+ * different desk, say — land on the same physical table and therefore the
+ * same feed. One of them then renders data it did not ask for.
+ *
+ * Joining is still the right behaviour: two feeds writing one table would be
+ * strictly worse than one feed serving both. But it must not be SILENT, which
+ * is what it was. The real fix is table identity that folds in the resolved
+ * config, and that is a decision with its own blast radius — a changed table
+ * name splits books that are meant to be shared — so this reports rather than
+ * resolves.
+ */
+export function workerFeedConfigMismatch(
+  running: WorkerFeedConfig,
+  joining: WorkerFeedConfig,
+): string[] {
+  const a = feedConfigFingerprint(running);
+  const b = feedConfigFingerprint(joining);
+  return Object.keys(a).filter((k) => a[k] !== b[k]);
+}
+
 export type WorkerFeedPhase =
   | 'idle'
   | 'connecting'
@@ -100,6 +159,16 @@ export interface WorkerFeedState {
   stopped: boolean;
   lastError: string | null;
   startedAt: number | null;
+  /**
+   * Fields on which some joiner asked for something different from what this
+   * feed is actually carrying — see {@link workerFeedConfigMismatch}. `null`
+   * while everyone agrees.
+   *
+   * Accumulated rather than per-joiner, and reported to EVERY subscriber on
+   * purpose: the app that started the feed is the one whose data another app
+   * is now reading, and it has as much reason to know as the joiner does.
+   */
+  configMismatch: string[] | null;
 }
 
 export type WorkerFeedRequest =
