@@ -304,6 +304,7 @@ npm run dev:ssrm-provider                           # :5211
 npx playwright test e2e/ssrm-engine-sharing.spec.ts # N tabs, one build
 npx playwright test e2e/ssrm-shared-engine.spec.ts  # sessions across reloads
 npx playwright test e2e/ssrm-worker-feed.spec.ts    # the feed inside the worker
+npm run verify:worker-feed-reconnect                # take the broker away
 npm run verify:shared-engine                        # two builds, one origin
 npm run verify:data-hub                             # the CSRM hub, same question
 ```
@@ -315,6 +316,33 @@ the election path untouched and builds no host client at all; and asking for a
 worker feed without a shared worker falls back to feeding locally rather than
 hanging. `verify:shared-engine` adds the case only the deployed artefact can
 answer — two separately-built apps on one origin, one worker, one feed.
+
+`verify:worker-feed-reconnect` puts a severable relay (`scripts/ws-relay.mjs`)
+between the app and the broker, so a test can take the connection away and give
+it back. That case earns its harness: once the socket is in the worker, no tab
+can see or repair it, and both of the bugs in §7 were found this way.
+
+### 7. Two defects this found, and what they have in common
+
+Both were invisible to reasoning and obvious to measurement, and both were about
+state that only *looks* right while data is flowing.
+
+**A rate that never falls.** `liveRowsPerSec` is a one-second window, and state
+is pushed when rows arrive — so the last push before a feed goes quiet reports
+whatever the rate was at that instant, and every subscribed tab keeps showing it.
+A feed stopped from Diagnostics sat there claiming 40 rows/s; so did one whose
+broker had dropped. The worker now sends one trailing state ~1.1s after its
+window empties. Any real push reschedules it, so a running feed never pays for it.
+
+**A snapshot latch that survives a reconnect** — and this one is older than the
+worker feed. `onConnected` fires on reconnect as well as first connect, and
+either way it publishes a fresh snapshot request; but the end-token handler
+returns early when `snapshotComplete` is already set, so the token was ignored
+and the book sat in `snapshot` indefinitely while rows arrived perfectly well.
+`book.ts` had it first and still had it; the worker path inherited it by being a
+faithful port. Fixed in both. Nothing before this exercised a reconnect, which is
+why a bug on the *default* path survived until an opt-in path's harness went
+looking.
 
 `verify:data-hub` builds the CSRM demo under `/a1/` and `/a2/`, deploys one
 `velocity-grid-data-hub.js` at the origin root, and asserts each level of the

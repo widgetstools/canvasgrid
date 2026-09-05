@@ -2766,6 +2766,18 @@ export class PerspectiveBook {
 
   private onConnected(): void {
     if (!this.stomp) return;
+    // Fires on RECONNECT as well as first connect, and either way the
+    // publish below asks for a fresh snapshot — so the latch has to be
+    // cleared here, not in `activateStomp` where the client is built.
+    // Without this, `onMessage` ignores the end token (it returns early when
+    // `snapshotComplete` is already set) and the book sits in `snapshot`
+    // indefinitely after any broker blip, while rows arrive normally. Found
+    // by the worker-feed reconnect harness; the bug was here first.
+    //
+    // `snapshotRowsLoaded` keeps its value on purpose: the table still holds
+    // the previous rows and the re-snapshot upserts over them, so zeroing it
+    // would only blank the reported book size mid-reconnect.
+    this.snapshotComplete = false;
     this.setPhase('snapshot');
     const topic = this.opts.snapshotTopic
       ?? `/snapshot/positions/${this.opts.clientId}`;

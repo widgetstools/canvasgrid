@@ -45,12 +45,30 @@ const probe = (page: Page) => page.evaluate(async () => {
     clientProtocols: stats?.clientProtocols as number[] | undefined,
     feeds: (stats?.feeds ?? []) as Array<{
       tableName: string; phase: string; subscribers: number; bookSize: number;
+      startedAt: number | null; stopped: boolean;
     }>,
+    phase: t?.phase as string | undefined,
     feedRole: t?.feedRole as string | undefined,
     bookSize: t?.bookSize as number | undefined,
     rowsPerSec: t?.liveUpdatesPerSec as number | undefined,
   };
 });
+
+/**
+ * Rows actually moving, rather than a book that merely exists.
+ *
+ * The wait is longer than it looks like it needs to be because a rate is a
+ * one-second window that only falls to zero when the worker recomputes it.
+ * The worker sends one trailing state ~1.1s after a feed goes quiet for
+ * exactly this reason; sampling before that would read the last live rate and
+ * call a stopped feed live.
+ */
+async function ticking(page: Page): Promise<boolean> {
+  const a = (await probe(page)).feeds[0]?.bookSize ?? 0;
+  await page.waitForTimeout(2500);
+  const p = await probe(page);
+  return (p.rowsPerSec ?? 0) > 0 || (p.feeds[0]?.bookSize ?? 0) !== a;
+}
 
 async function openTabs(context: import('@playwright/test').BrowserContext, n: number, query: string) {
   const pages: Page[] = [];
@@ -116,6 +134,80 @@ test('default: the main-thread feed is untouched', async ({ context }) => {
   // means here: opting out costs nothing, not even a lazily-built client.
   expect(probes[0]!.feeds, 'no feed inside the worker').toHaveLength(0);
   expect(probes[0]!.hostSessions, 'no host client was ever built').toBe(0);
+});
+
+test('reloading one tab does not disturb the feed, and strands nothing', async ({ context }) => {
+  // The scenario this whole subsystem exists for. A shared worker outlives
+  // every page talking to it, so the interesting question is never "does one
+  // page work" but "does the tenth reload still look like the first". Before
+  // the session release existed, this is exactly where a leak hid: with one
+  // tab a reload silently restarts everything, so it only shows with two.
+  //
+  // Moving the feed in added a SECOND thing that can be stranded — the
+  // subscription — and a second thing that can be wrongly torn down: the
+  // reloading tab sends `feed:release` on `pagehide`, and if that were
+  // treated as "nobody wants this any more" the other tab's feed would stop
+  // and re-snapshot underneath it.
+  const pages = await openTabs(context, 2, '?feed=worker');
+  const before = await probe(pages[0]!);
+  test.skip(before.mode !== 'shared' || !before.workerFeed.available, 'no shared worker feed');
+  const startedAt = before.feeds[0]!.startedAt;
+  expect(startedAt, 'feed reports no start time').not.toBeNull();
+
+  for (let round = 1; round <= 3; round++) {
+    await pages[0]!.reload();
+    await waitLive(pages[0]!);
+    await pages[0]!.waitForTimeout(2000);
+    const [p0, p1] = await Promise.all([probe(pages[0]!), probe(pages[1]!)]);
+
+    expect(p0.sessions, `page sessions after reload round ${round}`).toBe(2);
+    expect(p0.hostSessions, `host sessions after reload round ${round}`).toBe(1);
+    expect(p0.feeds, `one feed after reload round ${round}`).toHaveLength(1);
+    expect(p0.feeds[0]!.subscribers, `subscribers after reload round ${round}`).toBe(2);
+    // The sharpest assertion here: an unchanged start time means the feed was
+    // never torn down and rebuilt, so the untouched tab never lost its book.
+    expect(p0.feeds[0]!.startedAt, `feed restarted on reload round ${round}`).toBe(startedAt);
+    expect(p1.phase, 'the tab that did not reload').toBe('live');
+    expect(p1.feedRole).toBe('worker');
+  }
+  expect(await ticking(pages[1]!), 'feed stopped ticking across the reloads').toBe(true);
+});
+
+test('Stop from one tab stops the feed for all of them', async ({ context }) => {
+  // A behaviour CHANGE, not just an implementation move. With the feed on a
+  // tab, Diagnostics Stop froze whichever tab was leading and the others kept
+  // running — `feedBroadcast.ts` exists to paper over exactly that. With one
+  // feed in the worker there is nothing to broadcast to.
+  const pages = await openTabs(context, 2, '?feed=worker');
+  const first = await probe(pages[0]!);
+  test.skip(first.mode !== 'shared' || !first.workerFeed.available, 'no shared worker feed');
+
+  await pages[0]!.evaluate(() => (window as any).__demo.stopFeed());
+
+  // `expect.poll`, not `waitForFunction`: the latter tests the returned value
+  // for truthiness WITHOUT awaiting it, so an async predicate — and reading
+  // worker state is necessarily async — succeeds on its first tick because a
+  // pending Promise is truthy.
+  await expect.poll(
+    async () => (await probe(pages[1]!)).feeds[0]?.stopped,
+    { timeout: 30_000, message: 'Stop in one tab never reached the other' },
+  ).toBe(true);
+  expect(await ticking(pages[1]!), 'a stopped feed is still delivering rows').toBe(false);
+
+  // And Restart brings it back for both. Stop must be a pause rather than a
+  // teardown for this to work at all — releasing the subscription on Stop
+  // would leave Restart with no feed to resume.
+  await pages[0]!.evaluate(() => (window as any).__demo.restartFeed());
+  await expect.poll(
+    async () => {
+      const f = (await probe(pages[1]!)).feeds[0];
+      return `${f?.stopped}/${f?.phase}`;
+    },
+    { timeout: 120_000, message: 'Restart never brought the feed back' },
+  ).toBe('false/live');
+  const back = await probe(pages[1]!);
+  expect(back.feeds[0]!.subscribers, 'both tabs still on it after a restart').toBe(2);
+  expect(await ticking(pages[1]!), 'restarted feed is not delivering rows').toBe(true);
 });
 
 test('asking for a worker feed without a shared worker falls back rather than hanging', async ({ context }) => {

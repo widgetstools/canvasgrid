@@ -141,6 +141,18 @@ effects worth knowing:
   `hostSessions`, so "sessions should equal open blotters" keeps meaning what it
   meant.
 
+Two things to know when debugging a feed you can no longer see from a tab:
+
+- **A quiet feed reports zero, not its last rate.** `liveUpdatesPerSec` is a
+  one-second window, and the worker only pushes state when rows arrive — so it
+  sends one trailing update after the window empties. Without it a stopped or
+  disconnected feed would go on claiming 40 rows/s indefinitely.
+- **Reconnect is the worker's problem now, not a tab's.** `@stomp/stompjs`
+  retries on its own timer inside the worker; no tab needs to notice or act.
+  `npm run verify:worker-feed-reconnect` stages it by putting a severable relay
+  (`scripts/ws-relay.mjs`) in front of the broker, cutting it, and asserting
+  both tabs see the drop and both recover.
+
 ### Rolling out a new worker
 
 The script is deployed **once per origin** while the apps using it ship on

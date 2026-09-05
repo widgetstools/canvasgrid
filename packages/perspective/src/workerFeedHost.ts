@@ -150,6 +150,8 @@ class WorkerFeed {
   private readonly subscribers = new Map<MessagePort, number>();
   private lastPushAt = 0;
   private pushTimer: ReturnType<typeof setTimeout> | null = null;
+  /** See {@link emit} — the trailing push that lets a rate fall to zero. */
+  private settleTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private readonly bridge: FeedEngineBridge,
@@ -242,8 +244,10 @@ class WorkerFeed {
     this.teardownStomp();
     if (this.flushTimer !== null) clearTimeout(this.flushTimer);
     if (this.pushTimer !== null) clearTimeout(this.pushTimer);
+    if (this.settleTimer !== null) clearTimeout(this.settleTimer);
     this.flushTimer = null;
     this.pushTimer = null;
+    this.settleTimer = null;
     this.table = null;
     this.subscribers.clear();
   }
@@ -311,6 +315,17 @@ class WorkerFeed {
 
   private onConnected(): void {
     if (!this.stomp) return;
+    // Fires on RECONNECT as well as first connect, and either way what
+    // follows is a fresh snapshot request — so the snapshot latch has to be
+    // cleared here rather than where the client is constructed. Leaving it
+    // set makes `onMessage` ignore the end token (`if (this.snapshotComplete)
+    // return`), and the feed then sits in `snapshot` forever while rows flow
+    // perfectly well underneath it.
+    //
+    // `snapshotRowsLoaded` deliberately keeps its value: the table still
+    // holds the previous rows, the re-snapshot upserts over them, and zeroing
+    // it would blank every subscriber's row count mid-reconnect.
+    this.snapshotComplete = false;
     this.setPhase('snapshot');
     const cfg = this.config;
     const topic = cfg.snapshotTopic ?? `/snapshot/positions/${cfg.clientId}`;
@@ -464,22 +479,50 @@ class WorkerFeed {
         clearTimeout(this.pushTimer);
         this.pushTimer = null;
       }
-      this.lastPushAt = Date.now();
-      this.onState(this.state());
+      this.emit();
       return;
     }
     if (this.pushTimer !== null) return;
     const due = this.lastPushAt + STATE_PUSH_THROTTLE_MS - Date.now();
     if (due <= 0) {
-      this.lastPushAt = Date.now();
-      this.onState(this.state());
+      this.emit();
       return;
     }
     this.pushTimer = setTimeout(() => {
       this.pushTimer = null;
-      this.lastPushAt = Date.now();
-      this.onState(this.state());
+      this.emit();
     }, due);
+  }
+
+  /**
+   * Send state, and arm a trailing send if the rate was non-zero.
+   *
+   * `liveRowsPerSec` is a one-second WINDOW, so it only falls to zero when
+   * someone recomputes it — and pushes are driven by rows arriving. Without
+   * the trailing send, the last push before a feed goes quiet reports
+   * whatever rate it had at that instant, and every subscribed tab keeps
+   * displaying that number forever. A feed stopped from Diagnostics sat there
+   * claiming 40 rows/s; so would one whose broker had dropped.
+   *
+   * Costs at most one extra message per quiet period: any real push
+   * reschedules it, so a running feed never pays for it.
+   */
+  private emit(): void {
+    if (this.settleTimer !== null) {
+      clearTimeout(this.settleTimer);
+      this.settleTimer = null;
+    }
+    const state = this.state();
+    this.lastPushAt = Date.now();
+    this.onState(state);
+    if (state.liveRowsPerSec > 0 && !this.destroyed) {
+      // Just past the window, so the recomputed rate is genuinely zero
+      // rather than a partial tail.
+      this.settleTimer = setTimeout(() => {
+        this.settleTimer = null;
+        this.emit();
+      }, 1_100);
+    }
   }
 }
 

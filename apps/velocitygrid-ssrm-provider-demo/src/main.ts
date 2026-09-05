@@ -21,6 +21,8 @@ import {
 import {
   LocalStorageConfigBackend,
   registerDefaultTransports,
+  restartRegisteredProviderFeeds,
+  stopRegisteredProviderFeeds,
 } from '@wellsfargo-starui/velocity-grid-data';
 import { LocalStore } from '@wellsfargo-starui/velocity-grid-data/storage';
 import {
@@ -202,6 +204,13 @@ void (async () => {
   // the count of tabs on each — the direct answer to "is ONE broker
   // connection serving all of them?".
   engineFeeds: async () => (await readSharedEngineStats())?.feeds ?? null,
+  // Exactly what Diagnostics Stop / Restart call. Exposed because the
+  // cross-tab behaviour changed and is worth being able to try: on the worker
+  // path there is ONE feed, so stopping it stops every tab. On the
+  // main-thread path it freezes only whichever tab is leading, which is what
+  // `feedBroadcast.ts` exists to paper over.
+  stopFeed: () => stopRegisteredProviderFeeds(SSRM_PROVIDER_ID),
+  restartFeed: () => restartRegisteredProviderFeeds(SSRM_PROVIDER_ID),
 };
 
 window.addEventListener('beforeunload', () => {

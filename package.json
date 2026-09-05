@@ -36,7 +36,8 @@
     "dev:tree": "npm run dev --workspace=velocitygrid-tree-demo",
     "dev:master-detail": "npm run dev --workspace=velocitygrid-master-detail-demo",
     "verify:shared-engine": "node scripts/verify-shared-engine.mjs",
-    "verify:data-hub": "node scripts/verify-data-hub.mjs"
+    "verify:data-hub": "node scripts/verify-data-hub.mjs",
+    "verify:worker-feed-reconnect": "node scripts/verify-worker-feed-reconnect.mjs"
   },
   "devDependencies": {
     "@openfin/node-adapter": "^43.101.2",
