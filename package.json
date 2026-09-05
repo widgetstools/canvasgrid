@@ -35,7 +35,8 @@
     "dev:aggrid": "npm run dev --workspace=aggrid-reference",
     "dev:tree": "npm run dev --workspace=velocitygrid-tree-demo",
     "dev:master-detail": "npm run dev --workspace=velocitygrid-master-detail-demo",
-    "verify:shared-engine": "node scripts/verify-shared-engine.mjs"
+    "verify:shared-engine": "node scripts/verify-shared-engine.mjs",
+    "verify:data-hub": "node scripts/verify-data-hub.mjs"
   },
   "devDependencies": {
     "@openfin/node-adapter": "^43.101.2",

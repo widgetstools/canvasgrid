@@ -219,6 +219,7 @@ High-level features (editor UI → companion DP doc):
 | Hub identity | `(origin, script URL, name)`. `connectHub({ workerUrl, name, strict })`; `name` is in practice the **app name** and rides in the URL as `?app=` (worker options must stay a static literal or bundlers skip the worker transform). `getDataHubTarget()` → `{ url, name, bundled }` |
 | Sharing across apps | Build the artefact (`npm run build:hub-worker -w @wellsfargo-starui/velocity-grid-data` → `dist/velocity-grid-data-hub.js`), deploy ONE copy per origin, pass its path as `workerUrl` from every app. Unset ⇒ each app bundles its own copy ⇒ one hub, one upstream connection and one cache **per app** |
 | `strict` | Throws rather than silently using a bundled (per-app) or in-process (per-page) hub |
+| Verification | `npm run verify:data-hub` — builds the CSRM demo under `/a1/` + `/a2/`, deploys one hub at the origin root, and asserts all three levels (tabs share; unconfigured apps do not; one URL + one name joins them; a different name partitions) from the hub's own `subscriberCount` |
 | Bind | `bindProviderToGrid` → `setRowData` / `applyTransaction` |
 | Client | `ProviderClientAdapter`, `connectHub` |
 | Transports | Built-in `mock`, `stomp`, `rest`; stubs solace / amps / socketio / websocket |

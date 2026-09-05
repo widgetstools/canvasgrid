@@ -110,9 +110,26 @@ CSRM's hub owns one slot per `providerId`, holds the transport handle and a
 > and inlined the raw TypeScript as `data:video/mp2t;base64,…`. Browsers
 > refuse it, `new SharedWorker` does not throw for a bad script, and every hub
 > request hung until the 60s timeout. Dev servers hid it entirely. Fixed, with
-> `packages/data/tests/hubWorkerBundling.test.ts` as the regression lock.
-> Worth knowing when reading any claim about what CSRM "shares" in a
-> deployed app before that date.
+> `packages/data/tests/hubWorkerBundling.test.ts` as the regression lock and
+> `npm run verify:data-hub` asserting the whole identity model against real
+> production builds (§6). Worth knowing when reading any claim about what
+> CSRM "shares" in a deployed app before that date.
+
+CSRM's hub is keyed the same way the engine is — `(origin, script URL, name)` —
+and now carries the same three options (`workerUrl`, `name`, `strict`) and the
+same "will these two share?" reporter (`getDataHubTarget()`). Measured, against
+built apps on one origin:
+
+| Scenario | Hubs | `subscriberCount` |
+|---|---|---|
+| 2 tabs, one app, unconfigured | 1 | 2 |
+| 2 apps, unconfigured (each bundles its own) | 2 | 1, 1 |
+| 2 apps, one deployed URL + one name | 1 | 2 |
+| 2 apps, one deployed URL + different names | 2 | 1, 1 |
+
+The default is still `bundled: true`. An app that configures nothing gets its
+own hub, which is fine for one app and is precisely the thing `strict: true`
+exists to refuse once several share an origin.
 
 SSRM inverted that: the engine is shared, the transport is not. Rows arrive on
 the leader tab's main thread and are pushed across into the shared table.
@@ -229,6 +246,17 @@ npm run dev:ssrm-provider                           # :5211
 npx playwright test e2e/ssrm-engine-sharing.spec.ts # N tabs, one build
 npx playwright test e2e/ssrm-shared-engine.spec.ts  # sessions across reloads
 npm run verify:shared-engine                        # two builds, one origin
+npm run verify:data-hub                             # the CSRM hub, same question
+```
+
+`verify:data-hub` builds the CSRM demo under `/a1/` and `/a2/`, deploys one
+`velocity-grid-data-hub.js` at the origin root, and asserts each level of the
+table above from the hub's own `subscriberCount`. From a CSRM blotter's
+console:
+
+```js
+__demo.hubTarget()        // { url, name, bundled } — bundled:true ⇒ per-app hub
+await __demo.hubStats()   // subscriberCount is the count of tabs on THIS hub
 ```
 
 From any blotter's console:

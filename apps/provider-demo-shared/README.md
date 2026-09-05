@@ -41,7 +41,7 @@ visible in the grid — no hard-coded colDefs.
 - Without the STOMP fixture running, both apps render their columns and an empty
   grid with a `disconnected` status — that is the expected no-broker state.
 
-## The shared Perspective engine (SSRM only)
+## The shared Perspective engine (SSRM)
 
 The SSRM app's Perspective engine runs in a **SharedWorker**, so every blotter
 sharing it gets one WASM engine, one physical table and one feed — each with
@@ -142,3 +142,59 @@ Two more consequences worth knowing when debugging:
   - `await __demo.hostedTables()` → the engine's tables. Several blotters on
     one origin sharing a `providerId` should show **one**, not one per tab.
   - `__demo.workerTarget()` → the `(url, name)` this tab's engine is keyed on.
+
+## The shared data hub (CSRM)
+
+The CSRM app's hub is the same story with a different worker. It is keyed on
+`(origin, script URL, name)` too, so the same three levels decide who shares
+what:
+
+| Level | Axis | Effect |
+|---|---|---|
+| 1 | script URL | Unconfigured, each app bundles its **own** copy — two apps cannot converge whatever they are called. |
+| 2 | `name` (the app name) | Once the URL is a deployed constant, the name is the only axis left: same name ⇒ one hub, one upstream connection per `providerId`, one cache. |
+| 3 | tabs | Not an axis. Every tab of an app lands on the hub that app resolves to. |
+
+Deploy once per origin and name it from every app:
+
+```bash
+npm run build:hub-worker --workspace=@wellsfargo-starui/velocity-grid-data
+# → packages/data/dist/velocity-grid-data-hub.js  (self-contained)
+```
+
+```ts
+new DataProviderController({
+  catalog,
+  workerUrl: '/vendor/velocity-grid/data-hub.js',
+  name: 'blotter-suite',
+  strict: true,
+});
+```
+
+Two differences from the engine worth keeping straight:
+
+- **The name partitions the CACHE, not just the worker.** Two names both
+  subscribing to one `providerId` open two upstream connections and hold two
+  copies of that book. For the engine, one shared worker hosts many tables
+  keyed by `providerId` + schema, so leaving `name` alone is the usual intent.
+  Here the name *is* the partition, so choose it at the granularity you want
+  the data shared at.
+- **The app name rides in the URL as `?app=<name>`**, not in the SharedWorker
+  options. Vite `eval`s the worker options object to decide the worker type,
+  so anything non-literal in there skips the worker transform entirely — and
+  for a `.ts` entry that means the raw TypeScript gets inlined as a `data:`
+  URL that no browser will run. Identical partitioning either way, since the
+  URL is part of the key regardless.
+
+The demo takes `?huburl=`, `?hubapp=` and `?hubstrict` so it can be tried
+directly. In the console:
+
+```js
+__demo.hubTarget()        // { url, name, bundled } — bundled:true ⇒ per-app hub
+await __demo.hubStats()   // subscriberCount = tabs on THIS hub for this provider
+```
+
+`npm run verify:data-hub` builds the demo under `/a1/` and `/a2/`, deploys one
+hub artefact at the origin root, and asserts every level of the table above
+from `subscriberCount` — including the negative cases, since only the contrast
+is convincing.
