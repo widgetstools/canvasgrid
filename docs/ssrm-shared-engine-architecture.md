@@ -373,14 +373,23 @@ window empties. Any real push reschedules it, so a running feed never pays for i
 **The worker options were not a static literal** — and this one had been
 breaking something else entirely. `newSharedEngineWorker` passed
 `{ name, type: 'module' }`, and Vite `eval`s that object to decide the worker
-type. Depending on the Vite version that is a silently skipped worker transform
-(the bare-`.ts` bug this package already has a guard for) or a hard throw at
-import — and vitest ships its own, stricter Vite, so it was throwing: **11
-suites in `packages/ext` could not load at all**, hiding 50 tests. They had been
-red long enough to be filed as "pre-existing, unrelated". `packages/data` hit
-exactly this and moved its name into the URL; this did not follow until the ext
-failures were traced back. The name now rides in the deployed URL as `?engine=`,
-the options are `{ type: 'module' }`, and both halves are pinned.
+type. Vitest ships its own Vite and runs the serve/test transform, which throws
+rather than guessing: **11 suites in `packages/ext` could not load at all**,
+hiding 50 tests. They had been red long enough to be filed as "pre-existing,
+unrelated".
+
+Worth being precise about the blast radius, because the first version of this
+note was not. Measured on Vite 7.3.6 with a minimal two-variant build, a
+variable in the options **does not harm a production build**: the worker is
+compiled and its URL rewritten identically to the literal case, right down to
+the same content hash. This is a *test*-pipeline hazard, not the
+silently-broken-in-production hazard that the `new URL(...)`-must-stay-inline
+rule guards against. Both rules are worth keeping — the point of a literal is
+not having to care which pipeline sees the file — but they are not the same
+severity and should not be described as if they were.
+
+The name now rides in the deployed URL as `?engine=`, the options are
+`{ type: 'module' }`, and both rules are pinned separately.
 
 **A snapshot latch that survives a reconnect** — and this one is older than the
 worker feed. `onConnected` fires on reconnect as well as first connect, and

@@ -57,17 +57,22 @@ describe('shared-worker bundling pattern', () => {
   });
 
   it('keeps the worker options a static literal', () => {
-    // Vite `eval`s the options object to decide the worker type, so a
-    // variable in there is unparseable. Depending on the Vite version that is
-    // either a hard build failure ("unable to parse the worker options as the
-    // value is not static") or a silently skipped worker transform — which
-    // lands straight back on the emitted-bare-`.ts` bug this file exists for.
+    // Vite `eval`s the options object to decide the worker type, and a
+    // variable there is not evaluable.
     //
-    // Not hypothetical: `{ name, type: 'module' }` shipped here and broke ELEVEN
-    // test suites in `packages/ext`, which import this module transitively and
-    // hit vitest's own (stricter) Vite. `packages/data` had already hit the
-    // same thing and moved its name into the URL; this did not follow until
-    // the failures were traced. Hence `?engine=` in `resolveEngineUrl`.
+    // Measured on Vite 7.3.6, because the distinction matters: `vite build`
+    // TOLERATES it — the worker is compiled and its URL rewritten exactly as
+    // with a literal — while the serve/test transform throws outright
+    // ("unable to parse the worker options as the value is not static"). So
+    // this is not the production hazard the sibling assertion above guards;
+    // it is a hazard to anything that TRANSFORMS this module.
+    //
+    // Which is not hypothetical: `{ name, type: 'module' }` shipped here and
+    // made ELEVEN suites in `packages/ext` unloadable — they import this
+    // transitively and hit vitest's own Vite — hiding 50 tests, and were
+    // written off as unrelated for a while. Keeping the options literal means
+    // never having to care which pipeline sees the file. Hence `?engine=` in
+    // `resolveEngineUrl`.
     const fn = flat.slice(flat.indexOf('function newSharedEngineWorker'));
     const body = fn.slice(0, fn.indexOf('function ', 1) + 1 || 800);
     for (const m of body.matchAll(/\{[^{}]*type: 'module'[^{}]*\}/g)) {

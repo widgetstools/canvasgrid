@@ -188,12 +188,17 @@ export interface PerspectiveSharedWorkerTarget {
  * Where the instance name lives once a script is deployed: IN THE URL.
  *
  * Not in the `SharedWorker` options, where it belongs conceptually, because
- * Vite `eval`s that object to decide the worker type — so anything
- * non-literal in there is either an outright build failure ("unable to parse
- * the worker options as the value is not static") or, worse, a silently
- * skipped worker transform. Which of the two you get depends on the Vite
- * version, and that is not a difference worth depending on: `packages/data`
- * hit exactly this and moved its app name into the URL as `?app=`.
+ * Vite `eval`s that object to decide the worker type, and a variable there is
+ * not evaluable. Measured on Vite 7.3.6: `vite build` TOLERATES it — the
+ * worker is still compiled and its URL rewritten correctly — but the
+ * serve/test transform throws outright ("unable to parse the worker options
+ * as the value is not static"). That is not a production hazard, it is a
+ * hazard to anything that transforms this module in test: `{ name, type }`
+ * here made eleven `packages/ext` suites unloadable. Keeping the options
+ * literal means not caring which pipeline sees the file.
+ *
+ * `packages/data` reached the same place for the same reason and carries its
+ * app name as `?app=`.
  *
  * Partitioning is identical either way, since a SharedWorker is keyed on
  * `(origin, script URL, name)` and the URL is doing the work regardless.

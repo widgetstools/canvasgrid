@@ -101,9 +101,10 @@ the usual intent (one engine hosts many providers' tables, each keyed by
 heavyweight book off the engine everything else shares. Note it only partitions
 **alongside a `url`**: the name rides in the deployed script's URL as
 `?engine=`, because the `SharedWorker` options object has to stay a static
-literal for the bundler to compile the worker at all. Setting `name` without
-`url` warns and changes nothing (a bundled worker is already private to its
-own build).
+literal — Vite's serve/test transform throws on a variable there (a production
+build tolerates it, but depending on that means caring which pipeline reads the
+file). Setting `name` without `url` warns and changes nothing: a bundled worker
+is already private to its own build.
 
 `__demo.workerTarget()` reports what this tab is keyed on: apps meant to
 share must all report `bundled: false` and the same `url` and `name`. The

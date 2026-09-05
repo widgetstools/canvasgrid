@@ -163,8 +163,8 @@ export function getDataHubTarget(opts?: ConnectHubOptions): HubTarget {
  * The app name rides in the URL rather than in the SharedWorker `name`
  * option for a mundane but unavoidable reason: bundlers `eval` the worker
  * options object to decide how to compile the entry, so ANY variable in it
- * makes the options unparseable and the worker transform is skipped (see
- * {@link newHubWorker}). A URL is allowed to be dynamic; the options are not.
+ * makes the options unparseable (see {@link newHubWorker}). A URL is allowed
+ * to be dynamic; the options are not.
  *
  * It costs nothing, because a SharedWorker's identity is
  * `(origin, script URL, name)` — folding the name into the URL partitions
@@ -195,10 +195,15 @@ function resolveHubUrl(workerUrl: string | URL, name: string): URL {
  *    source — so it is a production-only, silent failure.
  *
  * 2. The options object is a STATIC LITERAL. Vite `eval`s it to decide the
- *    worker type; a variable in there throws "unable to parse the worker
- *    options as the value is not static" on some versions and is tolerated
- *    on others, which is not a difference worth depending on. Hence the app
- *    name goes in the URL (see {@link resolveHubUrl}) and never here.
+ *    worker type, and a variable there is not evaluable. Measured on Vite
+ *    7.3.6: `vite build` tolerates it and compiles the worker correctly
+ *    anyway, but the serve/TEST transform throws ("unable to parse the worker
+ *    options as the value is not static"). So unlike (1) this is not a
+ *    production failure — it is an import-time failure for anything that
+ *    transforms the module, which in `packages/perspective` cost eleven test
+ *    suites before it was traced. Keeping the options literal means not
+ *    caring which pipeline sees the file. Hence the app name goes in the URL
+ *    (see {@link resolveHubUrl}) and never here.
  *
  * The bundled branch takes no name at all, which is honest rather than
  * lossy: a bundled worker is this app's own copy and cannot be joined by
