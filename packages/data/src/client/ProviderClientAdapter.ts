@@ -22,6 +22,11 @@ let subSeq = 0;
 
 export interface ProviderClientOptions {
   workerUrl?: URL | string;
+  /** Hub instance name — in practice the app name. Same origin + same name
+   *  ⇒ same hub. See `ConnectHubOptions.name`. */
+  name?: string;
+  /** Refuse a per-app or per-page hub. See `ConnectHubOptions.strict`. */
+  strict?: boolean;
   inProcess?: boolean;
 }
 

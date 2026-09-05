@@ -119,8 +119,13 @@ export {
   PROVIDER_CATALOG_STORAGE_KEY,
 } from './catalog/ConfigBackend';
 
-export { connectHub, _resetHubConnectionForTests } from './client/hubConnection';
-export type { HubConnection } from './client/hubConnection';
+export {
+  connectHub,
+  getDataHubTarget,
+  DEFAULT_HUB_NAME,
+  _resetHubConnectionForTests,
+} from './client/hubConnection';
+export type { HubConnection, ConnectHubOptions, HubTarget } from './client/hubConnection';
 export { ProviderClientAdapter } from './client/ProviderClientAdapter';
 export type { ProviderClientOptions } from './client/ProviderClientAdapter';
 export {

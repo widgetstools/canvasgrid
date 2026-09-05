@@ -29,6 +29,7 @@
   },
   "scripts": {
     "build": "echo '@wellsfargo-starui/velocity-grid-data ships source (worker URLs resolve in the consuming app bundle)' && exit 0",
+    "build:hub-worker": "vite build -c vite.hubWorker.config.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

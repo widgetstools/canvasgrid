@@ -103,6 +103,17 @@ observable.
 CSRM's hub owns one slot per `providerId`, holds the transport handle and a
 `RowCache`, and fans out to subscriber ports. Tabs are pure consumers.
 
+> **Note (2026-09-05).** Until recently the CSRM hub did not work in
+> *production builds at all*. `connectHub` assigned the worker URL to a
+> variable before the `new SharedWorker(...)` call, which defeats the pattern
+> bundlers match to compile a worker entry; Vite fell back to asset handling
+> and inlined the raw TypeScript as `data:video/mp2t;base64,…`. Browsers
+> refuse it, `new SharedWorker` does not throw for a bad script, and every hub
+> request hung until the 60s timeout. Dev servers hid it entirely. Fixed, with
+> `packages/data/tests/hubWorkerBundling.test.ts` as the regression lock.
+> Worth knowing when reading any claim about what CSRM "shares" in a
+> deployed app before that date.
+
 SSRM inverted that: the engine is shared, the transport is not. Rows arrive on
 the leader tab's main thread and are pushed across into the shared table.
 

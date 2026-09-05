@@ -22,6 +22,12 @@ export type DataProviderControllerOptions = {
   /** Resolves `{{name.key}}` tokens in provider configs at bind time. */
   appData?: DataProviderAppDataLookup | { lookup: DataProviderAppDataLookup };
   workerUrl?: URL | string;
+  /** Hub instance name — in practice the app name. Every window of one app
+   *  passing the same name (and the same deployed `workerUrl`) joins one
+   *  hub: one upstream connection per `providerId`, one cache. */
+  name?: string;
+  /** Refuse a per-app or per-page hub rather than degrading silently. */
+  strict?: boolean;
   inProcess?: boolean;
   /** Fired when the active provider changes (after bind/unbind). */
   onActiveChange?: (providerId: string | null, provider: ProviderClientAdapter | null) => void;
@@ -77,6 +83,8 @@ export class DataProviderController {
         : ad.lookup;
     this.clientOpts = {
       workerUrl: opts?.workerUrl,
+      name: opts?.name,
+      strict: opts?.strict,
       inProcess: opts?.inProcess,
     };
     this.onActiveChange = opts?.onActiveChange;

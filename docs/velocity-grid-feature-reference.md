@@ -216,6 +216,9 @@ High-level features (editor UI → companion DP doc):
 | Area | Features |
 |------|----------|
 | Hub | `DataServicesHub` — one upstream + `RowCache` per `providerId`; SharedWorker protocol |
+| Hub identity | `(origin, script URL, name)`. `connectHub({ workerUrl, name, strict })`; `name` is in practice the **app name** and rides in the URL as `?app=` (worker options must stay a static literal or bundlers skip the worker transform). `getDataHubTarget()` → `{ url, name, bundled }` |
+| Sharing across apps | Build the artefact (`npm run build:hub-worker -w @wellsfargo-starui/velocity-grid-data` → `dist/velocity-grid-data-hub.js`), deploy ONE copy per origin, pass its path as `workerUrl` from every app. Unset ⇒ each app bundles its own copy ⇒ one hub, one upstream connection and one cache **per app** |
+| `strict` | Throws rather than silently using a bundled (per-app) or in-process (per-page) hub |
 | Bind | `bindProviderToGrid` → `setRowData` / `applyTransaction` |
 | Client | `ProviderClientAdapter`, `connectHub` |
 | Transports | Built-in `mock`, `stomp`, `rest`; stubs solace / amps / socketio / websocket |
