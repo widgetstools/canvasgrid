@@ -295,6 +295,11 @@ See **§11** (`packages/calc` + `wireIntoKernel`). Runs in worker CalcPass; sort
 
 ### 5.7 The shared engine — one Perspective per origin
 
+> Sharing boundaries in depth — what is duplicated and what provably is not, why
+> the SSRM feed is not hub-like the way CSRM's is, and what parity would take:
+> [ssrm-shared-engine-architecture.md](./ssrm-shared-engine-architecture.md).
+
+
 The WASM engine runs in a **SharedWorker**, so blotters that share it get one engine, one physical table and one feed. Same `providerId` (+ schema) ⇒ one Table; each blotter still registers its own View, and exactly one tab leads the feed while the rest read the shared book.
 
 | Concern | Behaviour |

@@ -339,6 +339,7 @@ want column-def push or aren't a `VelocityGrid`.
 | Shared **Table** | One book; SharedWorker or dedicated worker |
 | **View per grid** | Independent group/filter/expression config |
 | Leader / follower | Web Locks; followers read shared table; takeover on leader close (`book.ts`) |
+| Sharing boundaries | What is and is not shared across tabs / apps / origins, and what hub parity with CSRM would take: [ssrm-shared-engine-architecture.md](./ssrm-shared-engine-architecture.md) |
 | SSRM DS | `createPerspectiveSsrmDatasource` → kernel SSRM v2 |
 | Query ownership | Sort/filter/group/agg in Perspective (unless client pipeline) |
 | Calculated cols | **ExprTK** on View (`setExpressions`); merge into colDefs via `expressionColumns.ts` |
