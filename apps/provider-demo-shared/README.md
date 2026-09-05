@@ -103,6 +103,28 @@ demo takes `?swurl=`, `?swname=` and `?swstrict` so it can be tried directly,
 and `npm run verify:shared-engine` builds the whole two-app scenario and
 asserts it end to end.
 
+### Rolling out a new worker
+
+The script is deployed **once per origin** while the apps using it ship on
+their own cycles, so a rollout genuinely puts an older page and a newer
+worker on the same port. That is a supported state, not an error:
+
+- Page and worker exchange versions on connect (`hello`). A mismatch is
+  reported, not assumed away — `__demo.workerProtocol()` gives
+  `{ expected, deployed }`, and `engineStats().clientProtocols` shows every
+  version currently connected, so a rollout in flight is visible directly
+  instead of being inferred from symptoms.
+- **A client that predates the handshake is never reaped.** The idle reaper
+  judges liveness by heartbeat, and an older page does not send one — it goes
+  quiet when idle and always did. Reaping it would close a *live* blotter's
+  session after five minutes, so the reaper only ever considers clients that
+  announced themselves.
+
+Deploy to one unversioned path and mixed clients simply coexist on one
+engine. Use a versioned path (`psp-shared-worker.v1.js`) only to keep
+versions deliberately apart — the cost is one engine, one table copy and one
+feed *per live version* for the duration of the rollout.
+
 Two more consequences worth knowing when debugging:
 
 - **It outlives your page.** Reloading does not reset it. It is torn down only

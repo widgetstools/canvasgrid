@@ -137,9 +137,35 @@ const SESSION_IDLE_TIMEOUT_MS = 300_000;
 /** How often the reaper looks. */
 const SESSION_REAP_INTERVAL_MS = 60_000;
 
+/**
+ * Wire-protocol version of this worker, exchanged via `{ cmd: 'hello' }`.
+ *
+ * This exists because the script is deployed ONCE PER ORIGIN while the apps
+ * that talk to it ship on their own cycles — so a rollout genuinely does put
+ * an older page and a newer worker on the same port, and the mismatch has to
+ * be survivable rather than merely detected.
+ *
+ * Bump it when the messages, their shapes, or the expectations either side
+ * places on the other change. `1` is the first version that says hello at
+ * all; a client that never does is pre-1 and is handled explicitly (see the
+ * reaper).
+ */
+const SHARED_ENGINE_PROTOCOL = 1;
+
 class EngineSession {
   /** Last time this session was heard from — see the reaper on `Engine`. */
   lastSeen = Date.now();
+  /**
+   * Whether this client announced itself (protocol >= 1) and therefore sends
+   * heartbeats. Load-bearing for the reaper: a client that never said hello
+   * predates the heartbeat and stays silent when idle, so its silence means
+   * nothing and MUST NOT be read as death.
+   */
+  heartbeats = false;
+  /** Protocol the client announced, or 0 for a pre-hello client. Reported
+   *  through `stats` so a mixed-version origin is visible rather than
+   *  inferred from symptoms. */
+  clientProtocol = 0;
 
   constructor(
     private readonly engine: Engine,
@@ -196,6 +222,11 @@ class Engine {
     this.sessions.delete(session);
   }
 
+  /** Distinct protocols across live sessions, ascending. */
+  clientProtocols(): number[] {
+    return [...new Set([...this.sessions].map((s) => s.clientProtocol))].sort((a, b) => a - b);
+  }
+
   /**
    * Close sessions whose page stopped talking.
    *
@@ -209,6 +240,13 @@ class Engine {
     setInterval(() => {
       const cutoff = Date.now() - SESSION_IDLE_TIMEOUT_MS;
       for (const session of [...this.sessions]) {
+        // A client that never said hello predates the heartbeat: it goes
+        // quiet when idle and always did. Reaping it would close a LIVE
+        // blotter's session out from under it after five minutes — which is
+        // exactly what a rollout produces, an older page against this newer
+        // worker. Its sessions leak on crash, as they did before this worker
+        // existed; that is recoverable, and being killed mid-session is not.
+        if (!session.heartbeats) continue;
         if (session.lastSeen >= cutoff) continue;
         try { session.close(); } catch { /* already gone */ }
       }
@@ -293,6 +331,15 @@ export interface SharedEngineStats {
   sessions: number;
   /** False before the first `init` — nothing has been measured yet. */
   engineUp: boolean;
+  /** Wire protocol this deployed worker speaks. */
+  protocol: number;
+  /**
+   * Protocols announced by the currently-connected clients, ascending and
+   * deduped. `0` is a pre-hello client. More than one entry means a rollout
+   * is mid-flight on this origin — worth being able to see directly, since
+   * every symptom of it otherwise looks like something else.
+   */
+  clientProtocols: number[];
 }
 
 function attachPort(port: MessagePort): void {
@@ -322,6 +369,20 @@ function attachPort(port: MessagePort): void {
           if (session) session.lastSeen = Date.now();
           return;
         }
+        if ((d as { cmd?: string })?.cmd === 'hello') {
+          // Version exchange AND the heartbeat opt-in, deliberately one
+          // message: a client that can say hello is by definition one that
+          // sends pings, so the reaper's precondition and the version it
+          // negotiated can never disagree.
+          const msg = d as { id: number; protocol?: number };
+          if (session) {
+            session.heartbeats = true;
+            session.lastSeen = Date.now();
+            session.clientProtocol = typeof msg.protocol === 'number' ? msg.protocol : 0;
+          }
+          port.postMessage({ id: msg.id, protocol: SHARED_ENGINE_PROTOCOL });
+          return;
+        }
         if (d?.cmd === 'init') {
           const engine = await ensureEngine(d.args[0]);
           close();
@@ -338,6 +399,8 @@ function attachPort(port: MessagePort): void {
             heapBytes: engine?.mod.HEAPU8.buffer.byteLength ?? 0,
             sessions: engine?.clients.size ?? 0,
             engineUp: engine !== null,
+            protocol: SHARED_ENGINE_PROTOCOL,
+            clientProtocols: engine ? engine.clientProtocols() : [],
           };
           port.postMessage({ id: (d as { id: number }).id, stats });
           return;

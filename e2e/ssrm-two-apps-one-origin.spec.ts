@@ -44,6 +44,7 @@ const probe = (page: Page) => page.evaluate(async () => {
     tables: (await d.hostedTables()) as string[],
     stats: await d.engineStats(),
     target: d.workerTarget(),
+    protocol: d.workerProtocol() as { expected: number; deployed: number | null },
     mode: d.workerMode() as string,
     feedRole: t?.feedRole as string | undefined,
     bookSize: t?.bookSize as number | undefined,
@@ -123,4 +124,13 @@ test('configured: one deployed worker joins both apps to one engine, table and f
   // ONE feed: one app leads, the other reads the shared book.
   const leaders = [pa, pb].filter((p) => p.feedRole === 'leader');
   expect(leaders, 'exactly one app drives the feed').toHaveLength(1);
+
+  // Both apps completed the `hello` handshake against the deployed worker,
+  // and both agree on the protocol. A mismatch here is a rollout in
+  // progress; a `null` would mean the deployed script predates the
+  // handshake and neither app's session is heartbeat-protected.
+  expect(pa.protocol.deployed, 'a1 handshook with the deployed worker').toBe(pa.protocol.expected);
+  expect(pb.protocol.deployed).toBe(pb.protocol.expected);
+  // And the engine can see who it is serving — one protocol, no rollout.
+  expect(pa.stats.clientProtocols).toEqual([pa.protocol.expected]);
 });

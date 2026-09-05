@@ -29,6 +29,7 @@ import {
   getPerspectiveClient,
   getPerspectiveSharedWorkerTarget,
   getPerspectiveWorkerMode,
+  getSharedEngineProtocol,
   readSharedEngineStats,
   type BookTelemetry,
 } from '@wellsfargo-starui/velocity-grid-perspective';
@@ -179,6 +180,10 @@ void (async () => {
   // The (url, name) pair this tab's engine is keyed on. Two apps that mean
   // to share one engine must report the same pair here.
   workerTarget: getPerspectiveSharedWorkerTarget,
+  // What this build speaks vs what the deployed worker speaks. They differ
+  // legitimately during a rollout — the worker is deployed once per origin
+  // while apps ship on their own cycles.
+  workerProtocol: getSharedEngineProtocol,
 };
 
 window.addEventListener('beforeunload', () => {

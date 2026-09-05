@@ -145,6 +145,7 @@ export function configurePerspectiveSharedWorker(opts: PerspectiveSharedWorkerOp
  *  reason to reset it; unit tests need each case to start from the default. */
 export function __resetSharedWorkerConfigForTests(): void {
   sharedWorkerOptions = {};
+  negotiatedProtocol = null;
   initPromise = null;
   client = null;
   workerMode = 'dedicated';
@@ -265,21 +266,91 @@ function armSessionRelease(port: MessagePort): void {
     // the document is on its way out.
     try { port.postMessage({ cmd: 'close' }); } catch { /* already torn down */ }
   });
-  // Heartbeat for the worker's reaper — the backstop for the one case
-  // `pagehide` cannot cover, a renderer that crashed or was discarded without
-  // running any script. An open blotter can be silent for minutes, so
-  // silence alone must never be read as death; this is what makes it
-  // distinguishable. One postMessage per beat, no reply.
-  const beat = setInterval(() => {
-    try { port.postMessage({ cmd: 'ping' }); } catch { clearInterval(beat); }
-  }, SESSION_HEARTBEAT_MS);
-  // Never hold the page open on this timer's account.
-  (beat as unknown as { unref?: () => void }).unref?.();
 }
 
 /** Heartbeat period. Comfortably inside the worker's idle timeout even when
  *  a hidden tab's timers are throttled to roughly one per minute. */
 const SESSION_HEARTBEAT_MS = 45_000;
+
+/**
+ * Wire-protocol version this build speaks. Must match
+ * `sharedServer.worker.ts`'s constant; the two are exchanged on `hello` and
+ * a difference is reported rather than assumed away.
+ */
+export const SHARED_ENGINE_PROTOCOL = 1;
+
+/** Protocol the deployed worker reported, or `null` when it never answered
+ *  (a pre-`hello` worker) or no shared engine is in use. */
+let negotiatedProtocol: number | null = null;
+
+/** What the deployed worker turned out to be. `null` protocol means an older
+ *  worker that does not answer `hello`. */
+export function getSharedEngineProtocol(): { expected: number; deployed: number | null } {
+  return { expected: SHARED_ENGINE_PROTOCOL, deployed: negotiatedProtocol };
+}
+
+/**
+ * Announce this build to the deployed worker and learn what it speaks.
+ *
+ * The worker script is deployed ONCE PER ORIGIN while the apps that use it
+ * ship on their own cycles, so an older page against a newer worker (or the
+ * reverse) is a normal rollout state, not an error case. The exchange makes
+ * that state visible and, more importantly, safe:
+ *
+ *   - `hello` doubles as the heartbeat opt-in. The worker only reaps idle
+ *     sessions belonging to clients that sent it — so a pre-`hello` page,
+ *     which goes quiet when idle and always did, is never mistaken for a
+ *     dead one and killed mid-session.
+ *   - Heartbeats start only once the worker has confirmed it understands
+ *     them. Beating at a worker that ignores pings would be pointless
+ *     traffic, and would say nothing about whether the reaper can see us.
+ *
+ * A worker that never answers is pre-protocol-1: we keep working against it,
+ * without heartbeats, and say so once.
+ */
+async function handshakeSharedEngine(port: MessagePort): Promise<void> {
+  const id = 1_000_000_000 + Math.floor(Math.random() * 1e9);
+  let deployed: number | null = null;
+  try {
+    deployed = await withTimeout(new Promise<number>((resolve) => {
+      const onMessage = (ev: MessageEvent): void => {
+        const d = ev.data as { id?: number; protocol?: number } | ArrayBuffer;
+        if (d instanceof ArrayBuffer) return;   // Perspective's own traffic
+        if (d?.id !== id || typeof d.protocol !== 'number') return;
+        port.removeEventListener('message', onMessage);
+        resolve(d.protocol);
+      };
+      port.addEventListener('message', onMessage);
+      port.postMessage({ cmd: 'hello', id, protocol: SHARED_ENGINE_PROTOCOL });
+    }), 5_000, 'Perspective shared-engine hello');
+  } catch {
+    deployed = null;
+  }
+  negotiatedProtocol = deployed;
+
+  if (deployed === null) {
+    console.warn(
+      '[perspective] the deployed shared worker predates the '
+      + `\`hello\` handshake (this build speaks protocol ${SHARED_ENGINE_PROTOCOL}). `
+      + 'Running without heartbeats: a crashed tab will strand its session until the '
+      + 'last tab on this origin closes. Redeploy perspective-shared-worker.js to clear it.',
+    );
+    return;
+  }
+  if (deployed !== SHARED_ENGINE_PROTOCOL) {
+    console.warn(
+      `[perspective] shared-engine protocol mismatch: this build speaks ${SHARED_ENGINE_PROTOCOL}, `
+      + `the deployed worker speaks ${deployed}. This is a rollout in progress; pin the worker to a `
+      + 'versioned path if the two must not meet.',
+    );
+  }
+  // Only now — the worker has told us it understands pings, so a beat means
+  // something to the reaper.
+  const beat = setInterval(() => {
+    try { port.postMessage({ cmd: 'ping' }); } catch { clearInterval(beat); }
+  }, SESSION_HEARTBEAT_MS);
+  (beat as unknown as { unref?: () => void }).unref?.();
+}
 
 export async function getPerspectiveClient(): Promise<Client> {
   if (client) return client;
@@ -318,6 +389,7 @@ export async function getPerspectiveClient(): Promise<Client> {
           workerMode = 'shared';
           client = c;
           armSessionRelease(sw.port);
+          await handshakeSharedEngine(sw.port);
           return c;
         } catch (err) {
           if (sharedWorkerOptions.strict) {

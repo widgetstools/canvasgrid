@@ -56,6 +56,40 @@ describe('shared-worker bundling pattern', () => {
       .toContain('new SharedWorker(');
   });
 
+  it('keeps the page and worker protocol constants in lockstep', () => {
+    // They are exchanged on `hello` and compared at runtime, so a drift is
+    // reported rather than silent — but a drift introduced by editing one
+    // side and forgetting the other is a bug, not a rollout.
+    const worker = readFileSync(
+      fileURLToPath(new URL('../src/sharedServer.worker.ts', import.meta.url)),
+      'utf8',
+    );
+    const of = (src: string) =>
+      /SHARED_ENGINE_PROTOCOL\s*=\s*(\d+)/.exec(src)?.[1];
+    expect(of(worker), 'worker declares no protocol version').toBeDefined();
+    expect(of(SOURCE), 'bootstrap declares no protocol version').toBeDefined();
+    expect(of(SOURCE), 'bootstrap and worker disagree on the protocol version')
+      .toBe(of(worker));
+  });
+
+  it('never reaps a session that did not opt into heartbeats', () => {
+    // The rollout hazard this guards: the worker is deployed once per origin
+    // while apps ship separately, so an older page — one built before the
+    // heartbeat existed — will meet this worker. It goes quiet when idle and
+    // always did, so judging it by heartbeat silence would close a LIVE
+    // blotter's session after five minutes.
+    const worker = readFileSync(
+      fileURLToPath(new URL('../src/sharedServer.worker.ts', import.meta.url)),
+      'utf8',
+    ).replace(/\s+/g, ' ');
+    const reaper = worker.slice(worker.indexOf('startReaper()'));
+    const guard = reaper.indexOf('if (!session.heartbeats) continue;');
+    const cutoff = reaper.indexOf('if (session.lastSeen >= cutoff) continue;');
+    expect(guard, 'reaper lost its opt-in guard').toBeGreaterThan(-1);
+    // Order matters: the opt-in check must gate the staleness check.
+    expect(guard).toBeLessThan(cutoff);
+  });
+
   it('resolves the worker source next to this module', () => {
     // A path that stops resolving would emit nothing and fail at runtime.
     expect(() => readFileSync(

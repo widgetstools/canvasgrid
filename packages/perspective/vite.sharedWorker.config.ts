@@ -1,5 +1,41 @@
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
+
+/** Read the worker's wire-protocol version out of its source, so the build
+ *  can tell whoever runs it what they are about to deploy. */
+function protocolVersion(): string {
+  const src = readFileSync(
+    fileURLToPath(new URL('./src/sharedServer.worker.ts', import.meta.url)),
+    'utf8',
+  );
+  return /SHARED_ENGINE_PROTOCOL\s*=\s*(\d+)/.exec(src)?.[1] ?? '?';
+}
+
+/**
+ * Print the deployment guidance at the one moment it is relevant — the
+ * artefact is per-origin and long-lived, so the protocol it speaks is the
+ * thing a rollout has to reason about.
+ */
+function announceProtocol(): Plugin {
+  return {
+    name: 'announce-shared-engine-protocol',
+    closeBundle() {
+      const v = protocolVersion();
+      this.info?.(
+        `\n  perspective-shared-worker.js speaks wire protocol ${v}.`
+        + '\n  Deploy ONE copy per origin and point every app at it with'
+        + '\n    configurePerspectiveSharedWorker({ url, name, strict: true }).'
+        + '\n  Apps on independent release cycles can meet on it safely — the'
+        + `\n  \`hello\` handshake reports a mismatch and never reaps a client`
+        + '\n  that predates it. Pin a versioned path'
+        + `\n    /vendor/velocity-grid/psp-shared-worker.v${v}.js`
+        + '\n  only to keep versions deliberately apart, at the cost of one'
+        + '\n  engine (and one feed) per live version during the rollout.\n',
+      );
+    },
+  };
+}
 
 /**
  * Build the Perspective shared-worker host as ONE deployable file.
@@ -23,6 +59,7 @@ import { defineConfig } from 'vite';
  * file has no sibling assets and no import map to satisfy.
  */
 export default defineConfig({
+  plugins: [announceProtocol()],
   build: {
     outDir: 'dist',
     emptyOutDir: false,

@@ -124,5 +124,7 @@ export {
   getPerspectiveSharedWorkerTarget,
   type PerspectiveSharedWorkerOptions,
   type PerspectiveSharedWorkerTarget,
+  SHARED_ENGINE_PROTOCOL,
+  getSharedEngineProtocol,
   type SharedEngineStats,
 } from './bootstrap';
