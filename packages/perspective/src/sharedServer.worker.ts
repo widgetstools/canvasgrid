@@ -47,6 +47,8 @@
 // hook (fed by the init message's module), so the glue never fetches the
 // .wasm itself.
 import MainModuleFactory from '@perspective-dev/server/dist/wasm/perspective-server.js';
+import { WorkerFeedRegistry } from './workerFeedHost';
+import type { WorkerFeedRequest, WorkerFeedState } from './workerFeedProtocol';
 
 interface MainModule {
   HEAPU8: Uint8Array;
@@ -149,8 +151,15 @@ const SESSION_REAP_INTERVAL_MS = 60_000;
  * places on the other change. `1` is the first version that says hello at
  * all; a client that never does is pre-1 and is handled explicitly (see the
  * reaper).
+ *
+ * `2` adds the `feed:*` commands — the SSRM transport running in here rather
+ * than on an elected tab's main thread. A page that wants a worker-side feed
+ * MUST check the negotiated version first: against a `1` worker the commands
+ * are silently ignored (unknown commands always were), which would leave a
+ * blotter waiting for a feed that is never going to start. `bootstrap.ts`
+ * gates on this and falls back to the main-thread feed.
  */
-const SHARED_ENGINE_PROTOCOL = 1;
+const SHARED_ENGINE_PROTOCOL = 2;
 
 class EngineSession {
   /** Last time this session was heard from — see the reaper on `Engine`. */
@@ -166,6 +175,18 @@ class EngineSession {
    *  through `stats` so a mixed-version origin is visible rather than
    *  inferred from symptoms. */
   clientProtocol = 0;
+  /**
+   * This session belongs to the worker's OWN Perspective client, not to a
+   * page.
+   *
+   * Kept out of `sessions` and `clientProtocols` because both are read as
+   * facts about pages: `sessions` should equal the number of open blotters
+   * (a count that climbs across reloads is the session leak this worker
+   * exists to prevent), and a stray `0` in `clientProtocols` reads as a
+   * pre-`hello` page — i.e. a rollout in flight — which is exactly the wrong
+   * conclusion to hand someone debugging one. Reported separately instead.
+   */
+  internal = false;
 
   constructor(
     private readonly engine: Engine,
@@ -210,10 +231,11 @@ class Engine {
     this.startReaper();
   }
 
-  makeSession(send: SendFn): EngineSession {
+  makeSession(send: SendFn, internal = false): EngineSession {
     const clientId = this.mod._psp_new_session(this.server);
     this.clients.set(clientId, send);
     const session = new EngineSession(this, clientId);
+    session.internal = internal;
     this.sessions.add(session);
     return session;
   }
@@ -222,9 +244,22 @@ class Engine {
     this.sessions.delete(session);
   }
 
-  /** Distinct protocols across live sessions, ascending. */
+  /** Sessions belonging to PAGES — the number that should equal the count of
+   *  open blotters. The worker's own client is counted separately. */
+  pageSessions(): number {
+    return [...this.sessions].filter((s) => !s.internal).length;
+  }
+
+  /** Sessions belonging to the worker itself (its feed client). */
+  hostSessions(): number {
+    return [...this.sessions].filter((s) => s.internal).length;
+  }
+
+  /** Distinct protocols across live PAGE sessions, ascending. */
   clientProtocols(): number[] {
-    return [...new Set([...this.sessions].map((s) => s.clientProtocol))].sort((a, b) => a - b);
+    return [...new Set(
+      [...this.sessions].filter((s) => !s.internal).map((s) => s.clientProtocol),
+    )].sort((a, b) => a - b);
   }
 
   /**
@@ -278,7 +313,20 @@ class Engine {
 
 let enginePromise: Promise<Engine> | null = null;
 
+/**
+ * The server wasm the first page handed over, kept for the worker's OWN
+ * Perspective client (`workerFeedHost.ts`).
+ *
+ * `perspective.worker()` insists on posting an init frame, so `init_server`
+ * has to have something to hand it — even though `ensureEngine` is memoised
+ * and the bytes are never instantiated twice. Kept rather than re-fetched
+ * because a deployed worker has no way to know where the app's wasm assets
+ * live.
+ */
+let serverWasmRef: WebAssembly.Module | ArrayBuffer | null = null;
+
 function ensureEngine(wasm: WebAssembly.Module | ArrayBuffer): Promise<Engine> {
+  serverWasmRef ??= wasm;
   if (!enginePromise) {
     enginePromise = (async () => {
       let modRef: MainModule | null = null;
@@ -309,6 +357,27 @@ function ensureEngine(wasm: WebAssembly.Module | ArrayBuffer): Promise<Engine> {
   return enginePromise;
 }
 
+/**
+ * The feeds this worker is running, built on first use.
+ *
+ * Lazy on purpose: a worker serving only engine sessions never constructs
+ * one, so the Perspective client, the STOMP dependency and the reaper timer
+ * all stay uninstantiated until some page actually asks for a worker-side
+ * feed. That keeps the `1`-era behaviour byte-for-byte for anyone who does
+ * not opt in.
+ */
+let feedRegistry: WorkerFeedRegistry | null = null;
+
+function feeds(): WorkerFeedRegistry {
+  feedRegistry ??= new WorkerFeedRegistry({
+    // `internal` — this port is the worker talking to itself, and must not
+    // be counted as a page (see `EngineSession.internal`).
+    attachPort: (port) => attachPort(port, true),
+    serverWasm: () => serverWasmRef,
+  });
+  return feedRegistry;
+}
+
 interface InitMessage {
   cmd: 'init';
   id: number;
@@ -327,8 +396,12 @@ interface InitMessage {
 export interface SharedEngineStats {
   /** WASM linear memory currently committed, in bytes. */
   heapBytes: number;
-  /** Sessions the engine still believes are connected. */
+  /** PAGE sessions the engine still believes are connected. Should equal the
+   *  number of open blotters; a count that climbs across reloads is a leak. */
   sessions: number;
+  /** Sessions belonging to the worker's own feed client — 0 or 1. Separate
+   *  from `sessions` so the leak check above keeps meaning what it meant. */
+  hostSessions: number;
   /** False before the first `init` — nothing has been measured yet. */
   engineUp: boolean;
   /** Wire protocol this deployed worker speaks. */
@@ -340,9 +413,64 @@ export interface SharedEngineStats {
    * every symptom of it otherwise looks like something else.
    */
   clientProtocols: number[];
+  /**
+   * Feeds running inside this worker, one per physical table.
+   *
+   * Empty when no page has asked for a worker-side feed — which is not the
+   * same as "no feed": the main-thread path leaves nothing to see here.
+   * `subscribers` on each entry is the count of tabs holding it open, and is
+   * the direct answer to "is one broker connection serving all of them?".
+   */
+  feeds: WorkerFeedState[];
 }
 
-function attachPort(port: MessagePort): void {
+/**
+ * Serve one `feed:*` command on a control port.
+ *
+ * Split out because it is the one part of this file that is not about the
+ * engine: it owns a STOMP connection and a Perspective client of its own. The
+ * replies are deliberately shaped `{ id, ok }` rather than throwing across
+ * the wire — a page that asked for a feed and cannot have one needs to hear
+ * WHY, so it can fall back to feeding from its own main thread rather than
+ * waiting on a snapshot that is never coming.
+ */
+async function handleFeedCommand(port: MessagePort, req: WorkerFeedRequest): Promise<void> {
+  if (req.cmd === 'feed:ping') {
+    feedRegistry?.touch(port);
+    return;
+  }
+  if (req.cmd === 'feed:release') {
+    feedRegistry?.release(port, req.tableName);
+    return;
+  }
+  if (req.cmd === 'feed:state') {
+    port.postMessage({ id: req.id, state: feedRegistry?.state(req.tableName) ?? null });
+    return;
+  }
+  try {
+    if (req.cmd === 'feed:start') {
+      const state = await feeds().start(port, req.config);
+      port.postMessage({ id: req.id, ok: true, state });
+      return;
+    }
+    const state = req.cmd === 'feed:stop'
+      ? feedRegistry?.stop(req.tableName)
+      : feedRegistry?.restart(req.tableName);
+    if (!state) {
+      port.postMessage({ id: req.id, ok: false, error: `no feed for table ${req.tableName}` });
+      return;
+    }
+    port.postMessage({ id: req.id, ok: true, state });
+  } catch (err) {
+    port.postMessage({
+      id: req.id,
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+function attachPort(port: MessagePort, internal = false): void {
   let session: EngineSession | null = null;
   const send: SendFn = (data) => {
     const buf = data.slice().buffer;
@@ -351,6 +479,9 @@ function attachPort(port: MessagePort): void {
   const close = (): void => {
     try { session?.close(); } catch { /* engine already gone */ }
     session = null;
+    // A control port holds feeds open; letting go is what stops the last
+    // broker connection when the last blotter closes.
+    feedRegistry?.release(port);
   };
   port.addEventListener('message', (ev: MessageEvent) => {
     void (async () => {
@@ -358,6 +489,7 @@ function attachPort(port: MessagePort): void {
         | InitMessage
         | { cmd: 'close' | 'ping' }
         | { cmd: 'stats'; id: number }
+        | WorkerFeedRequest
         | ArrayBuffer;
       try {
         if (d instanceof ArrayBuffer) {
@@ -367,6 +499,11 @@ function attachPort(port: MessagePort): void {
         if ((d as { cmd?: string })?.cmd === 'ping') {
           // Liveness only — no reply, so a heartbeat costs one postMessage.
           if (session) session.lastSeen = Date.now();
+          return;
+        }
+        if (typeof (d as { cmd?: string })?.cmd === 'string'
+          && (d as { cmd: string }).cmd.startsWith('feed:')) {
+          await handleFeedCommand(port, d as WorkerFeedRequest);
           return;
         }
         if ((d as { cmd?: string })?.cmd === 'hello') {
@@ -386,7 +523,7 @@ function attachPort(port: MessagePort): void {
         if (d?.cmd === 'init') {
           const engine = await ensureEngine(d.args[0]);
           close();
-          session = engine.makeSession(send);
+          session = engine.makeSession(send, internal);
           port.postMessage({ id: d.id });
           return;
         }
@@ -397,10 +534,12 @@ function attachPort(port: MessagePort): void {
           const engine = enginePromise ? await enginePromise : null;
           const stats: SharedEngineStats = {
             heapBytes: engine?.mod.HEAPU8.buffer.byteLength ?? 0,
-            sessions: engine?.clients.size ?? 0,
+            sessions: engine?.pageSessions() ?? 0,
+            hostSessions: engine?.hostSessions() ?? 0,
             engineUp: engine !== null,
             protocol: SHARED_ENGINE_PROTOCOL,
             clientProtocols: engine ? engine.clientProtocols() : [],
+            feeds: feedRegistry?.summary() ?? [],
           };
           port.postMessage({ id: (d as { id: number }).id, stats });
           return;

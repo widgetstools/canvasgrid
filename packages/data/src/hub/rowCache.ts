@@ -1,33 +1,10 @@
 import type { PipelineConfig } from '../types/pipeline';
 
-/**
- * ASCII Unit Separator (0x1F) — joins composite key parts unambiguously.
- * Cannot appear in normal field values, so `{a:'New York', b:'X'}` and
- * `{a:'New', b:'York X'}` can never collide the way a literal space would.
- * Row ids are runtime-only (in-memory cache + wire), so this is not a
- * persisted format and needs no migration.
- */
-const COMPOSITE_KEY_SEPARATOR = '\u001F';
-
-export function composeRowId(
-  row: Record<string, unknown>,
-  keyColumn: string | readonly string[] | undefined,
-): string | null {
-  if (keyColumn == null) return null;
-  if (typeof keyColumn === 'string') {
-    const v = row[keyColumn];
-    return v == null ? null : String(v);
-  }
-  if (keyColumn.length === 0) return null;
-  // Composite key: return null if any part is nullish; join with an unambiguous separator.
-  const parts: string[] = [];
-  for (const k of keyColumn) {
-    const v = row[k];
-    if (v == null) return null;
-    parts.push(String(v));
-  }
-  return parts.join(COMPOSITE_KEY_SEPARATOR);
-}
+// Lives in its own leaf module so a worker build can import it without the
+// package index — see ./rowId for why that matters. Re-exported here
+// because this is where every caller has always found it.
+export { composeRowId, COMPOSITE_KEY_SEPARATOR } from './rowId';
+import { composeRowId } from './rowId';
 
 export class RowCache {
   private order: string[] = [];

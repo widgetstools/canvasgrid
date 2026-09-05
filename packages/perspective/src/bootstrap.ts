@@ -209,6 +209,43 @@ function newSharedEngineWorker(): SharedWorker {
   );
 }
 
+/**
+ * A second port to the engine's SharedWorker, for traffic that is not the
+ * Perspective protobuf protocol — engine stats, and feed control.
+ *
+ * Deliberately not the client's port: that one's message handler forwards
+ * everything it receives into the WASM client, so anything else on it is at
+ * best tolerated. A control port never sends `{ cmd: 'init' }`, so it creates
+ * no engine session and does not skew `SharedEngineStats.sessions`.
+ *
+ * Uses the SAME constructor the client does, so a control port always lands
+ * on the engine this page is actually talking to rather than a second one.
+ * `null` when there is no shared worker to reach.
+ */
+export function openSharedEngineControlPort(): MessagePort | null {
+  if (typeof SharedWorker === 'undefined') return null;
+  try {
+    const port = newSharedEngineWorker().port;
+    port.start();
+    return port;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Absolute URL of the Perspective client wasm this build fetched.
+ *
+ * The worker needs it to build a `Client` of its own (see
+ * `workerFeedHost.ts`), and cannot derive it: a worker deployed once per
+ * origin has no idea where any particular app's hashed assets live. Absolute
+ * so it resolves the same from a worker with a different base path.
+ */
+export function getPerspectiveClientWasmUrl(): string {
+  const base = typeof location !== 'undefined' ? location.href : undefined;
+  return new URL(clientWasmUrl, base).href;
+}
+
 /** Resolved AFTER `getPerspectiveClient()` settles. */
 export function getPerspectiveWorkerMode(): PerspectiveWorkerMode {
   return workerMode;
@@ -277,7 +314,7 @@ const SESSION_HEARTBEAT_MS = 45_000;
  * `sharedServer.worker.ts`'s constant; the two are exchanged on `hello` and
  * a difference is reported rather than assumed away.
  */
-export const SHARED_ENGINE_PROTOCOL = 1;
+export const SHARED_ENGINE_PROTOCOL = 2;
 
 /** Protocol the deployed worker reported, or `null` when it never answered
  *  (a pre-`hello` worker) or no shared engine is in use. */
@@ -498,14 +535,8 @@ export async function openOrCreatePositionsTable(
 export async function readSharedEngineStats(
   timeoutMs = 3_000,
 ): Promise<SharedEngineStats | null> {
-  if (typeof SharedWorker === 'undefined') return null;
-  let sw: SharedWorker;
-  try {
-    // The SAME constructor the client uses — a stats port must land on the
-    // engine this page is actually talking to, not on a second one.
-    sw = newSharedEngineWorker();
-  } catch { return null; }
-  const port = sw.port;
+  const port = openSharedEngineControlPort();
+  if (!port) return null;
   const id = Math.floor(Math.random() * 1e9);
   try {
     return await withTimeout(new Promise<SharedEngineStats>((resolve) => {

@@ -40,9 +40,13 @@ async function waitLive(page: Page): Promise<void> {
 const probe = (page: Page) => page.evaluate(async () => {
   const d = (window as any).__demo;
   const t = d?.dataController?.getTelemetry?.();
+  const stats = await d.engineStats();
   return {
     tables: (await d.hostedTables()) as string[],
-    stats: await d.engineStats(),
+    stats,
+    feeds: (stats?.feeds ?? []) as Array<{
+      tableName: string; phase: string; subscribers: number; bookSize: number;
+    }>,
     target: d.workerTarget(),
     protocol: d.workerProtocol() as { expected: number; deployed: number | null },
     mode: d.workerMode() as string,
@@ -133,4 +137,43 @@ test('configured: one deployed worker joins both apps to one engine, table and f
   expect(pb.protocol.deployed).toBe(pb.protocol.expected);
   // And the engine can see who it is serving — one protocol, no rollout.
   expect(pa.stats.clientProtocols).toEqual([pa.protocol.expected]);
+});
+
+test('configured + ?feed=worker: the DEPLOYED worker runs one feed for both apps', async ({ context }) => {
+  // The end state the whole exercise is aimed at: two separately-built apps,
+  // one deployed worker, one engine, one table — and now one TRANSPORT,
+  // owned by the worker rather than by whichever tab won a lock.
+  //
+  // Only reachable against the deployed artefact, which is why it lives
+  // here rather than in `ssrm-worker-feed.spec.ts`. The worker builds its
+  // own Perspective client by FETCHING the client wasm from a URL the page
+  // supplies, and here that URL is under `/a1/assets/…` while the worker
+  // itself is served from the origin root — a shape a dev server never
+  // produces, and the one that would break if the URL were relative.
+  const q = `?swurl=${encodeURIComponent(DEPLOYED_WORKER)}&swname=positions-engine&swstrict&feed=worker`;
+  const a = await context.newPage(); await a.goto(A1 + q); await waitLive(a);
+  const b = await context.newPage(); await b.goto(A2 + q); await waitLive(b);
+  await b.waitForTimeout(4000);
+  const [pa, pb] = await Promise.all([probe(a), probe(b)]);
+  test.skip(pa.mode !== 'shared' || pb.mode !== 'shared', 'dedicated-worker fallback');
+
+  // Nothing on either tab is feeding, and no lock decided that.
+  expect(pa.feedRole, 'a1 delegated its feed').toBe('worker');
+  expect(pb.feedRole, 'a2 delegated its feed').toBe('worker');
+
+  // ONE feed, holding ONE broker connection, serving both apps.
+  expect(pa.feeds, 'one feed in the deployed worker').toHaveLength(1);
+  expect(pa.feeds[0]!.subscribers, 'both apps on the one feed').toBe(2);
+  expect(pa.feeds[0]!.phase).toBe('live');
+  expect(pb.feeds).toEqual(pa.feeds);
+  expect(pa.feeds[0]!.tableName).toBe(pa.tables[0]);
+  expect(pa.bookSize).toBeGreaterThan(0);
+  expect(pb.bookSize).toBe(pa.bookSize);
+
+  // Two page sessions, plus the worker's own client counted apart — so the
+  // "sessions should equal open blotters" leak check keeps working.
+  expect(pa.stats.sessions).toBe(2);
+  expect(pa.stats.hostSessions).toBe(1);
+  expect(pa.stats.clientProtocols, 'the host client is not a stale page')
+    .toEqual([pa.protocol.expected]);
 });

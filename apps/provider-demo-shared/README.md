@@ -103,6 +103,44 @@ demo takes `?swurl=`, `?swname=` and `?swstrict` so it can be tried directly,
 and `npm run verify:shared-engine` builds the whole two-app scenario and
 asserts it end to end.
 
+### The feed inside the worker (`?feed=worker`)
+
+By default the SSRM engine is shared but the **transport** is not: rows arrive
+on one elected tab's main thread and are pushed into the shared table. That tab
+is throttled when it is backgrounded, competes with paint when it is busy, and
+the feed is down for the moment between it closing and a follower winning the
+Web Lock.
+
+`?feed=worker` moves the STOMP client into the SharedWorker that already hosts
+the engine. There is then one feed because there is one worker — nothing to
+elect, no takeover gap, and no cross-thread hop per update, because the rows are
+already on the side of the wire the table lives on. In an app:
+
+```ts
+new PerspectiveDataProviderController({ catalog, workerFeed: true });
+```
+
+It applies only where there is a shared engine to delegate to and the deployed
+worker is new enough to understand the `feed:*` commands (protocol ≥ 2).
+Anything else falls back to the main-thread feed, deliberately and silently — a
+page that cannot delegate its feed still has to have one. Watch which path ran:
+
+```js
+__demo.workerFeed()        // { requested, available } — why, if it fell back
+await __demo.engineFeeds() // one entry per table; `subscribers` = tabs on it
+```
+
+and `feedRole` in telemetry says what happened: `worker` means it moved,
+`leader`/`follower` means the election path is still running it. Two knock-on
+effects worth knowing:
+
+- **Diagnostics Stop now stops the feed for every tab**, because there is one
+  feed. `feedBroadcast.ts` exists only to emulate that on the default path.
+- **`engineStats().sessions` still counts pages only.** The worker's own
+  Perspective client is a real engine session and is reported separately as
+  `hostSessions`, so "sessions should equal open blotters" keeps meaning what it
+  meant.
+
 ### Rolling out a new worker
 
 The script is deployed **once per origin** while the apps using it ship on

@@ -90,6 +90,53 @@ describe('shared-worker bundling pattern', () => {
     expect(guard).toBeLessThan(cutoff);
   });
 
+  it('keeps the deployed worker free of nested worker entries', () => {
+    // The artefact is deployed as a BARE FILENAME an app hard-codes, so
+    // anything the build emits alongside it is something nobody is told to
+    // deploy — and it fails only at runtime, in a worker, where
+    // `new SharedWorker` does not throw for a script it cannot load.
+    //
+    // The way that happens is an import reaching a module that constructs a
+    // worker of its own, which a bundler compiles into a sibling entry. It
+    // has happened once: `updateBuffer.ts` imported `composeRowId` from the
+    // data package's INDEX, which reaches `connectHub` and its
+    // `new SharedWorker(...)`, and the build grew an unreferenced 47 kB
+    // `assets/worker-*.js`. Hence the `/rowid` leaf export.
+    //
+    // Walks the worker's own transitive relative imports rather than naming
+    // the two files that happen to be involved today, so a new import from
+    // anywhere in the graph is caught by the same rule.
+    const seen = new Set<string>();
+    const offenders: string[] = [];
+    const walk = (rel: string): void => {
+      if (seen.has(rel)) return;
+      seen.add(rel);
+      let src: string;
+      try {
+        src = readFileSync(fileURLToPath(new URL(`../src/${rel}`, import.meta.url)), 'utf8');
+      } catch { return; }
+      for (const m of src.matchAll(/from\s+'([^']+)'/g)) {
+        const spec = m[1]!;
+        if (spec === '@wellsfargo-starui/velocity-grid-data') {
+          offenders.push(`${rel} → ${spec}`);
+          continue;
+        }
+        if (!spec.startsWith('.')) continue;
+        walk(spec.replace(/^\.\//, '') + (spec.endsWith('.ts') ? '' : '.ts'));
+      }
+    };
+    walk('sharedServer.worker.ts');
+    expect(
+      offenders,
+      'the deployed worker reached the data package INDEX, which builds a '
+      + 'SharedWorker of its own. Import the leaf instead '
+      + '(@wellsfargo-starui/velocity-grid-data/rowid).',
+    ).toEqual([]);
+    // And the guard is only meaningful if the walk actually got somewhere.
+    expect(seen.size, 'import walk found nothing — did the entry move?')
+      .toBeGreaterThan(2);
+  });
+
   it('resolves the worker source next to this module', () => {
     // A path that stops resolving would emit nothing and fail at runtime.
     expect(() => readFileSync(

@@ -25,6 +25,10 @@
     "./appdata": {
       "types": "./src/appdata/index.ts",
       "import": "./src/appdata/index.ts"
+    },
+    "./rowid": {
+      "types": "./src/hub/rowId.ts",
+      "import": "./src/hub/rowId.ts"
     }
   },
   "scripts": {

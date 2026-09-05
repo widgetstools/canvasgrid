@@ -83,6 +83,14 @@ export type PerspectiveDataProviderControllerOptions = {
    *  in-process / worker hub as the rest of the app (C-m12). Perspective
    *  itself never uses the hub — this is a pure passthrough. */
   hubOpts?: ProviderClientOptions;
+  /**
+   * Run the SSRM transport inside the shared engine's SharedWorker rather
+   * than on an elected tab's main thread. Opt-in while both paths exist;
+   * falls back silently where it cannot apply (no shared engine, or a
+   * deployed worker older than the `feed:*` commands). `BookTelemetry.feedRole`
+   * reports which path actually ran.
+   */
+  workerFeed?: boolean;
 };
 
 export class PerspectiveDataProviderController {
@@ -93,6 +101,7 @@ export class PerspectiveDataProviderController {
   private readonly onActiveChange?: PerspectiveDataProviderControllerOptions['onActiveChange'];
   private readonly onTelemetry?: (t: BookTelemetry) => void;
   private readonly hubOpts?: ProviderClientOptions;
+  private readonly workerFeed: boolean;
   private activeProviderId: string | null = null;
   private desiredProviderId: string | null = null;
   private provider: StompPerspectiveProvider | null = null;
@@ -116,6 +125,7 @@ export class PerspectiveDataProviderController {
     this.onActiveChange = opts?.onActiveChange;
     this.onTelemetry = opts?.onTelemetry;
     this.hubOpts = opts?.hubOpts;
+    this.workerFeed = opts?.workerFeed ?? false;
   }
 
   /** Hub options for the editor popout's Diagnostics session (C-m12). */
@@ -335,6 +345,7 @@ export class PerspectiveDataProviderController {
     const mapped = dataProviderConfigToPerspective(resolved);
     const cfg: StompPerspectiveProviderConfig = {
       ...mapped,
+      workerFeed: this.workerFeed,
       // Fan out to the constructor callback AND to anything that registered
       // via `subscribeTelemetry` (the Data settings panel, for one), so the
       // app's own telemetry sink stays exactly as it was.

@@ -95,6 +95,20 @@ export {
   type GroupedDistinctRow,
 } from './distinctValues';
 export { createPerspectiveSsrmDatasource } from './ssrmDatasource';
+// The SSRM feed running inside the SharedWorker rather than on an elected
+// tab's main thread. `canUseWorkerFeed()` is the honest answer to "can this
+// page delegate its feed?" — see docs/ssrm-shared-engine-architecture.md §5.
+export {
+  canUseWorkerFeed,
+  startWorkerFeed,
+  type WorkerFeedHandle,
+} from './workerFeedClient';
+export {
+  WORKER_FEED_PROTOCOL,
+  type WorkerFeedConfig,
+  type WorkerFeedPhase,
+  type WorkerFeedState,
+} from './workerFeedProtocol';
 // Perspective `split_by` → kernel pivot cross-tab. Exported for hosts that
 // drive the views themselves instead of going through the provider.
 export {

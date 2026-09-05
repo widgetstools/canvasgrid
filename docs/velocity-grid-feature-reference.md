@@ -299,8 +299,9 @@ See **§11** (`packages/calc` + `wireIntoKernel`). Runs in worker CalcPass; sort
 
 ### 5.7 The shared engine — one Perspective per origin
 
-> Sharing boundaries in depth — what is duplicated and what provably is not, why
-> the SSRM feed is not hub-like the way CSRM's is, and what parity would take:
+> Sharing boundaries in depth — what is duplicated and what provably is not, and
+> what moving the feed into the worker actually took (including a documented
+> library API that does not do what it says):
 > [ssrm-shared-engine-architecture.md](./ssrm-shared-engine-architecture.md).
 
 
@@ -309,7 +310,9 @@ The WASM engine runs in a **SharedWorker**, so blotters that share it get one en
 | Concern | Behaviour |
 |---------|-----------|
 | Table identity | `tableNameForSchema(schema, identity)`; `identity` = `bookIdentityFor(config)` — catalog `providerId`, else `wsUrl` + topic/clientId. Two providers with the same columns but different brokers never collide |
-| Feed leadership | Web Lock per table; one leader feeds, followers `adoptSharedLive` and queue for takeover |
+| Feed leadership (default) | Web Lock per table; one leader tab feeds, followers `adoptSharedLive` and queue for takeover |
+| Feed in the worker (`workerFeed` / `?feed=worker`) | The STOMP transport runs **inside the SharedWorker**, so there is one feed because there is one worker — no lock, no takeover gap, and no main-thread → worker hop per update. `feed:start` is start-or-**join**, keyed on table name. Needs a shared engine and a deployed worker at protocol ≥ 2 (`canUseWorkerFeed()`); anything else falls back to the main-thread feed silently and by design. `BookTelemetry.feedRole` = `worker` when it took |
+| Feed-in-worker knock-ons | Diagnostics Stop/Restart act on the ONE feed, i.e. every tab (what `feedBroadcast.ts` emulates on the default path). The worker's own Perspective client is a real engine session but is reported as `hostSessions`, kept out of `sessions` and `clientProtocols` so "sessions == open blotters" still holds |
 | Worker identity | `(origin, script URL, name)` — **all three**. Tabs of one app agree for free; **two apps do not**, since each bundle emits its own hashed copy of the worker script |
 | Target model | **`(origin, instance name)` with `bundled: false`** — an app joins the engine *named* `name` on its origin. Reached by fixing the URL to a deployed constant, which leaves the name as the only varying axis |
 | Converging several apps | Build the artefact (`npm run build:shared-worker -w @wellsfargo-starui/velocity-grid-perspective` → `dist/perspective-shared-worker.js`, self-contained), deploy ONE copy per origin, and call `configurePerspectiveSharedWorker({ url, name, strict: true })` from every app before the first `getPerspectiveClient()`. `getPerspectiveSharedWorkerTarget()` → `{ url, name, bundled }`; apps meant to share must all report `bundled: false` and the same `url` + `name` |
@@ -320,10 +323,11 @@ The WASM engine runs in a **SharedWorker**, so blotters that share it get one en
 | Session lifetime | Released on `pagehide`; an idle reaper (45s heartbeat, 5-min timeout) covers renderers that crash without running script. Perspective's own client sends nothing on unload |
 | Mixed versions | The script is deployed once per origin while apps ship separately, so an older page against a newer worker is a normal rollout state. `hello` exchanges versions on connect and reports a mismatch; crucially the reaper **only considers clients that announced themselves**, so a pre-handshake page — which goes quiet when idle and always did — is never reaped mid-session. `getSharedEngineProtocol()` → `{ expected, deployed }`; `stats.clientProtocols` lists every version connected |
 | Versioned rollout | One unversioned path lets mixed clients coexist on one engine. A versioned path (`psp-shared-worker.v1.js`) keeps versions deliberately apart, at the cost of one engine + one feed per live version during the rollout |
-| Diagnostics | `readSharedEngineStats()` → `{ heapBytes, sessions, engineUp, protocol, clientProtocols }` on its own port |
+| Deployed artefact is ONE file | The path is a bare filename apps hard-code, so any sibling asset the build emits is one nobody deploys — and `new SharedWorker` does not throw for a script it cannot load. No import may reach a module that constructs a worker of its own: `updateBuffer.ts` importing `composeRowId` from the data package **index** (which reaches `connectHub`) silently added a 47 kB `assets/worker-*.js`. Hence `@wellsfargo-starui/velocity-grid-data/rowid`; guarded by an import-graph walk in `sharedWorkerBundling.test.ts` |
+| Diagnostics | `readSharedEngineStats()` → `{ heapBytes, sessions, hostSessions, engineUp, protocol, clientProtocols, feeds }` on its own port. `feeds[].subscribers` is the count of tabs on each worker-side feed |
 | Fallback | Dedicated worker when SharedWorker is unavailable, init times out, or `?worker=dedicated` |
 
-**The engine outlives every page.** It is torn down only when the *last* tab on that URL disconnects — so with one tab a reload silently restarts everything, and with two it does not. Memory and lifetime questions here are only meaningful with ≥ 2 tabs open; `e2e/ssrm-shared-engine.spec.ts` and `e2e/ssrm-engine-sharing.spec.ts` are that harness, and `npm run verify:shared-engine` builds the two-apps-on-one-origin case (`/a1` + `/a2`) and asserts both regimes end to end.
+**The engine outlives every page.** It is torn down only when the *last* tab on that URL disconnects — so with one tab a reload silently restarts everything, and with two it does not. Memory and lifetime questions here are only meaningful with ≥ 2 tabs open; `e2e/ssrm-shared-engine.spec.ts` and `e2e/ssrm-engine-sharing.spec.ts` are that harness, `e2e/ssrm-worker-feed.spec.ts` covers the worker-side feed and both of its fallbacks, and `npm run verify:shared-engine` builds the two-apps-on-one-origin case (`/a1` + `/a2`) and asserts every regime end to end — including two separately-built apps sharing one feed in one deployed worker.
 
 ---
 

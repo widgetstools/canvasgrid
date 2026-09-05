@@ -53,10 +53,21 @@ function announceProtocol(): Plugin {
  *   npm run build:shared-worker --workspace=@wellsfargo-starui/velocity-grid-perspective
  *   # → dist/perspective-shared-worker.js
  *
- * Self-contained by design: the Emscripten glue for the server engine is
- * bundled in, and the engine's `.wasm` never comes from here — a page sends
- * it as a compiled `WebAssembly.Module` on the init message. So the deployed
- * file has no sibling assets and no import map to satisfy.
+ * Self-contained by design, and the constraint is load-bearing rather than
+ * tidy: the deployed path is a bare filename an app hard-codes, so anything
+ * emitted ALONGSIDE this file is something nobody is told to deploy and that
+ * fails only at runtime, in a worker, where `new SharedWorker` does not throw
+ * for a script it cannot load.
+ *
+ * Two things keep it that way. The engine's `.wasm` never comes from here —
+ * a page sends it on the init message — and no import may reach a module
+ * that constructs a worker of its own, because a bundler compiles those into
+ * sibling entries. The second one has bitten already: `updateBuffer.ts`
+ * imported `composeRowId` from the data package's INDEX, which reaches
+ * `connectHub`, which builds the hub SharedWorker; the build quietly grew an
+ * unreferenced 47 kB `assets/worker-*.js`. Hence
+ * `@wellsfargo-starui/velocity-grid-data/rowid`. Check the emitted file list
+ * after changing an import here — one file is the whole contract.
  */
 export default defineConfig({
   plugins: [announceProtocol()],

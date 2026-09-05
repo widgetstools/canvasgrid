@@ -9,7 +9,12 @@
  * When unique ids still exceed `cap`, keep the most recently seen keys
  * (scan from the end).
  */
-import { composeRowId } from '@wellsfargo-starui/velocity-grid-data';
+// Deep import, not the package index: this module is reachable from the
+// deployed shared worker (`workerFeedHost.ts`), and the index pulls in
+// `connectHub`, whose `new SharedWorker(new URL(...))` a bundler compiles as
+// a NESTED worker entry — which both bloats the worker and emits a sibling
+// asset the "deploy one self-contained file" instruction says will not exist.
+import { composeRowId } from '@wellsfargo-starui/velocity-grid-data/rowid';
 
 export type UpdateBufferKeyColumn = string | readonly string[];
 

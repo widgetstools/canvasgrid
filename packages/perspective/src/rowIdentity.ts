@@ -6,7 +6,9 @@
  * paths. For composite keys Perspective still needs one physical index
  * column; that carrier is derived from the key field names.
  */
-import { composeRowId } from '@wellsfargo-starui/velocity-grid-data';
+// Deep import — see the sibling note in `updateBuffer.ts`. The package index
+// drags a nested worker entry into the deployed shared-worker bundle.
+import { composeRowId } from '@wellsfargo-starui/velocity-grid-data/rowid';
 
 export type RowKeyColumn = string | readonly string[];
 

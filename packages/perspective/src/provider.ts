@@ -95,6 +95,12 @@ export interface StompPerspectiveProviderConfig {
    * When omitted, the curated positions schema is used.
    */
   schema?: Record<string, string>;
+  /**
+   * Run the STOMP transport inside the SharedWorker rather than on this
+   * tab's main thread. Opt-in; falls back silently where it cannot apply.
+   * See `PerspectiveBookOptions.workerFeed`.
+   */
+  workerFeed?: boolean;
   /** Label shown in telemetry for this provider's view. */
   label?: string;
   /** Optional server-side filter fixed onto this provider's view
@@ -258,6 +264,7 @@ function entryFor(config: StompPerspectiveProviderConfig): { key: string; entry:
         snapshotEndToken: config.snapshotEndToken,
         keyColumn: config.keyColumn,
         schema,
+        workerFeed: config.workerFeed,
         identity: bookIdentityFor(config),
         onViewTick: (tick) => created.tickHandlers.get(tick.viewId)?.(tick),
         onPhase: (phase) => { for (const h of created.phaseHandlers.values()) h(phase); },

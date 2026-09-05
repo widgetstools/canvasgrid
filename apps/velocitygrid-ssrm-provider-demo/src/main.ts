@@ -25,6 +25,7 @@ import {
 import { LocalStore } from '@wellsfargo-starui/velocity-grid-data/storage';
 import {
   PerspectiveDataProviderController,
+  canUseWorkerFeed,
   configurePerspectiveSharedWorker,
   getPerspectiveClient,
   getPerspectiveSharedWorkerTarget,
@@ -98,10 +99,18 @@ function paintTelemetry(t: BookTelemetry): void {
 
 const demoAppData = createDemoAppData();
 
+// `?feed=worker` runs the STOMP transport inside the SharedWorker that hosts
+// the engine, instead of on an elected tab's main thread. Watch `feedRole` in
+// telemetry to see which path actually ran: `worker` means the delegation
+// took, `leader`/`follower` means it fell back (no shared engine, or a
+// deployed worker older than the `feed:*` commands).
+const workerFeed = new URLSearchParams(location.search).get('feed') === 'worker';
+
 const dataController = new PerspectiveDataProviderController({
   catalog,
   // Resolves {{session.trader}} in the catalog topics — both row models.
   appData: demoAppData,
+  workerFeed,
   onTelemetry: paintTelemetry,
   onActiveChange: (providerId) => {
     if (!providerId) setStatus('no provider — Customize → Data → Apply', 'err');
@@ -184,6 +193,15 @@ void (async () => {
   // legitimately during a rollout — the worker is deployed once per origin
   // while apps ship on their own cycles.
   workerProtocol: getSharedEngineProtocol,
+  // Whether this page asked for a worker-side feed, and whether it could
+  // have one. `requested && !available` is the fallback case, and the two
+  // being separate is the point: telemetry's `feedRole` says what happened,
+  // these say why.
+  workerFeed: () => ({ requested: workerFeed, available: canUseWorkerFeed() }),
+  // Feeds the engine is running, one per physical table. `subscribers` is
+  // the count of tabs on each — the direct answer to "is ONE broker
+  // connection serving all of them?".
+  engineFeeds: async () => (await readSharedEngineStats())?.feeds ?? null,
 };
 
 window.addEventListener('beforeunload', () => {

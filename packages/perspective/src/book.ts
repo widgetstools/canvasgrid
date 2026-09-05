@@ -16,6 +16,7 @@ import {
 } from './pivotMapper';
 import { Client, type IMessage } from '@stomp/stompjs';
 import {
+  getPerspectiveClientWasmUrl,
   getPerspectiveWorkerMode,
   openOrCreatePositionsTable,
   POSITION_SCHEMA,
@@ -26,6 +27,12 @@ import {
   type Table,
   type View,
 } from './bootstrap';
+import {
+  canUseWorkerFeed,
+  startWorkerFeed,
+  type WorkerFeedHandle,
+} from './workerFeedClient';
+import type { WorkerFeedState } from './workerFeedProtocol';
 import { emptyGrandTotalRow } from './positionColumns';
 import {
   buildCompositeGroupKey,
@@ -158,9 +165,18 @@ export interface BookTelemetry {
   /** Phase 5 — 'shared' when the engine lives in the per-origin
    *  SharedWorker (cross-tab table), 'dedicated' on the fallback path. */
   workerMode: 'shared' | 'dedicated';
-  /** Phase 5 — 'leader' feeds the table (seed ticks / STOMP); 'follower'
-   *  tabs share the book read-only and take over if the leader closes. */
-  feedRole: 'leader' | 'follower' | 'none';
+  /**
+   * Who is driving the feed for this table.
+   *
+   * `'worker'` is the arrangement to aim for: the transport runs inside the
+   * SharedWorker that hosts the engine, so there is one feed because there is
+   * one worker, and nothing to elect. `'leader'` / `'follower'` are the
+   * main-thread feed with its Web-Lock election — still the path for
+   * dedicated-worker mode (single-tab by construction, so election was never
+   * doing anything there either) and for a deployed worker that predates the
+   * `feed:*` commands.
+   */
+  feedRole: 'worker' | 'leader' | 'follower' | 'none';
 }
 
 export type BookFeed = 'stomp' | 'seed';
@@ -201,6 +217,17 @@ export interface PerspectiveBookOptions {
    * for the no-catalog seed/demo case.
    */
   identity?: string;
+  /**
+   * Run the STOMP transport inside the SharedWorker instead of on this tab's
+   * main thread.
+   *
+   * Opt-in while the two paths coexist. It only applies when there is a
+   * shared engine to run in and the deployed worker is new enough to
+   * understand `feed:*`; anything else falls back to the main-thread feed,
+   * silently and by design — a page that cannot delegate its feed still has
+   * to have one. `feedRole` reports which path actually ran.
+   */
+  workerFeed?: boolean;
   onTelemetry?: (t: BookTelemetry) => void;
   onPhase?: (phase: BookPhase) => void;
   onViewTick?: (tick: ViewTick) => void;
@@ -717,7 +744,7 @@ export class PerspectiveBook {
     Pick<
       PerspectiveBookOptions,
       'onTelemetry' | 'onPhase' | 'onViewTick' | 'snapshotTopic' | 'triggerTopic' | 'identity'
-      | 'queryResultCacheTtlMs' | 'strictPivotColumnOrder'
+      | 'queryResultCacheTtlMs' | 'strictPivotColumnOrder' | 'workerFeed'
     >;
 
   /** DataProvider-owned schema columns (Perspective table + view projection). */
@@ -778,7 +805,12 @@ export class PerspectiveBook {
   /** Phase 5 — set when `ensureTable` bound the cross-tab shared table. */
   private sharedTable = false;
   /** Phase 5 — this tab's role in the shared feed. */
-  private feedRole: 'leader' | 'follower' | 'none' = 'none';
+  private feedRole: 'worker' | 'leader' | 'follower' | 'none' = 'none';
+  /** Live when the SharedWorker is feeding this table on our behalf. */
+  private workerFeed: WorkerFeedHandle | null = null;
+  /** Last state the worker pushed — the source for the feed half of
+   *  telemetry, since none of those counters happen on this thread. */
+  private workerFeedState: WorkerFeedState | null = null;
   /** Resolving this releases the Web Lock held while leading the feed. */
   private releaseFeedLock: (() => void) | null = null;
   private leadershipQueued = false;
@@ -843,6 +875,7 @@ export class PerspectiveBook {
       onViewTick: options.onViewTick,
       queryResultCacheTtlMs: options.queryResultCacheTtlMs,
       strictPivotColumnOrder: options.strictPivotColumnOrder,
+      workerFeed: options.workerFeed,
     };
     this.dataColumns = Object.keys(schema);
     this.valueAggregates = aggregatesFromSchema(schema);
@@ -886,10 +919,25 @@ export class PerspectiveBook {
     this.emitTelemetry();
   }
 
-  /** Diagnostics / authoring Stop — disconnect STOMP/seed and refuse takeover. */
+  /**
+   * Diagnostics / authoring Stop — disconnect STOMP/seed and refuse takeover.
+   *
+   * On the worker path this stops the ONE feed, so it takes effect for every
+   * tab at once. That is what `feedBroadcast.ts` was emulating with a
+   * `BroadcastChannel`: with the feed on a tab, stopping it here only froze
+   * whichever tab happened to be leading, and the rest kept running.
+   */
   stopFeed(): void {
     this.feedStopped = true;
     this.pauseFanout = true;
+    if (this.workerFeed) {
+      // Keep the subscription. Stop is a pause, and Restart has to have
+      // something to resume — releasing here would drop the feed outright,
+      // and Restart would then be asking a feed that no longer exists.
+      void this.workerFeed.stop();
+      this.emitTelemetry();
+      return;
+    }
     this.disconnect();
     this.emitTelemetry();
   }
@@ -897,6 +945,12 @@ export class PerspectiveBook {
   /** Diagnostics Restart — clear the stop latch and reconnect the feed. */
   restartFeed(): void {
     this.feedStopped = false;
+    if (this.workerFeed) {
+      this.pauseFanout = false;
+      void this.workerFeed.restart();
+      this.emitTelemetry();
+      return;
+    }
     this.pauseFanout = false;
     this.connect();
     this.emitTelemetry();
@@ -2360,6 +2414,11 @@ export class PerspectiveBook {
       else this.activateStomp();
       return;
     }
+    // Hand the transport to the worker if it can take it. Everything below
+    // this point — the lock, the takeover queue, the 30s snapshot wait — is
+    // machinery for deciding WHICH TAB feeds, and none of it applies once
+    // nothing on a tab is feeding at all.
+    if (await this.tryWorkerFeed()) return;
     const size = await this.sharedTableSize();
     if (this.feedStopped || this.destroyed) return;
     if (size > 0) {
@@ -2388,6 +2447,77 @@ export class PerspectiveBook {
     if (this.feedStopped || this.destroyed) return;
     if (this.opts.feed === 'seed') await this.connectSeed();
     else this.activateStomp();
+  }
+
+  /**
+   * Ask the SharedWorker to run this table's feed.
+   *
+   * Returns `false` — having changed nothing — whenever the worker cannot
+   * take it, so the caller carries on into the main-thread path. That covers
+   * a dedicated-worker fallback, a browser without `SharedWorker`, a deployed
+   * worker older than the `feed:*` commands, the seed feed (which is a local
+   * generator, not a transport, and has nothing to move), and any failure
+   * the worker reports. None of those is an error: they are the arrangement
+   * that existed before this option, which still works.
+   */
+  private async tryWorkerFeed(): Promise<boolean> {
+    if (!this.opts.workerFeed || this.opts.feed !== 'stomp') return false;
+    if (!this.sharedTable || !canUseWorkerFeed()) return false;
+    try {
+      const handle = await startWorkerFeed(
+        {
+          tableName: tableNameForSchema(this.opts.schema, this.opts.identity),
+          schema: { ...this.opts.schema } as Record<string, string>,
+          index: this.tableIndexField(),
+          keyColumn: this.opts.keyColumn,
+          wsUrl: this.opts.wsUrl,
+          clientId: this.opts.clientId,
+          snapshotTopic: this.opts.snapshotTopic,
+          triggerTopic: this.opts.triggerTopic,
+          snapshotEndToken: this.opts.snapshotEndToken,
+          snapshotRows: this.opts.snapshotRows,
+          rate: this.opts.rate,
+          batchSize: this.opts.batchSize,
+          updatesPerTick: this.opts.updatesPerTick,
+          sparse: this.opts.sparse,
+          clientWasmUrl: getPerspectiveClientWasmUrl(),
+        },
+        (state) => this.onWorkerFeedState(state),
+      );
+      if (this.destroyed || this.feedStopped) {
+        handle.release();
+        return false;
+      }
+      this.workerFeed = handle;
+      this.feedRole = 'worker';
+      this.onWorkerFeedState(handle.state() ?? null);
+      return true;
+    } catch (err) {
+      console.warn('[PerspectiveBook] worker feed unavailable — feeding locally:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Adopt the worker's view of the feed.
+   *
+   * The counters are read straight off it rather than mirrored, because none
+   * of the events behind them happen on this thread any more. The one thing
+   * this side still owns is telling its own views to recount when the book
+   * first goes live — their row counts came from a table that was empty a
+   * moment ago.
+   */
+  private onWorkerFeedState(state: WorkerFeedState | null): void {
+    if (!state || this.destroyed) return;
+    const wasLive = this.workerFeedState?.phase === 'live';
+    this.workerFeedState = state;
+    this.snapshotComplete = state.snapshotComplete;
+    this.snapshotRowsLoaded = state.bookSize || state.snapshotRowsLoaded;
+    this.setPhase(state.phase);
+    if (state.phase === 'live' && !wasLive) {
+      for (const id of this.views.keys()) void this.refreshProjected(id);
+    }
+    this.emitTelemetry();
   }
 
   private activateStomp(): void {
@@ -2433,6 +2563,15 @@ export class PerspectiveBook {
     this.seedConnecting = false;
     // Phase 5 — stop leading so another tab can take the feed over.
     this.releaseLeadership();
+    // On the worker path there is no local socket to close; letting go of
+    // the subscription is what matters, and the feed only actually stops
+    // once the LAST page holding it does the same.
+    if (this.workerFeed) {
+      this.workerFeed.release();
+      this.workerFeed = null;
+      this.workerFeedState = null;
+      this.feedRole = 'none';
+    }
     const c = this.stomp;
     this.stomp = null;
     if (c) {
@@ -2578,20 +2717,28 @@ export class PerspectiveBook {
   private buildTelemetry(): BookTelemetry {
     const now = Date.now();
     this.liveWindow = this.liveWindow.filter((x) => now - x.t < 1000);
-    const liveUpdatesPerSec = this.liveWindow.reduce((s, x) => s + x.n, 0);
+    // The feed half comes from the worker when the worker is the one running
+    // it — none of these events happen on this thread any more, so mirroring
+    // them locally would report zeros. The VIEW half below stays local: those
+    // are this page's own reads, which the worker cannot see and must not be
+    // asked about.
+    const fed = this.workerFeedState;
+    const liveUpdatesPerSec = fed
+      ? fed.liveRowsPerSec
+      : this.liveWindow.reduce((s, x) => s + x.n, 0);
     return {
       phase: this.phase,
-      bookSize: this.snapshotRowsLoaded || 0,
-      snapshotRowsLoaded: this.snapshotRowsLoaded,
-      liveBatches: this.liveBatches,
-      liveRowsIn: this.liveRowsIn,
+      bookSize: fed ? fed.bookSize : (this.snapshotRowsLoaded || 0),
+      snapshotRowsLoaded: fed ? fed.snapshotRowsLoaded : this.snapshotRowsLoaded,
+      liveBatches: fed ? fed.liveBatches : this.liveBatches,
+      liveRowsIn: fed ? fed.liveRowsIn : this.liveRowsIn,
       liveUpdatesPerSec,
       getRowsTotal: this.getRowsTotal,
       rowsServedTotal: this.rowsServedTotal,
       queryResultCacheHits: this.queryResultCacheHits,
       queryResultCacheMisses: this.queryResultCacheMisses,
       queryResultCacheSize: this.rawGroupDumpCache.size + this.windowedResultCache.size,
-      droppedRowCount: this.droppedRowCount,
+      droppedRowCount: fed ? fed.droppedRowCount : this.droppedRowCount,
       viewCount: this.views.size,
       views: [...this.views.values()].map((v) => ({
         id: v.spec.id,

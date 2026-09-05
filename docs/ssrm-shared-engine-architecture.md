@@ -2,7 +2,11 @@
 
 **Scope:** the Perspective-backed SSRM data path (`packages/perspective`) and how
 it compares to the CSRM data hub (`packages/data`).
-**Status:** analysis. No decision has been taken on the design in §5.
+**Status:** the design in §5 is **built and measured**, behind an opt-in
+(`workerFeed` / `?feed=worker`). The main-thread feed is still the default and
+still the only path where there is no shared engine to delegate to. §5 records
+what was actually built, including the one load-bearing thing this document
+previously got wrong.
 **Related:** [velocity-grid-architecture.md §6.3](./velocity-grid-architecture.md),
 [velocity-grid-feature-reference.md §5.7](./velocity-grid-feature-reference.md)
 
@@ -23,8 +27,12 @@ before anyone acts on either:
   *transport* on the main thread of an elected leader tab, where CSRM runs its
   transport inside the SharedWorker. That asymmetry is real and has costs (§4).
 
+The second half has since been addressed: `workerFeed` runs the transport inside
+the worker, and §5 records what that took.
+
 Every "cannot happen" claim below names either a measurement or the code path
-that guarantees it. Reasoning alone is what produced the original confusion.
+that guarantees it. Reasoning alone is what produced the original confusion —
+and, in §5, one confident claim about a library API that turned out to be wrong.
 
 ---
 
@@ -36,7 +44,8 @@ that guarantees it. Reasoning alone is what produced the original confusion.
 | Physical table | per `(schema, identity)` within an engine | `tableNameForSchema()`; `open_table` when the name already exists |
 | Book (page-local) | per `providerId` + schema, per page | `entryFor()` in `provider.ts` — several grids on one page share one book |
 | View | per blotter | each `StompPerspectiveProvider` registers its own |
-| Feed | one leader per table, per origin | Web Lock `cgrid-ssrm:feed:<tableName>` |
+| Feed (default) | one leader tab per table, per origin | Web Lock `cgrid-ssrm:feed:<tableName>` |
+| Feed (`workerFeed`) | one per table, **inside the worker** | `WorkerFeedRegistry` keyed on table name — start-or-join, no lock |
 
 **Table identity** folds provider identity in, not just schema shape:
 `bookIdentityFor(config)` is `providerId`, else `wsUrl` + `snapshotTopic`/`clientId`
@@ -170,70 +179,119 @@ not merely wasteful, it is *user-visibly broken*.
 
 ---
 
-## 5. What hub parity would involve
+## 5. Hub parity, as built
 
-### Feasibility is settled
+Opt in with `workerFeed: true` on the controller, or `?feed=worker` on the demo.
+`BookTelemetry.feedRole` reports what actually happened: `worker` means the
+transport moved, `leader`/`follower` means it fell back.
 
-`@perspective-dev/client` exposes `getCompiledClientWasm()`, documented as
-returning a structured-cloneable `WebAssembly.Module` *specifically* so a worker
-can build its own `Client` without refetching or recompiling. Combined with
-`perspective.worker(Promise<MessagePort>)`, the SharedWorker can hold a full
-`Table`/`View` API against its own in-process engine:
+### Correction: `getCompiledClientWasm()` is not the way in
 
-1. a page ships the compiled client wasm to the worker;
-2. the worker calls `init_client(mod)`;
-3. the worker creates an internal `MessageChannel`, attaches one end as an
-   engine session (exactly as `attachPort` already does), and calls
-   `perspective.worker(Promise.resolve(otherEnd))`;
-4. the worker now writes rows into the table **with no cross-thread hop at all**
-   — today every update crosses main thread → worker.
+This section previously said feasibility was "settled" on the strength of
+`getCompiledClientWasm()`, whose documentation offers exactly this use — a
+structured-cloneable `WebAssembly.Module` so a worker can build its own `Client`
+without refetching. **It does not work in this build**, and the reasoning that
+said it would is a good example of why a documented API is not a measurement:
 
-That last point is a throughput win on top of the architectural one.
+- `init_client` dispatches on argument **type**: `Uint8Array` and `ArrayBuffer` /
+  `Response` / `Promise` each route to the compile path, and anything else that
+  is an `Object` is treated as an **already-initialised module namespace**. A
+  `WebAssembly.Module` is an `Object`, so it lands in that last branch and the
+  client comes out `undefined`. The plumbing underneath handles a Module fine;
+  the entry point has no branch that reaches it.
+- The published type signature agrees with the code, not the doc comment:
+  `PerspectiveWasm = ArrayBuffer | Response | typeof psp | Promise<…>` — no
+  `WebAssembly.Module`.
 
-### What moves, what stays, what goes
+So the page sends the client wasm **URL** and the worker fetches it, served from
+the HTTP cache the page has just filled. One fetch per **origin**, where the old
+arrangement paid one per tab. Verified against the deployed artefact, where the
+worker is at the origin root and the wasm is under `/a1/assets/…` — a shape no
+dev server produces.
+
+One more thing the library forces: `@perspective-dev/client` probes
+`customElements.get('perspective-viewer')` on every wasm lookup, and
+`customElements` does not exist in a worker, so the probe throws a
+`ReferenceError` before reaching the branch that would read what we initialised.
+`workerFeedHost.ts` installs a `{ get: () => undefined }` shim — truthful rather
+than a workaround, since a worker genuinely has no such element.
+
+### How the worker holds a `Table`
+
+The part that *was* right, and is what makes the whole thing cheap:
+
+1. the worker makes an internal `MessageChannel`;
+2. attaches one end as an engine session — the identical `attachPort` call a
+   page's port goes through, flagged `internal`;
+3. points a `Client` at the other end via
+   `perspective.worker(Promise.resolve(port))`.
+
+No second engine, no socket, no copy of the data. Rows are written on the side
+of the wire the table already lives on, so the main-thread → worker hop every
+update used to make is gone.
+
+The internal session is a real engine session and is kept **out of**
+`SharedEngineStats.sessions` and `clientProtocols`. Both are read as facts about
+pages: `sessions` should equal the number of open blotters (a count that climbs
+across reloads is the leak §2 is about), and a `0` in `clientProtocols` reads as
+a pre-`hello` page, i.e. a rollout in flight. It is reported as `hostSessions`
+instead.
+
+### What moved, what stayed
 
 | | |
 |---|---|
-| **Moves into the worker** | STOMP client, snapshot assembly, `updateBuffer`, `flushUpdates` |
-| **Stays on the page** | Views, SSRM datasource, group skeleton, telemetry rendering |
-| **Deleted outright** | Web-Lock leader election, takeover queue, `waitForSharedSnapshot`'s 30s fallback, `feedBroadcast.ts` |
+| **Moved into the worker** | STOMP client, snapshot assembly, update buffer, flush loop |
+| **Stayed on the page** | Views, SSRM datasource, group skeleton, telemetry rendering |
+| **Not yet deleted** | Web-Lock election, takeover queue, `waitForSharedSnapshot`, `feedBroadcast.ts` — unreachable on the worker path, still the whole story on the default one |
 
-### Recommendation on the dedicated-worker path
+Election is not *handled better* on the worker path; it does not exist there.
+`WorkerFeedRegistry` is keyed on table name and `feed:start` is **start-or-join**:
+the second caller gets the running feed's state back rather than racing for a
+lock. One broker connection, no takeover gap, nothing to elect.
 
-**Keep the main-thread feed for dedicated-worker mode — but delete the
-leader-election layer in both modes.**
+### The dedicated-worker path stays
 
-- Dedicated mode is not exotic. It is the fallback for init failure and
-  `?worker=dedicated`, and `SharedWorker` support is not universal (notably
-  absent on Chrome for Android — worth re-checking against current support
-  tables before relying on it either way). Removing the main-thread feed
-  outright would leave those environments unable to feed at all, making
-  `strict` effectively mandatory. Too aggressive.
-- But dedicated mode is **single-tab by construction**. It never needed election
-  either — it is the trivial case, not a competing design.
-- So the complexity that actually hurts — election, takeover, broadcast, the 30s
-  fallback — disappears regardless of which mode is running. What remains common
-  is transport wiring, the same `@stomp/stompjs` code, which should be factored
-  into one module instantiated in either context.
+Unchanged from the earlier recommendation, and still right: dedicated mode is
+the fallback for init failure, for `?worker=dedicated`, and for browsers without
+`SharedWorker`. Removing the main-thread feed outright would leave those unable
+to feed at all. It is also **single-tab by construction**, so its election was
+always the trivial case rather than a competing design.
 
-This is better than either "keep both fully" (retains the machinery) or "replace
-outright" (breaks environments without SharedWorker).
+`canUseWorkerFeed()` is the gate, and it is deliberately conservative: no shared
+worker, or a deployed worker older than `feed:*`, means the page feeds itself.
+That last case is why the check exists at all — unknown commands have always
+been ignored silently, so asking a protocol-1 worker for a feed would strand a
+blotter waiting for a snapshot nobody is going to send. Asserted by
+`e2e/ssrm-worker-feed.spec.ts`.
 
-### Open questions before committing
+### Open questions, updated
 
-- **Config into the worker.** AppData `{{token}}` resolution currently happens on
-  the page (`resolveProviderConfig`). The worker needs fully-resolved config, so
-  the page must resolve then ship — and two apps could ship *different* resolved
-  config for the same `providerId`. First writer wins? Reject mismatches?
-- **Telemetry.** `BookTelemetry` is assembled where the feed runs. Moving the
-  feed means pushing phase/rate/counters back out to every tab.
-- **Feed control.** Stop/Restart becomes a worker command — simpler, but the
-  Diagnostics UI and `feedControlRegistry` wiring change shape.
+Resolved by building it:
+
+- **Telemetry.** The worker pushes `WorkerFeedState` to each subscribed control
+  port (throttled, phase changes immediate); `buildTelemetry` takes the feed half
+  from it and keeps the view half local. Views are this page's own reads and the
+  worker cannot see them.
+- **Feed control.** Stop/Restart are worker commands and therefore act on the ONE
+  feed — which is what `feedBroadcast.ts` was emulating with a `BroadcastChannel`.
+- **Protocol version.** `SHARED_ENGINE_PROTOCOL` is now `2`;
+  `WORKER_FEED_PROTOCOL` is a separate **floor** that must stay at 2 as the
+  engine protocol moves on.
+- **Subscriber lifetime.** Refcounted per control port, released on `pagehide`,
+  with a 5-minute idle reaper for a page that crashed. The last release stops the
+  feed — otherwise a closed blotter would hold a broker connection for the life
+  of a per-origin worker.
+
+Still open:
+
+- **Config into the worker.** AppData `{{token}}` resolution happens on the page,
+  so what crosses is fully resolved — but two apps can still ship *different*
+  resolved config for one `providerId`. Today the first caller's config wins
+  silently, which is the wrong answer; it should at least be detectable.
 - **Credentials.** Anything the transport needs (auth headers, tokens) has to
-  cross into the worker and be refreshable there.
-- **Protocol version.** This is a wire-protocol change to the deployed worker;
-  it must bump `SHARED_ENGINE_PROTOCOL` and interoperate with older pages under
-  the existing `hello` handshake.
+  cross into the worker and be refreshable there. Untouched.
+- **Flipping the default**, and then deleting the election layer.
 
 ---
 
@@ -245,9 +303,18 @@ npm run dev:ssrm-provider                           # :5211
 
 npx playwright test e2e/ssrm-engine-sharing.spec.ts # N tabs, one build
 npx playwright test e2e/ssrm-shared-engine.spec.ts  # sessions across reloads
+npx playwright test e2e/ssrm-worker-feed.spec.ts    # the feed inside the worker
 npm run verify:shared-engine                        # two builds, one origin
 npm run verify:data-hub                             # the CSRM hub, same question
 ```
+
+`ssrm-worker-feed.spec.ts` asserts all three regimes, because the two that do
+NOT delegate are what make the option safe: `?feed=worker` puts one feed in the
+worker with every tab subscribed to it and no tab leading; the default leaves
+the election path untouched and builds no host client at all; and asking for a
+worker feed without a shared worker falls back to feeding locally rather than
+hanging. `verify:shared-engine` adds the case only the deployed artefact can
+answer — two separately-built apps on one origin, one worker, one feed.
 
 `verify:data-hub` builds the CSRM demo under `/a1/` and `/a2/`, deploys one
 `velocity-grid-data-hub.js` at the origin root, and asserts each level of the
