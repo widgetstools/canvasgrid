@@ -170,7 +170,119 @@ follower flat views paint remote ticks via conflated soft refresh. Dedicated
 fallback via `?worker=dedicated` or automatic on init failure/timeout.
 Verified: `scripts/phase5-smoke.mjs` (11/11) + `phase1-smoke.mjs` regression.
 
+## Worklog: hub identity + the feed inside the worker (2026-09-05)
+
+Started from a reported OOM crash in `velocitygrid-ssrm-provider-demo` and
+ended with the SSRM transport living inside the SharedWorker. Six commits,
+`0ab86521..2ec7b639`. Read
+[ssrm-shared-engine-architecture.md](./ssrm-shared-engine-architecture.md)
+first — it is the reference; this is the state-of-play.
+
+### What landed
+
+| # | Commit | What |
+|---|---|---|
+| 1 | `0ab86521` | The CSRM hub SharedWorker **never started in a production build** — `connectHub` assigned the URL to a variable, so Vite inlined the raw TypeScript as `data:video/mp2t;base64,…`. Every request hung until the 60s timeout; dev servers hid it entirely. Plus `name` / `strict` / `getDataHubTarget()` and a deployable `velocity-grid-data-hub.js`. |
+| 2 | `f9d2ff99` | `npm run verify:data-hub` — the hub's three-level identity against real builds. |
+| 3 | `f5acb95a` | The SSRM feed runs **inside the SharedWorker**. Protocol → 2. |
+| 4 | `4d6f227b` | Resilience tests for it; found two defects (below). |
+| 5 | `8ac5469e` | Worker feed becomes the **default**; config-mismatch reporting; the `{ name, type }` fix that unblocked 11 `ext` suites. |
+| 6 | `2ec7b639` | Correction: that fix was a *test*-pipeline hazard, not a production one. |
+
+### Current state
+
+- **Worker feed is the default.** `workerFeed: false` on the controller, or
+  `?feed=main` on the demo, forces the main-thread path — which is also the
+  automatic fallback with no shared engine or a protocol-1 deployed worker.
+  `BookTelemetry.feedRole` says which ran: `worker` | `leader` | `follower`.
+- **Election is still there** and still the whole story on the fallback path.
+- **`SHARED_ENGINE_PROTOCOL = 2`**; `WORKER_FEED_PROTOCOL = 2` is a separate
+  *floor* that must stay at 2 as the engine protocol moves on.
+- Instance names ride in the worker URL (`?engine=` for the engine, `?app=`
+  for the hub), never in the `SharedWorker` options.
+
+### Measured
+
+```
+3 tabs, one build      feedRole=worker ×3, 1 feed, subscribers=3, sessions=3, hostSessions=1
+2 apps, deployed worker 1 engine, 1 table, 1 feed, subscribers=2
+2 apps, unconfigured    ?feed=main → 34.9s to live;  default → 3.5s
+ext suites              70/70, 746 tests (was 59/70, 696)
+```
+
+That 34.9 → 3.5 is the origin-scoped Web Lock stall disappearing: it was a
+property of the main-thread feed, not of being unshared.
+
+### Traps found (the expensive part of this work)
+
+1. **`new URL(...)` must be literal + inline** in `new SharedWorker(...)` or
+   the bundler emits raw source. Silent, production-only. Guarded.
+2. **Worker options must be a static literal.** Vite `eval`s them. `vite build`
+   *tolerates* a variable (verified, same content hash) — the **serve/test**
+   transform throws, which is what made 11 `ext` suites unloadable. Different
+   severity from (1); do not conflate them.
+3. **No import may reach a module that builds a worker of its own**, or the
+   "one deployable file" grows a sibling asset nobody deploys. Hence
+   `@wellsfargo-starui/velocity-grid-data/rowid`. Guarded by an import walk.
+4. **`getCompiledClientWasm()` does not work** for building a client in a
+   worker — `init_client` dispatches on argument type and has no
+   `WebAssembly.Module` branch. Send the wasm URL instead.
+5. **`customElements` does not exist in a worker** and the Perspective client
+   probes it on every wasm lookup. Shimmed.
+6. **Playwright `waitForFunction` does not await an async predicate** — a
+   pending Promise is truthy, so the wait succeeds on tick one. Use
+   `expect.poll`. Cost two debugging rounds.
+7. **A rate is a window and only falls when recomputed.** The worker sends one
+   trailing state ~1.1s after its window empties, or every tab reports the last
+   rate forever over a dead feed.
+8. **`onConnected` fires on reconnect** and re-requests the snapshot, so it
+   must clear `snapshotComplete` — otherwise the book sits in `snapshot`
+   indefinitely while rows arrive. `book.ts` had this bug first;
+   `packages/data/src/transports/stomp.ts` always got it right.
+
+### Still open
+
+- **Deleting the election layer.** Blocked, not forgotten: the main-thread feed
+  is the fallback for a protocol-1 deployed worker and genuinely needs
+  election. It can go when no protocol-1 workers remain in the field — a
+  rollout gate, not a refactor.
+- **Table identity vs resolved config.** Identity folds in `providerId` but not
+  the resolved config, so two apps resolving one provider to different topics
+  share a feed and the first caller wins. Now *reported*
+  (`WorkerFeedState.configMismatch` + a one-time warning), not resolved. The
+  real fix changes table names, which splits books meant to be shared.
+- **Credentials.** Nothing in the STOMP path carries them, on any feed path or
+  in CSRM's hub transport. Missing feature project-wide, not a regression.
+- **Kernel suite is not green on a clean tree** (perf-flavoured tests). Verify
+  by stashing before blaming a change.
+
+### Verifying any of it
+
+```bash
+npm run dev:stomp                                     # required for everything
+npm run dev:ssrm-provider                             # :5211
+
+npx playwright test e2e/ssrm-worker-feed.spec.ts      # feed paths + both fallbacks
+npx playwright test e2e/ssrm-engine-sharing.spec.ts   # N tabs, one build
+npx playwright test e2e/ssrm-shared-engine.spec.ts    # sessions across reloads
+npm run verify:shared-engine                          # 2 built apps, 1 origin
+npm run verify:data-hub                               # the CSRM hub, same question
+npm run verify:worker-feed-reconnect                  # sever the broker, heal it
+```
+
+From any SSRM blotter's console:
+
+```js
+__demo.workerFeed()        // { requested, available } — why, if it fell back
+await __demo.engineFeeds() // per table; `subscribers` = tabs on that feed
+await __demo.engineStats() // sessions (pages) vs hostSessions (the worker's own)
+__demo.workerTarget()      // { url, name, bundled }
+__demo.stopFeed() / .restartFeed()
+```
+
 ## Related docs
 
+- [ssrm-shared-engine-architecture.md](./ssrm-shared-engine-architecture.md) —
+  the reference for everything in the 2026-09-05 worklog above
 - `docs/superpowers/plans/notes/perspective-ssrm-phased-plan.md` — phased plan
 - `docs/catalog/15-server-side-row-model.md` — catalog SSRM notes
