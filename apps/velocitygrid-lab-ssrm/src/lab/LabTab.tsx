@@ -79,6 +79,14 @@ export function LabTab({ tab, theme, onTheme, themes }: LabTabProps) {
 
   const onReady = useCallback((handle: LabGridHandle) => {
     gridRef.current = handle;
+    // Testing hook, matching the `__demo` convention the provider demos use.
+    // e2e and console debugging both need a way in; the grid is otherwise
+    // sealed inside the mount effect.
+    (window as unknown as { __lab?: unknown }).__lab = {
+      ext: handle.ext,
+      grid: handle.ext.grid,
+      wiring: handle.wiring,
+    };
     const state: Record<string, unknown> = {};
     if (seed.savedFilters?.length) {
       state.modules = { 'saved-filters': { version: 1, data: seed.savedFilters } };

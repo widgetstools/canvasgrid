@@ -1,4 +1,18 @@
 // @wellsfargo-starui/velocity-grid-ext/renderers — category 1: Numeric (tick-aware). Catalog §3.1.
+//
+// A note on tabular figures. These renderers used to append `"tnum"` to the
+// font before assigning it, reaching for tabular numerals the way CSS would
+// with `font-variant-numeric`. Canvas 2D has no such property, and `"tnum"` is
+// not legal in the `font` shorthand — so the assignment was REJECTED WHOLESALE
+// and silently: per spec an unparseable `ctx.font` leaves the previous value
+// in place. Every numeric cell therefore painted in whatever font happened to
+// be set last, and any font the column asked for — a size from the formatting
+// toolbar, a weight from a style rule — was discarded on numeric columns only.
+//
+// Digits line up here because the kernel already gives numeric columns the
+// theme's MONOSPACE cell font (`cellFontForColumn`), where every glyph is the
+// same width. That is where tabular alignment comes from; there is nothing to
+// add to the font string, and adding anything breaks it.
 
 import type { CellPaintConfig, CellPainter } from '@wellsfargo-starui/velocity-grid';
 import { fragText, withAlpha } from './paintUtils';
@@ -48,11 +62,6 @@ function textY(gc: Gc, p: CellPaintConfig): number {
   return p.bounds.y + p.bounds.h / 2 + (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2;
 }
 
-function tabularFont(baseFont: string): string {
-  if (baseFont.includes('tnum')) return baseFont;
-  return `${baseFont} "tnum"`;
-}
-
 function toNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string' && value.trim() !== '') {
@@ -80,7 +89,7 @@ function paintRightText(
 ): void {
   if (!text) return;
   gc.cache.fillStyle = color;
-  gc.cache.font = tabularFont(p.font);
+  gc.cache.font = p.font;
   gc.cache.textAlign = 'right';
   gc.cache.textBaseline = 'alphabetic';
   const x = xRight ?? p.bounds.x + p.bounds.w - padRight(p);
@@ -199,7 +208,7 @@ function paintNumberCellCore(gc: Gc, p: CellPaintConfig, params: NumberCellParam
   let x = right;
   if (params.currencySuffix) {
     fragText(gc, params.currencySuffix, x, textY(gc, p), {
-      font: tabularFont(p.font),
+      font: p.font,
       color: withAlpha(fg, 0.7),
       align: 'right',
     });
@@ -209,7 +218,7 @@ function paintNumberCellCore(gc: Gc, p: CellPaintConfig, params: NumberCellParam
   if (params.currencyPrefix) {
     const numW = gc.measureText(text).width;
     fragText(gc, params.currencyPrefix, x - numW - 2, textY(gc, p), {
-      font: tabularFont(p.font),
+      font: p.font,
       color: withAlpha(fg, 0.7),
       align: 'right',
     });
@@ -281,7 +290,7 @@ export const priceDirectionCell: CellPainter = {
     const textX = paintDirectionGlyph(gc, p, dir, fg, iconX);
     const text = primaryNumericText(p);
     gc.cache.fillStyle = fg;
-    gc.cache.font = tabularFont(p.font);
+    gc.cache.font = p.font;
     gc.cache.textAlign = 'left';
     gc.fillText(text, textX, textY(gc, p));
   },
@@ -305,7 +314,7 @@ export const pnlCell: CellPainter = {
     paintRightText(gc, p, signed, fg, right);
     const numW = gc.measureText(signed).width;
     fragText(gc, symbol, right - numW - 2, textY(gc, p), {
-      font: tabularFont(p.font),
+      font: p.font,
       color: withAlpha(fg, 0.7),
       align: 'right',
     });
@@ -331,7 +340,7 @@ export const deltaCell: CellPainter = {
     const pctPart = ` (${pctText})`;
     const right = p.bounds.x + p.bounds.w - padRight(p);
     const y = textY(gc, p);
-    gc.cache.font = tabularFont(p.font);
+    gc.cache.font = p.font;
     gc.cache.textAlign = 'right';
     gc.cache.textBaseline = 'alphabetic';
     const pctW = gc.measureText(pctPart).width;
@@ -362,7 +371,7 @@ export const bpsCell: CellPainter = {
     const body = signedNumberText(bps, 0);
     const right = p.bounds.x + p.bounds.w - padRight(p);
     fragText(gc, suffix, right, textY(gc, p), {
-      font: tabularFont(p.font),
+      font: p.font,
       color: withAlpha(fg, 0.7),
       align: 'right',
     });

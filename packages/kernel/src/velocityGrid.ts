@@ -15110,7 +15110,7 @@ export class VelocityGrid<TRow = any> {
         groupRequests.push({
           colId: def.colId,
           headerName,
-          font: def.cellStyle?.font ?? cellFontForColumn(def, this.theme),
+          font: composeFont(def.cellStyle ?? {}, cellFontForColumn(def, this.theme)),
           padding,
           headerPadding,
           minWidth: def.minWidth,
@@ -15150,7 +15150,7 @@ export class VelocityGrid<TRow = any> {
           const legacy: AutosizeColumnRequest[] = mainDefs.map((def) => ({
             colId: def.colId,
             headerName: decorateHeader(def, this.options.suppressAggFuncInHeader === true),
-            font: def.cellStyle?.font ?? cellFontForColumn(def, this.theme),
+            font: composeFont(def.cellStyle ?? {}, cellFontForColumn(def, this.theme)),
             padding,
             headerPadding,
             minWidth: def.minWidth,

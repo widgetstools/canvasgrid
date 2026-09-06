@@ -59,6 +59,14 @@ export function LabTab({ tab, theme, onTheme, themes }: LabTabProps) {
 
   const onReady = useCallback((handle: LabGridHandle) => {
     gridRef.current = handle;
+    // Testing hook, matching the `__demo` convention the provider demos use.
+    // e2e and console debugging both need a way in; the grid is otherwise
+    // sealed inside the mount effect.
+    (window as unknown as { __lab?: unknown }).__lab = {
+      ext: handle.ext,
+      grid: handle.ext.grid,
+      wiring: handle.wiring,
+    };
     // Saved filters, sorts and filters are grid STATE rather than engine
     // options, so unlike rules and calc columns they land after mount.
     const state: Record<string, unknown> = {};
