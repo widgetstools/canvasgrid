@@ -15,6 +15,7 @@ import { createBlotterSsrmDatasource, type BlotterBook } from '../data/ssrmDatas
 import { startLocalStream, type StreamController, type StreamStatus } from '../data/stream';
 import { defaultColDef } from '../data/columns';
 import { seedFor } from './seeds';
+import { applySnapshot, applyTick, type SsrmTickTarget } from './ssrmTicks';
 import type { GridThemeId } from './theme';
 import type { LabTab as LabTabConfig } from './types';
 import type { BlotterRow } from '../data/domain';
@@ -135,17 +136,10 @@ export function LabTab({ tab, theme, onTheme, themes }: LabTabProps) {
   useEffect(() => {
     const controller = startLocalStream({
       snapshot() {
-        // The rows are already reachable through `controller.rows()`; the grid
-        // only needs to be told its cached blocks are void.
-        gridRef.current?.ext.grid.refreshServerSide({ purge: true });
+        applySnapshot(gridRef.current?.ext.grid as SsrmTickTarget | undefined);
       },
       update(rows) {
-        // The stream already wrote the new rows into the book it shares with
-        // the datasource, so the grid needs a refresh, not a payload. This is
-        // a soft refresh: it re-reads the blocks in view and leaves the rest
-        // of the cache alone.
-        void rows;
-        gridRef.current?.ext.grid.refreshServerSide({ purge: false });
+        applyTick(gridRef.current?.ext.grid as SsrmTickTarget | undefined, rows);
       },
       status: setStatus,
     }, { rowCount: tab.stream?.rowCount, tickMs: tab.stream?.tickMs });
@@ -154,7 +148,7 @@ export function LabTab({ tab, theme, onTheme, themes }: LabTabProps) {
     // The first snapshot fires inside startLocalStream, before the line above
     // ran, so the grid was told to purge against a book it could not yet see.
     // Ask again now that it can.
-    gridRef.current?.ext.grid.refreshServerSide({ purge: true });
+    applySnapshot(gridRef.current?.ext.grid as SsrmTickTarget | undefined);
     setPaused(false);
     setScenario(null);
     setTickMs(tab.stream?.tickMs ?? 500);
