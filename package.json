@@ -37,7 +37,11 @@
     "dev:master-detail": "npm run dev --workspace=velocitygrid-master-detail-demo",
     "verify:shared-engine": "node scripts/verify-shared-engine.mjs",
     "verify:data-hub": "node scripts/verify-data-hub.mjs",
-    "verify:worker-feed-reconnect": "node scripts/verify-worker-feed-reconnect.mjs"
+    "verify:worker-feed-reconnect": "node scripts/verify-worker-feed-reconnect.mjs",
+    "dev:lab-csrm": "npm run dev --workspace=velocitygrid-lab-csrm",
+    "dev:lab-ssrm": "npm run dev --workspace=velocitygrid-lab-ssrm",
+    "dev:labs": "concurrently -k -n csrm,ssrm -c blue,cyan \"npm run dev:lab-csrm\" \"npm run dev:lab-ssrm\"",
+    "test:labs": "npm run test --workspace=velocitygrid-lab-csrm && npm run test --workspace=velocitygrid-lab-ssrm"
   },
   "devDependencies": {
     "@openfin/node-adapter": "^43.101.2",

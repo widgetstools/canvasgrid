@@ -1,0 +1,202 @@
+/*
+ * Lab chrome.
+ *
+ * Principle: the grid is the only saturated thing on screen. Everything the
+ * lab itself draws — nav, header, console, drawer — is graphite, so the
+ * blotter's own reds and greens are never competing with furniture. Colour is
+ * spent in exactly three places: the live signal (amber), the row-model
+ * identity (this app is CSRM blue; the SSRM lab is teal), and gain/loss inside
+ * the data.
+ *
+ * Palette extends apps/provider-demo-shared/styles.css rather than inventing a
+ * second one, so a developer moving between the demos and the labs sees one
+ * house style. Dark-first, because the grid themes the labs mount are dark.
+ */
+:root {
+  color-scheme: dark;
+
+  --lab-void:  #0b0e12;   /* app ground */
+  --lab-panel: #12161c;   /* nav, console, drawer */
+  --lab-raise: #182029;   /* controls sitting on a panel */
+  --lab-line:  #212934;   /* hairlines */
+  --lab-line-soft: #1a2129;
+
+  --lab-ink:   #e6e9ee;
+  --lab-dim:   #8a93a6;
+  --lab-faint: #5d6675;
+
+  --lab-live:  #e6c95c;   /* the ticking signal — used for nothing else */
+  --lab-id:    #5ec5b6;   /* row-model identity: server-side */
+  --lab-up:    #4ac26b;
+  --lab-down:  #ff7b72;
+
+  --lab-nav-w: 218px;
+  --lab-rail-w: 292px;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: var(--lab-void);
+  color: var(--lab-ink);
+  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  overflow: hidden;
+}
+:focus-visible { outline: 2px solid var(--lab-id); outline-offset: 1px; border-radius: 2px; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* ── frame ─────────────────────────────────────────────────────────── */
+.lab { display: flex; height: 100%; }
+.lab-body { display: flex; min-width: 0; flex: 1 1 auto; }
+.lab-main { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+
+/* ── sidebar ───────────────────────────────────────────────────────── */
+.lab-nav {
+  width: var(--lab-nav-w); flex: 0 0 auto;
+  background: var(--lab-panel); border-right: 1px solid var(--lab-line);
+  display: flex; flex-direction: column; min-height: 0;
+}
+.lab-brand { padding: 14px 16px 12px; border-bottom: 1px solid var(--lab-line); }
+.lab-brand h1 { margin: 0; font-size: 13.5px; font-weight: 650; letter-spacing: -0.01em; }
+.lab-brand .mode {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 6px;
+  font-size: 11px; color: var(--lab-id);
+}
+.lab-brand .mode::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor;
+}
+.lab-nav-scroll { overflow-y: auto; flex: 1 1 auto; padding: 8px 0 20px; }
+.lab-nav-group { margin-top: 14px; }
+.lab-nav-group:first-child { margin-top: 4px; }
+.lab-nav-group > span {
+  display: block; padding: 0 16px 5px; font-size: 11px; color: var(--lab-faint);
+}
+.lab-nav-item {
+  display: flex; align-items: baseline; gap: 8px; width: 100%;
+  padding: 5px 16px 5px 14px; border: 0; background: none; cursor: pointer;
+  color: var(--lab-dim); font: inherit; text-align: left;
+  border-left: 2px solid transparent;
+}
+.lab-nav-item:hover { color: var(--lab-ink); background: #161c24; }
+/* Active state is a rule plus weight, not a filled pill — it reads as a
+   cursor in a terminal and spends no colour. */
+.lab-nav-item[aria-current='page'] {
+  color: var(--lab-ink); font-weight: 600; border-left-color: var(--lab-id);
+  background: #161c24;
+}
+.lab-nav-item .n { font-size: 10.5px; color: var(--lab-faint); font-variant-numeric: tabular-nums; }
+
+/* ── tab header ────────────────────────────────────────────────────── */
+.lab-head {
+  display: flex; align-items: flex-start; gap: 16px;
+  padding: 13px 18px 12px; border-bottom: 1px solid var(--lab-line); flex: 0 0 auto;
+}
+.lab-head h2 { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: -0.012em; }
+.lab-head p { margin: 3px 0 0; font-size: 12.5px; color: var(--lab-dim); max-width: 78ch; }
+.lab-head-right { margin-left: auto; display: flex; align-items: center; gap: 14px; flex: 0 0 auto; }
+
+/* The live tape: the only motion in the lab, and it answers the first
+   question anyone asks of a streaming grid — is this actually running? */
+.lab-live { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--lab-dim); }
+.lab-live b { color: var(--lab-ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.lab-tape {
+  width: 54px; height: 3px; border-radius: 2px; overflow: hidden;
+  background: var(--lab-line); position: relative;
+}
+.lab-tape span {
+  position: absolute; inset: 0; background: var(--lab-live);
+  transform-origin: left center; transform: scaleX(var(--rate, 0));
+  transition: transform 400ms ease-out;
+}
+.lab-tape[data-paused='true'] span { background: var(--lab-faint); }
+
+.lab-btn {
+  border: 1px solid var(--lab-line); background: var(--lab-raise); color: var(--lab-ink);
+  font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 3px; cursor: pointer;
+}
+.lab-btn:hover { border-color: #2c3744; }
+.lab-btn[aria-pressed='true'] { border-color: var(--lab-id); color: var(--lab-id); }
+
+/* ── grid ──────────────────────────────────────────────────────────── */
+.lab-stage { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.lab-grid-host { flex: 1 1 auto; min-height: 0; }
+
+/* ── demo console rail ─────────────────────────────────────────────── */
+.lab-rail {
+  width: var(--lab-rail-w); flex: 0 0 auto; background: var(--lab-panel);
+  border-left: 1px solid var(--lab-line); display: flex; flex-direction: column; min-height: 0;
+}
+.lab-rail[hidden] { display: none; }
+.lab-rail-head {
+  display: flex; align-items: center; gap: 8px; padding: 11px 14px;
+  border-bottom: 1px solid var(--lab-line);
+}
+.lab-rail-head h3 { margin: 0; font-size: 12.5px; font-weight: 650; }
+.lab-rail-head button { margin-left: auto; }
+.lab-rail-scroll { overflow-y: auto; padding: 12px 14px 24px; }
+.lab-field { margin-bottom: 14px; }
+.lab-field > label { display: block; font-size: 11.5px; color: var(--lab-dim); margin-bottom: 5px; }
+.lab-field input[type='range'] { width: 100%; accent-color: var(--lab-id); }
+.lab-field .val { font-variant-numeric: tabular-nums; color: var(--lab-ink); }
+.lab-scenario {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  border: 1px solid var(--lab-line); border-left-width: 2px; background: var(--lab-raise);
+  border-radius: 3px; padding: 8px 10px; margin-bottom: 7px; color: inherit; font: inherit;
+}
+.lab-scenario:hover { border-color: #2c3744; }
+.lab-scenario[aria-pressed='true'] { background: #1b242e; }
+.lab-scenario b { display: block; font-size: 12.5px; font-weight: 600; }
+.lab-scenario span { display: block; margin-top: 3px; font-size: 11.5px; color: var(--lab-dim); line-height: 1.42; }
+.lab-scenario[data-tone='positive'] { border-left-color: var(--lab-up); }
+.lab-scenario[data-tone='negative'] { border-left-color: var(--lab-down); }
+.lab-scenario[data-tone='warning']  { border-left-color: var(--lab-live); }
+.lab-scenario[data-tone='info']     { border-left-color: var(--lab-id); }
+
+.lab-stat { display: flex; justify-content: space-between; font-size: 11.5px; padding: 3px 0; }
+.lab-stat span { color: var(--lab-dim); }
+.lab-stat b { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* ── inspector drawer ──────────────────────────────────────────────── */
+.lab-drawer { flex: 0 0 auto; border-top: 1px solid var(--lab-line); background: var(--lab-panel); }
+.lab-drawer-tabs { display: flex; align-items: center; gap: 2px; padding: 0 8px; }
+.lab-drawer-tabs button {
+  border: 0; background: none; color: var(--lab-dim); font: inherit; font-size: 12px;
+  padding: 8px 10px; cursor: pointer; border-bottom: 2px solid transparent;
+}
+.lab-drawer-tabs button:hover { color: var(--lab-ink); }
+.lab-drawer-tabs button[aria-selected='true'] { color: var(--lab-ink); border-bottom-color: var(--lab-id); }
+.lab-drawer-tabs .spacer { margin-left: auto; }
+.lab-drawer-body { padding: 4px 16px 16px; max-height: 232px; overflow-y: auto; }
+.lab-drawer-body p { margin: 0 0 9px; max-width: 82ch; color: var(--lab-dim); }
+.lab-drawer-body p strong { color: var(--lab-ink); font-weight: 600; }
+.lab-drawer-body ol, .lab-drawer-body ul { margin: 0 0 9px; padding-left: 18px; color: var(--lab-dim); max-width: 82ch; }
+.lab-drawer-body li { margin-bottom: 4px; }
+.lab-drawer-body pre {
+  margin: 0; padding: 10px 12px; background: var(--lab-void); border: 1px solid var(--lab-line);
+  border-radius: 3px; overflow-x: auto; font-size: 12px; line-height: 1.5;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; color: #cbd5e1;
+}
+.lab-drawer-body code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; color: var(--lab-ink); }
+
+/* ── home tab ──────────────────────────────────────────────────────── */
+.lab-home { overflow-y: auto; padding: 26px 30px 60px; }
+.lab-home h3 { margin: 0 0 10px; font-size: 21px; font-weight: 650; letter-spacing: -0.018em; }
+.lab-home p { margin: 0 0 14px; max-width: 74ch; color: var(--lab-dim); font-size: 14px; line-height: 1.6; }
+.lab-home p strong { color: var(--lab-ink); font-weight: 600; }
+.lab-home pre {
+  margin: 0 0 20px; padding: 14px 16px; background: var(--lab-panel);
+  border: 1px solid var(--lab-line); border-radius: 4px; overflow-x: auto;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; line-height: 1.6;
+  color: #cbd5e1; max-width: 92ch;
+}
+.lab-home h4 { margin: 26px 0 10px; font-size: 13px; font-weight: 650; }
+.lab-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 1px;
+  background: var(--lab-line); border: 1px solid var(--lab-line); border-radius: 4px; overflow: hidden; max-width: 92ch; }
+.lab-cards button {
+  background: var(--lab-panel); border: 0; text-align: left; padding: 12px 14px; cursor: pointer;
+  color: inherit; font: inherit;
+}
+.lab-cards button:hover { background: var(--lab-raise); }
+.lab-cards b { display: block; font-size: 12.5px; font-weight: 600; }
+.lab-cards span { display: block; margin-top: 3px; font-size: 11.5px; color: var(--lab-dim); line-height: 1.4; }
