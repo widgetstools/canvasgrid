@@ -42,6 +42,8 @@ export interface LabSeed {
 
 export interface LabView {
   name: string;
+  /** Replaces the tab's rules while this layout is active. */
+  rules?: StyleRule[];
   sortModel?: { colId: string; direction: 'asc' | 'desc' }[];
   filterModel?: Record<string, unknown>;
   rowGroupColumns?: string[];
@@ -164,6 +166,81 @@ export const CONDITIONAL_RULES: StyleRule[] = [
 export const TICK_RULES: StyleRule[] = CONDITIONAL_RULES.filter(
   (r) => r.id === 'tick-up' || r.id === 'tick-down',
 );
+
+// ── tick arrows ──────────────────────────────────────────────────────
+
+/** Columns whose values actually move on a tick — see `tickRow` in domain.ts.
+ *  An arrow rule on a static column would never fire. */
+const TICKING_COLS = [
+  'bidPrice', 'midPrice', 'askPrice', 'lastPrice',
+  'yieldToMaturity', 'oas', 'zSpread',
+  'marketValue', 'unrealizedPnL', 'dailyPnL',
+] as const;
+
+/** Single colours rather than {light, dark} pairs: `RuleIndicator.color` is one
+ *  string, so these have to read on both grounds. Same two the renderer
+ *  catalog uses for positive / negative. */
+const ARROW_UP_COLOR = '#0aa063';
+const ARROW_DOWN_COLOR = '#e63946';
+
+/** How long an arrow stays up after the tick that raised it. */
+export const TICK_ARROW_MS = 800;
+
+/**
+ * Up/down arrows on every cell whose value just moved, for 800ms.
+ *
+ * One rule PAIR PER COLUMN, not one pair scoped to many columns: the condition
+ * names a field, so a rule scoped across ten columns and conditioned on
+ * `[midPrice]` would raise arrows on all ten whenever mid alone moved. The
+ * arrow has to mean "this cell changed".
+ *
+ * They are `kind: 'style'` rules carrying an indicator rather than
+ * `kind: 'indicator'` ones, because `activeDurationMs` — the thing that makes
+ * the arrow disappear again — exists only on style rules. The style slice is
+ * deliberately empty: the brief was arrows, so the number keeps its own colour.
+ *
+ * `activeDurationMs` is what makes this a TICK arrow. Activation is the
+ * condition going false→true for a (rowId, colId) on a change record; the
+ * match then expires on its own. Without it an arrow would latch on until the
+ * value happened to move the other way, which on a one-way move is never.
+ */
+export const TICK_ARROW_RULES: StyleRule[] = TICKING_COLS.flatMap((colId, i) => ([
+  {
+    id: `tick-arrow-up-${colId}`,
+    name: `${colId} ticked up`,
+    kind: 'style' as const,
+    enabled: true,
+    priority: 100 + i * 2,
+    condition: `[${colId}.old] != null && [${colId}] > [${colId}.old]`,
+    scope: { kind: 'cell' as const, columnIds: [colId] },
+    style: { base: {} },
+    indicator: {
+      iconName: 'arrow-up',
+      color: ARROW_UP_COLOR,
+      target: 'cell' as const,
+      position: 'before' as const,
+    },
+    activeDurationMs: TICK_ARROW_MS,
+  },
+  {
+    id: `tick-arrow-down-${colId}`,
+    name: `${colId} ticked down`,
+    kind: 'style' as const,
+    enabled: true,
+    priority: 101 + i * 2,
+    condition: `[${colId}.old] != null && [${colId}] < [${colId}.old]`,
+    scope: { kind: 'cell' as const, columnIds: [colId] },
+    style: { base: {} },
+    indicator: {
+      iconName: 'arrow-down',
+      color: ARROW_DOWN_COLOR,
+      target: 'cell' as const,
+      position: 'before' as const,
+    },
+    activeDurationMs: TICK_ARROW_MS,
+  },
+]));
+
 
 // ── calculated columns ───────────────────────────────────────────────
 
@@ -380,6 +457,7 @@ export const SEEDS: Record<string, LabSeed> = {
 
   conditional: {
     views: [
+      { name: 'Tick arrows', rules: TICK_ARROW_RULES },
       { name: 'Worst first', sortModel: [{ colId: 'dailyPnL', direction: 'asc' }] },
       { name: 'High yield only', filterModel: { compositeRating: { filterType: 'set', values: ['BB+', 'BB', 'BB-', 'B+', 'B'] } } },
       { name: 'Long duration', filterModel: { modifiedDuration: { filterType: 'number', type: 'greaterThan', filter: 12 } } },
@@ -416,6 +494,7 @@ export const SEEDS: Record<string, LabSeed> = {
 
   live: {
     views: [
+      { name: 'Tick arrows', rules: TICK_ARROW_RULES },
       { name: 'Biggest movers', sortModel: [{ colId: 'priceChangePct', direction: 'desc' }] },
       { name: 'Falling hardest', sortModel: [{ colId: 'priceChangePct', direction: 'asc' }] },
     ],

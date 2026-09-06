@@ -82,7 +82,16 @@ export function LabTab({ tab, theme, onTheme, themes }: LabTabProps) {
     // the order matters — the last thing applied is what Default holds.
     if (seed.views?.length) {
       const grid = handle.ext.grid;
+      // Rules are a state module, so a layout snapshot carries them — which is
+      // what lets a saved view differ by its RULE SET and not just by sort and
+      // filter. Swapped wholesale rather than merged: a view that shows tick
+      // arrows should show those and not also whatever the tab had on.
+      const setRules = (rules: readonly unknown[]) => {
+        for (const existing of grid.getRules()) grid.deleteRule(existing.id);
+        for (const rule of rules) grid.addRule(rule as never);
+      };
       for (const view of seed.views) {
+        if (view.rules) setRules(view.rules);
         grid.setState({
           sortModel: view.sortModel ?? [],
           filterModel: view.filterModel ?? {},
@@ -94,6 +103,8 @@ export function LabTab({ tab, theme, onTheme, themes }: LabTabProps) {
         try { grid.saveLayout(view.name, { activate: false }); }
         catch { /* a duplicate name on remount is fine */ }
       }
+      // Back to what the tab itself ships with.
+      if (seed.views.some((v) => v.rules)) setRules(seed.rules ?? []);
       grid.setState({
         sortModel: seed.sortModel ?? [],
         filterModel: seed.filterModel ?? {},

@@ -10,7 +10,7 @@ import { RuleEngine, AlertsEngine } from '@wellsfargo-starui/velocity-grid/rules
 import { CalcEngine } from '@wellsfargo-starui/velocity-grid/calc';
 import {
   ALERT_RULES, CALC_COLUMNS, CONDITIONAL_RULES, NUDGES, SAVED_FILTERS,
-  SEEDS, SHORTCUTS, seedFor,
+  SEEDS, SHORTCUTS, TICK_ARROW_MS, TICK_ARROW_RULES, seedFor,
 } from '../src/lab/seeds';
 import { LAB_TABS } from '../src/lab/catalog';
 import { baseColumns } from '../src/data/columns';
@@ -163,5 +163,77 @@ describe('per-tab coverage', () => {
   it('seeds only reference tabs that exist', () => {
     const ids = new Set(LAB_TABS.map((t) => t.id));
     for (const id of Object.keys(SEEDS)) expect(ids.has(id)).toBe(true);
+  });
+});
+
+describe('tick arrow rules', () => {
+  it('every arrow rule compiles', () => {
+    const res = new RuleEngine({}).setRules(TICK_ARROW_RULES);
+    expect(res.errors).toEqual([]);
+  });
+
+  it('pairs one up and one down rule per ticking column', () => {
+    const ups = TICK_ARROW_RULES.filter((r) => r.id.startsWith('tick-arrow-up-'));
+    const downs = TICK_ARROW_RULES.filter((r) => r.id.startsWith('tick-arrow-down-'));
+    expect(ups.length).toBe(downs.length);
+    expect(ups.length).toBeGreaterThan(5);
+    for (const up of ups) {
+      const col = up.id.replace('tick-arrow-up-', '');
+      expect(TICK_ARROW_RULES.some((r) => r.id === `tick-arrow-down-${col}`)).toBe(true);
+    }
+  });
+
+  it('conditions each rule on its OWN column, not a shared one', () => {
+    // A rule scoped to a column but conditioned on another would raise arrows
+    // on cells that did not change.
+    for (const rule of TICK_ARROW_RULES) {
+      expect(rule.scope.kind).toBe('cell');
+      const [colId] = (rule.scope as { columnIds: string[] }).columnIds;
+      expect(rule.condition).toContain(`[${colId}.old]`);
+      expect(rule.condition).toContain(`[${colId}]`);
+      const others = rule.condition.match(/\[([A-Za-z0-9_]+)(\.old)?\]/g) ?? [];
+      for (const ref of others) expect(ref).toContain(colId!);
+    }
+  });
+
+  it('points up for a rise and down for a fall, in green and red', () => {
+    for (const rule of TICK_ARROW_RULES) {
+      const ind = (rule as { indicator?: { iconName: string; color: string } }).indicator;
+      expect(ind).toBeDefined();
+      if (rule.id.startsWith('tick-arrow-up-')) {
+        expect(rule.condition).toContain('>');
+        expect(ind!.iconName).toBe('arrow-up');
+        expect(ind!.color).toBe('#0aa063');
+      } else {
+        expect(rule.condition).toContain('<');
+        expect(ind!.iconName).toBe('arrow-down');
+        expect(ind!.color).toBe('#e63946');
+      }
+    }
+  });
+
+  it('shows each arrow for 800ms and no longer', () => {
+    expect(TICK_ARROW_MS).toBe(800);
+    for (const rule of TICK_ARROW_RULES) {
+      // Without an active window the arrow latches until the value moves the
+      // other way, which on a one-way move never happens.
+      expect((rule as { activeDurationMs?: number }).activeDurationMs).toBe(800);
+    }
+  });
+
+  it('adds no colour of its own, so the number keeps its formatting', () => {
+    for (const rule of TICK_ARROW_RULES) {
+      const style = (rule as { style: Record<string, Record<string, unknown>> }).style;
+      const slices = Object.values(style ?? {});
+      for (const slice of slices) expect(Object.keys(slice ?? {})).toEqual([]);
+    }
+  });
+
+  it('is offered as a named profile on the tabs where ticking is the point', () => {
+    for (const tabId of ['live', 'conditional']) {
+      const view = seedFor(tabId).views?.find((v) => v.name === 'Tick arrows');
+      expect({ tabId, found: Boolean(view) }).toEqual({ tabId, found: true });
+      expect(view!.rules).toBe(TICK_ARROW_RULES);
+    }
   });
 });
