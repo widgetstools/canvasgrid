@@ -13,6 +13,7 @@ import { Inspector } from './Inspector';
 import { scenarioById } from '../data/scenarios';
 import { startLocalStream, type StreamController, type StreamStatus } from '../data/stream';
 import { defaultColDef } from '../data/columns';
+import { seedFor } from './seeds';
 import type { GridThemeId } from './theme';
 import type { LabTab as LabTabConfig } from './types';
 import type { BlotterRow } from '../data/domain';
@@ -41,6 +42,7 @@ export function LabTab({ tab, theme, onTheme, themes }: LabTabProps) {
   const snapshotRef = useRef<BlotterRow[] | null>(null);
 
   const columnDefs = useMemo(() => tab.columns(), [tab]);
+  const seed = useMemo(() => seedFor(tab.id), [tab.id]);
 
   const options = useMemo(() => ({
     columnDefs,
@@ -48,16 +50,53 @@ export function LabTab({ tab, theme, onTheme, themes }: LabTabProps) {
     getRowId: (row: BlotterRow) => row.id,
     theme,
     rowHeight: 24,
+    // Ungrouped tabs would otherwise render "SUM Mkt Value" in the header,
+    // which is noise when nothing is aggregating. Tabs about grouping turn it
+    // back on through their own options.
+    suppressAggFuncInHeader: true,
     ...tab.options,
   }), [columnDefs, tab, theme]);
 
   const onReady = useCallback((handle: LabGridHandle) => {
     gridRef.current = handle;
+    // Saved filters, sorts and filters are grid STATE rather than engine
+    // options, so unlike rules and calc columns they land after mount.
+    const state: Record<string, unknown> = {};
+    if (seed.savedFilters?.length) {
+      state.modules = { 'saved-filters': { version: 1, data: seed.savedFilters } };
+    }
+    if (seed.sortModel?.length) state.sortModel = seed.sortModel;
+    if (seed.filterModel) state.filterModel = seed.filterModel;
+    if (Object.keys(state).length) handle.ext.setState(state as never);
+
+    // Named layouts: apply each view, snapshot it under its name, then return
+    // to the tab's own default. `saveLayout` captures whatever is current, so
+    // the order matters — the last thing applied is what Default holds.
+    if (seed.views?.length) {
+      const grid = handle.ext.grid;
+      for (const view of seed.views) {
+        grid.setState({
+          sortModel: view.sortModel ?? [],
+          filterModel: view.filterModel ?? {},
+          rowGroupColumns: view.rowGroupColumns ?? [],
+        } as never);
+        // `activate: false` matters: saveLayout activates by default, so
+        // without it the loop leaves the grid on the LAST view and the reset
+        // below would edit that layout instead of Default.
+        try { grid.saveLayout(view.name, { activate: false }); }
+        catch { /* a duplicate name on remount is fine */ }
+      }
+      grid.setState({
+        sortModel: seed.sortModel ?? [],
+        filterModel: seed.filterModel ?? {},
+        rowGroupColumns: [],
+      } as never);
+    }
     if (snapshotRef.current) {
       handle.ext.grid.setRowData(snapshotRef.current);
       snapshotRef.current = null;
     }
-  }, []);
+  }, [seed]);
 
   const onTeardown = useCallback(() => { gridRef.current = null; }, []);
 
@@ -139,12 +178,13 @@ export function LabTab({ tab, theme, onTheme, themes }: LabTabProps) {
             gridId={`vg-lab-csrm-${tab.id}`}
             title={tab.title}
             options={options}
+            wiring={{ seed }}
             onReady={onReady}
             onTeardown={onTeardown}
           />
         </div>
 
-        <Inspector guide={tab.guide} />
+        <Inspector guide={tab.guide} seed={seed} />
       </div>
 
       {railOpen && (

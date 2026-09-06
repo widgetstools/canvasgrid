@@ -35,6 +35,34 @@ describe('blotter domain', () => {
     expect(avg(['BBB+', 'BBB', 'BBB-'])).toBeLessThan(avg(['BB-', 'B+', 'B']));
   });
 
+  it('prices from the yield, so no bond lands on a clamp', () => {
+    const rows = makeRows(3_000, 12, 0);
+    // The bug this locks: price and yield generated independently produced
+    // short bonds with low coupons trading far above par, whose implied yield
+    // was negative and came back as a wall of identical floor values.
+    const ytms = rows.map((r) => r.yieldToMaturity);
+    const atFloor = ytms.filter((y) => y <= 0.11).length;
+    expect(atFloor).toBe(0);
+    expect(Math.min(...ytms)).toBeGreaterThan(0.3);
+    expect(Math.max(...ytms)).toBeLessThan(30);
+    // Prices should cluster around par the way a real book does, because the
+    // coupon was set near the yield at issue.
+    const mids = rows.map((r) => r.midPrice);
+    expect(mids.filter((p) => p > 70 && p < 130).length / mids.length).toBeGreaterThan(0.95);
+    expect(Math.min(...mids)).toBeGreaterThan(20);
+    expect(Math.max(...mids)).toBeLessThan(180);
+  });
+
+  it('yields wider for worse credit at a comparable tenor', () => {
+    const rows = makeRows(4_000, 13, 0).filter((r) => r.modifiedDuration > 4 && r.modifiedDuration < 9);
+    const avg = (rs: typeof rows) => rs.reduce((n, r) => n + r.yieldToMaturity, 0) / rs.length;
+    const ig = rows.filter((r) => ['AAA', 'AA+', 'AA', 'AA-'].includes(r.compositeRating));
+    const hy = rows.filter((r) => ['BB-', 'B+', 'B'].includes(r.compositeRating));
+    expect(ig.length).toBeGreaterThan(20);
+    expect(hy.length).toBeGreaterThan(20);
+    expect(avg(hy)).toBeGreaterThan(avg(ig));
+  });
+
   it('moves yield inversely to price on a tick', () => {
     const rng = makeRng(11);
     let checked = 0;

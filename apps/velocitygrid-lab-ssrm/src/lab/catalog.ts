@@ -176,9 +176,10 @@ enableCellChangeFlash: true`,
     guide: {
       what: 'Rules are conditions plus a paint: background, text colour, weight, an indicator glyph, even a replacement number format. They live in the grid\'s configuration rather than in your component, so a trader can add one without a deploy.',
       try: [
-        'Open Customize → Conditional styling and add a rule: dailyPnL < 0 paints the cell red.',
-        'Add a second rule on compositeRating for high yield and give it an indicator icon.',
-        'Run Sector downgrade — the rating rule fires on a text change, with no numeric move.',
+        'Seven rules are already running — open Customize → Conditional styling to read them.',
+        'Disable "Price ticked up" and watch the green flashes stop while the red ones continue.',
+        'Run Sector downgrade: the rating rule fires on a text change, with no numeric move at all.',
+        'Change "Losing money" from red text to a red background and watch it re-paint live.',
       ],
       config: `import { wireIntoKernel as wireRules }
   from '@wellsfargo-starui/velocity-grid/rules';
@@ -228,21 +229,22 @@ wireRules(grid);
     hint: 'Derived, no round trip',
     title: 'Calculated columns',
     subtitle: 'Columns that are expressions over other columns, recomputed in the worker as the inputs tick.',
+    // Deliberately short: the derived columns are the subject, and on a
+    // 19-column blotter they would land off the right edge.
     columns: () => pickColumns([
-      'cusip', 'ticker', 'instrumentDescription', 'compositeRating',
-      'bidPrice', 'midPrice', 'askPrice', 'bidAskWidthBps',
-      'yieldToMaturity', 'benchmarkYield', 'oas',
-      'modifiedDuration', 'dv01', 'convexity',
-      'quantityFace', 'marketValue', 'avgCost', 'unrealizedPnL', 'dailyPnL',
+      'cusip', 'ticker', 'compositeRating',
+      'midPrice', 'yieldToMaturity', 'benchmarkYield',
+      'modifiedDuration', 'dv01', 'marketValue', 'dailyPnL',
     ]),
     options: { enableCellChangeFlash: true },
     stream: { rowCount: 1_500, tickMs: 500 },
     guide: {
       what: 'A calculated column is a formula the grid owns. The B/A width column on this tab is one: it has no field behind it, it is derived from bid and ask, and it re-derives on every tick without a server round trip or a React render.',
       try: [
-        'Open Customize → Calculated columns and add: yieldToMaturity - benchmarkYield.',
-        'Name it "Pickup" and give it a bps format — it appears with the others.',
-        'Run Liquidity gap and watch B/A (bps) widen eightfold while nothing else moves.',
+        'Five derived columns are already here — Pickup, B/A width, % of book, P&L / DV01, Yield / turn.',
+        '% of book divides by SUM(marketValue), so every row depends on every other row; watch it settle as the book ticks.',
+        'Run Liquidity gap and watch B/A width jump eightfold while nothing else moves.',
+        'Open Customize → Calculated columns and edit Pickup\'s expression in place.',
       ],
       config: `{ colId: 'bidAskWidthBps',
   valueGetter: ({ data }) => (data.askPrice - data.bidPrice) * 100,
@@ -293,9 +295,9 @@ wireCalc(grid);`,
     guide: {
       what: 'Set filters over a live book have a subtlety worth seeing: the value list has to track the data as it ticks. Saved filters wrap a whole filter model — several columns at once — behind a single named pill.',
       try: [
-        'Filter Rating to the high-yield values and Duration to greater than 8.',
-        'Save it from the title bar as "HY long end"; it becomes a pill.',
-        'Clear the filters, then click the pill — the whole model comes back.',
+        'Five pills are already saved — click "HY long end" and watch two column filters apply at once.',
+        'Click it again to deactivate, then try "Wide markets", which filters on a derived column.',
+        'Set your own filters and press the + to save a sixth pill.',
       ],
       config: `sideBar: { toolPanels: ['filters', 'columns'] }
 // pills come from titleBarExtensions() → savedFiltersItem()`,
@@ -412,9 +414,9 @@ wireCalc(grid);`,
     guide: {
       what: 'An alert is a rule with a delivery channel. It evaluates where the data already is — in the worker, against the whole book — so it fires on rows that are scrolled out of view, which is exactly when you need it.',
       try: [
-        'Open Customize → Alerts and add: dailyPnL < -250000, channel toast.',
-        'Run Credit selloff and watch the bell count climb.',
-        'Add a rate limit so a fast-moving row cannot spam you.',
+        'Four alerts are armed. Run Credit selloff and watch the bell count climb.',
+        'Two are threshold alerts and two watch relative change — open Customize → Alerts to see the difference.',
+        'Every one is debounced, so a single fast row cannot flood the channel; drop a debounce to 0 and run the scenario again.',
       ],
       config: `// Customize → Alerts
 { when: 'dailyPnL < -250000',
@@ -495,9 +497,9 @@ cellSelection: { suppressHeader: true }`,
     guide: {
       what: 'A price moves in ticks, a spread moves in basis points, a quantity moves in lots. One global step size would be wrong for all three, so the step is per column — which is what makes keyboard nudging usable on a real blotter.',
       try: [
-        'Focus a Mid cell and press + a few times — it moves by an eighth.',
-        'Move to OAS and press + — a different step, because it is a spread.',
-        'Hold shift for the coarse step.',
+        'Focus a Mid cell and press + — it moves by an eighth, because prices trade in eighths.',
+        'Move to OAS and press + — one basis point, because that is how a spread moves.',
+        'Then Duration (a quarter turn) and Qty (100k lots). Five nudge rules ship with this tab.',
       ],
       config: `// Customize → Plus/Minus
 { colId: 'midPrice', step: 0.125, shiftStep: 1 }
@@ -520,9 +522,9 @@ cellSelection: { suppressHeader: true }`,
     guide: {
       what: 'Traders type in the units of the desk. "5m" is five million, not the string 5m, and making the grid understand that removes a whole category of fat-finger error at the point where it would otherwise be introduced.',
       try: [
-        'Type 5m into a Qty (face) cell and press Enter.',
-        'Try 250k, then 1.5b.',
-        'Try a letter with no rule — the edit is rejected rather than silently mangled.',
+        'Type 5m into a Qty (face) cell and press Enter — four keys are bound on this tab.',
+        'Try 250k, then 1.5b, then h to halve it.',
+        'Try a letter with no rule bound — the edit is rejected rather than silently mangled.',
       ],
       config: `// Customize → Shortcuts
 { key: 'k', multiply: 1_000 }

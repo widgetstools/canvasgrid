@@ -29,6 +29,9 @@ export interface BlotterRow {
   couponRate: number;
   issueDate: string;
   maturityDate: string;
+  /** Remaining life in years — kept on the row so `tickRow` divides by the
+   *  same thing `makeRow` did. */
+  yearsToMaturity: number;
 
   // Pricing (two-sided market)
   bidPrice: number;
@@ -122,9 +125,24 @@ const pick = <T,>(rng: () => number, xs: readonly T[]): T => xs[Math.floor(rng()
 const between = (rng: () => number, lo: number, hi: number) => lo + rng() * (hi - lo);
 const round = (n: number, dp: number) => Math.round(n * 10 ** dp) / 10 ** dp;
 
-/** The one yield formula, shared by the generator and the ticker. */
+/**
+ * Price and yield are two views of one number, so the generator picks the
+ * YIELD first and prices the bond from it. Generating them independently — as
+ * this did at first — produces five-year bonds with 1% coupons trading at 117,
+ * whose implied yield is negative and lands on whatever floor you clamp to. A
+ * column of identical "0.100%" is arithmetically explicable and visibly wrong.
+ *
+ * The relation is the standard first-order one, price ≈ par + (coupon − yield)
+ * × duration, used in both directions so the two stay exactly consistent: a
+ * tick moves the price, and the yield that comes back is the one that price
+ * implies.
+ */
+function priceFor(coupon: number, ytm: number, duration: number): number {
+  return round(100 + (coupon - ytm) * duration, 3);
+}
+
 function yieldFor(coupon: number, mid: number, duration: number): number {
-  return round(Math.max(0.1, coupon + ((100 - mid) / Math.max(duration, 1)) * 0.9), 3);
+  return round(coupon - (mid - 100) / Math.max(duration, 0.25), 3);
 }
 
 function cusip(rng: () => number): string {
@@ -146,33 +164,37 @@ export function makeRow(i: number, rng: () => number, nowMs = Date.now()): Blott
   const rating = pick(rng, RATINGS);
   const currency = pick(rng, CURRENCIES);
   const assetClass = pick(rng, ASSET_CLASSES);
-  const coupon = round(between(rng, 0.5, 8.5), 3);
   const years = Math.round(between(rng, 1, 30));
   const maturity = new Date(Date.UTC(2026 + years, Math.floor(rng() * 12), 1 + Math.floor(rng() * 27)));
   const issue = new Date(Date.UTC(2026 - Math.round(between(rng, 1, 8)), Math.floor(rng() * 12), 1 + Math.floor(rng() * 27)));
 
-  const mid = round(between(rng, 82, 118), 3);
+
+  const duration = round(Math.min(years * 0.82, between(rng, 0.9, 18)), 2);
+  const oas = spreadForRating(rating, rng);
+  // A benchmark curve that rises with tenor, plus the credit spread the rating
+  // implies. Yield first, price second.
+  const benchmarkYield = round(1.6 + Math.log1p(years) * 0.78 + between(rng, -0.2, 0.2), 3);
+  const targetYtm = round(benchmarkYield + oas / 100, 3);
+  // The coupon was set at issue, at roughly the market yield of that day; what
+  // has happened since is the drift that moves the bond off par. Drawing it
+  // independently of the yield is what sent prices to the clamp.
+  const coupon = round(Math.max(0.25, targetYtm + between(rng, -1.1, 1.1)), 3);
+  // The first-order price relation runs away at the extremes — a 0.5% coupon
+  // at a 12% yield with 18 years of duration prices below zero. Clamp the
+  // PRICE to a band a desk would actually quote, then take the yield back out
+  // of the clamped price so the two never disagree.
+  const mid = Math.min(165, Math.max(35, priceFor(coupon, targetYtm, duration)));
+  const ytm = yieldFor(coupon, mid, duration);
   const halfSpread = round(between(rng, 0.02, 0.45), 3);
   const bid = round(mid - halfSpread, 3);
   const ask = round(mid + halfSpread, 3);
   const priceChange = round(between(rng, -1.6, 1.6), 4);
-
-  // Yield falls as price rises — the single most visible domain invariant on
-  // the screen, and the one a fixed-income developer checks first. Duration is
-  // resolved BEFORE the yield because both `makeRow` and `tickRow` must divide
-  // by the same thing; when they disagreed, the first tick re-based the yield
-  // and could move it the same way as the price.
-  const duration = round(Math.min(years * 0.82, between(rng, 0.9, 18)), 2);
-  const ytm = yieldFor(coupon, mid, duration);
-  const benchmarkYield = round(Math.max(0.05, ytm - between(rng, 0.3, 2.4)), 3);
 
   const face = Math.round(between(rng, 250, 25_000)) * 1000;
   const marketValue = Math.round((face * mid) / 100);
   const avgCost = round(mid - between(rng, -4, 4), 3);
   const dv01 = round((duration * marketValue) / 10_000 / 100, 4);
   const unrealized = Math.round(((mid - avgCost) / 100) * face);
-
-  const oas = spreadForRating(rating, rng);
 
   return {
     id: `POS-${String(i).padStart(6, '0')}`,
@@ -190,6 +212,7 @@ export function makeRow(i: number, rng: () => number, nowMs = Date.now()): Blott
     couponRate: coupon,
     issueDate: issue.toISOString().slice(0, 10),
     maturityDate: maturity.toISOString().slice(0, 10),
+    yearsToMaturity: years,
 
     bidPrice: bid,
     midPrice: mid,
