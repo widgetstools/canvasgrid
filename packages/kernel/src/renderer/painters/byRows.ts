@@ -12,6 +12,7 @@ import { cellMatchesAnyQuickFilterTerm } from '../../worker/dataPipeline';
 import { isPivotResultGroupId } from '../../core/pivotColumns';
 import { resolveIcon as resolveIconPath } from '../../icons/registry';
 import { bumpFormatEvalGeneration } from '../../core/formatEvalMemo';
+import { getRuleEngine } from '../../core/ruleEngineSlot';
 import { ROW_KIND_DETAIL } from '../../core/masterDetailIndex';
 import type { DecoratorPosition } from '../../types';
 
@@ -216,9 +217,11 @@ function mergeRuleRow(
  *     has `cellClassFn` / `cellClassRules` / `cellStyleFn`.
  *   - `resolveDrawableCellIcon` receives `data` for a FUNCTION-form
  *     `cellIcon` (the string / IconRef forms never read it).
- *   - the rule-engine `ruleRow`, which PREFERS the full `getRowDataById`
- *     mirror and only falls back to the snapshot — handled per row in
- *     `paintBand`, not here, because it depends on the mirror's contents.
+ *   - the rule-engine `ruleRow`, which merges the `getRowDataById` mirror
+ *     with the snapshot (the mirror wins field by field, but a thin SSRM
+ *     column-window mirror needs the snapshot to fill its holes) — handled
+ *     per row in `paintBand`, not here, because it is gated on row identity
+ *     and on a rule engine being registered rather than on column defs.
  */
 function rowDataNeededForCols(
   visibleColumns: PainterCtx['viewport']['visibleColumns'],
@@ -490,9 +493,16 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx, mode?: ByRo
   // column, so building it per data row doubles the paint's `cellAt` volume
   // (the cell loop below already fetches each cell for its own paint). On a
   // grid with no conditional-styling callbacks that entire second pass is
-  // dead work. See `paintBand` for the row-level use and the ruleRow
-  // fallback that can still force a snapshot.
+  // dead work. See `paintBand` for the row-level use and the ruleRow path
+  // that can still force a snapshot.
   const rowDataNeeded = rowDataNeededForCols(vs.visibleColumns, columnDefs);
+  // The ruleRow path is the snapshot's other consumer, and it is live only
+  // when a rule engine is registered — `applyCellProps` reads `ruleRow`
+  // exclusively under `getRuleEngine() !== null`. Without that check a plain
+  // grid that merely supplies `getRowId` pays the second `cellAt` pass on
+  // every paint for a value nothing reads. Resolved once per paint: the slot
+  // is a module-level variable, but the row loop below runs per visible row.
+  const ruleEngineActive = getRuleEngine() !== null;
 
   const bandCtx: PaintBandCtx = {
     rowBgs,
@@ -508,6 +518,7 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx, mode?: ByRo
     theme,
     rowDataSnapshotAt,
     rowDataNeeded,
+    ruleEngineActive,
     quickFilterActive,
     quickFilterLowerTerms,
     suppressAggFuncInHeader,
@@ -791,6 +802,9 @@ interface PaintBandCtx {
    *  `cellStyleFn` / a function-form `cellIcon`). Resolved once per paint;
    *  see `rowDataNeededForCols`. */
   rowDataNeeded: boolean;
+  /** True when a rule engine is registered, i.e. when the `ruleRow` the
+   *  snapshot feeds is actually read downstream. Resolved once per paint. */
+  ruleEngineActive: boolean;
   quickFilterActive: boolean;
   quickFilterLowerTerms: readonly string[];
   suppressAggFuncInHeader: boolean;
@@ -978,9 +992,16 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
     // visible column, i.e. a second full pass over the row on top of the
     // per-cell `cellData` fetch below. It is only observable through three
     // consumers (see `rowDataNeededForCols`): column callbacks, a
-    // function-form `cellIcon`, and — only when the mirror MISSES — the
-    // ruleRow fallback. When none of those apply the whole pass is dead
-    // work, which on a plain grid halves this paint's `cellAt` volume.
+    // function-form `cellIcon`, and the ruleRow the rule engine evaluates.
+    // When none of those apply the whole pass is dead work, which on a plain
+    // grid halves this paint's `cellAt` volume.
+    //
+    // A mirror HIT does not license the skip. SSRM column-window mirrors are
+    // thin — off-window and condition-only fields are missing — so a rule
+    // evaluating on the mirror alone would see holes; `mergeRuleRow` fills
+    // them from the snapshot. What does license the skip is no rule engine:
+    // `ruleRow` is read only under `getRuleEngine() !== null`, so with no
+    // engine registered the ruleRow branch is dead work like the rest.
     const ruleRowId: string | undefined = row.subgrid.isData
       ? (ctx.stringRowIdAt?.(row.localRowIndex) || undefined)
       : undefined;
@@ -992,7 +1013,8 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
     // gaps from the chunk, but do NOT let undefined/null chunk cells wipe
     // hydrated mirror fields (soft-reload / thin payloads).
     const rowData: Record<string, unknown> | undefined =
-      row.subgrid.isData && (ctx.rowDataNeeded || ruleRowId !== undefined)
+      row.subgrid.isData
+      && (ctx.rowDataNeeded || (ruleRowId !== undefined && ctx.ruleEngineActive))
         ? rowDataSnapshotAt(row.localRowIndex)
         : undefined;
     const ruleRow: Record<string, unknown> | undefined = ruleRowId !== undefined

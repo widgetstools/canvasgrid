@@ -1,8 +1,17 @@
 # SSRM multi-blotter / Perspective — work so far
 
-**Branch:** `feat/ssrm-multi-blotter-stomp`  
-**Date:** 2026-07-20  
-**Status:** In progress (uncommitted kernel + demo work)
+**Started on:** `feat/ssrm-multi-blotter-stomp` (2026-07-20)  
+**Status:** all of it is merged — `main` contains every commit of
+`feat/ssrm-multi-blotter-stomp`, `feat/engine-row-model`,
+`refactor/ssrm-perspective-hardening` and `feature/ssrm-column-windows`.
+This file is a journal of finished work, read newest-section-first.
+
+> **Paths below the 2026-07 line have moved.** `apps/velocitygrid-ssrm-demo`,
+> `velocitygrid-showcase` and `velocitygrid-positions` were deleted in
+> `d9352898`; the demo is now `apps/velocitygrid-ssrm-provider-demo`
+> (`npm run dev:ssrm-provider`, **:5211**), the Perspective book lives in
+> `packages/perspective/src/`, and every Playwright spec is in the
+> repo-root `e2e/`. The 2026-09-05 worklog is current as written.
 
 ---
 
@@ -133,9 +142,12 @@ was written — was fully decommissioned; the diagram now names the surviving
 
 ## Still open / next
 
+*(As of 2026-07-20, when this section was written. Both items have since
+landed — v2 is the only controller, and the work is merged. Kept for the
+record; the live open items are in the 2026-09-05 worklog below.)*
+
 - Manual verify: sticky band + correct single-group expand after rebuild
 - **Sparse SSRM v2 — client-owned group skeleton** (`docs/ssrm-group-skeleton-design.md`): CSRM-parity direction — kernel owns all group rows + flatten index, toggles reflow same-frame, datasource shrinks to `getGroupSkeleton` + `getLeafRows`. Supersedes “keep group header rows pinned in store”.
-- Commit / PR when ready
 
 ## Worklog: `feat/engine-row-model` smoothness batch (2026-07)
 
@@ -253,8 +265,12 @@ property of the main-thread feed, not of being unshared.
   real fix changes table names, which splits books meant to be shared.
 - **Credentials.** Nothing in the STOMP path carries them, on any feed path or
   in CSRM's hub transport. Missing feature project-wide, not a regression.
-- **Kernel suite is not green on a clean tree** (perf-flavoured tests). Verify
-  by stashing before blaming a change.
+- ~~**Kernel suite is not green on a clean tree**~~ — fixed 2026-09-05. The
+  four reds were never perf tests: a spurious `aggregationChanged` on every
+  sort, a lost snapshot-skip in `byRows`, and two `flashCells` tests left
+  behind by an intentional change. Kernel is 375 files / 4831 tests green.
+  Note `npm run build:kernel` is required before the `perspective` suite —
+  it resolves against `dist/`, and without it 9 files fail to load.
 
 ### Verifying any of it
 

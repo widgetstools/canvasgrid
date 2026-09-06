@@ -2,8 +2,9 @@
  * Cycle 21e / Task 13 — cgrid-layer integration for flashCells per-call
  * overrides. Exercises the `flashOverrides` map staged by `flashCells`:
  * exact keys (rowId\0colId), wildcard keys (rowId\0*) when colIds is
- * omitted, default-path no-op (byte-identical to pre-Task-13 behavior),
- * and expiry sweep via the flash tick loop.
+ * omitted, the BARE marker a plain call stages (162d84a0 — rule-flash
+ * ownership needs it to admit API flashes; it carries no color/mode, so the
+ * paint stays the theme default), and expiry sweep via the flash tick loop.
  *
  * Grid fixture copied from the Task 10 pattern (tests/rulesKernelApi.test.ts).
  */
@@ -79,21 +80,34 @@ describe('VelocityGrid flashCells per-call overrides (Cycle 21e / Task 13)', () 
     grid.destroy();
   });
 
-  it('a call with no override fields (color/mode/flashDuration/fadeDuration) stages nothing — default path byte-identical', () => {
+  it('a call with no override fields stages a BARE marker (no color/mode)', () => {
+    // 162d84a0 superseded the original "stages nothing" contract. The marker
+    // is what `shouldFlash` consults to admit an API flash on a column a
+    // style rule owns (`velocityGrid.ts`, flashMask ingest): without it, a
+    // plain `flashCells` on a rule-owned column would be swallowed by the
+    // default-flash suppression. It carries no color/mode, so the paint is
+    // still the theme default — the override join reads `undefined` and
+    // falls through exactly as it did before.
     const grid = makeGrid();
     grid.flashCells({ rowIds: ['a', 'b'], colIds: ['px'] });
     const overrides = overridesOf(grid);
-    expect(overrides.size).toBe(0);
+    expect(overrides.size).toBe(2);
+    const entry = overrides.get('a\0px');
+    expect(entry).toBeDefined();
+    expect(entry?.color).toBeUndefined();
+    expect(entry?.mode).toBeUndefined();
     grid.destroy();
   });
 
-  it('mixing an override call with a plain call only stages the override call entries', () => {
+  it('a plain call stages its own bare marker without disturbing an existing override', () => {
     const grid = makeGrid();
     grid.flashCells({ rowIds: ['a'], colIds: ['px'], color: '#123456' });
     expect(overridesOf(grid).size).toBe(1);
-    grid.flashCells({ rowIds: ['b'], colIds: ['px'] }); // plain — stages nothing new
-    expect(overridesOf(grid).size).toBe(1);
-    expect(overridesOf(grid).has('b\0px')).toBe(false);
+    grid.flashCells({ rowIds: ['b'], colIds: ['px'] }); // plain — bare marker
+    expect(overridesOf(grid).size).toBe(2);
+    expect(overridesOf(grid).get('b\0px')?.color).toBeUndefined();
+    // The earlier call's color is untouched by the plain one.
+    expect(overridesOf(grid).get('a\0px')?.color).toBe('#123456');
     grid.destroy();
   });
 
