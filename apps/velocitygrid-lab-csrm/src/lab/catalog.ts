@@ -164,7 +164,7 @@ enableCellChangeFlash: true`,
     label: 'Conditional styling',
     hint: 'Rules that paint',
     title: 'Conditional styling',
-    subtitle: 'Expression rules evaluated per cell, per paint, in the worker — so a rule over a ticking column keeps up with the ticks.',
+    subtitle: 'Rules that surface what the numbers do not: a crossed quote, a spread the rating disagrees with, a position drifting from its cost.',
     columns: () => pickColumns([
       'cusip', 'ticker', 'instrumentDescription', 'compositeRating', 'issuerSector',
       'bidPrice', 'midPrice', 'askPrice', 'priceChangePct', 'bidAskWidthBps',
@@ -174,17 +174,25 @@ enableCellChangeFlash: true`,
     options: { enableCellChangeFlash: true },
     stream: { rowCount: 2_000, tickMs: 400 },
     guide: {
-      what: 'Rules are conditions plus a paint: background, text colour, weight, an indicator glyph, even a replacement number format. They live in the grid\'s configuration rather than in your component, so a trader can add one without a deploy.',
+      what: 'A rule earns its place by showing you something the cell cannot. Painting a negative number red beside a format string that already prints negatives in red teaches nothing — so every rule here compares ACROSS columns or encodes a desk policy the data does not carry: a bid above its own ask, a BBB trading at a high-yield spread, a bid/ask eating a third of what you are paid, a position past the single-name limit. Rules are configuration rather than code, so a trader adds one without a deploy.',
       try: [
-        'Seven rules are already running — open Customize → Conditional styling to read them.',
-        'Disable "Price ticked up" and watch the green flashes stop while the red ones continue.',
-        'Run Sector downgrade: the rating rule fires on a text change, with no numeric move at all.',
-        'Change "Losing money" from red text to a red background and watch it re-paint live.',
+        'Six rules are running. Open Customize → Conditional styling and read the conditions — none of them mentions only the column it paints.',
+        'Run Crossed quotes: bid goes above ask on 40 bonds and the whole ROW is marked, because a broken quote makes every field on it suspect.',
+        '"Trading like high yield" is the row a credit desk looks for — the agencies say BBB, the market is charging 250+ over.',
+        'Switch to the Tick arrows layout for the other kind of rule: one driven by what a value just DID rather than what it is.',
       ],
-      config: `import { wireIntoKernel as wireRules }
-  from '@wellsfargo-starui/velocity-grid/rules';
-wireRules(grid);
-// rules are then authored in Customize → Conditional styling`,
+      config: `// A rule that compares two columns — the yield is fine on its own;
+// what matters is how little of it is credit compensation.
+{ id: 'thin-pickup',
+  condition: '[yieldToMaturity] - [benchmarkYield] < 0.45',
+  scope: { kind: 'cell', columnIds: ['yieldToMaturity', 'oas'] },
+  style: { light: {…}, dark: {…} },
+  indicator: { iconName: 'trending-down', target: 'cell', position: 'before' } }
+
+// A row-scoped alarm — a crossed quote taints every field on the row.
+{ id: 'crossed-market',
+  condition: '[bidPrice] >= [askPrice]',
+  scope: { kind: 'row' } }`,
     },
   },
 

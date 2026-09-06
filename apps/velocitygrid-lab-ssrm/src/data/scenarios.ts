@@ -112,6 +112,19 @@ export const SCENARIOS: Scenario[] = [
       }),
   },
   {
+    id: 'crossed',
+    title: 'Crossed quotes',
+    description: 'A feed glitch inverts the market on a handful of bonds: bid above ask. Clean data never does this, which is why the rule that catches it is scoped to the whole row.',
+    tone: 'negative',
+    apply: (rows) =>
+      take(rows, () => true, 40).map((r) => ({
+        ...r,
+        bidPrice: round(r.askPrice + 0.35, 3),
+        askPrice: round(r.bidPrice - 0.35, 3),
+        lastUpdate: Date.now(),
+      })),
+  },
+  {
     id: 'settle',
     title: 'Back to normal',
     description: 'Clear the overlay: prices drift back toward where the generator left them.',

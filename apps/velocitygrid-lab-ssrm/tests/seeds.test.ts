@@ -15,6 +15,7 @@ import {
 import { LAB_TABS } from '../src/lab/catalog';
 import { baseColumns } from '../src/data/columns';
 import { makeRows } from '../src/data/domain';
+import { scenarioById } from '../src/data/scenarios';
 
 const FIELDS = new Set(Object.keys(makeRows(1, 1, 0)[0]!));
 
@@ -234,6 +235,80 @@ describe('tick arrow rules', () => {
       const view = seedFor(tabId).views?.find((v) => v.name === 'Tick arrows');
       expect({ tabId, found: Boolean(view) }).toEqual({ tabId, found: true });
       expect(view!.rules).toBe(TICK_ARROW_RULES);
+    }
+  });
+});
+
+describe('conditional rules actually discriminate', () => {
+  // A rule that matches nothing is invisible; one that matches everything is
+  // wallpaper. Both are the failure this set was rewritten to escape, so the
+  // thresholds are checked against the book they will run on.
+  const BOOK = makeRows(3_000, 77, 1_000);
+
+  const engine = (() => {
+    const e = new RuleEngine({});
+    e.setRules(CONDITIONAL_RULES);
+    return e;
+  })();
+
+  const hitRate = (ruleId: string, colId: string): number => {
+    let hits = 0;
+    for (const row of BOOK) {
+      const res = engine.evaluateCell({
+        row: row as unknown as Record<string, unknown>,
+        rowId: row.id, colId, theme: 'dark',
+      });
+      if (res.matched.includes(ruleId)) hits++;
+    }
+    return hits / BOOK.length;
+  };
+
+  it.each([
+    ['thin-pickup', 'yieldToMaturity'],
+    ['rating-disagreement', 'oas'],
+    ['away-from-cost', 'midPrice'],
+    ['costly-to-trade', 'bidPrice'],
+    ['over-limit', 'marketValue'],
+  ])('%s fires on a meaningful minority of rows', (ruleId, colId) => {
+    const rate = hitRate(ruleId, colId);
+    expect({ ruleId, fires: rate > 0.005 }).toEqual({ ruleId, fires: true });
+    expect({ ruleId, isNotWallpaper: rate < 0.6 }).toEqual({ ruleId, isNotWallpaper: true });
+  });
+
+  it('crossed-market stays silent on clean data', () => {
+    // It is an alarm, not a highlight: bid above ask cannot happen in a book
+    // the generator produced, and the Crossed quotes scenario is what proves
+    // it works.
+    expect(hitRate('crossed-market', 'midPrice')).toBe(0);
+  });
+
+  it('the Crossed quotes scenario does trip it', () => {
+    const crossed = scenarioById('crossed')!.apply(BOOK);
+    expect(crossed.length).toBeGreaterThan(0);
+    let hits = 0;
+    for (const row of crossed) {
+      const res = engine.evaluateCell({
+        row: row as unknown as Record<string, unknown>,
+        rowId: row.id, colId: 'midPrice', theme: 'dark',
+      });
+      if (res.matched.includes('crossed-market')) hits++;
+    }
+    expect(hits).toBe(crossed.length);
+  });
+
+  it('every rule adds information rather than restating a cell', () => {
+    // The rewrite's whole premise. A rule earns its place by comparing across
+    // columns, or by reading one it does not paint; a condition that reads
+    // only the single column it styles is just the value again, in colour.
+    for (const rule of CONDITIONAL_RULES) {
+      if (rule.scope.kind === 'row') continue;   // row rules add context by definition
+      const painted = new Set((rule.scope as { columnIds: string[] }).columnIds);
+      const read = new Set((rule.condition.match(/\[([A-Za-z0-9_]+)(?:\.old)?\]/g) ?? [])
+        .map((m) => m.replace(/[[\]]/g, '').replace('.old', '')));
+      const comparesColumns = read.size > 1;
+      const readsUnpainted = [...read].some((c) => !painted.has(c));
+      expect({ rule: rule.id, addsInformation: comparesColumns || readsUnpainted })
+        .toEqual({ rule: rule.id, addsInformation: true });
     }
   });
 });

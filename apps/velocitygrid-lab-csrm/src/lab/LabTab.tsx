@@ -59,6 +59,29 @@ export function LabTab({ tab, theme, onTheme, themes }: LabTabProps) {
 
   const onReady = useCallback((handle: LabGridHandle) => {
     gridRef.current = handle;
+    // Any snapshot that arrived before the grid existed goes in NOW — the
+    // seeding below waits on a promise, and data should not wait with it.
+    if (snapshotRef.current) {
+      handle.ext.grid.setRowData(snapshotRef.current);
+      snapshotRef.current = null;
+    }
+    // Seeding has to wait for the ext's own profile restore. Its constructor
+    // starts `profiles.bootstrap()` fire-and-forget, so anything written from
+    // here synchronously is overwritten a tick later by whatever the profile
+    // store held — which showed up as a tab opening on a stale layout, with
+    // the previous view's filter still applied. `reapplyActiveProfile()`
+    // awaits that bootstrap; it is the same sequence the provider demos use.
+    void (async () => {
+      await handle.ext.grid.whenReady();
+      try { await handle.ext.reapplyActiveProfile(); }
+      catch { /* no stored profile yet — nothing to wait for */ }
+      // The tab may have been switched away from while we waited.
+      if (gridRef.current !== handle) return;
+      seedInto(handle);
+    })();
+  }, [seed]);
+
+  const seedInto = useCallback((handle: LabGridHandle) => {
     // Testing hook, matching the `__demo` convention the provider demos use.
     // e2e and console debugging both need a way in; the grid is otherwise
     // sealed inside the mount effect.
@@ -90,13 +113,27 @@ export function LabTab({ tab, theme, onTheme, themes }: LabTabProps) {
         for (const existing of grid.getRules()) grid.deleteRule(existing.id);
         for (const rule of rules) grid.addRule(rule as never);
       };
+      // The dedicated setters, not `setState`. A partial `setState` restores
+      // only what it carries and would leave the PREVIOUS view's filter in
+      // place; `exhaustive: true` clears that but also wipes every field the
+      // snapshot omits — including the rules module we just populated.
+      const applyView = (view: {
+        rules?: readonly unknown[];
+        sortModel?: { colId: string; direction: 'asc' | 'desc' }[];
+        filterModel?: Record<string, unknown>;
+        rowGroupColumns?: string[];
+      }) => {
+        // Each view starts from the tab's own rules unless it names its own,
+        // so a rules-carrying view earlier in the list cannot bleed into the
+        // ones after it.
+        setRules(view.rules ?? seed.rules ?? []);
+        grid.setSortModel((view.sortModel ?? []) as never);
+        grid.setFilterModel((view.filterModel ?? {}) as never);
+        grid.setRowGroupColumns(view.rowGroupColumns ?? []);
+      };
+
       for (const view of seed.views) {
-        if (view.rules) setRules(view.rules);
-        grid.setState({
-          sortModel: view.sortModel ?? [],
-          filterModel: view.filterModel ?? {},
-          rowGroupColumns: view.rowGroupColumns ?? [],
-        } as never);
+        applyView(view);
         // `activate: false` matters: saveLayout activates by default, so
         // without it the loop leaves the grid on the LAST view and the reset
         // below would edit that layout instead of Default.
@@ -104,16 +141,11 @@ export function LabTab({ tab, theme, onTheme, themes }: LabTabProps) {
         catch { /* a duplicate name on remount is fine */ }
       }
       // Back to what the tab itself ships with.
-      if (seed.views.some((v) => v.rules)) setRules(seed.rules ?? []);
-      grid.setState({
-        sortModel: seed.sortModel ?? [],
-        filterModel: seed.filterModel ?? {},
-        rowGroupColumns: [],
-      } as never);
-    }
-    if (snapshotRef.current) {
-      handle.ext.grid.setRowData(snapshotRef.current);
-      snapshotRef.current = null;
+      applyView({
+        rules: seed.rules ?? [],
+        sortModel: seed.sortModel,
+        filterModel: seed.filterModel,
+      });
     }
   }, [seed]);
 

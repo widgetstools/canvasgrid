@@ -75,97 +75,142 @@ const PNL_COLS = ['unrealizedPnL', 'dailyPnL', 'mtdPnL', 'ytdPnL'];
 // ── conditional styling ──────────────────────────────────────────────
 
 /**
- * Seven rules that together read like a desk's actual colour scheme. Ordered
- * by priority so the specific ones win: a losing position is red, but a
- * position that just ticked down flashes over the top of that.
+ * Six rules, each saying something the cell alone cannot.
+ *
+ * The first version of this set did the opposite and was fairly called
+ * useless: it painted negative P&L red next to a format string that already
+ * prints negatives in red parentheses, tinted a BB rating amber in a cell that
+ * says "BB", and italicised a duration over 12 in the column showing the
+ * duration. Restating a value in colour is not conditional styling, it is
+ * decoration — and it teaches a reader nothing about why the feature exists.
+ *
+ * A rule earns its place when it surfaces something invisible: a comparison
+ * ACROSS columns, or a desk policy the data does not carry. Each of these also
+ * exercises a different part of the rule model — row scope, cell scope,
+ * indicators, arithmetic, string sets — so the tab is a tour as well as a
+ * demonstration.
+ *
+ * Thresholds are tuned against the generated book so every rule actually
+ * fires on some rows and not most of them; `seeds.test.ts` asserts that, since
+ * a rule matching nothing or everything is noise either way.
  */
 export const CONDITIONAL_RULES: StyleRule[] = [
   {
-    id: 'pnl-negative',
-    name: 'Losing money',
+    id: 'crossed-market',
+    name: 'Crossed market — bid above ask',
     kind: 'style',
     enabled: true,
-    priority: 10,
-    condition: '[dailyPnL] < 0',
-    scope: { kind: 'cell', columnIds: PNL_COLS },
-    style: themed(C.lossFg, undefined, { fontWeight: 600 }),
+    priority: 90,
+    // Never true in clean data. When it is, the quote is broken and the whole
+    // row is suspect — which is why this one is scoped to the row.
+    condition: '[bidPrice] >= [askPrice]',
+    scope: { kind: 'row' },
+    style: themed(C.lossFg, C.lossBg, { fontWeight: 600 }),
+    indicator: { iconName: 'triangle-alert', color: '#e63946', target: 'row-start', position: 'before' },
   },
   {
-    id: 'pnl-strong',
-    name: 'Up more than 100k today',
+    id: 'thin-pickup',
+    name: 'Barely paid for the credit risk',
     kind: 'style',
     enabled: true,
-    priority: 11,
-    condition: '[dailyPnL] > 100000',
-    scope: { kind: 'cell', columnIds: ['dailyPnL'] },
-    style: themed(C.gainFg, C.gainBg, { fontWeight: 600 }),
+    priority: 30,
+    // Two columns compared. The yield alone looks fine; what matters is how
+    // little of it is compensation for holding credit rather than governments.
+    condition: '[yieldToMaturity] - [benchmarkYield] < 0.45',
+    scope: { kind: 'cell', columnIds: ['yieldToMaturity', 'oas'] },
+    style: themed(C.warnFg, C.warnBg),
+    indicator: { iconName: 'trending-down', color: '#f0b429', target: 'cell', position: 'before' },
   },
   {
-    id: 'tick-up',
-    name: 'Price ticked up',
+    id: 'rating-disagreement',
+    name: 'Trading like high yield, rated investment grade',
     kind: 'style',
     enabled: true,
-    priority: 40,
-    // `[col.old]` is the previous value from the change record, which is what
-    // makes this a tick rule rather than a threshold rule.
-    condition: '[midPrice.old] != null && [midPrice] > [midPrice.old]',
-    scope: { kind: 'cell', columnIds: ['bidPrice', 'midPrice', 'askPrice', 'lastPrice'] },
-    style: themed(C.gainFg),
-    flash: { enabled: true, target: 'cell', mode: 'fade', color: '#0a7d4f', durationMs: 550 },
-    // Without this the rule would latch: once a price had ever ticked up the
-    // cell would stay green until it ticked down.
-    activeDurationMs: 900,
+    priority: 31,
+    // The interesting rows on a credit desk: the market and the agencies do
+    // not agree. Neither column says this on its own.
+    condition: '[oas] > 250 && ([compositeRating] == "BBB" || [compositeRating] == "BBB-" || [compositeRating] == "BBB+")',
+    scope: { kind: 'cell', columnIds: ['compositeRating', 'oas', 'zSpread'] },
+    style: themed(C.lossFg, C.lossBg, { fontWeight: 600 }),
+    indicator: { iconName: 'triangle-alert', color: '#e63946', target: 'cell', position: 'after' },
   },
   {
-    id: 'tick-down',
-    name: 'Price ticked down',
-    kind: 'style',
-    enabled: true,
-    priority: 41,
-    condition: '[midPrice.old] != null && [midPrice] < [midPrice.old]',
-    scope: { kind: 'cell', columnIds: ['bidPrice', 'midPrice', 'askPrice', 'lastPrice'] },
-    style: themed(C.lossFg),
-    flash: { enabled: true, target: 'cell', mode: 'fade', color: '#b3261e', durationMs: 550 },
-    activeDurationMs: 900,
-  },
-  {
-    id: 'high-yield',
-    name: 'Sub-investment grade',
+    id: 'away-from-cost',
+    name: 'More than 3% from where it was bought',
     kind: 'style',
     enabled: true,
     priority: 20,
-    condition: '[compositeRating] == "BB+" || [compositeRating] == "BB" || [compositeRating] == "BB-" || [compositeRating] == "B+" || [compositeRating] == "B"',
-    scope: { kind: 'cell', columnIds: ['compositeRating'] },
-    style: themed(C.warnFg, C.warnBg, { fontWeight: 600 }),
-    indicator: { iconName: 'triangle-alert', color: '#f0b429', target: 'cell', position: 'before' },
+    // Uses ABS over two columns. The price is on screen and the cost is on
+    // screen; the distance between them is not.
+    condition: 'ABS([midPrice] - [avgCost]) / [avgCost] > 0.03',
+    scope: { kind: 'cell', columnIds: ['midPrice', 'avgCost'] },
+    style: themed(C.infoFg, undefined, { fontWeight: 600 }),
   },
   {
-    id: 'wide-market',
-    name: 'Market wider than 50 bps',
+    id: 'costly-to-trade',
+    name: 'Bid/ask eats a third of the spread',
     kind: 'style',
     enabled: true,
     priority: 21,
-    condition: '([askPrice] - [bidPrice]) * 100 > 50',
+    // Liquidity measured against what you are being paid, not in absolute
+    // terms: 20bps wide is cheap on a 400bps bond and ruinous on a 40bps one.
+    condition: '([askPrice] - [bidPrice]) * 100 > [oas] * 0.35',
     scope: { kind: 'cell', columnIds: ['bidPrice', 'askPrice'] },
     style: themed(C.warnFg, C.warnBg),
   },
   {
-    id: 'long-duration',
-    name: 'Long duration position',
+    id: 'over-limit',
+    name: 'Above the single-name limit',
     kind: 'style',
     enabled: true,
-    priority: 5,
-    condition: '[modifiedDuration] > 12',
-    scope: { kind: 'cell', columnIds: ['modifiedDuration', 'dv01'] },
-    style: themed(C.infoFg, undefined, { fontStyle: 'italic' }),
+    priority: 10,
+    // Desk policy, which lives nowhere in the data. Row scope, and quiet: it
+    // marks the row without shouting over the rules above it.
+    condition: '[marketValue] > 20000000',
+    scope: { kind: 'row' },
+    style: {
+      light: { backgroundColor: '#eef2ff' },
+      dark: { backgroundColor: '#1b2030' },
+    },
   },
 ];
 
 // A lighter set for tabs whose subject is not styling: the tick rules only,
 // so prices move visibly without a wall of colour competing for attention.
-export const TICK_RULES: StyleRule[] = CONDITIONAL_RULES.filter(
-  (r) => r.id === 'tick-up' || r.id === 'tick-down',
-);
+export const TICK_RULES: StyleRule[] = ['midPrice'].flatMap((colId) => ([
+  {
+    id: 'tick-up',
+    name: 'Price ticked up',
+    kind: 'style' as const,
+    enabled: true,
+    priority: 40,
+    condition: `[${colId}.old] != null && [${colId}] > [${colId}.old]`,
+    scope: { kind: 'cell' as const, columnIds: ['bidPrice', 'midPrice', 'askPrice', 'lastPrice'] },
+    style: themed(C.gainFg),
+    flash: { enabled: true, target: 'cell' as const, mode: 'fade' as const, color: '#0a7d4f', durationMs: 550 },
+    activeDurationMs: 900,
+  },
+  {
+    id: 'tick-down',
+    name: 'Price ticked down',
+    kind: 'style' as const,
+    enabled: true,
+    priority: 41,
+    condition: `[${colId}.old] != null && [${colId}] < [${colId}.old]`,
+    scope: { kind: 'cell' as const, columnIds: ['bidPrice', 'midPrice', 'askPrice', 'lastPrice'] },
+    style: themed(C.lossFg),
+    flash: { enabled: true, target: 'cell' as const, mode: 'fade' as const, color: '#b3261e', durationMs: 550 },
+    activeDurationMs: 900,
+  },
+]));
+
+/** Pick one seeded rule by id — index-based picks silently pointed at the
+ *  wrong rule the moment the set was reordered. */
+function byId(id: string): StyleRule {
+  const hit = CONDITIONAL_RULES.find((r) => r.id === id);
+  if (!hit) throw new Error(`no conditional rule '${id}'`);
+  return hit;
+}
 
 // ── tick arrows ──────────────────────────────────────────────────────
 
@@ -480,7 +525,7 @@ export const SEEDS: Record<string, LabSeed> = {
 
   expressions: {
     calculatedColumns: CALC_COLUMNS.slice(0, 3),
-    rules: [CONDITIONAL_RULES[0]!, CONDITIONAL_RULES[6]!],
+    rules: [byId('rating-disagreement'), byId('over-limit')],
   },
 
   filters: {
@@ -489,7 +534,7 @@ export const SEEDS: Record<string, LabSeed> = {
       { name: 'USD only', filterModel: { currency: { filterType: 'set', values: ['USD'] } } },
     ],
     savedFilters: SAVED_FILTERS,
-    rules: [CONDITIONAL_RULES[4]!],
+    rules: [byId('thin-pickup')],
   },
 
   live: {
@@ -510,7 +555,7 @@ export const SEEDS: Record<string, LabSeed> = {
       { name: 'Trader book', rowGroupColumns: ['trader', 'book'] },
     ],
     calculatedColumns: [CALC_COLUMNS[2]!],
-    rules: [CONDITIONAL_RULES[0]!],
+    rules: [byId('away-from-cost')],
   },
 
   pivot: {},
@@ -521,7 +566,7 @@ export const SEEDS: Record<string, LabSeed> = {
       { name: 'Widest spreads', sortModel: [{ colId: 'oas', direction: 'desc' }] },
     ],
     alertRules: ALERT_RULES,
-    rules: [CONDITIONAL_RULES[0]!, CONDITIONAL_RULES[4]!],
+    rules: [byId('crossed-market'), byId('rating-disagreement')],
     sortModel: [{ colId: 'dailyPnL', direction: 'asc' }],
   },
 
@@ -548,7 +593,7 @@ export const SEEDS: Record<string, LabSeed> = {
 
   export: {
     calculatedColumns: CALC_COLUMNS.slice(0, 3),
-    rules: [CONDITIONAL_RULES[0]!],
+    rules: [byId('away-from-cost')],
   },
 };
 
