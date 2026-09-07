@@ -220,27 +220,50 @@ export function bookIdentityFor(config: StompPerspectiveProviderConfig): string 
  * Same catalog `providerId` (+ schema) → one Table; each caller still
  * registers its own View via {@link StompPerspectiveProvider}.
  */
+/**
+ * The page-local book cache key.
+ *
+ * Two grids share a book when they read the same data. That is more than the
+ * `providerId`: a catalog entry resolves — through AppData tokens like
+ * `{{session.trader}}` and per-app overlays — to a broker and a topic, and two
+ * grids naming one provider can land on different ones. Keying on the provider
+ * id alone made the second grid silently adopt the FIRST one's book, showing
+ * another topic's rows under its own name.
+ *
+ * So the key folds what determines WHICH ROWS arrive: provider id, broker,
+ * resolved topic (via `bookIdentityFor`), and the schema.
+ *
+ * It deliberately does NOT fold delivery tuning — `rate`, `batchSize`,
+ * `updatesPerTick`, `snapshotRows`. Those change how the same rows are paced,
+ * not which rows they are, and splitting a book because one grid asked for a
+ * slower tick would break the sharing this exists to provide. Where two callers
+ * disagree on those the first still wins, and the worker feed reports it
+ * through `WorkerFeedState.configMismatch`.
+ */
+export function bookCacheKey(config: StompPerspectiveProviderConfig): string {
+  const schema = normalizeSchema(config.schema, config.keyColumn);
+  if (config.providerId) {
+    return `dp:${bookIdentityFor(config) ?? config.providerId}|${schemaKey(schema)}`;
+  }
+  return [
+    config.feed ?? 'seed',
+    config.wsUrl ?? 'ws://localhost:8081',
+    config.clientId ?? '',
+    config.snapshotRows ?? 10_000,
+    config.rate ?? 40,
+    config.batchSize ?? 50,
+    config.updatesPerTick ?? 5,
+    config.snapshotTopic ?? '',
+    config.triggerTopic ?? '',
+    config.snapshotEndToken ?? '',
+    Array.isArray(config.keyColumn) ? config.keyColumn.join('\u001F') : (config.keyColumn ?? ''),
+    schemaKey(schema),
+  ].join('|');
+}
+
 function entryFor(config: StompPerspectiveProviderConfig): { key: string; entry: BookEntry } {
   const schema = normalizeSchema(config.schema, config.keyColumn);
-  // Prefer DataProvider identity so multiple grids share one table/views.
-  // Schema is part of the key so column-definition edits get a fresh table
-  // once every grid has released the previous book.
-  const key = config.providerId
-    ? `dp:${config.providerId}|${schemaKey(schema)}`
-    : [
-      config.feed ?? 'seed',
-      config.wsUrl ?? 'ws://localhost:8081',
-      config.clientId ?? '',
-      config.snapshotRows ?? 10_000,
-      config.rate ?? 40,
-      config.batchSize ?? 50,
-      config.updatesPerTick ?? 5,
-      config.snapshotTopic ?? '',
-      config.triggerTopic ?? '',
-      config.snapshotEndToken ?? '',
-      Array.isArray(config.keyColumn) ? config.keyColumn.join('\u001F') : (config.keyColumn ?? ''),
-      schemaKey(schema),
-    ].join('|');
+  const key = bookCacheKey(config);
   let entry = bookEntries.get(key);
   if (!entry) {
     const created: BookEntry = {
