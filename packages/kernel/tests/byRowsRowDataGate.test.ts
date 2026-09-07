@@ -9,11 +9,19 @@
  *   1. column style callbacks (`cellClassFn` / `cellClassRules` /
  *      `cellStyleFn`),
  *   2. a FUNCTION-form `cellIcon` (string/IconRef forms never read data),
- *   3. the rule-engine ruleRow fallback when the `getRowDataById` mirror
- *      misses (the mirror is preferred; the snapshot is only the fallback).
+ *   3. the rule-engine ruleRow — but ONLY when a rule engine is registered,
+ *      since `applyCellProps` reads `ruleRow` exclusively under
+ *      `getRuleEngine() !== null`. A mirror hit does not license the skip:
+ *      SSRM column-window mirrors are thin, so `mergeRuleRow` still needs
+ *      the snapshot to fill the holes (see `e2c97901`).
  */
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { paintCellsByRows } from '../src/renderer/painters/byRows';
+import {
+  registerRuleEngine,
+  _resetRuleEngine_forTests,
+  type RuleEngineShape,
+} from '../src/core/ruleEngineSlot';
 import { CellRendererRegistry, textCell, headerCell } from '../src/renderer/cellRenderers/registry';
 import type { ViewportState } from '../src/core/viewport';
 import type { Subgrid } from '../src/core/subgrid';
@@ -109,7 +117,23 @@ function paint(def: ResolvedColDef, opts: {
   return snapshot;
 }
 
+/** Records every ruleRow the engine is handed, so the mirror/snapshot merge
+ *  can be asserted rather than inferred from a call count. */
+function recordingEngine(seen: unknown[]): RuleEngineShape {
+  return {
+    evaluateCell: (ctx) => {
+      seen.push(ctx.row);
+      return { matched: [], style: null, indicator: null, formatProgram: null };
+    },
+    resolveRuleRef: () => null,
+  };
+}
+
 describe('byRows — rowData snapshot gate', () => {
+  beforeEach(() => {
+    _resetRuleEngine_forTests();
+  });
+
   it('SKIPS the snapshot when no visible column can read it', () => {
     const snapshot = paint(baseDef());
     expect(snapshot).not.toHaveBeenCalled();
@@ -144,16 +168,33 @@ describe('byRows — rowData snapshot gate', () => {
     expect(seen).toEqual([{ a: 'row-0' }, { a: 'row-1' }]);
   });
 
-  it('skips the snapshot when the rule-fold mirror has the row', () => {
-    const mirror = { a: 'from-mirror', hidden: 1 };
+  it('SKIPS the snapshot for a row with identity when no rule engine is registered', () => {
+    // Row identity alone is not a consumer: `ruleRow` is read only under
+    // `getRuleEngine() !== null`. A plain grid that supplies `getRowId` must
+    // not pay the second `cellAt` pass for a value nothing reads.
     const snapshot = paint(baseDef(), {
       stringRowIdAt: (ri) => `id-${ri}`,
-      getRowDataById: () => mirror,
+      getRowDataById: () => ({ a: 'from-mirror', hidden: 1 }),
     });
     expect(snapshot).not.toHaveBeenCalled();
   });
 
-  it('falls back to the snapshot when the mirror misses a row with identity', () => {
+  it('computes the snapshot for a mirror HIT once a rule engine is registered', () => {
+    // The mirror hitting does not license the skip — an SSRM column-window
+    // mirror is thin, and `mergeRuleRow` fills its holes from the snapshot.
+    const seen: unknown[] = [];
+    registerRuleEngine(recordingEngine(seen));
+    const snapshot = paint(baseDef(), {
+      stringRowIdAt: (ri) => `id-${ri}`,
+      getRowDataById: () => ({ hidden: 1 }), // thin: no `a`
+    });
+    expect(snapshot).toHaveBeenCalledTimes(2);
+    // Mirror field kept, snapshot fills the hole the thin mirror left.
+    expect(seen[0]).toEqual({ hidden: 1, a: 'row-0' });
+  });
+
+  it('computes the snapshot when the mirror misses a row with identity and rules are live', () => {
+    registerRuleEngine(recordingEngine([]));
     const snapshot = paint(baseDef(), {
       stringRowIdAt: (ri) => `id-${ri}`,
       getRowDataById: () => undefined,

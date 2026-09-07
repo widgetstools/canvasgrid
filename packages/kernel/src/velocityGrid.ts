@@ -5572,10 +5572,14 @@ export class VelocityGrid<TRow = any> {
       this.rebuildSelectionFromPersistentIds();
       this.events.emit({ type: 'sortChanged', sortModel: s });
       this.cgridCanvas.requestRepaint();
-      // Tag as rowDataChanged so ViewportManager / retained-paint treat
-      // the post-sort fetch as a data identity change (same as filter /
-      // setRowData), not a no-op scroll coalesce.
-      this.requestViewport('rowDataChanged');
+      // No agg source: a sort permutes rows without changing any aggregate,
+      // so `aggregationChanged` would be a false positive (and mislabelled —
+      // the row data did not change). Immediate dispatch does NOT depend on
+      // passing one: `ViewportManager.request` defaults to `kind: 'data'` and
+      // flushes right there, and has since edbee622. The `'rowDataChanged'`
+      // tag that used to sit here claimed to buy identity semantics it never
+      // bought, and fired a spurious event on every sort.
+      this.requestViewport();
     }).catch((err) => { if (!this.destroyed) console.error('[velocity-grid]', err); });
   }
 
