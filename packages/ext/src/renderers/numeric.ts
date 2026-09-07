@@ -15,7 +15,7 @@
 // add to the font string, and adding anything breaks it.
 
 import type { CellPaintConfig, CellPainter } from '@wellsfargo-starui/velocity-grid';
-import { fragText, withAlpha } from './paintUtils';
+import { fragText, paintValueText, withAlpha } from './paintUtils';
 import { SEMANTIC_COLORS } from './palette';
 import type {
   AbbreviatedNumberCellParams,
@@ -80,7 +80,15 @@ function paintFlashOverlay(gc: Gc, p: CellPaintConfig, fallbackColor?: string): 
   gc.cache.restore();
 }
 
-function paintRightText(
+/**
+ * Paint the cell's value.
+ *
+ * Right-aligned unless the column says otherwise: figures line up on the
+ * decimal by default, but `halign` is column configuration and a renderer that
+ * hard-codes it makes the toolbar's align buttons dead on every numeric
+ * column — the same silent drop that hid underline and strike-through here.
+ */
+function paintValue(
   gc: Gc,
   p: CellPaintConfig,
   text: string,
@@ -90,10 +98,14 @@ function paintRightText(
   if (!text) return;
   gc.cache.fillStyle = color;
   gc.cache.font = p.font;
-  gc.cache.textAlign = 'right';
   gc.cache.textBaseline = 'alphabetic';
-  const x = xRight ?? p.bounds.x + p.bounds.w - padRight(p);
-  gc.fillText(text, x, textY(gc, p));
+  const align: CanvasTextAlign = p.halign === 'left' || p.halign === 'center' ? p.halign : 'right';
+  const x = xRight ?? (
+    align === 'left' ? p.bounds.x + padLeft(p)
+      : align === 'center' ? p.bounds.x + p.bounds.w / 2
+        : p.bounds.x + p.bounds.w - padRight(p)
+  );
+  paintValueText(gc, p, text, x, textY(gc, p), align);
 }
 
 function signedNumberText(n: number, decimals?: number): string {
@@ -214,7 +226,7 @@ function paintNumberCellCore(gc: Gc, p: CellPaintConfig, params: NumberCellParam
     });
     x -= gc.measureText(params.currencySuffix).width + 2;
   }
-  paintRightText(gc, p, text, fg, x);
+  paintValue(gc, p, text, fg, x);
   if (params.currencyPrefix) {
     const numW = gc.measureText(text).width;
     fragText(gc, params.currencyPrefix, x - numW - 2, textY(gc, p), {
@@ -291,8 +303,7 @@ export const priceDirectionCell: CellPainter = {
     const text = primaryNumericText(p);
     gc.cache.fillStyle = fg;
     gc.cache.font = p.font;
-    gc.cache.textAlign = 'left';
-    gc.fillText(text, textX, textY(gc, p));
+    paintValueText(gc, p, text, textX, textY(gc, p), 'left');
   },
 };
 
@@ -303,7 +314,7 @@ export const pnlCell: CellPainter = {
     const colors = colorsFromParams(params.colors, p);
     const n = toNumber(p.value);
     if (n === null) {
-      paintRightText(gc, p, p.valueFormatted || '', p.fg);
+      paintValue(gc, p, p.valueFormatted || '', p.fg);
       return;
     }
     const symbol = params.currencySymbol ?? '$';
@@ -311,7 +322,7 @@ export const pnlCell: CellPainter = {
     const signed = n > 0 ? `+${body}` : n < 0 ? `-${body}` : body;
     const fg = semanticFg(n, colors);
     const right = p.bounds.x + p.bounds.w - padRight(p);
-    paintRightText(gc, p, signed, fg, right);
+    paintValue(gc, p, signed, fg, right);
     const numW = gc.measureText(signed).width;
     fragText(gc, symbol, right - numW - 2, textY(gc, p), {
       font: p.font,
@@ -330,7 +341,7 @@ export const deltaCell: CellPainter = {
     const abs = toNumber(row?.[params.absoluteField]);
     const pct = toNumber(row?.[params.percentField]);
     if (abs === null && pct === null) {
-      paintRightText(gc, p, '— (—)', p.fg);
+      paintValue(gc, p, '— (—)', p.fg);
       return;
     }
     const absText = abs === null ? '—' : signedNumberText(abs, 2);
@@ -345,9 +356,11 @@ export const deltaCell: CellPainter = {
     gc.cache.textBaseline = 'alphabetic';
     const pctW = gc.measureText(pctPart).width;
     gc.cache.fillStyle = withAlpha(fg, params.percentOpacity ?? 0.85);
+    gc.cache.textAlign = 'right';
     gc.fillText(pctPart, right, y);
     gc.cache.fillStyle = fg;
-    gc.fillText(absText, right - pctW, y);
+    // Decoration rides the VALUE, not the parenthesised percentage beside it.
+    paintValueText(gc, p, absText, right - pctW, y, 'right');
   },
 };
 
@@ -358,7 +371,7 @@ export const bpsCell: CellPainter = {
     const colors = colorsFromParams(params.colors, p);
     const n = toNumber(p.value);
     if (n === null) {
-      paintRightText(gc, p, '', p.fg);
+      paintValue(gc, p, '', p.fg);
       return;
     }
     let ref = 0;
@@ -375,7 +388,7 @@ export const bpsCell: CellPainter = {
       color: withAlpha(fg, 0.7),
       align: 'right',
     });
-    paintRightText(gc, p, body, fg, right - gc.measureText(suffix).width);
+    paintValue(gc, p, body, fg, right - gc.measureText(suffix).width);
   },
 };
 
@@ -386,12 +399,12 @@ export const pctChangeCell: CellPainter = {
     const colors = colorsFromParams(params.colors, p);
     const n = toNumber(p.value);
     if (n === null) {
-      paintRightText(gc, p, p.valueFormatted || '', p.fg);
+      paintValue(gc, p, p.valueFormatted || '', p.fg);
       return;
     }
     const prec = params.precision ?? 2;
     const text = `${signedNumberText(n, prec)}%`;
-    paintRightText(gc, p, text, semanticFg(n, colors));
+    paintValue(gc, p, text, semanticFg(n, colors));
   },
 };
 
@@ -400,7 +413,7 @@ export const fractionalPriceCell: CellPainter = {
   paint(gc, p) {
     const params = (p.params ?? {}) as FractionalPriceCellParams;
     const text = p.valueFormatted || formatFractionalPrice(p.value, params);
-    paintRightText(gc, p, text, p.fg);
+    paintValue(gc, p, text, p.fg);
   },
 };
 
@@ -410,10 +423,10 @@ export const abbreviatedNumberCell: CellPainter = {
     const params = (p.params ?? {}) as AbbreviatedNumberCellParams;
     const n = toNumber(p.value);
     if (n === null) {
-      paintRightText(gc, p, p.valueFormatted || '', p.fg);
+      paintValue(gc, p, p.valueFormatted || '', p.fg);
       return;
     }
     const text = formatAbbreviated(n, params.precision ?? 1, params.currencyPrefix ?? '');
-    paintRightText(gc, p, text, p.fg);
+    paintValue(gc, p, text, p.fg);
   },
 };

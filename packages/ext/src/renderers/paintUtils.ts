@@ -7,7 +7,10 @@
 // kernel's public export surface (only `CellPainter`/`CellPaintConfig` are).
 // Type-only; erased at compile time (peer dep, matches format/rules precedent).
 
-import type { CellPainter } from '@wellsfargo-starui/velocity-grid';
+import type { CellPainter, CellPaintConfig } from '@wellsfargo-starui/velocity-grid';
+import {
+  applyLetterSpacing, paintCellBorders, paintCellDecorators, paintTextDecoration,
+} from '@wellsfargo-starui/velocity-grid';
 
 /** The canvas-context type every kernel `CellPainter.paint` receives. */
 export type Gc = Parameters<CellPainter['paint']>[0];
@@ -241,4 +244,70 @@ export function fragText(
   }
 
   gc.fillText(display, x, y);
+}
+
+// ─── Cell-config passes every renderer owes the caller ───────────────────────
+//
+// A renderer decides how a value LOOKS; it does not get to decide which parts
+// of the column's configuration apply. Every renderer in this catalog used to
+// drop several: underline and strike-through, letter spacing, per-cell borders
+// and decorator overlays were all painted by the kernel's built-in cells and by
+// none of these. The symptom was narrow and baffling — formatting-toolbar
+// buttons that worked on text columns and did nothing on numeric ones, because
+// `number` is the one renderer here that REPLACES a kernel default and so is
+// used by every numeric column automatically.
+//
+// The passes below are shared so that stays fixed. `paintCellChrome` runs from
+// the bridge for every renderer; `paintValueText` is for the renderers whose
+// output is a single value string, where the decoration line needs the text's
+// own extents.
+
+/** Reused so the per-paint no-allocation discipline (§2.2) holds. Only the
+ *  five fields `paintTextDecoration` reads are ever set. */
+const decoScratch = {
+  textDecoration: undefined as CellPaintConfig['textDecoration'],
+  valueFormatted: '',
+  halign: 'left' as CellPaintConfig['halign'],
+  fg: '',
+  font: '',
+} as unknown as CellPaintConfig;
+
+/**
+ * Draw a cell's primary value, then the decoration the column asked for.
+ *
+ * `align` is passed rather than read from `p` because a renderer may lay text
+ * out somewhere the column's own alignment does not describe; the decoration
+ * has to follow the text that was actually drawn.
+ */
+export function paintValueText(
+  gc: Gc,
+  p: CellPaintConfig,
+  text: string,
+  x: number,
+  y: number,
+  align: CanvasTextAlign,
+): void {
+  gc.cache.textAlign = align;
+  gc.fillText(text, x, y);
+  if (!p.textDecoration || p.textDecoration === 'none' || !text) return;
+  decoScratch.textDecoration = p.textDecoration;
+  decoScratch.valueFormatted = text;
+  decoScratch.halign = align === 'right' ? 'right' : align === 'center' ? 'center' : 'left';
+  decoScratch.fg = gc.cache.fillStyle as string;
+  decoScratch.font = gc.cache.font as string;
+  paintTextDecoration(gc as never, decoScratch, x, y);
+}
+
+/** Letter spacing, applied before a renderer draws anything. */
+export function applyCellTextSpacing(gc: Gc, p: CellPaintConfig): void {
+  applyLetterSpacing(gc as never, p);
+}
+
+/** Per-cell borders and decorator overlays, applied after a renderer draws.
+ *  Both are column configuration, not renderer business. */
+export function paintCellChrome(gc: Gc, p: CellPaintConfig): void {
+  if (p.border) paintCellBorders(gc as never, p.bounds, p.border);
+  if (p.decorators && p.decorators.length > 0) {
+    paintCellDecorators(gc as never, p.bounds, p.decorators);
+  }
 }

@@ -314,6 +314,14 @@ export type { SsrmPivotResult } from './worker/protocol';
 export { buildSsrmColumnKeys, mergeSsrmRowFields } from './core/ssrmColumnKeys';
 export type { SsrmColumnKeysInput } from './core/ssrmColumnKeys';
 export type { CellPainter, CellPaintConfig, RegisterCellRendererOpts } from './renderer/cellRenderers/registry';
+// Shared with custom renderers (the `@wellsfargo-starui/velocity-grid-ext`
+// catalog among them) so underline / strike-through and letter spacing are
+// painted by ONE implementation. A renderer that reimplements them drifts from
+// the built-ins; a renderer that skips them drops user formatting silently,
+// which is what every renderer in the ext catalog was doing.
+export { paintTextDecoration, applyLetterSpacing } from './renderer/cellRenderers/registry';
+export { paintCellBorders } from './renderer/painters/cellBordersPainter';
+export { paintCellDecorators } from './renderer/painters/cellDecoratorsPainter';
 // Workstream A (2026-07-06 CSS styling model) — renderer-palette bundle
 // type, so @wellsfargo-starui/velocity-grid-ext/renderers (and follow-on structured-map work) can name
 // the shape of `CellPaintConfig.palette` directly.

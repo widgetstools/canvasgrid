@@ -370,7 +370,7 @@ export const textCell: CellPainter = {
 /** Cycle 27 / Task 1 — set the canvas `letterSpacing` from the cell
  *  config. Always writes (defaults to `'0px'`) so the painter never
  *  inherits stale state from a previous cell. */
-function applyLetterSpacing(gc: CachedContext2D, p: CellPaintConfig): void {
+export function applyLetterSpacing(gc: CachedContext2D, p: CellPaintConfig): void {
   const ls = p.letterSpacing ?? 0;
   // The DOM property accepts a CSS length string.
   (gc.cache as any).letterSpacing = `${ls}px`;
@@ -379,7 +379,7 @@ function applyLetterSpacing(gc: CachedContext2D, p: CellPaintConfig): void {
 /** Cycle 21e / Task 11 — draw underline / line-through for the default
  *  text path. 1px line in the current fg, sized by measureText. Called
  *  after fillText with the same x/alignment the text used. */
-function paintTextDecoration(
+export function paintTextDecoration(
   gc: CachedContext2D,
   p: CellPaintConfig,
   textX: number,

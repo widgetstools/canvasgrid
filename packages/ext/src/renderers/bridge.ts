@@ -38,6 +38,7 @@ import {
 } from './actions';
 import type { IconActionClusterParams, RowMenuCellParams } from './types';
 import { ColumnStats, type ColumnStatSnapshot } from './columnStats';
+import { applyCellTextSpacing, paintCellChrome } from './paintUtils';
 import { TickHistory } from './tickHistory';
 import {
   createColDefBuilders,
@@ -261,8 +262,32 @@ export function wireRenderersIntoKernel(
   // The kernel invokes `cellRendererSelector` with `data: null`, so selectors
   // can't read per-row values either — history injection must happen HERE at
   // paint time, where `p.rowId` is threaded by the composite channel.
+  /**
+   * Every painter in the catalog runs inside this wrapper, which is where the
+   * column-configuration passes belong — a renderer chooses how a value looks,
+   * not which parts of the column's configuration apply. Letter spacing has to
+   * be set before the renderer draws; borders and decorator overlays after it.
+   * Doing both here fixes all 51 renderers at once and keeps a new one from
+   * having to remember.
+   */
   const withBridgeThreading = (name: RendererName, painter: CellPainter): CellPainter => ({
     paint(gc, p) {
+      applyCellTextSpacing(gc, p);
+      try {
+        paintThreaded(name, painter, gc, p);
+      } finally {
+        paintCellChrome(gc, p);
+      }
+    },
+  });
+
+  const paintThreaded = (
+    name: RendererName,
+    painter: CellPainter,
+    gc: Parameters<CellPainter['paint']>[0],
+    p: Parameters<CellPainter['paint']>[1],
+  ): void => {
+    {
       const mutable = p as {
         rowData?: Record<string, unknown>;
         params?: unknown;
@@ -295,8 +320,8 @@ export function wireRenderersIntoKernel(
         mutable.rowData = prevRowData;
         mutable.params = prevParams;
       }
-    },
-  });
+    }
+  };
 
   for (const name of RENDERER_NAMES) {
     g.registerCellRenderer(name, withBridgeThreading(name, PAINTERS[name]));
