@@ -948,14 +948,25 @@ function wireFormattingToolbar(ctx: VelocityGridExtContext, r: FormattingRefs): 
       return focus ? [focus.colId] : [];
     } catch { return []; }
   };
-  /** Every leaf column id from the live columnDefs tree. */
+  /**
+   * Every leaf column id from the live columnDefs tree.
+   *
+   * A column's identity is `colId ?? field` — the kernel's own rule, and what
+   * `editColumn` and `upsertColumnDefs` key on. Reading `colId` alone returned
+   * an EMPTY list for any app that identifies its columns by `field`, which is
+   * most of them, and the failure was silent in both directions: with scope set
+   * to "all columns" every formatting action targeted nothing, and the AB
+   * header-case toggle — which ignores the selection and always works over
+   * `allCols()` — could neither read its own state nor apply.
+   */
   const allCols = (): string[] => {
     const out: string[] = [];
     const walk = (defs: readonly unknown[]): void => {
       for (const d of defs) {
-        const def = d as { colId?: string; children?: unknown[] };
-        if (def.children) walk(def.children);
-        else if (def.colId) out.push(def.colId);
+        const def = d as { colId?: string; field?: string; children?: unknown[] };
+        if (def.children) { walk(def.children); continue; }
+        const id = def.colId ?? def.field;
+        if (id) out.push(id);
       }
     };
     try { walk((grid.getGridOption('columnDefs') as unknown[]) ?? []); } catch { /* pre-init */ }
@@ -1023,8 +1034,12 @@ function wireFormattingToolbar(ctx: VelocityGridExtContext, r: FormattingRefs): 
     if (!colId) return 'number';
     const walk = (defs: readonly unknown[]): string | undefined => {
       for (const d of defs) {
-        const def = d as { colId?: string; cellDataType?: string; children?: unknown[] };
-        if (def.colId === colId) return def.cellDataType;
+        const def = d as { colId?: string; field?: string; cellDataType?: string; children?: unknown[] };
+        // Same identity rule as `allCols` and the kernel: `colId ?? field`.
+        // Matching on `colId` alone never hit a field-declared column, so every
+        // such column reported the 'number' fallback and the format picker
+        // offered number formats for text and date columns.
+        if ((def.colId ?? def.field) === colId) return def.cellDataType;
         if (def.children) {
           const hit = walk(def.children);
           if (hit !== undefined) return hit;
