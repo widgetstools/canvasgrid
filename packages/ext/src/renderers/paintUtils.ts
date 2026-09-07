@@ -278,6 +278,13 @@ const decoScratch = {
  * `align` is passed rather than read from `p` because a renderer may lay text
  * out somewhere the column's own alignment does not describe; the decoration
  * has to follow the text that was actually drawn.
+ *
+ * WHICH draws go through here: the one that renders the cell's VALUE. Not axis
+ * labels on a chart, not the min/max endpoints of a scale, not per-segment
+ * labels inside a cluster, not the letter on an action button — underlining a
+ * chart's axis because the column asked for underlined text would be wrong,
+ * and a multi-fragment composite has no single value for a line to sit under.
+ * `fragText` stays the plain draw for all of those.
  */
 export function paintValueText(
   gc: Gc,

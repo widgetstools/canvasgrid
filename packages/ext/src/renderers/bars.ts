@@ -1,7 +1,7 @@
 // @wellsfargo-starui/velocity-grid-ext/renderers — category 5: Bars / gauges. Catalog §3.5.
 
 import type { CellPaintConfig, CellPainter } from '@wellsfargo-starui/velocity-grid';
-import { dot, fragText, labInterpolate, miniBar, withAlpha } from './paintUtils';
+import { dot, fragText, labInterpolate, miniBar, paintValueText, withAlpha } from './paintUtils';
 import { SEMANTIC_COLORS, STATUS_PILL_MAP } from './palette';
 import type {
   BidirectionalBarCellParams,
@@ -144,11 +144,8 @@ export const progressBarCell: CellPainter = {
       // the label zone, so switch to a contrast color drawn ON the fill.
       const label = `${Math.round(frac * 100)}%`;
       const onFill = frac > LABEL_ON_FILL_THRESHOLD;
-      fragText(gc, label, rect.x + rect.w, textY(gc, p), {
-        font: p.font,
-        color: onFill ? reverseOutFg(p) : p.fg,
-        align: 'right',
-      });
+      gc.cache.font = p.font; gc.cache.fillStyle = onFill ? reverseOutFg(p) : p.fg;
+      paintValueText(gc, p, label, rect.x + rect.w, textY(gc, p), 'right');
     }
   },
 };
@@ -197,11 +194,8 @@ export const bidirectionalBarCell: CellPainter = {
       miniBar(gc, mid, rect.y, halfW, rect.h, 1, colors.positive);
     }
     if (p.valueFormatted) {
-      fragText(gc, p.valueFormatted, p.bounds.x + p.bounds.w - padRight(p), textY(gc, p), {
-        font: p.font,
-        color: p.fg,
-        align: 'right',
-      });
+      gc.cache.font = p.font; gc.cache.fillStyle = p.fg;
+      paintValueText(gc, p, p.valueFormatted, p.bounds.x + p.bounds.w - padRight(p), textY(gc, p), 'right');
     }
   },
 };

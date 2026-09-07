@@ -1,7 +1,7 @@
 // @wellsfargo-starui/velocity-grid-ext/renderers — category 3: Indicators (semantic glyphs). Catalog §3.3.
 
 import type { CellPaintConfig, CellPainter } from '@wellsfargo-starui/velocity-grid';
-import { dot, fragText } from './paintUtils';
+import { dot, fragText, paintValueText } from './paintUtils';
 import { SEMANTIC_COLORS } from './palette';
 import type {
   DirectionArrowParams,
@@ -285,7 +285,8 @@ export const staleFlag: CellPainter = {
 
     let x = p.bounds.x + padLeft(p);
     if (text) {
-      fragText(gc, text, x, textY(gc, p), { font: p.font, color: p.fg, align: 'left' });
+      gc.cache.font = p.font; gc.cache.fillStyle = p.fg;
+      paintValueText(gc, p, text, x, textY(gc, p), 'left');
       x += gc.measureText(text).width + 6;
     }
 

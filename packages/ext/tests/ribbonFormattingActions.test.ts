@@ -87,11 +87,11 @@ function harness(focus: { rowId: string; colId: string } | null = null) {
 }
 
 const button = (host: HTMLElement, title: string): HTMLButtonElement | null =>
-  [...host.querySelectorAll('button')].find((b) => b.title === title) as HTMLButtonElement ?? null;
+  Array.from(host.querySelectorAll('button')).find((b) => b.title === title) as HTMLButtonElement ?? null;
 
 /** Flip the scope pill to "all columns". */
 function selectAllScope(host: HTMLElement): void {
-  const pill = [...host.querySelectorAll('button')]
+  const pill = Array.from(host.querySelectorAll('button'))
     .find((b) => /scope:/i.test(b.title ?? '')) as HTMLButtonElement | undefined;
   expect(pill, 'scope pill should exist').toBeTruthy();
   pill!.click();
@@ -174,22 +174,22 @@ describe('the AB header-case toggle', () => {
     expect(ab).toBeTruthy();
     expect(ab!.disabled).toBe(true);   // cells target — by design
 
-    const targetPill = [...host.querySelectorAll('button')]
+    const targetPill = Array.from(host.querySelectorAll('button'))
       .find((b) => /styling target/i.test(b.title ?? '')) as HTMLButtonElement;
     targetPill.click();
 
-    const abNow = [...host.querySelectorAll('button')]
+    const abNow = Array.from(host.querySelectorAll('button'))
       .find((b) => b.textContent === 'AB') as HTMLButtonElement;
     expect(abNow.disabled).toBe(false);
   });
 
   it('uppercases EVERY column header, selection or not', () => {
     const { host, edits } = harness();
-    const targetPill = [...host.querySelectorAll('button')]
+    const targetPill = Array.from(host.querySelectorAll('button'))
       .find((b) => /styling target/i.test(b.title ?? '')) as HTMLButtonElement;
     targetPill.click();
 
-    const ab = [...host.querySelectorAll('button')]
+    const ab = Array.from(host.querySelectorAll('button'))
       .find((b) => b.textContent === 'AB') as HTMLButtonElement;
     ab.click();
 
@@ -202,10 +202,10 @@ describe('the AB header-case toggle', () => {
 
   it('toggles back off on a second click', () => {
     const { host, edits } = harness();
-    const targetPill = [...host.querySelectorAll('button')]
+    const targetPill = Array.from(host.querySelectorAll('button'))
       .find((b) => /styling target/i.test(b.title ?? '')) as HTMLButtonElement;
     targetPill.click();
-    const ab = [...host.querySelectorAll('button')]
+    const ab = Array.from(host.querySelectorAll('button'))
       .find((b) => b.textContent === 'AB') as HTMLButtonElement;
 
     ab.click();

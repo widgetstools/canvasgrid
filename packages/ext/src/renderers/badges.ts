@@ -1,7 +1,7 @@
 // @wellsfargo-starui/velocity-grid-ext/renderers — category 4: Badges / pills. Catalog §3.4.
 
 import type { CellPaintConfig, CellPainter } from '@wellsfargo-starui/velocity-grid';
-import { fragText, pill, withAlpha } from './paintUtils';
+import { fragText, paintValueText, pill, withAlpha } from './paintUtils';
 import {
   DEFAULT_VENUE_PALETTE,
   RATING_SCALE_BANDS,
@@ -110,7 +110,8 @@ function paintCapsPill(
     gc.stroke();
     gc.setLineDash([]);
   }
-  fragText(gc, label, x + padX, textY(gc, p), { font, color: fg, align: 'left' });
+  gc.cache.font = font; gc.cache.fillStyle = fg;
+  paintValueText(gc, p, label, x + padX, textY(gc, p), 'left');
   return x + w + 4;
 }
 
@@ -243,7 +244,8 @@ export const venueChip: CellPainter = {
     const chipRadius = p.palette?.chipRadius ?? 3;
     const y = p.bounds.y + (p.bounds.h - chipH) / 2;
     pill(gc, x, y, w, chipH, chipRadius, withAlpha(color, 0.18));
-    fragText(gc, mic, x + w / 2, textY(gc, p), { font, color, align: 'center' });
+    gc.cache.font = font; gc.cache.fillStyle = color;
+    paintValueText(gc, p, mic, x + w / 2, textY(gc, p), 'center');
   },
 };
 

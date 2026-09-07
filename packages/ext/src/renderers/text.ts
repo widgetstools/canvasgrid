@@ -1,7 +1,7 @@
 // @wellsfargo-starui/velocity-grid-ext/renderers — category 2: Text / identity. Catalog §3.2.
 
 import type { CellPaintConfig, CellPainter } from '@wellsfargo-starui/velocity-grid';
-import { withAlpha } from './paintUtils';
+import { paintValueText, withAlpha } from './paintUtils';
 import { SEMANTIC_COLORS } from './palette';
 import type {
   AgeCellParams,
@@ -90,7 +90,7 @@ export const tickerCell: CellPainter = {
     gc.cache.textBaseline = 'alphabetic';
     gc.cache.font = `700 13px ${p.font.match(/(\d+px\s+.+)$/)?.[1] ?? 'sans-serif'}`;
     gc.cache.fillStyle = p.fg;
-    gc.fillText(primary, p.bounds.x + padLeft(p), textYTop(p));
+    paintValueText(gc, p, primary, p.bounds.x + padLeft(p), textYTop(p), 'left');
     if (secondary) {
       gc.cache.font = `400 11px ${p.font.match(/(\d+px\s+.+)$/)?.[1] ?? 'sans-serif'}`;
       gc.cache.fillStyle = withAlpha(p.fg, params.secondaryOpacity ?? 0.65);
@@ -110,7 +110,7 @@ export const currencyPairCell: CellPainter = {
     gc.cache.textAlign = 'left';
     gc.cache.font = `400 11px ${p.font.match(/(\d+px\s+.+)$/)?.[1] ?? 'sans-serif'}`;
     gc.cache.fillStyle = p.fg;
-    gc.fillText(pair, p.bounds.x + padLeft(p), textYMiddle(gc, p));
+    paintValueText(gc, p, pair, p.bounds.x + padLeft(p), textYMiddle(gc, p), 'left');
     gc.cache.font = monoFont(p.font);
     gc.cache.textAlign = 'right';
     gc.fillText(rate, p.bounds.x + p.bounds.w - padRight(p), textYMiddle(gc, p));
@@ -139,7 +139,7 @@ export const timestampCell: CellPainter = {
       gc.cache.fillStyle = withAlpha(p.fg, 0.65);
       const timeW = gc.measureText(text).width;
       const right = p.bounds.x + p.bounds.w - padRight(p);
-      gc.fillText(text, right, textYMiddle(gc, p));
+      paintValueText(gc, p, text, right, textYMiddle(gc, p), 'right');
       gc.fillText(datePrefix, right - timeW - 4, textYMiddle(gc, p));
       return;
     }
@@ -147,7 +147,7 @@ export const timestampCell: CellPainter = {
     gc.cache.fillStyle = p.fg;
     gc.cache.textAlign = 'right';
     gc.cache.textBaseline = 'alphabetic';
-    gc.fillText(text, p.bounds.x + p.bounds.w - padRight(p), textYMiddle(gc, p));
+    paintValueText(gc, p, text, p.bounds.x + p.bounds.w - padRight(p), textYMiddle(gc, p), 'right');
   },
 };
 
@@ -170,7 +170,7 @@ export const ageCell: CellPainter = {
     gc.cache.font = monoFont(p.font);
     gc.cache.textAlign = 'left';
     gc.cache.textBaseline = 'alphabetic';
-    gc.fillText(formatAge(elapsed), p.bounds.x + padLeft(p), textYMiddle(gc, p));
+    paintValueText(gc, p, formatAge(elapsed), p.bounds.x + padLeft(p), textYMiddle(gc, p), 'left');
   },
 };
 
@@ -185,6 +185,6 @@ export const relativeTimeCell: CellPainter = {
     gc.cache.font = p.font;
     gc.cache.textAlign = 'left';
     gc.cache.textBaseline = 'alphabetic';
-    gc.fillText(formatRelative(elapsed), p.bounds.x + padLeft(p), textYMiddle(gc, p));
+    paintValueText(gc, p, formatRelative(elapsed), p.bounds.x + padLeft(p), textYMiddle(gc, p), 'left');
   },
 };

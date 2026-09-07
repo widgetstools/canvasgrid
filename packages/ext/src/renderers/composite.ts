@@ -1,7 +1,7 @@
 // @wellsfargo-starui/velocity-grid-ext/renderers — category 7: Composite (multi-value). Catalog §3.7.
 
 import type { CellPaintConfig, CellPainter } from '@wellsfargo-starui/velocity-grid';
-import { fragText, miniBar, withAlpha } from './paintUtils';
+import { fragText, miniBar, paintValueText, withAlpha } from './paintUtils';
 import { DEFAULT_VENUE_PALETTE, SEMANTIC_COLORS } from './palette';
 import type {
   BenchmarkSpreadCellParams,
@@ -107,7 +107,7 @@ export const stackedValueCell: CellPainter = {
     gc.cache.textBaseline = 'alphabetic';
     gc.cache.font = p.font;
     gc.cache.fillStyle = p.fg;
-    if (primary) gc.fillText(primary, right, textYTop(p));
+    if (primary) paintValueText(gc, p, primary, right, textYTop(p), 'right');
     if (secondary) {
       gc.cache.fillStyle = withAlpha(p.fg, params.secondaryOpacity ?? 0.85);
       gc.fillText(secondary, right, textYBottom(p));

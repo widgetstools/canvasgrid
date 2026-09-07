@@ -25,6 +25,8 @@ import {
   numberCell, priceCell, priceDirectionCell, pnlCell, deltaCell,
   bpsCell, pctChangeCell, fractionalPriceCell, abbreviatedNumberCell,
 } from '../../src/renderers/numeric';
+import { tickerCell, timestampCell, ageCell, relativeTimeCell } from '../../src/renderers/text';
+import { statusPill, venueChip } from '../../src/renderers/badges';
 
 const VALUE_RENDERERS = [
   ['numberCell', numberCell],
@@ -36,6 +38,23 @@ const VALUE_RENDERERS = [
   ['pctChangeCell', pctChangeCell],
   ['fractionalPriceCell', fractionalPriceCell],
   ['abbreviatedNumberCell', abbreviatedNumberCell],
+] as const;
+
+/**
+ * Renderers outside the numeric family whose output is also a single value,
+ * each with the minimum input it needs to draw anything — several bail early
+ * on a value they cannot use, and a renderer that drew nothing would pass a
+ * "did it decorate?" test for the wrong reason.
+ */
+const NOW = 1_700_000_060_000;
+const THEN = 1_700_000_000_000;
+const OTHER_VALUE_RENDERERS = [
+  ['tickerCell', tickerCell, { value: 'AAPL', valueFormatted: 'AAPL' }],
+  ['timestampCell', timestampCell, { value: THEN, valueFormatted: '', params: { nowMs: NOW } }],
+  ['ageCell', ageCell, { value: THEN, params: { nowMs: NOW, sinceField: 'since' }, rowData: { since: THEN } }],
+  ['relativeTimeCell', relativeTimeCell, { value: THEN, params: { nowMs: NOW, sinceField: 'since' }, rowData: { since: THEN } }],
+  ['statusPill', statusPill, { value: 'FILLED', valueFormatted: 'FILLED', params: { status: 'FILLED' } }],
+  ['venueChip', venueChip, { value: 'XNYS', valueFormatted: 'XNYS', params: { mic: 'XNYS' } }],
 ] as const;
 
 function config(over: Partial<CellPaintConfig> = {}): CellPaintConfig {
@@ -107,4 +126,26 @@ describe('numeric renderers honour the column alignment', () => {
     // numeric column.
     expect(alignsUsed(gc)).toContain(halign);
   });
+});
+
+describe('decoration reaches the other value renderers too', () => {
+  // The first pass routed the numeric family only, because `number` is the one
+  // renderer that replaces a kernel default and so was the reported symptom.
+  // Every renderer whose output is a single value has the same obligation.
+  for (const [name, renderer, base] of OTHER_VALUE_RENDERERS) {
+    it(`${name} strokes a decoration when the column asks for one`, () => {
+      const plain = makeFakeGc();
+      renderer.paint(plain, config(base as never));
+      const before = strokeOps(plain);
+      // Guard against the false pass: a renderer that drew nothing at all
+      // would also "not stroke more".
+      expect({ name, drewSomething: plain.calls.length > 0 })
+        .toEqual({ name, drewSomething: true });
+
+      const decorated = makeFakeGc();
+      renderer.paint(decorated, config({ ...(base as object), textDecoration: 'underline' } as never));
+      expect({ name, drewMore: strokeOps(decorated) > before })
+        .toEqual({ name, drewMore: true });
+    });
+  }
 });
