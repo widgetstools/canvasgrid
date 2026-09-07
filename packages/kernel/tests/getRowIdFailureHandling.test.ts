@@ -60,6 +60,20 @@ function waitFor(pred: () => boolean, label: string, timeoutMs = 4000): Promise<
   });
 }
 
+/**
+ * Count only the getRowId warnings.
+ *
+ * These assertions used to read the spy's raw call count, which made them
+ * hostage to anything else that logged during the window — a late callback
+ * from a grid an earlier test built, a worker error arriving after its test
+ * finished. The suite failed intermittently and never in the same place twice.
+ * Filtering by message makes the assertion about this behaviour and nothing
+ * else.
+ */
+function getRowIdErrors(spy: { mock: { calls: unknown[][] } }): unknown[][] {
+  return spy.mock.calls.filter((c) => String(c[0] ?? '').includes('getRowId threw'));
+}
+
 interface Row {
   a: string;
   b: number;
@@ -124,7 +138,7 @@ describe('stampSyntheticRowIds — a throwing getRowId drops, never merges', () 
     expect(field(out[3]!)).toBeUndefined();
     expect(field(out[4]!)).toBe('x:4');
     // Two failing rows in the SAME call — still only one warning.
-    expect(errSpy).toHaveBeenCalledTimes(1);
+    expect(getRowIdErrors(errSpy)).toHaveLength(1);
 
     restoreAfter(grid);
     errSpy.mockRestore();
@@ -149,7 +163,7 @@ describe('stampSyntheticRowIds — a throwing getRowId drops, never merges', () 
     // (unlike the positional window above); RowStore.setAll/apply have no
     // per-row guard, so leaving them in would throw mid-batch instead.
     expect(out.map((r) => field(r))).toEqual(['x:0', 'x:2', 'x:4']);
-    expect(errSpy).toHaveBeenCalledTimes(1);
+    expect(getRowIdErrors(errSpy)).toHaveLength(1);
 
     restoreAfter(grid);
     errSpy.mockRestore();
@@ -168,7 +182,7 @@ describe('stampSyntheticRowIds — a throwing getRowId drops, never merges', () 
     g.stampSyntheticRowIds([{ a: 'x', b: 9 }], true);
     g.stampSyntheticRowIds([{ a: 'x', b: 9 }], false);
     g.stampSyntheticRowIds([{ a: 'x', b: 9 }], true);
-    expect(errSpy).toHaveBeenCalledTimes(1);
+    expect(getRowIdErrors(errSpy)).toHaveLength(1);
 
     restoreAfter(grid);
     errSpy.mockRestore();
@@ -280,7 +294,7 @@ describe('end-to-end: SSRM hydrateWindow — failing rows do not corrupt sibling
     expect(r8.rowId).toBe('desk2:8');
 
     // Two failing rows in one window — still just one console.error.
-    expect(errSpy).toHaveBeenCalledTimes(1);
+    expect(getRowIdErrors(errSpy)).toHaveLength(1);
 
     grid.destroy();
     el.remove();
@@ -349,7 +363,7 @@ describe('end-to-end: clientSide applyTransaction — a failing row does not abo
 
     await waitFor(() => grid.getDisplayedRowCount() === 6, '2 of 3 transaction adds land');
 
-    expect(errSpy).toHaveBeenCalledTimes(1);
+    expect(getRowIdErrors(errSpy)).toHaveLength(1);
 
     grid.destroy();
     el.remove();

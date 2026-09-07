@@ -593,14 +593,17 @@ describe('VelocityGrid + paint-cache layer — stats + reset triggers (Task 4)',
 
     grid.resetPaintStats();
     grid.applyTransactionAsync({ update: [{ id: `r${targetRowIndex}`, v: 999999 }] });
-    // Real wait past the worker's TransactionQueue batching window (50ms)
-    // + the modelUpdated push's own RAF coalescing + the getViewport
-    // round-trip (same idiom as tests/paintStats.integration.test.ts,
-    // minus its manual RAF-queue override — this file's `beforeAll`
-    // doesn't stub `requestAnimationFrame`, so happy-dom's real one fires
-    // on its own within this window).
-    await new Promise((r) => setTimeout(r, 200));
-    canvas.tickPaint(performance.now() + 1000);
+    // POLL, do not sleep. The chain here is a 50ms worker batching window, then
+    // the modelUpdated push's RAF coalescing, then a getViewport round-trip —
+    // and a fixed budget racing all three is a coin toss under parallel test
+    // load. This test failed intermittently for exactly that reason.
+    const deadline = Date.now() + 4000;
+    for (;;) {
+      canvas.tickPaint(performance.now() + 1000);
+      if (grid.getPaintStats().presents >= 1) break;
+      if (Date.now() > deadline) break;   // let the assertions report the truth
+      await new Promise((r) => setTimeout(r, 10));
+    }
 
     const stats = grid.getPaintStats();
     expect(stats.fullPaints).toBe(0);
