@@ -10,7 +10,7 @@ import { RuleEngine, AlertsEngine } from '@wellsfargo-starui/velocity-grid/rules
 import { CalcEngine } from '@wellsfargo-starui/velocity-grid/calc';
 import {
   ALERT_RULES, CALC_COLUMNS, CONDITIONAL_RULES, NUDGES, SAVED_FILTERS,
-  SEEDS, SHORTCUTS, TICK_ARROW_MS, TICK_ARROW_RULES, seedFor,
+  SEEDS, SHORTCUTS, TICK_ARROW_MS, TICK_ARROW_RULES, profilesFor, seedFor,
 } from '../src/lab/seeds';
 import { LAB_TABS } from '../src/lab/catalog';
 import { baseColumns } from '../src/data/columns';
@@ -232,7 +232,7 @@ describe('tick arrow rules', () => {
 
   it('is offered as a named profile on the tabs where ticking is the point', () => {
     for (const tabId of ['live', 'conditional']) {
-      const view = seedFor(tabId).views?.find((v) => v.name === 'Tick arrows');
+      const view = profilesFor(tabId).find((v) => v.name === 'Tick arrows');
       expect({ tabId, found: Boolean(view) }).toEqual({ tabId, found: true });
       expect(view!.rules).toBe(TICK_ARROW_RULES);
     }

@@ -18,6 +18,8 @@ import type { LabSeed } from '../lab/seeds';
 export interface LabWiring {
   edit: ReturnType<typeof wireEditIntoKernel>;
   renderers: ReturnType<typeof wireRenderersIntoKernel>;
+  /** Kept so a profile can swap the calculated-column set at runtime. */
+  calc: ReturnType<typeof wireCalc>['calc'];
 }
 
 export interface WireLabOptions {
@@ -37,7 +39,7 @@ export function wireLabFeatures(grid: unknown, opts: WireLabOptions): LabWiring 
   const { seed } = opts;
 
   wireFormat(grid as never);
-  wireCalc(grid as never, { calculatedColumns: seed.calculatedColumns ?? [] });
+  const { calc } = wireCalc(grid as never, { calculatedColumns: seed.calculatedColumns ?? [] });
   wireRules(grid as never, {
     rules: seed.rules ?? [],
     alertRules: seed.alertRules ?? [],
@@ -52,5 +54,5 @@ export function wireLabFeatures(grid: unknown, opts: WireLabOptions): LabWiring 
     ...(opts.commitUpdates ? { commitUpdates: opts.commitUpdates as never } : {}),
   });
 
-  return { edit, renderers };
+  return { edit, renderers, calc };
 }

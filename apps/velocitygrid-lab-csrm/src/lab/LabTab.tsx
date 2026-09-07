@@ -13,7 +13,7 @@ import { Inspector } from './Inspector';
 import { scenarioById } from '../data/scenarios';
 import { startLocalStream, type StreamController, type StreamStatus } from '../data/stream';
 import { defaultColDef } from '../data/columns';
-import { seedFor } from './seeds';
+import { profilesFor, seedFor, type LabView } from './seeds';
 import type { GridThemeId } from './theme';
 import type { LabTab as LabTabConfig } from './types';
 import type { BlotterRow } from '../data/domain';
@@ -43,6 +43,7 @@ export function LabTab({ tab, theme, onTheme, themes }: LabTabProps) {
 
   const columnDefs = useMemo(() => tab.columns(), [tab]);
   const seed = useMemo(() => seedFor(tab.id), [tab.id]);
+  const profiles = useMemo(() => profilesFor(tab.id), [tab.id]);
 
   const options = useMemo(() => ({
     columnDefs,
@@ -103,7 +104,7 @@ export function LabTab({ tab, theme, onTheme, themes }: LabTabProps) {
     // Named layouts: apply each view, snapshot it under its name, then return
     // to the tab's own default. `saveLayout` captures whatever is current, so
     // the order matters — the last thing applied is what Default holds.
-    if (seed.views?.length) {
+    if (profiles.length) {
       const grid = handle.ext.grid;
       // Rules are a state module, so a layout snapshot carries them — which is
       // what lets a saved view differ by its RULE SET and not just by sort and
@@ -113,26 +114,44 @@ export function LabTab({ tab, theme, onTheme, themes }: LabTabProps) {
         for (const existing of grid.getRules()) grid.deleteRule(existing.id);
         for (const rule of rules) grid.addRule(rule as never);
       };
+      const setAlerts = (rules: readonly unknown[]) => {
+        const g = grid as unknown as {
+          getAlertRules?(): { id: string }[];
+          setAlertRules?(r: readonly unknown[]): void;
+        };
+        g.setAlertRules?.(rules);
+      };
+      const calc = handle.wiring.calc;
+      const setCalcColumns = (cols: readonly { colId: string }[]) => {
+        for (const existing of calc.listCalculatedColumns()) {
+          calc.removeCalculatedColumn(existing.colId);
+        }
+        for (const col of cols) calc.registerCalculatedColumn(col as never);
+      };
+      const setSavedFilters = (filters: readonly unknown[]) => {
+        handle.ext.setState({
+          modules: { 'saved-filters': { version: 1, data: filters } },
+        } as never);
+      };
       // The dedicated setters, not `setState`. A partial `setState` restores
       // only what it carries and would leave the PREVIOUS view's filter in
       // place; `exhaustive: true` clears that but also wipes every field the
       // snapshot omits — including the rules module we just populated.
-      const applyView = (view: {
-        rules?: readonly unknown[];
-        sortModel?: { colId: string; direction: 'asc' | 'desc' }[];
-        filterModel?: Record<string, unknown>;
-        rowGroupColumns?: string[];
-      }) => {
-        // Each view starts from the tab's own rules unless it names its own,
-        // so a rules-carrying view earlier in the list cannot bleed into the
-        // ones after it.
+      const applyView = (view: Partial<LabView>) => {
+        // Each field falls back to the tab's own seed, so a profile that only
+        // changes the rules does not silently drop its calculated columns.
         setRules(view.rules ?? seed.rules ?? []);
+        setCalcColumns(view.calculatedColumns ?? seed.calculatedColumns ?? []);
+        setAlerts(view.alertRules ?? seed.alertRules ?? []);
+        handle.wiring.edit.setNudges((view.nudges ?? seed.nudges ?? []) as never);
+        handle.wiring.edit.setShortcuts((view.shortcuts ?? seed.shortcuts ?? []) as never);
+        setSavedFilters(view.savedFilters ?? seed.savedFilters ?? []);
         grid.setSortModel((view.sortModel ?? []) as never);
         grid.setFilterModel((view.filterModel ?? {}) as never);
         grid.setRowGroupColumns(view.rowGroupColumns ?? []);
       };
 
-      for (const view of seed.views) {
+      for (const view of profiles) {
         applyView(view);
         // `activate: false` matters: saveLayout activates by default, so
         // without it the loop leaves the grid on the LAST view and the reset
@@ -140,14 +159,18 @@ export function LabTab({ tab, theme, onTheme, themes }: LabTabProps) {
         try { grid.saveLayout(view.name, { activate: false }); }
         catch { /* a duplicate name on remount is fine */ }
       }
-      // Back to what the tab itself ships with.
+      // Back to what the tab itself ships with — and WRITTEN INTO Default.
+      // Applying it only changes live state; Default's stored snapshot was
+      // captured at bootstrap, before any of this existed, so switching to a
+      // profile and back handed you a bare grid.
       applyView({
         rules: seed.rules ?? [],
         sortModel: seed.sortModel,
         filterModel: seed.filterModel,
       });
+      try { grid.updateLayout(); } catch { /* nothing to update yet */ }
     }
-  }, [seed]);
+  }, [seed, profiles]);
 
   const onTeardown = useCallback(() => { gridRef.current = null; }, []);
 

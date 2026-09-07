@@ -40,10 +40,25 @@ export interface LabSeed {
   views?: LabView[];
 }
 
+/**
+ * A named layout. Anything it declares REPLACES the tab's own seed for as long
+ * as it is active; anything it omits falls back to that seed.
+ *
+ * Every field here is backed by a registered state module (`rules`, `alerts`,
+ * `calc`, `editSettings`, `saved-filters`), which is what lets `saveLayout`
+ * capture a profile that differs by its rule set or its calculated columns and
+ * not merely by a sort.
+ */
 export interface LabView {
   name: string;
-  /** Replaces the tab's rules while this layout is active. */
+  /** One line on what this profile isolates. */
+  blurb: string;
   rules?: StyleRule[];
+  alertRules?: AlertRule[];
+  calculatedColumns?: CalculatedColumnDef[];
+  nudges?: PlusMinusNudge[];
+  shortcuts?: ShortcutDefinition[];
+  savedFilters?: SavedFilter[];
   sortModel?: { colId: string; direction: 'asc' | 'desc' }[];
   filterModel?: Record<string, unknown>;
   rowGroupColumns?: string[];
@@ -203,6 +218,155 @@ export const TICK_RULES: StyleRule[] = ['midPrice'].flatMap((colId) => ([
     activeDurationMs: 900,
   },
 ]));
+
+// ── rule library ─────────────────────────────────────────────────────
+//
+// Individually named so a profile can compose a set that isolates ONE
+// capability. That is the shape the reference lab's curriculum uses, and the
+// reason it teaches: a profile showing eight things at once shows none of them.
+
+/** Persistent cell paint, no motion. The plainest rule there is. */
+export const PAINT_RULES: StyleRule[] = [
+  {
+    id: 'paint-winners', name: 'Winners', kind: 'style', enabled: true, priority: 10,
+    condition: '[dailyPnL] > 0',
+    scope: { kind: 'cell', columnIds: ['dailyPnL', 'unrealizedPnL'] },
+    style: themed(C.gainFg, C.gainBg),
+  },
+  {
+    id: 'paint-losers', name: 'Losers', kind: 'style', enabled: true, priority: 11,
+    condition: '[dailyPnL] < 0',
+    scope: { kind: 'cell', columnIds: ['dailyPnL', 'unrealizedPnL'] },
+    style: themed(C.lossFg, C.lossBg),
+  },
+];
+
+/** Row scope — the whole row carries the verdict, not one cell. */
+export const ROW_RULES: StyleRule[] = [
+  {
+    id: 'row-junk', name: 'Sub-investment-grade row', kind: 'style', enabled: true, priority: 5,
+    condition: '[compositeRating] == "BB+" || [compositeRating] == "BB" || [compositeRating] == "BB-" || [compositeRating] == "B+" || [compositeRating] == "B"',
+    scope: { kind: 'row' },
+    style: { light: { backgroundColor: '#fff8ec' }, dark: { backgroundColor: '#2a2416' } },
+  },
+  {
+    id: 'row-over-limit', name: 'Above the single-name limit', kind: 'style', enabled: true, priority: 6,
+    condition: '[marketValue] > 20000000',
+    scope: { kind: 'row' },
+    style: { light: { backgroundColor: '#eef2ff' }, dark: { backgroundColor: '#1b2030' } },
+  },
+];
+
+/** Indicators in each placement the model offers, so the tour covers them. */
+export const INDICATOR_RULES: StyleRule[] = [
+  {
+    id: 'ind-before', name: 'Inline prefix — thin pickup', kind: 'style', enabled: true, priority: 20,
+    condition: '[yieldToMaturity] - [benchmarkYield] < 0.45',
+    scope: { kind: 'cell', columnIds: ['yieldToMaturity'] },
+    style: { base: {} },
+    indicator: { iconName: 'trending-down', color: '#f0b429', target: 'cell', position: 'before' },
+  },
+  {
+    id: 'ind-after', name: 'Inline suffix — rating disagreement', kind: 'style', enabled: true, priority: 21,
+    condition: '[oas] > 250 && ([compositeRating] == "BBB" || [compositeRating] == "BBB-" || [compositeRating] == "BBB+")',
+    scope: { kind: 'cell', columnIds: ['compositeRating'] },
+    style: { base: {} },
+    indicator: { iconName: 'triangle-alert', color: '#e63946', target: 'cell', position: 'after' },
+  },
+  {
+    id: 'ind-corner', name: 'Corner overlay — long duration', kind: 'style', enabled: true, priority: 22,
+    condition: '[modifiedDuration] > 12',
+    scope: { kind: 'cell', columnIds: ['modifiedDuration'] },
+    style: { base: {} },
+    indicator: { iconName: 'clock', color: '#7fb2e5', target: 'cell', position: 'tr' },
+  },
+  {
+    id: 'ind-row-start', name: 'Row marker — crossed quote', kind: 'style', enabled: true, priority: 23,
+    condition: '[bidPrice] >= [askPrice]',
+    scope: { kind: 'row' },
+    style: themed(C.lossFg, C.lossBg, { fontWeight: 600 }),
+    indicator: { iconName: 'triangle-alert', color: '#e63946', target: 'row-start', position: 'before' },
+  },
+];
+
+/** Motion: the three flash modes, and a style window that closes itself. */
+export const FLASH_RULES: StyleRule[] = [
+  {
+    id: 'flash-fade', name: 'Fade on any price move', kind: 'style', enabled: true, priority: 40,
+    condition: '[midPrice.old] != null && [midPrice] != [midPrice.old]',
+    scope: { kind: 'cell', columnIds: ['midPrice'] },
+    style: { base: {} },
+    flash: { enabled: true, target: 'cell', mode: 'fade', color: '#4f9dd9', durationMs: 500 },
+    activeDurationMs: 700,
+  },
+  {
+    id: 'flash-pulse', name: 'Pulse while yield is above 9%', kind: 'style', enabled: true, priority: 41,
+    condition: '[yieldToMaturity] > 9',
+    scope: { kind: 'cell', columnIds: ['yieldToMaturity'] },
+    style: themed(C.warnFg, C.warnBg),
+    flash: { enabled: true, target: 'cell', mode: 'pulse', color: '#f0b429', durationMs: 900 },
+  },
+  {
+    id: 'flash-glow-row', name: 'Glow the row on a big move', kind: 'style', enabled: true, priority: 42,
+    condition: 'ABS([priceChangePct]) > 1.2',
+    scope: { kind: 'row' },
+    style: { base: {} },
+    flash: { enabled: true, target: 'row', mode: 'glow', color: '#e63946', durationMs: 800 },
+    activeDurationMs: 1200,
+  },
+];
+
+/** Change-driven rules: the `.old` vocabulary, in colour rather than arrows. */
+export const DIFF_RULES: StyleRule[] = [
+  {
+    id: 'diff-up', name: 'Mid ticked higher', kind: 'style', enabled: true, priority: 50,
+    condition: '[midPrice.old] != null && [midPrice] > [midPrice.old]',
+    scope: { kind: 'cell', columnIds: ['bidPrice', 'midPrice', 'askPrice', 'lastPrice'] },
+    style: themed(C.gainFg),
+    flash: { enabled: true, target: 'cell', mode: 'fade', color: '#0a7d4f', durationMs: 550 },
+    activeDurationMs: 900,
+  },
+  {
+    id: 'diff-down', name: 'Mid ticked lower', kind: 'style', enabled: true, priority: 51,
+    condition: '[midPrice.old] != null && [midPrice] < [midPrice.old]',
+    scope: { kind: 'cell', columnIds: ['bidPrice', 'midPrice', 'askPrice', 'lastPrice'] },
+    style: themed(C.lossFg),
+    flash: { enabled: true, target: 'cell', mode: 'fade', color: '#b3261e', durationMs: 550 },
+    activeDurationMs: 900,
+  },
+  {
+    id: 'diff-big', name: 'Moved more than a quarter point', kind: 'style', enabled: true, priority: 52,
+    condition: '[midPrice.old] != null && ABS([midPrice] - [midPrice.old]) > 0.25',
+    scope: { kind: 'cell', columnIds: ['midPrice'] },
+    style: themed(C.warnFg, C.warnBg, { fontWeight: 600 }),
+    activeDurationMs: 2500,
+  },
+];
+
+/** A rule may also replace the column's number format for matching cells. */
+export const FORMAT_RULES: StyleRule[] = [
+  {
+    id: 'fmt-sub-par', name: 'Sub-par prices to four decimals', kind: 'style', enabled: true, priority: 30,
+    condition: '[midPrice] < 98',
+    scope: { kind: 'cell', columnIds: ['midPrice'] },
+    style: { base: {} },
+    valueFormatter: '#,##0.0000',
+  },
+  {
+    id: 'fmt-big-money', name: 'Large positions in thousands', kind: 'style', enabled: true, priority: 31,
+    condition: '[marketValue] > 15000000',
+    scope: { kind: 'cell', columnIds: ['marketValue'] },
+    style: { base: {} },
+    valueFormatter: '#,##0,"k"',
+  },
+];
+
+/** Everything, in priority order — the "00 · Full" set. */
+export const ALL_STYLE_RULES: StyleRule[] = [
+  ...ROW_RULES, ...PAINT_RULES, ...INDICATOR_RULES,
+  ...FORMAT_RULES, ...FLASH_RULES, ...DIFF_RULES,
+];
+
 
 /** Pick one seeded rule by id — index-based picks silently pointed at the
  *  wrong rule the moment the set was reordered. */
@@ -463,11 +627,6 @@ export const SHORTCUTS: ShortcutDefinition[] = [
  */
 export const SEEDS: Record<string, LabSeed> = {
   overview: {
-    views: [
-      { name: 'Biggest positions', sortModel: [{ colId: 'marketValue', direction: 'desc' }] },
-      { name: 'Today\'s losers', sortModel: [{ colId: 'dailyPnL', direction: 'asc' }], filterModel: { dailyPnL: { filterType: 'number', type: 'lessThan', filter: 0 } } },
-      { name: 'By desk and region', rowGroupColumns: ['desk', 'region'] },
-    ],
     rules: TICK_RULES,
     calculatedColumns: CALC_COLUMNS.slice(0, 2),
     savedFilters: SAVED_FILTERS,
@@ -501,12 +660,6 @@ export const SEEDS: Record<string, LabSeed> = {
   toolbar: { rules: TICK_RULES, savedFilters: SAVED_FILTERS.slice(0, 3) },
 
   conditional: {
-    views: [
-      { name: 'Tick arrows', rules: TICK_ARROW_RULES },
-      { name: 'Worst first', sortModel: [{ colId: 'dailyPnL', direction: 'asc' }] },
-      { name: 'High yield only', filterModel: { compositeRating: { filterType: 'set', values: ['BB+', 'BB', 'BB-', 'B+', 'B'] } } },
-      { name: 'Long duration', filterModel: { modifiedDuration: { filterType: 'number', type: 'greaterThan', filter: 12 } } },
-    ],
     rules: CONDITIONAL_RULES,
     sortModel: [{ colId: 'dailyPnL', direction: 'asc' }],
   },
@@ -514,10 +667,6 @@ export const SEEDS: Record<string, LabSeed> = {
   groups: { calculatedColumns: CALC_COLUMNS.slice(0, 2) },
 
   calc: {
-    views: [
-      { name: 'Best pickup', sortModel: [{ colId: 'spreadPickup', direction: 'desc' }] },
-      { name: 'Largest weights', sortModel: [{ colId: 'pctOfBook', direction: 'desc' }] },
-    ],
     calculatedColumns: CALC_COLUMNS,
     rules: TICK_RULES,
     sortModel: [{ colId: 'marketValue', direction: 'desc' }],
@@ -529,31 +678,17 @@ export const SEEDS: Record<string, LabSeed> = {
   },
 
   filters: {
-    views: [
-      { name: 'Everything', sortModel: [] },
-      { name: 'USD only', filterModel: { currency: { filterType: 'set', values: ['USD'] } } },
-    ],
     savedFilters: SAVED_FILTERS,
     rules: [byId('thin-pickup')],
   },
 
   live: {
-    views: [
-      { name: 'Tick arrows', rules: TICK_ARROW_RULES },
-      { name: 'Biggest movers', sortModel: [{ colId: 'priceChangePct', direction: 'desc' }] },
-      { name: 'Falling hardest', sortModel: [{ colId: 'priceChangePct', direction: 'asc' }] },
-    ],
     rules: TICK_RULES,
     alertRules: ALERT_RULES.slice(0, 2),
     sortModel: [{ colId: 'priceChangePct', direction: 'desc' }],
   },
 
   grouping: {
-    views: [
-      { name: 'Desk / region', rowGroupColumns: ['desk', 'region'] },
-      { name: 'Sector / rating', rowGroupColumns: ['issuerSector', 'compositeRating'] },
-      { name: 'Trader book', rowGroupColumns: ['trader', 'book'] },
-    ],
     calculatedColumns: [CALC_COLUMNS[2]!],
     rules: [byId('away-from-cost')],
   },
@@ -561,10 +696,6 @@ export const SEEDS: Record<string, LabSeed> = {
   pivot: {},
 
   alerts: {
-    views: [
-      { name: 'Worst first', sortModel: [{ colId: 'dailyPnL', direction: 'asc' }] },
-      { name: 'Widest spreads', sortModel: [{ colId: 'oas', direction: 'desc' }] },
-    ],
     alertRules: ALERT_RULES,
     rules: [byId('crossed-market'), byId('rating-disagreement')],
     sortModel: [{ colId: 'dailyPnL', direction: 'asc' }],
@@ -577,12 +708,6 @@ export const SEEDS: Record<string, LabSeed> = {
   history: { nudges: NUDGES, shortcuts: SHORTCUTS, rules: TICK_RULES },
 
   profiles: {
-    views: [
-      { name: 'Risk view', sortModel: [{ colId: 'modifiedDuration', direction: 'desc' }] },
-      { name: 'P&L view', sortModel: [{ colId: 'unrealizedPnL', direction: 'desc' }] },
-      { name: 'Credit view', rowGroupColumns: ['compositeRating'] },
-      { name: 'Desk view', rowGroupColumns: ['desk', 'trader'] },
-    ],
     rules: CONDITIONAL_RULES,
     calculatedColumns: CALC_COLUMNS,
     savedFilters: SAVED_FILTERS,
@@ -598,3 +723,307 @@ export const SEEDS: Record<string, LabSeed> = {
 };
 
 export const seedFor = (tabId: string): LabSeed => SEEDS[tabId] ?? {};
+
+// ── profiles ─────────────────────────────────────────────────────────
+//
+// Ported from the MarketsGrid lab's profile catalogs, which are the reason
+// that lab teaches anything: each tab opens with a "Full" profile, then a
+// series that each isolate ONE capability, and usually a bare one at the end
+// to author against. A profile showing eight things at once shows none of them.
+//
+// Anything a profile omits falls back to the tab's own seed, so these stay
+// short and say only what makes them different.
+
+const V = (name: string, blurb: string, rest: Partial<LabView> = {}): LabView =>
+  ({ name, blurb, ...rest });
+
+const HY = ['BB+', 'BB', 'BB-', 'B+', 'B'];
+const IG = ['AAA', 'AA+', 'AA', 'AA-', 'A+', 'A', 'A-', 'BBB+', 'BBB', 'BBB-'];
+const setFilter = (colId: string, values: string[]) => ({ [colId]: { filterType: 'set', values } });
+const numFilter = (colId: string, type: string, filter: number) =>
+  ({ [colId]: { filterType: 'number', type, filter } });
+
+export const PROFILES: Record<string, LabView[]> = {
+  overview: [
+    V('Kitchen sink', 'Every module seeded at once — rules, calc columns, alerts, pills.', {
+      rules: ALL_STYLE_RULES, calculatedColumns: CALC_COLUMNS,
+      alertRules: ALERT_RULES, savedFilters: SAVED_FILTERS,
+      nudges: NUDGES, shortcuts: SHORTCUTS,
+    }),
+    V('Trader P&L', 'Winners and losers painted, prices ticking, sorted by the day.', {
+      rules: [...PAINT_RULES, ...DIFF_RULES],
+      sortModel: [{ colId: 'dailyPnL', direction: 'desc' }],
+    }),
+    V('Risk desk', 'Duration and spread first, with the risk derivations.', {
+      rules: [...ROW_RULES, ...INDICATOR_RULES],
+      calculatedColumns: CALC_COLUMNS.filter((c) => c.colId !== 'pctOfBook'),
+      sortModel: [{ colId: 'modifiedDuration', direction: 'desc' }],
+    }),
+    V('Grouped by desk', 'Desk then region, aggregating up the tree.', {
+      rules: PAINT_RULES, rowGroupColumns: ['desk', 'region'],
+    }),
+    V('Minimal', 'No modules at all — the grid with these columns and nothing else.', {
+      rules: [], calculatedColumns: [], alertRules: [], savedFilters: [],
+      nudges: [], shortcuts: [],
+    }),
+  ],
+
+  formatting: [
+    V('Full showcase', 'Every format kind the DSL offers, across the blotter.', {
+      rules: FORMAT_RULES,
+    }),
+    V('Pricing precision', 'Prices sorted low to high, sub-par ones to four decimals.', {
+      rules: [FORMAT_RULES[0]!], sortModel: [{ colId: 'midPrice', direction: 'asc' }],
+    }),
+    V('Signed money', 'The P&L convention: negatives in red parentheses.', {
+      rules: [], sortModel: [{ colId: 'dailyPnL', direction: 'asc' }],
+    }),
+    V('Rule-driven formats', 'A rule replacing the column format for the cells it matches.', {
+      rules: FORMAT_RULES, sortModel: [{ colId: 'marketValue', direction: 'desc' }],
+    }),
+    V('Bare formats', 'Column format strings only — nothing conditional.', { rules: [] }),
+  ],
+
+  renderers: [
+    V('Full showcase', 'Badges, bars, charts and tick-aware numerics together.', {}),
+    V('Sorted by move', 'Biggest movers first, so the direction glyphs are doing work.', {
+      sortModel: [{ colId: 'priceChangePct', direction: 'desc' }],
+    }),
+    V('High yield only', 'Rating badges concentrated in the bands that matter.', {
+      filterModel: setFilter('compositeRating', HY),
+    }),
+    V('Large positions', 'Where the bars and heat renderers have range to show.', {
+      filterModel: numFilter('marketValue', 'greaterThan', 12000000),
+      sortModel: [{ colId: 'marketValue', direction: 'desc' }],
+    }),
+  ],
+
+  toolbar: [
+    V('Painted desk', 'Arrives pre-styled — start here and change things.', {
+      rules: [...PAINT_RULES, ...INDICATOR_RULES], savedFilters: SAVED_FILTERS.slice(0, 3),
+    }),
+    V('P&L palette', 'Only the P&L columns painted, so the toolbar edits stand out.', {
+      rules: PAINT_RULES,
+    }),
+    V('Blank canvas', 'Nothing styled. Select cells and paint with the ribbon.', {
+      rules: [], savedFilters: [],
+    }),
+  ],
+
+  conditional: [
+    V('Full curriculum', 'All six families at once — paint, row, indicator, format, flash, diff.', {
+      rules: ALL_STYLE_RULES,
+    }),
+    V('Cell paint only', 'The plainest rule there is: a condition and a colour.', {
+      rules: PAINT_RULES,
+    }),
+    V('Row rules', 'The verdict belongs to the row, not one cell.', { rules: ROW_RULES }),
+    V('Indicators', 'Every placement: inline prefix and suffix, a corner, a row marker.', {
+      rules: INDICATOR_RULES,
+    }),
+    V('Flash and windows', 'Fade, pulse and glow, plus a style window that closes itself.', {
+      rules: FLASH_RULES,
+    }),
+    V('Diff rules', 'Conditions over what a value just DID, using [col.old].', {
+      rules: DIFF_RULES,
+    }),
+    V('Tick arrows', 'Direction arrows on the cell that moved, for 800ms.', {
+      rules: TICK_ARROW_RULES,
+    }),
+    V('Rule-driven formats', 'A matching cell rendered through a different number format.', {
+      rules: FORMAT_RULES,
+    }),
+    V('All off', 'Rules present but disabled — turn them on one at a time.', {
+      rules: ALL_STYLE_RULES.map((r) => ({ ...r, enabled: false })),
+    }),
+  ],
+
+  groups: [
+    V('All groups', 'The blotter\'s eight semantic groups, all open.', {}),
+    V('Pricing and P&L', 'Just the two-sided market and what it did to the book.', {
+      sortModel: [{ colId: 'dailyPnL', direction: 'asc' }],
+    }),
+    V('Grouped as well', 'Header groups and row groups at the same time.', {
+      rowGroupColumns: ['desk'],
+    }),
+  ],
+
+  calc: [
+    V('All derived', 'Five calculated columns, including one that sums the whole book.', {
+      calculatedColumns: CALC_COLUMNS, rules: DIFF_RULES,
+    }),
+    V('Spread and liquidity', 'Pickup and bid/ask width — the two-column comparisons.', {
+      calculatedColumns: CALC_COLUMNS.filter((c) => c.colId === 'spreadPickup' || c.colId === 'baWidthBps'),
+      sortModel: [{ colId: 'spreadPickup', direction: 'desc' }],
+    }),
+    V('Risk ratios', 'P&L per basis point of risk, and yield per turn of duration.', {
+      calculatedColumns: CALC_COLUMNS.filter((c) => c.colId === 'pnlPerDv01' || c.colId === 'yieldPerTurn'),
+    }),
+    V('Book weights', 'One column whose every value depends on every other row.', {
+      calculatedColumns: CALC_COLUMNS.filter((c) => c.colId === 'pctOfBook'),
+      sortModel: [{ colId: 'pctOfBook', direction: 'desc' }],
+    }),
+    V('None', 'No derived columns — author one in Customize.', { calculatedColumns: [] }),
+  ],
+
+  expressions: [
+    V('Arithmetic', 'Expressions that combine columns.', {
+      calculatedColumns: CALC_COLUMNS.slice(0, 2),
+    }),
+    V('Aggregates', 'SUM() over the book, inside a per-row expression.', {
+      calculatedColumns: CALC_COLUMNS.filter((c) => c.colId === 'pctOfBook'),
+    }),
+    V('Conditions', 'The same language driving a rule instead of a column.', {
+      rules: [...PAINT_RULES, ...INDICATOR_RULES], calculatedColumns: [],
+    }),
+  ],
+
+  filters: [
+    V('All pills', 'Five saved filters — click to toggle, + to capture a sixth.', {
+      savedFilters: SAVED_FILTERS,
+    }),
+    V('High yield', 'One pill active: sub-investment grade, long end.', {
+      savedFilters: SAVED_FILTERS, filterModel: setFilter('compositeRating', HY),
+    }),
+    V('Investment grade', 'The other side of the book.', {
+      savedFilters: SAVED_FILTERS, filterModel: setFilter('compositeRating', IG),
+    }),
+    V('Losing today', 'A number filter rather than a set.', {
+      savedFilters: SAVED_FILTERS, filterModel: numFilter('dailyPnL', 'lessThan', 0),
+    }),
+    V('Stacked', 'Two column filters at once — pills intersect, they do not replace.', {
+      savedFilters: SAVED_FILTERS,
+      filterModel: { ...setFilter('currency', ['USD']), ...setFilter('issuerSector', ['Financials']) },
+    }),
+    V('Capture workflow', 'No pills. Set a filter, then press + to save it as one.', {
+      savedFilters: [],
+    }),
+  ],
+
+  live: [
+    V('Flash storm', 'Every motion rule at once against the fastest feed.', {
+      rules: [...FLASH_RULES, ...DIFF_RULES],
+    }),
+    V('Tick arrows', 'Direction arrows on the cell that moved, for 800ms.', {
+      rules: TICK_ARROW_RULES,
+    }),
+    V('Direction colour', 'The same information as colour instead of glyphs.', {
+      rules: DIFF_RULES,
+    }),
+    V('Big moves only', 'A window that stays open 2.5s, so only real moves show.', {
+      rules: [DIFF_RULES[2]!], sortModel: [{ colId: 'priceChangePct', direction: 'desc' }],
+    }),
+    V('Quiet', 'No rules — watch the raw repaint without decoration.', { rules: [] }),
+  ],
+
+  grouping: [
+    V('Desk and region', 'Two levels, aggregating up.', { rowGroupColumns: ['desk', 'region'] }),
+    V('Sector and rating', 'A credit lens on the same book.', {
+      rowGroupColumns: ['issuerSector', 'compositeRating'],
+    }),
+    V('Three levels', 'Desk, region, then sector — totals at every level.', {
+      rowGroupColumns: ['desk', 'region', 'issuerSector'],
+    }),
+    V('By trader', 'Who owns what.', { rowGroupColumns: ['trader'] }),
+    V('Flat', 'Grouping off — the same aggregates as a pinned grand total only.', {
+      rowGroupColumns: [],
+    }),
+  ],
+
+  pivot: [
+    V('Sector by rating', 'The default cross-tab.', {}),
+    V('With row paint', 'Rules still apply to a pivoted view.', { rules: PAINT_RULES }),
+  ],
+
+  alerts: [
+    V('Full demo', 'Both trigger families and both channels.', { alertRules: ALERT_RULES }),
+    V('Threshold alerts', 'dataChange predicates over a value.', {
+      alertRules: ALERT_RULES.filter((a) => a.trigger.kind === 'dataChange'),
+    }),
+    V('Relative change', 'Percent and absolute moves against the previous value.', {
+      alertRules: ALERT_RULES.filter((a) => a.trigger.kind === 'relativeChange'),
+    }),
+    V('Badge only', 'No toasts — the bell count is the whole signal.', {
+      alertRules: ALERT_RULES.map((a) => ({ ...a, channels: ['badge' as const] })),
+    }),
+    V('No debounce', 'The same rules with the rate limit removed. Watch it flood.', {
+      alertRules: ALERT_RULES.map((a) => ({ ...a, debounceMs: 0 })),
+    }),
+    V('Off', 'Rules present, all disabled.', {
+      alertRules: ALERT_RULES.map((a) => ({ ...a, enabled: false })),
+    }),
+  ],
+
+  editing: [
+    V('Everything on', 'Nudges, shortcuts and the full editing family.', {
+      nudges: NUDGES, shortcuts: SHORTCUTS, rules: DIFF_RULES,
+    }),
+    V('Nudges only', 'Plus and minus, per-column steps. No letter keys.', {
+      nudges: NUDGES, shortcuts: [],
+    }),
+    V('Shortcuts only', 'Letter-key magnitudes. No nudges.', { nudges: [], shortcuts: SHORTCUTS }),
+    V('Plain editing', 'Type, paste and fill with no helpers at all.', {
+      nudges: [], shortcuts: [], rules: [],
+    }),
+  ],
+
+  bulk: [
+    V('Curriculum', 'A selection, one value, one transaction.', { nudges: NUDGES, shortcuts: SHORTCUTS }),
+    V('Sorted by size', 'Pick the top of the book and set it in one go.', {
+      sortModel: [{ colId: 'quantityFace', direction: 'desc' }], nudges: NUDGES, shortcuts: SHORTCUTS,
+    }),
+    V('No helpers', 'Bulk update with nudges and shortcuts off.', { nudges: [], shortcuts: [] }),
+  ],
+
+  plusminus: [
+    V('Per-column steps', 'Five rules: eighths, basis points, turns, lots.', { nudges: NUDGES }),
+    V('Prices only', 'One rule, so the difference between columns is obvious.', {
+      nudges: NUDGES.filter((n) => n.id === 'px'),
+    }),
+    V('Off', 'No nudge rules — plus and minus do nothing.', { nudges: [] }),
+  ],
+
+  shortcuts: [
+    V('Curriculum', 'k, m, b and h bound on the quantity columns.', { shortcuts: SHORTCUTS }),
+    V('Millions only', 'One key bound, so an unbound letter is visibly rejected.', {
+      shortcuts: SHORTCUTS.filter((s) => s.shortcutKey === 'm'),
+    }),
+    V('Off', 'No keys bound.', { shortcuts: [] }),
+  ],
+
+  history: [
+    V('Recording', 'Edits journaled; the feed is not.', {
+      nudges: NUDGES, shortcuts: SHORTCUTS, rules: DIFF_RULES,
+    }),
+    V('Quiet feed', 'Slower ticks, so your own edits are easy to pick out.', {
+      nudges: NUDGES, shortcuts: SHORTCUTS, rules: [],
+    }),
+  ],
+
+  profiles: [
+    V('Risk view', 'Duration first, risk columns derived.', {
+      rules: [...ROW_RULES, ...INDICATOR_RULES], calculatedColumns: CALC_COLUMNS,
+      sortModel: [{ colId: 'modifiedDuration', direction: 'desc' }],
+    }),
+    V('P&L view', 'The day, sorted, painted.', {
+      rules: PAINT_RULES, sortModel: [{ colId: 'unrealizedPnL', direction: 'desc' }],
+    }),
+    V('Credit view', 'Grouped by rating with the disagreement markers on.', {
+      rules: INDICATOR_RULES, rowGroupColumns: ['compositeRating'],
+    }),
+    V('Desk view', 'Who owns what, and how much of it.', {
+      rules: ROW_RULES, rowGroupColumns: ['desk', 'trader'],
+      calculatedColumns: CALC_COLUMNS.filter((c) => c.colId === 'pctOfBook'),
+    }),
+  ],
+
+  export: [
+    V('Everything', 'Grouping, formats and rule paint — all of it lands in the file.', {
+      rules: ALL_STYLE_RULES, calculatedColumns: CALC_COLUMNS, rowGroupColumns: ['desk'],
+    }),
+    V('Formats only', 'Number formats without conditional paint.', { rules: [] }),
+    V('Flat', 'No grouping — one sheet of rows.', { rules: PAINT_RULES, rowGroupColumns: [] }),
+  ],
+};
+
+export const profilesFor = (tabId: string): LabView[] => PROFILES[tabId] ?? [];
