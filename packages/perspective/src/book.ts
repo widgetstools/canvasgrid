@@ -815,6 +815,10 @@ export class PerspectiveBook {
   /** Last state the worker pushed — the source for the feed half of
    *  telemetry, since none of those counters happen on this thread. */
   private workerFeedState: WorkerFeedState | null = null;
+  /** Whether the worker feed has ever handed this tab a live batch. A
+   *  deployed worker older than the `feed: 'rows'` push never will, and that
+   *  is the only case a flat tick has to fall back to a band refresh. */
+  private workerFeedRowsSeen = false;
   /** Mismatch already reported, so a 4Hz state push does not repeat it. */
   private warnedMismatch: string | null = null;
   /** Resolving this releases the Web Lock held while leading the feed. */
@@ -2525,6 +2529,9 @@ export class PerspectiveBook {
    */
   private onWorkerFeedRows(rows: PositionRow[]): void {
     if (this.destroyed || this.feedStopped || this.pauseFanout) return;
+    // Latched even when there is no view to give them to: what it records is
+    // that this worker CAN say what moved, which is a property of the worker.
+    this.workerFeedRowsSeen = true;
     if (rows.length === 0 || this.views.size === 0) return;
     for (const viewId of this.views.keys()) {
       const existing = this.pendingLiveBatch.get(viewId);
@@ -2768,7 +2775,27 @@ export class PerspectiveBook {
     }
   }
 
+  /**
+   * Phase is a STATE, so `onPhase` fires on transitions only.
+   *
+   * It used to fire on every call, and `onWorkerFeedState` calls this on
+   * every state push the worker sends — which is one per live batch. The
+   * provider's phase handler purges the SSRM caches when the book reaches
+   * `live` ("purge once when the book is usable"), so what was meant to be a
+   * single purge became three or four a second, forever. Each one blanked
+   * the loaded blocks and re-fetched them, so the grid spent most of its
+   * time showing empty rows, ticks were wiped before they could be seen, and
+   * scrolling landed in a window that had just been discarded.
+   *
+   * Telemetry still goes out unconditionally: the counters behind it (rows/s,
+   * book size, getRows) move constantly while the phase does not, and the
+   * status bar reads them.
+   */
   private setPhase(phase: BookPhase): void {
+    if (this.phase === phase) {
+      this.emitTelemetry();
+      return;
+    }
     this.phase = phase;
     this.opts.onPhase?.(phase);
     this.emitTelemetry();
@@ -3091,12 +3118,18 @@ export class PerspectiveBook {
     // honest, and soft-refresh-only ticks skip strip invalidation so
     // conditional styles freeze on the raster cache.
     // No rows to pair means no patch to push, so the values only move if the
-    // block is re-read. `follower` is the main-thread case (the batch landed
-    // in another tab); `worker` covers a deployed shared worker older than
-    // the `feed: 'rows'` push — new enough to take the feed, too old to say
-    // what moved. Both degrade to a band refresh rather than freezing.
+    // block is re-read. `follower` is the main-thread case: the batch landed
+    // in another tab and this one will never see it.
+    //
+    // On the worker feed the same is true only of a worker too old to send
+    // `feed: 'rows'`. Once one batch has arrived, an EMPTY tick is
+    // information rather than ignorance — the feed moved rows, none of them
+    // belonged to this view — and re-reading the band on that would be a
+    // refresh per tick, blanking the window for nothing. A narrow filter, on
+    // which most ticks match nothing, is exactly where that bites.
     const remoteFlatTick = updates.length === 0
-      && (this.feedRole === 'follower' || this.feedRole === 'worker');
+      && (this.feedRole === 'follower'
+        || (this.feedRole === 'worker' && !this.workerFeedRowsSeen));
     this.opts.onViewTick({
       viewId,
       totals,

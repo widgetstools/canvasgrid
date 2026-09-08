@@ -290,3 +290,96 @@ describe('a flat view on a worker feed that sends no rows still moves', () => {
     expect(ticks[0]?.updates).toHaveLength(1);
   });
 });
+
+describe('phase is a state, so onPhase fires on transitions only', () => {
+  /**
+   * The provider purges the SSRM caches when the book reaches `live` — once,
+   * per its own comment, because a purge throws away every loaded block.
+   *
+   * `onWorkerFeedState` calls `setPhase` on every state push the worker
+   * sends, and the worker sends one per live batch. With `setPhase`
+   * notifying unconditionally, "purge once" became three or four purges a
+   * SECOND: the visible window was discarded and re-fetched continuously, so
+   * the grid showed blank rows, ticks were wiped before anyone could see
+   * them, and a scroll landed in a window that had just been thrown away.
+   *
+   * Measured on the demo before the fix: 31 purging refreshes in 8 seconds.
+   * After: 0.
+   */
+  const bookWithPhaseSpy = () => {
+    const phases: string[] = [];
+    const telemetry: unknown[] = [];
+    const book = new PerspectiveBook({
+      schema: { positionId: 'string' },
+      onPhase: (p) => phases.push(p),
+      onTelemetry: (t) => telemetry.push(t),
+    });
+    return { book, phases, telemetry };
+  };
+
+  const feedState = (over: Record<string, unknown> = {}) => ({
+    tableName: 't', phase: 'live', snapshotRowsLoaded: 10, snapshotComplete: true,
+    bookSize: 10, liveBatches: 1, liveRowsIn: 1, liveRowsPerSec: 1,
+    droppedRowCount: 0, subscribers: 1, stopped: false, lastError: null,
+    startedAt: 1, configMismatch: null, ...over,
+  });
+
+  const feed = (book: PerspectiveBook, state: unknown) =>
+    (book as never as { onWorkerFeedState: (s: unknown) => void })
+      .onWorkerFeedState(state);
+
+  it('repeated `live` state pushes announce the phase once', () => {
+    const { book, phases } = bookWithPhaseSpy();
+    for (let i = 0; i < 20; i++) feed(book, feedState({ liveBatches: i }));
+    expect(phases).toEqual(['live']);
+  });
+
+  it('still announces a REAL transition, so a reconnect purges again', () => {
+    const { book, phases } = bookWithPhaseSpy();
+    feed(book, feedState());
+    feed(book, feedState({ phase: 'disconnected' }));
+    feed(book, feedState({ phase: 'live' }));
+    expect(phases).toEqual(['live', 'disconnected', 'live']);
+  });
+
+  it('telemetry still goes out on every push — its counters move constantly', () => {
+    // Gating telemetry along with the phase would freeze the status bar's
+    // rows/s and book size at whatever they were when the phase last moved.
+    const { book, telemetry } = bookWithPhaseSpy();
+    for (let i = 0; i < 5; i++) feed(book, feedState({ liveRowsPerSec: i }));
+    expect(telemetry.length).toBeGreaterThanOrEqual(5);
+  });
+});
+
+describe('an empty flat tick only re-reads when the feed cannot say what moved', () => {
+  const flatBook = (ticks: ViewTick[], role: string, rowsSeen: boolean) => {
+    const book = bookWithViews(ticks, ['A'], []);
+    priv(book).feedRole = role;
+    (book as never as { workerFeedRowsSeen: boolean }).workerFeedRowsSeen = rowsSeen;
+    (book as never as { fetchGrandTotal: () => Promise<null> })
+      .fetchGrandTotal = async () => null;
+    return book;
+  };
+
+  it('a worker that HAS delivered batches: an empty tick means nothing matched', async () => {
+    // Not ignorance but information — the feed moved rows and none belonged
+    // to this view. Re-reading the band on that is a refresh per tick, which
+    // blanks the window for nothing. A narrow quick filter, where most ticks
+    // match nothing, is exactly where it bites.
+    const ticks: ViewTick[] = [];
+    await priv(flatBook(ticks, 'worker', true)).emitViewTick('A');
+    expect(ticks[0]).toMatchObject({ updates: [], refreshSsrm: false });
+  });
+
+  it('a worker that has never delivered one: fall back to the band refresh', async () => {
+    const ticks: ViewTick[] = [];
+    await priv(flatBook(ticks, 'worker', false)).emitViewTick('A');
+    expect(ticks[0]).toMatchObject({ updates: [], refreshSsrm: true });
+  });
+
+  it('a main-thread follower always falls back — the batch is in another tab', async () => {
+    const ticks: ViewTick[] = [];
+    await priv(flatBook(ticks, 'follower', true)).emitViewTick('A');
+    expect(ticks[0]).toMatchObject({ updates: [], refreshSsrm: true });
+  });
+});
