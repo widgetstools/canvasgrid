@@ -760,6 +760,13 @@ export class PerspectiveBook {
    *  (which must drop ITS OWN stale pre-remount rows) never wipes another
    *  still-mounted view's queued ticks. */
   private pendingLiveBatch = new Map<string, PositionRow[]>();
+  /** Last grand total per view, with the time it was computed and any read
+   *  still in flight. See {@link fetchGrandTotal} for why it is cached. */
+  private grandTotalCache = new Map<string, {
+    value: PositionRow;
+    at: number;
+    inFlight: Promise<PositionRow> | null;
+  }>();
 
   // ─── Cross-view query-result cache ────────────────────────────────────
   //
@@ -1972,6 +1979,57 @@ export class PerspectiveBook {
   }
 
   async fetchGrandTotal(viewId: string): Promise<PositionRow> {
+    // Recomputing the footer is not free: `totalsView` aggregates the whole
+    // FILTERED set, and a filtered Perspective view has to rescan after every
+    // table write. Measured on a 10k-row book under a 40 rows/s feed, one
+    // read costs 120-480ms of engine time.
+    //
+    // `emitViewTick` used to await a fresh one on every tick — ten a second —
+    // so the engine was handed more grand-total work than a second contains.
+    // The reads queued, the queue grew for as long as the feed ran, and a
+    // `getRows` issued mid-scroll landed behind all of it: blocks that take
+    // 1-5ms on a quiet table took seconds, which is why fast scrolling under
+    // a quick filter showed blank rows that filled in once the user stopped.
+    //
+    // The grouped path had already hit this and stopped awaiting totals
+    // ("table-lock contention under a hot feed starved expand"). This is the
+    // same fix for flat views, minus the behaviour change: callers still get
+    // a value, just not a freshly recomputed one every time. A footer that
+    // settles within {@link GRAND_TOTAL_TTL_MS} is indistinguishable to a
+    // reader, and one that costs a scroll is not.
+    const now = Date.now();
+    const cached = this.grandTotalCache.get(viewId);
+    if (cached) {
+      if (cached.inFlight) return cached.inFlight;
+      if (now - cached.at < PerspectiveBook.GRAND_TOTAL_TTL_MS) return cached.value;
+    }
+    const promise = this.readGrandTotal(viewId).then((value) => {
+      // A remount between issue and settle drops this view's entry; do not
+      // resurrect it with a total read off the view that has been replaced.
+      const entry = this.grandTotalCache.get(viewId);
+      if (entry?.inFlight === promise) {
+        this.grandTotalCache.set(viewId, { value, at: Date.now(), inFlight: null });
+      }
+      return value;
+    }, (err) => {
+      const entry = this.grandTotalCache.get(viewId);
+      if (entry?.inFlight === promise) entry.inFlight = null;
+      throw err;
+    });
+    this.grandTotalCache.set(viewId, {
+      value: cached?.value ?? emptyGrandTotalRow(),
+      at: cached?.at ?? 0,
+      inFlight: promise,
+    });
+    return promise;
+  }
+
+  /** How long a computed grand total stays servable. Well under the eye's
+   *  tolerance for a footer, well over the tick rate that was starving the
+   *  engine. */
+  private static readonly GRAND_TOTAL_TTL_MS = 500;
+
+  private async readGrandTotal(viewId: string): Promise<PositionRow> {
     // Serialize behind the view chain so a concurrent syncQuery remount
     // can't hand us a deleted totalsView mid-read.
     return this.withViewChain(viewId, async () => {
@@ -2301,6 +2359,9 @@ export class PerspectiveBook {
     // still-mounted views share nothing else with this remount and must
     // keep their own queued ticks (pendingLiveBatch is keyed per view).
     this.pendingLiveBatch.delete(bound.spec.id);
+    // The remount replaced `totalsView`, so a cached total (or a read still
+    // in flight against the old one) describes a query nobody asked for.
+    this.grandTotalCache.delete(bound.spec.id);
     this.scheduleViewTick(bound.spec.id);
   }
 
@@ -2380,6 +2441,7 @@ export class PerspectiveBook {
     // chain entry per prior viewId for the life of the book.
     this.getRowsChains.delete(viewId);
     this.pendingLiveBatch.delete(viewId);
+    this.grandTotalCache.delete(viewId);
     await this.withTableLock(async () => {
       if (v.view && v.dataUpdateCb !== null) {
         try { await v.view.remove_update(v.dataUpdateCb); } catch { /* swallow */ }
