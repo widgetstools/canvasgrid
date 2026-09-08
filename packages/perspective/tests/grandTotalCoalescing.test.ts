@@ -107,3 +107,83 @@ describe('a remount drops the cached total', () => {
     expect(cache.grandTotalCache.has('A')).toBe(false);
   });
 });
+
+/**
+ * The other half of the same problem: read amplification per block.
+ *
+ * `num_rows` on a filtered view is a whole-table rescan — ~44ms on a 10k-row
+ * book under a live feed, against ~0ms unfiltered. `getSsrmRowsInner` paid it
+ * once per block ON TOP of reading the block, so every fetch during a scroll
+ * cost twice what the rows themselves cost, for a number that only moves when
+ * the filter or the row set does.
+ */
+describe('a scroll does not re-count the filtered set per block', () => {
+  function bookWithCountingView() {
+    let numRowsCalls = 0;
+    const view = {
+      num_rows: async () => { numRowsCalls++; return 3337; },
+      to_columns_string: async () => JSON.stringify({ positionId: ['a'], pnl: [1] }),
+      to_json: async () => [{ positionId: 'a', pnl: 1 }],
+    };
+    const book = new PerspectiveBook({ schema: { positionId: 'string', pnl: 'float' } });
+    (book as never as { views: Map<string, unknown> }).views.set('A', {
+      spec: { id: 'A', label: 'A' },
+      view, totalsView: null, leafView: null,
+      leafRanges: null, leafRangeByPath: null, leafOffsetsUnreliable: false,
+      dataUpdateCb: null, notifyTimer: null, groupBy: [],
+      groupedRawCache: null, groupKeys: [], lastQuerySig: '',
+      getRowsCalls: 0, rowsServed: 0, inflight: 0, projectedRows: 0,
+      expressions: {}, readColumns: ['positionId', 'pnl'],
+      lastExtraFilter: [], lastSort: [], quickFilterText: 'EMEA',
+      quickFilterExpressions: {}, lastOrContains: {},
+      valueAggOverrides: {}, pivotColIds: [], pivotViews: [],
+      pivotKeyOrder: new Map(),
+    });
+    // The view is already mounted in this fixture; a remount would need a
+    // real Perspective table and is not what these assert.
+    (book as never as { remountDataView: () => Promise<void> })
+      .remountDataView = async () => {};
+    (book as never as { ensureReadColumns: () => Promise<void> })
+      .ensureReadColumns = async () => {};
+    return { book, numRowsCalls: () => numRowsCalls };
+  }
+
+  const req = (startRow: number) => ({
+    startRow, endRow: startRow + 100,
+    sortModel: [], filterModel: {}, rowGroupCols: [],
+    expandedGroupKeys: [], columnKeys: ['positionId', 'pnl'],
+  });
+
+  it('consecutive block fetches share one count', async () => {
+    const { book, numRowsCalls } = bookWithCountingView();
+    await book.getSsrmRows('A', req(0) as never);
+    const afterFirst = numRowsCalls();
+    for (const start of [100, 200, 300, 400, 500]) {
+      await book.getSsrmRows('A', req(start) as never);
+    }
+    // Five more blocks, no further rescans.
+    expect(numRowsCalls()).toBe(afterFirst);
+  });
+
+  it('still serves the right window from the cached count', async () => {
+    const { book } = bookWithCountingView();
+    const first = await book.getSsrmRows('A', req(0) as never);
+    const later = await book.getSsrmRows('A', req(200) as never);
+    expect(first.rowCount).toBe(3337);
+    expect(later.rowCount).toBe(3337);
+  });
+
+  it('re-counts once the window passes, so the scrollbar is not frozen', async () => {
+    vi.useFakeTimers();
+    try {
+      const { book, numRowsCalls } = bookWithCountingView();
+      await book.getSsrmRows('A', req(0) as never);
+      const afterFirst = numRowsCalls();
+      vi.setSystemTime(Date.now() + 5_000);
+      await book.getSsrmRows('A', req(100) as never);
+      expect(numRowsCalls()).toBeGreaterThan(afterFirst);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
