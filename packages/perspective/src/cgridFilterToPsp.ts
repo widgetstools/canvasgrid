@@ -268,12 +268,27 @@ export function entryToPspFilters(colId: string, entry: FilterModelEntry): PspFi
   return entryToPspConversion(colId, entry).filters;
 }
 
-/** Build ExprTK expression that concatenates column string forms for quick filter. */
+/**
+ * Build the ExprTK expression the quick filter searches: every column's
+ * string form, joined by spaces, as one synthetic column to run `contains`
+ * against.
+ *
+ * `concat(...)`, NOT `+`. Perspective's ExprTK dialect has no string
+ * addition — `string("a") + ' ' + string("b")` is rejected whole, with
+ * `Type Error - inputs do not resolve to a valid expression`, and a
+ * rejected expression takes the entire View down with it. On sparse SSRM
+ * that surfaced as every `getRows` failing the moment a character was typed
+ * into the title-bar search: the grid emptied instead of filtering.
+ */
 export function buildQuickFilterHaystackExpression(columns: readonly string[]): string {
   const usable = columns.filter((c) => c && c !== QUICK_FILTER_HAYSTACK_ALIAS);
   if (usable.length === 0) return `// ${QUICK_FILTER_HAYSTACK_ALIAS}\n''`;
-  const parts = usable.map((c) => `string("${c}")`);
-  return `// ${QUICK_FILTER_HAYSTACK_ALIAS}\n${parts.join(" + ' ' + ")}`;
+  const parts: string[] = [];
+  for (const c of usable) {
+    if (parts.length > 0) parts.push("' '");
+    parts.push(`string("${c}")`);
+  }
+  return `// ${QUICK_FILTER_HAYSTACK_ALIAS}\nconcat(${parts.join(', ')})`;
 }
 
 /**

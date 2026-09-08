@@ -134,9 +134,40 @@ describe('cgridFilterToPsp', () => {
 });
 
 describe('buildQuickFilterHaystackExpression', () => {
-  it('concatenates string() of columns', () => {
+  /**
+   * This used to assert the `+` form, which Perspective rejects outright —
+   * the test passed for as long as the feature was broken, because it
+   * checked the text the builder emitted rather than whether Perspective
+   * would take it. `concat` is the dialect's only string join.
+   */
+  it('joins the columns with concat, which is what Perspective accepts', () => {
     expect(buildQuickFilterHaystackExpression(['a', 'b'])).toBe(
-      `// ${QUICK_FILTER_HAYSTACK_ALIAS}\nstring("a") + ' ' + string("b")`,
+      `// ${QUICK_FILTER_HAYSTACK_ALIAS}\nconcat(string("a"), ' ', string("b"))`,
+    );
+  });
+
+  it('never emits string addition, at any arity', () => {
+    // The whole View dies on a rejected expression, so this is the assertion
+    // that matters: one `+` anywhere empties the grid.
+    for (const cols of [['a'], ['a', 'b'], ['a', 'b', 'c', 'd', 'e']]) {
+      expect(buildQuickFilterHaystackExpression(cols)).not.toContain('+');
+    }
+  });
+
+  it('needs no separator for a single column', () => {
+    expect(buildQuickFilterHaystackExpression(['a'])).toBe(
+      `// ${QUICK_FILTER_HAYSTACK_ALIAS}\nconcat(string("a"))`,
+    );
+  });
+
+  it('drops its own alias, so a re-entrant build cannot reference itself', () => {
+    expect(buildQuickFilterHaystackExpression([QUICK_FILTER_HAYSTACK_ALIAS, 'a']))
+      .toBe(`// ${QUICK_FILTER_HAYSTACK_ALIAS}\nconcat(string("a"))`);
+  });
+
+  it('is a valid empty expression when there is nothing to search', () => {
+    expect(buildQuickFilterHaystackExpression([])).toBe(
+      `// ${QUICK_FILTER_HAYSTACK_ALIAS}\n''`,
     );
   });
 });
