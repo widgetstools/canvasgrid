@@ -21,6 +21,7 @@ import {
 import {
   WORKER_FEED_PROTOCOL,
   isWorkerFeedPush,
+  isWorkerFeedRowsPush,
   type WorkerFeedConfig,
   type WorkerFeedState,
 } from './workerFeedProtocol';
@@ -39,6 +40,10 @@ interface ControlChannel {
   /** Latest state per table, so a listener attached after the fact is not
    *  blind until the next push. */
   latest: Map<string, WorkerFeedState>;
+  /** Per-table live-batch listeners. Nothing is retained the way `latest`
+   *  retains state: a batch missed is a tick that already happened, and
+   *  replaying it later would flash cells that stopped moving. */
+  rowListeners: Map<string, Set<(rows: Array<Record<string, unknown>>) => void>>;
 }
 
 let channel: ControlChannel | null = null;
@@ -47,8 +52,15 @@ function ensureChannel(): ControlChannel | null {
   if (channel) return channel;
   const port = openSharedEngineControlPort();
   if (!port) return null;
-  const ch: ControlChannel = { port, listeners: new Map(), latest: new Map() };
+  const ch: ControlChannel = {
+    port, listeners: new Map(), latest: new Map(), rowListeners: new Map(),
+  };
   port.addEventListener('message', (ev: MessageEvent) => {
+    if (isWorkerFeedRowsPush(ev.data)) {
+      const { tableName, rows } = ev.data;
+      for (const cb of ch.rowListeners.get(tableName) ?? []) cb(rows);
+      return;
+    }
     if (!isWorkerFeedPush(ev.data)) return;
     const state = ev.data.state;
     ch.latest.set(state.tableName, state);
@@ -145,6 +157,7 @@ function request<T>(
 export async function startWorkerFeed(
   config: WorkerFeedConfig,
   onState?: (state: WorkerFeedState) => void,
+  onRows?: (rows: Array<Record<string, unknown>>) => void,
 ): Promise<WorkerFeedHandle> {
   const ch = ensureChannel();
   if (!ch) throw new Error('[perspective] no shared worker to feed from');
@@ -156,6 +169,17 @@ export async function startWorkerFeed(
       ch.listeners.set(config.tableName, set);
     }
     set.add(onState);
+  }
+  // A worker too old to send `feed: 'rows'` simply never calls this, and the
+  // caller degrades to a band refresh — values still move, without the
+  // per-cell pairing. See `emitViewTick`'s `remoteFlatTick`.
+  if (onRows) {
+    let set = ch.rowListeners.get(config.tableName);
+    if (!set) {
+      set = new Set();
+      ch.rowListeners.set(config.tableName, set);
+    }
+    set.add(onRows);
   }
 
   const state = await request<WorkerFeedState>(ch, { cmd: 'feed:start', config }, (d) => {
@@ -182,6 +206,7 @@ export async function startWorkerFeed(
     restart: () => control('feed:restart'),
     release: () => {
       if (onState) ch.listeners.get(config.tableName)?.delete(onState);
+      if (onRows) ch.rowListeners.get(config.tableName)?.delete(onRows);
       try { ch.port.postMessage({ cmd: 'feed:release', tableName: config.tableName }); }
       catch { /* port already gone */ }
     },

@@ -191,7 +191,38 @@ export type WorkerFeedReply =
   | { id: number; ok: false; error: string }
   | { id: number; state: WorkerFeedState | null }
   /** Unsolicited push on change. */
-  | { feed: 'state'; state: WorkerFeedState };
+  | { feed: 'state'; state: WorkerFeedState }
+  /** Unsolicited push of a LIVE batch the feed just wrote to the shared
+   *  table. See {@link isWorkerFeedRowsPush}. */
+  | { feed: 'rows'; tableName: string; rows: Array<Record<string, unknown>> };
+
+/**
+ * Narrow a live-batch push.
+ *
+ * WHY the rows cross at all, when the whole point of the worker feed is that
+ * they no longer have to: the shared table already has them, and every tab's
+ * View learns that much from `on_update`. What `on_update` does NOT say is
+ * WHICH rows moved or what they moved from — and that pairing is what cell
+ * flash, `[col.old]` style rules and relative-change alerts are built on. A
+ * tab that only hears "something changed" can re-read values and still not
+ * know a single cell ticked.
+ *
+ * On the main-thread feed the tab parsed the batch itself, so the pairing was
+ * free and every one of those features worked. Delegating the transport to
+ * the worker took it away silently: rows kept flowing, flash went dark. This
+ * push is what hands it back — the parse still happens once, in the worker,
+ * and what crosses is the same batch that tab would have read off the socket.
+ *
+ * Live batches only. A snapshot is not a tick, and broadcasting one would
+ * ship the whole book to every subscriber to no purpose.
+ */
+export function isWorkerFeedRowsPush(
+  data: unknown,
+): data is { feed: 'rows'; tableName: string; rows: Array<Record<string, unknown>> } {
+  return typeof data === 'object' && data !== null
+    && (data as { feed?: unknown }).feed === 'rows'
+    && Array.isArray((data as { rows?: unknown }).rows);
+}
 
 /** Narrow a control-port message, which also carries protobuf ArrayBuffers. */
 export function isWorkerFeedPush(

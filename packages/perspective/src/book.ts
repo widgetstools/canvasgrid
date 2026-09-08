@@ -2489,6 +2489,7 @@ export class PerspectiveBook {
           clientWasmUrl: getPerspectiveClientWasmUrl(),
         },
         (state) => this.onWorkerFeedState(state),
+        (rows) => this.onWorkerFeedRows(rows as PositionRow[]),
       );
       if (this.destroyed || this.feedStopped) {
         handle.release();
@@ -2501,6 +2502,37 @@ export class PerspectiveBook {
     } catch (err) {
       console.warn('[PerspectiveBook] worker feed unavailable — feeding locally:', err);
       return false;
+    }
+  }
+
+  /**
+   * A live batch the worker feed just wrote to the shared table.
+   *
+   * These rows are NOT re-enqueued: the worker already wrote them, and
+   * writing them again would be a redundant WASM round-trip per tab. They
+   * are here for one thing only — so this tab knows which rows moved, which
+   * is what `emitViewTick` turns into `applyServerSideTransaction` and the
+   * grid turns into an old/new pairing. Without them every tick on the
+   * worker feed reached the grid as "re-read the block", and cell flash,
+   * `[col.old]` rules and relative-change alerts were all silently dead on
+   * that path while working on the main-thread one.
+   *
+   * The view's own `on_update` also schedules a tick, and the two arrive on
+   * different channels in no guaranteed order. Scheduling here as well costs
+   * nothing when the timer is already armed and covers the case where the
+   * batch lands after the tick it belongs to — those rows then ride the
+   * following tick, still correct because the table already holds them.
+   */
+  private onWorkerFeedRows(rows: PositionRow[]): void {
+    if (this.destroyed || this.feedStopped || this.pauseFanout) return;
+    if (rows.length === 0 || this.views.size === 0) return;
+    for (const viewId of this.views.keys()) {
+      const existing = this.pendingLiveBatch.get(viewId);
+      this.pendingLiveBatch.set(
+        viewId,
+        mergeLiveBatch(existing ?? [], rows, this.opts.keyColumn),
+      );
+      this.scheduleViewTick(viewId);
     }
   }
 
@@ -3058,7 +3090,13 @@ export class PerspectiveBook {
     // tick gating + applyServerSideTransaction already keeps the mirror
     // honest, and soft-refresh-only ticks skip strip invalidation so
     // conditional styles freeze on the raster cache.
-    const remoteFlatTick = updates.length === 0 && this.feedRole === 'follower';
+    // No rows to pair means no patch to push, so the values only move if the
+    // block is re-read. `follower` is the main-thread case (the batch landed
+    // in another tab); `worker` covers a deployed shared worker older than
+    // the `feed: 'rows'` push — new enough to take the feed, too old to say
+    // what moved. Both degrade to a band refresh rather than freezing.
+    const remoteFlatTick = updates.length === 0
+      && (this.feedRole === 'follower' || this.feedRole === 'worker');
     this.opts.onViewTick({
       viewId,
       totals,

@@ -475,8 +475,15 @@ class WorkerFeed {
           break;
         }
         if (this.destroyed) break;
-        if (this.snapshotComplete) this.liveBatches++;
-        else {
+        if (this.snapshotComplete) {
+          this.liveBatches++;
+          // The rows are in the shared table now, so every tab's View will
+          // hear `on_update`. That says something changed; it does not say
+          // WHAT, and the old/new pairing is what cell flash, `[col.old]`
+          // rules and relative-change alerts all read. Hand each subscriber
+          // the batch so they have it — see `isWorkerFeedRowsPush`.
+          this.pushRows(batch);
+        } else {
           await this.readBookSize();
           this.snapshotRowsLoaded = this.bookSize;
         }
@@ -528,6 +535,24 @@ class WorkerFeed {
       this.pushTimer = null;
       this.emit();
     }, due);
+  }
+
+  /**
+   * Fan a live batch out to every subscribed page.
+   *
+   * Unthrottled, unlike state: state is a set of counters where only the
+   * latest matters, and a batch is an event that cannot be coalesced away
+   * without losing the tick it describes. The volume is the same the
+   * main-thread feed already moved into each tab, and the parse it used to
+   * repeat per tab now happens once here.
+   */
+  private pushRows(rows: Array<Record<string, unknown>>): void {
+    if (rows.length === 0 || this.destroyed) return;
+    const { tableName } = this.config;
+    this.eachSubscriber((port) => {
+      try { port.postMessage({ feed: 'rows', tableName, rows }); }
+      catch { /* port gone — the reaper will collect it */ }
+    });
   }
 
   /**
