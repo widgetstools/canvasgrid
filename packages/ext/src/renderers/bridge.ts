@@ -38,7 +38,7 @@ import {
 } from './actions';
 import type { IconActionClusterParams, RowMenuCellParams } from './types';
 import { ColumnStats, type ColumnStatSnapshot } from './columnStats';
-import { applyCellTextSpacing, paintCellChrome } from './paintUtils';
+import { applyCellTextSpacing, paintCellChrome, paintCellFlash } from './paintUtils';
 import { TickHistory } from './tickHistory';
 import {
   createColDefBuilders,
@@ -272,6 +272,9 @@ export function wireRenderersIntoKernel(
    */
   const withBridgeThreading = (name: RendererName, painter: CellPainter): CellPainter => ({
     paint(gc, p) {
+      // Order matches the kernel's own cells: background tint, then content,
+      // then the overlays.
+      paintCellFlash(gc, p);
       applyCellTextSpacing(gc, p);
       try {
         paintThreaded(name, painter, gc, p);

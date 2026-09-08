@@ -318,3 +318,31 @@ export function paintCellChrome(gc: Gc, p: CellPaintConfig): void {
     paintCellDecorators(gc as never, p.bounds, p.decorators);
   }
 }
+
+/**
+ * The cell-change flash tint.
+ *
+ * Painted BEFORE the renderer draws, which is where the kernel puts it — its
+ * built-in cells fill it as part of the background, so the tint sits behind the
+ * glyphs rather than washing over them.
+ *
+ * Exactly one renderer in this catalog used to paint it (`price`), which meant
+ * `enableCellChangeFlash` worked on text columns — those keep the kernel's own
+ * cell — and did nothing on the numeric ones, because `number` REPLACES that
+ * kernel default. Flashing appeared to work inconsistently across columns for
+ * no reason a reader could see.
+ *
+ * `flashFromColor` already carries the DIRECTIONAL tone where the theme
+ * declares `--vg-flash-up-*` / `--vg-flash-down-*`: the kernel's flash registry
+ * resolves up/down per cell and threads the result here. That supersedes the
+ * per-renderer directional tint `price` used to compute for itself, and applies
+ * to every column rather than one.
+ */
+export function paintCellFlash(gc: Gc, p: CellPaintConfig): void {
+  if (!p.flashAlpha || p.flashAlpha > 1 || p.flashAlpha <= 0) return;
+  gc.cache.save();
+  gc.cache.globalAlpha = p.flashAlpha;
+  gc.cache.fillStyle = p.flashFromColor ?? '#fef3c7';
+  gc.fillRect(p.bounds.x, p.bounds.y, p.bounds.w, p.bounds.h);
+  gc.cache.restore();
+}

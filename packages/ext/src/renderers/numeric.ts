@@ -71,14 +71,6 @@ function toNumber(value: unknown): number | null {
   return null;
 }
 
-function paintFlashOverlay(gc: Gc, p: CellPaintConfig, fallbackColor?: string): void {
-  if (!p.flashAlpha || p.flashAlpha <= 0) return;
-  gc.cache.save();
-  gc.cache.globalAlpha = p.flashAlpha;
-  gc.cache.fillStyle = p.flashFromColor ?? fallbackColor ?? withAlpha(SEMANTIC_COLORS.warning, 0.25);
-  gc.fillRect(p.bounds.x, p.bounds.y, p.bounds.w, p.bounds.h);
-  gc.cache.restore();
-}
 
 /**
  * Paint the cell's value.
@@ -281,12 +273,8 @@ export const numberCell: CellPainter = {
 export const priceCell: CellPainter = {
   paint(gc, p) {
     const params = (p.params ?? {}) as PriceCellParams;
-    const dir = tickDirection(p, params.prevField);
-    const colors = colorsFromParams(params.colors, p);
-    const flashColor = dir === 'up' ? withAlpha(colors.positive, 0.25)
-      : dir === 'down' ? withAlpha(colors.negative, 0.25)
-      : undefined;
-    paintFlashOverlay(gc, p, flashColor);
+    // The flash tint is painted by the bridge for every renderer, and the
+    // kernel already resolves its direction — see `paintCellFlash`.
     paintNumberLike(gc, p, params);
   },
 };

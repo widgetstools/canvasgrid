@@ -62,13 +62,15 @@ describe('priceCell', () => {
   let gc: FakeGc;
   beforeEach(() => { gc = makeFakeGc(); });
 
-  it('paints flash overlay when flashAlpha set (nominal)', () => {
-    priceCell.paint(gc, baseConfig({
-      flashAlpha: 0.25,
-      flashFromColor: '#0aa063',
-    }));
-    expect(gc.calls.some((c) => c.op === 'fillRect')).toBe(true);
-    expect(gc.calls.some((c) => c.op === 'set:globalAlpha' && c.args[0] === 0.25)).toBe(true);
+  it('no longer paints the flash itself — the bridge does it for every renderer', () => {
+    // This used to assert priceCell painted its own overlay, and it was the
+    // ONLY renderer in the catalog that did: `enableCellChangeFlash` worked on
+    // text columns (kernel cell) and silently did nothing on numeric ones.
+    // The pass moved to the bridge so every renderer gets it; painting it here
+    // as well would double the alpha. Coverage of the behaviour itself lives in
+    // `cellConfigPasses.test.ts`.
+    priceCell.paint(gc, baseConfig({ flashAlpha: 0.25, flashFromColor: '#0aa063' }));
+    expect(gc.calls.some((c) => c.op === 'set:globalAlpha' && c.args[0] === 0.25)).toBe(false);
   });
 
   it('derives flash from prevField tick up (edge direction)', () => {

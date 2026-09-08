@@ -27,6 +27,8 @@ import {
 } from '../../src/renderers/numeric';
 import { tickerCell, timestampCell, ageCell, relativeTimeCell } from '../../src/renderers/text';
 import { statusPill, venueChip } from '../../src/renderers/badges';
+import { wireRenderersIntoKernel } from '../../src/renderers/bridge';
+import { RENDERER_NAMES } from '../../src/renderers/types';
 
 const VALUE_RENDERERS = [
   ['numberCell', numberCell],
@@ -148,4 +150,62 @@ describe('decoration reaches the other value renderers too', () => {
         .toEqual({ name, drewMore: true });
     });
   }
+});
+
+describe('cell-change flash reaches every renderer', () => {
+  /**
+   * The reported symptom: flashing worked on some columns and not others.
+   * Exactly one renderer of the 51 painted the flash tint (`price`), so
+   * `enableCellChangeFlash` lit up text columns — which keep the kernel's own
+   * cell — and did nothing on numeric ones, because `number` REPLACES that
+   * kernel default and dropped it.
+   *
+   * The pass lives at the bridge now, so this walks what the bridge actually
+   * registered rather than the raw painters.
+   */
+  function registered(): Map<string, { paint: (gc: never, p: never) => void }> {
+    const painters = new Map<string, { paint: (gc: never, p: never) => void }>();
+    const grid = {
+      registerCellRenderer: (name: string, painter: { paint: (gc: never, p: never) => void }) => {
+        painters.set(name, painter);
+      },
+      addEventListener: () => () => {},
+      on: () => () => {},
+      getRowDataById: () => undefined,
+      resolveIcon: () => null,
+      getGridOption: () => undefined,
+    };
+    try { wireRenderersIntoKernel(grid as never); } catch { /* optional wiring */ }
+    return painters;
+  }
+
+  const FLASH = { flashAlpha: 0.4, flashFromColor: '#0aa063' };
+
+  it('the bridge registers the whole catalog', () => {
+    expect(registered().size).toBe(RENDERER_NAMES.length);
+  });
+
+  it('every registered renderer tints when the cell flashed', () => {
+    const painters = registered();
+    const missing: string[] = [];
+    for (const [name, painter] of painters) {
+      const gc = makeFakeGc();
+      try { painter.paint(gc as never, config(FLASH as never) as never); }
+      catch { continue; }   // a renderer that needs params it was not given
+      const tinted = gc.calls.some((c) => c.op === 'set:globalAlpha' && c.args[0] === 0.4);
+      if (!tinted) missing.push(name);
+    }
+    expect(missing).toEqual([]);
+  });
+
+  it('and none of them tints when the cell did not flash', () => {
+    const painters = registered();
+    const spurious: string[] = [];
+    for (const [name, painter] of painters) {
+      const gc = makeFakeGc();
+      try { painter.paint(gc as never, config() as never); } catch { continue; }
+      if (gc.calls.some((c) => c.op === 'set:globalAlpha' && c.args[0] === 0.4)) spurious.push(name);
+    }
+    expect(spurious).toEqual([]);
+  });
 });
