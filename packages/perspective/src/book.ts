@@ -346,6 +346,10 @@ interface BoundView {
   lastSort: Array<[string, 'asc' | 'desc']>;
   /** Title-bar / options quick-filter text (sparse SSRM — applied in Perspective). */
   quickFilterText: string;
+  /** Columns the quick filter searches, or `undefined` for every data
+   *  column. Narrowing this is what keeps a 600-column blotter from
+   *  building a 600-way concat it re-evaluates on every read. */
+  quickFilterColumns?: readonly string[];
   /** Ephemeral quick-filter haystack ExprTK (not user calculated columns). */
   quickFilterExpressions: Record<string, string>;
   /**
@@ -1735,7 +1739,12 @@ export class PerspectiveBook {
   ): Promise<{ extraFilter: PspFilter[]; sort: Array<[string, 'asc' | 'desc']> }> {
     const converted = cgridFilterToPsp(filterModel, {
       quickFilterText: bound.quickFilterText,
-      quickFilterColumns: this.dataColumns,
+      // The columns the GRID searches, not every column in the schema. On a
+      // wide blotter those differ by two orders of magnitude, and the
+      // haystack is an ExprTK concat re-evaluated over the whole table on
+      // every read — so its width is paid per scrolled block, per tick.
+      // `undefined` (kernel too old to say) keeps the old behaviour.
+      quickFilterColumns: bound.quickFilterColumns ?? this.dataColumns,
     });
     const extraFilter = converted.filters;
     bound.quickFilterExpressions = converted.expressions;
@@ -1777,6 +1786,9 @@ export class PerspectiveBook {
       sort: sortModel,
       filter: filterModel,
       quickFilterText: bound.quickFilterText,
+      // Hiding a column changes what the search matches, so it changes the
+      // query — without this the view keeps the previous haystack.
+      quickFilterColumns: bound.quickFilterText ? bound.quickFilterColumns ?? null : null,
       groupBy: bound.groupBy,
       valueAggOverrides: bound.valueAggOverrides,
     });
@@ -1889,12 +1901,19 @@ export class PerspectiveBook {
    * Title-bar quick filter — stored on the View and applied on the next
    * remount / getRows (sparse SSRM cannot use the worker QuickFilterPass).
    */
-  setViewQuickFilterText(viewId: string, text: string): void {
+  setViewQuickFilterText(
+    viewId: string,
+    text: string,
+    columns?: readonly string[],
+  ): void {
     const bound = this.views.get(viewId);
     if (!bound) return;
     const next = text ?? '';
-    if (bound.quickFilterText === next) return;
+    const colsChanged = columns !== undefined
+      && !stringListEqual(columns, bound.quickFilterColumns ?? []);
+    if (bound.quickFilterText === next && !colsChanged) return;
     bound.quickFilterText = next;
+    if (columns !== undefined) bound.quickFilterColumns = [...columns];
     bound.lastQuerySig = '';
   }
 

@@ -431,6 +431,15 @@ export type {
 export { registerIcon, registerIcons, hasIcon } from './renderer/icons';
 
 /**
+ * Columns fetched either side of the visible window on the SSRM path.
+ *
+ * Small on purpose: the payload is per row per block, so this trades a little
+ * width for not re-querying on every column of horizontal scroll. See
+ * {@link VelocityGrid.ssrmFetchColumnWindow}.
+ */
+const SSRM_COLUMN_OVERSCAN = 4;
+
+/**
  * Synthetic row-id field. Injected onto rows on their way into the worker
  * when `getRowId` is not a simple `row => row.<field>` accessor — the
  * RowStore does a flat `row[rowIdField]` lookup, so an arbitrary function
@@ -4443,7 +4452,7 @@ export class VelocityGrid<TRow = any> {
    * that ignore `columnKeys` still return full rows (backward compatible).
    */
   private buildSsrmFetchColumnKeys(): string[] {
-    const visibleColIds = (this.viewport?.visibleColumns ?? []).map((c) => c.colId);
+    const visibleColIds = this.ssrmFetchColumnWindow();
     let filterIds: string[] = [];
     try {
       filterIds = Object.keys(this.getFilterModel());
@@ -4460,6 +4469,34 @@ export class VelocityGrid<TRow = any> {
       expressionOutputIds: this.ssrmExpressionOutputIds,
       clientWatchedColIds: this.ssrmClientWatchedColIds,
     });
+  }
+
+  /**
+   * Visible columns plus a small margin either side.
+   *
+   * The column set is part of the SSRM query: a datasource that windows
+   * columns (Perspective does) rebuilds its view when the set changes. Asking
+   * for EXACTLY what is on screen means one column of horizontal scroll is a
+   * new query — and on a wide blotter, where the whole point of column
+   * windowing is that hundreds of columns exist off screen, that is a view
+   * remount per column step.
+   *
+   * The margin is the horizontal counterpart of `rowBuffer`: it costs a few
+   * columns of payload and buys a scroll that crosses several columns before
+   * the query changes at all.
+   */
+  private ssrmFetchColumnWindow(): string[] {
+    const vis = this.viewport?.visibleColumns ?? [];
+    if (vis.length === 0) return [];
+    const order = this.columnOrder;
+    const first = vis[0]!.index;
+    const last = vis[vis.length - 1]!.index;
+    if (typeof first !== 'number' || typeof last !== 'number' || order.length === 0) {
+      return vis.map((c) => c.colId);
+    }
+    const from = Math.max(0, first - SSRM_COLUMN_OVERSCAN);
+    const to = Math.min(order.length - 1, last + SSRM_COLUMN_OVERSCAN);
+    return order.slice(from, to + 1).map((c) => c.colId);
   }
 
   /** Register Perspective expression output aliases for SSRM columnKeys. */
@@ -5852,6 +5889,31 @@ export class VelocityGrid<TRow = any> {
    *  datasources read this via filterChanged → View remount. */
   getQuickFilterText(): string {
     return this.options.quickFilterText ?? '';
+  }
+
+  /**
+   * Columns the quick filter searches — the SAME set the worker's
+   * QuickFilterPass uses on the client-side path.
+   *
+   * Sparse SSRM has to ask, because `applyQuickFilter` returns before the
+   * worker round-trip that would otherwise carry it. Without this a
+   * datasource had no way to know and searched every column in the schema,
+   * hidden ones included: different results from CSRM on the same grid, and
+   * on a wide blotter a search expression built over hundreds of columns
+   * instead of the dozen on screen.
+   *
+   * Honours `includeHiddenColumnsInQuickFilter` (default `false`), so what
+   * comes back is what the user can actually see unless they opted in.
+   */
+  getQuickFilterColumns(): string[] {
+    // Same expression `applyQuickFilter` uses for the worker's `colIds`:
+    // `columnOrder` IS the visible set, and the hidden-inclusive form is
+    // every known leaf. Deriving it any other way is how the two paths
+    // would drift.
+    if (this.options.includeHiddenColumnsInQuickFilter === true) {
+      return [...this.columnDefsMap.keys()];
+    }
+    return this.columnOrder.map((c) => c.colId);
   }
 
   /** Cycle 7 / Task 1 — apply a per-column filter mutation. Updates the

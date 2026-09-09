@@ -120,6 +120,10 @@ export interface AttachableGrid {
   on(type: string, handler: (event: unknown) => void): () => void;
   /** Current title-bar / options quick-filter text (sparse SSRM). */
   getQuickFilterText?(): string;
+  /** Columns the quick filter searches — visible unless the grid opted into
+   *  `includeHiddenColumnsInQuickFilter`. Absent on older kernels, in which
+   *  case the book falls back to every data column. */
+  getQuickFilterColumns?(): string[];
   /** Value columns + aggFunc from the pivot/grouping value registry. */
   getValueColumns?(): Array<{ colId: string; aggFunc: string }>;
   /** Register Perspective expression output aliases for SSRM columnKeys. */
@@ -240,6 +244,22 @@ export function bookIdentityFor(config: StompPerspectiveProviderConfig): string 
  * disagree on those the first still wins, and the worker feed reports it
  * through `WorkerFeedState.configMismatch`.
  */
+/**
+ * Which columns the quick filter should search.
+ *
+ * `undefined` when the kernel is too old to say, which the book reads as
+ * "every data column" — the behaviour that existed before this was asked.
+ */
+function quickFilterCols(grid: AttachableGrid): string[] | undefined {
+  try {
+    return typeof grid.getQuickFilterColumns === 'function'
+      ? grid.getQuickFilterColumns()
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function bookCacheKey(config: StompPerspectiveProviderConfig): string {
   const schema = normalizeSchema(config.schema, config.keyColumn);
   if (config.providerId) {
@@ -526,7 +546,7 @@ export class StompPerspectiveProvider implements IServerSideDatasourceV2<Positio
       const qf = typeof grid.getQuickFilterText === 'function'
         ? grid.getQuickFilterText()
         : '';
-      this.entry.book.setViewQuickFilterText(this.viewId, qf ?? '');
+      this.entry.book.setViewQuickFilterText(this.viewId, qf ?? '', quickFilterCols(grid));
     } catch { /* optional */ }
 
     const syncValueAggregates = (): void => {
@@ -654,8 +674,24 @@ export class StompPerspectiveProvider implements IServerSideDatasourceV2<Positio
         const qf = typeof grid.getQuickFilterText === 'function'
           ? grid.getQuickFilterText()
           : '';
-        this.entry.book.setViewQuickFilterText(this.viewId, qf ?? '');
+        this.entry.book.setViewQuickFilterText(this.viewId, qf ?? '', quickFilterCols(grid));
       } catch { /* optional */ }
+    }));
+    // Hiding or showing a column changes WHAT THE SEARCH MATCHES, and no
+    // filter event fires for it — so without this the view keeps the
+    // haystack it was built with and the quick filter goes on matching a
+    // column the user just took off screen.
+    unsubs.push(grid.on('displayedColumnsChanged', () => {
+      if (!(typeof grid.getQuickFilterText === 'function')) return;
+      let qf = '';
+      try { qf = grid.getQuickFilterText() ?? ''; } catch { return; }
+      // Only when a search is actually running: rebuilding the view on every
+      // column move for an empty search would be pure cost.
+      if (qf === '') return;
+      try {
+        this.entry.book.setViewQuickFilterText(this.viewId, qf, quickFilterCols(grid));
+        grid.refreshServerSide({ purge: true });
+      } catch { /* grid tearing down */ }
     }));
     unsubs.push(grid.on('bodyScroll', () => { scrollActive = true; }));
     unsubs.push(grid.on('bodyScrollEnd', () => {
