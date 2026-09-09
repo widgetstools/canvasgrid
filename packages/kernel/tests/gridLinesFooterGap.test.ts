@@ -138,3 +138,80 @@ describe('vertical gridlines below the last data row', () => {
     expect(paint('layer').length).toBeGreaterThan(0);
   });
 });
+
+/**
+ * The totals row's hairline must not live in the layer's territory.
+ *
+ * The border is chrome art — the `'layer'` pass skips it deliberately. But it
+ * was painted at `row.top - 1`, and for a BOTTOM-pinned totals row that is
+ * the last pixel of the body, which the damage model assigns to the data
+ * domain. So a frame carrying data damage and no chrome damage repainted that
+ * pixel with the row background and nothing put the hairline back until the
+ * next chrome frame. The divider above the grand total blinked, which reads
+ * as the row changing height.
+ *
+ * Measured on the demos before the fix, border present per 120 frames:
+ * SSRM 27, CSRM 51. After: 120 and 120.
+ *
+ * Pixels at or past `bodyBottom` are never touched by the layer, so the
+ * hairline goes on the totals row's own first pixel. A TOP-pinned row keeps
+ * the lift, because there it rises into the header band, which is chrome.
+ */
+describe('the pinned totals hairline survives a data-only repaint', () => {
+  /**
+   * Real geometry, taken from the running demos: a pinned totals row starts
+   * exactly AT `bodyBottom` (measured 441/441 ungrouped, 512/512 grouped).
+   * The band above it can be empty — the body owns that space either way.
+   */
+  function pinnedVs(): ViewportState {
+    return {
+      ...makeVs(),
+      bodyBottom: 270,
+      visibleRows: [
+        ...makeVs().visibleRows.slice(0, 3),
+        { rowIndex: 3, subgrid: totalsSubgrid, localRowIndex: 0, top: 270, bottom: 300, height: 30 },
+      ],
+    } as ViewportState;
+  }
+
+  const borderRects = (rects: Rect[]) =>
+    rects.filter((r) => r.h === 1 && r.w > 2).map((r) => Math.round(r.y));
+
+  function paintWith(mode: 'layer' | 'chrome' | undefined, vs: ViewportState): number[] {
+    const { gc, rects } = recordingGc();
+    paintGridLines(gc, { viewport: vs, theme } as never, mode);
+    return borderRects(rects);
+  }
+
+  it('a bottom-pinned row draws its border INSIDE itself, not in the body', () => {
+    const lines = paintWith(undefined, pinnedVs());
+    // 270 is the row's own first pixel and past bodyBottom; 269 is the body's
+    // last pixel, which the layer repaints.
+    expect(lines).toContain(270);
+    expect(lines).not.toContain(269);
+  });
+
+  it('nothing the chrome pass draws below the header sits inside the body', () => {
+    // The general invariant behind the fix: chrome art inside [bodyTop,
+    // bodyBottom) is art the layer will erase.
+    const vs = pinnedVs();
+    for (const y of paintWith('chrome', vs)) {
+      if (y >= vs.bodyTop) expect(y).toBeGreaterThanOrEqual(vs.bodyBottom);
+    }
+  });
+
+  it('a TOP-pinned totals row keeps the lift — it rises into the header', () => {
+    const base = makeVs();
+    const lifted: ViewportState = {
+      ...base,
+      bodyTop: 62,
+      visibleRows: [
+        base.visibleRows[0]!,
+        { rowIndex: 1, subgrid: totalsSubgrid, localRowIndex: 0, top: 32, bottom: 62, height: 30 },
+        { ...base.visibleRows[1]!, top: 62, bottom: 92 },
+      ],
+    } as ViewportState;
+    // 31 is above bodyTop, so chrome owns it and the lift is safe to keep.
+    expect(paintWith(undefined, lifted)).toContain(31);
+  });
+});

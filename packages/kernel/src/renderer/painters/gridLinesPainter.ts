@@ -135,11 +135,33 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx, mode?: 'layer
   // own top gets its rule).
   // Task 4 — totals rows are chrome (never data-subgrid); the layer pass
   // skips this border entirely.
+  //
+  // Which is exactly why the lift cannot cross into the data band. For a
+  // BOTTOM-pinned totals row, `row.top - 1` is the last pixel of the body —
+  // and the damage model assigns `[bodyTop, bodyBottom]` to the data domain,
+  // so the layer blit repaints that pixel with the last row's background
+  // while only the chrome pass draws this border. A frame with data damage
+  // and no chrome damage therefore ERASED the hairline, and it came back on
+  // the next chrome frame: the divider above the grand total blinked, which
+  // reads as the row changing height. Measured on the demos before this,
+  // per 120 frames: SSRM showed the border on 27, CSRM on 51.
+  //
+  // Pixels at or past `bodyBottom` are never touched by the layer, so
+  // landing the hairline on the totals row's own first pixel makes it
+  // survive. A TOP-pinned totals row keeps the lift — there `row.top - 1`
+  // is in the header band, which is chrome already.
   if (!dataOnly) {
     for (const row of vs.visibleRows) {
       if (!row.subgrid.isTotals) continue;
+      // Keep the lift only where that pixel is chrome's to own — above the
+      // body (a TOP-pinned row lifts into the header band) or past its
+      // bottom. Inside the body it belongs to the layer, which would
+      // repaint over it.
+      const lifted = Math.round(row.top) - 1;
+      const liftIsChrome = lifted < vs.bodyTop || lifted >= vs.bodyBottom;
+      const y = liftIsChrome ? lifted : Math.round(row.top);
       gc.cache.fillStyle = theme.totalsBorderTop;
-      gc.fillRect(0, Math.round(row.top) - 1, rightEdge, 1);
+      gc.fillRect(0, y, rightEdge, 1);
     }
   }
 
