@@ -134,7 +134,12 @@ const ext = new VelocityGridExt(host, {
   // Sparse: Perspective owns the query, pivot cross-tab included. Never
   // hydrate the whole book into the client — that is the point of SSRM.
   serverSideEnableClientSidePipeline: false,
-  cacheBlockSize: 100,
+  // Perspective charges per READ, not per row: 20 rows and 1000 rows both
+  // cost ~35-40ms on a filtered view under a live feed. So ask for more, less
+  // often. Measured settle-after-flick under a quick filter: 1360ms at 100
+  // rows/block, 2798ms at 40, 291-610ms at 300 — and once 300 x 20 blocks
+  // covers the filtered set, scrolling inside it fetches nothing at all.
+  cacheBlockSize: 300,
   serverSideMaxCachedLeafBlocks: 20,
   groupDefaultExpanded: 0,
   enableCellChangeFlash: true,

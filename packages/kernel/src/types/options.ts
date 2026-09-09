@@ -104,7 +104,26 @@ export interface VelocityGridOptions<TRow = any> {
    * commonly shared across several grids.
    */
   clientSideDataProvider?: import('./clientSideDataProvider').IClientSideDataProvider<TRow>;
-  /** Rows per SSRM block fetch. Default `100`. Initial-only. */
+  /**
+   * Rows per SSRM block fetch. Default `100`. Initial-only.
+   *
+   * Size this to the datasource's COST MODEL, not to the viewport. Two shapes
+   * exist and they want opposite answers:
+   *
+   * - **Cost per call** (Perspective, and anything that scans to answer): the
+   *   read costs the same whatever you ask for. Measured against a filtered
+   *   Perspective view under a live feed — 20 rows 36ms, 100 rows 34ms, 1000
+   *   rows 40ms; that is 1800µs/row falling to 40µs/row. Here SMALL blocks are
+   *   strictly worse: same latency each, more of them, and less of the book
+   *   resident. Prefer 300-1000.
+   * - **Cost per row** (a REST endpoint serializing JSON over the wire): bytes
+   *   scale with the block, so the viewport-sized default is right.
+   *
+   * The interaction with {@link serverSideMaxCachedLeafBlocks} matters as much
+   * as the number itself: `cacheBlockSize × maxCachedLeafBlocks` is how much of
+   * the result set stays resident, and a scroll inside that window costs
+   * nothing at all.
+   */
   cacheBlockSize?: number;
   /** Max parallel `getRows` calls. Default `2`. Initial-only. */
   maxConcurrentDatasourceRequests?: number;
