@@ -13261,6 +13261,7 @@ export class VelocityGrid<TRow = any> {
     const prevChunk = this.chunk;
     const prevGroupTotals = prevChunk?.groupTotals;
     const prevChunkTotals = prevChunk?.totals;
+    const prevPivotValues = prevChunk?.pivotValues;
     this.chunk = chunk;
     this.stickyAncestors = stickyAncestors;
     this.decodedTextCols.clear();
@@ -13403,6 +13404,33 @@ export class VelocityGrid<TRow = any> {
         for (const colId of Object.keys(chunk.totals)) {
           if (prevChunkTotals?.[colId] !== chunk.totals[colId]) {
             this.groupFlashMap.set(`\0${colId}`, now);
+            groupFlashChanged = true;
+          }
+        }
+      }
+      // Pivot result cells read from `chunk.pivotValues`, not `groupTotals`,
+      // and nothing diffed that map — so under pivot mode the cross-tab
+      // measured the only cells on screen and none of them could ever
+      // flash. `applyCellProps` already asks for one
+      // (`groupFlashAlpha(groupKey, colId)` in the pivot branch); the entry
+      // was simply never written.
+      //
+      // Walked as (visible group key x pivot result column) rather than by
+      // decoding the changed value keys: `encodePivotValueKey` has no
+      // inverse, and this direction is bounded by the viewport — a handful
+      // of group rows times the synthesized columns, which
+      // `pivotMaxGeneratedColumns` already caps.
+      if (this.pivotEngine.isPivotActive() && chunk.pivotValues && prevPivotValues) {
+        const groupKeys = new Set<string>(['']);
+        for (const gk of chunk.groupKey ?? []) groupKeys.add(gk);
+        for (const colId of this.pivotEngine.getPivotResultColumns()) {
+          const spec = this.pivotEngine.getCellSpec(colId);
+          if (!spec) continue;
+          const path = spec.pivotPath.join(PIVOT_PATH_SEP);
+          for (const gk of groupKeys) {
+            const vk = encodePivotValueKey(gk, path, spec.valueColId);
+            if (prevPivotValues.get(vk) === chunk.pivotValues.get(vk)) continue;
+            this.groupFlashMap.set(`${gk}\0${colId}`, now);
             groupFlashChanged = true;
           }
         }
