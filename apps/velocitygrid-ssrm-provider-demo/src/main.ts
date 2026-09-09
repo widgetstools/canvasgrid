@@ -152,7 +152,13 @@ const ext = new VelocityGridExt(host, {
   cellSelection: { suppressHeader: true },
   sideBar: { toolPanels: ['columns', 'filters'] },
   rowGroupPanelShow: 'always',
-  pivotPanelShow: 'always',
+  // No standalone "Drag here to set column labels" strip: in pivot mode the
+  // row group panel and this one share ONE 32px band side by side (row groups
+  // left, column labels right), so a second permanent strip is dead space
+  // outside pivot mode. 'never' would also remove the shared band — the split
+  // requires this panel to be visible — so 'onlyWhenPivoting' is the setting
+  // that drops the strip while keeping the drop zone.
+  pivotPanelShow: 'onlyWhenPivoting',
   grandTotalRow: 'pinnedBottom',
   groupDisplayType: 'singleColumn',
   ext: {
