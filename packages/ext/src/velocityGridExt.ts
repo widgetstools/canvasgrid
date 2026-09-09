@@ -94,6 +94,8 @@ export class VelocityGridExt<TRow = any> {
   private themeClass: string | null = null;
   /** `restorePersistedConfig()` warns at most once per instance when the
    *  active ConfigSession has no sync capability (D-F4). */
+  /** One-shot unsubscribe for {@link reapplyWhenColumnsArrive}. */
+  private offColumnsArrived: (() => void) | null = null;
   private warnedSyncRestoreUnsupported = false;
   /** Same warn-once pattern for `hasPersistedConfig()` / `clearPersistedConfig()`
    *  on a ConfigSession without the matching sync capability — a silent
@@ -182,9 +184,11 @@ export class VelocityGridExt<TRow = any> {
       // stored config was written by a newer build — not a rare event —
       // so this fire-and-forget needs its own catch rather than relying on
       // an unhandled-rejection floor.
-      this.profiles.bootstrap().catch((err) => {
-        console.error('[velocity-grid-ext] profile bootstrap failed', err);
-      });
+      this.profiles.bootstrap()
+        .then(() => { this.reapplyWhenColumnsArrive(); })
+        .catch((err) => {
+          console.error('[velocity-grid-ext] profile bootstrap failed', err);
+        });
     } catch (e) {
       try { this._grid.destroy(); } catch { /* best-effort — already broken */ }
       throw e;
@@ -384,6 +388,46 @@ export class VelocityGridExt<TRow = any> {
   closeSettings(): void { this.shell.closeSettings(); }
 
   /**
+   * Re-apply the profile once columns exist, when the restore landed before
+   * they did.
+   *
+   * A saved profile's `columnState` names columns by id, and applying it to a
+   * grid that has none is a no-op — the entries match nothing and are
+   * dropped. That is the normal case for a DataProvider app: the host passes
+   * `columnDefs: []` and the provider supplies the real columns after its
+   * catalog entry binds, which is well after the ctor fires `bootstrap()`.
+   * The saved widths, order, visibility, sort and grouping were all read from
+   * storage correctly and then thrown away for want of anything to apply them
+   * to, so every reload came up with the provider's defaults.
+   *
+   * This is the same class of gap `reapplyActiveProfile` closes for
+   * late-wired state modules; columns just arrive on a different clock. Armed
+   * only when the grid genuinely has no columns at bootstrap, and disarmed
+   * after one shot, so a later provider switch is never second-guessed — the
+   * columns it installs are the ones the user asked for.
+   */
+  private reapplyWhenColumnsArrive(): void {
+    // Columns already present — the bootstrap restore had its targets.
+    if (this._grid.getColumnState().length > 0) return;
+    const run = (): void => {
+      if (this._grid.getColumnState().length === 0) return;
+      this.offColumnsArrived?.();
+      this.offColumnsArrived = null;
+      void this.reapplyActiveProfile().catch((err) => {
+        console.error('[velocity-grid-ext] re-applying profile after columns arrived failed', err);
+      });
+    };
+    // `columnDefsChanged` is the one tied to the tree rebuild, and the only
+    // one that fires for an empty -> populated swap;
+    // `displayedColumnsChanged` does not, which is what a first attempt got
+    // wrong. Both are wired because the one-shot guard makes a double fire
+    // free, and neither alone is worth trusting for every host.
+    const offDefs = this._grid.on('columnDefsChanged', run);
+    const offDisplayed = this._grid.on('displayedColumnsChanged', run);
+    this.offColumnsArrived = () => { offDefs(); offDisplayed(); };
+  }
+
+  /**
    * Re-apply the active profile after late-wired engines (`wireEdit` /
    * `wireCalc` / `wireRules`) register their state modules. The ctor fires
    * `profiles.bootstrap()` before hosts typically call those wires, so the
@@ -402,6 +446,8 @@ export class VelocityGridExt<TRow = any> {
    *  first ensures a bootstrap/switchTo/save continuation still in flight
    *  bails out before it can reach the grid being torn down below. */
   destroy(): void {
+    this.offColumnsArrived?.();
+    this.offColumnsArrived = null;
     this.profiles.dispose();
     // Theme class mirrored onto `container` in the ctor (D-F9) — remove it
     // so a container reused for a fresh instance doesn't inherit a stale
