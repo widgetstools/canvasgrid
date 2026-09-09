@@ -105,7 +105,13 @@ const ext = new VelocityGridExt(host, {
     resizable: true, sortable: true, editable: true,
     minWidth: 80, filter: true, floatingFilter: true,
   },
-  getRowId: (r: { positionId?: string }) => String(r.positionId ?? ''),
+  // A bare `row => row.<field>` accessor ON PURPOSE. The kernel pattern-matches
+  // this shape (`inferRowIdField`); anything else — `String(...)`, a `??`
+  // fallback, a template literal — makes it materialize a synthetic id field,
+  // which costs a `{...row}` clone for EVERY row entering the worker. The
+  // field is guaranteed: it is the provider's keyColumn, and rows without it
+  // never reach the grid.
+  getRowId: (r: { positionId: string }) => r.positionId,
   enableCellChangeFlash: true,
   cellSelection: { suppressHeader: true },
   sideBar: { toolPanels: ['columns', 'filters'] },
