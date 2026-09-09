@@ -356,3 +356,62 @@ describe('flat-view ticks carry grand totals that nothing refreshes on their own
     expect(tick!.refreshSsrm).toBe(true);
   });
 });
+
+/**
+ * The live-tick gate has to agree with the view about AND vs OR.
+ *
+ * A one-term quick filter is pushed to Perspective as `contains` on each
+ * searchable column with `filter_op: 'or'`. The gate that decides which feed
+ * rows become grid patches evaluates the same filter array — and it ANDed.
+ * ANDing that array demands EVERY column contain the term, which is nearly
+ * never true, so every tick for a row the user is looking at would be
+ * dropped, taking its cell flash and rule evaluation with it.
+ */
+describe('tick gating follows the view filter operator', () => {
+  const boundOr = (over: Record<string, unknown> = {}) => makeBoundView('A', {
+    groupBy: [],
+    quickFilterText: 'EMEA',
+    lastFilterOp: 'or',
+    lastExtraFilter: [
+      ['ticker', 'contains', 'EMEA'],
+      ['region', 'contains', 'EMEA'],
+    ],
+    ...over,
+  });
+
+  const tickWith = async (bound: unknown, rows: PositionRow[]): Promise<ViewTick | undefined> => {
+    const ticks: ViewTick[] = [];
+    const book = new PerspectiveBook({
+      schema: { positionId: 'string', ticker: 'string', region: 'string' },
+      onViewTick: (t) => ticks.push(t),
+    });
+    (book as any).views.set('A', bound);
+    (book as any).dataColumns = ['positionId', 'ticker', 'region'];
+    (book as any).fetchGrandTotal = async () => null;
+    (book as any).pendingLiveBatch.set('A', rows);
+    await (book as any).emitViewTick('A');
+    return ticks[0];
+  };
+
+  it('a row matching ONE of the ORed columns still ticks', async () => {
+    const row: PositionRow = { positionId: 'p1', ticker: 'TICK1', region: 'EMEA' };
+    const tick = await tickWith(boundOr(), [row]);
+    // Under the old AND gate this row was dropped: `ticker` has no "EMEA".
+    expect(tick?.updates).toEqual([row]);
+  });
+
+  it('a row matching NO column does not tick', async () => {
+    const row: PositionRow = { positionId: 'p2', ticker: 'TICK2', region: 'APAC' };
+    const tick = await tickWith(boundOr(), [row]);
+    expect(tick?.updates).toEqual([]);
+  });
+
+  it('without the OR marker the array is still ANDed', async () => {
+    // The fallback path composes several independent conditions; ORing them
+    // there would let through rows the view excludes.
+    const row: PositionRow = { positionId: 'p3', ticker: 'TICK3', region: 'EMEA' };
+    const bound = boundOr({ lastFilterOp: undefined, quickFilterText: '' });
+    const tick = await tickWith(bound, [row]);
+    expect(tick?.updates).toEqual([]);
+  });
+});

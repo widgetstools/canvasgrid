@@ -33,6 +33,12 @@ export type CgridFilterConversion = {
    * Used to gate live tick patches — feed rows lack expression columns.
    */
   orContains: Record<string, OrContainsMatcher>;
+  /**
+   * `'or'` when the entire filter is ONE quick-filter term spread across
+   * columns and nothing else — the only shape Perspective's single global
+   * `filter_op` can express. See {@link cgridFilterToPsp}.
+   */
+  filterOp?: 'or';
 };
 
 function emptyConversion(): CgridFilterConversion {
@@ -301,6 +307,15 @@ export function cgridFilterToPsp(
     quickFilterText?: string;
     /** Columns included in the quick-filter haystack (schema fields). */
     quickFilterColumns?: readonly string[];
+    /**
+     * The caller confirms nothing else will be ANDed onto this view's filter
+     * (no provider-fixed `spec.filter`). Only then can a one-term quick
+     * filter use Perspective's global `filter_op: 'or'`.
+     */
+    allowNativeOr?: boolean;
+    /** Subset of `quickFilterColumns` that a native `contains` accepts —
+     *  string-typed ones. Applying it to a float aborts the whole view. */
+    containsCapableColumns?: readonly string[];
   },
 ): CgridFilterConversion {
   const parts: CgridFilterConversion[] = [];
@@ -323,6 +338,33 @@ export function cgridFilterToPsp(
     const terms = raw.split(/\s+/).filter(Boolean);
     const cols = opts?.quickFilterColumns ?? [];
     if (terms.length > 0 && cols.length > 0) {
+      // FAST PATH — one term, and this search is the only filter in play.
+      //
+      // The haystack is an ExprTK expression column, and Perspective
+      // re-evaluates one over the whole table on every read: measured against
+      // a live 10k-row feed, 58ms per windowed read against 5ms for native
+      // `contains` filters returning the identical rows. End to end under a
+      // scroll the gap was 1452ms against 2ms.
+      //
+      // "ANY column contains the term" is an OR, and Perspective's
+      // `filter_op` is global — one op for the whole array. So this is
+      // expressible natively ONLY when there is nothing to AND it with: no
+      // column filters, no provider-fixed filter (the caller vouches via
+      // `allowNativeOr`), one term. Anything else keeps the expression, which
+      // is slower but composes.
+      const capable = opts?.containsCapableColumns
+        ? cols.filter((c) => opts.containsCapableColumns!.includes(c))
+        : cols;
+      if (
+        terms.length === 1
+        && capable.length > 0
+        && filters.length === 0
+        && Object.keys(expressions).length === 0
+        && opts?.allowNativeOr === true
+      ) {
+        for (const col of capable) filters.push([col, 'contains', terms[0]!]);
+        return { filters, expressions, orContains, filterOp: 'or' };
+      }
       expressions[QUICK_FILTER_HAYSTACK_ALIAS] = buildQuickFilterHaystackExpression(cols);
       for (const term of terms) {
         filters.push([QUICK_FILTER_HAYSTACK_ALIAS, 'contains', term]);

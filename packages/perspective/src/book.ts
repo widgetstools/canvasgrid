@@ -350,6 +350,9 @@ interface BoundView {
    *  column. Narrowing this is what keeps a 600-column blotter from
    *  building a 600-way concat it re-evaluates on every read. */
   quickFilterColumns?: readonly string[];
+  /** `'or'` when `lastExtraFilter` is a one-term quick filter spread across
+   *  columns — the view AND the live-tick matcher must agree on this. */
+  lastFilterOp?: 'or';
   /** Ephemeral quick-filter haystack ExprTK (not user calculated columns). */
   quickFilterExpressions: Record<string, string>;
   /**
@@ -544,11 +547,26 @@ function rowMatchesViewFilter(
     quickFilterText?: string;
     dataColumns?: readonly string[];
     lastOrContains?: Record<string, OrContainsMatcher>;
+    lastFilterOp?: 'or';
   },
 ): boolean {
   const orContains = opts?.lastOrContains ?? {};
   if (!rowMatchesPspFilters(spec.filter ?? [], row, orContains)) return false;
-  if (!rowMatchesPspFilters(opts?.lastExtraFilter ?? [], row, orContains)) return false;
+  const extra = opts?.lastExtraFilter ?? [];
+  if (opts?.lastFilterOp === 'or') {
+    // The view ORs these, so the tick gate must too. ANDing a one-term quick
+    // filter spread across columns would demand EVERY column contain the
+    // term, which is nearly never true — every tick for a row the user IS
+    // looking at would be dropped, and with it that row's flash and rules.
+    // `quickFilterText` below already covers the same search, so an
+    // unmatchable row is still rejected there.
+    if (extra.length > 0
+      && !extra.some((f) => rowMatchesPspFilters([f], row, orContains))) {
+      return false;
+    }
+  } else if (!rowMatchesPspFilters(extra, row, orContains)) {
+    return false;
+  }
   if (!rowMatchesQuickFilter(
     opts?.quickFilterText ?? '',
     row,
@@ -1021,6 +1039,21 @@ export class PerspectiveBook {
   }
 
   /** Perspective `table({ index })` column derived from keyColumn. */
+  /**
+   * Columns a native `contains` can be applied to.
+   *
+   * Note what this costs on the fast path: a one-term search no longer
+   * matches numeric columns. That is a smaller loss than it sounds — the
+   * haystack rendered floats via `string()`, so a notional of 30,053,700
+   * appeared as `3.00537e+07` and searching the digits never matched it
+   * anyway. Small integers did match, and on this path no longer will.
+   */
+  private stringColumns(): readonly string[] {
+    const schema = this.opts.schema as Record<string, string> | undefined;
+    if (!schema) return this.dataColumns;
+    return this.dataColumns.filter((c) => schema[c] === 'string');
+  }
+
   private tableIndexField(): string {
     return resolveTableIndexField(this.opts.keyColumn);
   }
@@ -1739,6 +1772,15 @@ export class PerspectiveBook {
   ): Promise<{ extraFilter: PspFilter[]; sort: Array<[string, 'asc' | 'desc']> }> {
     const converted = cgridFilterToPsp(filterModel, {
       quickFilterText: bound.quickFilterText,
+      // A provider-fixed filter is ANDed onto every view (`spec.filter`), so
+      // a global OR would silently widen it — the native path is only safe
+      // when there is nothing to compose with.
+      allowNativeOr: (bound.spec.filter ?? []).length === 0,
+      // Perspective's `contains` is a STRING operator — handing it a float
+      // column aborts the view ("stod: no conversion") and takes the whole
+      // query down with it. The haystack hid this by casting everything
+      // through `string()`; a native filter has no such cover.
+      containsCapableColumns: this.stringColumns(),
       // The columns the GRID searches, not every column in the schema. On a
       // wide blotter those differ by two orders of magnitude, and the
       // haystack is an ExprTK concat re-evaluated over the whole table on
@@ -1789,17 +1831,20 @@ export class PerspectiveBook {
       // Hiding a column changes what the search matches, so it changes the
       // query — without this the view keeps the previous haystack.
       quickFilterColumns: bound.quickFilterText ? bound.quickFilterColumns ?? null : null,
+      filterOp: converted.filterOp ?? null,
       groupBy: bound.groupBy,
       valueAggOverrides: bound.valueAggOverrides,
     });
     if (querySig !== bound.lastQuerySig) {
       bound.lastQuerySig = querySig;
       bound.lastExtraFilter = extraFilter;
+      bound.lastFilterOp = converted.filterOp;
       bound.lastSort = sort;
       await this.withTableLock(() => this.remountDataView(bound, extraFilter, sort));
       void this.refreshProjected(viewId);
     } else {
       bound.lastExtraFilter = extraFilter;
+      bound.lastFilterOp = converted.filterOp;
       bound.lastSort = sort;
     }
     return { extraFilter, sort };
@@ -2317,6 +2362,12 @@ export class PerspectiveBook {
       columns: bound.groupBy.length > 0 ? projectedSkeleton : projectedPaint,
       filter,
     };
+    // Only ever set alongside a filter that is entirely one quick-filter
+    // term; `syncQuery` refuses the native path when anything would be ANDed
+    // on, because this op applies to the WHOLE array.
+    if (bound.lastFilterOp === 'or' && filter.length > 0) {
+      config.filter_op = 'or';
+    }
     if (Object.keys(mergedExpressions).length > 0) {
       config.expressions = mergedExpressions;
     }
@@ -3187,6 +3238,7 @@ export class PerspectiveBook {
       quickFilterText: v.quickFilterText,
       dataColumns: this.dataColumns,
       lastOrContains: v.lastOrContains,
+      lastFilterOp: v.lastFilterOp,
     };
     const pending = this.pendingLiveBatch.get(viewId) ?? [];
     const updates = pending.filter(

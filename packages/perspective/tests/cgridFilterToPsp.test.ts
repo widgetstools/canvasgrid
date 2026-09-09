@@ -183,3 +183,84 @@ describe('mapAggFuncToPerspective', () => {
     expect(mapAggFuncToPerspective('unknown')).toBe('sum');
   });
 });
+
+/**
+ * Why a quick filter stopped being an expression.
+ *
+ * The haystack is an ExprTK expression column, and Perspective re-evaluates
+ * one over the whole table on every read. Measured against a live 10k-row
+ * book under a ~40,000 rows/s feed, per windowed read:
+ *
+ *   no filter                     4ms
+ *   one term, native contains     4ms
+ *   two terms, haystack         985ms
+ *
+ * "ANY column contains the term" is an OR, and Perspective's `filter_op` is
+ * global — one operator for the whole filter array. So the native form is
+ * available ONLY when there is nothing to AND it with. These tests pin both
+ * halves: that the fast path is taken when it is safe, and — the part that
+ * would silently return wrong rows — that it is NOT taken when it isn't.
+ */
+describe('quick filter takes the native path only when it is safe', () => {
+  const cols = ['ticker', 'desk', 'region'];
+  const native = (over: Record<string, unknown> = {}) =>
+    cgridFilterToPsp({}, { quickFilterText: 'EMEA', quickFilterColumns: cols, allowNativeOr: true, ...over });
+
+  it('one term, nothing else: contains per column, ORed, no expression', () => {
+    const { filters, expressions, filterOp } = native();
+    expect(filterOp).toBe('or');
+    expect(expressions).toEqual({});
+    expect(filters).toEqual([
+      ['ticker', 'contains', 'EMEA'],
+      ['desk', 'contains', 'EMEA'],
+      ['region', 'contains', 'EMEA'],
+    ]);
+  });
+
+  it('TWO terms fall back — a global OR cannot express AND-of-ORs', () => {
+    // Taking the fast path here would return rows matching EITHER term.
+    const { filterOp, expressions } = native({ quickFilterText: 'EMEA Inflation' });
+    expect(filterOp).toBeUndefined();
+    expect(expressions[QUICK_FILTER_HAYSTACK_ALIAS]).toBeDefined();
+  });
+
+  it('a column filter present falls back — the OR would swallow it', () => {
+    const { filterOp } = cgridFilterToPsp(
+      { desk: { filterType: 'text', type: 'contains', filter: 'Sec' } },
+      { quickFilterText: 'EMEA', quickFilterColumns: cols, allowNativeOr: true },
+    );
+    expect(filterOp).toBeUndefined();
+  });
+
+  it('a provider-fixed filter falls back — the caller withholds permission', () => {
+    expect(native({ allowNativeOr: false }).filterOp).toBeUndefined();
+  });
+
+  it('numeric columns are dropped: `contains` on a float aborts the view', () => {
+    // Perspective answers "stod: no conversion" and the whole query dies.
+    const { filters, filterOp } = native({
+      quickFilterColumns: ['ticker', 'pnl', 'region'],
+      containsCapableColumns: ['ticker', 'region'],
+    });
+    expect(filterOp).toBe('or');
+    expect(filters.map((f) => f[0])).toEqual(['ticker', 'region']);
+  });
+
+  it('falls back when NO column can take a native contains', () => {
+    const { filterOp, expressions } = native({
+      quickFilterColumns: ['pnl', 'notional'],
+      containsCapableColumns: [],
+    });
+    expect(filterOp).toBeUndefined();
+    expect(expressions[QUICK_FILTER_HAYSTACK_ALIAS]).toBeDefined();
+  });
+
+  it('no quick filter at all is untouched', () => {
+    const { filters, filterOp } = cgridFilterToPsp(
+      { desk: { filterType: 'text', type: 'contains', filter: 'Sec' } },
+      { allowNativeOr: true },
+    );
+    expect(filterOp).toBeUndefined();
+    expect(filters).toEqual([['desk', 'contains', 'Sec']]);
+  });
+});
