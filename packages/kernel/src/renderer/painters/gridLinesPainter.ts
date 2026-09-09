@@ -185,11 +185,25 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx, mode?: 'layer
   // window's data ends, which `layerVs` does NOT reproduce). Under
   // `chromeOnly`, verticals/pinned-edges stop exactly at `vs.bodyTop`
   // (computed via the ternaries below) so this scan is skipped entirely.
+  // DATA rows only, in every mode.
+  //
+  // This used to admit any non-header row unless `dataOnly` was set, which
+  // made the combined pass and the `'layer'` pass disagree: the combined one
+  // ran the lattice down to the bottom of a pinned totals row while the layer
+  // one stopped at the last data row. With rows filling the viewport the two
+  // bottoms coincide and nothing shows. Leave a gap — a grouped view
+  // collapsed to a few rows above a pinned grand total — and every
+  // alternation between the paths added or removed a column lattice in the
+  // empty band, which is what "vertical lines flickering below the last row"
+  // was.
+  //
+  // Data-only is the correct side of that disagreement: the band below the
+  // last row holds no cells, so it has no columns to separate. Rows pinned
+  // ABOVE the data are unaffected, since the data extends past them.
   let lastRowBottom = vs.bodyTop;
   if (!chromeOnly) {
     for (const row of vs.visibleRows) {
-      if (row.subgrid.isHeader) continue;
-      if (dataOnly && !row.subgrid.isData) continue;
+      if (!row.subgrid.isData) continue;
       const b = Math.min(row.bottom, vs.bodyBottom);
       if (b > lastRowBottom) lastRowBottom = b;
     }
