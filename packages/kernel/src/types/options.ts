@@ -185,6 +185,24 @@ export interface VelocityGridOptions<TRow = any> {
    */
   rowMultiSelectWithClick?: boolean;
   enableCellChangeFlash?: boolean;
+  /**
+   * Colour the change flash by DIRECTION — one tone when a numeric value
+   * rose, another when it fell. Default `true`.
+   *
+   * The tones come from the theme (`--vg-flash-up-*` / `--vg-flash-down-*`),
+   * and a theme that declares neither already resolves both to the neutral
+   * pair. This switch is for the other case: a theme that DOES define them
+   * but a desk that does not want them. Turning it off falls back to the
+   * single `--vg-flash-from-color` for every change, whatever the theme
+   * offers.
+   *
+   * Direction is read from the sign of the change, so it says nothing about
+   * the sign of the VALUE — a loss shrinking still flashes "up". Worth
+   * knowing before reading a wall of red and green.
+   *
+   * Runtime-mutable via `setGridOption`.
+   */
+  cellFlashDirectional?: boolean;
   cellFlashDuration?: number;
   cellFadeDuration?: number;
   /**

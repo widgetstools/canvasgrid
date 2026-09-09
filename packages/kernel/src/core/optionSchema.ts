@@ -181,6 +181,10 @@ const OPTION_BANDS: BandSpec[] = [
     title: 'Change flash',
     fields: [
       { key: 'enableCellChangeFlash', label: 'Flash on change', type: 'switch', kernelDefault: false },
+      {
+        key: 'cellFlashDirectional', label: 'Colour by direction', type: 'switch',
+        kernelDefault: true, hint: 'Up / down tones instead of one colour',
+      },
       { key: 'cellFlashDuration', label: 'Flash duration', type: 'number', kernelDefault: 500, min: 0, max: 5000, step: 50, hint: 'ms' },
       { key: 'cellFadeDuration', label: 'Fade duration', type: 'number', kernelDefault: 1000, min: 0, max: 10000, step: 50, hint: 'ms' },
     ],

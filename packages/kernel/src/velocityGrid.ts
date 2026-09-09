@@ -13326,6 +13326,7 @@ export class VelocityGrid<TRow = any> {
       // still paints: `flashCells` stages an override marker that
       // `shouldFlash` admits.
       const hasOverrides = this.flashOverrides.size > 0;
+      const directionalFlash = this.options.cellFlashDirectional !== false;
       const owned = ruleFlashOwnership(getRuleEngine()?.getRules?.());
       const suppressDefault = owned.allColumns || owned.colIds.size > 0;
       const needSid = hasOverrides || suppressDefault;
@@ -13350,9 +13351,14 @@ export class VelocityGrid<TRow = any> {
         // sign of every numeric change; here it picks the paint. Themes that
         // declare neither --vg-flash-up-* nor --vg-flash-down-* resolve both
         // to the legacy neutral pair, so nothing changes for them.
-        dir: chunk.flashDir,
-        upColor: this.theme?.flashUpFromColor,
-        downColor: this.theme?.flashDownFromColor,
+        //
+        // `cellFlashDirectional: false` withholds the tones even from a theme
+        // that HAS them, which is the only way to get one colour back on such
+        // a theme. Read live, so the Grid Options switch takes effect on the
+        // next chunk rather than on a remount.
+        dir: directionalFlash ? chunk.flashDir : undefined,
+        upColor: directionalFlash ? this.theme?.flashUpFromColor : undefined,
+        downColor: directionalFlash ? this.theme?.flashDownFromColor : undefined,
       });
       this.startFlashTickLoop();
     }

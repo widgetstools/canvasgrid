@@ -53,6 +53,7 @@ export type RuntimeOption =
   | 'suppressColumnVirtualisation'
   | 'suppressRowVirtualisation'
   | 'enableCellChangeFlash'
+  | 'cellFlashDirectional'
   | 'cellFlashDuration'
   | 'cellFadeDuration'
   | 'asyncTransactionWaitMillis'
@@ -307,6 +308,13 @@ export function applyRuntimeOption<TRow>(
       // additional wiring is needed there.
       target.forwardEnableCellChangeFlash(value === true);
       return;
+    case 'cellFlashDirectional':
+      // `ingestMask` reads this option live on the next chunk, so nothing
+      // has to be forwarded or rebuilt. Flashes already in flight keep the
+      // tone they were staged with; repainting is what makes the switch
+      // visible before the next tick rather than after it.
+      target.refreshLayout();
+      return;
     case 'aggFuncs':
       // Cycle 14 / Task 3 — forward the new aggFuncs map to the worker
       // wholesale. Main side serialises each function (with closure
@@ -549,7 +557,8 @@ export const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOpt
   'animateRows', 'suppressRowHoverHighlight', 'rowSelection',
   'suppressRowClickSelection', 'rowMultiSelectWithClick',
   'suppressColumnVirtualisation', 'suppressRowVirtualisation',
-  'enableCellChangeFlash', 'cellFlashDuration', 'cellFadeDuration',
+  'enableCellChangeFlash', 'cellFlashDirectional',
+  'cellFlashDuration', 'cellFadeDuration',
   'asyncTransactionWaitMillis', 'asyncTransactionConflate',
   'asyncTransactionThrottleMillis', 'rowBuffer',
   'context', 'loading', 'loadingMessage', 'debug', 'rowData',

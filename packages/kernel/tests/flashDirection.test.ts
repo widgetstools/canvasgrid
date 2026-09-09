@@ -199,3 +199,73 @@ describe('FlashRegistry — direction selects the colour', () => {
     expect((ticker?.[3] as { color?: string } | undefined)?.color).toBe('rgb(229 81 122 / 26%)');
   });
 });
+
+/**
+ * Making it optional.
+ *
+ * The tones are a theme decision, so a theme that declares no
+ * `--vg-flash-up-*` already flashes one colour (covered above). What had no
+ * answer was a desk on a theme that DOES declare them and does not want the
+ * grid painted red and green — the only lever was editing the theme.
+ *
+ * `cellFlashDirectional` is that lever, and it is runtime-mutable so the
+ * customizer's Grid Options tab can drive it. `VelocityGrid` withholds `dir`
+ * and both colours when it is off, which is the same input shape a
+ * non-directional theme produces — so the registry needs no branch of its
+ * own, and this asserts the shape rather than duplicating its behaviour.
+ */
+describe('cellFlashDirectional', () => {
+  const deps = () => ({
+    getEnabled: () => true,
+    getFlashDuration: () => 500,
+    getFadeDuration: () => 1000,
+    getReducedMotion: () => false,
+    requestRepaint: () => {},
+  });
+  const fullMask = (rows: number): Uint8Array => {
+    const bits = rows * 2;
+    const bytes = new Uint8Array(Math.ceil(bits / 8));
+    for (let i = 0; i < bits; i++) bytes[i >>> 3]! |= 1 << (i & 7);
+    return bytes;
+  };
+
+  it('withholding dir + colours is what "off" looks like to the registry', () => {
+    const reg = new FlashRegistry(deps() as never);
+    const spy = vi.spyOn(reg, 'flash');
+    // Exactly what the grid passes with the option off: the chunk still
+    // carries directions, they are simply not forwarded.
+    reg.ingestMask({
+      rowIds: [1],
+      colIds: ['price', 'ticker'],
+      mask: fullMask(1),
+      dir: undefined,
+      upColor: undefined,
+      downColor: undefined,
+      now: 0,
+    });
+    expect(spy.mock.calls.length).toBe(2);
+    for (const call of spy.mock.calls) expect(call[3]).toBeUndefined();
+  });
+
+  it('reaches the customizer: a switch in the Change flash band, default on', async () => {
+    // Built through the same entry point the customizer uses — an option
+    // absent from this section is an option the user cannot reach.
+    const { buildGridOptionsSchema } = await import('../src/core/optionSchema');
+    const section = buildGridOptionsSchema({
+      getGridOption: () => undefined,
+      setGridOption: () => {},
+    });
+    const band = section.bands.find((b) => b.id === 'changeFlash');
+    const field = band?.fields.find((f) => f.key === 'cellFlashDirectional');
+    expect(field).toBeDefined();
+    expect(field?.type).toBe('switch');
+    // Default ON — turning it off is the deliberate act, so an existing grid
+    // looks exactly as it did.
+    expect(field?.defaultValue).toBe(true);
+  });
+
+  it('is runtime-mutable, so the switch applies without a remount', async () => {
+    const { RUNTIME_OPTION_SET } = await import('../src/core/runtimeOptions');
+    expect(RUNTIME_OPTION_SET.has('cellFlashDirectional' as never)).toBe(true);
+  });
+});
