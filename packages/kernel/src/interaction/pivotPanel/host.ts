@@ -97,6 +97,13 @@ export interface PivotPanelGridContext {
    *  content. The grid keeps this fresh by calling `setPivotActive`
    *  from its `pivotStateChanged` handler. */
   isPivotActive(): boolean;
+  /** True when the pivot TOGGLE is on, whether or not a pivot has been
+   *  configured yet. `'onlyWhenPivoting'` mounts on this rather than on
+   *  `isPivotActive()`: a pivot is not "active" until it has a value
+   *  column, and the strip is where the user drops the column label that
+   *  starts building one. Gating on `isPivotActive()` meant the drop zone
+   *  only appeared once you no longer needed it. */
+  isPivotMode(): boolean;
   /** Cross-section pill drag — try routing a pivot pill to a foreign
    *  panel (Row Group panel, Values zone, etc.). Returns `true` when
    *  the column was successfully moved; `false` when no foreign panel
@@ -185,8 +192,13 @@ export class PivotPanelHost {
     if (this.destroyed) return false;
     if (this.show === 'never') return false;
     if (this.show === 'always') return true;
-    // 'onlyWhenPivoting' — hide while pivot is inactive (AG contract).
-    return this.ctx.isPivotActive();
+    // 'onlyWhenPivoting' — mounted while the pivot TOGGLE is on. Not
+    // `isPivotActive()`: that additionally requires a value column, so the
+    // panel appeared only after a pivot already existed — and this strip is
+    // the half of the shared band the user drags a column label INTO to
+    // build one. `isSharingTopStrip` has always gated on `isPivotMode()`,
+    // so this also makes the two agree.
+    return this.ctx.isPivotMode();
   }
 
   /** Receive a fresh ordered pivot column list from PivotState.
@@ -306,7 +318,7 @@ export class PivotPanelHost {
    *  'onlyWhenPivoting' accepts only when pivot is active. */
   private acceptsDrops(): boolean {
     if (this.show === 'always') return true;
-    if (this.show === 'onlyWhenPivoting') return this.ctx.isPivotActive();
+    if (this.show === 'onlyWhenPivoting') return this.ctx.isPivotMode();
     return false;
   }
 
@@ -318,7 +330,10 @@ export class PivotPanelHost {
   private shouldPaintContent(): boolean {
     if (this.show === 'always') return true;
     if (this.show === 'onlyWhenPivoting') {
-      return this.ctx.isPivotActive() || this.pivotColumns.length > 0;
+      // In pivot mode with nothing set yet the placeholder IS the content —
+      // "Drag here to set column labels" is what tells the user the right
+      // half is a target at all.
+      return this.ctx.isPivotMode() || this.pivotColumns.length > 0;
     }
     return false;
   }

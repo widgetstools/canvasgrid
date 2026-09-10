@@ -7885,6 +7885,10 @@ export class VelocityGrid<TRow = any> {
       // that the `onlyWhenPivoting` E2E test caught intermittently.
       // Restored to the state-based check via `isPivotStateActive()`.
       isPivotActive: () => this.pivotEngine.isPivotStateActive(),
+      // The toggle, not the configured pivot — see `isPivotMode` on the
+      // panel ctx. `isSharingTopStrip` already gates the split band on this
+      // same call, so the panel and the band now mount together.
+      isPivotMode: () => this.pivotEngine.isPivotMode(),
       tryCrossPanelMove: (colId, x, y) => this.tryCrossPanelMoveFrom('pivot', colId, x, y),
     };
   }

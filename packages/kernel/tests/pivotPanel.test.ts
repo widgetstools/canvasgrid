@@ -41,6 +41,8 @@ interface RecordingContext extends PivotPanelGridContext {
   enabledCols: Set<string>;
   headerNames: Map<string, string>;
   pivotActive: boolean;
+  /** Optional override — when unset, `isPivotMode()` mirrors `pivotActive`. */
+  pivotMode?: boolean;
 }
 
 function makeContext(): RecordingContext {
@@ -84,6 +86,12 @@ function makeContext(): RecordingContext {
     },
     isPivotActive() {
       return ctx.pivotActive;
+    },
+    /** The pivot TOGGLE. Every test below that says "inactive" means "not
+     *  pivoting at all", so this follows `pivotActive` unless a test sets
+     *  it explicitly — which the mode-on-but-unconfigured cases do. */
+    isPivotMode() {
+      return ctx.pivotMode ?? ctx.pivotActive;
     },
   };
   return ctx;
@@ -356,6 +364,63 @@ describe('PivotPanelHost', () => {
     expect(label.classList.contains('vg-row-group-panel-chip-label')).toBe(true);
     const remove = pill.querySelector('.vg-pivot-panel-pill-remove') as HTMLElement;
     expect(remove.classList.contains('vg-row-group-panel-chip-remove')).toBe(true);
+    host.destroy();
+  });
+
+  /**
+   * Turning Pivot Mode on has to produce the drop zone, not wait for one.
+   *
+   * `'onlyWhenPivoting'` used to mount on `isPivotActive()`, which is only
+   * true once the pivot has a value column. So switching the toggle on with
+   * nothing configured yet left the row-group panel spanning the full width
+   * and no column-label half at all — and that half is exactly where the
+   * user drags the first field FROM the columns sidebar to build the pivot.
+   * The zone appeared only after you no longer needed it.
+   *
+   * `isSharingTopStrip` has always gated the split band on `isPivotMode()`;
+   * the panel now agrees, so the two mount together.
+   */
+  it('mounts in pivot MODE even before the pivot has a value column', () => {
+    const ctx = makeContext();
+    ctx.pivotActive = false;   // no value column yet
+    ctx.pivotMode = true;      // but the toggle IS on
+    const host = new PivotPanelHost(root, ctx, 'onlyWhenPivoting', []);
+    expect(host.isVisible()).toBe(true);
+    host.destroy();
+  });
+
+  it('shows the empty-state placeholder so the half reads as a target', () => {
+    const ctx = makeContext();
+    ctx.pivotActive = false;
+    ctx.pivotMode = true;
+    const host = new PivotPanelHost(root, ctx, 'onlyWhenPivoting', []);
+    const empty = root.querySelector('.vg-pivot-panel-empty') as HTMLElement | null;
+    expect(empty).not.toBeNull();
+    expect(empty!.textContent).toBe('Drag here to set column labels');
+    host.destroy();
+  });
+
+  it('accepts a dropped column in pivot mode — the whole point of the zone', () => {
+    // Asserted through the drop itself rather than `isPointInPanel`: this
+    // environment reports a zero-size rect, so hit-testing cannot
+    // distinguish "outside" from "not laid out".
+    const ctx = makeContext();
+    ctx.pivotActive = false;
+    ctx.pivotMode = true;
+    const host = new PivotPanelHost(root, ctx, 'onlyWhenPivoting', []);
+    expect(host.handleColumnDrop('sector')).toBe(true);
+    expect(ctx.appendCalls).toEqual(['sector']);
+    host.destroy();
+  });
+
+  it('still releases the strip entirely when pivot mode is off', () => {
+    // The behaviour the original contract protected: off means gone, not
+    // an empty reserved band.
+    const ctx = makeContext();
+    ctx.pivotActive = false;
+    ctx.pivotMode = false;
+    const host = new PivotPanelHost(root, ctx, 'onlyWhenPivoting', ['region']);
+    expect(host.isVisible()).toBe(false);
     host.destroy();
   });
 
