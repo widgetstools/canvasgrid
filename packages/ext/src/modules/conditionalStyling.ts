@@ -544,9 +544,14 @@ export function conditionalStylingModule(): SettingsModule {
         ind.body.appendChild(el('div', 'ckp-hint', 'Inline Prefix/Suffix flow with the value; positional slots overlay the cell corners and middles.'));
         advancedPane.appendChild(ind.root);
 
-        // 09 VALUE FORMATTER.
-        const fmt = band('Value formatter');
-        markBandComplexity(fmt, 'advanced');
+        // 09 VALUE FORMATTER — a Settings band, not Advanced.
+        //
+        // This is the formatter toolbar's own picker (`formatPickerMenu`),
+        // and choosing how a matched cell READS is the same order of
+        // decision as choosing its colour — it belongs beside the style
+        // controls, not behind a tab. Parked under Advanced it was
+        // effectively undiscoverable: the rule editor opens on Settings.
+        const fmt = band('Number format');
         const fmtBtn = el('button', 'ckp-fmtbtn');
         fmtBtn.type = 'button';
         const syncFmtBtn = (): void => {
@@ -586,7 +591,7 @@ export function conditionalStylingModule(): SettingsModule {
         });
         fmtBtn.addEventListener('click', () => fmtMenu?.toggle());
         fmt.body.append(fmtBtn, el('div', 'ckp-hint', "Applied to cells where this rule matches — overrides the column's own formatter."));
-        advancedPane.appendChild(fmt.root);
+        settingsPane.appendChild(fmt.root);
 
         body.appendChild(createSettingsAdvancedTabs({
           settings: settingsPane,
