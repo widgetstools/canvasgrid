@@ -26,7 +26,6 @@ import {
   appendPaneChrome, band, caps, chip, colorField, el, iconTile, injectCockpitStyles, lucideSvg,
   numberInput, pillGroup, restorePaneScroll, row, select, switchToggle, takePaneScroll, textInput,
   emptyState, createSettingsAdvancedTabs, markBandComplexity,
-  workflowLink, workflowStrip,
 } from '../ui/cockpit';
 import { formatPickerMenu, formatPickerFitContainer, previewFormat } from '../toolbar/formatPicker';
 import type { FormatDataType } from '../toolbar/formatPresets';
@@ -295,17 +294,6 @@ export function conditionalStylingModule(): SettingsModule {
         });
         head.append(nameIn, statusBox, scopeSel, prioIn, saveBtn, resetBtn);
         const body = appendPaneChrome(pane, head);
-
-        body.appendChild(workflowStrip([
-          workflowLink({
-            label: 'Related alerts',
-            hint: 'Notify when conditions fire',
-            icon: 'bell',
-            moduleId: 'alerts',
-            events: ctx.events,
-            lucideSvg,
-          }),
-        ]));
 
         // Applied is display-only (no twin control). Status / Scope / Priority
         // live once in the header — chips must not duplicate those controls.

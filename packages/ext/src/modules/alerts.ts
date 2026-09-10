@@ -41,8 +41,6 @@ import {
   createSettingsAdvancedTabs,
   markBandComplexity,
   appendBandsByComplexity,
-  workflowLink,
-  workflowStrip,
 } from '../ui/cockpit';
 
 interface AlertsGrid {
@@ -320,16 +318,6 @@ export function alertsModule(): SettingsModule {
           const head = el('div', 'ckp-pane-head');
           head.appendChild(el('div', 'ckp-title', 'Alerts'));
           const body = appendPaneChrome(pane, head);
-          body.appendChild(workflowStrip([
-            workflowLink({
-              label: 'Related styling rules',
-              hint: 'Open Conditional Styling',
-              icon: 'palette',
-              moduleId: 'conditional-styling',
-              events: ctx.events,
-              lucideSvg,
-            }),
-          ]));
           const settingsPane = el('div');
           settingsPane.appendChild(emptyState({
             title: 'No alert selected',
@@ -367,17 +355,6 @@ export function alertsModule(): SettingsModule {
         });
         head.append(nameIn, saveBtn, resetBtn);
         const body = appendPaneChrome(pane, head);
-
-        body.appendChild(workflowStrip([
-          workflowLink({
-            label: 'Related styling rules',
-            hint: 'Open Conditional Styling',
-            icon: 'palette',
-            moduleId: 'conditional-styling',
-            events: ctx.events,
-            lucideSvg,
-          }),
-        ]));
 
         const chips = el('div', 'ckp-chips-strip');
         chips.append(
