@@ -1066,8 +1066,8 @@ export class CssReader {
       // exactly (defensive `get(...) || <literal>` / `px(...)` pattern,
       // same as every other token above).
       rendererPalette: {
-        positive: get('--vg-pos-color') || '#2dd4bf',
-        negative: get('--vg-neg-color') || '#fb7185',
+        positive: get('--vg-pos-color') || '#14B8A6',
+        negative: get('--vg-neg-color') || '#FF7043',
         warning: get('--vg-warning-color') || '#f0b429',
         info: get('--vg-info-color') || '#3b82f6',
         muted: get('--vg-muted-color') || '#8a8f98',

@@ -46,12 +46,12 @@ const PRESETS: FormatPreset[] = [
     format: '=([value] >= 0 ? "+" : "") + FIXED([value] * 10000, 1) + " bp"', sample: 0.001234 },
   // ── Negatives & P&L (5)
   { id: 'neg-parens', category: 'negatives', label: 'Parens negative', format: '#,##0.00;(#,##0.00)' },
-  { id: 'neg-red-parens', category: 'negatives', label: 'Red parens neg', format: '#,##0.00;[Red](#,##0.00)' },
-  { id: 'neg-red', category: 'negatives', label: 'Red negative', format: '#,##0.00;[Red]#,##0.00' },
-  { id: 'neg-green-red', category: 'negatives', label: 'Green / Red (no sign)', format: '[Green]#,##0.00;[Red]#,##0.00' },
-  { id: 'neg-green-red-usd', category: 'negatives', label: 'Green / Red $ (no sign)', format: '[Green]$#,##0.00;[Red]$#,##0.00' },
+  { id: 'neg-red-parens', category: 'negatives', label: 'Down in parens', format: '#,##0.00;[Red](#,##0.00)' },
+  { id: 'neg-red', category: 'negatives', label: 'Colour the negative', format: '#,##0.00;[Red]#,##0.00' },
+  { id: 'neg-green-red', category: 'negatives', label: 'Up / down, no sign', format: '[Green]#,##0.00;[Red]#,##0.00' },
+  { id: 'neg-green-red-usd', category: 'negatives', label: 'Up / down $, no sign', format: '[Green]$#,##0.00;[Red]$#,##0.00' },
   // ── Conditional (2)
-  { id: 'cond-arrows', category: 'conditional', label: 'Green up / red down',
+  { id: 'cond-arrows', category: 'conditional', label: 'Up / down arrows',
     format: '[>0][Green]▲0.00;[<0][Red]▼0.00;0.00', sample: -12.5 },
   { id: 'cond-thresholds', category: 'conditional', label: 'Thresholds (100)',
     format: '[>100][Red]0;[<=100][Green]0;0', sample: 142 },
@@ -69,7 +69,7 @@ const PRESETS: FormatPreset[] = [
   // ── Currency (12)
   { id: 'cur-usd', category: 'currency', label: 'USD', format: '$#,##0.00' },
   { id: 'cur-usd-parens', category: 'currency', label: 'USD parens neg', format: '$#,##0.00;($#,##0.00)' },
-  { id: 'cur-usd-red', category: 'currency', label: 'USD red negative', format: '$#,##0.00;[Red]-$#,##0.00' },
+  { id: 'cur-usd-red', category: 'currency', label: 'USD, negative coloured', format: '$#,##0.00;[Red]-$#,##0.00' },
   { id: 'cur-usd-0dp', category: 'currency', label: 'USD (0dp)', format: '$#,##0' },
   { id: 'cur-eur', category: 'currency', label: 'EUR', format: '€#,##0.00' },
   { id: 'cur-eur-parens', category: 'currency', label: 'EUR parens neg', format: '€#,##0.00;(€#,##0.00)' },
@@ -228,7 +228,7 @@ export const EXCEL_EXAMPLES: ExcelExampleSection[] = [
   { title: 'Currency', rows: [
     { label: 'USD', format: '$#,##0.00', sample: '$1,234.57' },
     { label: 'USD parens neg', format: '$#,##0.00;($#,##0.00)', sample: '($1,234.57)' },
-    { label: 'USD red negative', format: '$#,##0.00;[Red]-$#,##0.00', sample: '-$1,234.57 (red)' },
+    { label: 'USD, negative coloured', format: '$#,##0.00;[Red]-$#,##0.00', sample: '-$1,234.57, coloured' },
     { label: 'EUR', format: '€#,##0.00', sample: '€1,234.57' },
   ] },
   { title: 'Percent & basis points', rows: [
@@ -238,10 +238,10 @@ export const EXCEL_EXAMPLES: ExcelExampleSection[] = [
   ] },
   { title: 'Negatives in parens / red', rows: [
     { label: 'Parens negative', format: '#,##0.00;(#,##0.00)', sample: '(1,234.57)' },
-    { label: 'Red parens', format: '#,##0.00;[Red](#,##0.00)', sample: '(1,234.57)' },
-    { label: 'Red only', format: '#,##0.00;[Red]#,##0.00', sample: '[Red]1,234.57' },
-    { label: 'Green / Red (no sign)', format: '[Green]#,##0.00;[Red]#,##0.00', sample: '[Green]1,234.57 · [Red]1,234.57' },
-    { label: 'Green / Red $ (no sign)', format: '[Green]$#,##0.00;[Red]$#,##0.00', sample: '[Green]$1,234.57 · [Red]$1,234.57' },
+    { label: 'Down in parens', format: '#,##0.00;[Red](#,##0.00)', sample: '(1,234.57)' },
+    { label: 'Colour the negative', format: '#,##0.00;[Red]#,##0.00', sample: '[Red]1,234.57' },
+    { label: 'Up / down, no sign', format: '[Green]#,##0.00;[Red]#,##0.00', sample: '[Green]1,234.57 · [Red]1,234.57' },
+    { label: 'Up / down $, no sign', format: '[Green]$#,##0.00;[Red]$#,##0.00', sample: '[Green]$1,234.57 · [Red]$1,234.57' },
     { label: 'Zero as dash', format: '#,##0.00;(#,##0.00);"—"', sample: '—' },
   ] },
   { title: 'Dates & times', rows: [
@@ -252,8 +252,8 @@ export const EXCEL_EXAMPLES: ExcelExampleSection[] = [
     { label: 'US with AM/PM', format: 'mm/dd/yy h:nn AM/PM', sample: '04/17/26 9:30 AM' },
   ] },
   { title: 'Conditional (directional)', rows: [
-    { label: 'Green up / red down', format: '[>0][Green]▲0.00;[<0][Red]▼0.00;0.00', sample: '▲ green, ▼ red, neutral' },
-    { label: 'Thresholds', format: '[>100][Red]0;[<=100][Green]0;0', sample: 'red >100, green ≤100' },
+    { label: 'Up / down arrows', format: '[>0][Green]▲0.00;[<0][Red]▼0.00;0.00', sample: '▲ up, ▼ down, neutral' },
+    { label: 'Thresholds', format: '[>100][Red]0;[<=100][Green]0;0', sample: 'over 100 down-coloured, under up' },
   ] },
   { title: 'Fixed-income tick (via preset dropdown)', rows: [
     { label: '32nds', format: '— use "32nds" preset —', sample: '101-16' },

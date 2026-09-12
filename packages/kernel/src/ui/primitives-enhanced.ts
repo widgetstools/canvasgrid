@@ -55,7 +55,7 @@ export const VGUI_ENHANCED_TOKENS: VguiTokensEnhanced = {
   accentDark: '#1e40af',
   success: 'var(--vg-success-color, #10b981)',
   warning: 'var(--vg-warning-color, #f59e0b)',
-  danger: 'var(--vg-danger-color, #ef4444)',
+  danger: 'var(--vg-danger-color, #FF7043)',
   info: '#06b6d4',
 
   // Backgrounds

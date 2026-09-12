@@ -2115,7 +2115,7 @@ const RIBBON_CSS = `
 .vgext-rb-pill[hidden] { display: none; }
 .vgext-rb-pill:hover { border-color: var(--vg-chrome-accent); }
 .vgext-rb-pill svg { color: var(--vg-muted-fg-color, #9aa4b6); }
-.vgext-rb-pill.vgext-rb-danger { color: var(--vg-neg-color, #e5646e); border-color: color-mix(in srgb, var(--vg-neg-color, #e5646e) 45%, var(--vg-border-color, #2a3140)); }
+.vgext-rb-pill.vgext-rb-danger { color: var(--vg-neg-color, #FF7043); border-color: color-mix(in srgb, var(--vg-neg-color, #FF7043) 45%, var(--vg-border-color, #2a3140)); }
 .vgext-rb-pill.is-set { color: var(--vg-chrome-accent); }
 
 .vgext-rb-input {
@@ -2146,8 +2146,8 @@ const RIBBON_CSS = `
   margin: 0; padding: 0; border: none; pointer-events: none;
 }
 
-.vgext-rb-danger-btn { color: var(--vg-neg-color, #e5646e); }
-.vgext-rb-danger-btn:hover { background: color-mix(in srgb, var(--vg-neg-color, #e5646e) 16%, transparent); color: var(--vg-neg-color, #e5646e); }
+.vgext-rb-danger-btn { color: var(--vg-neg-color, #FF7043); }
+.vgext-rb-danger-btn:hover { background: color-mix(in srgb, var(--vg-neg-color, #FF7043) 16%, transparent); color: var(--vg-neg-color, #FF7043); }
 
 /* ── Icons section — tile picker · placement slot menu ─────────────────── */
 /* Labeled trigger (target-toggle chrome): preview well + label + caret —

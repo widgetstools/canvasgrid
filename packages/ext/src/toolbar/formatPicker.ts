@@ -389,9 +389,9 @@ const FMT_CSS = `
   transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
 }
 .vgext-fmt-clear:hover:not(:disabled) {
-  color: var(--vg-neg-color, #e2606c);
-  background: color-mix(in srgb, var(--vg-neg-color, #e2606c) 10%, transparent);
-  border-color: color-mix(in srgb, var(--vg-neg-color, #e2606c) 28%, transparent);
+  color: var(--vg-neg-color, #FF7043);
+  background: color-mix(in srgb, var(--vg-neg-color, #FF7043) 10%, transparent);
+  border-color: color-mix(in srgb, var(--vg-neg-color, #FF7043) 28%, transparent);
 }
 .vgext-fmt-clear:focus-visible {
   outline: 2px solid var(--vg-chrome-accent);
@@ -667,7 +667,7 @@ const FMT_CSS = `
   font-size: 12.5px;
   font-variant-numeric: tabular-nums;
 }
-.vgext-fmt-custom-input input.is-error { color: var(--vg-neg-color, #e2606c); }
+.vgext-fmt-custom-input input.is-error { color: var(--vg-neg-color, #FF7043); }
 .vgext-fmt-custom-apply, .vgext-fmt-custom-clear {
   appearance: none;
   width: 28px;
@@ -687,10 +687,10 @@ const FMT_CSS = `
   border-color: color-mix(in srgb, var(--vg-chrome-accent) 28%, transparent);
 }
 .vgext-fmt-custom-apply:disabled { opacity: 0.35; cursor: default; }
-.vgext-fmt-custom-clear { color: var(--vg-neg-color, #e2606c); }
+.vgext-fmt-custom-clear { color: var(--vg-neg-color, #FF7043); }
 .vgext-fmt-custom-clear:hover {
-  background: color-mix(in srgb, var(--vg-neg-color, #e2606c) 10%, transparent);
-  border-color: color-mix(in srgb, var(--vg-neg-color, #e2606c) 28%, transparent);
+  background: color-mix(in srgb, var(--vg-neg-color, #FF7043) 10%, transparent);
+  border-color: color-mix(in srgb, var(--vg-neg-color, #FF7043) 28%, transparent);
 }
 .vgext-fmt-ref {
   display: flex;

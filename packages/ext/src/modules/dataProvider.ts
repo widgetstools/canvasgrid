@@ -176,9 +176,9 @@ export const DATA_PANEL_STYLE = `
   background: color-mix(in srgb, var(--vg-fg-color, #1a1f24) 8%, transparent);
   color: var(--vg-fg-color, #1a1f24);
 }
-.vgext-dp__state.is-live { background: color-mix(in srgb, var(--vg-pos-color, #3FA266) 16%, transparent); }
+.vgext-dp__state.is-live { background: color-mix(in srgb, var(--vg-pos-color, #14B8A6) 16%, transparent); }
 .vgext-dp__state.is-stale { background: color-mix(in srgb, var(--vg-warning-color, #f0b429) 16%, transparent); }
-.vgext-dp__state.is-error { background: color-mix(in srgb, var(--vg-neg-color, #e5646e) 16%, transparent); }
+.vgext-dp__state.is-error { background: color-mix(in srgb, var(--vg-neg-color, #FF7043) 16%, transparent); }
 .vgext-dp__chip {
   display: inline-flex;
   align-items: center;
@@ -199,7 +199,7 @@ export const DATA_PANEL_STYLE = `
   line-height: 1.45;
 }
 .vgext-dp__status-empty { color: var(--vg-muted-fg-color, #8a93a6); }
-.vgext-dp__status-error { color: var(--vg-neg-color, #e5646e); }
+.vgext-dp__status-error { color: var(--vg-neg-color, #FF7043); }
 `;
 
 let stylesInjected = false;

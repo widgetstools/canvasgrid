@@ -180,10 +180,11 @@
   --vg-grid-line-v: #DEDEDE;
   --vg-grid-line-header: #D4D4D4;
   --vg-grid-line-strong: #C0C0C0;
-  --vg-flash-up-from-color: rgb(22 128 80 / 20%);
-  --vg-flash-up-to-color: rgb(22 128 80 / 0%);
-  --vg-flash-down-from-color: rgb(200 40 84 / 20%);
-  --vg-flash-down-to-color: rgb(200 40 84 / 0%);
+  /* The tick flash is the pair again, as a wash — #0F766E / #CC3311. */
+  --vg-flash-up-from-color: rgb(15 118 110 / 20%);
+  --vg-flash-up-to-color: rgb(15 118 110 / 0%);
+  --vg-flash-down-from-color: rgb(204 51 17 / 20%);
+  --vg-flash-down-to-color: rgb(204 51 17 / 0%);
   --vg-cell-text-font-family: var(--vg-font-family);
   --vg-row-selected-edge: var(--vg-chrome-accent);
 }
@@ -300,10 +301,11 @@
   --vg-grid-line-strong: #55565B;
   /* Directional flash — a rise and a fall are the most-read signal on a
    * blotter and used to share one amber. Falls back to the legacy pair. */
-  --vg-flash-up-from-color: rgb(63 162 102 / 26%);
-  --vg-flash-up-to-color: rgb(63 162 102 / 0%);
-  --vg-flash-down-from-color: rgb(229 81 122 / 26%);
-  --vg-flash-down-to-color: rgb(229 81 122 / 0%);
+  /* #14B8A6 / #FF7043 as a wash. */
+  --vg-flash-up-from-color: rgb(20 184 166 / 26%);
+  --vg-flash-up-to-color: rgb(20 184 166 / 0%);
+  --vg-flash-down-from-color: rgb(255 112 67 / 26%);
+  --vg-flash-down-to-color: rgb(255 112 67 / 0%);
   /* Cells: monospace earns its place on ids and numbers; on words it only
    * costs width. Text columns opt into the chrome family. */
   --vg-cell-text-font-family: var(--vg-font-family);
@@ -522,38 +524,48 @@
  * cgrid's. Placed after every individual theme block (not interleaved)
  * so text-scanning tests that grab "the first `.vg-theme-<x> { ... }`
  * block" in this file still find each theme's own dedicated block. */
-/* Semantic pos/neg (teal / rose) tuned per mode — brighter/lighter on dark,
- * deeper/more saturated on light for contrast. Split out of the shared block
- * so light and dark themes get mode-appropriate shades; vg-theme-auto's dark
- * override lives in its prefers-color-scheme media block below. */
-/* Cursor-inspired semantic pair (progressBar green / errorForeground rose)
- * shared by Quartz / StarUI / Cursor class aliases. High-contrast + auto keep
- * the prior teal/rose invariant. */
+/* ── The semantic value pair: TEAL up, ORANGE-RED down ─────────────────
+ *
+ * Every up/down, buy/sell, profit/loss reading in the grid resolves to these
+ * two tokens — the P&L text colour, the directional tick flash, Excel's
+ * `[Green]`/`[Red]` format words, and `--vg-success-color`/`--vg-danger-color`
+ * which alias them.
+ *
+ * Teal against orange-red rather than green against red. The green/red pair
+ * is the one a blotter can least afford: deuteranopia and protanopia — around
+ * one man in twelve — collapse exactly that axis, and on a P&L column the
+ * sign is the whole message. Teal and orange-red separate on the blue-yellow
+ * axis as well as on luminance, so the two stay distinguishable under every
+ * common form of colour blindness, and in greyscale.
+ *
+ * Both are tuned per mode: deeper on light grounds, brighter on dark, and
+ * within each mode the pair is balanced so neither side shouts louder than
+ * the other. Ratios below are measured against that theme's own data plane
+ * (`--vg-bg-color`), the ground the numbers are actually painted on; WCAG AA
+ * for normal text is 4.5:1. */
 .vg-theme-quartz,
 .vg-theme-starui,
 .vg-theme-cursor {
-  --vg-pos-color: #1F8A65;
-  --vg-neg-color: #CF2D56;
+  --vg-pos-color: #0F766E;   /* 5.47:1 on #FFFFFF */
+  --vg-neg-color: #CC3311;   /* 5.19:1 on #FFFFFF */
 }
 .vg-theme-quartz-dark,
 .vg-theme-starui-dark,
 .vg-theme-cursor-dark {
-  --vg-pos-color: #3FA266;
-  /* Was #E34671, which measured 4.21:1 on the #1E1F24 data plane — under
-   * WCAG AA on the P&L column, the number read most often on the screen.
-   * Lifted 6% toward white: same hue, 4.53:1 on data and 4.85:1 on chrome.
-   * (--vg-pos-color already passes at 5.15:1; the light pair passes too.) */
-  --vg-neg-color: #E5517A;
+  --vg-pos-color: #14B8A6;   /* 6.74:1 on #1D1D22 */
+  --vg-neg-color: #FF7043;   /* 6.12:1 on #1D1D22 */
 }
+/* High contrast asks for AAA (7:1), which on a white ground costs the
+ * brightness: a genuinely bright orange-red tops out near 3.3:1 there. These
+ * are the darkest members of the same two families. */
 .vg-theme-high-contrast,
 .vg-theme-auto {
-  --vg-pos-color: #0d9488;
-  --vg-neg-color: #e11d48;
-
+  --vg-pos-color: #005B52;   /* 8.02:1 on #ffffff */
+  --vg-neg-color: #992D00;   /* 7.69:1 on #ffffff */
 }
 .vg-theme-high-contrast-dark {
-  --vg-pos-color: #2dd4bf;
-  --vg-neg-color: #fb7185;
+  --vg-pos-color: #2DD4BF;   /* 11.28:1 on #000000 */
+  --vg-neg-color: #FF8A65;   /*  9.08:1 on #000000 */
 }
 
 .vg-theme-quartz,
@@ -735,8 +747,8 @@
   --vg-popup-border: var(--vg-line-edge);
   --vg-menu-hover-bg: #F2F2F2;
   --vg-cell-padding-x: 8px;
-  --vg-pos-color: #1F8A65;
-  --vg-neg-color: #CF2D56;
+  --vg-pos-color: #0F766E;
+  --vg-neg-color: #CC3311;
   --vg-scrollbar-thumb: rgb(20 20 20 / 12%);
   --vg-scrollbar-thumb-hover: rgb(20 20 20 / 19%);
   --vg-scrollbar-thumb-active: rgb(20 20 20 / 28%);
@@ -751,10 +763,11 @@
   --vg-grid-line-v: #DEDEDE;
   --vg-grid-line-header: #D4D4D4;
   --vg-grid-line-strong: #C0C0C0;
-  --vg-flash-up-from-color: rgb(22 128 80 / 20%);
-  --vg-flash-up-to-color: rgb(22 128 80 / 0%);
-  --vg-flash-down-from-color: rgb(200 40 84 / 20%);
-  --vg-flash-down-to-color: rgb(200 40 84 / 0%);
+  /* The tick flash is the pair again, as a wash — #0F766E / #CC3311. */
+  --vg-flash-up-from-color: rgb(15 118 110 / 20%);
+  --vg-flash-up-to-color: rgb(15 118 110 / 0%);
+  --vg-flash-down-from-color: rgb(204 51 17 / 20%);
+  --vg-flash-down-to-color: rgb(204 51 17 / 0%);
   --vg-cell-text-font-family: var(--vg-font-family);
   --vg-row-selected-edge: var(--vg-chrome-accent);
   --vg-chrome-bg: #F8F8F8;
@@ -768,9 +781,8 @@
 
 @media (prefers-color-scheme: dark) {
   .vg-theme-auto {
-    --vg-pos-color: #3FA266;
-    /* AA lift — see the .vg-theme-*-dark block above. */
-    --vg-neg-color: #E5517A;
+    --vg-pos-color: #14B8A6;
+    --vg-neg-color: #FF7043;
     --vg-fg-color: #CCCCCC;
     --vg-bg-color: #1D1D22;
     --vg-row-alt-bg: #1D1D22;
@@ -824,10 +836,10 @@
     --vg-grid-line-v: rgb(255 255 255 / 9%);
     --vg-grid-line-header: rgb(255 255 255 / 10%);
     --vg-grid-line-strong: #55565B;
-    --vg-flash-up-from-color: rgb(63 162 102 / 26%);
-    --vg-flash-up-to-color: rgb(63 162 102 / 0%);
-    --vg-flash-down-from-color: rgb(229 81 122 / 26%);
-    --vg-flash-down-to-color: rgb(229 81 122 / 0%);
+    --vg-flash-up-from-color: rgb(20 184 166 / 26%);
+    --vg-flash-up-to-color: rgb(20 184 166 / 0%);
+    --vg-flash-down-from-color: rgb(255 112 67 / 26%);
+    --vg-flash-down-to-color: rgb(255 112 67 / 0%);
     --vg-cell-text-font-family: var(--vg-font-family);
     --vg-row-selected-edge: var(--vg-chrome-accent);
 

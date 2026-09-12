@@ -450,7 +450,7 @@ const TPL_CSS = `
   display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
 }
 .vgext-tpl-iconbtn:hover { background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 8%, transparent); color: var(--vg-fg-color, #e5e9f0); }
-.vgext-tpl-iconbtn.is-danger:hover { color: var(--vg-neg-color, #e2606c); background: color-mix(in srgb, var(--vg-neg-color, #e2606c) 12%, transparent); }
+.vgext-tpl-iconbtn.is-danger:hover { color: var(--vg-neg-color, #FF7043); background: color-mix(in srgb, var(--vg-neg-color, #FF7043) 12%, transparent); }
 .vgext-tpl-iconbtn:disabled { opacity: 0.4; cursor: default; }
 .vgext-tpl-save {
   display: flex; align-items: center; gap: 6px;

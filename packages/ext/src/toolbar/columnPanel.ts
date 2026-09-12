@@ -425,7 +425,7 @@ const COL_CSS = `
   color: var(--vg-chrome-accent); border-color: var(--vg-chrome-accent);
   background: color-mix(in srgb, var(--vg-chrome-accent) 12%, transparent);
 }
-.vgext-col-row.is-error { box-shadow: inset 0 0 0 1px var(--vg-neg-color, #e2606c); }
+.vgext-col-row.is-error { box-shadow: inset 0 0 0 1px var(--vg-neg-color, #FF7043); }
 .vgext-col-select {
   height: 24px; padding: 0 6px; border-radius: var(--vg-radius, 2px);
   border: 1px solid var(--vg-border-color, #2a3140);

@@ -1,6 +1,7 @@
 // @wellsfargo-starui/velocity-grid-ext/renderers — text category tests (Cycle 21f / Task 6).
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import { SEMANTIC_COLORS } from '../../src/renderers/palette';
 import type { CellPaintConfig } from '@wellsfargo-starui/velocity-grid';
 import { makeFakeGc } from './helpers/fakeGc';
 import type { FakeGc } from './helpers/fakeGc';
@@ -148,12 +149,15 @@ describe('ageCell', () => {
     expect(gc.calls.some((c) => c.op === 'set:fillStyle' && c.args[0] === '#f0b429')).toBe(true);
   });
 
-  it('400s — danger red (variant)', () => {
+  it('400s — past the danger threshold, painted in the negative colour', () => {
     ageCell.paint(gc, baseConfig({
       rowData: { t0: 0 },
       params: { nowMs: 400_000, sinceField: 't0' },
     }));
-    expect(gc.calls.some((c) => c.op === 'set:fillStyle' && c.args[0] === '#fb7185')).toBe(true);
+    // Reads the palette rather than a literal: the semantic pair is a theme
+    // decision (teal / orange-red — see theming/tokens.css), and this test is
+    // about the THRESHOLD, not about which colour the theme picked.
+    expect(gc.calls.some((c) => c.op === 'set:fillStyle' && c.args[0] === SEMANTIC_COLORS.negative)).toBe(true);
   });
 });
 

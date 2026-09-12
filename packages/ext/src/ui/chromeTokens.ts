@@ -151,14 +151,14 @@ const CHROME_PRIMITIVES = `
   color: var(--vg-fg-color, #e5e9f0);
 }
 .vgext-rung-danger {
-  border: 1px solid color-mix(in srgb, var(--vg-neg-color, #e5646e) 45%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vg-neg-color, #FF7043) 45%, transparent);
   background: transparent;
-  color: var(--vg-neg-color, #e5646e);
+  color: var(--vg-neg-color, #FF7043);
   font-weight: 500;
 }
 .vgext-rung-danger:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--vg-neg-color, #e5646e) 14%, transparent);
-  border-color: var(--vg-neg-color, #e5646e);
+  background: color-mix(in srgb, var(--vg-neg-color, #FF7043) 14%, transparent);
+  border-color: var(--vg-neg-color, #FF7043);
 }
 .vgext-rung-primary:focus-visible,
 .vgext-rung-secondary:focus-visible,
@@ -213,11 +213,11 @@ const CHROME_PRIMITIVES = `
   background: var(--vg-muted-fg-color, #8a93a6);
 }
 .vgext-state-dot[data-state="live"] {
-  background: var(--vg-pos-color, #3FA266);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vg-pos-color, #3FA266) 18%, transparent);
+  background: var(--vg-pos-color, #14B8A6);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vg-pos-color, #14B8A6) 18%, transparent);
 }
 .vgext-state-dot[data-state="stale"] { background: var(--vg-warning-color, #f0b429); }
-.vgext-state-dot[data-state="error"] { background: var(--vg-neg-color, #e5646e); }
+.vgext-state-dot[data-state="error"] { background: var(--vg-neg-color, #FF7043); }
 `;
 
 const STYLE_ID = 'vgext-chrome-tokens';

@@ -87,8 +87,8 @@ export function parseExcel(tokens: Token[]): ExcelParseResult {
 const EXCEL_NAMED_COLORS_INLINE: Readonly<Record<string, string>> = {
   Black: '#000000',
   White: '#FFFFFF',
-  Red: 'var(--vg-neg-color, #E53935)',
-  Green: 'var(--vg-pos-color, #43A047)',
+  Red: 'var(--vg-neg-color, #FF7043)',
+  Green: 'var(--vg-pos-color, #14B8A6)',
   Blue: '#1E88E5',
   Yellow: '#FDD835',
   Cyan: '#00ACC1',

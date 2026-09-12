@@ -555,8 +555,8 @@ const LAYOUTS_CSS = `
   color: var(--vg-fg-color, #e5e9f0); font: inherit; font-size: 12px;
 }
 .vgext-layouts-rename:focus { outline: none; }
-.vgext-layouts-rename.is-error, .vgext-layouts-new input.is-error { border-color: var(--vg-neg-color, #e2606c); }
-.vgext-layouts-error { margin: 6px 12px 0; font-size: 12px; color: var(--vg-neg-color, #e2606c); }
+.vgext-layouts-rename.is-error, .vgext-layouts-new input.is-error { border-color: var(--vg-neg-color, #FF7043); }
+.vgext-layouts-error { margin: 6px 12px 0; font-size: 12px; color: var(--vg-neg-color, #FF7043); }
 .vgext-layouts-new {
   display: flex; gap: var(--vgext-space-2, 8px); padding: var(--vgext-space-3, 12px) var(--vgext-space-4, 16px);
   border-top: 1px solid var(--vg-border-color, #2a3140); margin-top: var(--vgext-space-1, 4px);

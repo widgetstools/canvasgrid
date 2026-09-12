@@ -21,8 +21,8 @@ import { withAlpha } from './paintUtils';
  * (80% of a professional blotter stays muted gray; these are the 20%).
  */
 export const SEMANTIC_COLORS: Readonly<Required<SemanticColorMap>> = {
-  positive: '#2dd4bf',
-  negative: '#fb7185',
+  positive: '#14B8A6',
+  negative: '#FF7043',
   warning: '#f0b429',
   info: '#3b82f6',
   muted: '#8a8f98',
