@@ -16,9 +16,17 @@
  * tree at once, which is what the hub already computes. The mapping below is
  * therefore a rename, not a bridge:
  *
- *     groupDelta.groups[].path        -> SkeletonGroup.path
+ *     groupDelta.groups[].values      -> SkeletonGroup.path
  *     groupDelta.groups[].count       -> SkeletonGroup.leafCount
  *     groupDelta.groups[].aggregates  -> SkeletonGroup.aggregates
+ *
+ * Note `values`, NOT `path`. The engine's `path` is a type-TAGGED key from
+ * its own value encoding -- a string group comes back as `"sRates"`, not
+ * `"Rates"` -- while `values` carries the raw group values. Mapping `path`
+ * onto v2's `SkeletonGroup.path` paints `sRates` as the group caption, which
+ * is what running this against the real engine turned up. The tagged form
+ * still earns its keep as the identity key below: it is unambiguous in a way
+ * raw values are not.
  *
  * The push is incremental -- the hub never re-sends an unchanged group -- so
  * this owns the FOLD rather than a one-shot convert.
@@ -26,10 +34,12 @@
 
 /** One group in a `groupDelta` push. */
 export interface HubGroupRow {
-  /** Group values from root, one per grouped column. */
+  /** The engine's identity key, one tagged value per grouped level --
+   *  `["sRates"]` for a string group. Stable and collision-free; used to key
+   *  the accumulator, never shown. */
   path: string[];
-  /** Raw group values per level (display + routing). Unused by the skeleton,
-   *  which addresses groups by `path`; carried so callers can read it. */
+  /** The RAW group values, one per level. This is what v2's
+   *  `SkeletonGroup.path` means and what the grid paints. */
   values?: unknown[];
   /** Leaves under this subtree. */
   count?: number;
@@ -54,9 +64,9 @@ export interface SkeletonGroupShape {
   aggregates?: Record<string, unknown>;
 }
 
-/** `['FX','EMEA']` -> a map key. NUL is the separator because it cannot
- *  appear in a group value that arrived as JSON text, the way `/` or `|`
- *  can: `['a/b']` and `['a','b']` must not collide. */
+/** The engine's tagged path -> a map key. NUL is the separator because it
+ *  cannot appear in a group value that arrived as JSON text, the way `/` or
+ *  `|` can: `['a/b']` and `['a','b']` must not collide. */
 const pathKey = (path: readonly string[]): string => path.join('\u0000');
 
 /**
@@ -78,7 +88,10 @@ export class HubGroupSkeleton {
       const key = pathKey(g.path);
       const prev = this.#byPath.get(key);
       const next: SkeletonGroupShape = {
-        path: [...g.path],
+        // `values` is the raw form the grid paints. Falling back to the
+        // tagged `path` keeps a malformed push addressable rather than
+        // dropping the group, but it WILL read as `sRates` if it ever fires.
+        path: (g.values ?? g.path).map((v) => String(v)),
         // `count` is the hub's name for the same number. Absent means the
         // push carried only moved aggregates, so keep the count we have.
         leafCount: typeof g.count === 'number' ? g.count : prev?.leafCount ?? 0,
