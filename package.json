@@ -53,6 +53,6 @@
     "wait-on": "^9.0.10"
   },
   "dependencies": {
-    "dshub-hub": "file:lib/dshub-hub/dshub-hub-0.3.2.tgz"
+    "dshub-hub": "file:lib/dshub-hub/dshub-hub-0.4.0.tgz"
   }
 }

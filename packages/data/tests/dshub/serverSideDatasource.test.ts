@@ -180,3 +180,106 @@ describe('staying live between skeleton requests', () => {
     expect(rates?.aggregates).toMatchObject({ mv: 120 });   // 100 + 20
   });
 });
+
+describe('engine-computed columns', () => {
+  /**
+   * The DV01-weighted average spread — `SUM(spread x dv01) / SUM(dv01)`.
+   *
+   * This is the claim the whole engine choice rests on, so it is pinned
+   * against the real wasm rather than trusted. It needs TWO computed columns
+   * because an `agg` node names a column, so the product must exist as one
+   * before it can be summed; the second then aggregates over the first. That
+   * an agg may reference another computed column is the trick, and it is why
+   * a closed set of aggregate functions cannot express this at all.
+   */
+  const COMPUTED = [
+    { as: 'wprod', version: 1,
+      expr: { k: 'bin', op: 'mul', l: { k: 'col', name: 'spread' }, r: { k: 'col', name: 'dv01' } } },
+    { as: 'wSpread', version: 1,
+      expr: { k: 'bin', op: 'div',
+              l: { k: 'agg', fn: 'sum', col: 'wprod' },
+              r: { k: 'agg', fn: 'sum', col: 'dv01' } } },
+  ];
+  const CFG_W = {
+    keyColumn: 'id',
+    columnDefinitions: [
+      { field: 'id' }, { field: 'desk' },
+      { field: 'spread', cellDataType: 'number' },
+      { field: 'dv01', cellDataType: 'number' },
+    ],
+  };
+  // Two positions: a small one at a wide spread, a large one at a tight
+  // spread. The unweighted average is 150; the DV01-weighted average is 60.
+  const W_ROWS = [
+    { id: 'w1', desk: 'Credit', spread: 280, dv01: 10 },
+    { id: 'w2', desk: 'Credit', spread: 20, dv01: 90 },
+  ];
+
+  async function weightedPlane(id: string) {
+    const plane = new SsrmWasmPlane(realHub);
+    await plane.boot(id, CFG_W);
+    await plane.attachSession(`${id}s`);
+    await plane.ingest(id, W_ROWS, false);
+    return new DshubServerSideDatasource({
+      plane: plane as DshubPlaneLike, sessionId: `${id}s`, providerId: id,
+      computedColumns: COMPUTED,
+    });
+  }
+
+  it('evaluates the product per row', async () => {
+    const ds = await weightedPlane('wp');
+    const res = await awaited<{ rowData: Array<Record<string, number>> }>(
+      (p) => ds.getRows({ request: { startRow: 0, endRow: 10 }, ...p }));
+    const byId = new Map(res.rowData.map((r) => [r.id as unknown as string, r]));
+    expect(byId.get('w1')!.wprod).toBeCloseTo(2800, 5);
+    expect(byId.get('w2')!.wprod).toBeCloseTo(1800, 5);
+  });
+
+  it('the weighted average is the ratio of sums, not the mean of the spreads', async () => {
+    // The whole point. Mean(280, 20) = 150. Weighted = 4600/100 = 46.
+    const ds = await weightedPlane('wa');
+    const res = await awaited<{ rowData: Array<Record<string, number>> }>(
+      (p) => ds.getRows({ request: { startRow: 0, endRow: 10 }, ...p }));
+    expect(res.rowData[0]!.wSpread).toBeCloseTo(46, 5);
+    expect(res.rowData[0]!.wSpread).not.toBeCloseTo(150, 0);
+  });
+
+  it('scopes the aggregate to the GROUP, not the whole table', async () => {
+    // The discriminating case, and the one that decides what the demo can
+    // honestly show. With two desks of different weighting, a whole-table
+    // agg would put the SAME number under both. A per-group agg puts each
+    // desk's own weighted spread on its own leaves.
+    const plane = new SsrmWasmPlane(realHub);
+    await plane.boot('ws', CFG_W);
+    await plane.attachSession('wss');
+    await plane.ingest('ws', [
+      ...W_ROWS,
+      // Rates: 10bp on 10 dv01, 400bp on 90 dv01 -> 3.61e4/100 = 361.
+      { id: 'w3', desk: 'Rates', spread: 10, dv01: 10 },
+      { id: 'w4', desk: 'Rates', spread: 400, dv01: 90 },
+    ], false);
+    const ds = new DshubServerSideDatasource({
+      plane: plane as DshubPlaneLike, sessionId: 'wss', providerId: 'ws',
+      computedColumns: COMPUTED,
+    });
+    const leaves = (desk: string) => awaited<{ rowData: Array<Record<string, number>> }>(
+      (p) => ds.getLeafRows({
+        request: { groupPath: [desk], startRow: 0, endRow: 10, rowGroupCols: ['desk'] }, ...p }));
+
+    const credit = await leaves('Credit');
+    const rates = await leaves('Rates');
+    expect(credit.rowData[0]!.wSpread).toBeCloseTo(46, 5);
+    expect(rates.rowData[0]!.wSpread).toBeCloseTo(361, 5);
+    // Whole-table weighted average is 20900/200 = 104.5 — neither group's.
+    expect(credit.rowData[0]!.wSpread).not.toBeCloseTo(104.5, 1);
+  });
+
+  it('rides the leaf rows under a group too', async () => {
+    const ds = await weightedPlane('wg');
+    const res = await awaited<{ rowData: Array<Record<string, unknown>> }>(
+      (p) => ds.getLeafRows({
+        request: { groupPath: ['Credit'], startRow: 0, endRow: 10, rowGroupCols: ['desk'] }, ...p }));
+    expect(res.rowData).toHaveLength(2);
+    expect(res.rowData[0]!.wSpread).toBeCloseTo(46, 5);
+  });
+});

@@ -160,6 +160,7 @@ export {
   DshubServerSideDatasource,
   type DshubPlaneLike,
   type DshubDatasourceOptions,
+  type DshubComputedColumn,
 } from './dshub/serverSideDatasource';
 export {
   DshubSsrmEngine,

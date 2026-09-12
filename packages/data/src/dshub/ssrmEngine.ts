@@ -33,6 +33,8 @@ export interface DshubSsrmEngineOptions {
   config: unknown;
   /** colId -> aggregate for group rows. */
   aggregates?: Record<string, string>;
+  /** Engine-computed columns riding every view — see the datasource. */
+  computedColumns?: readonly import('./serverSideDatasource').DshubComputedColumn[];
   /**
    * Tick cadence. The engine conflates writes into whatever window this
    * defines, so it is a delivery knob, not a polling hack: a longer interval
@@ -47,6 +49,7 @@ export class DshubSsrmEngine {
   readonly #sessionId: string;
   readonly #config: unknown;
   readonly #aggregates: Record<string, string>;
+  readonly #computed: readonly import('./serverSideDatasource').DshubComputedColumn[];
   readonly #tickMs: number;
   #datasource: DshubServerSideDatasource | null = null;
   #grid: RefreshableGrid | null = null;
@@ -59,6 +62,7 @@ export class DshubSsrmEngine {
     this.#sessionId = `${opts.providerId}:grid`;
     this.#config = opts.config;
     this.#aggregates = opts.aggregates ?? {};
+    this.#computed = opts.computedColumns ?? [];
     this.#tickMs = opts.tickMs ?? 100;
   }
 
@@ -72,6 +76,7 @@ export class DshubSsrmEngine {
       sessionId: this.#sessionId,
       providerId: this.#providerId,
       aggregates: this.#aggregates,
+      computedColumns: this.#computed,
     });
     this.#booted = true;
   }

@@ -24,9 +24,18 @@ import { HubGroupSkeleton, type HubGroupDelta, type SkeletonGroupShape } from '.
 /** The slice of `SsrmWasmPlane` this adapter drives. Structural, so the
  *  adapter is testable against a fake and canvasgrid does not depend on the
  *  plane's nominal types. */
+/** One engine-computed column, in the contract's wire form. */
+export interface DshubComputedColumn {
+  /** Result name — addressable by the same view's sort/filter/group. */
+  as: string;
+  version: number;
+  expr: unknown;
+}
+
 export interface DshubPlaneLike {
   getRows(sessionId: string, providerId: string, req: {
     startRow?: number; endRow?: number;
+    computedColumns?: readonly DshubComputedColumn[];
     rowGroupCols?: readonly { id: string }[];
     valueCols?: readonly { id: string; aggFunc?: string }[];
     groupKeys?: readonly unknown[];
@@ -47,6 +56,16 @@ export interface DshubDatasourceOptions {
   /** colId -> aggregate name for the group rows. Absent columns are not
    *  aggregated; the engine still reports each group's leaf count. */
   aggregates?: Record<string, string>;
+  /**
+   * Engine-computed columns riding every view this datasource opens.
+   *
+   * The engine evaluates them per row and they are addressable by the same
+   * request's sort/filter/group. An `agg` node inside one may reference
+   * ANOTHER computed column, which is what makes a weighted average
+   * expressible — `SUM(spread x dv01) / SUM(dv01)` is two of these, and a
+   * closed set of aggregate functions cannot express it at all.
+   */
+  computedColumns?: readonly DshubComputedColumn[];
 }
 
 /** What a skeleton is valid for. Any change restarts the engine's diff. */
@@ -61,6 +80,7 @@ export class DshubServerSideDatasource {
   readonly #sessionId: string;
   readonly #providerId: string;
   readonly #aggregates: Record<string, string>;
+  readonly #computed: readonly DshubComputedColumn[];
   #skeleton = new HubGroupSkeleton();
   #generation: string | null = null;
 
@@ -69,6 +89,7 @@ export class DshubServerSideDatasource {
     this.#sessionId = opts.sessionId;
     this.#providerId = opts.providerId;
     this.#aggregates = opts.aggregates ?? {};
+    this.#computed = opts.computedColumns ?? [];
   }
 
   /** Ungrouped windowing — v1 flat semantics, which v2 keeps as the fallback. */
@@ -81,6 +102,7 @@ export class DshubServerSideDatasource {
     void this.#plane.getRows(this.#sessionId, this.#providerId, {
       startRow: request.startRow,
       endRow: request.endRow,
+      computedColumns: this.#computed,
       sortModel: request.sortModel as never,
       filterModel: request.filterModel as never,
     }).then(
@@ -145,6 +167,7 @@ export class DshubServerSideDatasource {
       endRow: request.endRow,
       rowGroupCols: request.rowGroupCols.map((id) => ({ id })),
       groupKeys: request.groupPath,
+      computedColumns: this.#computed,
       sortModel: request.sortModel as never,
       filterModel: request.filterModel as never,
     }).then(

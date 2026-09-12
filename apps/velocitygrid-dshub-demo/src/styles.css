@@ -1,0 +1,48 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: #1d1d22;
+  color: #ccc;
+  font: 13px/1.4 Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+.bar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px;
+  background: #16181d;
+  border-bottom: 1px solid #2a3140;
+}
+.bar strong { font-size: 14px; color: #e5e9f0; letter-spacing: -0.01em; }
+.tag {
+  padding: 2px 8px; border-radius: 2px;
+  background: color-mix(in srgb, #14B8A6 16%, transparent);
+  border: 1px solid color-mix(in srgb, #14B8A6 40%, transparent);
+  color: #14B8A6; font-size: 11px; font-weight: 600;
+}
+.sep { flex: 1 1 auto; }
+.grp { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #8a93a6; }
+.grp select, .btn {
+  height: 26px; padding: 0 8px;
+  background: #1d1d22; color: #e5e9f0;
+  border: 1px solid #3a4150; border-radius: 2px;
+  font: inherit; font-size: 12px; cursor: pointer;
+}
+.btn:hover, .grp select:hover { border-color: #14B8A6; }
+.stat { font-size: 12px; color: #8a93a6; }
+.stat b {
+  color: #e5e9f0; font-weight: 600;
+  font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.grid { flex: 1 1 auto; min-height: 0; }
+.foot {
+  padding: 8px 16px; background: #16181d;
+  border-top: 1px solid #2a3140; color: #8a93a6; font-size: 12px;
+}
+.foot em { color: #c3cad8; font-style: italic; }
+.foot code {
+  font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  color: #14B8A6;
+}
+.err { padding: 24px; color: #FF7043; white-space: pre-wrap; }
