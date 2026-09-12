@@ -399,6 +399,52 @@ VelocityGrid SSRM is deliberately AG-shaped (block cache + hydrate + soft/purge)
 - **Calc:** `transformAggregates` rewrites calls → agg/`PREV` nodes; Stage A before filter (row-local), Stage B after group (scoped SUM/AVG/… + `PREV`); calc-on-calc rejected.
 - **Rules:** Strict `=== true` match; theme-aware style slices; flash via kernel `flashCells`; indicators as Lucide badges.
 
+### Companion ownership — per grid, not per page
+
+`registerFormatCompiler` / `registerRuleEngine` / `registerCalcProvider` each
+write a module-level DI slot in `packages/kernel/src/core/*Slot.ts`. A module
+slot is **page-level**, so with more than one `VelocityGrid` alive the last
+registration would win for all of them. Whether that is a bug depends
+entirely on whether the registered thing carries grid-specific state:
+
+| Slot | Holds | Page-level? |
+|------|-------|-------------|
+| `formatCompilerSlot` | `compileFormat`, a pure function | **Fine.** Every grid registers the same one; last-write-wins is a no-op. |
+| `ruleEngineSlot` | a grid's rule set | **Was wrong.** Now owned per grid. |
+| `calcSlot` | a provider with per-column templates + `editColumn` | **Was wrong.** Now owned per grid. |
+
+The failure this produced was not exotic. Positions and orders stacked on one
+page is an ordinary blotter, and those two grids carry deliberately different
+rule sets, so the second to wire took over the first's styling immediately.
+Separating the **data** does not help: two providers feeding two Perspective
+tables still share one main-thread module scope, and the slot never looked at
+where rows came from.
+
+**How ownership works now.** `VelocityGrid` keeps the engine and the provider
+it was given (`ownRuleEngine` / `ownCalcProvider`) and threads the engine into
+the paint context — `PainterCtx.ruleEngine` → `ApplyCellPropsInput.ruleEngine`
+→ `CellPaintConfig.ruleEngine` → the format-eval ctx — so a frame folds one
+rule set from top to bottom. Grid-API methods (`getRules`, templates, flash
+ownership) read the instance field directly.
+
+The slots survive as a **fallback**, resolved through `resolveRuleEngine` /
+`resolveCalcProvider`, for paint helpers that legitimately run with no grid in
+scope (composite fragments, clipboard/export). That makes the two absent
+states mean different things, and the distinction is load-bearing:
+
+- `undefined` — *the caller does not know*; fall back to the slot.
+- `null` — *this grid registered nothing*; honour it, do not borrow a
+  neighbour's.
+
+Reading a slot directly where a grid is in scope is a bug. Gate:
+`packages/kernel/tests/multiGridIsolation.test.ts`.
+
+**Genuinely page-level, and correct:** the single rAF paint loop and resize
+interval in `core/canvas.ts` (one loop ticking a `Set` of canvases — by
+design, mirroring hypergrid), the format-eval `generation` counter (shared
+means it over-invalidates, never serves stale), and the id/`warn-once`
+counters.
+
 ---
 
 ## 8. Extension / wire-point table
@@ -406,8 +452,8 @@ VelocityGrid SSRM is deliberately AG-shaped (block cache + hydrate + soft/purge)
 | Wire point | Package | Mechanism | Runs on |
 |------------|---------|-----------|---------|
 | `wireIntoKernel(grid)` | format | `registerFormatCompiler` + icons | Compile main; eval paint |
-| `wireIntoKernel(grid)` | calc | `registerCalcProvider` + state module | Program on worker |
-| `wireIntoKernel(grid)` | rules | `registerRuleEngine` + events + state | Main |
+| `wireIntoKernel(grid)` | calc | `registerCalcProvider` + state module (owned per grid) | Program on worker |
+| `wireIntoKernel(grid)` | rules | `registerRuleEngine` + events + state (owned per grid) | Main |
 | `wireEditIntoKernel(grid)` | edit | Events + `applyTransaction` + journal | Main |
 | `wireRenderersIntoKernel(grid)` | renderers | `registerCellRenderer` | Paint main |
 | `registerComparator` / `aggFuncs` | host | Worker registries | Worker |

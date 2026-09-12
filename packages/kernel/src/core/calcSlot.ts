@@ -61,8 +61,26 @@ export function registerCalcProvider(provider: CalcProviderShape): void {
   injectedProvider = provider;
 }
 
+/** The page-level fallback. Prefer {@link resolveCalcProvider}, which takes
+ *  the owning grid's provider when the caller has one. */
 export function getCalcProvider(): CalcProviderShape | null {
   return injectedProvider;
+}
+
+/**
+ * The provider to use for one piece of work: the owning grid's if the caller
+ * threaded it, otherwise the page-level slot.
+ *
+ * Same shape — and same reason — as `resolveRuleEngine` in
+ * `ruleEngineSlot.ts`. A `CalcProviderShape` carries per-column templates and
+ * an `editColumn`, so it is grid-specific state and two grids on one page
+ * must not share one: the second to register would otherwise own the first's
+ * calculated columns. `undefined` falls back, `null` is honoured.
+ */
+export function resolveCalcProvider(
+  own: CalcProviderShape | null | undefined,
+): CalcProviderShape | null {
+  return own === undefined ? injectedProvider : own;
 }
 
 /** Test-only helper — not part of public API. */

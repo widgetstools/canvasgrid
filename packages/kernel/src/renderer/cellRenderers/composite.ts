@@ -165,6 +165,7 @@ export const compositeCell: CellPainter = {
       colId: p.colId ?? '',
       rowId: p.rowId,
       themeKind: p.themeKind,
+      ruleEngine: p.ruleEngine,
     })) as Frag[] | null;
     if (!fragments || fragments.length === 0) return;
 

@@ -213,6 +213,11 @@ export interface CellPaintConfig {
    */
   rowId?: string;
   themeKind?: 'light' | 'dark';
+  /** The owning grid's rule engine, set by `applyCellProps`. Renderers that
+   *  evaluate a format program (composite) pass it to `buildFormatEvalCtx`
+   *  so a `rule:<id>` colour ref resolves against THIS grid's rules — see
+   *  `core/ruleEngineSlot.ts`. */
+  ruleEngine?: import('../../core/ruleEngineSlot').RuleEngineShape | null;
   /**
    * Workstream A (2026-07-06 CSS styling model) — compact renderer-palette
    * bundle (semantic colors + bar/chip geometry), threaded straight from

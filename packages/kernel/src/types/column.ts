@@ -642,6 +642,11 @@ export interface CValueFormatterParams<TRow, TValue> {
   rowId?: string;
   /** Cycle 21e / Task 14 — active theme kind, when known. */
   themeKind?: 'light' | 'dark';
+  /** The owning grid's rule engine, when the call site knows it (paint
+   *  path). Threaded so a `rule:<id>` colour ref in a format string
+   *  resolves against THIS grid's rules with two grids on one page; absent
+   *  falls back to the page-level slot. See `core/ruleEngineSlot.ts`. */
+  ruleEngine?: import('../core/ruleEngineSlot').RuleEngineShape | null;
 }
 
 /** Params passed to `CColDef.valueParser`. */

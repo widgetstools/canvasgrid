@@ -137,6 +137,9 @@ export interface PainterCtx {
   getRowDataById?: (rowId: string) => unknown;
   /** Cycle 21e / Task 11 — active theme kind for rule eval contexts. */
   themeKind?: 'light' | 'dark';
+  /** The rule engine of the grid being painted, threaded so two grids on one
+   *  page each paint with their own — see `core/ruleEngineSlot.ts`. */
+  ruleEngine?: import('../../core/ruleEngineSlot').RuleEngineShape | null;
   /**
    * Cycle 7 / Task 7 — pre-lowercased quick-filter terms. Empty when no
    * quick filter is active. Painter calls `cellMatchesAnyQuickFilterTerm`

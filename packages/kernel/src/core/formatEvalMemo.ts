@@ -23,7 +23,7 @@
 //     single eval (the 21c triple-eval Minor), but the next pass always
 //     re-evaluates. byRows bumps the generation once per paint entry.
 
-import { getRuleEngine } from './ruleEngineSlot';
+import { resolveRuleEngine } from './ruleEngineSlot';
 import type { FormatEvalCtxShape, FormatProgramShape } from './formatCompilerSlot';
 
 export interface FormatEvalResult {
@@ -34,20 +34,42 @@ export interface FormatEvalResult {
 
 interface MemoEntry { key: string; result: FormatEvalResult; }
 
+/** What one cell's format evaluation needs. `ruleEngine` is optional and
+ *  falls back to the page-level slot — see `buildFormatEvalCtx`. */
+export interface FormatEvalParams {
+  value: unknown;
+  data: unknown;
+  colId: string;
+  rowId?: string;
+  themeKind?: 'light' | 'dark';
+  ruleEngine?: import('./ruleEngineSlot').RuleEngineShape | null;
+}
+
 const memo = new WeakMap<FormatProgramShape, MemoEntry>();
 
 /** Monotonic paint-pass counter. Bumped once per byRows paint entry;
  *  stamped into tier-1/tier-2 memo keys so row-dependent evals never
- *  survive across paint passes. */
+ *  survive across paint passes.
+ *
+ *  Page-level on purpose, and safe to share between grids: two grids
+ *  painting means the counter advances faster than either alone, which
+ *  invalidates memo entries EARLIER than strictly needed. Over-invalidating
+ *  costs a re-eval; under-invalidating would serve a stale cell. The `memo`
+ *  WeakMap beside it is keyed by program identity and the key carries
+ *  rowId/colId/value/theme, so entries cannot cross grids either way. */
 let generation = 0;
 
-/** Build the eval ctx, closing resolveRuleRef over the rule slot + the
+/** Build the eval ctx, closing resolveRuleRef over the rule engine + the
  *  current cell (spec §5.5). The accessor is only attached when both an
  *  engine and a cell identity exist. Exported (Cycle 21e final-review
  *  fix) so the composite painter and the clipboard/export composite
- *  path build the same rule-aware ctx for `resolveFragments`. */
-export function buildFormatEvalCtx(p: { value: unknown; data: unknown; colId: string; rowId?: string; themeKind?: 'light' | 'dark' }): FormatEvalCtxShape {
-  const engine = getRuleEngine();
+ *  path build the same rule-aware ctx for `resolveFragments`.
+ *
+ *  `ruleEngine` is the owning grid's, threaded so a `rule:<id>` colour ref
+ *  inside a format string resolves against THIS grid's rules; omitted, it
+ *  falls back to the page-level slot. See `core/ruleEngineSlot.ts`. */
+export function buildFormatEvalCtx(p: FormatEvalParams): FormatEvalCtxShape {
+  const engine = resolveRuleEngine(p.ruleEngine);
   if (engine === null || p.rowId === undefined) {
     return { value: p.value, row: p.data, colId: p.colId };
   }
@@ -69,7 +91,7 @@ export function buildFormatEvalCtx(p: { value: unknown; data: unknown; colId: st
  *  per (program, rowId, colId, value, theme). */
 export function evalFormatProgram(
   program: FormatProgramShape,
-  p: { value: unknown; data: unknown; colId: string; rowId?: string; themeKind?: 'light' | 'dark' },
+  p: FormatEvalParams,
 ): FormatEvalResult {
   const memoable = program.hasRuleRefs !== true && p.rowId !== undefined;
   if (memoable) {

@@ -58,6 +58,9 @@ export interface RendererOpts {
   getRowDataById?: (rowId: string) => unknown;
   /** Cycle 21e / Task 11 — active theme kind for rule eval contexts. */
   getThemeKind?: () => 'light' | 'dark';
+  /** The grid's own rule engine. Read per paint, like the theme kind, so a
+   *  post-boot register/swap is picked up without re-creating the renderer. */
+  getRuleEngine?: () => import('../core/ruleEngineSlot').RuleEngineShape | null;
   /**
    * Cycle 7 / Task 7 — current pre-lowercased quick-filter terms (or `[]`
    * when no quick filter is active). Forwarded into `PainterCtx` so the
@@ -328,6 +331,7 @@ export class Renderer {
       stringRowIdAt: this.opts.stringRowIdAt,
       getRowDataById: this.opts.getRowDataById,
       themeKind: this.opts.getThemeKind?.(),
+      ruleEngine: this.opts.getRuleEngine?.(),
       quickFilterLowerTerms: this.opts.getQuickFilterLowerTerms(),
       showFillHandle: this.opts.getShowFillHandle(),
       suppressAggFuncInHeader: this.opts.getSuppressAggFuncInHeader(),
@@ -511,6 +515,7 @@ export class Renderer {
       stringRowIdAt: this.opts.stringRowIdAt,
       getRowDataById: this.opts.getRowDataById,
       themeKind: this.opts.getThemeKind?.(),
+      ruleEngine: this.opts.getRuleEngine?.(),
       quickFilterLowerTerms: this.opts.getQuickFilterLowerTerms(),
       showFillHandle: this.opts.getShowFillHandle(),
       suppressAggFuncInHeader: this.opts.getSuppressAggFuncInHeader(),

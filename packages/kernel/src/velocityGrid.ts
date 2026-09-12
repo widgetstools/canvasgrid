@@ -217,11 +217,10 @@ import {
   registerFormatCompiler as slotRegisterFormatCompiler,
   type FormatCompiler,
 } from './core/formatCompilerSlot';
-import { registerRuleEngine as slotRegisterRuleEngine, getRuleEngine, type RuleEngineShape, type ConditionalRuleShape } from './core/ruleEngineSlot';
+import { registerRuleEngine as slotRegisterRuleEngine, type RuleEngineShape, type ConditionalRuleShape } from './core/ruleEngineSlot';
 import { isRuleFlashOwned, ruleFlashOwnership } from './core/ruleFlashOwnership';
 import {
   registerCalcProvider as slotRegisterCalcProvider,
-  getCalcProvider,
   foldCalcColumnDefs,
   type CalcProviderShape,
 } from './core/calcSlot';
@@ -1755,6 +1754,13 @@ export class VelocityGrid<TRow = any> {
    *  first), destroy() releases it. Module-level slot itself is NOT
    *  cleared on destroy, matching the format/rule slots. */
   private calcProviderUnsub: (() => void) | null = null;
+  /** THIS grid's rule engine and calc provider. Both were read from a
+   *  module-global slot, which made the last grid to register on a page the
+   *  owner for every grid on it — see the ownership note in
+   *  `core/ruleEngineSlot.ts`. `null` means "registered nothing", which is
+   *  honoured rather than falling back to another grid's. */
+  private ownRuleEngine: RuleEngineShape | null = null;
+  private ownCalcProvider: CalcProviderShape | null = null;
   private sortModel: SortModel = [];
   /** Cycle 19 / Task 5-ColState — column-state round-trip. Owns
    *  `initialColumnStateSnapshot` + `getColumnState` + `applyColumnState`
@@ -2362,6 +2368,10 @@ export class VelocityGrid<TRow = any> {
       stringRowIdAt: (rowIndex) => this.stringRowIdAt(rowIndex),
       getRowDataById: (rowId) => this.rowDataById.get(rowId),
       getThemeKind: () => this.getThemeKind(),
+      // This grid's engine, read per paint so a post-boot register/swap
+      // lands without re-creating the renderer — and so a SECOND grid on
+      // the page cannot take over this one's rule fold.
+      getRuleEngine: () => this.ownRuleEngine,
       getQuickFilterLowerTerms: () => this.quickFilterLowerTerms,
       // Cycle 9 / Task 5 — paint a 6×6 fill handle on the last range when
       // enabled. Read per paint so a runtime setGridOption flip lights up
@@ -7024,7 +7034,7 @@ export class VelocityGrid<TRow = any> {
         const raw = rawLeafDefsById(this.options.columnDefs ?? []).get(colId);
         const leaf = this.pivotEngine.getPrimaryColumnTree()?.leafById.get(colId)
           ?? this.columnDefsMap.get(colId);
-        const patch = getCalcProvider()?.resolvedPatchFor(
+        const patch = this.ownCalcProvider?.resolvedPatchFor(
           colId,
           (leaf as { cellDataType?: string } | undefined)?.cellDataType === 'number'
             ? 'number'
@@ -9050,7 +9060,7 @@ export class VelocityGrid<TRow = any> {
    * never wire @wellsfargo-starui/velocity-grid/format / @wellsfargo-starui/velocity-grid/calc / @wellsfargo-starui/velocity-grid/rules.
    */
   private stripPatchCrossColumnSafe(): boolean {
-    const engine = getRuleEngine();
+    const engine = this.ownRuleEngine;
     if (engine !== null) {
       const rules = engine.getRules?.();
       if (rules === undefined || rules.length > 0) return false;
@@ -9063,7 +9073,7 @@ export class VelocityGrid<TRow = any> {
         return false;
       }
     }
-    const provider = getCalcProvider();
+    const provider = this.ownCalcProvider;
     if (provider !== null) {
       const synthesized = provider.synthesizedColDefs();
       if (synthesized.length > 0) {
@@ -9820,9 +9830,14 @@ export class VelocityGrid<TRow = any> {
 
   /** Cycle 21e / Task 10 — register the @wellsfargo-starui/velocity-grid/rules engine adapter into
    *  the kernel DI slot. Invoked by wireIntoKernel(grid) in @wellsfargo-starui/velocity-grid/rules;
-   *  kernel's applyCellProps fold (Task 11) calls getRuleEngine() to
-   *  obtain it. Apps that never call this see no behavior change. */
+   *  kernel's applyCellProps fold (Task 11) reads it back through the paint
+   *  context. Apps that never call this see no behavior change. */
   registerRuleEngine(engine: RuleEngineShape): void {
+    this.ownRuleEngine = engine;
+    // Still published to the page-level slot: a second grid overwriting it
+    // no longer affects THIS grid (every kernel read below goes through
+    // `ownRuleEngine`), and the slot remains the right answer for the paint
+    // helpers that run without a grid in scope.
     slotRegisterRuleEngine(engine);
     // Cycle 22 / closeout I-1 — layoutEpoch contract: registering (or
     // swapping) the rule engine post-boot activates the rule fold for
@@ -9839,6 +9854,7 @@ export class VelocityGrid<TRow = any> {
    *  reship) and re-folds on every provider-side column mutation.
    *  Apps that never call this see no behavior change. */
   registerCalcProvider(provider: CalcProviderShape): void {
+    this.ownCalcProvider = provider;
     slotRegisterCalcProvider(provider);
     this.calcProviderUnsub?.();
     this.calcProviderUnsub = provider.onColumnsChanged(() => this.onCalcColumnsChanged());
@@ -9859,7 +9875,7 @@ export class VelocityGrid<TRow = any> {
     // (Template-API mutations ALSO emit `templatesChanged` → 'modules'; the bus
     // coalesces the double-dirty per frame.)
     this.notifyModuleStateChanged('calc');
-    const provider = getCalcProvider();
+    const provider = this.ownCalcProvider;
     this.workerCoord.setCalcProgram((provider?.workerProgram() ?? null) as WorkerCalcProgram | null)
       .catch((err) => { if (!this.destroyed) console.error('[velocity-grid] setCalcProgram:', err); });
     this.workerCoord.updateColumns(this.workerColumns())
@@ -10490,7 +10506,7 @@ export class VelocityGrid<TRow = any> {
    * regression the width test caught when this rule was first written that way.
    */
   private buildLiveColumnVeto(): (colId: string, key: LiveColumnKey) => boolean {
-    const provider = getCalcProvider();
+    const provider = this.ownCalcProvider;
     const rawLeaves = rawLeafDefsById(this.options.columnDefs ?? []);
     const prevRaw = this.prevRawColState;
     const patchCache = new Map<string, Record<string, unknown> | null>();
@@ -13332,7 +13348,7 @@ export class VelocityGrid<TRow = any> {
       // `shouldFlash` admits.
       const hasOverrides = this.flashOverrides.size > 0;
       const directionalFlash = this.options.cellFlashDirectional !== false;
-      const owned = ruleFlashOwnership(getRuleEngine()?.getRules?.());
+      const owned = ruleFlashOwnership(this.ownRuleEngine?.getRules?.());
       const suppressDefault = owned.allColumns || owned.colIds.size > 0;
       const needSid = hasOverrides || suppressDefault;
       this.flashRegistry.ingestMask({
@@ -14780,7 +14796,7 @@ export class VelocityGrid<TRow = any> {
     // deleted template can't resurrect in an export/reload (M2). `getTemplates`
     // is defensively cloned and returns `[]` when empty. Only when calc is NOT
     // wired do we fall through to the manager's stored library.
-    if (getCalcProvider()?.getTemplates) out.templates = this.getTemplates();
+    if (this.ownCalcProvider?.getTemplates) out.templates = this.getTemplates();
     return out;
   }
 
@@ -14912,11 +14928,11 @@ export class VelocityGrid<TRow = any> {
   /** The shared styling-template library (defensive clones; `[]` when no
    *  calc engine is wired). */
   getTemplates(): ColumnTemplate[] {
-    return (getCalcProvider()?.getTemplates?.() ?? []) as unknown as ColumnTemplate[];
+    return (this.ownCalcProvider?.getTemplates?.() ?? []) as unknown as ColumnTemplate[];
   }
   /** Create-or-replace a template by id (kernel stamps timestamps). */
   saveTemplate(spec: TemplateSaveInput): void {
-    const provider = getCalcProvider();
+    const provider = this.ownCalcProvider;
     if (!provider?.saveTemplate) return;
     provider.saveTemplate({
       id: spec.id, name: spec.name, description: spec.description,
@@ -14926,28 +14942,28 @@ export class VelocityGrid<TRow = any> {
   }
   /** Rename a template's display name (grid-wide unique; throws on collision). */
   renameTemplate(templateId: string, name: string): void {
-    const provider = getCalcProvider();
+    const provider = this.ownCalcProvider;
     if (!provider?.renameTemplate) return;
     provider.renameTemplate(templateId, name, Date.now()); // throws propagate (no event)
     this.emitTemplatesChanged('rename', templateId);
   }
   /** Delete a template from the library (assignments become dangling refs). */
   deleteTemplate(templateId: string): void {
-    const provider = getCalcProvider();
+    const provider = this.ownCalcProvider;
     if (!provider?.deleteTemplate) return;
     provider.deleteTemplate(templateId);
     this.emitTemplatesChanged('delete', templateId);
   }
   /** Assign a template to a single column (appends to its chain). */
   applyTemplate(colId: string, templateId: string): void {
-    const provider = getCalcProvider();
+    const provider = this.ownCalcProvider;
     if (!provider?.applyTemplate) return;
     provider.applyTemplate(colId, templateId);
     this.emitTemplatesChanged('apply', templateId);
   }
   /** Unassign a template from a single column (library entry kept). */
   removeTemplate(colId: string, templateId: string): void {
-    const provider = getCalcProvider();
+    const provider = this.ownCalcProvider;
     if (!provider?.removeTemplate) return;
     provider.removeTemplate(colId, templateId);
     this.emitTemplatesChanged('remove', templateId);
@@ -14957,7 +14973,7 @@ export class VelocityGrid<TRow = any> {
    *  `templatesChanged` (source `'save'` — it writes the column's own
    *  template). No-op without a calc engine. */
   editColumn(colId: string, patch: import('./calc/index').ColumnEditPatch): void {
-    const provider = getCalcProvider();
+    const provider = this.ownCalcProvider;
     if (!provider?.editColumn) return;
     // Gate the event on the engine's result — a rejected edit (e.g. a
     // non-compiling format) changes nothing, so it must not fire
@@ -14997,14 +15013,14 @@ export class VelocityGrid<TRow = any> {
    *  wired). Order is the application order (stable tiebreak for equal
    *  priority; `reorderRules` rewrites it). */
   getRules(): ConditionalRuleShape[] {
-    return getRuleEngine()?.getRules?.() ?? [];
+    return this.ownRuleEngine?.getRules?.() ?? [];
   }
   /** Append a rule to the set. No-op (no event) when a rule with the same `id`
    *  already exists — ids must be unique (the engine keys match state + counts
    *  by id, so a duplicate would corrupt update/delete/enable); use
    *  `updateRule` to change an existing rule. */
   addRule(rule: ConditionalRuleShape): void {
-    const engine = getRuleEngine();
+    const engine = this.ownRuleEngine;
     if (!engine?.setRules) return;
     const current = this.getRules();
     if (current.some((r) => r.id === rule.id)) return;
@@ -15016,7 +15032,7 @@ export class VelocityGrid<TRow = any> {
    *  `style` / … (the engine re-validates). No-op (no event) when the id is
    *  unknown. */
   updateRule(id: string, patch: Partial<ConditionalRuleShape> | Record<string, unknown>): void {
-    const engine = getRuleEngine();
+    const engine = this.ownRuleEngine;
     if (!engine?.setRules) return;
     const current = this.getRules();
     if (!current.some((r) => r.id === id)) return;
@@ -15025,7 +15041,7 @@ export class VelocityGrid<TRow = any> {
   }
   /** Remove the rule with `id`. No-op (no event) when the id is unknown. */
   deleteRule(id: string): void {
-    const engine = getRuleEngine();
+    const engine = this.ownRuleEngine;
     if (!engine?.setRules) return;
     const current = this.getRules();
     const next = current.filter((r) => r.id !== id);
@@ -15036,7 +15052,7 @@ export class VelocityGrid<TRow = any> {
   /** Toggle a rule's `enabled` flag. No-op (no event) when the id is unknown or
    *  the rule is already in that state (avoids a needless recompile + autosave). */
   setRuleEnabled(id: string, enabled: boolean): void {
-    const engine = getRuleEngine();
+    const engine = this.ownRuleEngine;
     if (!engine?.setRules) return;
     const current = this.getRules();
     const target = current.find((r) => r.id === id);
@@ -15049,7 +15065,7 @@ export class VelocityGrid<TRow = any> {
    *  keep their relative order after the listed ones; unknown ids are
    *  ignored. No-op (no event) without a rules engine. */
   reorderRules(orderedIds: string[]): void {
-    const engine = getRuleEngine();
+    const engine = this.ownRuleEngine;
     if (!engine?.setRules) return;
     const current = this.getRules();
     const byId = new Map(current.map((r) => [r.id, r]));

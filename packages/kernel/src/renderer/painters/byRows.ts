@@ -12,7 +12,7 @@ import { cellMatchesAnyQuickFilterTerm } from '../../worker/dataPipeline';
 import { isPivotResultGroupId } from '../../core/pivotColumns';
 import { resolveIcon as resolveIconPath } from '../../icons/registry';
 import { bumpFormatEvalGeneration } from '../../core/formatEvalMemo';
-import { getRuleEngine } from '../../core/ruleEngineSlot';
+import { resolveRuleEngine } from '../../core/ruleEngineSlot';
 import { ROW_KIND_DETAIL } from '../../core/masterDetailIndex';
 import type { DecoratorPosition } from '../../types';
 
@@ -498,13 +498,17 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx, mode?: ByRo
   const rowDataNeeded = rowDataNeededForCols(vs.visibleColumns, columnDefs);
   // The ruleRow path is the snapshot's other consumer, and it is live only
   // when a rule engine is registered — `applyCellProps` reads `ruleRow`
-  // exclusively under `getRuleEngine() !== null`. Without that check a plain
-  // grid that merely supplies `getRowId` pays the second `cellAt` pass on
-  // every paint for a value nothing reads. Resolved once per paint: the slot
-  // is a module-level variable, but the row loop below runs per visible row.
-  const ruleEngineActive = getRuleEngine() !== null;
+  // exclusively when an engine resolves. Without that check a plain grid
+  // that merely supplies `getRowId` pays the second `cellAt` pass on every
+  // paint for a value nothing reads. Resolved once per paint, then handed to
+  // every applyCellProps call below so the whole frame paints with ONE
+  // engine — this grid's — rather than re-reading a slot another grid may
+  // have overwritten mid-frame.
+  const ruleEngine = resolveRuleEngine(p.ruleEngine);
+  const ruleEngineActive = ruleEngine !== null;
 
   const bandCtx: PaintBandCtx = {
+    ruleEngine,
     rowBgs,
     groupStripRows,
     isFooterRow,
@@ -802,9 +806,12 @@ interface PaintBandCtx {
    *  `cellStyleFn` / a function-form `cellIcon`). Resolved once per paint;
    *  see `rowDataNeededForCols`. */
   rowDataNeeded: boolean;
-  /** True when a rule engine is registered, i.e. when the `ruleRow` the
-   *  snapshot feeds is actually read downstream. Resolved once per paint. */
+  /** True when a rule engine resolves, i.e. when the `ruleRow` the snapshot
+   *  feeds is actually read downstream. Resolved once per paint. */
   ruleEngineActive: boolean;
+  /** THE engine for this frame — this grid's. Carried rather than re-read
+   *  per cell so the whole frame folds one rule set. */
+  ruleEngine: PainterCtx['ruleEngine'];
   quickFilterActive: boolean;
   quickFilterLowerTerms: readonly string[];
   suppressAggFuncInHeader: boolean;
@@ -966,6 +973,7 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
             groupHeaderStyle: groupDef?.headerStyle,
             groupHeaderStyleFn: groupDef?.headerStyleFn,
             pivotGroupExpand,
+            ruleEngine: ctx.ruleEngine,
           });
           // Cycle 22 / Task 2 — group headers route through the SAME
           // cell-bitmap seam as leaf cells (one shared helper, not two
@@ -1000,7 +1008,7 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
     // thin — off-window and condition-only fields are missing — so a rule
     // evaluating on the mirror alone would see holes; `mergeRuleRow` fills
     // them from the snapshot. What does license the skip is no rule engine:
-    // `ruleRow` is read only under `getRuleEngine() !== null`, so with no
+    // `ruleRow` is read only when an engine resolves, so with no
     // engine registered the ruleRow branch is dead work like the rest.
     const ruleRowId: string | undefined = row.subgrid.isData
       ? (ctx.stringRowIdAt?.(row.localRowIndex) || undefined)
@@ -1179,6 +1187,7 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
         rowId: ruleRowId,
         ruleRow,
         themeKind: ctx.themeKind,
+        ruleEngine: ctx.ruleEngine,
         // Row-select header tri-state checkbox. Resolved on the
         // header row only; non-headers stay `undefined` so the cell
         // / totals / footer paths see the default. State is computed
