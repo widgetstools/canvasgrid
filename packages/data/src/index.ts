@@ -161,3 +161,9 @@ export {
   type DshubPlaneLike,
   type DshubDatasourceOptions,
 } from './dshub/serverSideDatasource';
+export {
+  DshubSsrmEngine,
+  type DshubSsrmEngineOptions,
+  type DshubPlaneFactory,
+  type RefreshableGrid,
+} from './dshub/ssrmEngine';
