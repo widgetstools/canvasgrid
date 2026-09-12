@@ -37,7 +37,17 @@ export default tseslint.config(
     ],
   },
   {
-    files: ['packages/*/src/**/*.ts', 'packages/*/tests/**/*.ts', 'apps/*/src/**/*.ts', 'apps/*/e2e/**/*.ts'],
+    // `e2e/` is at the REPO ROOT, not under apps/. This said
+    // 'apps/*/e2e/**/*.ts', which matches nothing — so the ten Playwright
+    // specs went unlinted, and `npm run lint` exited non-zero on the dead
+    // pattern, which meant CI's lint gate failed on every branch and
+    // therefore gated nothing.
+    files: [
+      'packages/*/src/**/*.ts',
+      'packages/*/tests/**/*.ts',
+      'apps/*/src/**/*.{ts,tsx}',
+      'e2e/**/*.ts',
+    ],
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {

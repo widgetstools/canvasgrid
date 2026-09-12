@@ -30,8 +30,13 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Kernel tests
-        run: npm run test:kernel
+      # Every workspace, not just the kernel. `test:kernel` left the ext
+      # (851), perspective (219), data (137) and lab (305) suites ungated —
+      # 1,512 tests that no merge had to pass. Turbo runs them in parallel:
+      # the whole set is ~24s wall, so there was never a cost argument for
+      # the narrower gate.
+      - name: Tests
+        run: npm test
 
   # Keep demo Vite boot paths honest on Windows (path separators, npm.cmd,
   # process trees). Self-contained demos only — no sibling starui STOMP.
