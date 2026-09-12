@@ -824,10 +824,38 @@ ${vguiInputInteractionCss(['.ckp-input'], CKP_TOKENS)}
 .ckp-notice-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .ckp-notice-title { font-size: 12px; font-weight: 600; color: var(--vg-warning-color, #f0b429); }
 .ckp-notice-body { font-size: 11.5px; color: var(--ckp-muted); }
-/* style chrome (ribbon Font/Borders cluster) embedded in the rules pane */
+/* Style chrome (the ribbon's Font/Borders cluster) embedded in the rules
+   pane. In the ribbon these are side-by-side groups separated by a vertical
+   hairline, with the group name beside a single-row deck. Inside a settings
+   pane the deck wraps to two rows, which left the group name floating
+   vertically centred against nothing and the hairline cutting through a
+   two-row block. Here the same markup reads the way every other control in
+   the pane does: a caps label, then its controls under it. */
 .ckp-stylechrome .vgext-rb-stepper { display: none; }
-.ckp-stylechrome .vgext-rb-grp:has([data-vg-field='halign']) { display: none; }
-.ckp-stylechrome .vgext-rb-cluster { flex-wrap: wrap; }
+/* The alignment cluster is re-parented into the Font deck by the module, so
+   the group it came from is left empty — and .vgext-rb-grp sets its own
+   display, which a plain [hidden] attribute selector would not beat. */
+.ckp-stylechrome .vgext-rb-grp[hidden] { display: none; }
+.ckp-stylechrome .vgext-rb-cluster {
+  flex-direction: column; align-items: stretch; flex-wrap: nowrap;
+  gap: var(--vgext-space-3, 12px);
+}
+.ckp-stylechrome .vgext-rb-grp {
+  flex-direction: column; align-items: flex-start;
+  gap: var(--vgext-space-2, 8px);
+  padding: 0; border-right: none;
+}
+/* A ribbon deck stacks its rows so a group stays narrow enough to sit
+   beside its neighbours. Here the groups are already stacked vertically and
+   the pane is wider than either group needs, so the deck runs as one line:
+   the whole of Font on one row, the whole of Borders on the next. */
+.ckp-stylechrome .vgext-rb-deck {
+  flex-direction: row; align-items: center; flex-wrap: wrap;
+  /* The wider column gap is what keeps the sub-clusters legible on one
+     line — B/I/U/S reads as its own run, not as six undifferentiated
+     glyphs next to the colour swatches. */
+  gap: var(--vgext-space-1, 4px) 14px;
+}
 /* format anchor */
 .ckp-fmtbtn {
   display: inline-flex; gap: var(--vgext-space-2, 8px); align-items: center;
@@ -1247,6 +1275,109 @@ ${vguiLoadingCss({ spinner: 'ckp-spinner' }, CKP_TOKENS_ENHANCED)}
   padding: var(--vgext-space-2, 8px) var(--vgext-field-px, 10px);
   line-height: 1.45;
 }
+
+/* ── Section hierarchy ────────────────────────────────────────────────
+ * A band title read at the same weight as the help text under it, so a
+ * pane of six bands had no structure — just grey text at two sizes. The
+ * title takes the foreground; a hairline carries the eye from it to the
+ * right edge, which is what says "everything below here belongs to this".
+ * Both are band-level, so every module gains the same structure. */
+.ckp-band-head .ckp-band-title {
+  color: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 82%, transparent);
+  flex: 0 0 auto;
+}
+.ckp-band-head::after {
+  content: '';
+  flex: 1 1 auto;
+  height: 1px;
+  margin-left: var(--vgext-space-3, 12px);
+  background: color-mix(in srgb, var(--ckp-border) 60%, transparent);
+}
+.ckp-band-head:hover::after { background: var(--ckp-border); }
+
+/* ── Rule identity head ───────────────────────────────────────────────
+ * The editor head used to be a row of six unlabelled controls: a name, a
+ * bare checkbox, a select reading "Row", a number reading "0", then two
+ * buttons. Nothing said which was scope and which was priority, so the
+ * only way to find out was to hover for a tooltip. Same controls, now on
+ * two lines with their names attached: identity on top, the three fields
+ * that qualify it beneath, actions held to the right on both. */
+.ckp-rule-head { align-items: stretch; }
+.ckp-rule-ident { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: var(--vgext-space-2, 8px); }
+.ckp-rule-topline { display: flex; align-items: center; gap: var(--vgext-space-3, 12px); }
+.ckp-rule-topline > .ckp-title { flex: 1 1 auto; min-width: 0; }
+.ckp-metaline { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vgext-space-3, 12px); }
+.ckp-metafield { display: inline-flex; align-items: center; gap: var(--vgext-space-2, 8px); }
+.ckp-metafield > .ckp-caps { white-space: nowrap; }
+.ckp-metafield .ckp-select { min-width: 88px; }
+.ckp-metafield .ckp-num { width: 60px; text-align: right; }
+.ckp-metafield .ckp-numwrap { width: auto; }
+/* A read-only count, so it reads as a value and not as an empty input. */
+.ckp-metaval {
+  font-family: var(--vg-cell-font-family, ui-monospace, Menlo, Consolas, monospace);
+  font-size: 11.5px; font-variant-numeric: tabular-nums;
+  color: var(--vg-fg-color, #e5e9f0);
+}
+.ckp-head-actions { flex: 0 0 auto; display: flex; align-items: center; gap: var(--vgext-space-2, 8px); }
+
+/* ── Live preview ─────────────────────────────────────────────────────
+ * A rule editor whose subject is how a cell LOOKS had nothing that looked
+ * like a cell. This is three real cells in the grid's own tokens — the
+ * column header, a row the rule matches, a row it doesn't — so the style
+ * controls, the format string and the header/cells target all report to
+ * one place. It is also the only honest way to show what "Header" means. */
+.ckp-preview { margin: 0 0 var(--vgext-space-4, 16px); }
+.ckp-pv-frame {
+  border: 1px solid var(--ckp-border); border-radius: var(--vg-radius, 2px);
+  overflow: hidden; background: var(--vg-bg-color, #12161e);
+  max-width: 560px;
+}
+.ckp-pv-cell {
+  display: flex; align-items: center; justify-content: flex-end;
+  height: var(--vgext-row-h, 30px); padding: 0 10px;
+  font-family: var(--vg-cell-font-family, ui-monospace, Menlo, Consolas, monospace);
+  font-size: 12px; font-variant-numeric: tabular-nums;
+  color: var(--vg-fg-color, #e5e9f0);
+  border-bottom: 1px solid color-mix(in srgb, var(--ckp-border) 70%, transparent);
+  white-space: nowrap; overflow: hidden;
+}
+.ckp-pv-cell:last-child { border-bottom: none; }
+/* The header cell keeps the grid's own header treatment so a header style
+   is judged against the real background it will land on. */
+.ckp-pv-cell.is-header {
+  justify-content: flex-start;
+  background: var(--vg-header-bg-color, var(--ckp-surface-2));
+  color: var(--vg-header-fg-color, var(--vg-fg-color, #e5e9f0));
+  font-family: inherit; font-size: 12px; font-weight: 600; letter-spacing: 0.01em;
+}
+.ckp-pv-row { display: flex; align-items: stretch; }
+.ckp-pv-row > .ckp-pv-cell { flex: 1 1 auto; min-width: 0; }
+/* Which row is which, without a caption under every cell. */
+.ckp-pv-tag {
+  flex: 0 0 96px; display: flex; align-items: center; white-space: nowrap;
+  padding: 0 10px; border-bottom: 1px solid color-mix(in srgb, var(--ckp-border) 70%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--ckp-border) 70%, transparent);
+  background: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 2.5%, transparent);
+  font-size: var(--vgext-eyebrow-size, 10px);
+  font-weight: var(--vgext-eyebrow-weight, 600);
+  letter-spacing: var(--vgext-eyebrow-track, 0.09em);
+  text-transform: uppercase; color: var(--ckp-muted);
+}
+.ckp-pv-row:last-child .ckp-pv-tag,
+.ckp-pv-row:last-child .ckp-pv-cell { border-bottom: none; }
+/* The row the rule does not match is context, not content. */
+.ckp-pv-row.is-off .ckp-pv-cell { color: color-mix(in srgb, var(--vg-fg-color, #e5e9f0) 55%, transparent); }
+
+/* Rule-level problems (an empty name, no target column) — the same warning
+   grammar as .ckp-notice, but a stack of lines rather than icon + title,
+   because each entry is one sentence naming one control. */
+.ckp-notice-shape { display: block; }
+.ckp-notice-shape .ckp-notice-body { display: block; }
+.ckp-notice-shape .ckp-notice-body + .ckp-notice-body { margin-top: 3px; }
+
+/* The style ribbon reads as two clusters, so give them a shared baseline
+   and a rule between them rather than letting them wrap into each other. */
+.ckp-stylechrome .vgext-rb-cluster { align-items: flex-start; row-gap: var(--vgext-space-2, 8px); }
 
 `;
 }

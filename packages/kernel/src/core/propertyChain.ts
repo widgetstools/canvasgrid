@@ -8,7 +8,7 @@ import type {
 import type { CellPaintConfig } from '../renderer/cellRenderers/registry';
 import type { ResolvedTheme } from '../theming/cssReader';
 import { getFormatCompiler, type CompositeColDefShape } from './formatCompilerSlot';
-import { getRuleEngine } from './ruleEngineSlot';
+import { resolveRuleEngine, type RuleEngineShape } from './ruleEngineSlot';
 import { evalFormatProgram } from './formatEvalMemo';
 import { compileValueGetterSrc, valueGetterFnFromSrc } from './valueGetterExpr';
 
@@ -387,6 +387,17 @@ export interface ApplyCellPropsInput {
   ruleRow?: Record<string, unknown>;
   /** Cycle 21e / Task 11 — active theme kind for the rule eval ctx. */
   themeKind?: 'light' | 'dark';
+  /**
+   * The rule engine of the grid being painted.
+   *
+   * Threaded rather than read from the module slot so two grids on one page
+   * each paint with their OWN rules — see the ownership note in
+   * `core/ruleEngineSlot.ts`. `undefined` means the caller did not thread it
+   * and falls back to the page-level slot (single-grid pages, and the
+   * composite/export helpers that run without a grid); `null` means this
+   * grid registered no engine and must not borrow another's.
+   */
+  ruleEngine?: RuleEngineShape | null;
 }
 
 /** Workstream C (2026-07-06 CSS styling model) — resolve `var(--vg-…)`
@@ -628,6 +639,54 @@ function withFontWeight(font: string, weight: number): string {
   return `${cssWeight} ${font}`;
 }
 
+/**
+ * A rule's resolved style → the kernel's cell-override vocabulary.
+ *
+ * Shared by the data-cell fold and the header fold so the two cannot drift:
+ * a rule that paints a cell bold-red must paint its header bold-red by the
+ * same mapping, or "apply to header and cells" would quietly mean two
+ * different things.
+ */
+function ruleStyleToPatch(s: {
+  color?: string; backgroundColor?: string;
+  fontWeight?: unknown; fontStyle?: string; textDecoration?: string;
+  halign?: string;
+  border?: unknown; borderColor?: string; borderStyle?: string;
+}): ColCellOverrides {
+  const patch: ColCellOverrides = {};
+  if (s.color !== undefined) patch.fg = s.color;
+  if (s.backgroundColor !== undefined) patch.bg = s.backgroundColor;
+  // fontWeight / fontStyle ride composeFont via applyOverridePatch — the
+  // same breakout-composition path Cycle 27 built; no manual font-string
+  // rebuild needed.
+  if (s.fontWeight !== undefined) patch.fontWeight = s.fontWeight as ColCellOverrides['fontWeight'];
+  if (s.fontStyle !== undefined) patch.fontStyle = s.fontStyle as ColCellOverrides['fontStyle'];
+  if (s.textDecoration !== undefined) {
+    patch.textDecoration = s.textDecoration as ColCellOverrides['textDecoration'];
+  }
+  // Alignment rides the same patch as everything else, so the header fold
+  // gets it for free: on a header it lands after the caption's default
+  // 'left' and before an explicit `headerStyle`, which is the precedence
+  // every other property in this patch already has.
+  if (s.halign !== undefined) patch.halign = s.halign as ColCellOverrides['halign'];
+  // Per-side border spec forwards verbatim (already the kernel BorderSpec
+  // vocabulary — cellBordersPainter handles sides / `all` fallback /
+  // width-0 skip). Wins over the legacy pair.
+  if (s.border !== undefined) {
+    patch.border = s.border as import('../types').BorderSpec;
+  } else if (s.borderColor !== undefined && s.borderStyle !== 'none') {
+    // Legacy borderColor/borderStyle → all four sides, width 1.
+    patch.border = {
+      all: {
+        width: 1,
+        color: s.borderColor,
+        style: (s.borderStyle ?? 'solid') as import('../types').BorderStyle,
+      },
+    };
+  }
+  return patch;
+}
+
 /** Repopulate `target` in place. The caller reuses a single config object
  * across the whole frame to keep paint allocation-free.
  *
@@ -636,7 +695,14 @@ function withFontWeight(font: string, weight: number): string {
  *  2. Static `cellStyle` object overrides.
  *  3. Class-driven variants (`cellClass` / `cellClassRules` → `cellClassVariants`
  *     or `headerClass` → `headerClassVariants`). Later class names win.
- *  4. Function-form `cellStyle` (highest; called per cell, return value wins).
+ *  3.5. Rule-engine folds. Data cells take the rules their condition
+ *     matches; headers take the rules whose `target` names them, which is
+ *     unconditional because a header carries no row. Both land after the
+ *     class variants — a rule beats declarative class styling — and before
+ *     step 4, so an explicit per-cell or per-header style is still the
+ *     app's last word.
+ *  4. Function-form `cellStyle`, or `headerStyle` / `headerStyleFn` on the
+ *     header path (highest; called per cell, return value wins).
  *
  * Cycle 6 / Task 7.
  */
@@ -656,6 +722,10 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   target.isSelected = ctx.isSelected;
   target.isHovered = ctx.isHovered;
   target.isHeader = ctx.isHeader;
+  // Carried onto the config so downstream renderers and the compiled
+  // value-formatter closures evaluate against the same engine this fold
+  // uses, rather than re-reading the page-level slot per cell.
+  target.ruleEngine = ctx.ruleEngine;
   target.iconColor = ctx.iconColor;
   target.wrapHeader = ctx.wrapHeader;
   target.sortDirection = ctx.sortDirection;
@@ -815,6 +885,7 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
         // rule:<ruleId> accessor. Undefined off the data paint path.
         rowId: ctx.rowId,
         themeKind: ctx.themeKind,
+        ruleEngine: ctx.ruleEngine,
       }
     : undefined;
 
@@ -852,6 +923,23 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
         const patch = theme.headerClassVariants.get(name);
         if (patch) applyOverridePatch(target, patch);
       }
+    }
+
+    // Conditional-style rules whose target reaches the HEADER.
+    // A header has no row behind it, so there is nothing for a row-field
+    // condition to evaluate against — the engine applies these
+    // unconditionally and only for cell-scoped rules naming this column
+    // (see `RuleStyleTarget`). Fold position mirrors the data-cell fold:
+    // after class variants (rules beat declarative class styling), before
+    // `headerStyle`, so an explicit header style stays the app's last word.
+    // The slot is optional, so an engine predating this returns undefined
+    // and the header paints exactly as before.
+    const headerRuleStyle = resolveRuleEngine(ctx.ruleEngine)?.headerStyleFor?.(
+      colDef.colId,
+      ctx.themeKind ?? 'light',
+    );
+    if (headerRuleStyle) {
+      applyOverridePatch(target, ruleStyleToPatch(headerRuleStyle));
     }
 
     // Cycle 27 / Task 1 — direct `headerStyle` overrides on the leaf colDef.
@@ -930,7 +1018,7 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
     // Fold position per spec §3.5: AFTER cellClassRules variants, BEFORE
     // function-form cellStyle — rules beat declarative class styling; an
     // explicit per-cell cellStyle function stays the app's last word.
-    const ruleEngine = getRuleEngine();
+    const ruleEngine = resolveRuleEngine(ctx.ruleEngine);
     if (ruleEngine !== null && ctx.rowId !== undefined) {
       let ruleResult: ReturnType<typeof ruleEngine.evaluateCell> | null = null;
       try {
@@ -946,33 +1034,7 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
       if (ruleResult !== null && ruleResult.matched.length > 0) {
         const s = ruleResult.style;
         if (s !== null) {
-          const patch: ColCellOverrides = {};
-          if (s.color !== undefined) patch.fg = s.color;
-          if (s.backgroundColor !== undefined) patch.bg = s.backgroundColor;
-          // fontWeight / fontStyle ride composeFont via applyOverridePatch
-          // — the same breakout-composition path Cycle 27 built; no manual
-          // font-string rebuild needed.
-          if (s.fontWeight !== undefined) patch.fontWeight = s.fontWeight as ColCellOverrides['fontWeight'];
-          if (s.fontStyle !== undefined) patch.fontStyle = s.fontStyle;
-          if (s.textDecoration !== undefined) {
-            patch.textDecoration = s.textDecoration as ColCellOverrides['textDecoration'];
-          }
-          // Per-side border spec forwards verbatim (already the kernel
-          // BorderSpec vocabulary — cellBordersPainter handles sides /
-          // `all` fallback / width-0 skip). Wins over the legacy pair.
-          if (s.border !== undefined) {
-            patch.border = s.border as import('../types').BorderSpec;
-          } else if (s.borderColor !== undefined && s.borderStyle !== 'none') {
-            // Legacy borderColor/borderStyle → all four sides, width 1.
-            patch.border = {
-              all: {
-                width: 1,
-                color: s.borderColor,
-                style: (s.borderStyle ?? 'solid') as import('../types').BorderStyle,
-              },
-            };
-          }
-          applyOverridePatch(target, patch);
+          applyOverridePatch(target, ruleStyleToPatch(s));
         }
         // Indicator + formatProgram are stored for the byRows paint path
         // (Cycle 21e / Task 14) — one evaluateCell per cell, consumed twice.

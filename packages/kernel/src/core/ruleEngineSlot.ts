@@ -27,6 +27,7 @@ export interface RuleCellPatchShape {
     fontWeight?: 'normal' | 'bold' | number;
     fontStyle?: 'normal' | 'italic';
     textDecoration?: string;
+    halign?: 'left' | 'center' | 'right';
     /** Legacy single-border pair (all sides, width 1). */
     borderColor?: string;
     borderStyle?: string;
@@ -69,6 +70,20 @@ export interface ConditionalRuleShape {
 export interface RuleEngineShape {
   evaluateCell(ctx: RuleEvalCtxShape): RuleCellPatchShape;
   resolveRuleRef(ruleId: string, ctx: RuleEvalCtxShape): string | null;
+  /**
+   * Unconditional header style for `colId`, merged across enabled style
+   * rules whose `target` includes the header. `null` when none apply.
+   *
+   * Separate from `evaluateCell` because a header has no row to evaluate a
+   * condition against. Optional so an engine that predates header targets
+   * still satisfies the slot — the header fold simply does nothing.
+   */
+  headerStyleFor?(colId: string, theme: 'light' | 'dark'): {
+    color?: string; backgroundColor?: string;
+    fontWeight?: unknown; fontStyle?: string; textDecoration?: string;
+    halign?: 'left' | 'center' | 'right';
+    border?: unknown; borderColor?: string; borderStyle?: string;
+  } | null;
   /** Grid Layouts (Phase C / C3) — the current rule set (full serializable
    *  snapshot). Optional so a paint-only engine adapter still satisfies the
    *  slot; the VelocityGridApi rule methods degrade to `[]` / no-op without it. */
@@ -78,24 +93,53 @@ export interface RuleEngineShape {
   setRules?(rules: ConditionalRuleShape[]): void;
 }
 
-// KNOWN BUG (multi-grid): this is a module-global singleton, not per-grid
-// state. With two VelocityGrid instances alive on one page, the last
-// `registerRuleEngine` / `wireIntoKernel` call wins for BOTH grids' paint-time
-// rule lookup — the first grid silently starts evaluating the second grid's
-// rules. `_resetRuleEngine_forTests` is process-wide for the same reason.
-// Fixing this (threading the engine per-grid instead of through one module
-// slot) is its own task; not attempted here. ext is unaffected because it
-// never reads this slot — it reads grid-instance own-properties
-// (`__editBridgeWired` / `__calcBridgeWired` / `__rulesBridgeWired`, see
-// packages/ext/src/extension/engines.ts) which ARE correctly per-grid.
+// ── Ownership: per-grid, with this slot as the fallback ──────────────────
+//
+// This was a module-global singleton and nothing else, which meant that with
+// two VelocityGrid instances on one page the last `registerRuleEngine` call
+// won for BOTH grids' paint-time lookup: the first grid silently started
+// painting with the second grid's rules. That is an ordinary blotter layout
+// — positions and orders stacked on one page — and the two grids there have
+// deliberately different rule sets, so the cross-talk was immediate and
+// visible rather than coincidentally masked.
+//
+// The engine is now owned by the grid that registered it (`VelocityGrid`
+// holds it and threads it into the paint context), and every kernel consumer
+// prefers the threaded one. This slot is kept for two reasons:
+//
+//   1. a paint path that has no grid in scope (the composite/export
+//      fragment builders) still has to resolve SOMETHING, and with a single
+//      grid — the overwhelmingly common case — the slot is exactly right;
+//   2. it keeps `registerRuleEngine` / `_resetRuleEngine_forTests`
+//      behaviourally unchanged for every existing caller.
+//
+// So the slot is a LAST resort, not the source of truth. Anything reading it
+// where a grid is available is a bug; pass `ruleEngine` through the context
+// instead. See `resolveRuleEngine` below.
 let injectedEngine: RuleEngineShape | null = null;
 
 export function registerRuleEngine(engine: RuleEngineShape): void {
   injectedEngine = engine;
 }
 
+/** The page-level fallback. Prefer {@link resolveRuleEngine}, which takes the
+ *  owning grid's engine when the caller has one. */
 export function getRuleEngine(): RuleEngineShape | null {
   return injectedEngine;
+}
+
+/**
+ * The engine to use for one piece of work: the owning grid's if the caller
+ * threaded it, otherwise the page-level slot.
+ *
+ * `undefined` means "the caller does not know" and falls back. `null` means
+ * "this grid has no engine" and is honoured — that distinction is what stops
+ * a grid without rules from borrowing another grid's.
+ */
+export function resolveRuleEngine(
+  own: RuleEngineShape | null | undefined,
+): RuleEngineShape | null {
+  return own === undefined ? injectedEngine : own;
 }
 
 /** Test-only helper — not part of public API. */

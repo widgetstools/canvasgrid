@@ -71,6 +71,18 @@ export class RuleEngine {
   #rowScope: IndexedRule[] = [];
   /** Lazily merged (row-scope + cell-scope) candidate lists per colId. */
   #mergedByColId = new Map<string, IndexedRule[]>();
+  /** Cell-scope style rules whose `target` reaches the header, per colId.
+   *  Header styling is unconditional (a header has no row), so these are
+   *  indexed separately from `#cellByColId` and never consulted by
+   *  `evaluateCell`. */
+  #headerByColId = new Map<string, IndexedRule[]>();
+  /** Row-scope style rules whose `target` reaches the header. Row scope
+   *  means "every column", for headers as much as for cells, so these apply
+   *  to whatever colId is asked for. */
+  #headerRowScope: IndexedRule[] = [];
+  /** Folded header style per `${theme}\0${colId}`. Nothing conditional feeds
+   *  it, so it stays valid until the rule set is replaced. */
+  #headerStyleCache = new Map<string, StyleSlice | null>();
   /** Row-scope condition memo, keyed by rowId (paint pass). The kernel
    *  mutates row objects in place — same identity across updates — so a
    *  WeakMap keyed by object identity would serve stale booleans after a
@@ -166,18 +178,35 @@ export class RuleEngine {
     this.#indexed = indexed;
     this.#byId = new Map(indexed.map((ir) => [ir.rule.id, ir]));
     this.#cellByColId = new Map();
+    this.#headerByColId = new Map();
+    this.#headerRowScope = [];
     this.#rowScope = [];
     for (const ir of indexed) {
+      // `target` defaults to 'cells', which is what every rule authored
+      // before header targets existed means — so those rules land in the
+      // cell indexes alone and paint exactly as they did.
+      const target = ir.rule.kind === 'style' ? ir.rule.target ?? 'cells' : 'cells';
       if (ir.rule.scope.kind === 'row') {
-        this.#rowScope.push(ir);
+        if (target !== 'header') this.#rowScope.push(ir);
+        if (target !== 'cells') this.#headerRowScope.push(ir);
       } else {
         for (const colId of ir.rule.scope.columnIds) {
-          let list = this.#cellByColId.get(colId);
-          if (!list) {
-            list = [];
-            this.#cellByColId.set(colId, list);
+          if (target !== 'header') {
+            let list = this.#cellByColId.get(colId);
+            if (!list) {
+              list = [];
+              this.#cellByColId.set(colId, list);
+            }
+            list.push(ir);
           }
-          list.push(ir);
+          if (target !== 'cells') {
+            let hlist = this.#headerByColId.get(colId);
+            if (!hlist) {
+              hlist = [];
+              this.#headerByColId.set(colId, hlist);
+            }
+            hlist.push(ir);
+          }
         }
       }
     }
@@ -187,6 +216,7 @@ export class RuleEngine {
         (ir.rule.flash?.enabled === true || ir.rule.activeDurationMs != null),
     );
     this.#mergedByColId = new Map();
+    this.#headerStyleCache = new Map();
     this.#rowMemo = new Map();
     this.#evalErrors = new Map();
     this.#counter.resetAll(); // caller re-seeds via recount (bridge does, Task 15)
@@ -227,6 +257,39 @@ export class RuleEngine {
     }
     if (matched === null) return EMPTY_RESULT;
     return { matched, style, indicator, formatProgram };
+  }
+
+  /**
+   * Header-paint entry. The folded style for `colId`'s header, or null.
+   *
+   * Unconditional by construction: a header row carries no data row, so a
+   * condition over row fields has nothing to evaluate against. A rule
+   * targeting the header therefore styles it for as long as the rule is
+   * enabled and names the column. Ordering matches `evaluateCell` — priority
+   * ascending, later rules layering over earlier ones per property — so a
+   * `target: 'both'` rule paints a header and its cells the same way.
+   */
+  headerStyleFor(colId: string, theme: ThemeKind): StyleSlice | null {
+    const named = this.#headerByColId.get(colId);
+    if (named === undefined && this.#headerRowScope.length === 0) return null;
+    const key = theme + '\u0000' + colId;
+    const cached = this.#headerStyleCache.get(key);
+    if (cached !== undefined) return cached;
+    // Row-scope rules cover every column, so they merge with the ones that
+    // name this one; priority order across the two is what decides.
+    const list = named === undefined
+      ? this.#headerRowScope
+      : this.#headerRowScope.length === 0
+        ? named
+        : [...this.#headerRowScope, ...named].sort(byPriority);
+    let style: StyleSlice | null = null;
+    for (const ir of list) {
+      if (ir.rule.kind !== 'style') continue;
+      const slice = resolveThemeStyle(ir.rule.style, theme);
+      if (slice) style = Object.assign({}, style, slice);
+    }
+    this.#headerStyleCache.set(key, style);
+    return style;
   }
 
   /** rule:<ruleId> color accessor for @wellsfargo-starui/velocity-grid/format (Task 9 threads it).

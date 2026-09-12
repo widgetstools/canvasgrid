@@ -186,6 +186,15 @@ export function validateRuleShape(rule: StyleRule): RuleValidationError[] {
     if (typeof rule.style !== 'object' || rule.style === null) {
       errors.push(shapeError(ruleId, 'style rules require a style object'));
     }
+    // Absent means 'cells' — every rule authored before header targets
+    // existed. A misspelt value would otherwise be silently ignored, which
+    // reads as "header styling is broken".
+    if (
+      rule.target !== undefined
+      && rule.target !== 'cells' && rule.target !== 'header' && rule.target !== 'both'
+    ) {
+      errors.push(shapeError(ruleId, "rule.target must be 'cells', 'header' or 'both'"));
+    }
   } else if (rule.kind === 'indicator') {
     if (typeof rule.indicator !== 'object' || rule.indicator === null) {
       errors.push(shapeError(ruleId, 'indicator rules require an indicator object'));

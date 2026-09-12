@@ -232,6 +232,10 @@ export function wireIntoKernel(
       rules.evaluateCell({ row: ctx.row, rowId: ctx.rowId, colId: ctx.colId, theme: ctx.theme ?? g.getThemeKind() }),
     resolveRuleRef: (ruleId: string, ctx: { row: Record<string, unknown>; rowId: string; colId: string | null; theme?: 'light' | 'dark' }) =>
       rules.resolveRuleRef(ruleId, { row: ctx.row, rowId: ctx.rowId, colId: ctx.colId, theme: ctx.theme ?? g.getThemeKind() }),
+    // Header targets: unconditional, so no row/rowId to thread — just the
+    // column and the frame's theme kind (same fallback as above).
+    headerStyleFor: (colId: string, theme?: 'light' | 'dark') =>
+      rules.headerStyleFor(colId, theme ?? g.getThemeKind()),
     getRules: () => rules.getRules(),
     setRules: (next: StyleRule[]) => {
       for (const err of rules.setRules(Array.isArray(next) ? next : []).errors) {

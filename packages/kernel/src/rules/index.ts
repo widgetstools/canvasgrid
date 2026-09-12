@@ -14,7 +14,7 @@ export type {
   ThemeKind, StyleSlice, ThemeAwareStyle, FlashConfig, RuleIndicator,
   RuleIndicatorPlacement,
   RuleBorderStyle, RuleBorderSide, RuleBorderSpec,
-  RuleScope, RuleBase, ConditionalStyleRule, IndicatorRule, StyleRule,
+  RuleScope, RuleBase, RuleStyleTarget, ConditionalStyleRule, IndicatorRule, StyleRule,
   AlertSeverity, AlertChannel, AlertTrigger, AlertRule, AlertEvent, AlertsSettings,
   RuleEvalContext, RuleCellResult, RuleValidationError, SetRulesResult,
   ChangeRecord, RowChangeSet, FlashDirective, WireRulesOptions, Unsubscribe,

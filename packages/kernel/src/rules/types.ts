@@ -33,6 +33,11 @@ export interface StyleSlice {
   fontWeight?: 'normal' | 'bold' | number;
   fontStyle?: 'normal' | 'italic';
   textDecoration?: 'none' | 'underline' | 'line-through';
+  /** Horizontal alignment of the cell's text. Follows the rule's `target`
+   *  like every other property here, so a rule can right-align a column's
+   *  header, its cells, or both. Absent leaves the column's own alignment
+   *  alone — which for a number is right and for anything else is left. */
+  halign?: 'left' | 'center' | 'right';
   /** Legacy single-border pair — all four sides, width 1. Superseded by
    *  `border` (which wins when both are set); kept for stored rules. */
   borderColor?: string;
@@ -104,9 +109,26 @@ export interface RuleBase {
   scope: RuleScope;
 }
 
+/**
+ * Which part of a scoped column a style rule paints.
+ *
+ * `'cells'` is the default and what every rule authored before this did.
+ *
+ * A header carries no row, so a condition over row fields (`[pnl] > 0`) has
+ * nothing to evaluate against. Header styling is therefore UNCONDITIONAL:
+ * the style applies while the rule is enabled, full stop.
+ *
+ * WHICH headers follows the rule's scope, exactly as it does for cells — a
+ * cell-scoped rule paints the headers of the columns it names, a row-scoped
+ * one (which means "every column") paints every column's header.
+ */
+export type RuleStyleTarget = 'cells' | 'header' | 'both';
+
 export interface ConditionalStyleRule extends RuleBase {
   kind: 'style';
   style: ThemeAwareStyle;
+  /** Default `'cells'` — see {@link RuleStyleTarget}. */
+  target?: RuleStyleTarget;
   flash?: FlashConfig;
   indicator?: RuleIndicator;
   /** Format-DSL string (any tier @wellsfargo-starui/velocity-grid/format compiles); matching cells
