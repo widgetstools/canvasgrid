@@ -146,3 +146,13 @@ export { rowsToColumnar, columnarToRows, type ColumnarBatch } from './pipeline/w
 export { projectRow, thinDelta } from './pipeline/project';
 
 export { toGridColumnDefs, type GridColumnDef, type ToGridColumnDefsOptions } from './schema/gridColumnDefs';
+
+// Rust/wasm DataSource Hub (widgetstools/rangrez `hub-rust`, vendored under
+// lib/). Its `groupDelta` push and VelocityGrid's SSRM v2 skeleton describe
+// the same object; this folds one into the other.
+export {
+  HubGroupSkeleton,
+  type HubGroupRow,
+  type HubGroupDelta,
+  type SkeletonGroupShape,
+} from './dshub/groupSkeleton';
