@@ -156,3 +156,8 @@ export {
   type HubGroupDelta,
   type SkeletonGroupShape,
 } from './dshub/groupSkeleton';
+export {
+  DshubServerSideDatasource,
+  type DshubPlaneLike,
+  type DshubDatasourceOptions,
+} from './dshub/serverSideDatasource';
