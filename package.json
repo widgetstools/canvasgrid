@@ -51,5 +51,8 @@
     "turbo": "^2.10.11",
     "typescript-eslint": "^8.62.1",
     "wait-on": "^9.0.10"
+  },
+  "dependencies": {
+    "dshub-hub": "file:lib/dshub-hub/dshub-hub-0.1.0.tgz"
   }
 }
