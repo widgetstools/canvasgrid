@@ -16,16 +16,14 @@
  *      third grouping level and the grid stays immediate.
  *   2. WEIGHTED AVERAGES. `SUM(spread x dv01) / SUM(dv01)` as computed
  *      columns with agg nodes — DV01-weighted spread, which a closed set of
- *      aggregates cannot express at all. The agg is scoped to the view, so
- *      each desk's leaves carry that desk's own number (pinned in
- *      packages/data/tests/dshub/serverSideDatasource.test.ts).
+ *      aggregates cannot express at all.
  *
- *      It lands on LEAF rows only. `watchGroups` — the verb that builds the
- *      group skeleton — takes a groupBy and a map of aggregates and reads the
- *      raw cache, so a caption row cannot carry a computed column. Closing
- *      that gap is an engine change, not a client one; until then the demo
- *      shows the sums on captions and the weighted average on leaves rather
- *      than dividing client-side and calling it engine-computed.
+ *      Every agg node is folded over the rows of the scope it is read in, so
+ *      each group row carries its own number rather than the book's, and a
+ *      leaf agrees with the caption above it. Pinned at three layers: the
+ *      engine (hub-rust/tests/groupdelta.rs), the plane
+ *      (SsrmWasmPlane.wasm.integration.test.ts) and the datasource
+ *      (packages/data/tests/dshub/serverSideDatasource.test.ts).
  *   3. LIVE TICKS that repaint without the grid asking, and a still book that
  *      does not repaint at all.
  */
@@ -116,9 +114,11 @@ app.innerHTML = `
   <footer class="foot">
     <span><b>Wtd Spread</b> is <code>SUM(spread × dv01) / SUM(dv01)</code> — an
     aggregate composed with arithmetic, which a fixed set of aggregate functions
-    cannot express. Expand a desk: its leaves carry <em>that desk's</em> weighted
-    spread, scoped by the engine, not the book's. Caption rows show the plain
-    sums it is built from — the group-watch path has no computed columns.</span>
+    cannot express. Compare it with <b>AVG Spread</b> beside it: the long end
+    carries most of the risk, so the weighted number runs ~24bp wider, and the
+    plain average understates every desk. Each group row carries <em>its own</em>
+    fold — each desk's is that desk's, each region's is that region's, and none
+    of them is the book's.</span>
   </footer>
 `;
 
@@ -149,6 +149,13 @@ const COLS = COLUMN_DEFINITIONS.map((c) => ({
   cellDataType: 'number',
   valueFormatter: '#,##0.00" bp"',
   align: 'right',
+  // `aggFunc` is what licenses the paint path to render this on a GROUP row;
+  // without it the engine's value arrives and the caption stays blank. The
+  // kernel does not fold anything here — the value on a group row IS the
+  // engine's per-node result — so the header keeps its own name rather than
+  // announcing an aggregate the client never performed.
+  aggFunc: 'avg',
+  suppressAggFuncInHeader: true,
   width: 165,
 }] as never) as never;
 
@@ -209,8 +216,10 @@ const COMPUTED = [
   },
 ];
 
+const plane = new SsrmWasmPlane(rustHub);
+
 const engine = new DshubSsrmEngine({
-  plane: new SsrmWasmPlane(rustHub) as never,
+  plane: plane as never,
   computedColumns: COMPUTED,
   providerId: 'positions',
   config: { keyColumn: 'id', columnDefinitions: COLUMN_DEFINITIONS as never },
@@ -306,4 +315,4 @@ void boot().catch((err) => {
 });
 
 // Handy from the console, and what the E2E spec drives.
-(window as unknown as { __demo: unknown }).__demo = { grid, engine, book };
+(window as unknown as { __demo: unknown }).__demo = { grid, engine, book, plane };

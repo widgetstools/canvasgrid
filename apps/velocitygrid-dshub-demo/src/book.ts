@@ -29,6 +29,16 @@ export interface Position {
 const DESKS = ['Rates', 'IG Credit', 'HY Credit', 'EM', 'Munis'];
 const REGIONS = ['Americas', 'EMEA', 'APAC'];
 const TENORS = ['2Y', '5Y', '10Y', '30Y'];
+
+/**
+ * Years of duration per tenor, which is what DV01 is proportional to.
+ *
+ * The whole point of a DV01-weighted spread is that a long bond carries far
+ * more risk per dollar than a short one, so it should dominate the average. If
+ * DV01 were independent of tenor the weighted and unweighted averages would
+ * land on the same number and the demo would demonstrate nothing.
+ */
+const DURATION: Record<string, number> = { '2Y': 1.9, '5Y': 4.5, '10Y': 8.2, '30Y': 19.5 };
 const RATINGS = ['AAA', 'AA', 'A', 'BBB', 'BB', 'B'];
 
 /** Deterministic, so a reload shows the same book. */
@@ -47,16 +57,24 @@ export function makeBook(n: number, seed = 7): Position[] {
     // Spread scales with credit risk, so the grouped averages differ visibly
     // between desks instead of all landing on the same number.
     const riskiness = DESKS.indexOf(desk) / (DESKS.length - 1);
+    const tenor = TENORS[Math.floor(r() * TENORS.length)]!;
+    const years = DURATION[tenor]!;
+    const notional = Math.round((r() * 45 + 5) * 1e6);
     return {
       id: `POS-${String(i).padStart(6, '0')}`,
       desk,
       region: REGIONS[Math.floor(r() * REGIONS.length)]!,
-      tenor: TENORS[Math.floor(r() * TENORS.length)]!,
+      tenor,
       ticker: `TICK${String(Math.floor(r() * 900) + 100)}`,
       rating: RATINGS[Math.min(RATINGS.length - 1, Math.floor(riskiness * 4 + r() * 2))]!,
-      notional: Math.round((r() * 45 + 5) * 1e6),
-      spread: Math.round((riskiness * 320 + r() * 90 + 8) * 10) / 10,
-      dv01: Math.round((r() * 480 + 20) * 10) / 10,
+      notional,
+      // Credit curves slope up, so the long end trades wider within a desk.
+      // Together with DV01 rising in tenor, this is what separates the
+      // weighted average from the plain one — the long, wide, risk-heavy
+      // positions pull it up, which is exactly the number a desk wants.
+      spread: Math.round((riskiness * 320 + years * 4.5 + r() * 60 + 8) * 10) / 10,
+      // DV01 = notional x duration x 1bp, in whole currency units.
+      dv01: Math.round(notional * years * 1e-4 * 10) / 10,
       pnl: Math.round((r() - 0.48) * 900_000),
     };
   });

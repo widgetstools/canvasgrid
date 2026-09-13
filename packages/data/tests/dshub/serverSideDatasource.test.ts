@@ -283,3 +283,74 @@ describe('engine-computed columns', () => {
     expect(res.rowData[0]!.wSpread).toBeCloseTo(46, 5);
   });
 });
+
+describe('computed columns on the group skeleton', () => {
+  /**
+   * A caption and the leaves under it must be the SAME calculation.
+   *
+   * Until the engine folded per group node, `watchGroups` read the raw cache
+   * and had no computed columns at all, so `wSpread` reached leaf rows and was
+   * simply absent from every group row — the number a desk reads, missing from
+   * the row it reads it on. These pin that the skeleton now carries it, and
+   * that each group carries its OWN fold.
+   */
+  const CFG_W = {
+    keyColumn: 'id',
+    columnDefinitions: [
+      { field: 'id' }, { field: 'desk' },
+      { field: 'spread', cellDataType: 'number' },
+      { field: 'dv01', cellDataType: 'number' },
+    ],
+  };
+  // Credit: 280bp on 10 dv01 + 20bp on 90 -> 4600/100 = 46 (mean 150).
+  // Rates:   10bp on 10 dv01 + 400bp on 90 -> 36100/100 = 361 (mean 205).
+  // Book:    40700/200 = 203.5 — correct for neither.
+  const W_ROWS = [
+    { id: 'w1', desk: 'Credit', spread: 280, dv01: 10 },
+    { id: 'w2', desk: 'Credit', spread: 20, dv01: 90 },
+    { id: 'w3', desk: 'Rates', spread: 10, dv01: 10 },
+    { id: 'w4', desk: 'Rates', spread: 400, dv01: 90 },
+  ];
+  const COMPUTED = [
+    { as: 'wprod', version: 1,
+      expr: { k: 'bin', op: 'mul', l: { k: 'col', name: 'spread' }, r: { k: 'col', name: 'dv01' } } },
+    { as: 'wSpread', version: 1,
+      expr: { k: 'bin', op: 'div',
+              l: { k: 'agg', fn: 'sum', col: 'wprod' },
+              r: { k: 'agg', fn: 'sum', col: 'dv01' } } },
+  ];
+
+  async function skeleton(id: string) {
+    const plane = new SsrmWasmPlane(realHub);
+    await plane.boot(id, CFG_W);
+    await plane.attachSession(`${id}s`);
+    await plane.ingest(id, W_ROWS, false);
+    const ds = new DshubServerSideDatasource({
+      plane: plane as DshubPlaneLike, sessionId: `${id}s`, providerId: id,
+      aggregates: { dv01: 'sum' }, computedColumns: COMPUTED,
+    });
+    const res = await awaited<{ groups: Array<{ path: string[]; aggregates?: Record<string, unknown> }> }>(
+      (p) => ds.getGroupSkeleton({ request: { rowGroupCols: ['desk'] }, ...p }));
+    return new Map(res.groups.map((g) => [g.path.join('/'), g.aggregates ?? {}]));
+  }
+
+  it('a caption carries the weighted average, not a blank', async () => {
+    const byDesk = await skeleton('gsw');
+    expect(byDesk.get('Credit')!.wSpread).toBeCloseTo(46, 5);
+    expect(byDesk.get('Rates')!.wSpread).toBeCloseTo(361, 5);
+  });
+
+  it('each group folds over its own rows, not the book', async () => {
+    // 203.5 is what one view-scoped fold would put on both.
+    const byDesk = await skeleton('gsw2');
+    for (const aggs of byDesk.values()) {
+      expect(aggs.wSpread).not.toBeCloseTo(203.5, 1);
+    }
+  });
+
+  it('the plain aggregates still arrive alongside', async () => {
+    const byDesk = await skeleton('gsw3');
+    expect(byDesk.get('Credit')!.dv01).toBeCloseTo(100, 5);
+  });
+});
+

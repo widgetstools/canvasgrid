@@ -45,6 +45,7 @@ export interface DshubPlaneLike {
   watchGroups(sessionId: string, providerId: string, req: {
     groupBy: readonly string[];
     aggregates?: Record<string, string>;
+    computedColumns?: readonly DshubComputedColumn[];
   }): Promise<void>;
   pollAllTicks(): Map<string, Array<{ kind?: string } & HubGroupDelta>>;
 }
@@ -136,6 +137,11 @@ export class DshubServerSideDatasource {
       ? this.#plane.watchGroups(this.#sessionId, this.#providerId, {
           groupBy: request.rowGroupCols,
           aggregates: this.#aggregates,
+          // The same columns the leaf reads get, so a caption is not a
+          // different calculation from the rows beneath it. Each `agg` node
+          // inside one is folded over THAT group's members, which is what
+          // makes a weighted average a group row can show.
+          computedColumns: this.#computed,
         })
       : Promise.resolve();
 
