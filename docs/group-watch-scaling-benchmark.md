@@ -116,8 +116,7 @@ adding and subtracting `f64` does not return to where it started.
 **152× at the worst point, and the linearity is gone** — 1.1ms at 50k against
 1.5ms at 500k for the same configuration. The cost is now proportional to what
 moved, not to what exists. In a browser under the live demo, the per-tick poll
-went from 30.8ms to 5.6ms median; what remains there is the row-delta stream,
-not the group scan.
+went from 30.8ms to 5.6ms median — and then to 2.5ms, for the reason below.
 
 Registering a watch still pays one full build. That is unchanged and correct —
 it is the price of a new grouping, not a per-tick cost.
@@ -128,6 +127,51 @@ Equivalence is treated as a property, not a set of examples. Four tests drive a
 pseudo-random feed — value ticks, regroups, deletes, and cells that stop being
 numeric — and compare the incremental snapshot against a fresh full fold after
 every tick. Reintroducing the re-read bug fails all four.
+
+## Where the tick went next, and a recommendation withdrawn
+
+With the scan fixed, the residual cost had to be found rather than guessed. The
+tick was split at the four seams it actually has, 500k rows, 400 moving:
+
+| seam | time | bytes |
+|------|------|-------|
+| `hub.tick()` — group deltas | 0.414ms | 4,298 |
+| `JSON.parse` | 0.012ms | |
+| `poll_shared_delta` — row deltas | **0.946ms** | **60,871** |
+| `JSON.parse` | 0.118ms | |
+| residual plane JS | ~0ms | |
+| **total** | **1.486ms** | |
+
+**This withdrew a recommendation.** The plan had been a columnar/binary wasm
+boundary, on the theory that JSON was the cost. It is not: `JSON.parse` is
+0.13ms of 1.49ms. That rewrite would have optimised 9% of a tick while moving
+object construction to the client, where hand-built objects generally lose to
+native parse — a likely net loss. The objection that killed it was that the
+grid needs row objects either way, so the cost only moves.
+
+**What the split found instead was work with no reader.** `poll_shared_delta`
+is the CSRM streaming path: one JSON object per changed row, ~60KB a tick,
+fourteen times the group delta. `DshubServerSideDatasource#drain` keeps
+`groupDelta` and drops `rowDelta` on the floor — a server-side grid folds group
+aggregates and re-reads the windows it shows. Every byte was discarded.
+
+So the fix is not to build it. `setRowDeltaEnabled(providerId, false)` skips the
+call, and the stream is created lazily on first poll, so a provider switched off
+before its first tick never allocates one. It is opt-**out**, not opt-in: a
+consumer that needs streaming rows and silently stops getting them looks broken
+in a way nobody attributes to a missing call, while one that forgets to opt out
+merely pays what it paid before.
+
+| configuration | before | after | |
+|---------------|--------|-------|-|
+| 500k rows, 400 moved | 1.486ms | 0.449ms | 3.3× |
+| 500k rows, 4000 moved | 15.486ms | 4.702ms | 3.3× |
+| 50k rows, 400 moved | 1.226ms | 0.437ms | 2.8× |
+| browser, live demo | 5.6ms | 2.5ms | 2.2× |
+
+What remains is `hub.tick()` — the incremental group watch, doing work someone
+reads. Cell flashing, repaint rate and every aggregate are unchanged, verified
+in the demo rather than reasoned about.
 
 ## Reproducing
 

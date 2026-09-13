@@ -78,6 +78,13 @@ export class DshubSsrmEngine {
       aggregates: this.#aggregates,
       computedColumns: this.#computed,
     });
+    // A server-side grid folds GROUP deltas and re-reads the windows it shows;
+    // `#drain` keeps `groupDelta` and drops `rowDelta` on the floor. Left on,
+    // the engine builds one JSON object per changed row every tick for a
+    // consumer that reads none of it — measured at 64% of the tick (0.95ms of
+    // 1.49ms, 500k rows, 400 moved). Optional so an older vendored plane
+    // without the switch still works, just as slowly as before.
+    this.#plane.setRowDeltaEnabled?.(this.#providerId, false);
     this.#booted = true;
   }
 

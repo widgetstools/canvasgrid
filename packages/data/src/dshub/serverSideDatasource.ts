@@ -48,6 +48,8 @@ export interface DshubPlaneLike {
     computedColumns?: readonly DshubComputedColumn[];
   }): Promise<void>;
   pollAllTicks(): Map<string, Array<{ kind?: string } & HubGroupDelta>>;
+  /** Optional: newer planes can stop polling the unread row-delta stream. */
+  setRowDeltaEnabled?(providerId: string, enabled: boolean): void;
 }
 
 export interface DshubDatasourceOptions {
