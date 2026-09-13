@@ -38,6 +38,47 @@ jobs:
       - name: Tests
         run: npm test
 
+  # Canvas features fail by PAINTING SOMETHING WRONG, which unit tests cannot
+  # see. Three defects in the dshub demo alone — blank group captions, every
+  # formatted cell empty, a weighted average missing from the rows that needed
+  # it — rendered as plausible numbers and were caught by a human looking at a
+  # screenshot. That is not a gate.
+  #
+  # This runs the specs that need NOTHING but this repo; `playwright.config.ts`
+  # starts their servers. The provider-demo specs need the STOMP fixture and a
+  # broker port, so they stay a local run rather than leaving the whole suite
+  # red and therefore ignored.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # The demos import the kernel from dist, not src.
+      - name: Build
+        run: npm run build
+
+      - name: Install browser
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E (self-contained demos)
+        run: npm run test:e2e:selfcontained
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-failures
+          path: test-results/
+          retention-days: 7
+
   # Keep demo Vite boot paths honest on Windows (path separators, npm.cmd,
   # process trees). Self-contained demos only — no sibling starui STOMP.
   demos-windows:

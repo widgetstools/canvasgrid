@@ -35,13 +35,15 @@
     "dev:aggrid": "npm run dev --workspace=aggrid-reference",
     "dev:tree": "npm run dev --workspace=velocitygrid-tree-demo",
     "dev:master-detail": "npm run dev --workspace=velocitygrid-master-detail-demo",
+    "dev:dshub": "npm run dev --workspace=velocitygrid-dshub-demo",
     "verify:shared-engine": "node scripts/verify-shared-engine.mjs",
     "verify:data-hub": "node scripts/verify-data-hub.mjs",
     "verify:worker-feed-reconnect": "node scripts/verify-worker-feed-reconnect.mjs",
     "dev:lab-csrm": "npm run dev --workspace=velocitygrid-lab-csrm",
     "dev:lab-ssrm": "npm run dev --workspace=velocitygrid-lab-ssrm",
     "dev:labs": "concurrently -k -n csrm,ssrm -c blue,cyan \"npm run dev:lab-csrm\" \"npm run dev:lab-ssrm\"",
-    "test:labs": "npm run test --workspace=velocitygrid-lab-csrm && npm run test --workspace=velocitygrid-lab-ssrm"
+    "test:labs": "npm run test --workspace=velocitygrid-lab-csrm && npm run test --workspace=velocitygrid-lab-ssrm",
+    "test:e2e:selfcontained": "playwright test e2e/tree-data.spec.ts e2e/master-detail.spec.ts e2e/dshub-engine.spec.ts"
   },
   "devDependencies": {
     "@openfin/node-adapter": "^43.101.2",
@@ -53,6 +55,6 @@
     "wait-on": "^9.0.10"
   },
   "dependencies": {
-    "dshub-hub": "file:lib/dshub-hub/dshub-hub-0.6.1.tgz"
+    "dshub-hub": "file:lib/dshub-hub/dshub-hub-0.7.0.tgz"
   }
 }
