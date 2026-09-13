@@ -109,6 +109,7 @@ app.innerHTML = `
     <span class="stat">groups <b id="s-groups">—</b></span>
     <span class="stat">skeleton <b id="s-skel">—</b></span>
     <span class="stat">repaints/s <b id="s-rp">0</b></span>
+    <span class="stat" id="s-path-wrap" title="Polls the group watch served by patching only the rows that moved, rather than rescanning the book. A fall to the slow path is silent otherwise.">fast path <b id="s-path">—</b></span>
   </header>
   <div id="grid" class="grid"></div>
   <footer class="foot">
@@ -244,6 +245,43 @@ let repaints = 0;
 const realRefresh = grid.refreshServerSide.bind(grid);
 grid.refreshServerSide = ((p?: { purge?: boolean }) => { repaints++; return realRefresh(p); }) as never;
 setInterval(() => { $('s-rp').textContent = String(repaints); repaints = 0; }, 1000);
+
+/**
+ * How many polls the watch served by patching rather than rescanning.
+ *
+ * The incremental path is ~150x the full scan, and it falls back SILENTLY —
+ * an uninvertible aggregate, or a touch log that stopped reaching back to the
+ * last poll. Without a readout the only symptom is a blotter that feels slow,
+ * which is not a symptom anyone can act on.
+ */
+interface EngineDiagnostics {
+  sessions: Array<{
+    groupWatches: Array<{
+      stats: { polls: number; incremental: number; rebuilds: Record<string, number> };
+      touchLog: { behind: number; cap: number };
+    }>;
+  }>;
+}
+
+setInterval(() => {
+  const d = engine.diagnostics() as EngineDiagnostics | null;
+  const watch = d?.sessions?.flatMap((x) => x.groupWatches ?? [])[0];
+  if (!watch || watch.stats.polls === 0) { $('s-path').textContent = '—'; return; }
+  const { polls, incremental, rebuilds } = watch.stats;
+  // The first build is a rebuild by definition and always will be; counting it
+  // against the ratio would make a healthy watch look like a degraded one.
+  const eligible = polls - (rebuilds.first ?? 0);
+  const pct = eligible > 0 ? Math.round((incremental / eligible) * 100) : 100;
+  const stale = (rebuilds.logBehind ?? 0) + (rebuilds.unsupported ?? 0);
+  // `behind` crossing `cap` IS the fallback, so it warns before the rebuild
+  // counter moves — which is the difference between noticing and diagnosing.
+  const { behind, cap } = watch.touchLog;
+  const near = cap > 0 && behind > cap / 2;
+  $('s-path').textContent = stale > 0
+    ? `${pct}% · ${stale} rescans`
+    : near ? `${pct}% · ${behind}/${cap} behind` : `${pct}%`;
+  $('s-path').style.color = (pct >= 95 && !near) ? '' : '#FF7043';
+}, 1000);
 
 async function boot(): Promise<void> {
   await engine.start();

@@ -50,6 +50,8 @@ export interface DshubPlaneLike {
   pollAllTicks(): Map<string, Array<{ kind?: string } & HubGroupDelta>>;
   /** Optional: newer planes can stop polling the unread row-delta stream. */
   setRowDeltaEnabled?(providerId: string, enabled: boolean): void;
+  /** Optional: newer engines report whether watches still patch, or rescan. */
+  diagnostics?(): unknown;
 }
 
 export interface DshubDatasourceOptions {

@@ -118,6 +118,19 @@ export class DshubSsrmEngine {
     await this.#plane.ingest(this.#providerId, rows, replace);
   }
 
+  /**
+   * Whether this engine's group watches are still patching rather than
+   * rescanning, and what the session holds.
+   *
+   * The incremental path is ~150x the scan it replaced, and it falls back
+   * silently — an uninvertible fold, or a touch log that stopped reaching back
+   * far enough. A host that shows nothing here learns about it as "the blotter
+   * feels slow today". `null` on an engine build without the verb.
+   */
+  diagnostics(): unknown {
+    return this.#plane.diagnostics?.() ?? null;
+  }
+
   get datasource(): DshubServerSideDatasource | null {
     return this.#datasource;
   }
