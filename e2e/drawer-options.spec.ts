@@ -201,3 +201,114 @@ test.describe('the unprobed list stays honest', () => {
     expect(Object.keys(NO_AT_REST_PROBE).length).toBeLessThan(25);
   });
 });
+
+/**
+ * The Editing tab's settings must control the editing toolbar.
+ *
+ * Reported from the running app: Settings > Editing > Smart Edit showed
+ * `Enabled ☐` and Bulk Update showed `Enabled ☐`, while the toolbar carried on
+ * rendering SMART EDIT with all five operators and BULK with its value box. A
+ * control that says a feature is off while the feature is visibly on.
+ *
+ * The strip appended History, Smart edit and Bulk unconditionally — the same
+ * shape as `animateRows`, one level up: a setting that stores and is never
+ * read by the thing it names.
+ */
+test.describe('the Editing settings control the editing toolbar', () => {
+  interface EditApi {
+    csrmEdit: {
+      getSettings(): Record<string, { enabled?: boolean; enabledOps?: string[] }>;
+      updateSettings(partial: unknown): void;
+    };
+  }
+  // `h()` builds a DIV with a class, not a custom element, and the strip is a
+  // sibling of the grid host rather than a descendant — so scope by the
+  // toolbar's own `data-toolbar` hook, which is what the title-bar toggles use.
+  const strip = (page: Page, which: 0 | 1) =>
+    page.locator('[data-toolbar="editing"]').nth(which);
+  const seg = (page: Page, label: string, which: 0 | 1 = 0) =>
+    strip(page, which).locator('.vgext-es-seg').filter({ hasText: label }).first();
+
+  async function set(page: Page, partial: unknown): Promise<void> {
+    await page.evaluate((p) => {
+      (window as never as { __tree: EditApi }).__tree.csrmEdit.updateSettings(p);
+    }, partial);
+    await page.waitForTimeout(500);
+  }
+
+  /**
+   * Assert the `hidden` ATTRIBUTE, not CSS visibility.
+   *
+   * The strip overflows at this pane width and pushes its last segment into
+   * the "More tools" menu, so Bulk is already invisible before anything is
+   * switched off. Visibility would therefore pass for the wrong reason on the
+   * off case and fail for the wrong reason on the on case. `hidden` is exactly
+   * what the setting drives, and overflow does not touch it.
+   */
+  const expectOff = async (page: Page, label: string) =>
+    expect(seg(page, label)).toHaveAttribute('hidden', '');
+  const expectOn = async (page: Page, label: string) =>
+    expect(seg(page, label)).not.toHaveAttribute('hidden');
+
+  test('Smart Edit off hides the SMART EDIT section', async ({ page }) => {
+    await open(page);
+    await expectOn(page, 'Smart edit');
+    // Visible to begin with, so this one also proves the attribute and the
+    // paint agree — the CSS rule that makes `hidden` win is easy to lose.
+    await expect(seg(page, 'Smart edit')).toBeVisible();
+    await set(page, { smartEdit: { enabled: false } });
+    await expectOff(page, 'Smart edit');
+    await expect(seg(page, 'Smart edit')).toBeHidden();
+    await set(page, { smartEdit: { enabled: true } });
+    await expectOn(page, 'Smart edit');
+    await expect(seg(page, 'Smart edit')).toBeVisible();
+  });
+
+  test('Bulk Update off hides the BULK section', async ({ page }) => {
+    await open(page);
+    await expectOn(page, 'Bulk');
+    await set(page, { bulkUpdate: { enabled: false } });
+    await expectOff(page, 'Bulk');
+    await set(page, { bulkUpdate: { enabled: true } });
+    await expectOn(page, 'Bulk');
+  });
+
+  test('Edit History off hides the HISTORY section', async ({ page }) => {
+    await open(page);
+    await expectOn(page, 'History');
+    await expect(seg(page, 'History')).toBeVisible();
+    await set(page, { history: { enabled: false } });
+    await expectOff(page, 'History');
+    await expect(seg(page, 'History')).toBeHidden();
+  });
+
+  test('the Toolbar ops picker removes the operators it deselects', async ({ page }) => {
+    // One level down, and the same promise: the settings panel offers a
+    // Toolbar ops picker, so a deselected operator has to leave the strip.
+    await open(page);
+    const multiply = strip(page, 0).locator('button[title="Multiply"]');
+    await expect(multiply).toBeVisible();
+    await set(page, { smartEdit: { enabledOps: ['add', 'subtract'] } });
+    await expect(multiply).toBeHidden();
+    await expect(strip(page, 0).locator('button[title="Add"]')).toBeVisible();
+  });
+
+  test('turning everything off hides the strip rather than leaving an empty bar', async ({ page }) => {
+    await open(page);
+    await set(page, {
+      history: { enabled: false },
+      smartEdit: { enabled: false },
+      bulkUpdate: { enabled: false },
+    });
+    await expect(strip(page, 0)).toBeHidden();
+  });
+
+  test('the other grid keeps its toolbar', async ({ page }) => {
+    // Settings are per-Ext. Hiding one grid's section must not hide the other's.
+    await open(page);
+    await set(page, { smartEdit: { enabled: false } });
+    await expect(seg(page, 'Smart edit')).toBeHidden();
+    await expect(seg(page, 'Smart edit', 1)).toBeVisible();
+  });
+});
+

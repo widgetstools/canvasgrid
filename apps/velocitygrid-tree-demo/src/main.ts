@@ -92,7 +92,11 @@ function baseOptions(): Record<string, unknown> {
   };
 }
 
-function mountExt(hostId: string, extra: Record<string, unknown>): VelocityGridExt<TreeRow> {
+/** The Ext plus its edit handle — the handle owns the Editing settings that
+ *  the editing toolbar's sections are supposed to follow. */
+interface Mounted { ext: VelocityGridExt<TreeRow>; edit: ReturnType<typeof wireEditIntoKernel> }
+
+function mountExt(hostId: string, extra: Record<string, unknown>): Mounted {
   let editHandle: ReturnType<typeof wireEditIntoKernel> | undefined;
   const ext = new VelocityGridExt<TreeRow>(document.getElementById(hostId)!, {
     ...baseOptions(),
@@ -107,18 +111,20 @@ function mountExt(hostId: string, extra: Record<string, unknown>): VelocityGridE
   wireFormat(ext.grid);
   wireCalc(ext.grid);
   editHandle = wireEditIntoKernel(ext.grid, {});
-  return ext;
+  return { ext, edit: editHandle };
 }
 
 // ── client side: the whole book goes in ────────────────────────────────
-const csrm = mountExt('csrm', { gridId: 'tree-csrm', rowModelType: 'clientSide' });
+const csrmMount = mountExt('csrm', { gridId: 'tree-csrm', rowModelType: 'clientSide' });
+const csrm = csrmMount.ext;
 
 // ── server side: the same rows, delivered in windows ───────────────────
-const ssrm = mountExt('ssrm', {
+const ssrmMount = mountExt('ssrm', {
   gridId: 'tree-ssrm',
   rowModelType: 'serverSide',
   serverSideEnableClientSidePipeline: true,
 });
+const ssrm = ssrmMount.ext;
 
 void (async () => {
   await csrm.grid.whenReady();
@@ -161,5 +167,8 @@ void (async () => {
     ssrm: ssrm.grid,
     csrmExt: csrm,
     ssrmExt: ssrm,
+    // The Editing settings live on the edit handle, which is what the
+    // toolbar's sections follow.
+    csrmEdit: csrmMount.edit,
   };
 })();

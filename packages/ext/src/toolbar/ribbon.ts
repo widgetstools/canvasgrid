@@ -686,6 +686,7 @@ function ribbonItem(opts: RibbonExtensionsOpts = {}): ToolbarItem {
             undo, redo, histCount,
             operand, ops: { multiply: opMul, divide: opDiv, add: opAdd, subtract: opSub, set: setBtn },
             smartCount, bulkValue, bulkApply, bulkCount,
+            histSeg, smartSeg, bulkSeg, editStrip,
           })
         : undefined;
 
@@ -756,6 +757,13 @@ interface EditingRefs {
   undo: HTMLButtonElement; redo: HTMLButtonElement; histCount: HTMLElement;
   operand: HTMLInputElement; ops: Record<SmartEditOp, HTMLButtonElement>;
   smartCount: HTMLElement; bulkValue: HTMLInputElement; bulkApply: HTMLButtonElement; bulkCount: HTMLElement;
+  /** The three named segments, so the Editing settings can hide the ones
+   *  they have turned off. Without these the strip renders every section
+   *  regardless of what the settings say. */
+  histSeg: HTMLElement; smartSeg: HTMLElement; bulkSeg: HTMLElement;
+  /** The whole strip — hidden when every section inside it is off, so the
+   *  toolbar does not sit there as an empty bar with a close button. */
+  editStrip: HTMLElement;
 }
 
 /** Bind the History / Smart / Bulk controls to the live `edit` engine handle:
@@ -838,6 +846,35 @@ function wireEditingToolbar(ctx: VelocityGridExtContext, getEdit: EditHandleGett
     r.bulkApply.disabled = selectedRows === 0;
   };
 
+  /**
+   * Show only the sections the Editing settings have turned on.
+   *
+   * The strip used to append History, Smart edit and Bulk unconditionally, so
+   * `Enabled ☐` in Settings > Editing > Smart Edit stored `false` and the
+   * toolbar carried on offering the operators anyway — a control that says a
+   * feature is off while the feature is visibly on.
+   *
+   * `enabledOps` gets the same treatment one level down: the settings panel
+   * offers a Toolbar ops picker, and the buttons it deselects have to leave
+   * the strip or the picker means nothing either.
+   */
+  const syncEnabled = () => {
+    const st = getEdit()?.getSettings();
+    if (!st) return;
+    r.histSeg.hidden = st.history?.enabled === false;
+    r.smartSeg.hidden = st.smartEdit?.enabled === false;
+    r.bulkSeg.hidden = st.bulkUpdate?.enabled === false;
+    const ops = st.smartEdit?.enabledOps;
+    if (ops) {
+      for (const op of Object.keys(r.ops) as SmartEditOp[]) {
+        r.ops[op].hidden = !ops.includes(op);
+      }
+    }
+    // Every section off leaves a bar with nothing in it but its own close
+    // button, which reads as broken rather than as configured.
+    r.editStrip.hidden = r.histSeg.hidden && r.smartSeg.hidden && r.bulkSeg.hidden;
+  };
+
   // The edit engine is wired just after the grid is constructed — a tick
   // after the ribbon renders — so subscribe as soon as the handle appears.
   let subscribed = false;
@@ -847,9 +884,13 @@ function wireEditingToolbar(ctx: VelocityGridExtContext, getEdit: EditHandleGett
     subscribed = true;
     disposers.push(e.journal.subscribe(refreshHistory));
     onGrid('cellSelectionChanged', refreshCounts);
+    // `updateSettings` fans `notifyModuleStateChanged('editSettings')`, so
+    // pressing Save in the drawer reaches the strip without a reload.
+    onGrid('moduleStateChanged', syncEnabled);
     onGrid('cellFocused', refreshCounts);
     refreshHistory();
     refreshCounts();
+    syncEnabled();
   };
   trySubscribe();
   if (!subscribed) {
@@ -1799,6 +1840,17 @@ const RIBBON_CSS = `
   column-gap: 0;
 }
 .vgext-es-seg { display: inline-flex; align-items: center; gap: var(--vgext-space-1, 4px); flex: 0 0 auto; }
+/* An explicit display beats the UA's [hidden] rule, so a segment the Editing
+ * settings switched off would stay on screen with its hidden attribute set
+ * and nothing to show for it. The strip has carried its own [hidden] rule
+ * since it was written; the segments and the operator buttons need the same,
+ * or the settings that hide them do nothing.
+ * (No backticks in here — this whole block is a template literal.) */
+.vgext-es-seg[hidden] { display: none; }
+.vgext-es-seg .vgext-rb-btn[hidden] { display: none; }
+/* A hidden FIRST segment must not leave its successor drawing a divider
+ * against the edge of the strip. */
+.vgext-es-seg[hidden] + .vgext-es-seg { margin-left: 0; padding-left: 0; border-left: none; }
 .vgext-es-seg + .vgext-es-seg {
   margin-left: var(--vgext-space-3, 12px); padding-left: var(--vgext-space-3, 12px);
   /* The divider now separates two NAMED things, which is the only job a
