@@ -861,6 +861,15 @@ function wireEditingToolbar(ctx: VelocityGridExtContext, getEdit: EditHandleGett
   const syncEnabled = () => {
     const st = getEdit()?.getSettings();
     if (!st) return;
+    // "Increment step" seeds the operand box. It was offered in the panel and
+    // read by nothing — the box was hardcoded to 1 — so a desk that works in
+    // fives had to retype it on every edit. Only while the user is not in the
+    // middle of typing their own value.
+    const step = st.smartEdit?.incrementStep;
+    if (typeof step === 'number' && Number.isFinite(step)
+        && document.activeElement !== r.operand) {
+      r.operand.value = String(step);
+    }
     r.histSeg.hidden = st.history?.enabled === false;
     r.smartSeg.hidden = st.smartEdit?.enabled === false;
     r.bulkSeg.hidden = st.bulkUpdate?.enabled === false;

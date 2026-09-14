@@ -135,6 +135,31 @@ interface KernelGridSurface {
   __editBridgeWired?: EditBridgeHandle;
 }
 
+/** What the host is being asked to approve. `preview` is present only when
+ *  `smartEdit.previewBeforeApply` is on and the preview found something worth
+ *  reporting. */
+/** The default prompt text. Plain, specific, and it says what will happen —
+ *  "Apply to 5,000 cells?" beats "Are you sure?". */
+function describeConfirm(req: EditConfirmRequest): string {
+  const cells = `${req.count.toLocaleString()} ${req.count === 1 ? 'cell' : 'cells'}`;
+  const head = `${req.label} — apply to ${cells}?`;
+  if (!req.preview || (req.preview.invalid === 0 && req.preview.warnings === 0)) return head;
+  const bits: string[] = [];
+  if (req.preview.invalid > 0) bits.push(`${req.preview.invalid} will not apply`);
+  if (req.preview.warnings > 0) bits.push(`${req.preview.warnings} with warnings`);
+  return `${head}\n${bits.join(', ')}.`;
+}
+
+export interface EditConfirmRequest {
+  source: 'smart-edit' | 'bulk-update';
+  /** Cells the edit would write. */
+  count: number;
+  /** The threshold that triggered the ask, or 0 when the preview did. */
+  threshold: number;
+  label: string;
+  preview?: { total: number; valid: number; invalid: number; warnings: number };
+}
+
 export interface WireEditOptions {
   settings?: Parameters<typeof mergeEditSettings>[0];
   nudges?: PlusMinusNudge[];
@@ -145,6 +170,18 @@ export interface WireEditOptions {
   now?: () => number;
   /** Default: `makeExpressionEvaluate()` (real `@wellsfargo-starui/velocity-grid/expression`). */
   evaluate?: NudgeEvaluate;
+  /**
+   * Asked before a smart/bulk edit large enough to trip `confirmThreshold`,
+   * or one whose preview found patches that will not apply. Return false to
+   * abandon it.
+   *
+   * A seam rather than a hardcoded `window.confirm` because this is the edit
+   * package's only would-be DOM dependency, and because a host running these
+   * settings on a blotter will want its own dialog. Default is `confirm` in a
+   * browser and "yes" anywhere without one — a headless caller must not hang
+   * on a prompt nobody can answer.
+   */
+  confirmEdit?: (request: EditConfirmRequest) => boolean;
   /**
    * Replace the default `grid.applyTransaction({ update })` used by
    * smart/bulk/±/shortcut commits and journal undo/redo. SSRM hosts should
@@ -235,6 +272,13 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
   const now = opts?.now ?? (() => Date.now());
   const evaluate = opts?.evaluate ?? makeExpressionEvaluate();
   const validator = opts?.validator;
+  // Default "yes" without a DOM: a headless caller must not hang on a prompt
+  // nobody can answer, and refusing by default would make the edit package
+  // silently lossy in exactly the environments the tests run in.
+  const confirmEdit = opts?.confirmEdit
+    ?? ((req: EditConfirmRequest) => (typeof globalThis.confirm === 'function'
+      ? globalThis.confirm(describeConfirm(req))
+      : true));
 
   let settings: EditSettings = mergeEditSettings(opts?.settings);
   let nudges: PlusMinusNudge[] = opts?.nudges ?? [];
@@ -616,6 +660,36 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
     return patches.filter((patch) => validator(patch) !== 'invalid');
   }
 
+  /**
+   * The `confirmThreshold` and `previewBeforeApply` gate, shared by both
+   * facades so they cannot drift.
+   *
+   * Both settings were offered by the panel and read by nothing. The threshold
+   * is a count of CELLS about to be written — `0` means never ask, which is
+   * what the panel's "0 = never" hint says. The preview only raises a question
+   * when it found patches that will not apply; a clean preview is not a
+   * question worth interrupting anyone for.
+   */
+  function approveEdit(
+    source: 'smart-edit' | 'bulk-update',
+    patches: CellPatch[],
+    label: string,
+    threshold: number,
+    withPreview: boolean,
+  ): boolean {
+    const preview = withPreview ? previewPatches(patches, validator) : undefined;
+    const overThreshold = threshold > 0 && patches.length >= threshold;
+    const previewObjects = !!preview && (preview.invalid > 0 || preview.warnings > 0);
+    if (!overThreshold && !previewObjects) return true;
+    return confirmEdit({
+      source,
+      count: patches.length,
+      threshold: overThreshold ? threshold : 0,
+      label,
+      preview,
+    });
+  }
+
   const smartEdit: EditBridgeHandle['smartEdit'] = {
     collectTargets: () => collectTargetCells(targetSurface),
     preview: (targets, op, operand) => previewPatches(buildSmartEditPatches(targets, op, operand), validator),
@@ -623,28 +697,49 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
       if (settings.smartEdit.enforceSingleColumn && !assertSingleColumnSelection(targets)) {
         return { applied: 0, entry: null };
       }
-      const patches = dropInvalidPatches(buildSmartEditPatches(targets, op, operand));
+      // Preview the RAW patches, before invalid ones are dropped — a preview
+      // of the survivors can never report anything to preview.
+      const raw = buildSmartEditPatches(targets, op, operand);
+      const patches = dropInvalidPatches(raw);
       if (patches.length === 0) return { applied: 0, entry: null };
       const label = `${SMART_EDIT_OP_SYMBOL[op]} ${operand}`;
+      if (!approveEdit('smart-edit', raw, label,
+                       settings.smartEdit.confirmThreshold,
+                       settings.smartEdit.previewBeforeApply)) {
+        return { applied: 0, entry: null };
+      }
       return commitAndMaybeRecord(patches, 'smart-edit', label, settings.smartEdit.recordHistory);
     },
   };
 
   const bulkUpdate: EditBridgeHandle['bulkUpdate'] = {
     collectTargets: () => collectBulkUpdateTargets(targetSurface),
-    distinctValues: (colId, cellDataType) =>
-      makeDistinctValuesFeed(
+    distinctValues: (colId, cellDataType) => {
+      // "Show distinct values" off means the dropdown offers none — and, more
+      // usefully, that the engine is never asked. On a large book the distinct
+      // scan is the expensive part, so a host that has turned the list off
+      // should not pay for it.
+      if (!settings.bulkUpdate.showDistinctValues) return Promise.resolve([]);
+      return makeDistinctValuesFeed(
         (c, limit) => g.getDistinctValues(c, limit),
         { maxDropdownValues: settings.bulkUpdate.maxDropdownValues },
-      )(colId, cellDataType),
+      )(colId, cellDataType);
+    },
     preview: (targets, newValue) => previewPatches(buildBulkUpdatePatches(targets, newValue), validator),
     apply: async (targets, newValue) => {
       if (settings.bulkUpdate.enforceSingleColumn && !assertSingleColumnSelection(targets)) {
         return { applied: 0, entry: null };
       }
-      const patches = dropInvalidPatches(buildBulkUpdatePatches(targets, newValue));
+      const raw = buildBulkUpdatePatches(targets, newValue);
+      const patches = dropInvalidPatches(raw);
       if (patches.length === 0) return { applied: 0, entry: null };
       const label = `Set = ${String(newValue)}`;
+      // Bulk has no preview setting of its own — the panel does not offer one —
+      // so it asks on the threshold alone.
+      if (!approveEdit('bulk-update', raw, label,
+                       settings.bulkUpdate.confirmThreshold, false)) {
+        return { applied: 0, entry: null };
+      }
       return commitAndMaybeRecord(patches, 'bulk-update', label, settings.bulkUpdate.recordHistory);
     },
   };

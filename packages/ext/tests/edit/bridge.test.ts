@@ -992,3 +992,165 @@ describe('wireEditIntoKernel — editability resolution parity', () => {
     expect(native).toHaveBeenCalled();
   });
 });
+
+/**
+ * Four Editing-tab settings that the panel offered and the engine ignored.
+ *
+ * `confirmThreshold` (on both Smart Edit and Bulk Update), `previewBeforeApply`
+ * and `showDistinctValues` were each shown as a control, stored a value, and
+ * were read by no engine code — the `animateRows` shape, four more times.
+ *
+ * The gates sit ABOVE `commitAndMaybeRecord`, which is the seam a host swaps
+ * for SSRM via `commitUpdates`, so they behave identically on both row models:
+ * nothing here depends on how the commit ultimately reaches the book.
+ */
+describe('wireEditIntoKernel — Editing settings that now take effect', () => {
+  const targets = (n: number) => rows.slice(0, n).map((r, i) => ({
+    rowId: r.id, colId: 'qty', field: 'qty', value: r.qty as number,
+    rowIndex: i, rowData: r, cellDataType: 'number' as const,
+  }));
+
+  describe('confirmThreshold', () => {
+    it('asks once the cell count reaches the threshold, and abandons on no', async () => {
+      const fake = makeGrid();
+      const confirmEdit = vi.fn(() => false);
+      const handle = wireEditIntoKernel(fake.grid, {
+        confirmEdit, settings: { smartEdit: { confirmThreshold: 3 } },
+      });
+      const r = await handle.smartEdit.apply(targets(3), 'add', 1);
+      expect(confirmEdit).toHaveBeenCalledTimes(1);
+      expect(r.applied, 'declined, yet it wrote anyway').toBe(0);
+      expect(fake.applyTransactionSpy).not.toHaveBeenCalled();
+      expect(handle.journal.entries()).toHaveLength(0);
+    });
+
+    it('applies when the host says yes', async () => {
+      const fake = makeGrid();
+      const handle = wireEditIntoKernel(fake.grid, {
+        confirmEdit: () => true, settings: { smartEdit: { confirmThreshold: 3 } },
+      });
+      expect((await handle.smartEdit.apply(targets(3), 'add', 1)).applied).toBe(3);
+    });
+
+    it('stays quiet below the threshold', async () => {
+      const fake = makeGrid();
+      const confirmEdit = vi.fn(() => true);
+      const handle = wireEditIntoKernel(fake.grid, {
+        confirmEdit, settings: { smartEdit: { confirmThreshold: 3 } },
+      });
+      expect((await handle.smartEdit.apply(targets(2), 'add', 1)).applied).toBe(2);
+      expect(confirmEdit).not.toHaveBeenCalled();
+    });
+
+    it('0 means never, which is what the panel hint says', async () => {
+      const fake = makeGrid();
+      const confirmEdit = vi.fn(() => true);
+      const handle = wireEditIntoKernel(fake.grid, {
+        confirmEdit, settings: { smartEdit: { confirmThreshold: 0 } },
+      });
+      await handle.smartEdit.apply(targets(3), 'add', 1);
+      expect(confirmEdit).not.toHaveBeenCalled();
+    });
+
+    it('reports the count and the threshold that tripped it', async () => {
+      const fake = makeGrid();
+      const confirmEdit = vi.fn(() => true);
+      const handle = wireEditIntoKernel(fake.grid, {
+        confirmEdit, settings: { smartEdit: { confirmThreshold: 2 } },
+      });
+      await handle.smartEdit.apply(targets(3), 'add', 1);
+      expect(confirmEdit).toHaveBeenCalledWith(expect.objectContaining({
+        source: 'smart-edit', count: 3, threshold: 2, label: '+ 1',
+      }));
+    });
+
+    it('Bulk Update has its own threshold, read from its own slice', async () => {
+      const fake = makeGrid();
+      const confirmEdit = vi.fn(() => false);
+      const handle = wireEditIntoKernel(fake.grid, {
+        // Smart Edit's is off — bulk must not borrow it, in either direction.
+        confirmEdit, settings: { smartEdit: { confirmThreshold: 0 }, bulkUpdate: { confirmThreshold: 2 } },
+      });
+      const r = await handle.bulkUpdate.apply(targets(3), 99);
+      expect(confirmEdit).toHaveBeenCalledWith(expect.objectContaining({
+        source: 'bulk-update', threshold: 2,
+      }));
+      expect(r.applied).toBe(0);
+    });
+  });
+
+  describe('previewBeforeApply', () => {
+    // A validator that rejects one row, so the preview has something to report.
+    const validator = (p: { rowId: string }) => (p.rowId === 'r1' ? 'invalid' as const : 'valid' as const);
+
+    it('on: the host is told what will not apply before anything is written', async () => {
+      const fake = makeGrid();
+      const confirmEdit = vi.fn(() => true);
+      const handle = wireEditIntoKernel(fake.grid, {
+        confirmEdit, validator,
+        settings: { smartEdit: { previewBeforeApply: true, confirmThreshold: 0 } },
+      });
+      await handle.smartEdit.apply(targets(3), 'add', 1);
+      expect(confirmEdit).toHaveBeenCalledWith(expect.objectContaining({
+        preview: expect.objectContaining({ total: 3, invalid: 1, valid: 2 }),
+      }));
+    });
+
+    it('off: nothing is asked, and the invalid patch is still dropped', async () => {
+      const fake = makeGrid();
+      const confirmEdit = vi.fn(() => true);
+      const handle = wireEditIntoKernel(fake.grid, {
+        confirmEdit, validator,
+        settings: { smartEdit: { previewBeforeApply: false, confirmThreshold: 0 } },
+      });
+      const r = await handle.smartEdit.apply(targets(3), 'add', 1);
+      expect(confirmEdit).not.toHaveBeenCalled();
+      expect(r.applied, 'the invalid row should still not be written').toBe(2);
+    });
+
+    it('on, but a clean preview asks nothing — a good result is not a question', async () => {
+      const fake = makeGrid();
+      const confirmEdit = vi.fn(() => true);
+      const handle = wireEditIntoKernel(fake.grid, {
+        confirmEdit,
+        settings: { smartEdit: { previewBeforeApply: true, confirmThreshold: 0 } },
+      });
+      await handle.smartEdit.apply(targets(3), 'add', 1);
+      expect(confirmEdit).not.toHaveBeenCalled();
+    });
+
+    it('declining abandons the whole edit', async () => {
+      const fake = makeGrid();
+      const handle = wireEditIntoKernel(fake.grid, {
+        confirmEdit: () => false, validator,
+        settings: { smartEdit: { previewBeforeApply: true } },
+      });
+      expect((await handle.smartEdit.apply(targets(3), 'add', 1)).applied).toBe(0);
+      expect(fake.applyTransactionSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('showDistinctValues', () => {
+    it('off: the list is empty AND the engine is never asked', async () => {
+      // The scan is the expensive half on a large book, so a host that turned
+      // the list off should not pay for it.
+      const fake = makeGrid();
+      const handle = wireEditIntoKernel(fake.grid, {
+        settings: { bulkUpdate: { showDistinctValues: false } },
+      });
+      expect(await handle.bulkUpdate.distinctValues('trader')).toEqual([]);
+      expect(fake.getDistinctValuesSpy).not.toHaveBeenCalled();
+    });
+
+    it('on: the engine is asked and the values come back', async () => {
+      const fake = makeGrid();
+      const handle = wireEditIntoKernel(fake.grid, {
+        settings: { bulkUpdate: { showDistinctValues: true } },
+      });
+      const vals = await handle.bulkUpdate.distinctValues('trader');
+      expect(fake.getDistinctValuesSpy).toHaveBeenCalled();
+      expect(vals.length).toBeGreaterThan(0);
+    });
+  });
+});
+

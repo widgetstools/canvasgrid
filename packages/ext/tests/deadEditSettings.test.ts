@@ -3,8 +3,10 @@
 // The kernel has this guard for the Grid Options panel
 // (`packages/kernel/tests/deadSwitches.test.ts`) and it caught `animateRows`.
 // The Editing tab's settings live in `ext` and were never covered, so the same
-// class went unnoticed here — SEVEN of them, including three the user can see
-// and set: "Increment step", "K/M/B shortcuts" and "Confirm threshold".
+// class went unnoticed here — SEVEN of them. Four are now implemented
+// (`confirmThreshold` on both panels, `previewBeforeApply`, `showDistinctValues`,
+// and `incrementStep`, which seeds the toolbar operand); the rest remain below
+// with what each would take.
 //
 // A read site means the ENGINE acts on the value. Deliberately NOT counted:
 //
@@ -50,28 +52,15 @@ const SETTINGS_FILE = 'edit/settings.ts';
  */
 interface Unimplemented {
   reason: string;
-  /** Override for a leaf name that another TYPE also uses. A bare scan cannot
-   *  tell `settings.smartEdit.incrementStep` from a Plus/Minus
-   *  `nudge.incrementStep`, so that one says which it means. */
+  /** Override for a leaf name another TYPE also uses. `incrementStep` needed
+   *  one — a bare scan cannot tell `settings.smartEdit.incrementStep` from a
+   *  Plus/Minus `nudge.incrementStep` — and the next collision will too. */
   probe?: RegExp;
 }
 
 const KNOWN_UNIMPLEMENTED = new Map<string, Unimplemented>([
-  ['incrementStep', {
-    reason: 'Smart Edit "Increment step" — the only reads are nudge.incrementStep, a different field on a different type',
-    probe: /(smartEdit|settings)\s*[?.]*\.\s*incrementStep\b/,
-  }],
   ['magnitudeShortcutsEnabled', {
     reason: 'Smart Edit "K/M/B shortcuts" — the spec says the parser is gated by it; nothing reads it',
-  }],
-  ['confirmThreshold', {
-    reason: 'Smart Edit AND Bulk Update "Confirm threshold" — no confirmation is ever raised',
-  }],
-  ['previewBeforeApply', {
-    reason: 'Smart Edit — the preview runs or does not regardless of this flag',
-  }],
-  ['showDistinctValues', {
-    reason: 'Bulk Update — the distinct-value list is fetched either way',
   }],
   ['unifyUndo', {
     reason: 'Edit History "Unify Undo" — stored by the panel, read by nothing',
