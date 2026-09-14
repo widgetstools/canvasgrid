@@ -221,11 +221,6 @@ export function dataChangeHistoryModule(): SettingsModule {
               renderAll();
             }),
           ),
-          row(
-            'Unify Undo',
-            switchToggleEnhanced(draft.unifyUndo, (v) => { draft!.unifyUndo = v; renderAll(); }),
-            'Edit journal owns undo; disable native cell undo when available',
-          ),
         );
         scroll.appendChild(global.root);
 

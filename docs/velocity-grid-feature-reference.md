@@ -834,7 +834,6 @@ Lit panels for edit settings: `smartEditToolPanel`, `bulkUpdateToolPanel`, chrom
 | `theme` | CSS class (e.g. `'vg-theme-quartz'`) or `CgTheme` |
 | Theme factories | `createTheme`, `themeQuartz`, `themeStarui`, `baseTheme` |
 | `density` | `'compact'\|'normal'\|'comfortable'` |
-| `animateRows` | boolean |
 | `suppressRowHoverHighlight` | boolean |
 | `domLayout` | `'normal'\|'print'` (print forces full materialisation) |
 

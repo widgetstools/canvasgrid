@@ -418,12 +418,11 @@ Markets-shaped demos compose `titleBarExtensions` + `ribbonExtensions({ edit })`
 | 3 | Density | select | `density` | `normal` | `Compact`→`compact`, `Normal`→`normal`, `Comfortable`→`comfortable` | — | Row/header density preset; drives theme-resolved row/header heights until overridden |
 | 4 | Row height | number | `rowHeight` | theme/density resolved | min 16 · max 80 · step 1 | `px · follows density until changed` | Explicit row pixel height |
 | 5 | Header height | number | `headerHeight` | theme/density resolved | min 20 · max 80 · step 1 | `px · follows density until changed` | Explicit header pixel height |
-| 6 | Animate rows | switch | `animateRows` | off | — | — | Animate row add/remove/reorder |
-| 7 | Row hover highlight | switch | `suppressRowHoverHighlight` *(inverted)* | on (highlight) | — | `On = highlight the row under the pointer` | UI On = highlight; writes `suppressRowHoverHighlight: false` |
-| 8 | Status bar | switch | `statusBar` | on | — | `Bottom strip with row counts + aggregates` | Off writes `false`; On writes `undefined` (restore default) |
-| 9 | Floating filters | switch | `floatingFilter` | on | — | `Filter input row under the header` | Same on/off write pattern as status bar |
-| 10 | Layout | select | `domLayout` | `normal` | `Normal`→`normal`, `Print`→`print` | — | Normal scrolling vs print (auto-height) layout |
-| 11 | Side panel | switch | *(host)* `isSideBarVisible` / `setSideBarVisible` | live host state | — | `Show the side bar (Columns / Filters / Options tabs)` | **Only when side bar API present.** Not a stored grid-option key |
+| 6 | Row hover highlight | switch | `suppressRowHoverHighlight` *(inverted)* | on (highlight) | — | `On = highlight the row under the pointer` | UI On = highlight; writes `suppressRowHoverHighlight: false` |
+| 7 | Status bar | switch | `statusBar` | on | — | `Bottom strip with row counts + aggregates` | Off writes `false`; On writes `undefined` (restore default) |
+| 8 | Floating filters | switch | `floatingFilter` | on | — | `Filter input row under the header` | Same on/off write pattern as status bar |
+| 9 | Layout | select | `domLayout` | `normal` | `Normal`→`normal`, `Print`→`print` | — | Normal scrolling vs print (auto-height) layout |
+| 10 | Side panel | switch | *(host)* `isSideBarVisible` / `setSideBarVisible` | live host state | — | `Show the side bar (Columns / Filters / Options tabs)` | **Only when side bar API present.** Not a stored grid-option key |
 
 ---
 
@@ -431,10 +430,10 @@ Markets-shaped demos compose `titleBarExtensions` + `ribbonExtensions({ edit })`
 
 | # | UI label | Type | Grid option | Default | Select values | Hint | What it does |
 |---|----------|------|-------------|---------|---------------|------|--------------|
-| 12 | Row selection | select | `rowSelection` | `none` | `Off`→`none`, `Single row`→`single`, `Multiple rows`→`multiple` | — | Row selection mode |
-| 13 | Ignore row clicks | switch | `suppressRowClickSelection` | off | — | `Select via checkboxes only` | Clicks on row body do not select |
-| 14 | Multi-select on click | switch | `rowMultiSelectWithClick` | off | — | `No Ctrl/Cmd needed` | Click toggles multi-selection without modifier |
-| 15 | Group selects children | switch | `groupSelectsChildren` | off | — | — | Selecting a group selects descendant leaves |
+| 11 | Row selection | select | `rowSelection` | `none` | `Off`→`none`, `Single row`→`single`, `Multiple rows`→`multiple` | — | Row selection mode |
+| 12 | Ignore row clicks | switch | `suppressRowClickSelection` | off | — | `Select via checkboxes only` | Clicks on row body do not select |
+| 13 | Multi-select on click | switch | `rowMultiSelectWithClick` | off | — | `No Ctrl/Cmd needed` | Click toggles multi-selection without modifier |
+| 14 | Group selects children | switch | `groupSelectsChildren` | off | — | — | Selecting a group selects descendant leaves |
 
 ---
 
@@ -442,9 +441,9 @@ Markets-shaped demos compose `titleBarExtensions` + `ribbonExtensions({ edit })`
 
 | # | UI label | Type | Grid option | Default | Range | Hint | What it does |
 |---|----------|------|-------------|---------|-------|------|--------------|
-| 16 | Flash on change | switch | `enableCellChangeFlash` | off | — | — | Flash cells when values change |
-| 17 | Flash duration | number | `cellFlashDuration` | 500 | 0–5000 · step 50 | `ms` | How long the flash colour stays |
-| 18 | Fade duration | number | `cellFadeDuration` | 1000 | 0–10000 · step 50 | `ms` | Fade-out after flash |
+| 15 | Flash on change | switch | `enableCellChangeFlash` | off | — | — | Flash cells when values change |
+| 16 | Flash duration | number | `cellFlashDuration` | 500 | 0–5000 · step 50 | `ms` | How long the flash colour stays |
+| 17 | Fade duration | number | `cellFadeDuration` | 1000 | 0–10000 · step 50 | `ms` | Fade-out after flash |
 
 ---
 
@@ -452,8 +451,8 @@ Markets-shaped demos compose `titleBarExtensions` + `ribbonExtensions({ edit })`
 
 | # | UI label | Type | Grid option(s) | Default | Select values | Hint | What it does |
 |---|----------|------|----------------|---------|---------------|------|--------------|
-| 19 | Edit trigger | select | `singleClickEdit` + `enableExcelEditing` | `double` | `Double click`→`double`, `Single click`→`single`, `Excel-style`→`excel` | `How a cell enters edit mode` | Composite: Excel sets `enableExcelEditing=true` and clears single-click; Single sets `singleClickEdit=true`; Double clears both |
-| 20 | Disable click editing | switch | `suppressClickEdit` | off | — | `Edit only via F2 / Enter` | Blocks mouse-click entry into edit |
+| 18 | Edit trigger | select | `singleClickEdit` + `enableExcelEditing` | `double` | `Double click`→`double`, `Single click`→`single`, `Excel-style`→`excel` | `How a cell enters edit mode` | Composite: Excel sets `enableExcelEditing=true` and clears single-click; Single sets `singleClickEdit=true`; Double clears both |
+| 19 | Disable click editing | switch | `suppressClickEdit` | off | — | `Edit only via F2 / Enter` | Blocks mouse-click entry into edit |
 
 ---
 
@@ -461,12 +460,12 @@ Markets-shaped demos compose `titleBarExtensions` + `ribbonExtensions({ edit })`
 
 | # | UI label | Type | Grid option | Default | Select values | Hint | What it does |
 |---|----------|------|-------------|---------|---------------|------|--------------|
-| 21 | Copy delimiter | select | `clipboardDelimiter` | `\t` | `Tab (TSV)`→`\t`, `Comma (CSV)`→`,`, `Semicolon`→`;`, `Pipe`→`\|` | — | Delimiter for clipboard copy |
-| 22 | Disable clipboard API | switch | `suppressClipboardApi` | off | — | — | Do not use browser Clipboard API |
-| 23 | Block paste | switch | `suppressClipboardPaste` | off | — | — | Ignore paste into grid |
-| 24 | Disable context menu | switch | `suppressContextMenu` | off | — | — | No right-click context menu |
-| 25 | Fill handle | switch | `enableFillHandle` | off | — | — | Excel-like drag fill handle |
-| 26 | Fill direction | select | `fillHandleDirection` | `y` | `Vertical`→`y`, `Horizontal`→`x`, `Both`→`xy` | — | Allowed fill-drag axes |
+| 20 | Copy delimiter | select | `clipboardDelimiter` | `\t` | `Tab (TSV)`→`\t`, `Comma (CSV)`→`,`, `Semicolon`→`;`, `Pipe`→`\|` | — | Delimiter for clipboard copy |
+| 21 | Disable clipboard API | switch | `suppressClipboardApi` | off | — | — | Do not use browser Clipboard API |
+| 22 | Block paste | switch | `suppressClipboardPaste` | off | — | — | Ignore paste into grid |
+| 23 | Disable context menu | switch | `suppressContextMenu` | off | — | — | No right-click context menu |
+| 24 | Fill handle | switch | `enableFillHandle` | off | — | — | Excel-like drag fill handle |
+| 25 | Fill direction | select | `fillHandleDirection` | `y` | `Vertical`→`y`, `Horizontal`→`x`, `Both`→`xy` | — | Allowed fill-drag axes |
 
 ---
 
@@ -474,10 +473,10 @@ Markets-shaped demos compose `titleBarExtensions` + `ribbonExtensions({ edit })`
 
 | # | UI label | Type | Grid option | Default | Select values | Hint | What it does |
 |---|----------|------|-------------|---------|---------------|------|--------------|
-| 27 | Group panel | select | `rowGroupPanelShow` | `never` | `Hidden`→`never`, `When grouping`→`onlyWhenGrouping`, `Always`→`always` | — | Visibility of the row-group drop panel |
-| 28 | No sort from panel | switch | `rowGroupPanelSuppressSort` | off | — | `Panel chips stop cycling sort` | Group panel chips do not cycle sort |
-| 29 | Hide group counts | switch | `suppressCount` | off | — | — | Hide `(n)` counts on group rows |
-| 30 | Hide agg in header | switch | `suppressAggFuncInHeader` | off | — | `P&L, not sum(P&L)` | Header shows field name without agg func prefix |
+| 26 | Group panel | select | `rowGroupPanelShow` | `never` | `Hidden`→`never`, `When grouping`→`onlyWhenGrouping`, `Always`→`always` | — | Visibility of the row-group drop panel |
+| 27 | No sort from panel | switch | `rowGroupPanelSuppressSort` | off | — | `Panel chips stop cycling sort` | Group panel chips do not cycle sort |
+| 28 | Hide group counts | switch | `suppressCount` | off | — | — | Hide `(n)` counts on group rows |
+| 29 | Hide agg in header | switch | `suppressAggFuncInHeader` | off | — | `P&L, not sum(P&L)` | Header shows field name without agg func prefix |
 
 ---
 
@@ -485,13 +484,13 @@ Markets-shaped demos compose `titleBarExtensions` + `ribbonExtensions({ edit })`
 
 | # | UI label | Type | Grid option | Default | Select values / range | Hint | What it does |
 |---|----------|------|-------------|---------|----------------------|------|--------------|
-| 31 | Pivot panel | select | `pivotPanelShow` | `never` | `Hidden`→`never`, `When pivoting`→`onlyWhenPivoting`, `Always`→`always` | — | Pivot drop-panel visibility |
-| 32 | Row totals | select | `pivotRowTotals` | `off` | `Off`→`off`→`null`, `Before`→`before`, `After`→`after` | — | Pivot row totals placement |
-| 33 | Column group totals | select | `pivotColumnGroupTotals` | `off` | `Off` / `Before` / `After` (same mapping) | — | Totals under column groups |
-| 34 | Expand to depth | number | `pivotDefaultExpanded` | 0 | 0–10 · step 1 | — | Initial expand depth of pivot tree |
-| 35 | Grand totals | switch | `pivotGrandTotals` | off | — | `Excel-style pinned totals` | Show grand totals |
-| 36 | Strict column order | switch | `enableStrictPivotColumnOrder` | off | — | `Re-sort keys every update` | Reorder generated pivot cols on every update |
-| 37 | Max generated columns | number | `pivotMaxGeneratedColumns` | 5000 | min 0 · step 100 | — | Cap on generated pivot columns |
+| 30 | Pivot panel | select | `pivotPanelShow` | `never` | `Hidden`→`never`, `When pivoting`→`onlyWhenPivoting`, `Always`→`always` | — | Pivot drop-panel visibility |
+| 31 | Row totals | select | `pivotRowTotals` | `off` | `Off`→`off`→`null`, `Before`→`before`, `After`→`after` | — | Pivot row totals placement |
+| 32 | Column group totals | select | `pivotColumnGroupTotals` | `off` | `Off` / `Before` / `After` (same mapping) | — | Totals under column groups |
+| 33 | Expand to depth | number | `pivotDefaultExpanded` | 0 | 0–10 · step 1 | — | Initial expand depth of pivot tree |
+| 34 | Grand totals | switch | `pivotGrandTotals` | off | — | `Excel-style pinned totals` | Show grand totals |
+| 35 | Strict column order | switch | `enableStrictPivotColumnOrder` | off | — | `Re-sort keys every update` | Reorder generated pivot cols on every update |
+| 36 | Max generated columns | number | `pivotMaxGeneratedColumns` | 5000 | min 0 · step 100 | — | Cap on generated pivot columns |
 
 ---
 
@@ -499,7 +498,7 @@ Markets-shaped demos compose `titleBarExtensions` + `ribbonExtensions({ edit })`
 
 | # | UI label | Type | Grid option | Default | Hint | What it does |
 |---|----------|------|-------------|---------|------|--------------|
-| 38 | Search hidden columns | switch | `includeHiddenColumnsInQuickFilter` | off | — | Quick filter (title-bar search) also matches hidden columns |
+| 37 | Search hidden columns | switch | `includeHiddenColumnsInQuickFilter` | off | — | Quick filter (title-bar search) also matches hidden columns |
 
 ---
 
@@ -507,12 +506,12 @@ Markets-shaped demos compose `titleBarExtensions` + `ribbonExtensions({ edit })`
 
 | # | UI label | Type | Grid option | Default | Range | Hint | What it does |
 |---|----------|------|-------------|---------|-------|------|--------------|
-| 39 | Row buffer | number | `rowBuffer` | (empty = auto) | 0–100 · step 1 | `Overscan rows (empty = auto)` | Extra rows rendered beyond viewport |
-| 40 | Async txn wait | number | `asyncTransactionWaitMillis` | (kernel ~50) | 0–5000 · step 10 | `Debounce ms (default 50)` | Debounce before flushing async row transactions |
-| 41 | Conflate async txns | switch | `asyncTransactionConflate` | on | — | `Last-write-wins per row in the batch` | Collapse multiple updates to same row in a batch |
-| 42 | Update throttle | number | `asyncTransactionThrottleMillis` | 200 | 100–1000 · step 50 | `Min ms between updates (default 200 = 5/s)` | Rate-cap continuous streams (panel cannot set `0` = off) |
-| 43 | No column virtualisation | switch | `suppressColumnVirtualisation` | off | — | — | Render all columns (no horizontal virt) |
-| 44 | No row virtualisation | switch | `suppressRowVirtualisation` | off | — | — | Render all rows (no vertical virt) |
+| 38 | Row buffer | number | `rowBuffer` | (empty = auto) | 0–100 · step 1 | `Overscan rows (empty = auto)` | Extra rows rendered beyond viewport |
+| 39 | Async txn wait | number | `asyncTransactionWaitMillis` | (kernel ~50) | 0–5000 · step 10 | `Debounce ms (default 50)` | Debounce before flushing async row transactions |
+| 40 | Conflate async txns | switch | `asyncTransactionConflate` | on | — | `Last-write-wins per row in the batch` | Collapse multiple updates to same row in a batch |
+| 41 | Update throttle | number | `asyncTransactionThrottleMillis` | 200 | 100–1000 · step 50 | `Min ms between updates (default 200 = 5/s)` | Rate-cap continuous streams (panel cannot set `0` = off) |
+| 42 | No column virtualisation | switch | `suppressColumnVirtualisation` | off | — | — | Render all columns (no horizontal virt) |
+| 43 | No row virtualisation | switch | `suppressRowVirtualisation` | off | — | — | Render all rows (no vertical virt) |
 
 ---
 
@@ -522,20 +521,20 @@ Fans out properties of the single `defaultColDef` object. Field keys in the form
 
 | # | UI label | Type | `defaultColDef` prop | Hint | What it does |
 |---|----------|------|----------------------|------|--------------|
-| 45 | Resizable | checkbox | `resizable` | — | New columns resizable by default |
-| 46 | Sortable | checkbox | `sortable` | — | Sortable by default |
-| 47 | Editable | checkbox | `editable` | — | Editable by default |
-| 48 | Lock position | checkbox | `suppressMovable` | — | Columns cannot be reordered by drag |
-| 49 | Wrap text | checkbox | `wrapText` | — | Wrap cell text |
-| 50 | Wrap header text | checkbox | `wrapHeaderText` | `Multi-line column headers` | Wrap header captions |
-| 51 | Auto header height | checkbox | `autoHeaderHeight` | `Header row fits wrapped text` | Header height grows for wraps |
-| 52 | Groupable | checkbox | `enableRowGroup` | `Drag into row groups` | Eligible for row grouping |
-| 53 | Pivotable | checkbox | `enablePivot` | `Drag into column labels` | Eligible for pivot |
-| 54 | Aggregatable | checkbox | `enableValue` | `Drag into values` | Eligible as value/agg column |
-| 55 | Width | number | `width` | min 20 · max 1000 | Default column width |
-| 56 | Min width | number | `minWidth` | min 10 · max 500 | Default min width |
-| 57 | Max width | number | `maxWidth` | min 20 · max 2000 | Default max width |
-| 58 | Flex | number | `flex` | min 0 · max 10 | Default flex grow |
+| 44 | Resizable | checkbox | `resizable` | — | New columns resizable by default |
+| 45 | Sortable | checkbox | `sortable` | — | Sortable by default |
+| 46 | Editable | checkbox | `editable` | — | Editable by default |
+| 47 | Lock position | checkbox | `suppressMovable` | — | Columns cannot be reordered by drag |
+| 48 | Wrap text | checkbox | `wrapText` | — | Wrap cell text |
+| 49 | Wrap header text | checkbox | `wrapHeaderText` | `Multi-line column headers` | Wrap header captions |
+| 50 | Auto header height | checkbox | `autoHeaderHeight` | `Header row fits wrapped text` | Header height grows for wraps |
+| 51 | Groupable | checkbox | `enableRowGroup` | `Drag into row groups` | Eligible for row grouping |
+| 52 | Pivotable | checkbox | `enablePivot` | `Drag into column labels` | Eligible for pivot |
+| 53 | Aggregatable | checkbox | `enableValue` | `Drag into values` | Eligible as value/agg column |
+| 54 | Width | number | `width` | min 20 · max 1000 | Default column width |
+| 55 | Min width | number | `minWidth` | min 10 · max 500 | Default min width |
+| 56 | Max width | number | `maxWidth` | min 20 · max 2000 | Default max width |
+| 57 | Flex | number | `flex` | min 0 · max 10 | Default flex grow |
 
 ---
 
@@ -545,11 +544,11 @@ Native colour pickers writing theme tokens via `setThemeParams` / `setThemeColor
 
 | # | UI label | Type | Theme token | Hint | What it does |
 |---|----------|------|-------------|------|--------------|
-| 59 | Row hover | color | `--vg-row-hover-bg` | `Hovered row background` | Row hover fill |
-| 60 | Row selection | color | `--vg-row-selected-bg` | `Selected row background` | Selected row fill |
-| 61 | Cell range fill | color | `--vg-range-fill-color` | `Range selection interior` | Range selection fill |
-| 62 | Cell range border | color | `--vg-range-border-color` | — | Range selection border |
-| 63 | Cell flash | color | `--vg-flash-from-color` | `Change-flash colour` | Change-flash start colour |
+| 58 | Row hover | color | `--vg-row-hover-bg` | `Hovered row background` | Row hover fill |
+| 59 | Row selection | color | `--vg-row-selected-bg` | `Selected row background` | Selected row fill |
+| 60 | Cell range fill | color | `--vg-range-fill-color` | `Range selection interior` | Range selection fill |
+| 61 | Cell range border | color | `--vg-range-border-color` | — | Range selection border |
+| 62 | Cell flash | color | `--vg-flash-from-color` | `Change-flash colour` | Change-flash start colour |
 
 ---
 
@@ -925,16 +924,15 @@ Confirm: `Discard unsaved shortcut changes?`
 | 5 | band `01` `Global` · `Enabled` | switch | `enabled` | `true` | bool | — | History master |
 | 6 | `Suspended` | switch | `suspended` | `false` | bool | `Pauses recording immediately — does not wait for Save` | Live pause |
 | 7 | `Max Entries` | number | `maxEntries` | `50` | ≥5 | — | Cap |
-| 8 | `Unify Undo` | switch | `unifyUndo` | `true` | bool | `Edit journal owns undo; disable native cell undo when available` | Unify |
-| 9 | band `02` `Record Sources` · `Smart Edit` | switch | `recordSources.smartEdit` | `true` | bool | — | Source gate |
-| 10 | `Bulk Update` | switch | `recordSources.bulkUpdate` | `true` | bool | — | Source gate |
-| 11 | `Plus / Minus` | switch | `recordSources.plusMinus` | `true` | bool | — | Source gate |
-| 12 | `Shortcuts` | switch | `recordSources.shortcuts` | `true` | bool | — | Source gate |
-| 13 | `Cell Editor` | switch | `recordSources.cellEditor` | `true` | bool | — | Source gate |
-| 14 | `Stream Updates` | switch | `recordSources.stream` | `false` | bool | `Live ticker writes — off by default` | Source gate |
-| 15 | band `03` `Monitor` | band | — | — | — | empty `No edits recorded this session.` / `Edit engine is not wired.` | Live journal |
-| 16 | entry text | display | — | — | — | — | `{Source} · {time} · {label} ({n} cells)` |
-| 17 | `Undo` | button | — | disabled if not in undo stack | — | title `Undo this entry and everything since` | `journal.undoEntry` |
+| 8 | band `02` `Record Sources` · `Smart Edit` | switch | `recordSources.smartEdit` | `true` | bool | — | Source gate |
+| 9 | `Bulk Update` | switch | `recordSources.bulkUpdate` | `true` | bool | — | Source gate |
+| 10 | `Plus / Minus` | switch | `recordSources.plusMinus` | `true` | bool | — | Source gate |
+| 11 | `Shortcuts` | switch | `recordSources.shortcuts` | `true` | bool | — | Source gate |
+| 12 | `Cell Editor` | switch | `recordSources.cellEditor` | `true` | bool | — | Source gate |
+| 13 | `Stream Updates` | switch | `recordSources.stream` | `false` | bool | `Live ticker writes — off by default` | Source gate |
+| 14 | band `03` `Monitor` | band | — | — | — | empty `No edits recorded this session.` / `Edit engine is not wired.` | Live journal |
+| 15 | entry text | display | — | — | — | — | `{Source} · {time} · {label} ({n} cells)` |
+| 16 | `Undo` | button | — | disabled if not in undo stack | — | title `Undo this entry and everything since` | `journal.undoEntry` |
 
 ---
 

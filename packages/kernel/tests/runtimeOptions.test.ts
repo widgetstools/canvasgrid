@@ -72,7 +72,7 @@ describe('INITIAL_ONLY_OPTIONS', () => {
   });
   it('does NOT include known runtime options', () => {
     for (const k of [
-      'theme', 'rowHeight', 'headerHeight', 'defaultColDef', 'animateRows',
+      'theme', 'rowHeight', 'headerHeight', 'defaultColDef',
       'rowSelection', 'suppressColumnVirtualisation', 'enableCellChangeFlash',
       'cellFlashDuration', 'cellFadeDuration', 'asyncTransactionWaitMillis',
       'asyncTransactionConflate', 'asyncTransactionThrottleMillis',
@@ -169,15 +169,13 @@ describe('VelocityGrid.setGridOption — runtime options apply', () => {
     teardown(grid, host);
   });
 
-  it('storage-only flags (animateRows, debug, loading, context) round-trip', () => {
+  it('storage-only flags (debug, loading, context) round-trip', () => {
     const { grid, host } = mountGrid();
     const api = (grid as any).makeApi();
-    api.setGridOption('animateRows', false);
     api.setGridOption('debug', true);
     api.setGridOption('loading', true);
     api.setGridOption('context', { tenant: 'acme' });
     const o = (grid as any).options;
-    expect(o.animateRows).toBe(false);
     expect(o.debug).toBe(true);
     expect(o.loading).toBe(true);
     expect(o.context).toEqual({ tenant: 'acme' });

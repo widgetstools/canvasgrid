@@ -8,7 +8,9 @@
 //
 // `animateRows` was exactly that: offered as "Animate rows", accepted by
 // `setGridOption`, round-tripped by its own test ("storage-only flags ...
-// round-trip"), and read by no line of code in any package.
+// round-trip"), and read by no line of code in any package. It has since been
+// removed from the grid entirely, which is the other way an entry leaves this
+// list.
 //
 // The check is deliberately conservative. It asks only whether the key appears
 // AT ALL outside the files that merely declare it, so it cannot produce a false
@@ -36,11 +38,9 @@ const PLUMBING = [
  * option or dropping it from the schema — not by growing this list.
  */
 const KNOWN_UNIMPLEMENTED = new Map<string, string>([
-  // No read site in ANY package. AG animates row moves on sort/filter; this
-  // grid paints to a canvas and has never had the transition to suppress.
-  // Either implement it against the paint path or drop it from the panel —
-  // today it is a switch reporting a state the grid does not have.
-  ['animateRows', 'accepted and stored, read by no line of code in any package'],
+  // Empty, and it should stay that way. `animateRows` lived here until it was
+  // removed from the panel outright — the grid paints to a canvas and never
+  // had the transition to suppress, so there was nothing to implement.
 ]);
 
 function sourceFiles(dir: string, out: string[] = []): string[] {

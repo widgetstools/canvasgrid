@@ -47,8 +47,11 @@ beforeAll(() => {
   }
 });
 
-/** A minimal flat panel: one band, one switch row bound to the
- *  `animateRows` grid option through the api tier only. */
+/** A minimal flat panel: one band, one switch row bound to a boolean grid
+ *  option through the api tier only. `debug` is an arbitrary storage-only
+ *  flag — the panel is proving the API TIER round-trips a value, not
+ *  exercising any particular option. It used to probe `animateRows`, which has
+ *  since been removed for having no implementation. */
 class ProbePanel extends CgcPanelElement {
   refreshCount = 0;
 
@@ -58,15 +61,15 @@ class ProbePanel extends CgcPanelElement {
   }
 
   override render() {
-    const animate = this.api.getGridOption('animateRows') === true;
+    const debugOn = this.api.getGridOption('debug') === true;
     return html`
       <cgc-band band-title="Probe">
-        <cgc-field label="Animate rows" hint="probe row">
+        <cgc-field label="Debug" hint="probe row">
           <cgc-switch
-            .checked=${animate}
-            aria-label="Animate rows"
+            .checked=${debugOn}
+            aria-label="Debug"
             @cgc-change=${(e: CustomEvent<{ value: unknown }>) =>
-              this.api.setGridOption('animateRows', e.detail.value === true)}
+              this.api.setGridOption('debug', e.detail.value === true)}
           ></cgc-switch>
         </cgc-field>
       </cgc-band>
@@ -112,17 +115,17 @@ describe('Lit panel registration through the kernel tool-panel registry', () => 
     const band = el.shadowRoot!.querySelector('cgc-band')!;
     expect(band.getAttribute('band-title')).toBe('Probe');
     const field = el.shadowRoot!.querySelector('cgc-field')!;
-    expect(field.getAttribute('label')).toBe('Animate rows');
+    expect(field.getAttribute('label')).toBe('Debug');
     const sw = el.shadowRoot!.querySelector('cgc-switch') as CgcSwitch;
     expect(sw).not.toBeNull();
     await flushLit();
     expect(sw.shadowRoot!.querySelector('input.vg-checkbox')).not.toBeNull();
 
     // User flips the checkbox → panel writes through the api tier.
-    expect(api.getGridOption('animateRows')).not.toBe(true);
+    expect(api.getGridOption('debug')).not.toBe(true);
     (sw.shadowRoot!.querySelector('input.vg-checkbox') as HTMLInputElement).click();
     await flushLit();
-    expect(api.getGridOption('animateRows')).toBe(true);
+    expect(api.getGridOption('debug')).toBe(true);
 
     // Kernel refresh() reaches the element.
     const before = el.refreshCount;

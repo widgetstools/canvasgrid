@@ -3,10 +3,13 @@
 // The kernel has this guard for the Grid Options panel
 // (`packages/kernel/tests/deadSwitches.test.ts`) and it caught `animateRows`.
 // The Editing tab's settings live in `ext` and were never covered, so the same
-// class went unnoticed here — SEVEN of them. Four are now implemented
+// class went unnoticed here — SEVEN of them. Five were implemented
 // (`confirmThreshold` on both panels, `previewBeforeApply`, `showDistinctValues`,
-// and `incrementStep`, which seeds the toolbar operand); the rest remain below
-// with what each would take.
+// and `incrementStep`, which seeds the toolbar operand). `unifyUndo` was
+// removed outright: the edit journal and the format history are separate by
+// design, and this project's own spec had already recorded the flag as dropped
+// (`specs/2026-07-02-cycle-21g-edit-design.md`) years before it shipped anyway.
+// One remains, below, with what it would take.
 //
 // A read site means the ENGINE acts on the value. Deliberately NOT counted:
 //
@@ -61,9 +64,6 @@ interface Unimplemented {
 const KNOWN_UNIMPLEMENTED = new Map<string, Unimplemented>([
   ['magnitudeShortcutsEnabled', {
     reason: 'Smart Edit "K/M/B shortcuts" — the spec says the parser is gated by it; nothing reads it',
-  }],
-  ['unifyUndo', {
-    reason: 'Edit History "Unify Undo" — stored by the panel, read by nothing',
   }],
 ]);
 

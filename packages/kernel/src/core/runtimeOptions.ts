@@ -45,7 +45,6 @@ export type RuntimeOption =
   | 'rowHeight'
   | 'headerHeight'
   | 'defaultColDef'
-  | 'animateRows'
   | 'suppressRowHoverHighlight'
   | 'rowSelection'
   | 'suppressRowClickSelection'
@@ -240,7 +239,7 @@ export interface RuntimeOptionTarget<TRow = any> {
  * Apply a single runtime option. The caller has already stored
  * `target.options[key] = value`, so per-option handlers only need to perform
  * downstream side-effects (recompute viewport, update SelectionModel, etc.).
- * Storage-only keys (e.g. `animateRows`, `debug`) fall through to a no-op.
+ * Storage-only keys (e.g. `debug`, `context`) fall through to a no-op.
  */
 export function applyRuntimeOption<TRow>(
   target: RuntimeOptionTarget<TRow>,
@@ -346,7 +345,6 @@ export function applyRuntimeOption<TRow>(
       // clears/enables the highlight immediately.
       target.refreshLayout();
       return;
-    case 'animateRows':
     case 'cellFlashDuration':
     case 'cellFadeDuration':
     case 'asyncTransactionWaitMillis':
@@ -554,7 +552,7 @@ export function isRuntimeOption(key: string): key is RuntimeOption {
 
 export const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
   'theme', 'density', 'rowHeight', 'headerHeight', 'defaultColDef',
-  'animateRows', 'suppressRowHoverHighlight', 'rowSelection',
+  'suppressRowHoverHighlight', 'rowSelection',
   'suppressRowClickSelection', 'rowMultiSelectWithClick',
   'suppressColumnVirtualisation', 'suppressRowVirtualisation',
   'enableCellChangeFlash', 'cellFlashDirectional',
