@@ -8,7 +8,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { EditJournal } from '../../src/edit/journal';
 import { DEFAULT_EDIT_SETTINGS } from '../../src/edit/settings';
-import type { CellPatch, DataChangeHistorySettings } from '../../src/edit/types';
+import type { CellPatch, DataChangeHistorySettings, EditSource } from '../../src/edit/types';
 
 function makeJournal(overrides?: {
   now?: () => number;
@@ -335,3 +335,78 @@ describe('EditJournal — undoEntry cascade', () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 });
+
+/**
+ * Every Record source checkbox stops ITS source, and only its source.
+ *
+ * The Edit History panel offers six of them — Smart Edit, Bulk Update,
+ * Plus / Minus, Shortcuts, Cell Editor, Stream Updates — and each is a promise
+ * that unchecking it stops that source being journalled. The gate itself was
+ * already covered, but for two sources out of six, so a wrong entry in
+ * `recordSourceKey` (`plus-minus` mapped to `shortcuts`, say) would pass: the
+ * flag would still gate SOMETHING, just not the thing the user unchecked.
+ *
+ * That is the failure this codebase keeps producing — a mapping that looks
+ * right and is not — so the table is exhaustive rather than representative:
+ * every source turned off in turn, and every OTHER source asserted still
+ * recording in the same pass.
+ */
+describe('EditJournal — every Record source gates exactly itself', () => {
+  const SOURCES: Array<[EditSource, keyof DataChangeHistorySettings['recordSources']]> = [
+    ['smart-edit', 'smartEdit'],
+    ['bulk-update', 'bulkUpdate'],
+    ['plus-minus', 'plusMinus'],
+    ['shortcut', 'shortcuts'],
+    ['cell-editor', 'cellEditor'],
+    ['stream', 'stream'],
+  ];
+
+  it('the table covers every source the settings offer', () => {
+    // So a seventh source cannot be added with no checkbox and no test.
+    const { settings } = makeJournal();
+    expect(SOURCES.map(([, key]) => key).sort())
+      .toEqual(Object.keys(settings.recordSources).sort());
+  });
+
+  for (const [source, key] of SOURCES) {
+    it(`unchecking ${key} stops ${source}, and nothing else`, () => {
+      const { journal, settings } = makeJournal();
+      // `stream` is off by default — the panel says so — so start from a state
+      // where every source records, or "still records" proves nothing.
+      for (const k of Object.keys(settings.recordSources)) {
+        settings.recordSources[k as typeof key] = true;
+      }
+      settings.recordSources[key] = false;
+
+      expect(
+        journal.record({ source, label: 'gated', patches: [patch()] }),
+        `${source} recorded with ${key} unchecked`,
+      ).toBeNull();
+
+      for (const [other] of SOURCES) {
+        if (other === source) continue;
+        expect(
+          journal.record({ source: other, label: other, patches: [patch()] }),
+          `unchecking ${key} also silenced ${other}`,
+        ).not.toBeNull();
+      }
+    });
+  }
+
+  it('Stream Updates is off by default, as the panel states', () => {
+    const { journal } = makeJournal();
+    expect(journal.record({ source: 'stream', label: 's', patches: [patch()] })).toBeNull();
+  });
+
+  it('history disabled outranks every source flag', () => {
+    const { journal, settings } = makeJournal();
+    settings.enabled = false;
+    for (const [source] of SOURCES) {
+      expect(
+        journal.record({ source, label: source, patches: [patch()] }),
+        `${source} recorded while history was disabled`,
+      ).toBeNull();
+    }
+  });
+});
+

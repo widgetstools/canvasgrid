@@ -23,7 +23,10 @@ const SOURCE_LABEL: Record<EditSource, string> = {
   stream: 'Stream',
 };
 
-const RECORD_SOURCE_ROWS: Array<{
+/** The Record sources rows, exported so a test can assert the panel offers a
+ *  checkbox for every source the journal gates. A source added to the settings
+ *  with no row here would be un-turn-off-able from the UI and invisible. */
+export const RECORD_SOURCE_ROWS: Array<{
   key: keyof DataChangeHistorySettings['recordSources'];
   label: string;
   hint?: string;

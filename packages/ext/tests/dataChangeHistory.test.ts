@@ -1,3 +1,5 @@
+import { RECORD_SOURCE_ROWS } from '../src/modules/dataChangeHistory';
+import { DEFAULT_EDIT_SETTINGS } from '../src/edit/settings';
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { installGridTestEnv } from './setup';
 import { VelocityGridExt } from '../src/velocityGridExt';
@@ -116,3 +118,20 @@ describe('VelocityGridExt.reapplyActiveProfile', () => {
     }
   });
 });
+
+describe('the Record sources panel offers every source the journal gates', () => {
+  it('has a row per recordSources key, and no orphan rows', () => {
+    // Two failure directions, both silent. A source in the settings with no row
+    // cannot be turned off from the UI at all; a row whose key is not in the
+    // settings is a checkbox wired to nothing — the `animateRows` shape again.
+    const keys = Object.keys(DEFAULT_EDIT_SETTINGS.history.recordSources).sort();
+    expect(RECORD_SOURCE_ROWS.map((r) => r.key).sort()).toEqual(keys);
+  });
+
+  it('every row carries a label a person can read', () => {
+    for (const r of RECORD_SOURCE_ROWS) {
+      expect(r.label.length, `no label for '${r.key}'`).toBeGreaterThan(2);
+    }
+  });
+});
+
