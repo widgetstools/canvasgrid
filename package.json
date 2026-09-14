@@ -43,7 +43,7 @@
     "dev:lab-ssrm": "npm run dev --workspace=velocitygrid-lab-ssrm",
     "dev:labs": "concurrently -k -n csrm,ssrm -c blue,cyan \"npm run dev:lab-csrm\" \"npm run dev:lab-ssrm\"",
     "test:labs": "npm run test --workspace=velocitygrid-lab-csrm && npm run test --workspace=velocitygrid-lab-ssrm",
-    "test:e2e:selfcontained": "playwright test e2e/tree-data.spec.ts e2e/master-detail.spec.ts e2e/dshub-engine.spec.ts"
+    "test:e2e:selfcontained": "playwright test e2e/tree-data.spec.ts e2e/master-detail.spec.ts e2e/dshub-engine.spec.ts e2e/drawer-options.spec.ts"
   },
   "devDependencies": {
     "@openfin/node-adapter": "^43.101.2",

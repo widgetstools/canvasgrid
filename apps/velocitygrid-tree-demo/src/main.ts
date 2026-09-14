@@ -151,9 +151,15 @@ void (async () => {
   setTimeout(paint, 1500);
   setInterval(paint, 3000);
 
+  // The grids AND the Ext instances that wrap them. The customize drawer
+  // renders inside a closed shadow root, so a spec cannot reach its controls
+  // by script — exposing the Ext lets one drive the modules behind those
+  // controls directly, which is where the settings actually take effect.
   (window as unknown as { __tree: unknown }).__tree = {
     rows: ROWS,
     csrm: csrm.grid,
     ssrm: ssrm.grid,
+    csrmExt: csrm,
+    ssrmExt: ssrm,
   };
 })();
