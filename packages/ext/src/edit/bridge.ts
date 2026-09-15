@@ -23,6 +23,7 @@ import type {
   ShortcutDefinition,
   SmartEditOp,
 } from './types';
+import { magnitudeValueParser } from './magnitude';
 import { mergeEditSettings } from './settings';
 import type { DeepPartial } from './settings';
 import { EditJournal } from './journal';
@@ -133,7 +134,18 @@ interface KernelGridSurface {
   }): () => void;
   notifyModuleStateChanged?(id: string): void;
   __editBridgeWired?: EditBridgeHandle;
+  /** Kernel DI slot for value parsing. Optional so an older kernel — or a
+   *  structural fake in a test — simply does not get magnitude shortcuts,
+   *  rather than throwing. */
+  registerValueParserContributor?(fn: ValueParserContributorShape | null): void;
 }
+
+/** The kernel's `ValueParserContributor`, restated structurally so this
+ *  package imports no kernel types. */
+type ValueParserContributorShape = (
+  column: { colId: string; field?: string; cellDataType?: string },
+  original: ((params: unknown) => unknown) | undefined,
+) => ((params: unknown) => unknown) | undefined;
 
 /** What the host is being asked to approve. `preview` is present only when
  *  `smartEdit.previewBeforeApply` is on and the preview found something worth
@@ -767,11 +779,31 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
     subscribe(g, 'cellEditingStopped', () => { editing = false; }),
   ];
 
+  /**
+   * K/M/B magnitude shortcuts, through the kernel's value-parser slot.
+   *
+   * Not a colDef rewrite: pushing transformed defs back through
+   * `updateGridOptions` rebuilds the column tree and contends with the format
+   * and calc engines, which also own colDefs — last writer wins and the
+   * wrapper is silently dropped or applied twice. The slot wraps during colDef
+   * RESOLVE instead, so authored defs are never touched.
+   *
+   * Every number column is wrapped once, and the wrapper reads the setting on
+   * each call — so toggling "K/M/B shortcuts" is live, with no re-resolve.
+   */
+  g.registerValueParserContributor?.((column, original) => {
+    if (column.cellDataType !== 'number') return original;
+    return magnitudeValueParser(original, () => settings.smartEdit.magnitudeShortcutsEnabled);
+  });
+
   const destroy = (): void => {
     for (const unsub of unsubscribers) unsub();
     unsubscribers.length = 0;
     rowMirror.clear();
     lastFetchByIndex.clear();
+    // Leaving the contributor registered would keep parsing magnitudes for a
+    // grid whose edit bridge is gone, through a closure over dead settings.
+    g.registerValueParserContributor?.(null);
     delete g.__editBridgeWired;
   };
   unsubscribers.push(subscribe(g, 'gridPreDestroyed', destroy));

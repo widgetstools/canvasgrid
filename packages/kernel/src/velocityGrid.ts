@@ -217,6 +217,10 @@ import {
   registerFormatCompiler as slotRegisterFormatCompiler,
   type FormatCompiler,
 } from './core/formatCompilerSlot';
+import {
+  registerValueParserContributor as slotRegisterValueParserContributor,
+  type ValueParserContributor,
+} from './core/valueParserSlot';
 import { registerRuleEngine as slotRegisterRuleEngine, type RuleEngineShape, type ConditionalRuleShape } from './core/ruleEngineSlot';
 import { isRuleFlashOwned, ruleFlashOwnership } from './core/ruleFlashOwnership';
 import {
@@ -9826,6 +9830,17 @@ export class VelocityGrid<TRow = any> {
    *  to obtain it. Apps that never call this see no behavior change. */
   registerFormatCompiler(fn: FormatCompiler): void {
     slotRegisterFormatCompiler(fn);
+  }
+
+  /** Register a value-parser contributor into the kernel DI slot. Invoked by
+   *  `wireEditIntoKernel(grid)` in the ext package's edit bridge; the
+   *  colDef-resolve pass wraps each column's `valueParser` with it. Pass
+   *  `null` to unregister. Apps that never call this see no behaviour change. */
+  registerValueParserContributor(fn: ValueParserContributor | null): void {
+    slotRegisterValueParserContributor(fn);
+    // Resolved defs are cached, so a contributor registered after construction
+    // has to invalidate them or it would not reach a single column.
+    this.updateGridOptions({ columnDefs: this.options.columnDefs });
   }
 
   /** Cycle 21e / Task 10 — register the @wellsfargo-starui/velocity-grid/rules engine adapter into

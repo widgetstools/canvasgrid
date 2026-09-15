@@ -47,32 +47,48 @@ interface MagnitudeValueParserParams {
   colDef?: unknown;
 }
 
+/**
+ * The parser a number column should use when magnitude shortcuts are on.
+ *
+ * Runs the ORIGINAL parser FIRST with the untouched params, so an app's own
+ * `valueParser` keeps precedence; then, if the typed value is a string whose
+ * K/M/B suffix parses, the parsed number wins. A non-number column, or a value
+ * with no recognisable suffix, gets the original result unchanged.
+ *
+ * `enabled` is read at CALL time on purpose. The contributor wraps every
+ * number column once, at colDef resolve; gating at wrap time would mean every
+ * flip of the setting needed a re-resolve, where gating here makes it live.
+ */
+export function magnitudeValueParser(
+  original: ((p: unknown) => unknown) | undefined,
+  enabled: () => boolean,
+): (p: unknown) => unknown {
+  return (p: unknown): unknown => {
+    const params = p as MagnitudeValueParserParams;
+    const base = original ? original(p) : params.newValue;
+    if (!enabled()) return base;
+    if (typeof params.newValue === 'string') {
+      const parsed = parseMagnitudeSuffix(params.newValue);
+      if (parsed !== null) return parsed;
+    }
+    return base;
+  };
+}
+
 /** Returns a NEW array with NEW colDef objects (shallow copies with a wrapped
  *  `valueParser`) for numeric columns only (`cellDataType === 'number'`);
  *  non-numeric colDefs pass through BY REFERENCE. Input colDefs are never
- *  mutated. The wrapped parser (spec §4.2.5): runs the ORIGINAL `valueParser`
- *  FIRST (if any) with the untouched params object; if `params.newValue` is a
- *  string AND `parseMagnitudeSuffix` succeeds, the parsed number wins;
- *  otherwise the original result (or `params.newValue` verbatim when there
- *  was no original parser) is returned. */
+ *  mutated.
+ *
+ *  Retained for hosts that build their own colDefs; the bridge itself now
+ *  goes through the kernel's value-parser slot instead, which needs no colDef
+ *  rewrite and cannot contend with the format or calc engines that also own
+ *  them. */
 export function applyMagnitudeColDefTransforms<
   T extends { cellDataType?: string; valueParser?: (p: unknown) => unknown },
 >(colDefs: T[]): T[] {
   return colDefs.map((colDef) => {
     if (colDef.cellDataType !== 'number') return colDef;
-
-    const originalParser = colDef.valueParser;
-    const wrappedParser = (p: unknown): unknown => {
-      const params = p as MagnitudeValueParserParams;
-      const original = originalParser ? originalParser(p) : params.newValue;
-
-      if (typeof params.newValue === 'string') {
-        const parsed = parseMagnitudeSuffix(params.newValue);
-        if (parsed !== null) return parsed;
-      }
-      return original;
-    };
-
-    return { ...colDef, valueParser: wrappedParser };
+    return { ...colDef, valueParser: magnitudeValueParser(colDef.valueParser, () => true) };
   });
 }

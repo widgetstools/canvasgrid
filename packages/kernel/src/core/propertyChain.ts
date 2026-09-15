@@ -8,6 +8,10 @@ import type {
 import type { CellPaintConfig } from '../renderer/cellRenderers/registry';
 import type { ResolvedTheme } from '../theming/cssReader';
 import { getFormatCompiler, type CompositeColDefShape } from './formatCompilerSlot';
+import {
+  getValueParserContributor,
+  type ValueParserParamsShape,
+} from './valueParserSlot';
 import { resolveRuleEngine, type RuleEngineShape } from './ruleEngineSlot';
 import { evalFormatProgram } from './formatEvalMemo';
 import { compileValueGetterSrc, valueGetterFnFromSrc } from './valueGetterExpr';
@@ -1205,6 +1209,23 @@ function styleObjToRecord(s: {
   return out;
 }
 
+/** ColDef-resolve pass: let a registered contributor wrap this column's
+ *  `valueParser`. The contributor receives whatever parser the column already
+ *  has and is expected to call it first, so an app's own parser keeps
+ *  precedence over anything the contributor adds. */
+function resolveValueParser<TRow>(
+  merged: CColDef<TRow>,
+  resolvedColId: string,
+): CColDef<TRow>['valueParser'] {
+  const contribute = getValueParserContributor();
+  if (!contribute) return merged.valueParser;
+  const wrapped = contribute(
+    { colId: resolvedColId, field: merged.field as string | undefined, cellDataType: merged.cellDataType },
+    merged.valueParser as ((p: ValueParserParamsShape) => unknown) | undefined,
+  );
+  return wrapped as CColDef<TRow>['valueParser'];
+}
+
 /** ColDef-resolve pass: compile string-form `valueFormatter` and
  *  `type: 'composite'` ColDefs via the registered format compiler.
  *  When no compiler is registered (getFormatCompiler() → null), this
@@ -1382,7 +1403,10 @@ export function resolveColDef<TRow>(
     // through so the 'composite' renderer can read them off the config.
     compositeAlign: merged.align,
     compositeOverflow: merged.overflow,
-    valueParser: merged.valueParser as ResolvedColDef<TRow>['valueParser'],
+    // A registered contributor may wrap the column's parser — see
+    // `valueParserSlot`. Pass-through when none is registered, so a grid
+    // without the edit package behaves exactly as before.
+    valueParser: resolveValueParser(merged, colId) as ResolvedColDef<TRow>['valueParser'],
     valueSetter: merged.valueSetter as ResolvedColDef<TRow>['valueSetter'],
     // Row-select checkbox columns FORCE the renderer regardless of
     // cellDataType — the checkbox state is the entire visual + the

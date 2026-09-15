@@ -1154,3 +1154,106 @@ describe('wireEditIntoKernel — Editing settings that now take effect', () => {
   });
 });
 
+/**
+ * K/M/B magnitude shortcuts, through the kernel's value-parser slot.
+ *
+ * The parser was written and fully tested, and `applyMagnitudeColDefTransforms`
+ * — the only thing that would have installed it — was exported and never
+ * called. So typing `5K` did nothing, and the "K/M/B shortcuts" switch gated a
+ * feature that was not there.
+ *
+ * The bridge now registers a contributor into the kernel's value-parser slot,
+ * which wraps each number column's parser during colDef RESOLVE. No colDef is
+ * rewritten, so nothing contends with the format or calc engines that also own
+ * them, and the commit path is identical on CSRM and SSRM.
+ */
+describe('wireEditIntoKernel — K/M/B magnitude shortcuts', () => {
+  /** A grid that records what the bridge registers, and lets a test run the
+   *  contributor against a column the way the resolve pass would. */
+  function gridWithSlot() {
+    const fake = makeGrid();
+    let contributor: ((c: { colId: string; cellDataType?: string },
+                       o: ((p: unknown) => unknown) | undefined)
+                      => ((p: unknown) => unknown) | undefined) | null = null;
+    (fake.grid as Record<string, unknown>).registerValueParserContributor =
+      (fn: typeof contributor) => { contributor = fn; };
+    const parserFor = (cellDataType?: string, own?: (p: unknown) => unknown) =>
+      contributor?.({ colId: 'qty', cellDataType }, own);
+    return { fake, parserFor, registered: () => contributor !== null };
+  }
+
+  it('registers a contributor when the kernel offers the slot', () => {
+    const { fake, registered } = gridWithSlot();
+    wireEditIntoKernel(fake.grid);
+    expect(registered()).toBe(true);
+  });
+
+  it('parses K, M and B on a number column', () => {
+    const { fake, parserFor } = gridWithSlot();
+    wireEditIntoKernel(fake.grid, { settings: { smartEdit: { magnitudeShortcutsEnabled: true } } });
+    const parse = parserFor('number')!;
+    expect(parse({ newValue: '5K' })).toBe(5_000);
+    expect(parse({ newValue: '1.5M' })).toBe(1_500_000);
+    expect(parse({ newValue: '2B' })).toBe(2_000_000_000);
+  });
+
+  it('leaves a plain number and unrecognised text alone', () => {
+    const { fake, parserFor } = gridWithSlot();
+    wireEditIntoKernel(fake.grid, { settings: { smartEdit: { magnitudeShortcutsEnabled: true } } });
+    const parse = parserFor('number')!;
+    expect(parse({ newValue: 42 })).toBe(42);
+    expect(parse({ newValue: '5KG' }), 'a suffix it does not know must pass through')
+      .toBe('5KG');
+  });
+
+  it('opts out of non-number columns entirely', () => {
+    // "5K" is a legitimate string value in a text column.
+    const { fake, parserFor } = gridWithSlot();
+    wireEditIntoKernel(fake.grid);
+    expect(parserFor('text')).toBeUndefined();
+    const own = (p: unknown) => (p as { newValue: unknown }).newValue;
+    expect(parserFor('text', own), 'a text column keeps its own parser').toBe(own);
+  });
+
+  it("the column's OWN parser runs first and wins when no suffix is present", () => {
+    const { fake, parserFor } = gridWithSlot();
+    wireEditIntoKernel(fake.grid, { settings: { smartEdit: { magnitudeShortcutsEnabled: true } } });
+    const parse = parserFor('number', () => 'from-app')!;
+    expect(parse({ newValue: 'plain' })).toBe('from-app');
+    // With a suffix, the magnitude wins — that is the feature.
+    expect(parse({ newValue: '5K' })).toBe(5_000);
+  });
+
+  it('the switch is LIVE — no re-resolve needed to turn it off', () => {
+    // The contributor wraps once, at resolve; the wrapper reads the setting on
+    // every call. Gating at wrap time would need every toggle to rebuild the
+    // column tree, which is the cost this design exists to avoid.
+    const { fake, parserFor } = gridWithSlot();
+    const handle = wireEditIntoKernel(fake.grid, {
+      settings: { smartEdit: { magnitudeShortcutsEnabled: true } },
+    });
+    const parse = parserFor('number')!;
+    expect(parse({ newValue: '5K' })).toBe(5_000);
+
+    handle.updateSettings({ smartEdit: { magnitudeShortcutsEnabled: false } });
+    expect(parse({ newValue: '5K' }), 'the SAME parser must now decline').toBe('5K');
+
+    handle.updateSettings({ smartEdit: { magnitudeShortcutsEnabled: true } });
+    expect(parse({ newValue: '5K' })).toBe(5_000);
+  });
+
+  it('unregisters on destroy, so a dead bridge stops parsing', () => {
+    const { fake, registered } = gridWithSlot();
+    const handle = wireEditIntoKernel(fake.grid);
+    expect(registered()).toBe(true);
+    handle.destroy();
+    expect(registered(), 'a closure over dead settings kept parsing').toBe(false);
+  });
+
+  it('a kernel without the slot is simply not offered the feature', () => {
+    // An older kernel, or a structural fake: no throw, no magnitude parsing.
+    const fake = makeGrid();
+    expect(() => wireEditIntoKernel(fake.grid)).not.toThrow();
+  });
+});
+
