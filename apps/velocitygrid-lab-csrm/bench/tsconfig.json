@@ -1,0 +1,13 @@
+{
+  // The bench scripts run under Node via tsx, not in the browser, so they need
+  // node types — which the app's own tsconfig deliberately withholds
+  // (`types: ["vite/client"]`) so browser code cannot reach for `process` by
+  // accident. Kept as a separate project rather than widening that.
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["ES2022"],
+    "types": ["node"]
+  },
+  "include": ["**/*.ts"]
+}
