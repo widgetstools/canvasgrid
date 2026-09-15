@@ -10,6 +10,7 @@
 // postMessage overhead) to isolate the computation cost.
 
 import { describe, it, expect } from 'vitest';
+import { fastestOf, timingRatio } from './helpers/perfTiming';
 import { AggFuncRegistry } from '../src/worker/aggFuncRegistry';
 import { GroupPass, RowStore } from '../src/worker/dataPipeline';
 import type { WorkerColumn } from '../src/worker/protocol';
@@ -47,20 +48,21 @@ describe('incremental aggregation perf gates', () => {
     let runningSum = 5_000_000_000; // pre-existing aggregate for 100k rows
     const oldValue = 42;
     const newValue = 99;
-    const t0 = performance.now();
     runningSum = runningSum - oldValue + newValue;
-    const elapsed = performance.now() - t0;
+    // The arithmetic is the assertion. Timing two additions against a 0.01ms
+    // budget measured nothing — the test's own comment said "always true" —
+    // while still being able to fail if the clock ticked between the two
+    // `performance.now()` calls. What matters here is that the incremental
+    // delta gives the same answer as a full re-sum would, and it does.
     expect(runningSum).toBe(5_000_000_057);
-    expect(elapsed).toBeLessThan(0.01); // always true — it's 2 arithmetic ops
   });
 
   it('case 2: 10 × 10k-row sum bursts in ≤ 5 ms total', () => {
     // 10k rows is a realistic per-group subtree size (not the full 100k dataset).
     const values: number[] = Array.from({ length: 10_000 }, (_, i) => i);
-    const t0 = performance.now();
-    for (let burst = 0; burst < 10; burst++) benchSum(values);
-    const elapsed = performance.now() - t0;
-    expect(elapsed).toBeLessThan(5);
+    expect(fastestOf(() => {
+      for (let burst = 0; burst < 10; burst++) benchSum(values);
+    })).toBeLessThan(5);
   });
 
   it('case 3: GroupPass.apply on 100k rows groups without agg → ≤ 10 ms', () => {
@@ -85,17 +87,12 @@ describe('incremental aggregation perf gates', () => {
     const values: number[] = Array.from({ length: 100_000 }, (_, i) => i);
     const RUNS = 20;
 
-    const t0 = performance.now();
-    for (let r = 0; r < RUNS; r++) benchSum(values);
-    const plainMs = performance.now() - t0;
-
-    const t1 = performance.now();
-    for (let r = 0; r < RUNS; r++) benchObjectSum(values);
-    const objMs = performance.now() - t1;
-
-    // Object-returning variant should never be more than 5× slower than plain
-    // (typically they're within ~1.1× since the only overhead is object allocation).
-    expect(objMs).toBeLessThan(plainMs * 5);
+    // Both warmed before either is timed. Timing the first loop cold against
+    // the second warm compared the engine's warm-up, not the two aggregates.
+    const plain = () => { for (let r = 0; r < RUNS; r++) benchSum(values); };
+    const object = () => { for (let r = 0; r < RUNS; r++) benchObjectSum(values); };
+    // Never more than 5× apart — typically ~1.1×, the cost of one allocation.
+    expect(timingRatio(plain, object)).toBeLessThan(5);
   });
 });
 
@@ -105,13 +102,13 @@ describe('AggFuncRegistry.resolve is fast', () => {
   it('1000 repeated resolves of a custom func in ≤ 1 ms', () => {
     const reg = new AggFuncRegistry();
     reg.register('myFunc', ({ values }) => ({ value: values[0] }) as any);
-    const t0 = performance.now();
-    for (let i = 0; i < 1000; i++) {
-      const fn = reg.resolve('myFunc')!;
-      fn({ values: [1], colId: 'x' });
-    }
-    const elapsed = performance.now() - t0;
-    // 1000 Map.get + fn call — O(1) each; 5 ms is very generous for test env
-    expect(elapsed).toBeLessThan(5);
+    // 1000 Map.get + fn call — O(1) each; 5ms is generous, but only once the
+    // path is warm. Cold, the first run carries the engine's optimisation cost.
+    expect(fastestOf(() => {
+      for (let i = 0; i < 1000; i++) {
+        const fn = reg.resolve('myFunc')!;
+        fn({ values: [1], colId: 'x' });
+      }
+    })).toBeLessThan(5);
   });
 });
