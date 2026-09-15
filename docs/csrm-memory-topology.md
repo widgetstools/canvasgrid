@@ -6,12 +6,19 @@ heap. Subject: the lab's 56-field fixed-income credit blotter row
 rather than a synthetic one.
 
 > **Outcome: no fix yet — a finding.** A client-side grid fed by the data hub
-> retains **~4.5 KB per row across three V8 isolates**. Routing it through the
-> wasm engine would collapse that to roughly one copy, but **not** to a smaller
-> one: the engine's cell representation is a 24-byte tagged union, so the win
-> is deduplication (~3×), not density. Separately, the main-thread copy — the
-> one in the isolate that can least afford it — turns out not to be held for
-> the paint path at all.
+> retains **~4.5 KB per row across three V8 isolates** at 56 columns, and
+> **~21 KB per row** at the ~300 columns production actually runs. At
+> 100,000 x 300 that is **~2.1 GB of duplicated book**, plus 603 MB of
+> structured clone crossing a `postMessage` twice per snapshot.
+>
+> A single columnar store holds the same book in **263 MB**. Getting there
+> needs both halves: route the book through wasm (it is duplicated three times
+> today) *and* type-pack the engine's cell, which is a 24-byte tagged union
+> whose cost is the dominant term once column count is high. At 300 columns
+> neither half is sufficient alone.
+>
+> Separately, the main-thread copy — the one in the isolate that can least
+> afford it — turns out not to be held for the paint path at all.
 
 ## The question
 
@@ -37,9 +44,16 @@ release, not the thing under test.
 
 Run at 5k / 50k / 100k. The object representations were stable across all
 three (≤1.5% spread), so those are linear rather than a single reading.
-The columnar figure instead *improves* with N (416 → 337 → 324 B/row) as the
-low-cardinality dictionaries amortise, so the 324 quoted below is the
-conservative end and keeps falling on bigger books.
+The columnar figure improves with N as the low-cardinality dictionaries
+amortise, settling near 706 B/row at 56 columns.
+
+**Corrected 2026-09-15 (same day):** the first version of this document
+reported columnar as 324 B/row. That was wrong. `process.memoryUsage().heapUsed`
+does not count TypedArray backing stores — those are external to the V8 heap
+and reported separately as `arrayBuffers` — so every columnar figure counted
+the dictionary strings while ignoring every `Float64Array` of actual data. The
+row-object tiers hold no typed arrays and were unaffected. The harness now
+sums `heapUsed + arrayBuffers`.
 
 Harness: `apps/velocitygrid-lab-csrm/bench/rowMemory.ts`. One mode per
 process, `--expose-gc` required:
@@ -108,15 +122,74 @@ So the honest accounting for routing CSRM through wasm:
 | --- | --- | --- |
 | CSRM today, three tiers | ~4,540 | ~454 MB |
 | One wasm store, `Value` as-is | ~1,400 | ~140 MB |
-| One wasm store, type-packed columns | 324 | 32 MB |
+| One wasm store, type-packed columns | 706 | 71 MB |
 
 The middle row is the ~3× that is available today, and it comes entirely from
 holding the book once instead of three times. The bottom row — measured as
 `Float64Array` per numeric column plus dictionary-encoded strings, and an
 *upper* bound for a real wasm store since it still pays V8 string headers that
-UTF-8 bytes in linear memory would not — needs `Value` to change. That is a
-different and much larger piece of work, and nothing should be promised on the
-strength of the 14× it implies.
+UTF-8 bytes in linear memory would not — needs `Value` to change. At 56
+columns that is a ~6.4x total, not the 14x the uncorrected figure implied.
+
+## At production shape: 100,000 rows x 300 columns
+
+The figures above are for a 56-column row. Production is ~300 columns, and V8's
+per-object cost is **not** linear in field count. Measured, not extrapolated
+(`rowMemory.ts` takes a column count as its third argument):
+
+| Tier | Bytes/row | @100k x 300 |
+| --- | --- | --- |
+| `RowCache.byId` | 8,162 | 816 MB |
+| main thread (clone + `rowDataById`) | 6,472 | 647 MB |
+| grid worker `DataStore` | ~6,500-7,600 | ~650-760 MB |
+| **three tiers** | | **~2.1 GB** |
+| one columnar store | 2,634 | **263 MB** |
+
+Structured-clone wire cost is **603 MB per snapshot**, crossed twice.
+
+Two effects appear at this width that do not exist at 56 columns:
+
+**Row-object cost is representation-dependent, with a 3.4x spread.** The same
+300-column row measures 6,472 B/row after `structuredClone` and iteration,
+8,162 after a `{...row}` spread, and **22,028 after `JSON.parse`** — V8 builds
+wide parsed objects in dictionary mode with a heavily over-allocated backing
+store. All three construction paths occur in the real pipeline. A representation
+whose footprint swings 3.4x on how the object happened to be built is not
+something you can capacity-plan against. The columnar figure does not move,
+because it is just data.
+
+**A 100k x 300 book is not expressible as one JSON document.** Serialising it
+throws `RangeError: Invalid string length` — it exceeds V8's maximum string
+length (~512 MB). Any JSON snapshot of this book must be chunked, at any layer
+that tries it.
+
+### What this does to the wasm recommendation
+
+At 56 columns, type-packing `Value` was a nice-to-have. At 300 it is
+**required**, because the tagged union's cost scales with column count:
+
+| | Bytes/row | @100k x 300 |
+| --- | --- | --- |
+| three JS tiers, today | ~21,100 | ~2.1 GB |
+| one wasm store, `Value` as-is (300 x 24B) | 7,200 | 720 MB |
+| one wasm store, type-packed | 2,634 | 263 MB |
+
+`TableCache` as it stands would hold a 300-column book at ~720 MB — better than
+2.1 GB, but nowhere near what the shape allows. The 24-byte cell that was
+merely unhelpful at 56 columns is the dominant term at 300.
+
+### Column windowing is the other half
+
+At 300 columns a viewport shows perhaps 25. Row-oriented storage carries all 300
+fields on every row regardless — there is no way not to. Columnar storage makes
+the displayed subset the transferred and resident subset, and the SSRM path
+already does exactly this (`wireSsrmColumnWindowRefill`,
+`ssrmColumnKeysNeedFetch`, the Perspective column windows). That is roughly
+another 12x on the wire, on top of the memory figures above, and it is
+structurally unavailable to a row-object pipeline.
+
+300 columns is the case where row-oriented storage is worst and columnar is
+best. It is not a marginal preference at this shape.
 
 ## The main-thread mirror is not a paint cache
 
@@ -156,7 +229,11 @@ The rows are there to be scanned by functions that cannot cross a
 
 ## What follows
 
-Three options, in increasing order of both payoff and cost. None is started.
+Three options. None is started. **At 300 columns the ordering below is wrong
+for production** — (2) and (3) are one piece of work and both are needed; (1)
+is a smaller, independent win. The ordering is kept as written because it is
+correct for a 56-column book, and the difference between the two cases is
+itself the point.
 
 1. **Gate the mirror on the features that need it.** Every pin above except
    `getTotalRowCount` already early-outs when its feature is unconfigured, and
@@ -173,7 +250,7 @@ Three options, in increasing order of both payoff and cost. None is started.
    ~3×, and it retires a whole `postMessage` hop (114 MB per snapshot) along
    with it.
 
-3. **Type-pack `Value`.** The remaining ~4.3×. A change to the engine's core
+3. **Type-pack `Value`.** The remaining ~2×. At 56 columns. A change to the engine's core
    cell representation, with reach far beyond this question.
 
 Worth noting that (1) and (2) are independent and compose: (1) shrinks the

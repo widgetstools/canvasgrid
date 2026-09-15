@@ -24,17 +24,60 @@ import v8 from 'node:v8';
 
 declare const global: { gc?: () => void };
 
+/**
+ * Settled retained bytes.
+ *
+ * `heapUsed` ALONE IS WRONG for any representation holding typed arrays: a
+ * TypedArray's backing store is allocated outside the V8 heap and reported
+ * separately as `arrayBuffers`. Measuring only `heapUsed` therefore counts a
+ * columnar store's dictionary strings while silently ignoring every
+ * Float64Array of actual data — which understated the columnar mode by
+ * roughly an order of magnitude and flattered it against the row-object
+ * modes, which have no external memory at all.
+ */
 function settle(): number {
   for (let i = 0; i < 8; i++) global.gc?.();
-  return process.memoryUsage().heapUsed;
+  const m = process.memoryUsage();
+  return m.heapUsed + m.arrayBuffers;
 }
 
 const mode = process.argv[2];
 const N = Number(process.argv[3]);
+/** Total columns per row. The lab's blotter is 56; production is ~300, and
+ *  V8's per-object cost is not linear in field count (a wide enough object
+ *  leaves fast properties for dictionary mode), so this is measured, never
+ *  extrapolated. */
+const COLS = Number(process.argv[4] ?? 56);
+
+/**
+ * Widen the real blotter row to `COLS` fields.
+ *
+ * Added fields are numeric because that is what a wide risk blotter is made
+ * of — key-rate durations per tenor, scenario P&L per shock, per-venue prices.
+ * The 20 string fields of the base row are kept as-is, so a 300-column row is
+ * 20 strings + 280 numbers, which matches the shape of the real thing more
+ * closely than padding with strings would.
+ */
+function widen(rows: BlotterRow[], cols: number): BlotterRow[] {
+  const base = Object.keys(rows[0] as unknown as Record<string, unknown>).length;
+  if (cols <= base) return rows;
+  const extra = cols - base;
+  // Built from a single entry list rather than by adding properties in a
+  // loop. Incremental addition pushes a wide object into V8's dictionary
+  // mode with a heavily over-allocated backing store, which is an artefact of
+  // the fixture and not of the data — it made each tier measure whatever mode
+  // its own construction path happened to produce, with a 3x spread between
+  // them and copies reading cheaper than the original.
+  const names = Array.from({ length: extra }, (_, k) => `analytic${k}`);
+  return rows.map((r, i) => Object.fromEntries([
+    ...Object.entries(r as unknown as Record<string, unknown>),
+    ...names.map((n, k) => [n, (i % 997) + k * 0.25] as const),
+  ]) as unknown as BlotterRow);
+}
 
 const base = settle();
 
-let source: BlotterRow[] | null = makeRows(N);
+let source: BlotterRow[] | null = widen(makeRows(N), COLS);
 /** Kept alive across the final measurement. */
 let held: unknown = null;
 /** Cheap liveness probe — reads a value without allocating a big string. */
@@ -44,6 +87,18 @@ switch (mode) {
   case 'wire': {
     held = source;
     probe = (source[N - 1] as BlotterRow).dv01;
+    break;
+  }
+  case 'json': {
+    // What a JSON transport actually delivers. The generator builds wide rows
+    // by adding properties in a loop, which leaves V8 in dictionary mode with
+    // a heavily over-allocated backing store — an artefact of HOW the fixture
+    // is built, not of the data. `JSON.parse` produces the compact object a
+    // real STOMP/WebSocket feed produces, so this, not `wire`, is the honest
+    // baseline for a wide row.
+    const rows = JSON.parse(JSON.stringify(source)) as BlotterRow[];
+    held = rows;
+    probe = rows.length;
     break;
   }
   case 'rowCache': {
@@ -124,7 +179,7 @@ switch (mode) {
     // anything being measured, and a transient that big distorts a retained
     // reading taken in the same process.
     const buf = v8.serialize(source);
-    console.log(JSON.stringify({ mode, N, wireBytes: buf.length }));
+    console.log(JSON.stringify({ mode, N, cols: COLS, wireBytes: buf.length }));
     process.exit(0);
   }
   default:
@@ -138,7 +193,7 @@ const after = settle();
 if (probe === 0 || held === null) throw new Error('representation was elided');
 
 console.log(JSON.stringify({
-  mode, N,
+  mode, N, cols: COLS,
   retainedBytes: after - base,
   bytesPerRow: Math.round((after - base) / N),
 }));
